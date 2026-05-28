@@ -1,0 +1,75 @@
+# Intel RealSense D435 camera parameters (simulation defaults).
+# Frame convention follows Intel realsense2_description _d435.urdf.xacro.
+
+camera:
+  name: realsense_d435
+  type: depth_rgb
+
+  mount:
+    parent_link: elfin_link6
+    tune_joints:
+      tx: -0.017202
+      ty: 0.129806
+      tz: 0.101650
+      rx: 0
+      ry: 0
+      rz: 0
+    fixed:
+      xyz: [-0.017202, 0.129806, 0.101650]
+      rpy: [0.0, -1.57079632679, 0.0]
+    xyz: [-0.017202, 0.129806, 0.101650]
+    rpy: [0.0, 0.0, 0.0]
+
+  color:
+    width: 640
+    height: 480
+    fps: 30
+    format: RGB8
+    intrinsics:
+      fx: 607.53
+      fy: 607.07
+      cx: 320.0
+      cy: 240.0
+      distortion_model: plumb_bob
+      distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+
+  depth:
+    width: 640
+    height: 480
+    fps: 30
+    format: Z16
+    intrinsics:
+      fx: 382.72
+      fy: 382.72
+      cx: 320.0
+      cy: 240.0
+      distortion_model: plumb_bob
+      distortion_coeffs: [0.0, 0.0, 0.0, 0.0, 0.0]
+    range:
+      min: 0.105
+      max: 10.0
+
+  extrinsics:
+    depth_to_color:
+      rotation: [1.0, 0.0, 0.0,
+                 0.0, 1.0, 0.0,
+                 0.0, 0.0, 1.0]
+      translation: [0.0, 0.015, 0.0]
+
+  physical:
+    body_size: [0.02505, 0.09, 0.025]
+    long_axis: camera_link_y
+    lens_face: camera_link_plus_x
+    mass: 0.072
+    baseline: 0.05
+
+  topics:
+    color_image: /camera/color/image_raw
+    color_info: /camera/color/camera_info
+    depth_image: /camera/depth/image_raw
+    depth_info: /camera/depth/camera_info
+    point_cloud: /camera/depth/points
+
+meta:
+  name: realsense_d435_sim
+  version: 1.1.0

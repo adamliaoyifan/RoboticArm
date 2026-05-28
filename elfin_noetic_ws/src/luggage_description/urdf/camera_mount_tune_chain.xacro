@@ -1,0 +1,127 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="camera_mount_tune_chain">
+
+  <!-- 6-DOF mount chain for simulation tuning (tx,ty,tz prismatic + rx,ry,rz revolute). -->
+  <xacro:macro name="camera_mount_tune_chain" params="parent">
+    <xacro:property name="cam_tune_limit_linear" value="0.50"/>
+    <xacro:property name="cam_tune_rot" value="3.14159265359"/>
+    <xacro:property name="cam_tune_damping" value="500.0"/>
+
+    <xacro:macro name="cam_mount_link_gazebo" params="link_name">
+      <gazebo reference="${link_name}">
+        <gravity>false</gravity>
+        <selfCollide>false</selfCollide>
+      </gazebo>
+    </xacro:macro>
+
+    <xacro:macro name="cam_mount_joint_gazebo" params="joint_name">
+      <gazebo reference="${joint_name}">
+        <implicitSpringDamper>true</implicitSpringDamper>
+        <provideFeedback>false</provideFeedback>
+      </gazebo>
+    </xacro:macro>
+
+    <link name="cam_mount_tx_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_tx" type="prismatic">
+      <parent link="${parent}"/>
+      <child link="cam_mount_tx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-cam_tune_limit_linear}" upper="${cam_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_tx_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_tx"/>
+
+    <link name="cam_mount_ty_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_ty" type="prismatic">
+      <parent link="cam_mount_tx_link"/>
+      <child link="cam_mount_ty_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-cam_tune_limit_linear}" upper="${cam_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_ty_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_ty"/>
+
+    <link name="cam_mount_tz_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_tz" type="prismatic">
+      <parent link="cam_mount_ty_link"/>
+      <child link="cam_mount_tz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-cam_tune_limit_linear}" upper="${cam_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_tz_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_tz"/>
+
+    <link name="cam_mount_rx_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_rx" type="revolute">
+      <parent link="cam_mount_tz_link"/>
+      <child link="cam_mount_rx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-cam_tune_rot}" upper="${cam_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_rx_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_rx"/>
+
+    <link name="cam_mount_ry_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_ry" type="revolute">
+      <parent link="cam_mount_rx_link"/>
+      <child link="cam_mount_ry_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-cam_tune_rot}" upper="${cam_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_ry_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_ry"/>
+
+    <link name="cam_mount_rz_link">
+      <inertial>
+        <mass value="0.001"/>
+        <inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/>
+      </inertial>
+    </link>
+    <joint name="cam_mount_rz" type="revolute">
+      <parent link="cam_mount_ry_link"/>
+      <child link="cam_mount_rz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-cam_tune_rot}" upper="${cam_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${cam_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:cam_mount_link_gazebo link_name="cam_mount_rz_link"/>
+    <xacro:cam_mount_joint_gazebo joint_name="cam_mount_rz"/>
+  </xacro:macro>
+
+</robot>

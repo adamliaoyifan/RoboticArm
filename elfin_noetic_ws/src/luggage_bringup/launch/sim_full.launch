@@ -1,0 +1,11 @@
+<launch>
+  <!-- Full sim stack: Gazebo + skeleton modules. MoveIt optional in separate terminal. -->
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch">
+    <arg name="spawn_at_observe" value="true"/>
+    <arg name="hold_observe_on_start" value="true"/>
+  </include>
+
+  <include file="$(find luggage_bringup)/launch/sim_skeleton.launch">
+    <arg name="start_orchestrator" value="false"/>
+  </include>
+</launch>

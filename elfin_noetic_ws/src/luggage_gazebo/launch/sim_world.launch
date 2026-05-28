@@ -1,0 +1,59 @@
+<launch>
+  <!-- Gazebo world: Elfin S20 + RealSense D435 + airport container + suitcases -->
+  <arg name="use_camera" default="true"/>
+  <arg name="spawn_luggage" default="true"/>
+  <arg name="spawn_at_observe" default="false"/>
+  <arg name="hold_observe_on_start" default="false"/>
+
+  <!-- Start Gazebo empty world -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+
+  <!-- Load robot description: S20 with or without camera -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(find luggage_description)/urdf/elfin_s20_with_camera.urdf.xacro'"
+         if="$(arg use_camera)"/>
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(find elfin_description)/urdf/S20.urdf.xacro'"
+         unless="$(arg use_camera)"/>
+
+  <!-- Spawn robot in Gazebo (observe joints from config/robot_poses.yaml.example) -->
+  <node if="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        args="-urdf -model S20 -param robot_description -z 0.1
+              -J elfin_joint1 -2.7130 -J elfin_joint2 -1.3263 -J elfin_joint3 -1.0965
+              -J elfin_joint4 3.9564 -J elfin_joint5 -4.6598 -J elfin_joint6 0.4522"/>
+
+  <node unless="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        args="-urdf -model S20 -param robot_description -z 0.1"/>
+
+  <node name="fake_joint_calibration" pkg="rostopic" type="rostopic"
+        args="pub /calibrated std_msgs/Bool true"/>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="50.0"/>
+    <param name="tf_prefix" type="string" value=""/>
+  </node>
+
+  <!-- Controllers -->
+  <rosparam file="$(find elfin_gazebo)/config/joint_state_controller.yaml" command="load"/>
+  <node name="joint_state_controller_spawner" pkg="controller_manager" type="controller_manager"
+        args="spawn joint_state_controller" respawn="false" output="screen"/>
+
+  <rosparam file="$(find elfin_gazebo)/config/elfin_arm_control.yaml" command="load"/>
+  <node name="elfin_arm_controller_spawner" pkg="controller_manager" type="controller_manager"
+        args="spawn elfin_arm_controller" respawn="false" output="screen"/>
+
+  <!-- After controllers ready: trajectory to observe (production URDF, fixed camera mount) -->
+  <node if="$(arg hold_observe_on_start)" pkg="luggage_bringup" type="camera_mount_tune_init.py"
+        name="observe_pose_init" output="screen">
+    <param name="set_observe_on_start" value="true"/>
+    <param name="apply_mount_on_start" value="false"/>
+    <param name="gazebo_wait_timeout" value="120.0"/>
+    <param name="controller_wait_timeout" value="120.0"/>
+  </node>
+
+  <!-- Spawn luggage scene + container TF for perception/planning -->
+  <group if="$(arg spawn_luggage)">
+    <include file="$(find luggage_gazebo)/launch/spawn_luggage_scene.launch"/>
+    <node pkg="luggage_bringup" type="container_tf_publisher.py" name="container_tf_publisher" output="screen"/>
+  </group>
+</launch>

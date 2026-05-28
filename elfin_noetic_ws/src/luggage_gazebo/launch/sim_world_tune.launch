@@ -1,0 +1,46 @@
+<launch>
+  <!-- Gazebo world with tune URDF (6-DOF camera mount joints for GUI tuning). -->
+  <arg name="spawn_luggage" default="true"/>
+  <arg name="spawn_at_observe" default="false"/>
+
+  <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(find luggage_description)/urdf/elfin_s20_with_camera_tune.urdf.xacro'"/>
+
+  <!-- spawn_at_observe: initial joint values from config/robot_poses.yaml.example + mount yaml -->
+  <node if="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        args="-urdf -model S20 -param robot_description -z 0.1
+              -J elfin_joint1 -2.7130 -J elfin_joint2 -1.3263 -J elfin_joint3 -1.0965
+              -J elfin_joint4 3.9564 -J elfin_joint5 -4.6598 -J elfin_joint6 0.4522
+              -J cam_mount_tx -0.017202 -J cam_mount_ty 0.129806 -J cam_mount_tz 0.101650
+              -J cam_mount_rx -1.57079632679 -J cam_mount_ry -1.57079632679 -J cam_mount_rz 1.57079632679"/>
+
+  <node unless="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        args="-urdf -model S20 -param robot_description -z 0.1"/>
+
+  <node name="fake_joint_calibration" pkg="rostopic" type="rostopic"
+        args="pub /calibrated std_msgs/Bool true"/>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher" name="robot_state_publisher">
+    <param name="publish_frequency" type="double" value="50.0"/>
+    <param name="tf_prefix" type="string" value=""/>
+    <remap from="joint_states" to="/joint_states_merged"/>
+  </node>
+
+  <rosparam file="$(find elfin_gazebo)/config/joint_state_controller.yaml" command="load"/>
+  <node name="joint_state_controller_spawner" pkg="controller_manager" type="controller_manager"
+        args="spawn joint_state_controller" respawn="false" output="screen"/>
+
+  <node pkg="luggage_bringup" type="cam_mount_joint_state_merger.py" name="cam_mount_joint_state_merger" output="screen">
+    <param name="output_joint_states_topic" value="/joint_states_merged"/>
+  </node>
+
+  <rosparam file="$(find elfin_gazebo)/config/elfin_arm_control.yaml" command="load"/>
+  <node name="elfin_arm_controller_spawner" pkg="controller_manager" type="controller_manager"
+        args="spawn elfin_arm_controller" respawn="false" output="screen"/>
+
+  <group if="$(arg spawn_luggage)">
+    <include file="$(find luggage_gazebo)/launch/spawn_luggage_scene.launch"/>
+  </group>
+</launch>

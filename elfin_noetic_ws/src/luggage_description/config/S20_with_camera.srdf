@@ -1,0 +1,63 @@
+<?xml version="1.0" ?>
+<!-- Semantic model for elfin_s20_with_camera URDF (S20 arm + RealSense D435). -->
+<robot name="elfin_s20_with_camera">
+    <group name="elfin_arm">
+        <joint name="elfin_base_joint" />
+        <joint name="elfin_joint1" />
+        <joint name="elfin_joint2" />
+        <joint name="elfin_joint3" />
+        <joint name="elfin_joint4" />
+        <joint name="elfin_joint5" />
+        <joint name="elfin_joint6" />
+        <joint name="elfin_end_joint" />
+    </group>
+
+    <group_state name="home" group="elfin_arm">
+        <joint name="elfin_joint1" value="0" />
+        <joint name="elfin_joint2" value="0" />
+        <joint name="elfin_joint3" value="0" />
+        <joint name="elfin_joint4" value="0" />
+        <joint name="elfin_joint5" value="0" />
+        <joint name="elfin_joint6" value="0" />
+    </group_state>
+    <group_state name="up" group="elfin_arm">
+        <joint name="elfin_joint1" value="0" />
+        <joint name="elfin_joint2" value="-1.57" />
+        <joint name="elfin_joint3" value="0" />
+        <joint name="elfin_joint4" value="-1.57" />
+        <joint name="elfin_joint5" value="0" />
+        <joint name="elfin_joint6" value="0" />
+    </group_state>
+    <group_state name="observe" group="elfin_arm">
+        <joint name="elfin_joint1" value="-2.7130" />
+        <joint name="elfin_joint2" value="-1.3263" />
+        <joint name="elfin_joint3" value="-1.0965" />
+        <joint name="elfin_joint4" value="3.9564" />
+        <joint name="elfin_joint5" value="-4.6598" />
+        <joint name="elfin_joint6" value="0.4522" />
+    </group_state>
+
+    <!-- Base S20 self-collision pairs -->
+    <disable_collisions link1="elfin_base" link2="elfin_link1" reason="Adjacent" />
+    <disable_collisions link1="elfin_base" link2="elfin_link2" reason="Never" />
+    <disable_collisions link1="elfin_base" link2="elfin_link4" reason="Never" />
+    <disable_collisions link1="elfin_link1" link2="elfin_link2" reason="Adjacent" />
+    <disable_collisions link1="elfin_link1" link2="elfin_link4" reason="Never" />
+    <disable_collisions link1="elfin_link2" link2="elfin_link3" reason="Adjacent" />
+    <disable_collisions link1="elfin_link3" link2="elfin_link4" reason="Adjacent" />
+    <disable_collisions link1="elfin_link3" link2="elfin_link5" reason="Never" />
+    <disable_collisions link1="elfin_link4" link2="elfin_link5" reason="Adjacent" />
+    <disable_collisions link1="elfin_link4" link2="elfin_link6" reason="Never" />
+    <disable_collisions link1="elfin_link5" link2="elfin_link6" reason="Adjacent" />
+
+    <!-- Camera side-mounted on elfin_link6 — ignore arm self-collisions for planning -->
+    <disable_collisions link1="camera_link" link2="elfin_link6" reason="Adjacent" />
+    <disable_collisions link1="camera_link" link2="elfin_end_link" reason="Never" />
+    <disable_collisions link1="camera_link" link2="elfin_link5" reason="Never" />
+    <disable_collisions link1="camera_link" link2="elfin_link4" reason="Never" />
+    <disable_collisions link1="camera_link" link2="elfin_link3" reason="Never" />
+    <disable_collisions link1="camera_link" link2="elfin_link2" reason="Never" />
+    <disable_collisions link1="camera_link" link2="elfin_link1" reason="Never" />
+    <disable_collisions link1="camera_depth_optical_frame" link2="camera_link" reason="Adjacent" />
+    <disable_collisions link1="camera_color_optical_frame" link2="camera_link" reason="Adjacent" />
+</robot>

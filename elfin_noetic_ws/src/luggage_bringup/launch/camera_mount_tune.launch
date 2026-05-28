@@ -1,0 +1,37 @@
+<launch>
+  <!-- Tune RealSense mount: arm starts at observe pose in Gazebo (no MoveIt wait). -->
+  <arg name="display_moveit" default="false"/>
+  <arg name="move_to_observe_on_start" default="true"/>
+  <arg name="use_moveit" default="false"/>
+
+  <arg name="software_gl" default="true" doc="Use Mesa software GL for PyQt in Docker (avoids nvidia-drm libGL errors)"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world_tune.launch">
+    <arg name="spawn_at_observe" value="$(arg move_to_observe_on_start)"/>
+  </include>
+
+  <!-- After model + elfin_arm_controller are up: trajectory to observe + mount joints. -->
+  <node pkg="luggage_bringup" type="camera_mount_tune_init.py" name="camera_mount_tune_init" output="screen">
+    <param name="set_observe_on_start" value="$(arg move_to_observe_on_start)"/>
+    <param name="apply_mount_on_start" value="true"/>
+    <param name="gazebo_wait_timeout" value="120.0"/>
+    <param name="controller_wait_timeout" value="120.0"/>
+  </node>
+
+  <include if="$(arg use_moveit)" file="$(find luggage_bringup)/launch/moveit_for_camera_tune.launch">
+    <arg name="display" value="$(arg display_moveit)"/>
+  </include>
+
+  <node if="$(arg use_moveit)" pkg="luggage_planning" type="motion_planner_node.py" name="motion_planner" output="screen">
+    <param name="robot_description" value="robot_description_moveit"/>
+    <param name="move_group_wait_timeout" value="60.0"/>
+  </node>
+
+  <node pkg="luggage_bringup" type="camera_mount_tune_gui.py" name="camera_mount_tune_gui" output="screen">
+    <env if="$(arg software_gl)" name="LIBGL_ALWAYS_SOFTWARE" value="1"/>
+    <param name="move_to_observe_on_start" value="false"/>
+    <param name="use_moveit_observe_on_start" value="false"/>
+    <param name="require_motion_planner" value="$(arg use_moveit)"/>
+    <param name="move_group_wait_timeout" value="60.0"/>
+  </node>
+</launch>

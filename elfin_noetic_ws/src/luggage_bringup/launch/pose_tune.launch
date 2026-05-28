@@ -1,0 +1,15 @@
+<launch>
+  <!-- Gazebo + MoveIt + motion planner + joint/RGB tune GUI (no auto reset). -->
+  <arg name="display_moveit" default="false"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch"/>
+
+  <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">
+    <arg name="display" value="$(arg display_moveit)"/>
+    <arg name="load_urdf" value="false"/>
+  </include>
+
+  <node pkg="luggage_planning" type="motion_planner_node.py" name="motion_planner" output="screen"/>
+
+  <node pkg="luggage_bringup" type="pose_tune_gui.py" name="pose_tune_gui" output="screen"/>
+</launch>

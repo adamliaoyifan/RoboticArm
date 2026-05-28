@@ -1,0 +1,135 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="realsense_d435">
+
+  <!--
+    Intel RealSense D435 nominal frame convention:
+      camera_link +X = depth/camera forward
+      camera_link +Y = 90 mm long axis / stereo baseline axis
+      camera_link +Z = 25 mm height axis
+    Dimensions/extrinsics follow realsense2_description _d435.urdf.xacro.
+    Observe pose (world): optical +Z ~ [0,0,-1], camera +Y horizontal.
+  -->
+  <xacro:macro name="realsense_d435" params="parent *origin">
+    <xacro:property name="d435_cam_depth_to_color_offset" value="0.015"/>
+    <xacro:property name="d435_cam_depth" value="0.02505"/>
+    <xacro:property name="d435_cam_width" value="0.090"/>
+    <xacro:property name="d435_cam_height" value="0.025"/>
+    <xacro:property name="d435_cam_depth_py" value="0.0175"/>
+
+    <link name="camera_link">
+      <visual>
+        <origin xyz="0 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${d435_cam_depth} ${d435_cam_width} ${d435_cam_height}"/>
+        </geometry>
+        <material name="camera_grey">
+          <color rgba="0.3 0.3 0.3 1"/>
+        </material>
+      </visual>
+      <!-- Lens/front marker on +X face (90 x 25 mm), matching official camera_link +X forward. -->
+      <visual name="camera_lens_marker">
+        <origin xyz="0.013025 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.001 0.09 0.022"/>
+        </geometry>
+        <material name="camera_lens_dark">
+          <color rgba="0.05 0.05 0.15 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <geometry>
+          <box size="${d435_cam_depth} ${d435_cam_width} ${d435_cam_height}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- Intel's URDF notes these inertias are nominal visual-model values. -->
+        <mass value="0.072"/>
+        <inertia ixx="0.003881243" ixy="0.0" ixz="0.0"
+                 iyy="0.000498940" iyz="0.0"
+                 izz="0.003879257"/>
+      </inertial>
+    </link>
+
+    <joint name="camera_mount_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="camera_link"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <link name="camera_depth_frame"/>
+    <joint name="camera_depth_joint" type="fixed">
+      <parent link="camera_link"/>
+      <child link="camera_depth_frame"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="camera_depth_optical_frame"/>
+    <joint name="camera_depth_optical_joint" type="fixed">
+      <parent link="camera_depth_frame"/>
+      <child link="camera_depth_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <link name="camera_color_frame"/>
+    <joint name="camera_color_joint" type="fixed">
+      <parent link="camera_link"/>
+      <child link="camera_color_frame"/>
+      <origin xyz="0 ${d435_cam_depth_to_color_offset} 0" rpy="0 0 0"/>
+    </joint>
+
+    <link name="camera_color_optical_frame"/>
+    <joint name="camera_color_optical_joint" type="fixed">
+      <parent link="camera_color_frame"/>
+      <child link="camera_color_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+
+    <gazebo reference="camera_link">
+      <sensor type="depth" name="realsense_d435">
+        <always_on>true</always_on>
+        <update_rate>30.0</update_rate>
+        <visualize>true</visualize>
+        <camera name="d435">
+          <horizontal_fov>1.2112</horizontal_fov>
+          <image>
+            <width>640</width>
+            <height>480</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.105</near>
+            <far>10.0</far>
+          </clip>
+          <depth_camera>
+            <output>depths</output>
+          </depth_camera>
+        </camera>
+        <plugin name="camera_controller" filename="libgazebo_ros_openni_kinect.so">
+          <alwaysOn>true</alwaysOn>
+          <updateRate>30.0</updateRate>
+          <cameraName>camera</cameraName>
+          <frameName>camera_depth_optical_frame</frameName>
+          <imageTopicName>color/image_raw</imageTopicName>
+          <cameraInfoTopicName>color/camera_info</cameraInfoTopicName>
+          <depthImageTopicName>depth/image_raw</depthImageTopicName>
+          <depthImageCameraInfoTopicName>depth/camera_info</depthImageCameraInfoTopicName>
+          <pointCloudTopicName>depth/points</pointCloudTopicName>
+          <pointCloudCutoff>0.105</pointCloudCutoff>
+          <pointCloudCutoffMax>10.0</pointCloudCutoffMax>
+          <hackBaseline>0.05</hackBaseline>
+          <distortionK1>0.0</distortionK1>
+          <distortionK2>0.0</distortionK2>
+          <distortionK3>0.0</distortionK3>
+          <distortionT1>0.0</distortionT1>
+          <distortionT2>0.0</distortionT2>
+          <CxPrime>320.0</CxPrime>
+          <Cx>320.0</Cx>
+          <Cy>240.0</Cy>
+          <focalLength>462.167573</focalLength>
+        </plugin>
+      </sensor>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

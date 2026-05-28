@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="elfin_s20_with_camera">
+
+  <!-- Include the base Elfin S20 -->
+  <xacro:include filename="$(find elfin_description)/urdf/S20.urdf.xacro"/>
+
+  <!-- Include the RealSense D435 macro -->
+  <xacro:include filename="$(find luggage_description)/urdf/realsense_d435.urdf.xacro"/>
+
+  <!-- Mount params from config/camera_mount_origin.xacro (tuned via camera_mount_tune_gui) -->
+  <xacro:include filename="$(find luggage_description)/config/camera_mount_origin.xacro"/>
+
+  <xacro:realsense_d435 parent="${cam_mount_parent}">
+    <origin xyz="${cam_mount_xyz}" rpy="${cam_mount_rpy}"/>
+  </xacro:realsense_d435>
+
+  <gazebo reference="camera_link">
+    <gravity>false</gravity>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+</robot>

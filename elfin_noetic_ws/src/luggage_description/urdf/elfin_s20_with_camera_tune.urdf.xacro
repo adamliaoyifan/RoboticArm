@@ -1,0 +1,24 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="elfin_s20_with_camera_tune">
+
+  <!-- Include the base Elfin S20 -->
+  <xacro:include filename="$(find elfin_description)/urdf/S20.urdf.xacro"/>
+
+  <!-- RealSense + 6-DOF tune mount chain (simulation tuning only) -->
+  <xacro:include filename="$(find luggage_description)/urdf/realsense_d435.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/urdf/camera_mount_tune_chain.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/camera_mount_origin.xacro"/>
+
+  <xacro:camera_mount_tune_chain parent="${cam_mount_parent}"/>
+
+  <xacro:realsense_d435 parent="cam_mount_rz_link">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:realsense_d435>
+
+  <!-- Tune mount chain: no gravity on camera body (prevents physics jitter). -->
+  <gazebo reference="camera_link">
+    <gravity>false</gravity>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+</robot>

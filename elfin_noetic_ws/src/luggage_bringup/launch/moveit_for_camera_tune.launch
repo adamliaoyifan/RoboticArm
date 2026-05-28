@@ -1,0 +1,52 @@
+<launch>
+  <!-- MoveIt on production fixed-mount URDF; Gazebo keeps tune URDF on /robot_description. -->
+  <arg name="display" default="false"/>
+  <arg name="rviz_config" default="$(find luggage_bringup)/config/pose_tune_moveit.rviz"/>
+  <arg name="moveit_robot_description" default="robot_description_moveit"/>
+
+  <param name="$(arg moveit_robot_description)"
+         command="$(find xacro)/xacro --inorder '$(find luggage_description)/urdf/elfin_s20_with_camera.urdf.xacro'"/>
+
+  <include file="$(find elfin_s20_moveit_config)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="robot_description" value="$(arg moveit_robot_description)"/>
+  </include>
+
+  <param name="$(arg moveit_robot_description)_semantic"
+         textfile="$(find luggage_description)/config/S20_with_camera.srdf"/>
+
+  <group ns="move_group">
+    <param name="robot_description"
+           command="$(find xacro)/xacro --inorder '$(find luggage_description)/urdf/elfin_s20_with_camera.urdf.xacro'"/>
+    <param name="robot_description_semantic"
+           textfile="$(find luggage_description)/config/S20_with_camera.srdf"/>
+  </group>
+
+  <include ns="move_group" file="$(find elfin_s20_moveit_config)/launch/planning_pipeline.launch.xml">
+    <arg name="pipeline" value="ompl"/>
+  </include>
+
+  <include ns="move_group" file="$(find elfin_s20_moveit_config)/launch/trajectory_execution.launch.xml">
+    <arg name="moveit_manage_controllers" value="true"/>
+    <arg name="moveit_controller_manager" value="S20"/>
+  </include>
+
+  <include ns="move_group" file="$(find elfin_s20_moveit_config)/launch/sensor_manager.launch.xml">
+    <arg name="moveit_sensor_manager" value="S20"/>
+  </include>
+
+  <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen">
+    <param name="allow_trajectory_execution" value="true"/>
+    <param name="max_safe_path_cost" value="1"/>
+    <param name="jiggle_fraction" value="0.05"/>
+    <param name="planning_scene_monitor/publish_planning_scene" value="true"/>
+    <param name="planning_scene_monitor/publish_geometry_updates" value="true"/>
+    <param name="planning_scene_monitor/publish_state_updates" value="true"/>
+    <param name="planning_scene_monitor/publish_transforms_updates" value="true"/>
+  </node>
+
+  <node if="$(arg display)" pkg="rviz" type="rviz" name="moveit_rviz" output="screen"
+        args="-d $(arg rviz_config)">
+    <rosparam command="load" file="$(find elfin_s20_moveit_config)/config/kinematics.yaml"/>
+  </node>
+</launch>
