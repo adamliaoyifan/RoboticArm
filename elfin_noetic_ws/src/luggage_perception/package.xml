@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>luggage_perception</name>
+  <version>0.0.1</version>
+  <description>Luggage detection for airport loading simulation.</description>
+  <maintainer email="dev@todo.todo">RobotArm</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <exec_depend>rospy</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>luggage_msgs</exec_depend>
+  <exec_depend>gazebo_msgs</exec_depend>
+  <exec_depend>luggage_description</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+</package>

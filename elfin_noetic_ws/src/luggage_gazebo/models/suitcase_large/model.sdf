@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <!-- Large checked bag: 80 x 50 x 32 cm, 20 kg -->
+  <model name="suitcase_large">
+    <link name="suitcase_link">
+      <inertial>
+        <mass>20.0</mass>
+        <inertia>
+          <ixx>0.427</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>1.173</iyy><iyz>0</iyz>
+          <izz>1.493</izz>
+        </inertia>
+      </inertial>
+      <visual name="body_visual">
+        <geometry><box><size>0.80 0.50 0.32</size></box></geometry>
+        <material>
+          <ambient>0.25 0.18 0.12 1</ambient>
+          <diffuse>0.40 0.28 0.18 1</diffuse>
+        </material>
+      </visual>
+      <collision name="body_collision">
+        <geometry><box><size>0.80 0.50 0.32</size></box></geometry>
+        <surface>
+          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
+        </surface>
+      </collision>
+      <visual name="handle_visual">
+        <pose>0 0 0.18 0 0 0</pose>
+        <geometry><box><size>0.35 0.06 0.04</size></box></geometry>
+        <material>
+          <ambient>0.3 0.3 0.32 1</ambient>
+          <diffuse>0.45 0.45 0.48 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

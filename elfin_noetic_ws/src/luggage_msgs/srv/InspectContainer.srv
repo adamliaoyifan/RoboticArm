@@ -1,0 +1,8 @@
+# Inspect container interior for free placement space.
+string mode
+---
+bool success
+string message
+float64 free_volume
+float64 occupancy_ratio
+SlotSpec[] free_slots

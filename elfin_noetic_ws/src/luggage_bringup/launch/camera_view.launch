@@ -1,0 +1,18 @@
+<launch>
+  <!-- Visualize RealSense D435 camera streams (RGB + Depth) in RViz and image_view -->
+
+  <!-- Image view windows for quick inspection -->
+  <node name="rgb_view" pkg="image_view" type="image_view" output="screen">
+    <remap from="image" to="/camera/color/image_raw"/>
+    <param name="window_name" value="RGB Camera"/>
+  </node>
+
+  <node name="depth_view" pkg="image_view" type="image_view" output="screen">
+    <remap from="image" to="/camera/depth/image_raw"/>
+    <param name="window_name" value="Depth Camera"/>
+  </node>
+
+  <!-- RViz with camera display config -->
+  <node name="rviz_camera" pkg="rviz" type="rviz" output="screen"
+        args="-d $(find luggage_bringup)/config/camera_view.rviz"/>
+</launch>

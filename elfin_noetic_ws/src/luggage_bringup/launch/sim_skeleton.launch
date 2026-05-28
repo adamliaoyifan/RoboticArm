@@ -1,0 +1,21 @@
+<launch>
+  <!-- Phase 0 skeleton — stub modules + one orchestrator cycle (no Gazebo/MoveIt required). -->
+  <arg name="start_orchestrator" default="true"/>
+  <arg name="max_placed" default="1"/>
+  <arg name="skip_reset" default="true"/>
+
+  <node pkg="luggage_description" type="description_params_node.py" name="description_params" output="screen"/>
+
+  <node pkg="luggage_perception" type="luggage_detector_node.py" name="luggage_detector" output="screen"/>
+  <node pkg="luggage_packing" type="bin_packer_node.py" name="bin_packer" output="screen"/>
+
+  <node pkg="luggage_planning" type="scene_manager_node.py" name="scene_manager" output="screen"/>
+  <node pkg="luggage_planning" type="waypoint_generator_node.py" name="waypoint_generator" output="screen"/>
+  <node pkg="luggage_planning" type="motion_planner_node.py" name="motion_planner" output="screen"/>
+  <node pkg="luggage_planning" type="vacuum_simulator_node.py" name="vacuum_simulator" output="screen"/>
+
+  <node if="$(arg start_orchestrator)" pkg="luggage_bringup" type="orchestrator_node.py" name="orchestrator" output="screen">
+    <param name="max_placed" value="$(arg max_placed)"/>
+    <param name="skip_reset" value="$(arg skip_reset)"/>
+  </node>
+</launch>

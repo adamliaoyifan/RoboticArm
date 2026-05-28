@@ -1,0 +1,10 @@
+# Aim camera_depth_optical_frame at container opening with constrained planning.
+string container_frame
+float64 link6_xy_tolerance
+float64 link6_z_tolerance
+bool execute
+---
+bool success
+bool already_there
+float64[] joint_values
+string message

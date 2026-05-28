@@ -1,0 +1,12 @@
+<launch>
+  <!-- Phase 0 stub: loads example config paths only. -->
+  <arg name="vacuum_config" default="$(find luggage_description)/config/vacuum_gripper.yaml.example"/>
+  <arg name="container_config" default="$(find luggage_description)/config/container.yaml.example"/>
+  <arg name="suitcase_config" default="$(find luggage_description)/config/suitcase.yaml.example"/>
+
+  <param name="luggage/vacuum_config" value="$(arg vacuum_config)"/>
+  <param name="luggage/container_config" value="$(arg container_config)"/>
+  <param name="luggage/suitcase_config" value="$(arg suitcase_config)"/>
+
+  <node pkg="luggage_description" type="description_params_node.py" name="description_params" output="screen"/>
+</launch>

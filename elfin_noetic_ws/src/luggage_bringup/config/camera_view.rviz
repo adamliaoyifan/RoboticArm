@@ -1,0 +1,62 @@
+Panels:
+  - Class: rviz/Displays
+    Name: Displays
+  - Class: rviz/Views
+    Name: Views
+Visualization Manager:
+  Displays:
+    - Class: rviz/RobotModel
+      Name: RobotModel
+      Robot Description: robot_description
+      Enabled: true
+    - Class: rviz/TF
+      Name: TF
+      Enabled: true
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+    - Class: rviz/Image
+      Name: RGB Image
+      Enabled: true
+      Image Topic: /camera/color/image_raw
+      Transport Hint: raw
+      Queue Size: 2
+    - Class: rviz/Image
+      Name: Depth Image
+      Enabled: true
+      Image Topic: /camera/depth/image_raw
+      Transport Hint: raw
+      Queue Size: 2
+    - Class: rviz/PointCloud2
+      Name: PointCloud
+      Enabled: false
+      Topic: /camera/depth/points
+      Size (Pixels): 2
+      Style: Points
+      Color Transformer: AxisColor
+      Axis: Z
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: world
+    Frame Rate: 30
+  Tools:
+    - Class: rviz/MoveCamera
+    - Class: rviz/FocusCamera
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 3.0
+      Focal Point:
+        X: 0
+        Y: 0
+        Z: 0.5
+      Name: Current View
+Window Geometry:
+  Width: 1200
+  Height: 800
+  Displays:
+    collapsed: false
+  RGB Image:
+    collapsed: false
+  Depth Image:
+    collapsed: false

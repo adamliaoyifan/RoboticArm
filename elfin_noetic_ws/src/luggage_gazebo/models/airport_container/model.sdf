@@ -1,0 +1,149 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <!-- Side-open cargo container. Origin: centre of bottom face (z=0 on ground).
+       Outer 2.4 x 2.0 x 2.2 m; opening 1.8 x 2.0 m on +Y face. -->
+  <model name="airport_container">
+    <static>true</static>
+    <link name="container_link">
+
+      <!-- Floor -->
+      <visual name="floor_visual">
+        <pose>0 0 0.025 0 0 0</pose>
+        <geometry><box><size>2.4 2.0 0.05</size></box></geometry>
+        <material>
+          <ambient>0.25 0.25 0.28 1</ambient>
+          <diffuse>0.35 0.35 0.38 1</diffuse>
+        </material>
+      </visual>
+      <collision name="floor_collision">
+        <pose>0 0 0.025 0 0 0</pose>
+        <geometry><box><size>2.4 2.0 0.05</size></box></geometry>
+      </collision>
+
+      <!-- Back wall (-Y) -->
+      <visual name="back_wall_visual">
+        <pose>0 -0.975 1.1 0 0 0</pose>
+        <geometry><box><size>2.4 0.05 2.2</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="back_wall_collision">
+        <pose>0 -0.975 1.1 0 0 0</pose>
+        <geometry><box><size>2.4 0.05 2.2</size></box></geometry>
+      </collision>
+
+      <!-- Left wall (-X) -->
+      <visual name="left_wall_visual">
+        <pose>-1.175 0 1.075 0 0 0</pose>
+        <geometry><box><size>0.05 1.9 2.1</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="left_wall_collision">
+        <pose>-1.175 0 1.075 0 0 0</pose>
+        <geometry><box><size>0.05 1.9 2.1</size></box></geometry>
+      </collision>
+
+      <!-- Right wall (+X) -->
+      <visual name="right_wall_visual">
+        <pose>1.175 0 1.075 0 0 0</pose>
+        <geometry><box><size>0.05 1.9 2.1</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="right_wall_collision">
+        <pose>1.175 0 1.075 0 0 0</pose>
+        <geometry><box><size>0.05 1.9 2.1</size></box></geometry>
+      </collision>
+
+      <!-- Roof -->
+      <visual name="roof_visual">
+        <pose>0 0 2.175 0 0 0</pose>
+        <geometry><box><size>2.4 2.0 0.05</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="roof_collision">
+        <pose>0 0 2.175 0 0 0</pose>
+        <geometry><box><size>2.4 2.0 0.05</size></box></geometry>
+      </collision>
+
+      <!-- Front wall (+Y) — left pillar -->
+      <visual name="front_left_pillar_visual">
+        <pose>-1.05 0.975 1.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.05 2.2</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="front_left_pillar_collision">
+        <pose>-1.05 0.975 1.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.05 2.2</size></box></geometry>
+      </collision>
+
+      <!-- Front wall (+Y) — right pillar -->
+      <visual name="front_right_pillar_visual">
+        <pose>1.05 0.975 1.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.05 2.2</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="front_right_pillar_collision">
+        <pose>1.05 0.975 1.1 0 0 0</pose>
+        <geometry><box><size>0.3 0.05 2.2</size></box></geometry>
+      </collision>
+
+      <!-- Front wall (+Y) — top lintel above opening -->
+      <visual name="front_lintel_visual">
+        <pose>0 0.975 2.125 0 0 0</pose>
+        <geometry><box><size>1.8 0.05 0.15</size></box></geometry>
+        <material>
+          <ambient>0.15 0.22 0.35 1</ambient>
+          <diffuse>0.25 0.38 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="front_lintel_collision">
+        <pose>0 0.975 2.125 0 0 0</pose>
+        <geometry><box><size>1.8 0.05 0.15</size></box></geometry>
+      </collision>
+
+      <!-- Opening frame trim (visual only) -->
+      <visual name="opening_frame_left_visual">
+        <pose>-0.9 0.95 1.05 0 0 0</pose>
+        <geometry><box><size>0.04 0.04 2.0</size></box></geometry>
+        <material>
+          <ambient>0.8 0.6 0.1 1</ambient>
+          <diffuse>1.0 0.75 0.1 1</diffuse>
+        </material>
+      </visual>
+      <visual name="opening_frame_right_visual">
+        <pose>0.9 0.95 1.05 0 0 0</pose>
+        <geometry><box><size>0.04 0.04 2.0</size></box></geometry>
+        <material>
+          <ambient>0.8 0.6 0.1 1</ambient>
+          <diffuse>1.0 0.75 0.1 1</diffuse>
+        </material>
+      </visual>
+      <visual name="opening_frame_top_visual">
+        <pose>0 0.95 2.05 0 0 0</pose>
+        <geometry><box><size>1.8 0.04 0.04</size></box></geometry>
+        <material>
+          <ambient>0.8 0.6 0.1 1</ambient>
+          <diffuse>1.0 0.75 0.1 1</diffuse>
+        </material>
+      </visual>
+
+    </link>
+  </model>
+</sdf>

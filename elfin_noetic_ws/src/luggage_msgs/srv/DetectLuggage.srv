@@ -1,0 +1,4 @@
+---
+DetectedLuggage[] luggage
+bool success
+string message

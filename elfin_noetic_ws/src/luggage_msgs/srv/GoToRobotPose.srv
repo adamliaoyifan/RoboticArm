@@ -1,0 +1,5 @@
+string pose_name
+---
+bool success
+bool already_there
+string message

@@ -1,0 +1,4 @@
+MotionSegment segment
+---
+bool success
+string message

@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!-- TODO: load geometry from vacuum_gripper.yaml via xacro property -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="vacuum_gripper">
+  <link name="vacuum_base_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.015"/>
+      </geometry>
+      <material name="grey"><color rgba="0.5 0.5 0.5 1"/></material>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.04" length="0.015"/>
+      </geometry>
+    </collision>
+  </link>
+  <link name="vacuum_tip_link"/>
+  <joint name="vacuum_tip_joint" type="fixed">
+    <parent link="vacuum_base_link"/>
+    <child link="vacuum_tip_link"/>
+    <origin xyz="0 0 0.015" rpy="0 0 0"/>
+  </joint>
+</robot>

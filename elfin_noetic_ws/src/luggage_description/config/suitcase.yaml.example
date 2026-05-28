@@ -1,0 +1,16 @@
+# Standard suitcase for MVP (metres).
+
+size:
+  width: 0.70
+  height: 0.28
+  depth: 0.45
+
+mass: 15.0
+
+spawn:
+  xyz: [-0.1, -0.65, 0.14]
+  rpy: [0.0, 0.0, 0.4]
+
+meta:
+  name: suitcase_standard_v1
+  version: 0.1.0-placeholder
