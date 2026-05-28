@@ -1,0 +1,12 @@
+<launch>
+  <!-- Gazebo sim + MoveIt in one roscore (recommended for Docker). -->
+  <arg name="display" default="true"/>
+
+  <include file="$(find elfin_gazebo)/launch/elfin_s20_empty_world.launch"/>
+
+  <include file="$(find elfin_s20_moveit_config)/launch/moveit_planning_execution.launch">
+    <arg name="display" value="$(arg display)"/>
+    <!-- URDF already loaded by Gazebo bringup above -->
+    <arg name="load_robot_description" value="false"/>
+  </include>
+</launch>
