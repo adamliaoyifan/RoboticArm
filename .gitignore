@@ -1,0 +1,24 @@
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# ROS / Catkin
+**/build/
+**/devel/
+**/install/
+**/logs/
+.catkin_workspace
+
+# IDE
+.vscode/
+.cursor/
+
+# Generated artifacts
+elfin_s20_visualization.html
+*.bag
+
+# Nested vendor clone metadata (flattened into monorepo)
+elfin_noetic_ws/src/elfin_s_robot/.git/
