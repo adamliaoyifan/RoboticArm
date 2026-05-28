@@ -1,0 +1,42 @@
+# executor.yaml
+# Parameters for the trajectory_executor node.
+# Load via --ros-args --params-file or via the launch files.
+
+trajectory_executor:
+  ros__parameters:
+
+    # ---------------------------------------------------------------
+    # Backend selection
+    # 'sim'  - pure software simulation, no hardware required
+    # 'real' - real robot via HuayanRobot CPSClient SDK
+    # ---------------------------------------------------------------
+    mode: sim
+
+    # ---------------------------------------------------------------
+    # Real-robot connection (ignored in sim mode)
+    # ---------------------------------------------------------------
+    robot_ip: '192.168.0.10'
+    robot_port: 10003
+
+    # ---------------------------------------------------------------
+    # Velocity / acceleration limits
+    #
+    # default_velocity_deg : fallback when trajectory time hints are absent
+    # max_velocity_deg     : hard upper clamp on computed velocity
+    #
+    # IMPORTANT: HuayanRobot requires acceleration > velocity.
+    # The node automatically sets acceleration = max(60, vel*2).
+    # ---------------------------------------------------------------
+    default_velocity_deg: 30.0
+    max_velocity_deg: 60.0
+
+    # ---------------------------------------------------------------
+    # Joint names — must match the planning node's URDF joint names
+    # ---------------------------------------------------------------
+    joint_names:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6

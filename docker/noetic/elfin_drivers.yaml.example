@@ -1,0 +1,7 @@
+# Placeholder — replace with the vendor-provided elfin_drivers.yaml for your robot.
+# Copy to:
+#   ~/elfin_noetic_ws/src/elfin_s_robot/elfin_robot_bringup/config/elfin_drivers.yaml
+#
+# Find your Ethernet interface:  ip link show
+
+elfin_ethernet_name: eth0
