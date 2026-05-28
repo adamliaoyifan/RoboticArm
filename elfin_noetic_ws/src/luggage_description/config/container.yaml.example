@@ -1,0 +1,35 @@
+# Side-open container (closed top). All dimensions in metres.
+
+outer:
+  length: 2.4
+  width: 2.0
+  height: 2.2
+
+inner:
+  length: 2.3
+  width: 1.9
+  height: 2.1
+
+opening:
+  side: positive_y
+  width: 1.8
+  height: 2.0
+  frame:
+    # Center of opening aperture in container_link (bottom-center origin, +Y = opening face).
+    xyz: [0.0, 1.0, 1.0]
+    rpy: [0.0, 0.0, 0.0]
+
+origin:
+  frame_id: world
+  xyz: [2.0, 0.0, 0.0]
+  rpy: [0.0, 0.0, 1.5708]
+
+# Robot base spawn height in sim (sim_world.launch urdf_spawner -z); used for elfin_base_link TF.
+base_in_world:
+  frame_id: world
+  xyz: [0.0, 0.0, 0.1]
+  rpy: [0.0, 0.0, 0.0]
+
+meta:
+  name: airport_container_v1
+  version: 0.1.0-placeholder
