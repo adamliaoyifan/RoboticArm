@@ -2,11 +2,18 @@
   <!-- Gazebo world: Elfin S20 + RealSense D435 + airport container + suitcases -->
   <arg name="use_camera" default="true"/>
   <arg name="spawn_luggage" default="true"/>
+  <arg name="spawn_suitcases" default="true"/>
+  <arg name="container_model" default="airport_container"/>
   <arg name="spawn_at_observe" default="false"/>
   <arg name="hold_observe_on_start" default="false"/>
+  <arg name="clear_existing_models" default="false"/>
 
   <!-- Start Gazebo empty world -->
   <include file="$(find gazebo_ros)/launch/empty_world.launch"/>
+
+  <!-- Optional cleanup for repeated development launches against a running Gazebo world. -->
+  <node if="$(arg clear_existing_models)" pkg="luggage_gazebo" type="clear_gazebo_models.py"
+        name="clear_gazebo_models" output="screen"/>
 
   <!-- Load robot description: S20 with or without camera -->
   <param name="robot_description"
@@ -18,11 +25,13 @@
 
   <!-- Spawn robot in Gazebo (observe joints from config/robot_poses.yaml.example) -->
   <node if="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        launch-prefix="bash -c 'sleep 2; exec $0 $@' "
         args="-urdf -model S20 -param robot_description -z 0.1
               -J elfin_joint1 -2.7130 -J elfin_joint2 -1.3263 -J elfin_joint3 -1.0965
               -J elfin_joint4 3.9564 -J elfin_joint5 -4.6598 -J elfin_joint6 0.4522"/>
 
   <node unless="$(arg spawn_at_observe)" name="urdf_spawner" pkg="gazebo_ros" type="spawn_model" respawn="false" output="screen"
+        launch-prefix="bash -c 'sleep 2; exec $0 $@' "
         args="-urdf -model S20 -param robot_description -z 0.1"/>
 
   <node name="fake_joint_calibration" pkg="rostopic" type="rostopic"
@@ -53,7 +62,10 @@
 
   <!-- Spawn luggage scene + container TF for perception/planning -->
   <group if="$(arg spawn_luggage)">
-    <include file="$(find luggage_gazebo)/launch/spawn_luggage_scene.launch"/>
+    <include file="$(find luggage_gazebo)/launch/spawn_luggage_scene.launch">
+      <arg name="spawn_suitcases" value="$(arg spawn_suitcases)"/>
+      <arg name="container_model" value="$(arg container_model)"/>
+    </include>
     <node pkg="luggage_bringup" type="container_tf_publisher.py" name="container_tf_publisher" output="screen"/>
   </group>
 </launch>

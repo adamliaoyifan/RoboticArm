@@ -6,11 +6,14 @@
   <arg name="container_z" default="0.0"/>
   <arg name="container_yaw" default="1.5708"/>
 
-  <arg name="spawn_suitcases" default="true"/>
+  <arg name="spawn_suitcases" default="false"/>
+  <!-- airport_container (placeholder boxes) or airport_container_measured (LAS mesh) -->
+  <arg name="container_model" default="airport_container"/>
 
   <node name="spawn_airport_container" pkg="gazebo_ros" type="spawn_model" output="screen"
-        args="-file $(find luggage_gazebo)/models/airport_container/model.sdf
-              -sdf -model airport_container
+        launch-prefix="bash -c 'sleep 2; exec $0 $@' "
+        args="-file $(find luggage_gazebo)/models/$(arg container_model)/model.sdf
+              -sdf -model $(arg container_model)
               -x $(arg container_x) -y $(arg container_y) -z $(arg container_z)
               -Y $(arg container_yaw)"/>
 
@@ -19,6 +22,7 @@
 
     <!-- Medium checked bag (70 x 45 x 28 cm), z=0.14 — front-right zone -->
     <node name="spawn_suitcase_standard" pkg="gazebo_ros" type="spawn_model" output="screen"
+          launch-prefix="bash -c 'sleep 2; exec $0 $@' "
           args="-file $(find luggage_gazebo)/models/suitcase_standard/model.sdf
                 -sdf -model suitcase_standard
                 -x 0.3 -y -0.6 -z 0.14
@@ -26,6 +30,7 @@
 
     <!-- Large checked bag (80 x 50 x 32 cm), z=0.16 — back-right zone -->
     <node name="spawn_suitcase_large" pkg="gazebo_ros" type="spawn_model" output="screen"
+          launch-prefix="bash -c 'sleep 2; exec $0 $@' "
           args="-file $(find luggage_gazebo)/models/suitcase_large/model.sdf
                 -sdf -model suitcase_large
                 -x 0.3 -y -1.35 -z 0.16
@@ -33,6 +38,7 @@
 
     <!-- Carry-on (55 x 40 x 25 cm), z=0.125 — left-back zone -->
     <node name="spawn_suitcase_carryon" pkg="gazebo_ros" type="spawn_model" output="screen"
+          launch-prefix="bash -c 'sleep 2; exec $0 $@' "
           args="-file $(find luggage_gazebo)/models/suitcase_carryon/model.sdf
                 -sdf -model suitcase_carryon
                 -x -0.4 -y -1.0 -z 0.125
