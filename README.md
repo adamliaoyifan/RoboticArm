@@ -161,10 +161,12 @@ Catkin packages under [`elfin_noetic_ws/src/luggage_*`](elfin_noetic_ws/src/). B
 ```bash
 source /catkin_ws/devel/setup.bash
 roslaunch luggage_bringup inspect_container.launch   # Gazebo + MoveIt + container aim/inspect
+roslaunch luggage_bringup active_loading.launch      # Runtime pickup box + active Cargo loading loop
+roslaunch luggage_bringup camera_view.launch         # RViz debug: robot + Cargo + OctoMap (needs active_loading)
 # roslaunch luggage_bringup sim_skeleton.launch    # Phase 0 stub only
 ```
 
-See [`elfin_noetic_ws/src/luggage_bringup/README.md`](elfin_noetic_ws/src/luggage_bringup/README.md) and [`CHANGELOG.md`](CHANGELOG.md) (camera mount v1, container aim/inspect).
+See [`PROGRESS.md`](PROGRESS.md) for the full **development timeline** and milestone summary, [`CHANGELOG.md`](CHANGELOG.md) for release notes, and [`elfin_noetic_ws/src/luggage_bringup/README.md`](elfin_noetic_ws/src/luggage_bringup/README.md) for launch details.
 
 ---
 
