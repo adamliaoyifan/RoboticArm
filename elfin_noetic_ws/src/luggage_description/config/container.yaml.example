@@ -30,6 +30,15 @@ base_in_world:
   xyz: [0.0, 0.0, 0.1]
   rpy: [0.0, 0.0, 0.0]
 
+# Fixed pickup source for active loading. The spawner raises the box center by
+# half the sampled box height when spawning on the ground plane.
+pickup_source:
+  frame_id: world
+  xyz: [0.3, -0.8, 0.0]
+  rpy: [0.0, 0.0, 0.0]
+
+box_catalog_config: box_catalog.yaml.example
+
 meta:
   name: airport_container_v1
   version: 0.1.0-placeholder

@@ -1,0 +1,58 @@
+# Cargo interior exploration: fixed scan poses and NBV parameters.
+# Copy to exploration.yaml and tune joint values with pose_tune_moveit.launch.
+
+voxel_resolution: 0.10
+max_views: 8
+unknown_threshold: 0.15
+settle_time_sec: 0.5
+
+joint_names:
+  - elfin_joint1
+  - elfin_joint2
+  - elfin_joint3
+  - elfin_joint4
+  - elfin_joint5
+  - elfin_joint6
+
+# Startup scan sequence (radians). Runs once before active loading, then returns to observe.
+initial_scan_poses:
+  - name: look_up
+    values: [3.1274, -0.2478, -0.0352, -1.3062, 1.5072, -1.5323]
+  - name: look_down
+    values: [3.1274, -0.6841, 0.1994, 5.1622, -1.6328, 1.5323]
+  - name: look_left
+    values: [2.9893, -0.3979, 0.2170, -1.2811, 0.1758, -1.6328]
+  - name: look_right
+    values: [-6.2423, -2.9354, 0.3108, -2.0598, -0.3140, 1.5826]
+
+# Fixed scan sequence for per-box exploration. Defaults to the same tuned views.
+fixed_scan_poses:
+  - name: look_up
+    values: [3.1274, -0.2478, -0.0352, -1.3062, 1.5072, -1.5323]
+  - name: look_down
+    values: [3.1274, -0.6841, 0.1994, 5.1622, -1.6328, 1.5323]
+  - name: look_left
+    values: [2.9893, -0.3979, 0.2170, -1.2811, 0.1758, -1.6328]
+  - name: look_right
+    values: [-6.2423, -2.9354, 0.3108, -2.0598, -0.3140, 1.5826]
+
+nbv:
+  path_weight: 0.3
+  smooth_weight: 0.2
+  coverage_weight: 1.0
+  # Candidate joint targets for greedy frontier-driven exploration.
+  candidate_poses:
+    - name: nbv_opening
+      values: [-2.7130, -1.3263, -1.0965, 3.9564, -4.6598, 0.4522]
+    - name: nbv_left
+      values: [-2.85, -1.15, -0.90, 3.80, -4.55, 0.40]
+    - name: nbv_center
+      values: [-2.55, -1.00, -0.80, 3.60, -4.30, 0.20]
+    - name: nbv_right
+      values: [-2.25, -1.00, -0.80, 3.60, -4.30, 0.20]
+    - name: nbv_deep
+      values: [-2.10, -0.90, -0.70, 3.30, -4.10, 0.10]
+
+meta:
+  name: cargo_exploration_v1
+  version: 0.1.0

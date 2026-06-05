@@ -1,0 +1,21 @@
+pickup_source:
+  frame_id: world
+  xyz: [0.3, -0.8, 0.0]
+  rpy: [0.0, 0.0, 0.0]
+
+box_catalog:
+  - id: carryon
+    model: suitcase_carryon
+    size: [0.55, 0.40, 0.25]
+    weight: 0.35
+    allowed_yaws: [0.0, 1.5708]
+  - id: standard
+    model: suitcase_standard
+    size: [0.70, 0.45, 0.28]
+    weight: 0.45
+    allowed_yaws: [0.0, 1.5708]
+  - id: large
+    model: suitcase_large
+    size: [0.80, 0.50, 0.32]
+    weight: 0.20
+    allowed_yaws: [0.0, 1.5708]

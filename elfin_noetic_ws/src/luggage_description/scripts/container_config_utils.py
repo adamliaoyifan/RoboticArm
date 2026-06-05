@@ -18,8 +18,96 @@ def default_config_path():
     )
 
 
+def default_box_catalog_path():
+    return os.path.join(
+        rospkg.RosPack().get_path("luggage_description"),
+        "config",
+        "box_catalog.yaml.example",
+    )
+
+
+def default_exploration_path():
+    return os.path.join(
+        rospkg.RosPack().get_path("luggage_description"),
+        "config",
+        "exploration.yaml.example",
+    )
+
+
+def load_exploration_config(path=None):
+    path = path or default_exploration_path()
+    with open(path, "r") as handle:
+        return yaml.safe_load(handle)
+
+
+def exploration_joint_names(config):
+    return list(config.get("joint_names", [
+        "elfin_joint1", "elfin_joint2", "elfin_joint3",
+        "elfin_joint4", "elfin_joint5", "elfin_joint6",
+    ]))
+
+
+def fixed_scan_poses(config):
+    poses = []
+    for item in config.get("fixed_scan_poses", []):
+        poses.append({
+            "name": item.get("name", "scan"),
+            "values": [float(v) for v in item.get("values", [])],
+        })
+    return poses
+
+
+def initial_scan_poses(config):
+    poses = []
+    for item in config.get("initial_scan_poses", config.get("fixed_scan_poses", [])):
+        poses.append({
+            "name": item.get("name", "initial_scan"),
+            "values": [float(v) for v in item.get("values", [])],
+        })
+    return poses
+
+
+def nbv_candidate_poses(config):
+    nbv = config.get("nbv", {})
+    poses = []
+    for item in nbv.get("candidate_poses", []):
+        poses.append({
+            "name": item.get("name", "nbv"),
+            "values": [float(v) for v in item.get("values", [])],
+        })
+    return poses
+
+
+def nbv_weights(config):
+    nbv = config.get("nbv", {})
+    return {
+        "path_weight": float(nbv.get("path_weight", 0.3)),
+        "smooth_weight": float(nbv.get("smooth_weight", 0.2)),
+        "coverage_weight": float(nbv.get("coverage_weight", 1.0)),
+    }
+
+
 def load_container_config(path=None):
     path = path or default_config_path()
+    with open(path, "r") as handle:
+        return yaml.safe_load(handle)
+
+
+def load_box_catalog(path=None, container_config=None):
+    """Load active-loading box catalog config.
+
+    If no explicit path is provided, the container config may name a catalog
+    file relative to luggage_description/config.
+    """
+    if path is None and container_config:
+        catalog_name = container_config.get("box_catalog_config")
+        if catalog_name:
+            path = os.path.join(
+                rospkg.RosPack().get_path("luggage_description"),
+                "config",
+                catalog_name,
+            )
+    path = path or default_box_catalog_path()
     with open(path, "r") as handle:
         return yaml.safe_load(handle)
 
@@ -100,6 +188,17 @@ def base_in_world(config):
     )
 
 
+def pickup_source_in_world(config, catalog_config=None):
+    source = {}
+    if catalog_config:
+        source.update(catalog_config.get("pickup_source", {}))
+    source.update(config.get("pickup_source", {}))
+    return (
+        [float(v) for v in source.get("xyz", [0.3, -0.8, 0.0])],
+        [float(v) for v in source.get("rpy", [0.0, 0.0, 0.0])],
+    )
+
+
 def opening_in_container(config):
     opening = config.get("opening", {})
     frame = opening.get("frame", {})
@@ -166,3 +265,19 @@ def inner_dimensions(config):
         float(inner.get("width", 1.9)),
         float(inner.get("height", 2.1)),
     )
+
+
+def box_catalog_entries(catalog_config):
+    entries = []
+    for item in catalog_config.get("box_catalog", []):
+        size = [float(v) for v in item.get("size", [0.70, 0.45, 0.28])]
+        entries.append(
+            {
+                "id": item.get("id", item.get("model", "standard")),
+                "model": item.get("model", "suitcase_standard"),
+                "size": size,
+                "weight": float(item.get("weight", 1.0)),
+                "allowed_yaws": [float(v) for v in item.get("allowed_yaws", [0.0])],
+            }
+        )
+    return entries
