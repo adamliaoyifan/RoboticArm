@@ -18,7 +18,11 @@ add_message_files(
 add_service_files(
   FILES
   DetectLuggage.srv
+  GetCurrentBox.srv
+  SpawnNextBox.srv
+  ClearCurrentBox.srv
   GetNextSlot.srv
+  ComputePlacement.srv
   PlanMotion.srv
   VacuumCommand.srv
   SyncStaticScene.srv
@@ -28,6 +32,10 @@ add_service_files(
   GoToJointValues.srv
   AimCameraAtContainer.srv
   InspectContainer.srv
+  ResetCargoMap.srv
+  IntegrateCargoView.srv
+  GetCargoMapStats.srv
+  PlanNextCargoView.srv
 )
 
 generate_messages(

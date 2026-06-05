@@ -1,0 +1,12 @@
+# Plan next exploration view (fixed_scan index or NBV candidate).
+string mode
+float64[] current_joint_values
+string[] joint_names
+int32 views_used
+---
+bool success
+bool done
+string message
+float64[] joint_values
+string[] joint_names
+int32 view_index
