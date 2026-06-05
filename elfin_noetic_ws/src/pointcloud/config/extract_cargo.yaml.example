@@ -1,0 +1,40 @@
+# Cargo extraction from room-scale LAS point cloud.
+# Copy to extract_cargo.yaml and set center/rpy to match your scan coordinates.
+
+input_las: /path/to/room.las
+output_dir: ./output
+
+# Optional: spatial subsample for faster iteration (m). Set null to disable.
+subsample_spacing: 0.03
+
+# Oriented crop box (metres). Defaults match container.yaml.example outer + margin.
+cargo:
+  length: 2.4
+  width: 2.0
+  height: 2.2
+  margin: 0.2
+  # Box center in scan coordinates (metres). Run with --inspect-only to estimate.
+  center: [0.0, 0.0, 1.1]
+  # Roll, pitch, yaw (rad) — box axes relative to scan frame
+  rpy: [0.0, 0.0, 0.0]
+
+# RANSAC plane stripping on cropped cloud
+planes:
+  max_planes: 6
+  distance_threshold: 0.04
+  min_plane_points: 500
+  # Only strip horizontal planes near crop bbox bottom/top (keeps Cargo walls)
+  floor_normal_z_min: 0.85
+  edge_band: 0.12
+
+# Connected-component pick (DBSCAN)
+cluster:
+  eps: 0.08
+  min_points: 100
+  # Target outer dimensions for best-cluster scoring (m)
+  target_dims: [2.4, 2.0, 2.2]
+
+# Statistical outlier removal after clustering
+sor:
+  nb_neighbors: 20
+  std_ratio: 2.0

@@ -1,0 +1,52 @@
+# Standalone point-cloud surface -> container_visual.stl
+# Requires preprocess output (and fit for opening cut) under output_dir.
+
+output_dir: ./output
+body_ply: body_points_completed.ply
+leg_ply: leg_points_completed.ply
+object_ply: object_points.ply
+planes_json: planes.json
+parametric_model_json: parametric_model.json
+z_layers_json: z_layers.json
+
+opening:
+  use_parametric: true
+  manual: null
+  # manual example (overrides parametric_model.json):
+  # manual:
+  #   enabled: true
+  #   x_min: -0.8
+  #   x_max: 0.8
+  #   z_min: 0.15
+  #   z_max: 1.25
+
+mesh:
+  voxel_size: 0.02
+  include_legs: true
+  include_object_points: false
+  mask_under_deck: false
+  under_deck_margin: 0.03
+  segment_by_planes: true
+  full_body_fallback: true
+  plane_cluster_distance: 0.04
+  reconstruction: bpa_then_alpha
+  normal_radius: 0.08
+  normal_max_nn: 30
+  alpha_scale: 2.5
+  bpa_radius_scale: 1.0
+  crop_margin: 0.05
+  visual_triangles: 80000
+  opening_cut: true
+  opening_margin_y: 0.08
+  write_debug_ply: true
+
+qa:
+  min_height_span: 1.0
+  max_outer_scale: 1.75
+  min_outer_scale: 0.4
+  min_vertical_face_ratio: 0.08
+  min_coverage_ratio: 0.85
+  max_point_to_mesh_m: 0.04
+  coverage_exterior_band: 0.10
+  coverage_sample_points: 8000
+  coverage_mesh_samples: 50000
