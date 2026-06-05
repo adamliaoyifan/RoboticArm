@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-noetic-ros-controllers \
     ros-noetic-moveit \
     ros-noetic-trac-ik \
+    ros-noetic-octomap-msgs \
+    ros-noetic-octomap-rviz-plugins \
+    python3-octomap \
     libgtk-3-dev \
     python3-wxgtk4.0 \
     && rm -rf /var/lib/apt/lists/*
