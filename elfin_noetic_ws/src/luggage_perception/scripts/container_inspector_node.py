@@ -19,9 +19,12 @@ if DESC_SCRIPTS not in sys.path:
     sys.path.insert(0, DESC_SCRIPTS)
 
 from container_config_utils import (  # noqa: E402
+    box_catalog_entries,
     container_in_base_link,
+    default_box_catalog_path,
     default_config_path,
     inner_dimensions,
+    load_box_catalog,
     load_container_config,
 )
 
@@ -40,7 +43,13 @@ class ContainerInspector:
 
     def __init__(self):
         self._config_path = rospy.get_param("~container_config", default_config_path())
+        self._catalog_path = rospy.get_param("~box_catalog_config", default_box_catalog_path())
         self._config = load_container_config(self._config_path)
+        self._catalog = load_box_catalog(self._catalog_path, self._config)
+        self._model_sizes = {}
+        for entry in box_catalog_entries(self._catalog):
+            self._model_sizes[entry["model"]] = entry["size"]
+            self._model_sizes[entry["id"]] = entry["size"]
         self._grid_res = float(rospy.get_param("~grid_resolution", 0.10))
         self._last_model_states = None
         self._depth_points = None
@@ -78,24 +87,83 @@ class ContainerInspector:
         inner_l, inner_w, inner_h = bounds["size"]
         volume = inner_l * inner_w * inner_h
         occupied = 0.0
-        occupied_centers = []
+        occupied = 0.0
+        occupied_boxes = []
+
+        for slot in self._placed_from_param():
+            size = [slot.width, slot.depth, slot.height]
+            occupied += size[0] * size[1] * size[2]
+            occupied_boxes.append(
+                {
+                    "center": [
+                        slot.place_pose.position.x,
+                        slot.place_pose.position.y,
+                        slot.place_pose.position.z,
+                    ],
+                    "size": size,
+                    "source": "placed_param",
+                }
+            )
 
         if self._last_model_states is None:
-            return volume, occupied, occupied_centers
+            return volume, occupied, occupied_boxes
 
         names = self._last_model_states.name
         poses = self._last_model_states.pose
         for name, pose in zip(names, poses):
-            if name not in self.SUITCASE_MODELS:
+            size = self._size_for_model(name)
+            if size is None:
                 continue
             px = pose.position.x
             py = pose.position.y
             pz = pose.position.z
             if self._point_in_inner_volume(px, py, pz, bounds):
-                occupied += 0.70 * 0.45 * 0.28
-                occupied_centers.append([px, py, pz])
+                occupied += size[0] * size[1] * size[2]
+                occupied_boxes.append(
+                    {"center": [px, py, pz], "size": size, "source": name}
+                )
 
-        return volume, occupied, occupied_centers
+        return volume, occupied, occupied_boxes
+
+    def _size_for_model(self, model_name):
+        if model_name in self._model_sizes:
+            return self._model_sizes[model_name]
+        for key, size in self._model_sizes.items():
+            if model_name.endswith("_%s" % key) or ("_%s_" % key) in model_name:
+                return size
+        return None
+
+    @staticmethod
+    def _placed_from_param():
+        placed = []
+        for item in rospy.get_param("/luggage/container_inspection/placed_boxes", []):
+            pose_data = item.get("place_pose", {})
+            pos = pose_data.get("position", {})
+            ori = pose_data.get("orientation", {})
+            placed.append(
+                SlotSpec(
+                    layer=int(item.get("layer", 0)),
+                    row=int(item.get("row", 0)),
+                    col=int(item.get("col", 0)),
+                    width=float(item.get("width", 0.70)),
+                    height=float(item.get("height", 0.28)),
+                    depth=float(item.get("depth", 0.45)),
+                    place_pose=Pose(
+                        position=Point(
+                            x=float(pos.get("x", 0.0)),
+                            y=float(pos.get("y", 0.0)),
+                            z=float(pos.get("z", 0.0)),
+                        ),
+                        orientation=Quaternion(
+                            x=float(ori.get("x", 0.0)),
+                            y=float(ori.get("y", 0.0)),
+                            z=float(ori.get("z", 0.0)),
+                            w=float(ori.get("w", 1.0)),
+                        ),
+                    ),
+                )
+            )
+        return placed
 
     @staticmethod
     def _point_in_inner_volume(x, y, z, bounds):
@@ -115,7 +183,7 @@ class ContainerInspector:
             and abs(local_z) <= inner_h * 0.5
         )
 
-    def _free_slots_from_gazebo(self, bounds, occupied_centers):
+    def _free_slots_from_gazebo(self, bounds, occupied_boxes):
         slots = []
         inner_l, inner_w, inner_h = bounds["size"]
         cx, cy, cz = bounds["center"]
@@ -128,8 +196,9 @@ class ContainerInspector:
             world_y = cy + math.sin(yaw) * local_x
             world_z = cz - inner_h * 0.5 + 0.14
             if any(
-                abs(world_x - occ[0]) < 0.35 and abs(world_y - occ[1]) < 0.35
-                for occ in occupied_centers
+                abs(world_x - occ["center"][0]) < max(0.35, occ["size"][0] * 0.5)
+                and abs(world_y - occ["center"][1]) < max(0.35, occ["size"][1] * 0.5)
+                for occ in occupied_boxes
             ):
                 continue
             slots.append(
@@ -148,16 +217,52 @@ class ContainerInspector:
             )
         return slots
 
+    def _occupancy_from_mapper(self, bounds):
+        stats = rospy.get_param("/luggage/cargo_map/stats", {})
+        occupied_boxes = rospy.get_param("/luggage/cargo_map/occupied_boxes", [])
+        inner_l, inner_w, inner_h = bounds["size"]
+        volume = inner_l * inner_w * inner_h
+        occupied = float(stats.get("occupied_count", 0)) * (self._grid_res ** 3)
+        if occupied_boxes:
+            occupied = max(
+                occupied,
+                sum(
+                    occ["size"][0] * occ["size"][1] * occ["size"][2]
+                    for occ in occupied_boxes
+                ),
+            )
+        free_volume = max(0.0, float(stats.get("free_volume", volume - occupied)))
+        occupancy_ratio = float(stats.get("occupancy_ratio", 0.0))
+        if occupancy_ratio <= 0.0 and volume > 0.0:
+            occupancy_ratio = min(1.0, occupied / volume)
+        return volume, occupied, occupied_boxes, free_volume, occupancy_ratio
+
     def handle(self, req):
         mode = (req.mode or "gazebo_gt").strip().lower()
         bounds = self._inner_bounds_in_base()
-        volume, occupied, occupied_centers = self._occupancy_from_gazebo()
+        volume, occupied, occupied_boxes = self._occupancy_from_gazebo()
         free_volume = max(0.0, volume - occupied)
         occupancy_ratio = occupied / volume if volume > 0.0 else 0.0
-        free_slots = self._free_slots_from_gazebo(bounds, occupied_centers)
+        free_slots = self._free_slots_from_gazebo(bounds, occupied_boxes)
 
-        if mode == "depth" and self._depth_points is not None and pc2 is not None:
-            rospy.loginfo("Depth mode requested; using Gazebo GT fallback until TF crop is wired")
+        if mode in ("depth", "fused"):
+            if rospy.has_param("/luggage/cargo_map/stats"):
+                (
+                    volume,
+                    occupied,
+                    occupied_boxes,
+                    free_volume,
+                    occupancy_ratio,
+                ) = self._occupancy_from_mapper(bounds)
+                free_slots = self._free_slots_from_gazebo(bounds, occupied_boxes)
+                rospy.loginfo(
+                    "Inspect using fused cargo map (unknown_ratio=%.2f)",
+                    float(rospy.get_param("/luggage/cargo_map/stats", {}).get("unknown_ratio", 1.0)),
+                )
+            elif mode == "depth" and self._depth_points is not None and pc2 is not None:
+                rospy.logwarn("Depth/fused requested but cargo map missing; GT fallback")
+            else:
+                rospy.logwarn("Fused inspect requested but cargo map missing; GT fallback")
 
         if not free_slots:
             return InspectContainerResponse(
@@ -169,6 +274,7 @@ class ContainerInspector:
             )
 
         rospy.set_param("/luggage/container_inspection/free_slots", [self._slot_to_dict(s) for s in free_slots])
+        rospy.set_param("/luggage/container_inspection/occupied_boxes", occupied_boxes)
         rospy.set_param("/luggage/container_inspection/free_volume", free_volume)
         rospy.set_param("/luggage/container_inspection/occupancy_ratio", occupancy_ratio)
 

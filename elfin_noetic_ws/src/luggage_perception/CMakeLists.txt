@@ -8,5 +8,7 @@ catkin_package()
 catkin_install_python(PROGRAMS
   scripts/luggage_detector_node.py
   scripts/container_inspector_node.py
+  scripts/cargo_volume_mapper.py
+  scripts/cargo_volume_mapper_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
