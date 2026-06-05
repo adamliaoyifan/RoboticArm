@@ -4,59 +4,116 @@ Panels:
   - Class: rviz/Views
     Name: Views
 Visualization Manager:
+  Class: ""
   Displays:
-    - Class: rviz/RobotModel
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
       Name: RobotModel
       Robot Description: robot_description
-      Enabled: true
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
     - Class: rviz/TF
-      Name: TF
       Enabled: true
       Frame Timeout: 15
       Frames:
         All Enabled: true
-    - Class: rviz/Image
-      Name: RGB Image
-      Enabled: true
-      Image Topic: /camera/color/image_raw
-      Transport Hint: raw
-      Queue Size: 2
-    - Class: rviz/Image
-      Name: Depth Image
-      Enabled: true
-      Image Topic: /camera/depth/image_raw
-      Transport Hint: raw
-      Queue Size: 2
-    - Class: rviz/PointCloud2
-      Name: PointCloud
-      Enabled: false
-      Topic: /camera/depth/points
-      Size (Pixels): 2
-      Style: Points
-      Color Transformer: AxisColor
+      Marker Scale: 0.15
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Update Interval: 0
+      Value: true
+    - Alpha: 0.75
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 3
+        Min Value: -1
       Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: AxisColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: DepthPointCloud
+      Position Transformer: XYZ
+      Queue Size: 5
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.01
+      Style: Points
+      Topic: /camera/depth/points
+      Unreliable: false
+      Use Fixed Frame: true
+      Value: true
+    - Alpha: 0.7
+      Class: octomap_rviz_plugin/OctoMap
+      Color Scheme: Z-Axis
+      Enabled: true
+      Name: CargoOctoMap
+      Queue Size: 5
+      Topic: /luggage/cargo_map/octomap
+      Voxel Alpha: 0.7
+      Voxel Rendering: Occupied Voxels and Free Voxels
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Name: CargoMapMarkers
+      Queue Size: 5
+      Topic: /luggage/cargo_map/markers
+      Value: true
+  Enabled: true
   Global Options:
     Background Color: 48; 48; 48
+    Default Light: true
     Fixed Frame: world
     Frame Rate: 30
+  Name: root
   Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
     - Class: rviz/MoveCamera
     - Class: rviz/FocusCamera
+  Value: true
   Views:
     Current:
       Class: rviz/Orbit
-      Distance: 3.0
+      Distance: 4.5
+      Enable Stereo Rendering:
+        Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0.5
+        X: 2.0
+        Y: 0.0
+        Z: 1.0
+      Invert Z Axis: false
       Name: Current View
+      Near Clip Distance: 0.01
+      Pitch: 0.35
+      Target Frame: <Fixed Frame>
+      Value: Orbit (rviz)
+      Yaw: 2.8
+    Saved: ~
 Window Geometry:
-  Width: 1200
-  Height: 800
   Displays:
     collapsed: false
-  RGB Image:
+  Height: 800
+  Hide Left Dock: false
+  Hide Right Dock: false
+  QMainWindow State: 000000ff00000000fd000000040000000000000156000002c4fc0200000008fb0000001200530065006c0065006300740069006f006e00000000e9000000b200000000000000000000010000010f000002c4fc0200000003fb0000001e0054006f006f006c0073002000260020004f0062006a00650063007400730100000041000000e7000000000000000000fb0000000a005600690065007700730100000041000002c4000000000000000000
+  Selection:
     collapsed: false
-  Depth Image:
+  Tool Properties:
     collapsed: false
+  Views:
+    collapsed: false
+  Width: 1200
+  X: 100
+  Y: 100

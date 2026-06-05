@@ -49,7 +49,37 @@ Runs all stub nodes and one orchestrator cycle. `skip_reset` defaults to `true` 
 roslaunch luggage_bringup sim_skeleton.launch
 ```
 
-Expected log flow: `SyncScene → Detect → PlanPick → ExecPick → PlanPlace → ExecPlace → UpdateScene → Idle`.
+Expected log flow: `SyncScene → Detect → PlanPick → ExecPick → PlanPlace → ExecPlace → UpdateOccupancy → Idle`.
+
+## Active Cargo loading
+
+Active loading fixes the robot base, Cargo, and pickup source geometry. Each cycle spawns one runtime pickup box from `box_catalog.yaml.example`, inspects Cargo while the robot is empty-handed, computes a size-aware placement slot, then executes pick/place stubs and updates occupancy before spawning the next box.
+
+```bash
+roslaunch luggage_bringup active_loading.launch
+```
+
+Useful parameters:
+
+- `max_placed:=3` controls the loop stop condition.
+- `inspect_mode:=gazebo_gt|depth|fused` — `fused` reads `/luggage/cargo_map/*` from the voxel mapper.
+- `exploration_mode:=none|fixed_scan|nbv` — multi-view Cargo scan before inspect (default `fixed_scan`).
+- `exploration_config:=...` — joint scan poses and NBV weights (`exploration.yaml.example`).
+- `voxel_resolution:=0.10` — Cargo interior voxel size for the mapper.
+- `use_post_place_inspect:=true` performs a short inspect after occupancy update.
+- `dry_run_motion:=true` walks the state machine without calling MoveIt segment execution.
+- `box_catalog_config:=...` points to the runtime box catalog.
+
+Expected active flow with exploration: `ResetObserve → SyncScene → SpawnCurrentBox → AimContainer → ExploreCargo → InspectContainer → ComputePlacement → PlanPick → ExecPick → PlanPlace → ExecPlace → UpdateOccupancy → SpawnCurrentBox`.
+
+### Cargo exploration services
+
+| Node | Service | Role |
+|------|---------|------|
+| `cargo_volume_mapper` | `reset_cargo_map`, `integrate_cargo_view`, `get_cargo_map_stats` | Depth fusion into unknown/free/occupied voxels |
+| `cargo_exploration_planner` | `plan_next_cargo_view` | Fixed scan sequence or greedy NBV candidates |
+
+Validation (Gazebo): after `ExploreCargo`, `unknown_ratio` from `get_cargo_map_stats` should drop on an empty Cargo; use `inspect_mode:=fused` to consume the map for slot heuristics.
 
 ## Observe reset (first real motion)
 
@@ -65,11 +95,28 @@ roslaunch luggage_bringup reset_observe.launch
 
 This starts `sim_world`, MoveIt with the camera URDF (`moveit_with_camera.launch`), `motion_planner`, and a one-shot client that calls `/motion_planner/go_to_robot_pose`.
 
-Verify camera view after reset:
+Verify camera view and Cargo map debug overlay after reset or during active loading:
 
 ```bash
+# Terminal 1
+roslaunch luggage_bringup active_loading.launch
+
+# Terminal 2
 roslaunch luggage_bringup camera_view.launch
 ```
+
+RViz shows **RobotModel**, **TF**, live **depth point cloud**, **Cargo OctoMap** (`/luggage/cargo_map/octomap`), and **MarkerArray** overlays (outer/inner Cargo wireframe, occupied voxels, edges, frontier). RGB/Depth also open in separate `image_view` windows.
+
+| Layer | Color | Meaning |
+|-------|-------|---------|
+| Inner Cargo wireframe | cyan | `container.yaml` interior bounds |
+| Outer Cargo wireframe | gray | container outer shell |
+| Opening hint | yellow line | opening normal (+Y in `container_link`) |
+| Occupied voxels | red cubes | fused depth hits |
+| Free voxels | green cubes | raycast free (optional, off by default) |
+| Geometry edges | blue spheres | container prior edges |
+| Observed edges | orange spheres | depth-confirmed edge voxels |
+| Frontier | magenta spheres | unknown/free boundary |
 
 Call again while the stack is running — the service should return `already_there=true` without moving.
 
@@ -224,10 +271,14 @@ rosrun luggage_bringup orchestrator_node.py _skip_reset:=false
 
 | Service | Node | Behaviour |
 |---------|------|-----------|
-| `/luggage_detector/detect_luggage` | perception | Returns one fake suitcase |
-| `/bin_packer/get_next_slot` | packing | Returns fixed slot |
+| `/pickup_box_spawner/spawn_next_box` | gazebo | Spawns exactly one fixed-source pickup box and returns size metadata |
+| `/pickup_box_spawner/get_current_box` | gazebo | Returns the current pickup box metadata |
+| `/pickup_box_spawner/clear_current_box` | gazebo | Deletes the current pickup box |
+| `/luggage_detector/detect_luggage` | perception | Returns the current pickup box, or fake suitcase fallback |
+| `/bin_packer/compute_placement` | packing | Computes a size-aware Cargo placement before pick |
+| `/bin_packer/get_next_slot` | packing | Legacy wrapper using inspected slots or size-aware fallback |
 | `/scene_manager/sync_static_scene` | planning | Log TODO |
-| `/scene_manager/add_placed_box` | planning | Log TODO |
+| `/scene_manager/add_placed_box` | planning | Adds the placed box to the MoveIt scene |
 | `/waypoint_generator/build_motion_sequence` | planning | Named empty segments |
 | `/motion_planner/go_to_robot_pose` | planning | MoveIt joint target to named pose |
 | `/motion_planner/go_to_joint_values` | planning | MoveIt joint target (arbitrary values, for tune GUI) |
@@ -248,7 +299,7 @@ cp $(rospack find luggage_description)/config/robot_poses.yaml.example \
 
 ## Orchestrator states
 
-`LoadTaskStatus.state` may be: `Idle`, `ResetObserve`, `SyncScene`, `Detect`, `PlanPick`, `ExecPick`, `PlanPlace`, `ExecPlace`, `UpdateScene`.
+`LoadTaskStatus.state` may be: `Idle`, `ResetObserve`, `SyncScene`, `SpawnCurrentBox`, `AimContainer`, `InspectContainer`, `ComputePlacement`, `Detect`, `PlanPick`, `ExecPick`, `PlanPlace`, `ExecPlace`, `UpdateOccupancy`.
 
 ## Phase 1+ TODO
 

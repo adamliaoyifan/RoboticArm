@@ -7,6 +7,7 @@
   <include file="$(find luggage_gazebo)/launch/sim_world.launch">
     <arg name="spawn_at_observe" value="true"/>
     <arg name="hold_observe_on_start" value="true"/>
+    <arg name="clear_existing_models" value="true"/>
   </include>
 
   <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">

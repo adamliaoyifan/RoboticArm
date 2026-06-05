@@ -22,4 +22,7 @@
   <exec_depend>luggage_perception</exec_depend>
   <exec_depend>luggage_packing</exec_depend>
   <exec_depend>luggage_planning</exec_depend>
+  <exec_depend>rviz</exec_depend>
+  <exec_depend>image_view</exec_depend>
+  <exec_depend>octomap_rviz_plugins</exec_depend>
 </package>
