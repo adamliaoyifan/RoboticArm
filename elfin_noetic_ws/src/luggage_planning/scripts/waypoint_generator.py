@@ -15,8 +15,21 @@ def build_sequence(pick, place_slot, phase):
     Returns:
         list[MotionSegment]
     """
-    # TODO: compute pre_grasp, approach, insert waypoints from YAML configs
-    _ = (pick, place_slot, phase)
+    if phase == "pick":
+        target = pick.pose
+        return [
+            MotionSegment(name="pre_grasp", type="pose_target", target_pose=target),
+            MotionSegment(name="approach", type="pose_target", target_pose=target),
+            MotionSegment(name="retreat", type="pose_target", target_pose=target),
+        ]
+    if phase == "place":
+        target = place_slot.place_pose
+        return [
+            MotionSegment(name="transit", type="pose_target", target_pose=target),
+            MotionSegment(name="insert", type="pose_target", target_pose=target),
+            MotionSegment(name="descend", type="pose_target", target_pose=target),
+            MotionSegment(name="retreat", type="pose_target", target_pose=target),
+        ]
     return []
 
 

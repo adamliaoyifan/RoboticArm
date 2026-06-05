@@ -11,6 +11,8 @@ catkin_install_python(PROGRAMS
   scripts/motion_planner_node.py
   scripts/vacuum_simulator_node.py
   scripts/container_aim_utils.py
+  scripts/cargo_nbv_planner.py
+  scripts/cargo_exploration_planner_node.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
