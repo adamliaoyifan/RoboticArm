@@ -1,0 +1,708 @@
+schema_version: 1
+mesh_path: /home/adamliao/work/RobotArm/elfin_noetic_ws/src/luggage_gazebo/models/airport_container_real/meshes/container_collision.stl
+mesh_sha256: ee2f32572a80f527d66cf03a01d3c93ed1353fbe58252021462e122970102c87
+triangle_count: 8000
+horizontal_cos_threshold: 0.995
+z_bin: 0.005
+horizontal_levels:
+- z: 0.01
+  area: 0.000374
+  triangle_count: 1
+  x_range:
+  - -0.776787
+  - -0.736311
+  y_range:
+  - -1.035869
+  - -1.015877
+  z_range:
+  - 0.011341
+  - 0.012285
+- z: 0.015
+  area: 0.000271
+  triangle_count: 1
+  x_range:
+  - 0.742037
+  - 0.763689
+  y_range:
+  - -1.03587
+  - -1.010365
+  z_range:
+  - 0.012285
+  - 0.014959
+- z: 0.025
+  area: 0.0015
+  triangle_count: 4
+  x_range:
+  - -0.776017
+  - 0.766046
+  y_range:
+  - -0.996867
+  - 0.998495
+  z_range:
+  - 0.022837
+  - 0.026186
+- z: 0.04
+  area: 0.000963
+  triangle_count: 2
+  x_range:
+  - -0.770887
+  - 0.765775
+  y_range:
+  - -1.038053
+  - -1.010629
+  z_range:
+  - 0.039243
+  - 0.039625
+- z: 0.045
+  area: 7.6e-05
+  triangle_count: 1
+  x_range:
+  - 0.712195
+  - 0.740579
+  y_range:
+  - 0.920101
+  - 0.944001
+  z_range:
+  - 0.044334
+  - 0.044334
+- z: 0.05
+  area: 0.001622
+  triangle_count: 3
+  x_range:
+  - -0.774103
+  - 0.7644
+  y_range:
+  - -1.038645
+  - -0.013735
+  z_range:
+  - 0.048915
+  - 0.051174
+- z: 0.055
+  area: 0.000641
+  triangle_count: 1
+  x_range:
+  - 0.728794
+  - 0.766034
+  y_range:
+  - 0.926898
+  - 0.969978
+  z_range:
+  - 0.0515
+  - 0.054401
+- z: 0.08
+  area: 0.00114
+  triangle_count: 4
+  x_range:
+  - -0.785358
+  - 0.773957
+  y_range:
+  - -1.030051
+  - 0.965445
+  z_range:
+  - 0.077099
+  - 0.078007
+- z: 0.085
+  area: 0.002291
+  triangle_count: 94
+  x_range:
+  - -0.77488
+  - 0.764735
+  y_range:
+  - -1.040203
+  - 0.968652
+  z_range:
+  - 0.083161
+  - 0.087007
+- z: 0.485
+  area: 0.0888
+  triangle_count: 102
+  x_range:
+  - -0.77513
+  - 0.76567
+  y_range:
+  - -1.030337
+  - 0.570573
+  z_range:
+  - 0.485041
+  - 0.488213
+- z: 0.49
+  area: 0.209463
+  triangle_count: 30
+  x_range:
+  - -0.771639
+  - 0.761379
+  y_range:
+  - -1.041137
+  - 0.967863
+  z_range:
+  - 0.487118
+  - 0.492007
+- z: 0.5
+  area: 0.139199
+  triangle_count: 15
+  x_range:
+  - -0.764555
+  - 0.75352
+  y_range:
+  - -1.029762
+  - 0.958313
+  z_range:
+  - 0.497075
+  - 0.501907
+- z: 0.505
+  area: 0.013268
+  triangle_count: 5
+  x_range:
+  - -0.73513
+  - 0.750094
+  y_range:
+  - -1.041137
+  - 0.929663
+  z_range:
+  - 0.501791
+  - 0.512007
+- z: 0.51
+  area: 0.012899
+  triangle_count: 5
+  x_range:
+  - -0.736755
+  - 0.726495
+  y_range:
+  - -1.025047
+  - 0.931288
+  z_range:
+  - 0.510222
+  - 0.512107
+- z: 0.515
+  area: 0.061816
+  triangle_count: 7
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - -1.028987
+  - 0.958663
+  z_range:
+  - 0.513852
+  - 0.516941
+- z: 0.525
+  area: 1.822715
+  triangle_count: 225
+  x_range:
+  - -0.774995
+  - 0.7646
+  y_range:
+  - -1.038991
+  - 0.966172
+  z_range:
+  - 0.522325
+  - 0.528252
+- &id001
+  z: 0.53
+  area: 3.074885
+  triangle_count: 278
+  x_range:
+  - -0.77013
+  - 0.75987
+  y_range:
+  - -1.035337
+  - 0.559663
+  z_range:
+  - 0.527002
+  - 0.532964
+- z: 0.675
+  area: 0.003814
+  triangle_count: 1
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.751343
+  - 0.757276
+  z_range:
+  - 0.676485
+  - 0.67853
+- z: 0.68
+  area: 0.006541
+  triangle_count: 1
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.74975
+  - 0.758694
+  z_range:
+  - 0.67853
+  - 0.681106
+- z: 0.7
+  area: 0.011063
+  triangle_count: 2
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.738082
+  - 0.759364
+  z_range:
+  - 0.699848
+  - 0.702001
+- z: 0.705
+  area: 0.014182
+  triangle_count: 2
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.751871
+  - 0.771246
+  z_range:
+  - 0.702523
+  - 0.708396
+- z: 0.725
+  area: 0.006541
+  triangle_count: 1
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.750634
+  - 0.759579
+  z_range:
+  - 0.722896
+  - 0.727941
+- z: 0.85
+  area: 0.000248
+  triangle_count: 1
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -1.025335
+  - -0.40596
+  z_range:
+  - 0.848847
+  - 0.850724
+- z: 0.895
+  area: 0.029805
+  triangle_count: 9
+  x_range:
+  - -0.73513
+  - 0.75487
+  y_range:
+  - 0.929665
+  - 0.970465
+  z_range:
+  - 0.89211
+  - 0.897
+- z: 0.9
+  area: 0.000105
+  triangle_count: 1
+  x_range:
+  - -0.76763
+  - -0.50513
+  y_range:
+  - 0.969665
+  - 0.970465
+  z_range:
+  - 0.897
+  - 0.8995
+- z: 0.905
+  area: 0.019208
+  triangle_count: 2
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.94024
+  - 0.968259
+  z_range:
+  - 0.902575
+  - 0.907175
+- z: 0.91
+  area: 3.6e-05
+  triangle_count: 1
+  x_range:
+  - 0.34987
+  - 0.43987
+  y_range:
+  - 0.969665
+  - 0.970465
+  z_range:
+  - 0.907
+  - 0.912
+- z: 0.915
+  area: 3.6e-05
+  triangle_count: 1
+  x_range:
+  - 0.34987
+  - 0.43987
+  y_range:
+  - 0.969665
+  - 0.970465
+  z_range:
+  - 0.912
+  - 0.917
+- z: 0.925
+  area: 0.00243
+  triangle_count: 12
+  x_range:
+  - -0.72013
+  - 0.70987
+  y_range:
+  - 0.970797
+  - 0.972797
+  z_range:
+  - 0.926019
+  - 0.926019
+- z: 0.93
+  area: 0.02265
+  triangle_count: 3
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.93347
+  - 0.966174
+  z_range:
+  - 0.930563
+  - 0.93189
+- z: 0.995
+  area: 4.8e-05
+  triangle_count: 4
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -0.051335
+  - -0.019335
+  z_range:
+  - 0.994721
+  - 0.996721
+- z: 1.06
+  area: 4.0e-06
+  triangle_count: 1
+  x_range:
+  - -0.76013
+  - -0.75013
+  y_range:
+  - 0.969665
+  - 0.970465
+  z_range:
+  - 1.0595
+  - 1.0595
+- z: 1.145
+  area: 4.0e-06
+  triangle_count: 1
+  x_range:
+  - 0.73987
+  - 0.74987
+  y_range:
+  - -1.041134
+  - -1.040334
+  z_range:
+  - 1.147007
+  - 1.147007
+- z: 1.195
+  area: 1.2e-05
+  triangle_count: 1
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -0.051334
+  - -0.021334
+  z_range:
+  - 1.196721
+  - 1.196721
+- z: 1.285
+  area: 0.026843
+  triangle_count: 5
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - -1.041134
+  - -1.003825
+  z_range:
+  - 1.282277
+  - 1.286007
+- z: 1.29
+  area: 0.000158
+  triangle_count: 2
+  x_range:
+  - -0.50413
+  - -0.30613
+  y_range:
+  - -1.041134
+  - -1.040334
+  z_range:
+  - 1.288007
+  - 1.288007
+- z: 1.295
+  area: 0.033429
+  triangle_count: 6
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - -1.041134
+  - -1.00174
+  z_range:
+  - 1.288007
+  - 1.303007
+- z: 1.3
+  area: 7.9e-05
+  triangle_count: 1
+  x_range:
+  - 0.29587
+  - 0.49387
+  y_range:
+  - -1.041134
+  - -1.040334
+  z_range:
+  - 1.288007
+  - 1.303007
+- z: 1.305
+  area: 8.1e-05
+  triangle_count: 1
+  x_range:
+  - 0.09387
+  - 0.29587
+  y_range:
+  - -1.041134
+  - -1.040334
+  z_range:
+  - 1.303007
+  - 1.303007
+- z: 1.315
+  area: 0.000317
+  triangle_count: 4
+  x_range:
+  - -0.70413
+  - 0.69387
+  y_range:
+  - -1.041134
+  - -1.040334
+  z_range:
+  - 1.316007
+  - 1.316007
+- z: 1.32
+  area: 0.028308
+  triangle_count: 5
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - -1.034234
+  - -1.003825
+  z_range:
+  - 1.317332
+  - 1.321872
+- z: 1.395
+  area: 1.2e-05
+  triangle_count: 1
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -0.049333
+  - -0.019333
+  z_range:
+  - 1.396721
+  - 1.396721
+- z: 1.485
+  area: 0.021981
+  triangle_count: 3
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.931704
+  - 0.966176
+  z_range:
+  - 1.48477
+  - 1.486301
+- z: 1.495
+  area: 0.019378
+  triangle_count: 2
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.940242
+  - 0.968042
+  z_range:
+  - 1.4932
+  - 1.496425
+- z: 1.5
+  area: 0.001642
+  triangle_count: 1
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.929667
+  - 0.931917
+  z_range:
+  - 1.4994
+  - 1.49965
+- z: 1.515
+  area: 0.01258
+  triangle_count: 1
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.941017
+  - 0.958242
+  z_range:
+  - 1.510014
+  - 1.514425
+- z: 1.525
+  area: 0.033124
+  triangle_count: 5
+  x_range:
+  - -0.73513
+  - 0.72487
+  y_range:
+  - 0.932284
+  - 0.966176
+  z_range:
+  - 1.522438
+  - 1.52423
+- z: 1.595
+  area: 1.2e-05
+  triangle_count: 1
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -0.051333
+  - -0.021333
+  z_range:
+  - 1.596721
+  - 1.596721
+- z: 1.795
+  area: 2.4e-05
+  triangle_count: 2
+  x_range:
+  - 0.76487
+  - 0.76567
+  y_range:
+  - -0.051332
+  - -0.021332
+  z_range:
+  - 1.794721
+  - 1.794721
+- z: 2.075
+  area: 0.102347
+  triangle_count: 183
+  x_range:
+  - -0.774995
+  - 0.76487
+  y_range:
+  - -1.040331
+  - 0.969669
+  z_range:
+  - 2.077
+  - 2.078004
+- z: 2.08
+  area: 0.064513
+  triangle_count: 9
+  x_range:
+  - -0.750405
+  - 0.759041
+  y_range:
+  - -1.040331
+  - 0.969669
+  z_range:
+  - 2.077
+  - 2.079297
+- z: 2.09
+  area: 0.053015
+  triangle_count: 7
+  x_range:
+  - -0.736755
+  - 0.753445
+  y_range:
+  - -1.040731
+  - 0.969669
+  z_range:
+  - 2.087082
+  - 2.092275
+- z: 2.095
+  area: 3.6e-05
+  triangle_count: 1
+  x_range:
+  - -0.65013
+  - -0.56013
+  y_range:
+  - 0.969669
+  - 0.970469
+  z_range:
+  - 2.092
+  - 2.097
+- z: 2.1
+  area: 0.005
+  triangle_count: 1
+  x_range:
+  - -0.758036
+  - -0.753061
+  y_range:
+  - -1.040331
+  - 0.969669
+  z_range:
+  - 2.098126
+  - 2.099608
+- z: 2.105
+  area: 0.080804
+  triangle_count: 20
+  x_range:
+  - -0.763705
+  - 0.76567
+  y_range:
+  - -1.040331
+  - 0.969669
+  z_range:
+  - 2.101912
+  - 2.1073
+- z: 2.11
+  area: 0.013055
+  triangle_count: 27
+  x_range:
+  - -0.77593
+  - 0.75737
+  y_range:
+  - -1.041131
+  - 0.970469
+  z_range:
+  - 2.106575
+  - 2.112007
+- z: 2.115
+  area: 3.579157
+  triangle_count: 314
+  x_range:
+  - -0.771639
+  - 0.761379
+  y_range:
+  - -1.040331
+  - 0.969669
+  z_range:
+  - 2.114499
+  - 2.117807
+- z: 2.12
+  area: 2.637949
+  triangle_count: 192
+  x_range:
+  - -0.77013
+  - 0.75987
+  y_range:
+  - -1.035331
+  - 0.964669
+  z_range:
+  - 2.117
+  - 2.117807
+floor_search_range:
+- 0.4
+- 0.65
+floor_candidate: *id001

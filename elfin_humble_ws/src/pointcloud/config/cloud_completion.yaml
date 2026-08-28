@@ -1,0 +1,54 @@
+# Geometric point-cloud completion (run after preprocess + fit)
+# Measure hole center in CloudCompare (container-aligned body_points.ply frame).
+
+output_dir: ./output
+body_ply: body_points.ply
+leg_ply: leg_points.ply
+body_out_ply: body_points_completed.ply
+leg_out_ply: leg_points_completed.ply
+measured_container_yaml: measured_container.yaml
+parametric_model_json: parametric_model.json
+debug_ply: completion_debug.ply
+write_debug: true
+opening_margin_y: 0.08
+
+opening:
+  use_parametric: true
+  manual: null
+
+# ~50 cm x 30 cm wall hole.
+# Default auto_hole searches the +X main wall for an empty patch with dense surroundings.
+# If it picks the wrong hole, switch mode to manual_center and set center_xyz from CC.
+patches:
+  - name: body_wall_hole
+    enabled: true
+    # mode: auto_hole
+    # target_face: auto_vertical
+    target_face: negative_y
+    # u_axis: [0, 1, 0]
+    # v_axis: [0, 0, 1]
+    # Manual override:
+    mode: manual_center
+    center_xyz: [-1.025, -0.335, 1.47]
+    u_half: 0.25
+    v_half: 0.15
+    grid_spacing: 0.015
+    thickness: 0.02
+    face_band: 0.08
+    detect_grid_spacing: 0.03
+    detect_ring_m: 0.12
+    # On the +X face v_axis is Z, so only search the upper wall where the arrow holes are.
+    detect_v_min: 1.15
+    min_ring_density: 0.02
+    max_inside_density: 0.35
+    prefer_high_v: true
+
+leg_extends:
+  - id: front_left
+    enabled: true
+    length_m: 0.15
+    direction: down
+    cross_section: auto
+    mirror_sibling_cross_section: true
+    cluster_radius: 0.18
+    grid_spacing: 0.004

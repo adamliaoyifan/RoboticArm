@@ -1,0 +1,144 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="suction_panel_mount">
+
+  <!--
+    Coarse suction panel assembly (p01-p05) bolted directly onto elfin_end_link.
+    All 5 collision-version STLs share the same CAD assembly coordinate system
+    and are combined into a single URDF link.
+    Link origin is at the p01 robot-side mounting face centre (0.0909, 0.28583, 0.0909)
+    in CAD coords, so mesh origins are shifted by the negative of that.
+    STLs are already in metres; scale = 1.
+  -->
+  <xacro:property name="sp_mesh_dir" value="package://luggage_gazebo/models/suction_panel/collision"/>
+  <xacro:property name="sp_origin_x" value="-0.0909"/>
+  <xacro:property name="sp_origin_y" value="-0.28583"/>
+  <xacro:property name="sp_origin_z" value="-0.0909"/>
+  <!-- The suction panel collision stays enabled in the shared robot_description
+       so MoveIt knows the tool volume. Gazebo spawn strips this detailed CAD
+       collision from the model URDF (see gazebo_urdf_utils.py) because suction
+       is simulated as a logical attach/fixed joint, not by hard ODE contact. -->
+  <xacro:property name="enable_suction_panel_collision" value="true"/>
+
+  <xacro:macro name="suction_panel_mount" params="parent *origin">
+
+    <link name="suction_panel">
+
+      <!-- p01: robot flange disc -->
+      <visual>
+        <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${sp_mesh_dir}/p01.stl" scale="1 1 1"/>
+        </geometry>
+        <material name="panel_steel"><color rgba="0.75 0.75 0.78 1"/></material>
+      </visual>
+      <xacro:if value="${enable_suction_panel_collision}">
+        <collision>
+          <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${sp_mesh_dir}/p01.stl" scale="1 1 1"/>
+          </geometry>
+        </collision>
+      </xacro:if>
+
+      <!-- p02: middle tube section -->
+      <visual>
+        <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${sp_mesh_dir}/p02.stl" scale="1 1 1"/>
+        </geometry>
+        <material name="panel_steel"><color rgba="0.75 0.75 0.78 1"/></material>
+      </visual>
+      <xacro:if value="${enable_suction_panel_collision}">
+        <collision>
+          <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${sp_mesh_dir}/p02.stl" scale="1 1 1"/>
+          </geometry>
+        </collision>
+      </xacro:if>
+
+      <!-- p03: cross plate -->
+      <visual>
+        <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${sp_mesh_dir}/p03.stl" scale="1 1 1"/>
+        </geometry>
+        <material name="panel_steel"><color rgba="0.75 0.75 0.78 1"/></material>
+      </visual>
+      <xacro:if value="${enable_suction_panel_collision}">
+        <collision>
+          <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${sp_mesh_dir}/p03.stl" scale="1 1 1"/>
+          </geometry>
+        </collision>
+      </xacro:if>
+
+      <!-- p04: bottom plate (suction cup side) -->
+      <visual>
+        <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${sp_mesh_dir}/p04.stl" scale="1 1 1"/>
+        </geometry>
+        <material name="panel_steel"><color rgba="0.75 0.75 0.78 1"/></material>
+      </visual>
+      <xacro:if value="${enable_suction_panel_collision}">
+        <collision>
+          <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${sp_mesh_dir}/p04.stl" scale="1 1 1"/>
+          </geometry>
+        </collision>
+      </xacro:if>
+
+      <!-- p05: side tube -->
+      <visual>
+        <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="${sp_mesh_dir}/p05.stl" scale="1 1 1"/>
+        </geometry>
+        <material name="panel_steel"><color rgba="0.75 0.75 0.78 1"/></material>
+      </visual>
+      <xacro:if value="${enable_suction_panel_collision}">
+        <collision>
+          <origin xyz="${sp_origin_x} ${sp_origin_y} ${sp_origin_z}" rpy="0 0 0"/>
+          <geometry>
+            <mesh filename="${sp_mesh_dir}/p05.stl" scale="1 1 1"/>
+          </geometry>
+        </collision>
+      </xacro:if>
+
+      <inertial>
+        <!-- Approximate: ~500g steel assembly, 0.18 x 0.283 x 0.18 m -->
+        <mass value="0.500"/>
+        <origin xyz="0 -0.146 0" rpy="0 0 0"/>
+        <inertia ixx="0.001200" ixy="0.0" ixz="0.0"
+                 iyy="0.000600" iyz="0.0"
+                 izz="0.001200"/>
+      </inertial>
+    </link>
+
+    <joint name="suction_panel_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="suction_panel"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <link name="suction_contact_frame"/>
+    <joint name="suction_contact_frame_joint" type="fixed">
+      <parent link="suction_panel"/>
+      <!-- Absorbing/contact plane at the approximate center of the suction-cup side.
+           The suction face is on suction_panel local -Y; rotate the contact frame so
+           its +Z axis is the suction normal. Pick waypoints use tool-down orientation
+           (+Z toward world -Z), which makes the suction face parallel to the box top. -->
+      <child link="suction_contact_frame"/>
+      <origin xyz="0 -0.286 0" rpy="1.57079632679 0 0"/>
+    </joint>
+
+    <gazebo reference="suction_panel">
+      <gravity>false</gravity>
+      <selfCollide>false</selfCollide>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

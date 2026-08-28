@@ -1,0 +1,41 @@
+schema_version: 2
+phase: phase7_manual_gui_orchestrator_parity
+run_id: 20260812_manual_gui_parity
+status: running
+hypothesis: >-
+  The manual panel can be made incapable of drifting from the automated path by
+  removing its pipeline entirely: the orchestrator pauses before each state and
+  the panel only decides when it may proceed. If that holds, a stepped run and
+  an automatic run of the same configuration produce identical event streams,
+  and a manual run becomes admissible acceptance evidence for the first time.
+git_sha: 0f75484c1eb0a841cac52f89a8035c018b3b4cca
+dirty_diff_sha256: ffc8467a907ed91cb5e287236765cf694444e0375db2154cdb8d93dd785f365a
+docker_image: sha256:07e442893d2dab63aa58aed0e11c4055d407fe59a66909ec409082dfa323916e
+config_hashes:
+  scene_tf: unchanged_from_phase5
+  box_catalog: unchanged_from_phase6a
+command: >-
+  python3 -m pytest test/ (119 tests, in-container);
+  multi_box_gazebo_matrix.py --seeds 0 --boxes 1 --output-dir /tmp/phase7_auto
+  --timeout-sec 420 --log-level warn
+seeds: [0]
+started_at: '2026-08-12T19:40:00+08:00'
+required_evidence:
+  - raw.log
+  - metrics.yaml
+  - result.yaml
+  - process.md
+  - ablations.yaml
+  - seed_000_boxes_01_events.jsonl
+  - summary.json
+hard_gates:
+  # Closed by automated tests in this bundle.
+  gui_has_no_pipeline_calls: true
+  untainted_session_refused: true
+  abort_is_clean: true
+  events_parity_state_machine: true
+  recorder_produces_every_harness_kind: true
+  # Open: needs a committing run, which is blocked on P0-EX EX1.
+  events_parity_gazebo: null
+  auto_mode_unchanged_on_a_committing_run: null
+  recorder_completeness_on_a_committing_run: null

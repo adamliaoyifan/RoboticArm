@@ -1,0 +1,17 @@
+trajectory:
+  sampled_points_total: 41
+  suction_tilt_p100_deg: 4.015
+  camera_tilt_p100_deg: 12.262
+retention_margin:
+  mass_8kg: 7.137
+  mass_15kg: 3.807
+  mass_23kg: 2.483
+heavy_runtime:
+  mass_kg: 23.0
+  margin: 2.475
+  simulated_detach: false
+vacuum_events:
+  - REQUEST_ON
+  - ATTACHED
+  - REQUEST_OFF
+  - DETACHED

@@ -1,0 +1,80 @@
+status: passed
+summary: >-
+  The release-settle gate was reading the wrong signal. Under Gazebo's kinematic
+  position mode the reported joint velocity carries a static, pose-dependent
+  bias that reaches 0.036 rad/s on a provably motionless arm, and it
+  under-reports real motion by more than an order of magnitude. The gate now
+  measures the movement itself. The tolerance was not changed.
+
+root_cause: >-
+  /joint_states.velocity is not a usable motion signal in this simulation. With
+  pid_gains empty the joints are driven by SetPosition, and the velocity Gazebo
+  reports back is a steady function of the configuration -- 0.0012 rad/s parked
+  at observe, rising monotonically with shoulder extension to 0.0359 rad/s --
+  while the position does not change at all (drift below 3e-6 rad over ten
+  seconds, with a constant 9e-6 rad tracking error). Past 0.03 rad/s the gate
+  refused to let go of a stationary payload, which is why no run has committed
+  a box since the workspace was widened.
+
+validated:
+  - The residual is flat, not decaying. Recorded immediately after a motion
+    ends, the value already equals the steady value for that configuration, and
+    stays there for the whole window. Raising release_settle_timeout could not
+    have helped.
+  - The residual scales with arm extension and is dominated by elfin_joint2,
+    the joint carrying the most gravity torque. That is why the blocker only
+    appeared once E25 removed the near-ROI rectangle and placements moved
+    further out.
+  - The arm is genuinely motionless while the gate rejects it. Position drift
+    over ten seconds is at most 2.3e-6 rad against an implied 0.098 rad if the
+    reported velocity were real: a factor of forty thousand.
+  - The old signal was unsafe in the other direction too. Mid-motion, with
+    elfin_joint2 travelling at 0.479 rad/s measured from positions, the
+    reported velocity peaked at 0.0349 rad/s and the old rule called that
+    window settled. It would have released the payload while the arm was
+    moving.
+  - The displacement rule accepts every motionless recording and rejects the
+    moving one, and it rejects a synthetic joint creeping at 0.05 rad/s as well
+    as an oscillation that returns to where it started.
+  - Repeatability at the configurations that used to fail: 20/20 with a p95
+    settle time of 0.26 s, against 0/20 for the old rule on the same data.
+
+not_validated:
+  - A full active-loading run that commits a box. Deliberately out of scope
+    here; this phase was scoped to the gate itself and does not touch the other
+    open execution blocker (EX3-b, staging poses unchecked by the motion
+    filter). The Phase 5 matrix rerun is the separate step that closes EX1 for
+    real.
+  - Whether the same readback bias exists on hardware. It is a property of
+    Gazebo's kinematic joint mode, so it very likely does not, but the
+    displacement rule is the correct measurement either way and is what should
+    be carried to hardware.
+
+changes:
+  - settle_criterion.py: the rule, as a pure function of a sampled trace, with
+    both criteria available and diagnostics that show the disagreement.
+  - motion_planner_node.py: _wait_robot_settled feeds the shared tracker and
+    now reports which joint moved, the tail-to-peak ratio and the excursion
+    beside the velocity, so a future failure is readable from the log line.
+  - active_loading.launch: release_settle_velocity_tolerance,
+    release_settle_timeout and settle_quantile are launch args now. They were
+    node defaults with no way to override them, which made every comparison
+    experiment require a code edit.
+  - joint_velocity_trace.py: standalone recorder, needs only sim_world.launch.
+
+do_not_repeat:
+  - Do not raise the 0.03 rad/s tolerance. It was never the problem, and the
+    measurements here show the gate failing at zero actual motion.
+  - Do not raise release_settle_timeout to chase this. The residual is flat;
+    more time changes nothing.
+  - Do not gate motion on /joint_states.velocity anywhere else in this
+    simulation without checking positions first.
+
+evidence:
+  - traces/idle_observe_summary.json
+  - traces/j2_sweep_summary.json
+  - traces/pose_sweep_summary.json
+  - traces/static_extended_summary.json
+  - traces/moving_trace_summary.json
+  - traces/repeatability_summary.json
+  - luggage_planning/test/data/ (three trimmed fixtures used by the unit tests)

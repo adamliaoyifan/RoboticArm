@@ -1,0 +1,152 @@
+schema_version: 1
+generated_by: packing_score_ablation.py
+atlas: s20_container_collision_aware.npz
+sequences: 20
+sequence_length: 60
+elapsed_sec: 44.1
+studies:
+  w_floor_first_sweep:
+    question: How does w_floor_first trade reachable fill rate against how many boxes
+      reach the container floor?
+    baselines:
+      mvp_three_term_old_online:
+        reachable_fill_rate: 0.9156
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3577
+      b2_proxy_score:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+    rows:
+      w=0.00:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+      w=0.10:
+        reachable_fill_rate: 0.907
+        items_placed: 9.45
+        floor_items: 3.25
+        floor_coverage: 0.3495
+      w=0.20:
+        reachable_fill_rate: 0.9056
+        items_placed: 9.55
+        floor_items: 3.3
+        floor_coverage: 0.3483
+      w=0.30:
+        reachable_fill_rate: 0.9056
+        items_placed: 9.55
+        floor_items: 3.3
+        floor_coverage: 0.3483
+      w=0.45:
+        reachable_fill_rate: 0.9166
+        items_placed: 9.65
+        floor_items: 3.35
+        floor_coverage: 0.3537
+      w=0.60:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+      w=0.90:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+      w=1.20:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+      w=2.00:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+  atlas_prior_mapping:
+    question: Both REACHABLE and MARGINAL mean IK exists. Does ranking MARGINAL lower
+      cost placed volume?
+    rows:
+      flat_top_shipped|w=0.00:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+      flat_top_shipped|w=0.60:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+      flat_top_shipped|w=1.20:
+        reachable_fill_rate: 0.9181
+        items_placed: 9.95
+        floor_items: 3.5
+        floor_coverage: 0.3545
+      graded_marginal_0.50|w=0.00:
+        reachable_fill_rate: 0.8432
+        items_placed: 8.85
+        floor_items: 3.2
+        floor_coverage: 0.3425
+      graded_marginal_0.50|w=0.60:
+        reachable_fill_rate: 0.8422
+        items_placed: 9.15
+        floor_items: 3.45
+        floor_coverage: 0.3507
+      graded_marginal_0.50|w=1.20:
+        reachable_fill_rate: 0.8422
+        items_placed: 9.15
+        floor_items: 3.45
+        floor_coverage: 0.3507
+      graded_marginal_0.85|w=0.00:
+        reachable_fill_rate: 0.8532
+        items_placed: 8.9
+        floor_items: 3.2
+        floor_coverage: 0.3486
+      graded_marginal_0.85|w=0.60:
+        reachable_fill_rate: 0.8413
+        items_placed: 9.1
+        floor_items: 3.45
+        floor_coverage: 0.3507
+      graded_marginal_0.85|w=1.20:
+        reachable_fill_rate: 0.8496
+        items_placed: 9.1
+        floor_items: 3.45
+        floor_coverage: 0.3507
+      graded_marginal_0.95|w=0.00:
+        reachable_fill_rate: 0.8674
+        items_placed: 8.95
+        floor_items: 3.2
+        floor_coverage: 0.35
+      graded_marginal_0.95|w=0.60:
+        reachable_fill_rate: 0.8496
+        items_placed: 9.1
+        floor_items: 3.45
+        floor_coverage: 0.3507
+      graded_marginal_0.95|w=1.20:
+        reachable_fill_rate: 0.8496
+        items_placed: 9.1
+        floor_items: 3.45
+        floor_coverage: 0.3507
+  prior_vs_tiebreak_isolation:
+    question: b4 at w=0 differs from b2. Is that the per-candidate atlas prior or
+      the deterministic tie-break?
+    rows:
+      b2_reference:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+      b4_w0_real_prior_and_tiebreak:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+      b4_w0_constant_prior_0.5:
+        reachable_fill_rate: 0.9201
+        items_placed: 9.6
+        floor_items: 3.3
+        floor_coverage: 0.3592
+    reading: If the constant-prior row reproduces b2 exactly, the tie-break is neutral
+      and the difference is entirely the prior.

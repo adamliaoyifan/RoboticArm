@@ -1,0 +1,67 @@
+{
+  "detected": {
+    "size": [
+      0.6763974516677187,
+      0.39787722569501416,
+      0.26615280118959983
+    ],
+    "x": -1.0020170265317943,
+    "y": -0.003716404257961625,
+    "z": 0.9930764005947998
+  },
+  "results": [
+    {
+      "feedbacks": [
+        {
+          "fraction": 0.0,
+          "stage": "planning"
+        },
+        {
+          "fraction": 0.0,
+          "stage": "planning"
+        },
+        {
+          "fraction": 0.0,
+          "stage": "executing"
+        }
+      ],
+      "message": "MoveGroup error_code=99999",
+      "name": "pre_grasp",
+      "ok": false,
+      "status": 6,
+      "wall_sec": 0.02
+    }
+  ],
+  "segments": [
+    {
+      "allow_ompl_fallback": false,
+      "keep_tool_down": false,
+      "name": "pre_grasp",
+      "target_z": 1.4261528011895999,
+      "type": "pose_target"
+    },
+    {
+      "allow_ompl_fallback": true,
+      "keep_tool_down": false,
+      "name": "approach",
+      "target_z": 1.3761528011895998,
+      "type": "cartesian"
+    },
+    {
+      "allow_ompl_fallback": true,
+      "keep_tool_down": false,
+      "name": "attach",
+      "target_z": 1.1261528011895998,
+      "type": "cartesian"
+    },
+    {
+      "allow_ompl_fallback": true,
+      "keep_tool_down": true,
+      "name": "pick_retreat",
+      "target_z": 1.4761528011896,
+      "type": "cartesian"
+    }
+  ],
+  "t_end": 1787911996.6054,
+  "t_start": 1787911993.9841323
+}

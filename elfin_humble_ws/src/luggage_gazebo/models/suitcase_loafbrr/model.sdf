@@ -1,0 +1,20 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <!-- Unit AABB (1 x 1 x 1 m) centered at origin. Spawners apply scale. -->
+  <model name="suitcase_loafbrr">
+    <link name="suitcase_link">
+      <visual name="body_visual">
+        <geometry>
+          <mesh>
+            <uri>model://suitcase_loafbrr/meshes/suitcase.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.12 0.12 0.15 1</ambient>
+          <diffuse>0.20 0.20 0.24 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

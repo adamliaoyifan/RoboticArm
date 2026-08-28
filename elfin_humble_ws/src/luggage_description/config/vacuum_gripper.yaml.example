@@ -1,0 +1,40 @@
+# Placeholder — copy to vacuum_gripper.yaml and edit when vendor specs arrive.
+# Vacuum cup mounted directly on elfin_end_link.
+
+mount:
+  parent_link: elfin_end_link
+  xyz: [0.0, 0.0, 0.0]
+  rpy: [0.0, 0.0, 0.0]
+
+geometry:
+  type: cylinder
+  radius: 0.04
+  height: 0.015
+  size: [0.08, 0.08, 0.015]
+  mesh_path: ""
+
+tcp:
+  link_name: vacuum_tip_link
+  xyz: [0.0, 0.0, 0.015]
+  rpy: [0.0, 0.0, 0.0]
+
+collision:
+  padding: 0.005
+  extra_box:
+    enable: false
+    xyz: [0.0, 0.0, 0.05]
+    size: [0.06, 0.06, 0.08]
+
+grasp:
+  approach_offset: 0.10
+  retreat_offset: 0.10
+  attach_offset: 0.0
+
+simulation:
+  vacuum_on_force: 50.0
+  break_distance: 0.005
+  require_planar_contact: true
+
+meta:
+  name: vacuum_gripper_v1
+  version: 0.1.0-placeholder

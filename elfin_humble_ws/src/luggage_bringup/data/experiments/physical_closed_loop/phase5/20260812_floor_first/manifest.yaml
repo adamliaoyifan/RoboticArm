@@ -1,0 +1,35 @@
+schema_version: 2
+phase: phase5_floor_first_utilization
+run_id: 20260812_floor_first
+status: failed
+hypothesis: >-
+  Replacing the hand-tuned near ROI with aperture-derived lateral bounds plus a
+  reachability-atlas prior, and adding an explicit floor-first term to the
+  online scorer, makes the planner fill the container floor before stacking, so
+  utilization stops being capped by a constant.
+git_sha: 0f75484c1eb0a841cac52f89a8035c018b3b4cca
+dirty_diff_sha256: bdfec4135d9996bfcc2e2d2e665442c33500b49028d1934279cd4582620cd849
+docker_image: sha256:07e442893d2dab63aa58aed0e11c4055d407fe59a66909ec409082dfa323916e
+config_hashes:
+  scene_tf: 9e2b100af9be1a0192b26b65c17e43ee5651b7c5d234eb8be7d6c4dffc3ffeb0
+command: >-
+  multi_box_gazebo_matrix.py --seeds 0,1,2 --boxes 6 --timeout-sec 1200
+  (headless: gui:=false start_camera_view:=false, near_roi_enabled:=false)
+seeds: [0, 1, 2]
+started_at: '2026-08-12T12:28:00+08:00'
+ended_at: '2026-08-12T12:32:00+08:00'
+required_evidence:
+  - raw.log
+  - metrics.yaml
+  - result.yaml
+  - summary.json
+  - process.md
+  - ablations.yaml
+hard_gates:
+  planner_offers_floor_before_stacking: true
+  zero_atlas_rejected_commits: true
+  zero_gt_fallback: true
+  zero_premature_stacking: true
+  clean_run_rate_ge_080: false
+  mean_floor_items_ge_2: false
+  mean_volume_utilization_ge_010: false

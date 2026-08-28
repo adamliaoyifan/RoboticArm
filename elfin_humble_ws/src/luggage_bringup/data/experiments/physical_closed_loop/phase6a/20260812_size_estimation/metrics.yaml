@@ -1,0 +1,26 @@
+schema_version: 1
+seed: 42
+metrics:
+  catalog_snap_count: 0
+  center_xy_error_p95_m: 0.004879847930139861
+  committed_covers_true_rate: 1.0
+  height_error_p95_m: 0.00028528729990478786
+  in_envelope_rate: 1.0
+  major_error_mean_m: -0.003022886402165976
+  major_error_p95_m: 0.009525123245026529
+  minor_error_p95_m: 0.007462358904773371
+  sample_count: 50
+  success_count: 50
+  success_rate: 1.0
+  xy_margin_m: 0.02
+  yaw_error_p95_rad_mod_pi: 0.033272570786257095
+  z_margin_m: 0.01
+gates:
+  center_xy_error: true
+  conservative_commit: true
+  footprint_error: true
+  height_error: true
+  no_catalog_snapping: true
+  plausibility: true
+  success_rate: true
+  yaw_error: true

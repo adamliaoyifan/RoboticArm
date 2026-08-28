@@ -1,0 +1,20 @@
+# Conservative commissioning defaults; replace with measured EOAT values.
+pressure_kpa: 70.0
+effective_area_m2: 0.012
+seal_efficiency: 0.80
+friction_coefficient: 0.60
+minimum_retention_margin: 2.0
+max_suction_tilt_deg: 5.0
+max_camera_tilt_deg: 18.0
+max_linear_accel_mps2: 2.0
+max_angular_accel_radps2: 1.0
+pressure_ready_threshold_kpa: 60.0
+leak_hold_time_sec: 3.0
+rated_payload_kg: 23.0
+# The loader does not know a bag's density, and with continuously sampled sizes
+# the mass follows a jittered density model. The retention gate is therefore
+# evaluated against an upper bound rather than the nominal mass. On real
+# hardware a check-in weight would replace this factor.
+mass_safety_factor: 1.25
+max_joint_velocity_scale: 0.25
+max_joint_acceleration_scale: 0.20

@@ -1,0 +1,6 @@
+Vintage suitcase visual (romullus / Zenodo derivative).
+License: CC BY-SA 2.5
+DOI: https://doi.org/10.5281/zenodo.10389120
+Derivative of Santa Cruz MAH Sketchfab scan (CC BY 4.0):
+https://sketchfab.com/models/90f9619a6ce44c949bd6df2b77cdcacd
+Processed: lying Z-up, centimetres scaled to metres, AABB unit-normalized.

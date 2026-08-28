@@ -1,0 +1,28 @@
+M region location map (64x24 grid, matches frame_00_depth.png):
+B=box_top(1.115) P=platform(0.86) M=mystery(1.13-1.45, the phantom to verify)
+n=panel(1.45-1.8, known self-occlusion) s=box-side/other g=ground .=no-hit
+
+................................................................
+................................................................
+................................................................
+................................................................
+.............................................................sss
+..........................................................MMMMMM
+..................................................s......MMMMMMM
+......................................PPPssssssssss.....MMMMMMMM
+........................gggggg......PPPsssssssssssss...MMMMMMMMM
+......................gggggg.....PPPssssssssssssssss..MMMMMMMMMM
+....................ggggg.....PPPssssssssssssssssssssMMMMMMMMMMM
+ggg..............ggggg.....PPPssssssssssssssMssssssssMMMMMMMMMMM
+gggggg.........gggg.....PPPssssssssssssssMMMMsssssssMMMMMMMMMMMM
+gggggggg.......g.....PPPssssssssssssssMMMMMMMssssssMMMMMMMMMMMMM
+P.ggggggggg.......PPPssssssssssssssMMMMMMMMMssssssMMMMMMMMMMMMMM
+sPP.ggggggg....PPPssssssssssssssMMMMMMMMMMMMsssssMMMMMMMMMMMMMMM
+sssPP.ggg...PPPssssssssssssssMMMMMMMMMMMMMMMssssMMMMMMMMMMMMMMMM
+ssssssPP.PPPssssssssssssssMMMMMMMMMMMMMMMMMssssMMMMMMMMMMMMMMMMM
+MsssssssPssssssssssssssMMMMMMMMMMMMMMMMMMMMsssMMMMMMMMMMMMMMMMMM
+MMMsssssssssssssssssMMMMMMMMMMMMMMMMMMMMMMMssMMMMMMMMMMMMMMMMMMM
+MMMMMssssssssssssMMMMMMMMMMMMMMMMMMMMMMMMMssMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMssssssMMMMMMMMMMMMMMMMMMMMMMMMnnnMsMMMMMMMMMMMMMMMMMMMMM
+MMMMMMMMMMsMMMMMMMMMMMMnnnnnnnnnnnnnnnnnnnnnnMMMMMMMMMMMMMMMMMnn
+MMMMMMMMMMMMMMMMMMMMMnnnnnnnnnnnnnnnnnnnnnnnnnnMMMMMMMMMMMMnnnnn

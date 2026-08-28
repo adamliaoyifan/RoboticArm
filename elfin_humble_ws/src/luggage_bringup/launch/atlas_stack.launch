@@ -1,0 +1,25 @@
+<launch>
+  <!-- Minimal stack for reachability atlas building: Gazebo + MoveIt + scene_manager.
+       Does NOT start the atlas builder itself (the sweep script runs its own rosrun).
+       Used by run_atlas_sweep.sh. -->
+  <arg name="scene_tf_config"
+       default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+  <arg name="arm_model" default="s20"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch">
+    <arg name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="spawn_at_observe" value="true"/>
+    <arg name="hold_observe_on_start" value="true"/>
+    <arg name="clear_existing_models" value="true"/>
+    <arg name="spawn_suitcases" value="false"/>
+  </include>
+
+  <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">
+    <arg name="display" value="false"/>
+    <arg name="load_urdf" value="false"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+  </include>
+
+  <node pkg="luggage_planning" type="scene_manager_node.py" name="scene_manager" output="screen"/>
+</launch>

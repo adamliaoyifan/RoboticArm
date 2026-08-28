@@ -1,0 +1,515 @@
+schema_version: 1
+evidence_path: elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/floor_contact_validation.yaml
+atlases:
+- atlas: elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware
+  grid:
+    frame: container_link
+    resolution_xyz: 0.15
+    origin:
+    - -0.745
+    - -0.985
+    - 0.5
+    size:
+    - 10
+    - 14
+    - 10
+    yaw_bins:
+    - 0.0
+    - 1.5707963267948966
+    transit_clearance: 0.3
+  container:
+    inner_dimensions:
+    - 1.49
+    - 1.97
+    - 2.01
+    floor_z: 0.53
+    ceiling_z: 2.01
+    usable_height: 1.4799999999999998
+    base_xyz:
+    - -5.509807655019861e-06
+    - -1.4999999999898805
+    - -0.86
+    base_rpy:
+    - 0.0
+    - -0.0
+    - -1.5708
+    opening_side: negative_x
+  queries:
+  - box: carryon
+    ix: 1
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 3
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 5
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 1
+    - 0
+  - box: standard
+    ix: 1
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 3
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 5
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 1
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 3
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 5
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  summary:
+    query_count: 9
+    reachable_or_marginal: 9
+    unexpected_rejects: 0
+- atlas: elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.55x0.40x0.25
+  grid:
+    frame: container_link
+    resolution_xyz: 0.15
+    origin:
+    - -0.745
+    - -0.985
+    - 0.5
+    size:
+    - 10
+    - 14
+    - 10
+    yaw_bins:
+    - 0.0
+    - 1.5707963267948966
+    transit_clearance: 0.3
+  container:
+    inner_dimensions:
+    - 1.49
+    - 1.97
+    - 2.01
+    floor_z: 0.53
+    ceiling_z: 2.01
+    usable_height: 1.4799999999999998
+    base_xyz:
+    - -5.509807655019861e-06
+    - -1.4999999999898805
+    - -0.86
+    base_rpy:
+    - 0.0
+    - -0.0
+    - -1.5708
+    opening_side: negative_x
+  queries:
+  - box: carryon
+    ix: 1
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 3
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 5
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 1
+    - 0
+  - box: standard
+    ix: 1
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 3
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 5
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 1
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 3
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 5
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  summary:
+    query_count: 9
+    reachable_or_marginal: 9
+    unexpected_rejects: 0
+- atlas: elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28
+  grid:
+    frame: container_link
+    resolution_xyz: 0.15
+    origin:
+    - -0.745
+    - -0.985
+    - 0.5
+    size:
+    - 10
+    - 14
+    - 10
+    yaw_bins:
+    - 0.0
+    - 1.5707963267948966
+    transit_clearance: 0.3
+  container:
+    inner_dimensions:
+    - 1.49
+    - 1.97
+    - 2.01
+    floor_z: 0.53
+    ceiling_z: 2.01
+    usable_height: 1.4799999999999998
+    base_xyz:
+    - -5.509807655019861e-06
+    - -1.4999999999898805
+    - -0.86
+    base_rpy:
+    - 0.0
+    - -0.0
+    - -1.5708
+    opening_side: negative_x
+  queries:
+  - box: carryon
+    ix: 1
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 3
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 5
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 1
+    - 0
+  - box: standard
+    ix: 1
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 3
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 5
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: marginal
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 1
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 3
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 5
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: marginal
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  summary:
+    query_count: 9
+    reachable_or_marginal: 9
+    unexpected_rejects: 0
+- atlas: elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.80x0.50x0.32
+  grid:
+    frame: container_link
+    resolution_xyz: 0.15
+    origin:
+    - -0.745
+    - -0.985
+    - 0.5
+    size:
+    - 10
+    - 14
+    - 10
+    yaw_bins:
+    - 0.0
+    - 1.5707963267948966
+    transit_clearance: 0.3
+  container:
+    inner_dimensions:
+    - 1.49
+    - 1.97
+    - 2.01
+    floor_z: 0.53
+    ceiling_z: 2.01
+    usable_height: 1.4799999999999998
+    base_xyz:
+    - -5.509807655019861e-06
+    - -1.4999999999898805
+    - -0.86
+    base_rpy:
+    - 0.0
+    - -0.0
+    - -1.5708
+    opening_side: negative_x
+  queries:
+  - box: carryon
+    ix: 1
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 3
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 1
+    - 0
+  - box: carryon
+    ix: 5
+    contact_z: 0.78
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 1
+    - 0
+  - box: standard
+    ix: 1
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 3
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: standard
+    ix: 5
+    contact_z: 0.81
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 1
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 1
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 3
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 3
+    - 7
+    - 2
+    - 0
+  - box: large
+    ix: 5
+    contact_z: 0.85
+    expected_state_valid: true
+    atlas_status: reachable
+    atlas_indices:
+    - 5
+    - 7
+    - 2
+    - 0
+  summary:
+    query_count: 9
+    reachable_or_marginal: 9
+    unexpected_rejects: 0

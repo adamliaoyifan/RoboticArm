@@ -1,0 +1,27 @@
+schema_version: 1
+phase: phase3_suction_retention
+run_id: 20260811_suction_retention
+status: passed
+hypothesis: >-
+  Enforcing suction <=5 degrees at every carry trajectory point and rejecting
+  payloads below a 2.0 retention margin prevents gazebo_follow from masking
+  real vacuum drop risks.
+git_sha: a1cdffef1d67b9dbb4407231e2bb0d67803a06cc
+dirty_diff_sha256: 8f5f3a96fcd06568321b01e6475b89176207d4467fec71e78bc254decc75dc4c
+docker_image: sha256:07e442893d2dab63aa58aed0e11c4055d407fe59a66909ec409082dfa323916e
+config_hashes:
+  scene_tf: 9e2b100af9be1a0192b26b65c17e43ee5651b7c5d234eb8be7d6c4dffc3ffeb0
+command: strict carry trajectory + 8/15/23kg retention matrix
+seeds: [42]
+started_at: '2026-08-11T20:28:00+08:00'
+ended_at: '2026-08-11T20:42:00+08:00'
+required_evidence:
+  - raw.log
+  - metrics.yaml
+  - result.yaml
+hard_gates:
+  suction_tilt_p100_lte_5deg: true
+  camera_tilt_p100_lte_18deg: true
+  retention_margin_gte_2: true
+  no_simulated_detach: true
+  vacuum_sequence_auditable: true

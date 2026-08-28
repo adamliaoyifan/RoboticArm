@@ -1,0 +1,42 @@
+<launch>
+  <!-- Container interior inspection (Gazebo + MoveIt + camera URDF). -->
+  <arg name="start_orchestrator" default="false"/>
+  <arg name="skip_reset" default="false"/>
+  <arg name="scene_tf_config" default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+  <!-- Arm model selector: s05 | s10 | s20 | s30. Only URDF geometry + SRDF
+       self-collision pairs change (joints/links/group/kinematics shared). -->
+  <arg name="arm_model" default="s20"/>
+  <arg name="arm_upper" value="$(eval arg('arm_model').upper())"/>
+  <param name="/robot_name" value="elfin_$(arg arm_model)_with_camera"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch">
+    <arg name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="spawn_at_observe" value="true"/>
+    <arg name="hold_observe_on_start" value="true"/>
+    <arg name="clear_existing_models" value="true"/>
+  </include>
+
+  <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">
+    <arg name="display" value="false"/>
+    <arg name="load_urdf" value="false"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+  </include>
+
+  <!-- container_tf_publisher is started by sim_world.launch when spawn_luggage=true -->
+
+  <node pkg="luggage_description" type="description_params_node.py" name="description_params" output="screen"/>
+  <node pkg="luggage_perception" type="luggage_detector_node.py" name="luggage_detector" output="screen"/>
+  <node pkg="luggage_perception" type="container_inspector_node.py" name="container_inspector" output="screen"/>
+  <node pkg="luggage_packing" type="bin_packer_node.py" name="bin_packer" output="screen"/>
+  <node pkg="luggage_planning" type="scene_manager_node.py" name="scene_manager" output="screen"/>
+  <node pkg="luggage_planning" type="waypoint_generator_node.py" name="waypoint_generator" output="screen"/>
+  <node pkg="luggage_planning" type="motion_planner_node.py" name="motion_planner" output="screen" launch-prefix="bash -c 'sleep 5; exec $0 $@' ">
+    <param name="move_group_wait_timeout" value="120.0"/>
+  </node>
+  <node pkg="luggage_planning" type="vacuum_simulator_node.py" name="vacuum_simulator" output="screen"/>
+
+  <node if="$(arg start_orchestrator)" pkg="luggage_bringup" type="orchestrator_node.py" name="orchestrator" output="screen">
+    <param name="skip_reset" value="$(arg skip_reset)"/>
+  </node>
+</launch>

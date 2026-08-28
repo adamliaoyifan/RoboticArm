@@ -1,0 +1,392 @@
+{
+  "adjacent_bbox_iou_p05": 1.0,
+  "adjacent_bbox_iou_p50": 1.0,
+  "catalog_id": "carryon",
+  "confidence_p50": 0.5520105361938477,
+  "confidence_p95": 0.5520105361938477,
+  "duration_sec": 9.768,
+  "flicker_hz": 0.0,
+  "gt_iou_thresh": 0.3,
+  "gt_proj_error": null,
+  "hit_rate": 1.0,
+  "hit_stamps": [
+    {
+      "detect_sim_stamp": 152.045,
+      "detect_wall_sec": 1787903557.9753752,
+      "image_stamp": 151.834,
+      "lag_sim": 0.2109999999999843
+    },
+    {
+      "detect_sim_stamp": 152.257,
+      "detect_wall_sec": 1787903558.18873,
+      "image_stamp": 151.867,
+      "lag_sim": 0.3900000000000148
+    },
+    {
+      "detect_sim_stamp": 152.324,
+      "detect_wall_sec": 1787903558.2543094,
+      "image_stamp": 152.065,
+      "lag_sim": 0.25900000000001455
+    },
+    {
+      "detect_sim_stamp": 152.389,
+      "detect_wall_sec": 1787903558.317441,
+      "image_stamp": 152.098,
+      "lag_sim": 0.2909999999999968
+    },
+    {
+      "detect_sim_stamp": 152.553,
+      "detect_wall_sec": 1787903558.4819043,
+      "image_stamp": 152.164,
+      "lag_sim": 0.38900000000001
+    },
+    {
+      "detect_sim_stamp": 152.783,
+      "detect_wall_sec": 1787903558.7099178,
+      "image_stamp": 152.56,
+      "lag_sim": 0.22299999999998477
+    },
+    {
+      "detect_sim_stamp": 152.992,
+      "detect_wall_sec": 1787903558.9235156,
+      "image_stamp": 152.791,
+      "lag_sim": 0.2009999999999934
+    },
+    {
+      "detect_sim_stamp": 153.225,
+      "detect_wall_sec": 1787903559.1561763,
+      "image_stamp": 153.022,
+      "lag_sim": 0.20300000000000296
+    },
+    {
+      "detect_sim_stamp": 153.452,
+      "detect_wall_sec": 1787903559.3860643,
+      "image_stamp": 153.055,
+      "lag_sim": 0.39699999999999136
+    },
+    {
+      "detect_sim_stamp": 153.519,
+      "detect_wall_sec": 1787903559.449347,
+      "image_stamp": 153.22,
+      "lag_sim": 0.2990000000000066
+    },
+    {
+      "detect_sim_stamp": 153.7,
+      "detect_wall_sec": 1787903559.6316845,
+      "image_stamp": 153.484,
+      "lag_sim": 0.21599999999997976
+    },
+    {
+      "detect_sim_stamp": 153.925,
+      "detect_wall_sec": 1787903559.8558779,
+      "image_stamp": 153.715,
+      "lag_sim": 0.21000000000000796
+    },
+    {
+      "detect_sim_stamp": 154.147,
+      "detect_wall_sec": 1787903560.0800054,
+      "image_stamp": 153.748,
+      "lag_sim": 0.3990000000000009
+    },
+    {
+      "detect_sim_stamp": 154.345,
+      "detect_wall_sec": 1787903560.2760375,
+      "image_stamp": 153.946,
+      "lag_sim": 0.3990000000000009
+    },
+    {
+      "detect_sim_stamp": 154.538,
+      "detect_wall_sec": 1787903560.4684248,
+      "image_stamp": 154.144,
+      "lag_sim": 0.39400000000000546
+    },
+    {
+      "detect_sim_stamp": 154.749,
+      "detect_wall_sec": 1787903560.6815722,
+      "image_stamp": 154.342,
+      "lag_sim": 0.40699999999998226
+    },
+    {
+      "detect_sim_stamp": 154.815,
+      "detect_wall_sec": 1787903560.7493675,
+      "image_stamp": 154.54,
+      "lag_sim": 0.2750000000000057
+    },
+    {
+      "detect_sim_stamp": 154.883,
+      "detect_wall_sec": 1787903560.816054,
+      "image_stamp": 154.606,
+      "lag_sim": 0.27700000000001523
+    },
+    {
+      "detect_sim_stamp": 154.949,
+      "detect_wall_sec": 1787903560.8789184,
+      "image_stamp": 154.639,
+      "lag_sim": 0.3100000000000023
+    },
+    {
+      "detect_sim_stamp": 155.088,
+      "detect_wall_sec": 1787903561.0183501,
+      "image_stamp": 154.705,
+      "lag_sim": 0.38299999999998136
+    },
+    {
+      "detect_sim_stamp": 155.313,
+      "detect_wall_sec": 1787903561.2437127,
+      "image_stamp": 155.101,
+      "lag_sim": 0.21199999999998909
+    },
+    {
+      "detect_sim_stamp": 155.531,
+      "detect_wall_sec": 1787903561.4626446,
+      "image_stamp": 155.134,
+      "lag_sim": 0.3970000000000198
+    },
+    {
+      "detect_sim_stamp": 155.721,
+      "detect_wall_sec": 1787903561.6555295,
+      "image_stamp": 155.332,
+      "lag_sim": 0.38900000000001
+    },
+    {
+      "detect_sim_stamp": 155.786,
+      "detect_wall_sec": 1787903561.7224407,
+      "image_stamp": 155.53,
+      "lag_sim": 0.2560000000000002
+    },
+    {
+      "detect_sim_stamp": 155.853,
+      "detect_wall_sec": 1787903561.786359,
+      "image_stamp": 155.563,
+      "lag_sim": 0.29000000000002046
+    },
+    {
+      "detect_sim_stamp": 156.02,
+      "detect_wall_sec": 1787903561.9643295,
+      "image_stamp": 155.629,
+      "lag_sim": 0.39100000000001955
+    },
+    {
+      "detect_sim_stamp": 156.253,
+      "detect_wall_sec": 1787903562.1856325,
+      "image_stamp": 156.025,
+      "lag_sim": 0.22799999999998022
+    },
+    {
+      "detect_sim_stamp": 156.686,
+      "detect_wall_sec": 1787903562.619287,
+      "image_stamp": 156.487,
+      "lag_sim": 0.19900000000001228
+    },
+    {
+      "detect_sim_stamp": 156.897,
+      "detect_wall_sec": 1787903562.8348665,
+      "image_stamp": 156.685,
+      "lag_sim": 0.21199999999998909
+    },
+    {
+      "detect_sim_stamp": 157.122,
+      "detect_wall_sec": 1787903563.067141,
+      "image_stamp": 156.916,
+      "lag_sim": 0.20600000000001728
+    },
+    {
+      "detect_sim_stamp": 157.343,
+      "detect_wall_sec": 1787903563.2834594,
+      "image_stamp": 156.949,
+      "lag_sim": 0.39399999999997704
+    },
+    {
+      "detect_sim_stamp": 157.408,
+      "detect_wall_sec": 1787903563.345811,
+      "image_stamp": 157.114,
+      "lag_sim": 0.2939999999999827
+    },
+    {
+      "detect_sim_stamp": 157.599,
+      "detect_wall_sec": 1787903563.544396,
+      "image_stamp": 157.378,
+      "lag_sim": 0.22100000000000364
+    },
+    {
+      "detect_sim_stamp": 157.826,
+      "detect_wall_sec": 1787903563.7673974,
+      "image_stamp": 157.609,
+      "lag_sim": 0.21699999999998454
+    },
+    {
+      "detect_sim_stamp": 158.056,
+      "detect_wall_sec": 1787903564.00133,
+      "image_stamp": 157.642,
+      "lag_sim": 0.4140000000000157
+    },
+    {
+      "detect_sim_stamp": 158.241,
+      "detect_wall_sec": 1787903564.191141,
+      "image_stamp": 157.84,
+      "lag_sim": 0.40100000000001046
+    },
+    {
+      "detect_sim_stamp": 158.477,
+      "detect_wall_sec": 1787903564.4274242,
+      "image_stamp": 158.236,
+      "lag_sim": 0.24100000000001387
+    },
+    {
+      "detect_sim_stamp": 158.691,
+      "detect_wall_sec": 1787903564.636301,
+      "image_stamp": 158.467,
+      "lag_sim": 0.22399999999998954
+    },
+    {
+      "detect_sim_stamp": 158.903,
+      "detect_wall_sec": 1787903564.8497608,
+      "image_stamp": 158.698,
+      "lag_sim": 0.20499999999998408
+    },
+    {
+      "detect_sim_stamp": 159.135,
+      "detect_wall_sec": 1787903565.0804026,
+      "image_stamp": 158.929,
+      "lag_sim": 0.20599999999998886
+    },
+    {
+      "detect_sim_stamp": 159.37,
+      "detect_wall_sec": 1787903565.3180954,
+      "image_stamp": 158.962,
+      "lag_sim": 0.40800000000001546
+    },
+    {
+      "detect_sim_stamp": 159.437,
+      "detect_wall_sec": 1787903565.3835154,
+      "image_stamp": 159.16,
+      "lag_sim": 0.27700000000001523
+    },
+    {
+      "detect_sim_stamp": 159.503,
+      "detect_wall_sec": 1787903565.4485614,
+      "image_stamp": 159.226,
+      "lag_sim": 0.2769999999999868
+    },
+    {
+      "detect_sim_stamp": 159.568,
+      "detect_wall_sec": 1787903565.5134122,
+      "image_stamp": 159.259,
+      "lag_sim": 0.3090000000000259
+    },
+    {
+      "detect_sim_stamp": 159.749,
+      "detect_wall_sec": 1787903565.6925747,
+      "image_stamp": 159.523,
+      "lag_sim": 0.2259999999999991
+    },
+    {
+      "detect_sim_stamp": 159.976,
+      "detect_wall_sec": 1787903565.9183586,
+      "image_stamp": 159.556,
+      "lag_sim": 0.4199999999999875
+    },
+    {
+      "detect_sim_stamp": 160.147,
+      "detect_wall_sec": 1787903566.091748,
+      "image_stamp": 159.754,
+      "lag_sim": 0.3930000000000007
+    },
+    {
+      "detect_sim_stamp": 160.385,
+      "detect_wall_sec": 1787903566.3305712,
+      "image_stamp": 160.15,
+      "lag_sim": 0.23499999999998522
+    },
+    {
+      "detect_sim_stamp": 160.623,
+      "detect_wall_sec": 1787903566.5665545,
+      "image_stamp": 160.381,
+      "lag_sim": 0.24199999999999022
+    },
+    {
+      "detect_sim_stamp": 160.867,
+      "detect_wall_sec": 1787903566.810944,
+      "image_stamp": 160.645,
+      "lag_sim": 0.22199999999998
+    },
+    {
+      "detect_sim_stamp": 161.085,
+      "detect_wall_sec": 1787903567.0357044,
+      "image_stamp": 160.678,
+      "lag_sim": 0.4070000000000107
+    },
+    {
+      "detect_sim_stamp": 161.155,
+      "detect_wall_sec": 1787903567.1014483,
+      "image_stamp": 160.876,
+      "lag_sim": 0.27899999999999636
+    },
+    {
+      "detect_sim_stamp": 161.365,
+      "detect_wall_sec": 1787903567.3154976,
+      "image_stamp": 161.14,
+      "lag_sim": 0.22500000000002274
+    },
+    {
+      "detect_sim_stamp": 161.58,
+      "detect_wall_sec": 1787903567.5313756,
+      "image_stamp": 161.371,
+      "lag_sim": 0.20900000000000318
+    },
+    {
+      "detect_sim_stamp": 161.827,
+      "detect_wall_sec": 1787903567.7767458,
+      "image_stamp": 161.602,
+      "lag_sim": 0.22499999999999432
+    }
+  ],
+  "hit_streaks": {
+    "max": 55,
+    "mean": 55.0,
+    "n": 1,
+    "p50": 55.0,
+    "p95": 55.0
+  },
+  "infer_ms_p50": null,
+  "infer_ms_p95": null,
+  "inferred_hz": 5.528255528255528,
+  "lag_sim_p50": 0.2769999999999868,
+  "lag_sim_p95": 0.4073000000000121,
+  "lag_wall_p50": 0.06396603584289551,
+  "lag_wall_p95": 0.0692202091217041,
+  "mean_dropped_self_body": 2.0,
+  "miss_streaks": {
+    "max": 0,
+    "mean": 0.0,
+    "n": 0,
+    "p50": null,
+    "p95": null
+  },
+  "n_false_positive": 0,
+  "n_frames": 55,
+  "n_gt_aligned": 55,
+  "n_held_rescue": 0,
+  "n_hit_ratio": "55/55",
+  "n_hit_stamp_rows": 55,
+  "n_raw_hit": 55,
+  "postproc_hints": [
+    "max miss streak <= 2 with high hit_rate; temporal_window_frames=5 may be larger than needed"
+  ],
+  "prompt_counts": {
+    "luggage on a platform viewed from directly above": 55
+  },
+  "spawn_size": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "temporal_bbox_iou_reset": 0.3,
+  "temporal_min_positive_ratio": 0.5,
+  "temporal_window_frames": 5,
+  "time_to_first_raw_cargo_sec": 0.0,
+  "visual": "loafbrr",
+  "visual_id": "suitcase_loafbrr",
+  "visual_kind": "mesh",
+  "window_sec": 10.0
+}

@@ -1,0 +1,8 @@
+gazebo_finalized_model_count: 3
+planning_scene_placed_count: 3
+mapper_committed_box_count: 3
+orchestrator_placed_count: 3
+persisted_after_wait_sec: 10
+all_models_dynamic: true
+all_models_have_collision_body: true
+next_spawn_preserved_previous_models: true

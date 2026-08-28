@@ -1,0 +1,10 @@
+# Plan and execute one motion segment (ROS 1 plan_motion actually executes).
+MotionSegment segment
+---
+bool success
+string message
+---
+# planning | executing | settling
+string stage
+string segment_name
+float64 fraction

@@ -1,0 +1,45 @@
+schema_version: 1
+run_date: '2026-08-11'
+scene_tf: /catkin_ws/src/luggage_description/config/scene_tf.yaml
+configuration:
+  max_placed: 1
+  run_initial_explore: false
+  exploration_mode: none
+  use_placement_planner: true
+  use_motion_filter: true
+  inspect_mode: gazebo_gt
+  dynamic_scene: false
+  octomap: false
+box:
+  type: carryon
+  size: [0.55, 0.40, 0.25]
+placement:
+  center_base: [-0.785, -1.055, -0.205]
+  expected_container_floor_z: 0.53
+  expected_box_center_z_container: 0.655
+motion_filter:
+  checked: 8
+  reachable: 8
+segments:
+  pick:
+    pre_grasp: succeeded
+    approach: succeeded
+    attach: succeeded
+    retreat: succeeded
+  place:
+    transit: succeeded
+    insert: succeeded
+    descend: succeeded
+    retreat: succeeded
+occupancy:
+  update_succeeded: true
+  placed_count: 1
+  post_place_remap: true
+result:
+  success: true
+  terminal_state: Idle
+  terminal_reason: max placed reached
+  elapsed_sim_sec: 87.047
+notes:
+  - Place transit required removing redundant wrist-lock while retaining tool-down and camera guard.
+  - Repeated MoveIt empty-JointState diagnostics were non-fatal; all commanded segments completed.

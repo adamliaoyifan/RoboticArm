@@ -1,0 +1,18 @@
+SlotSpec planned
+---
+bool success
+string message
+geometry_msgs/Pose actual_pose
+float64 xy_error
+float64 z_error
+float64 yaw_error
+float64 roll
+float64 pitch
+float64 drift
+int32 point_count
+# Extents measured from the placed box's top face. Closes the loop on the
+# pickup-time size estimate: a disagreement means the committed footprint is
+# wrong, which is what would let the next box be planned into this one.
+float64 measured_width
+float64 measured_depth
+float64 measured_height

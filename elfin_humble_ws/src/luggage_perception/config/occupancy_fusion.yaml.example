@@ -1,0 +1,51 @@
+# Shared defaults for stable eye-in-hand occupancy fusion.
+motion_gate:
+  enabled: true
+  joint_states_topic: /joint_states
+  # Scope to arm joints only - tracking all joints (incl. gripper/suction)
+  # lets chatter keep the gate in "moving" forever. Empty = all joints.
+  joint_names:
+    - elfin_joint1
+    - elfin_joint2
+    - elfin_joint3
+    - elfin_joint4
+    - elfin_joint5
+    - elfin_joint6
+  velocity_threshold: 0.02
+  settle_time_sec: 0.5
+  joint_state_timeout_sec: 1.0
+
+known_scene_filter:
+  enabled: true
+  padding: 0.03
+  filter_ground: true
+
+occupancy:
+  enabled: true
+  p_hit: 0.70
+  p_miss: 0.40
+  log_odds_min: -2.0
+  log_odds_max: 3.5
+  # Two independent 0.70-probability hits are required to exceed 1.2.
+  occupied_threshold: 1.2
+  free_threshold: -0.35
+
+cloud_buffer_size: 12
+# How long integrate_cargo_view waits for the arm to settle (motion gate
+# "stable") before giving up. The orchestrator calls integrate right after a
+# move, before the post-move velocity has decayed below motion_gate's
+# velocity_threshold, so integrate waits this long instead of failing. Raised
+# from 2.5 to 4.0: observed a phase0 opening-view integrate fail at exactly
+# the 2.5s deadline with max_vel already below threshold (state "settling",
+# i.e. not yet continuously below velocity_threshold for settle_time_sec) --
+# it just needed more of the wait window, not a code change. Raise further if
+# the arm still needs longer to settle in Gazebo; lower for snappier
+# integration.
+integrate_settle_wait_sec: 4.0
+# Cap on the number of points used for free-space raycasting in
+# integrate_points. The per-point ray walk is O(points * ray_steps) in pure
+# Python, so a full ~300k-point depth cloud can take minutes. The coarse voxel
+# grid tolerates far fewer rays without losing free-space coverage. Lower if
+# integrate is still slow; raise for denser free-space marking.
+raycast_max_points: 20000
+frame_wait_timeout_sec: 1.5

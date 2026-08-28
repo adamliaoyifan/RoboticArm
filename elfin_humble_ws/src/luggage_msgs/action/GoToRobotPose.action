@@ -1,0 +1,8 @@
+string pose_name
+---
+bool success
+bool already_there
+string message
+---
+string stage
+float64 remaining_error

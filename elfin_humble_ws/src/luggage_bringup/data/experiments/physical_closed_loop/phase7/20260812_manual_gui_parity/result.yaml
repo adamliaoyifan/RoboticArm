@@ -1,0 +1,59 @@
+status: running
+summary: >-
+  The manual panel no longer contains a pipeline. The orchestrator gained a
+  step gate that is a no-op in auto mode, and a run events recorder that is the
+  producer the bag harness never had. Five of the eight hard gates are closed by
+  automated tests. The three that need a run which actually commits a box stay
+  open, because no run can commit one while P0-EX EX1 is unresolved.
+
+validated:
+  - The panel cannot call the pipeline. A source-level check rejects any
+    reference to an executing or committing service outside the probe tab, and
+    the check itself is proven against a synthetic violation rather than only
+    against the current file.
+  - Stepping and running produce identical event streams. The same fixture was
+    driven twice through the real state machine, once automatically and once one
+    state at a time; the two records differ in nothing but timestamps, durations
+    and the run mode itself.
+  - Auto mode never touches the gate. The gate reports zero states executed
+    after a full automatic run, because it returns before consulting any control
+    state; pause and step are refused outright in auto mode.
+  - Abort leaves nothing half committed. Aborting while paused before ExecPlace
+    ends the run through the normal terminal path with no placement record, no
+    scene write and no map write, and the abort is itself recorded so it cannot
+    be mistaken for a clean short run.
+  - A tainted session is refused. One use of the probe tab writes a taint record
+    and the harness fails untainted_session regardless of how good the run's
+    numbers are.
+  - The recorder emits every kind the harness gates on, and carries cycle_sec,
+    which the log-scraped path never had, so the cycle_budget gate can be
+    evaluated for the first time.
+  - Wiring works on a real headless run: the events file was written, and the
+    console log and the events file agreed on the placed count.
+
+not_validated:
+  - Gazebo-level parity between an automatic run and a human stepping the panel.
+    The mechanism is proven at the state-machine level, but the end-to-end
+    comparison needs a run that reaches UpdateOccupancy, which currently fails
+    at the release settle gate.
+  - Field-by-field comparison of PLACEMENT_COMMIT before and after this change.
+    There is no committing run to compare; the one run available stops at the
+    same EX1 gate, at 0.0318 rad/s against a 0.03 tolerance, which is consistent
+    with the 0.0313 / 0.0302 recorded in phase 5 but is not a commit-level
+    proof.
+  - The utilization side of the harness (floor_layer_used, no_premature_stacking,
+    volume_utilization) on a manual run, for the same reason.
+
+follow_ups:
+  - Motion-segment failures have no machine-readable class, so they land in the
+    events file as UNCLASSIFIED. Deliberately left alone here: inventing a class
+    would change acceptance log text in the same change that reworks the panel.
+    Worth doing once EX1 is closed and a baseline re-run is due anyway.
+
+evidence:
+  - process.md
+  - ablations.yaml
+  - metrics.yaml
+  - seed_000_boxes_01_events.jsonl
+  - seed_000_boxes_01.log
+  - summary.json

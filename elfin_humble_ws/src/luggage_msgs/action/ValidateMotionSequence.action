@@ -1,0 +1,14 @@
+# Plan, but do not execute, a complete constrained motion sequence.
+MotionSegment[] segments
+---
+bool success
+string message
+string rejection_reason
+float64 minimum_cartesian_fraction
+float64 minimum_joint_margin
+float64 manipulability
+bool retreat_feasible
+---
+int32 segment_index
+string segment_name
+string stage

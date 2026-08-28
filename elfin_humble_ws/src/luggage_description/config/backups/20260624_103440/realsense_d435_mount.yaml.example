@@ -1,0 +1,23 @@
+# RealSense D435 side mount on elfin_link6 (meters / radians).
+# tune_joints: values for camera_mount_tune (cam_mount_tx..rz sliders / spawn -J).
+# fixed: equivalent production URDF mount used by sim_full (camera_mount_origin.xacro).
+# After tuning, click Save in tune GUI or run: rosrun luggage_bringup sync_camera_mount_config.py
+
+mount:
+  parent_link: elfin_link6
+  tune_joints:
+    tx: -0.017202
+    ty: 0.129806
+    tz: 0.101650
+    rx: -1.57079632679
+    ry: -1.57079632679
+    rz: 1.57079632679
+  fixed:
+    xyz: [-0.017202, 0.129806, 0.101650]
+    rpy: [0.0, -1.57079632679, 0.0]
+  xyz: [-0.017202, 0.129806, 0.101650]
+  rpy: [0.0, -1.57079632679, 0.0]
+
+meta:
+  name: camera_mount_intel_frame
+  version: 1.1.0

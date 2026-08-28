@@ -1,0 +1,6 @@
+<launch>
+  <arg name="scene_tf_config" default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+
+  <rosparam file="$(arg scene_tf_config)" command="load" ns="luggage_scene_tf"/>
+  <param name="/luggage/scene_tf_config" value="$(arg scene_tf_config)"/>
+</launch>

@@ -1,0 +1,34 @@
+status: failed
+summary: >-
+  The placement policy change did what it was meant to do: with the near-ROI
+  rectangle removed, the planner offers only floor candidates until the floor
+  stops fitting boxes, and it never stacked while a reachable floor candidate
+  remained. The Gazebo acceptance still fails, but on three execution-layer
+  blockers that the widened workspace exposed, none of which is the ranking
+  policy.
+
+validated:
+  - Offline replay: the production scorer places 9.9 items vs 9.6 for both the
+    old three-term online proxy and B2, with floor items up from 3.30 to 3.50.
+  - First box candidates were 8/8 on the floor in all three seeds.
+  - After committing the first box, the second box still saw 8/8 floor
+    candidates (smoke run), i.e. no premature stacking.
+  - The first box committed at container_y = -0.635, which the previous
+    near_roi_y_min = -0.59 forbade outright.
+  - atlas_rejected = 0 throughout: the atlas prior demoted nothing that the
+    MoveIt filter then accepted, so it is not over-rejecting.
+  - Headless runs work end to end (gui:=false), no X server required.
+
+not_validated:
+  - Multi-box physical utilization. No seed completed more than one commit, so
+    floor_coverage_ratio and volume_utilization have no meaningful value yet.
+  - The min_floor_items >= 2 anti-regression gate has never been exercised on a
+    passing run.
+
+evidence:
+  - summary.json
+  - seed_000_boxes_06.log
+  - seed_001_boxes_06.log
+  - seed_002_boxes_06.log
+  - ../../phase5_smoke/seed_000_boxes_06.log
+  - ../../../../../../luggage_planning/data/reachability_atlas/packing_replay_floor_first.yaml

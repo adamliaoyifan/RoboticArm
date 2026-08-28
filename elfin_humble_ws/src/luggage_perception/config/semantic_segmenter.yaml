@@ -1,0 +1,116 @@
+# Semantic perception configuration.
+#
+# Consumed by semantic_segmenter_node (RGB -> label mask) and
+# semantic_point_filter_node (mask + depth -> cargo/obstacle clouds).
+# One file, one ros__parameters section per node; launch passes the same
+# file to both and each node picks its own section.
+#
+# Label convention (see luggage_perception/semantic_segmenter.py):
+#   0 = background
+#   1 = container_wall
+#   2 = cargo            # primary task objects
+#   3 = robot_arm
+#   4 = unknown_object   # kept as conservative obstacle
+#
+# class_mapping_labels is parallel to prompts: prompts[i] maps to
+# class_mapping_labels[i]. Unmapped prompts would default to 4
+# (unknown_object) so detections are kept, not silently dropped.
+
+semantic_segmenter:
+  ros__parameters:
+    # Backend: "stub" (no ML deps), "bbox_fill", "yolo_world",
+    # "yolo_world_sam2". Missing deps fall back to "stub(fallback:...)".
+    # yolo_world is this workspace's working default (ultralytics + torch-cu
+    # present); eval runs add require_backend so a stub fallback cannot
+    # fake a report.
+    backend: yolo_world
+    model_name: yolov8s-world.pt
+    # cuda: measured 3.5 ms/frame (286 FPS) on the RTX 5090 vs 29 ms/frame
+    # CPU for yolov8s-world at 640x480. Set "cpu" on hosts without a GPU.
+    device: cuda
+    # Top-down dark-blue rectangles sit far from "suitcase" in CLIP space
+    # (the panel scores 0.3+, the actual box only 0.04-0.07). A low threshold
+    # admits both; the detector's RANSAC then selects the box-top plane by
+    # point-count dominance (~60k box points vs ~12k panel points).
+    confidence_threshold: 0.04
+    sam2.checkpoint: facebook/sam2-hiera-small
+    sam2.model_type: sam2_hiera_s
+
+    # Open-vocabulary text prompts fed to YOLO-World.
+    # The scene-descriptive prompt is what actually fires on a top-down box;
+    # the bare class names stay for conventional viewpoints (real hardware).
+    prompts:
+      - luggage on a platform viewed from directly above
+      - suitcase
+      - luggage
+      - box
+      - container
+      - floor
+      - robot arm
+    class_mapping_labels: [2, 2, 2, 2, 1, 0, 3]
+
+    # Wrist D435 is bolted to the suction panel. Project the panel collision
+    # meshes into the camera to get the real curved silhouette (not a full
+    # bottom strip). Row-band is only the fallback if meshes/TF are missing.
+    self_body_from_mesh: true
+    self_body_dilate_px: 6
+    self_body_mesh_package: luggage_gazebo
+    self_body_mesh_dir: models/suction_panel/collision
+    self_body_meshes: [p01.stl, p02.stl, p03.stl, p04.stl, p05.stl]
+    self_body_mesh_origin: [-0.0909, -0.28583, -0.0909]
+    self_body_camera_frame: camera_depth_optical_frame
+    self_body_panel_frame: suction_panel
+    # URDF mount chain used when TF is not ready yet (same numbers as
+    # eef_mount_adapter_origin.xacro + camera_mount_origin.xacro).
+    self_body_adapter_xyz: [0.0168, -0.0156, 0.0702]
+    self_body_adapter_rpy: [1.57707939, -0.00003948, -3.13530959]
+    self_body_camera_xyz: [0.013, 0.097, -0.021]
+    self_body_camera_rpy: [0.03769911, 1.36345121, 1.57079633]
+    self_body_row_start_frac: 0.85
+
+    # Eval runs must set this (e.g. "yolo_world"): startup fails unless the
+    # actual backend matches, so a stub fallback can never fake a report.
+    require_backend: ""
+    # 0 = unlimited. YOLO on CPU is slower than the 4-6 Hz preprocessed
+    # input; unlimited processing would pile callbacks up.
+    max_rate_hz: 0.0
+    publish_overlay: true
+
+    # YOLO is per-frame; a miss used to publish an empty mask and drop cargo.
+    # Keep 5 frames and hold the consensus cargo bbox when >=50% of the
+    # window saw cargo. RGB jump / bbox IoU collapse resets the window so
+    # a new spawn cannot inherit the previous suitcase.
+    temporal_window_frames: 5
+    temporal_min_positive_ratio: 0.5
+    temporal_scene_change_mad: 10.0
+    temporal_bbox_iou_reset: 0.3
+
+    input.color_image: /luggage/preprocessed/camera/color/image
+    output.mask: /luggage/semantic/mask
+    output.overlay: /luggage/semantic/overlay
+    output.instance_mask: /luggage/semantic/instance_mask
+    output.stats: ~/stats_json
+
+semantic_point_filter:
+  ros__parameters:
+    input.cloud: /luggage/preprocessed/camera/depth/points
+    input.mask: /luggage/semantic/mask
+    input.instance_mask: /luggage/semantic/instance_mask
+    input.camera_info: /luggage/preprocessed/camera/color/camera_info
+    output.cargo_points: /luggage/semantic/cargo_points
+    output.obstacle_points: /luggage/semantic/obstacle_points
+    output.stats: ~/stats_json
+    # Label routing: cargo feeds the detector; obstacles are conservative.
+    cargo_labels: [2]
+    obstacle_labels: [2, 4]
+    # "identity": gz sim color/depth share one sensor (rotation=I, t=0).
+    # "config": real D435 depth_to_color from realsense_extrinsics_config.
+    extrinsics_source: identity
+    realsense_extrinsics_config: ""
+    # Exact-stamp join buffer depth per side (clouds / masks).
+    buffer_maxlen: 10
+    # NOTE: no sync_slop and no fallback_to_raw. Pairing is an exact
+    # (sec, nanosec) join on the preprocessor's primary stamp; slop-based
+    # pairing lives only in the preprocessor. An unfiltered cloud is never
+    # published as cargo geometry (acceptance criterion) - no mask means
+    # no cargo cloud, reason recorded in stats.

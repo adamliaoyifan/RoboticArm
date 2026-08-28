@@ -1,0 +1,386 @@
+{
+  "adjacent_bbox_iou_p05": 1.0,
+  "adjacent_bbox_iou_p50": 1.0,
+  "catalog_id": "standard",
+  "confidence_p50": 0.12774786353111267,
+  "confidence_p95": 0.12774786353111267,
+  "duration_sec": 9.96599999999998,
+  "flicker_hz": 0.0,
+  "gt_iou_thresh": 0.3,
+  "gt_proj_error": null,
+  "hit_rate": 1.0,
+  "hit_stamps": [
+    {
+      "detect_sim_stamp": 139.44,
+      "detect_wall_sec": 1787903545.3453317,
+      "image_stamp": 139.162,
+      "lag_sim": 0.2779999999999916
+    },
+    {
+      "detect_sim_stamp": 139.873,
+      "detect_wall_sec": 1787903545.7787838,
+      "image_stamp": 139.657,
+      "lag_sim": 0.21599999999997976
+    },
+    {
+      "detect_sim_stamp": 140.106,
+      "detect_wall_sec": 1787903546.0125456,
+      "image_stamp": 139.888,
+      "lag_sim": 0.2179999999999893
+    },
+    {
+      "detect_sim_stamp": 140.331,
+      "detect_wall_sec": 1787903546.240378,
+      "image_stamp": 140.119,
+      "lag_sim": 0.21199999999998909
+    },
+    {
+      "detect_sim_stamp": 140.553,
+      "detect_wall_sec": 1787903546.4623551,
+      "image_stamp": 140.152,
+      "lag_sim": 0.40100000000001046
+    },
+    {
+      "detect_sim_stamp": 140.739,
+      "detect_wall_sec": 1787903546.6485665,
+      "image_stamp": 140.35,
+      "lag_sim": 0.38900000000001
+    },
+    {
+      "detect_sim_stamp": 140.923,
+      "detect_wall_sec": 1787903546.8313107,
+      "image_stamp": 140.548,
+      "lag_sim": 0.375
+    },
+    {
+      "detect_sim_stamp": 140.988,
+      "detect_wall_sec": 1787903546.8943143,
+      "image_stamp": 140.713,
+      "lag_sim": 0.2750000000000057
+    },
+    {
+      "detect_sim_stamp": 141.189,
+      "detect_wall_sec": 1787903547.095186,
+      "image_stamp": 140.977,
+      "lag_sim": 0.21199999999998909
+    },
+    {
+      "detect_sim_stamp": 141.406,
+      "detect_wall_sec": 1787903547.3157136,
+      "image_stamp": 141.01,
+      "lag_sim": 0.396000000000015
+    },
+    {
+      "detect_sim_stamp": 141.599,
+      "detect_wall_sec": 1787903547.5170543,
+      "image_stamp": 141.208,
+      "lag_sim": 0.39099999999999113
+    },
+    {
+      "detect_sim_stamp": 141.673,
+      "detect_wall_sec": 1787903547.5842133,
+      "image_stamp": 141.406,
+      "lag_sim": 0.2669999999999959
+    },
+    {
+      "detect_sim_stamp": 141.741,
+      "detect_wall_sec": 1787903547.6503408,
+      "image_stamp": 141.439,
+      "lag_sim": 0.3020000000000209
+    },
+    {
+      "detect_sim_stamp": 141.9,
+      "detect_wall_sec": 1787903547.8081157,
+      "image_stamp": 141.505,
+      "lag_sim": 0.39500000000001023
+    },
+    {
+      "detect_sim_stamp": 142.12,
+      "detect_wall_sec": 1787903548.02697,
+      "image_stamp": 141.901,
+      "lag_sim": 0.2189999999999941
+    },
+    {
+      "detect_sim_stamp": 142.337,
+      "detect_wall_sec": 1787903548.2480848,
+      "image_stamp": 142.132,
+      "lag_sim": 0.20499999999998408
+    },
+    {
+      "detect_sim_stamp": 142.567,
+      "detect_wall_sec": 1787903548.4810553,
+      "image_stamp": 142.363,
+      "lag_sim": 0.20400000000000773
+    },
+    {
+      "detect_sim_stamp": 142.785,
+      "detect_wall_sec": 1787903548.6999187,
+      "image_stamp": 142.396,
+      "lag_sim": 0.38900000000001
+    },
+    {
+      "detect_sim_stamp": 142.856,
+      "detect_wall_sec": 1787903548.7734556,
+      "image_stamp": 142.594,
+      "lag_sim": 0.26200000000000045
+    },
+    {
+      "detect_sim_stamp": 142.928,
+      "detect_wall_sec": 1787903548.8365068,
+      "image_stamp": 142.627,
+      "lag_sim": 0.3009999999999877
+    },
+    {
+      "detect_sim_stamp": 143.086,
+      "detect_wall_sec": 1787903548.9957511,
+      "image_stamp": 142.693,
+      "lag_sim": 0.3930000000000007
+    },
+    {
+      "detect_sim_stamp": 143.301,
+      "detect_wall_sec": 1787903549.2208905,
+      "image_stamp": 143.089,
+      "lag_sim": 0.21199999999998909
+    },
+    {
+      "detect_sim_stamp": 143.526,
+      "detect_wall_sec": 1787903549.4383352,
+      "image_stamp": 143.32,
+      "lag_sim": 0.20600000000001728
+    },
+    {
+      "detect_sim_stamp": 143.73,
+      "detect_wall_sec": 1787903549.6421177,
+      "image_stamp": 143.353,
+      "lag_sim": 0.37699999999998113
+    },
+    {
+      "detect_sim_stamp": 143.908,
+      "detect_wall_sec": 1787903549.8175979,
+      "image_stamp": 143.518,
+      "lag_sim": 0.38999999999998636
+    },
+    {
+      "detect_sim_stamp": 144.132,
+      "detect_wall_sec": 1787903550.048495,
+      "image_stamp": 143.914,
+      "lag_sim": 0.21800000000001774
+    },
+    {
+      "detect_sim_stamp": 144.359,
+      "detect_wall_sec": 1787903550.2715929,
+      "image_stamp": 144.145,
+      "lag_sim": 0.21399999999999864
+    },
+    {
+      "detect_sim_stamp": 144.584,
+      "detect_wall_sec": 1787903550.4983847,
+      "image_stamp": 144.376,
+      "lag_sim": 0.2079999999999984
+    },
+    {
+      "detect_sim_stamp": 144.808,
+      "detect_wall_sec": 1787903550.7220616,
+      "image_stamp": 144.607,
+      "lag_sim": 0.2009999999999934
+    },
+    {
+      "detect_sim_stamp": 145.024,
+      "detect_wall_sec": 1787903550.9408436,
+      "image_stamp": 144.64,
+      "lag_sim": 0.38400000000001455
+    },
+    {
+      "detect_sim_stamp": 145.094,
+      "detect_wall_sec": 1787903551.009314,
+      "image_stamp": 144.805,
+      "lag_sim": 0.28899999999998727
+    },
+    {
+      "detect_sim_stamp": 145.273,
+      "detect_wall_sec": 1787903551.184131,
+      "image_stamp": 145.069,
+      "lag_sim": 0.20400000000000773
+    },
+    {
+      "detect_sim_stamp": 145.497,
+      "detect_wall_sec": 1787903551.4111412,
+      "image_stamp": 145.3,
+      "lag_sim": 0.19700000000000273
+    },
+    {
+      "detect_sim_stamp": 145.705,
+      "detect_wall_sec": 1787903551.62188,
+      "image_stamp": 145.333,
+      "lag_sim": 0.3720000000000141
+    },
+    {
+      "detect_sim_stamp": 145.774,
+      "detect_wall_sec": 1787903551.68933,
+      "image_stamp": 145.498,
+      "lag_sim": 0.27600000000001046
+    },
+    {
+      "detect_sim_stamp": 146.183,
+      "detect_wall_sec": 1787903552.0949223,
+      "image_stamp": 145.795,
+      "lag_sim": 0.38800000000000523
+    },
+    {
+      "detect_sim_stamp": 146.248,
+      "detect_wall_sec": 1787903552.1578984,
+      "image_stamp": 145.96,
+      "lag_sim": 0.2879999999999825
+    },
+    {
+      "detect_sim_stamp": 146.435,
+      "detect_wall_sec": 1787903552.3482428,
+      "image_stamp": 146.224,
+      "lag_sim": 0.21100000000001273
+    },
+    {
+      "detect_sim_stamp": 146.655,
+      "detect_wall_sec": 1787903552.5658185,
+      "image_stamp": 146.455,
+      "lag_sim": 0.19999999999998863
+    },
+    {
+      "detect_sim_stamp": 146.884,
+      "detect_wall_sec": 1787903552.802108,
+      "image_stamp": 146.686,
+      "lag_sim": 0.19799999999997908
+    },
+    {
+      "detect_sim_stamp": 147.101,
+      "detect_wall_sec": 1787903553.0128531,
+      "image_stamp": 146.719,
+      "lag_sim": 0.382000000000005
+    },
+    {
+      "detect_sim_stamp": 147.165,
+      "detect_wall_sec": 1787903553.077075,
+      "image_stamp": 146.884,
+      "lag_sim": 0.2810000000000059
+    },
+    {
+      "detect_sim_stamp": 147.347,
+      "detect_wall_sec": 1787903553.2633703,
+      "image_stamp": 147.148,
+      "lag_sim": 0.19900000000001228
+    },
+    {
+      "detect_sim_stamp": 147.557,
+      "detect_wall_sec": 1787903553.4691365,
+      "image_stamp": 147.346,
+      "lag_sim": 0.2109999999999843
+    },
+    {
+      "detect_sim_stamp": 147.781,
+      "detect_wall_sec": 1787903553.7018251,
+      "image_stamp": 147.577,
+      "lag_sim": 0.20400000000000773
+    },
+    {
+      "detect_sim_stamp": 148.003,
+      "detect_wall_sec": 1787903553.9186249,
+      "image_stamp": 147.61,
+      "lag_sim": 0.39299999999997226
+    },
+    {
+      "detect_sim_stamp": 148.071,
+      "detect_wall_sec": 1787903553.9884393,
+      "image_stamp": 147.808,
+      "lag_sim": 0.26300000000000523
+    },
+    {
+      "detect_sim_stamp": 148.224,
+      "detect_wall_sec": 1787903554.1406002,
+      "image_stamp": 147.841,
+      "lag_sim": 0.38299999999998136
+    },
+    {
+      "detect_sim_stamp": 148.445,
+      "detect_wall_sec": 1787903554.355852,
+      "image_stamp": 148.237,
+      "lag_sim": 0.2079999999999984
+    },
+    {
+      "detect_sim_stamp": 148.673,
+      "detect_wall_sec": 1787903554.586999,
+      "image_stamp": 148.468,
+      "lag_sim": 0.2050000000000125
+    },
+    {
+      "detect_sim_stamp": 148.886,
+      "detect_wall_sec": 1787903554.7960453,
+      "image_stamp": 148.501,
+      "lag_sim": 0.3849999999999909
+    },
+    {
+      "detect_sim_stamp": 149.086,
+      "detect_wall_sec": 1787903554.9998116,
+      "image_stamp": 148.699,
+      "lag_sim": 0.38700000000000045
+    },
+    {
+      "detect_sim_stamp": 149.151,
+      "detect_wall_sec": 1787903555.0631132,
+      "image_stamp": 148.864,
+      "lag_sim": 0.28700000000000614
+    },
+    {
+      "detect_sim_stamp": 149.358,
+      "detect_wall_sec": 1787903555.2696722,
+      "image_stamp": 149.128,
+      "lag_sim": 0.2300000000000182
+    }
+  ],
+  "hit_streaks": {
+    "max": 54,
+    "mean": 54.0,
+    "n": 1,
+    "p50": 54.0,
+    "p95": 54.0
+  },
+  "infer_ms_p50": null,
+  "infer_ms_p95": null,
+  "inferred_hz": 5.318081477021885,
+  "lag_sim_p50": 0.2710000000000008,
+  "lag_sim_p95": 0.393700000000004,
+  "lag_wall_p50": 0.06459701061248779,
+  "lag_wall_p95": 0.0722459077835083,
+  "mean_dropped_self_body": 2.0,
+  "miss_streaks": {
+    "max": 0,
+    "mean": 0.0,
+    "n": 0,
+    "p50": null,
+    "p95": null
+  },
+  "n_false_positive": 0,
+  "n_frames": 54,
+  "n_gt_aligned": 54,
+  "n_held_rescue": 0,
+  "n_hit_ratio": "54/54",
+  "n_hit_stamp_rows": 54,
+  "n_raw_hit": 54,
+  "postproc_hints": [
+    "max miss streak <= 2 with high hit_rate; temporal_window_frames=5 may be larger than needed"
+  ],
+  "prompt_counts": {
+    "luggage on a platform viewed from directly above": 54
+  },
+  "spawn_size": [
+    0.7,
+    0.45,
+    0.28
+  ],
+  "temporal_bbox_iou_reset": 0.3,
+  "temporal_min_positive_ratio": 0.5,
+  "temporal_window_frames": 5,
+  "time_to_first_raw_cargo_sec": 0.0,
+  "visual": "vintage",
+  "visual_id": "suitcase_vintage",
+  "visual_kind": "mesh",
+  "window_sec": 10.0
+}

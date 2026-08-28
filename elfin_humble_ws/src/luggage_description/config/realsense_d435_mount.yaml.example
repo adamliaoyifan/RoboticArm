@@ -1,0 +1,30 @@
+mount:
+  parent_link: eef_mount_adapter
+  tune_joints:
+    tx: -0.017202
+    ty: 0.129806
+    tz: 0.10165
+    rx: -1.57079632679
+    ry: -1.57079632679
+    rz: 1.57079632679
+  fixed:
+    xyz:
+    - 0.013
+    - 0.097
+    - -0.021
+    rpy:
+    - 0.0.00
+    - 1.57079633
+    - 1.57079633
+  xyz:
+  - -0.017202
+  - 0.129806
+  - 0.10165
+  rpy:
+  - 0.0
+  - -1.57079632679
+  - 0.0
+  child_link: camera_link
+meta:
+  name: camera_mount_intel_frame
+  version: 1.1.0

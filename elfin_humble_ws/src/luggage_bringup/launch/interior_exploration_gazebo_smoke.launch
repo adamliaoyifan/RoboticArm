@@ -1,0 +1,33 @@
+<launch>
+  <!--
+    Manual Gazebo/MoveIt smoke gate for the complete exploration loop.
+
+    Record acceptance topics in a second shell:
+      rosbag record -O /tmp/interior_smoke.bag \
+        /container_opening_estimator/opening_estimate \
+        /cargo_volume_mapper/stats_json \
+        /cargo_exploration_planner/selection_diagnostics
+
+    Then evaluate:
+      rosrun luggage_bringup interior_exploration_bag_harness.py \
+        /tmp/interior_smoke.bag (simulation fallback, minimum depth 0.20 m)
+  -->
+  <arg name="arm_model" default="s20"/>
+  <arg name="exploration_config"
+       default="$(find luggage_description)/config/exploration.yaml.example"/>
+  <arg name="opening_hardware_strict" default="false"/>
+
+  <include file="$(find luggage_bringup)/launch/active_loading.launch">
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="exploration_config" value="$(arg exploration_config)"/>
+    <arg name="run_initial_explore" value="true"/>
+    <arg name="exploration_mode" value="smart"/>
+    <arg name="max_placed" value="0"/>
+    <arg name="dry_run_motion" value="false"/>
+    <arg name="opening_hardware_strict"
+         value="$(arg opening_hardware_strict)"/>
+    <arg name="use_sensed_opening" value="false"/>
+    <arg name="start_camera_view" value="false"/>
+    <arg name="show_image_views" value="false"/>
+  </include>
+</launch>

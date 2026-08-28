@@ -1,0 +1,752 @@
+Panels:
+  - Class: rviz/Displays
+    Help Height: 70
+    Name: Displays
+    Property Tree Widget:
+      Expanded: ~
+      Splitter Ratio: 0.5
+    Tree Height: 373
+  - Class: rviz/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
+  - Class: rviz/Displays
+    Help Height: 113
+    Name: Displays
+    Property Tree Widget:
+      Expanded:
+        - /Global Options1
+        - /Status1
+      Splitter Ratio: 0.50070720911026
+    Tree Height: 420
+Preferences:
+  PromptSaveOnExit: true
+Toolbars:
+  toolButtonStyle: 2
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 1
+      Class: rviz/RobotModel
+      Collision Enabled: false
+      Enabled: true
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        camera_color_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_color_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_depth_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_depth_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        eef_mount_adapter:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_dummy_gripper:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_end_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_link1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        mid360_mount_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        suction_contact_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        suction_panel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        world:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Name: RobotModel
+      Robot Description: robot_description
+      TF Prefix: ""
+      Update Interval: 0
+      Value: true
+      Visual Enabled: true
+    - Class: rviz/TF
+      Enabled: true
+      Filter (blacklist): ""
+      Filter (whitelist): ""
+      Frame Timeout: 15
+      Frames:
+        All Enabled: true
+        camera_color_frame:
+          Value: true
+        camera_color_optical_frame:
+          Value: true
+        camera_depth_frame:
+          Value: true
+        camera_depth_optical_frame:
+          Value: true
+        camera_link:
+          Value: true
+        container_link:
+          Value: true
+        container_opening_frame:
+          Value: true
+        eef_mount_adapter:
+          Value: true
+        elfin_base:
+          Value: true
+        elfin_base_link:
+          Value: true
+        elfin_dummy_gripper:
+          Value: true
+        elfin_end_link:
+          Value: true
+        elfin_link1:
+          Value: true
+        elfin_link2:
+          Value: true
+        elfin_link3:
+          Value: true
+        elfin_link4:
+          Value: true
+        elfin_link5:
+          Value: true
+        elfin_link6:
+          Value: true
+        mid360_mount_frame:
+          Value: true
+        pedestal_link:
+          Value: true
+        pickup_platform_link:
+          Value: true
+        pickup_platform_top:
+          Value: true
+        suction_contact_frame:
+          Value: true
+        suction_panel:
+          Value: true
+        world:
+          Value: true
+      Marker Alpha: 1
+      Marker Scale: 0.2800000011920929
+      Name: TF
+      Show Arrows: true
+      Show Axes: true
+      Show Names: false
+      Tree:
+        world:
+          container_link:
+            container_opening_frame:
+              {}
+          elfin_base_link:
+            elfin_base:
+              elfin_link1:
+                elfin_link2:
+                  elfin_link3:
+                    elfin_link4:
+                      elfin_link5:
+                        elfin_link6:
+                          elfin_dummy_gripper:
+                            {}
+                          elfin_end_link:
+                            suction_panel:
+                              eef_mount_adapter:
+                                camera_link:
+                                  camera_color_frame:
+                                    camera_color_optical_frame:
+                                      {}
+                                  camera_depth_frame:
+                                    camera_depth_optical_frame:
+                                      {}
+                                mid360_mount_frame:
+                                  {}
+                              suction_contact_frame:
+                                {}
+          pedestal_link:
+            {}
+          pickup_platform_link:
+            pickup_platform_top:
+              {}
+      Update Interval: 0
+      Value: true
+    - Alpha: 0.75
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 1.940186858177185
+        Min Value: -0.0002560615539550781
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: AxisColor
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: DepthPointCloud
+      Position Transformer: XYZ
+      Queue Size: 5
+      Selectable: true
+      Size (Pixels): 2
+      Size (m): 0.009999999776482582
+      Style: Points
+      Topic: /camera/depth/points
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Class: moveit_rviz_plugin/PlanningScene
+      Enabled: true
+      Move Group Namespace: ""
+      Name: PlanningScene
+      Planning Scene Topic: move_group/monitored_planning_scene
+      Robot Description: robot_description
+      Scene Geometry:
+        Scene Alpha: 0.800000011920929
+        Scene Color: 50; 230; 50
+        Scene Display Time: 0.009999999776482582
+        Show Scene Geometry: true
+        Voxel Coloring: Z-Axis
+        Voxel Rendering: Occupied Voxels
+      Scene Robot:
+        Attached Body Color: 150; 50; 150
+        Links:
+          All Links Enabled: true
+          Expand Joint Details: false
+          Expand Link Details: false
+          Expand Tree: false
+          Link Tree Style: Links in Alphabetic Order
+          camera_color_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_color_optical_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_depth_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_depth_optical_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          camera_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          eef_mount_adapter:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_base:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_base_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          elfin_dummy_gripper:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          elfin_end_link:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          elfin_link1:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_link2:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_link3:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_link4:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_link5:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          elfin_link6:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          mid360_mount_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          suction_contact_frame:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+          suction_panel:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+            Value: true
+          world:
+            Alpha: 1
+            Show Axes: false
+            Show Trail: false
+        Robot Alpha: 0.5
+        Show Robot Collision: false
+        Show Robot Visual: true
+      Value: true
+    - Class: moveit_rviz_plugin/Trajectory
+      Color Enabled: false
+      Enabled: true
+      Interrupt Display: false
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+        camera_color_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_color_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_depth_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_depth_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        eef_mount_adapter:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_base:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_base_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_dummy_gripper:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_end_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        elfin_link1:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link2:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link3:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link4:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link5:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        elfin_link6:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        mid360_mount_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        suction_contact_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        suction_panel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        world:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+      Loop Animation: false
+      Name: PlannedPath
+      Robot Alpha: 0.5
+      Robot Color: 150; 50; 150
+      Robot Description: robot_description
+      Show Robot Collision: false
+      Show Robot Visual: true
+      Show Trail: false
+      State Display Time: 3x
+      Trail Step Size: 1
+      Trajectory Topic: move_group/display_planned_path
+      Use Sim Time: false
+      Value: true
+    - Class: rviz/Marker
+      Enabled: true
+      Marker Topic: /luggage/debug/ee_trace
+      Name: ee_trace
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Alpha: 1
+      Autocompute Intensity Bounds: true
+      Autocompute Value Bounds:
+        Max Value: 10
+        Min Value: -10
+        Value: true
+      Axis: Z
+      Channel Name: intensity
+      Class: rviz/PointCloud2
+      Color: 255; 255; 255
+      Color Transformer: Intensity
+      Decay Time: 0
+      Enabled: true
+      Invert Rainbow: false
+      Max Color: 255; 255; 255
+      Min Color: 0; 0; 0
+      Name: filtered_cloud
+      Position Transformer: XYZ
+      Queue Size: 10
+      Selectable: true
+      Size (Pixels): 3
+      Size (m): 0.009999999776482582
+      Style: Flat Squares
+      Topic: /move_group/realsense_d435/move_group/filtered_cloud
+      Unreliable: false
+      Use Fixed Frame: true
+      Use rainbow: true
+      Value: true
+    - Class: rviz/MarkerArray
+      Enabled: true
+      Marker Topic: /luggage/debug/reachability_atlas
+      Name: reachability_altas
+      Namespaces:
+        {}
+      Queue Size: 100
+      Value: true
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /luggage/semantic/overlay
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: SemanticOverlay
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+    - Class: rviz/Image
+      Enabled: true
+      Image Topic: /luggage/debug/detect_overlay
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: DetectOverlay
+      Normalize Range: true
+      Queue Size: 2
+      Transport Hint: raw
+      Unreliable: false
+      Value: true
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Default Light: true
+    Fixed Frame: world
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz/Interact
+      Hide Inactive Objects: true
+    - Class: rviz/MoveCamera
+    - Class: rviz/FocusCamera
+  Value: true
+  Views:
+    Current:
+      Class: rviz/Orbit
+      Distance: 6.793867111206055
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.05999999865889549
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Field of View: 0.7853981852531433
+      Focal Point:
+        X: 0.3635885715484619
+        Y: -0.5985098481178284
+        Z: -0.0027841702103614807
+      Focal Shape Fixed Size: true
+      Focal Shape Size: 0.05000000074505806
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.009999999776482582
+      Pitch: 0.40979692339897156
+      Target Frame: <Fixed Frame>
+      Yaw: 3.6068406105041504
+    Saved:
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+      - Class: rviz/Orbit
+        Distance: 5.624626159667969
+        Enable Stereo Rendering:
+          Stereo Eye Separation: 0.05999999865889549
+          Stereo Focal Distance: 1
+          Swap Stereo Eyes: false
+          Value: false
+        Field of View: 0.7853981852531433
+        Focal Point:
+          X: 1.7155828475952148
+          Y: 0.6437574028968811
+          Z: 0.2231726050376892
+        Focal Shape Fixed Size: true
+        Focal Shape Size: 0.05000000074505806
+        Invert Z Axis: false
+        Name: Orbit
+        Near Clip Distance: 0.009999999776482582
+        Pitch: 0.5149998664855957
+        Target Frame: <Fixed Frame>
+        Yaw: 3.630005359649658
+Window Geometry:
+  DetectOverlay:
+    collapsed: false
+  Displays:
+    collapsed: false
+  Height: 1022
+  Hide Left Dock: false
+  Hide Right Dock: false
+  PlannedPath - Trajectory Slider:
+    collapsed: false
+  QMainWindow State: 000000ff00000000fd0000000100000000000002c5000003a8fc0200000006fb0000003e0050006c0061006e006e0065006400500061007400680020002d0020005400720061006a006500630074006f0072007900200053006c00690064006500720000000000ffffffff0000001600000016fb000000100044006900730070006c006100790073000000003b0000030e000000c700fffffffb0000000a00560069006500770073000000003b0000050a000000a000fffffffb000000100044006900730070006c006100790073010000003b00000250000000c700fffffffb0000001a004400650074006500630074004f007600650072006c006100790100000291000000a60000001600fffffffb0000001e00530065006d0061006e007400690063004f007600650072006c00610079010000033d000000a60000001600ffffff00000480000003a800000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  SemanticOverlay:
+    collapsed: false
+  Views:
+    collapsed: false
+  Width: 1867
+  X: 84
+  Y: 131

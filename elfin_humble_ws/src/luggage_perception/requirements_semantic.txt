@@ -1,0 +1,28 @@
+# Python dependencies for the semantic perception pipeline
+# (semantic_segmenter_node + semantic_point_filter_node).
+#
+# Install via:
+#   pip3 install -r requirements_semantic.txt
+#
+# For CPU-only torch:
+#   pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+#   pip3 install -r requirements_semantic.txt --no-deps torch torchvision
+#
+# For CUDA 12.1:
+#   pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+#
+# The nodes degrade gracefully when torch/ultralytics are missing — the
+# segmenter falls back to a stub backend that publishes an all-background
+# mask, and the point filter republishes raw depth (see mask_timeout_sec /
+# fallback_to_raw in config/semantic_segmenter.yaml).
+
+torch>=2.0.0
+torchvision>=0.15.0
+ultralytics>=8.1.0          # YOLO-World open-vocabulary detection
+opencv-python-headless>=4.8.0
+numpy>=1.24.0
+PyYAML>=5.4
+# SAM2 provides pixel-accurate mask refinement for the "yolo_world_sam2"
+# backend. Not required for the "bbox_fill" or "stub" backends — the node
+# falls back to stub gracefully when sam2 is missing.
+sam2>=0.4.0

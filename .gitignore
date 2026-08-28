@@ -5,11 +5,12 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 
-# ROS / Catkin
+# ROS / Catkin / colcon
 **/build/
 **/devel/
 **/install/
 **/logs/
+**/log/
 .catkin_workspace
 
 # IDE
@@ -19,6 +20,23 @@ __pycache__/
 # Generated artifacts
 elfin_s20_visualization.html
 *.bag
+*.log
+*.bak
+*.deb
+
+# Keep Humble status evidence logs (the blanket *.log rule would drop them)
+!elfin_humble_ws/docs/status/evidence/**/*.log
 
 # Nested vendor clone metadata (flattened into monorepo)
 elfin_noetic_ws/src/elfin_s_robot/.git/
+
+# Raw CAD archives (keep extracted collision meshes)
+*.zip
+elfin_humble_ws/src/luggage_gazebo/models/suction_panel/V1.31*
+
+# ML weights (too large for git; download separately)
+*.pt
+elfin_humble_ws/src/luggage_perception/vendor/clip_pkg/
+elfin_humble_ws/src/luggage_perception/vendor/deps/
+elfin_humble_ws/src/luggage_perception/vendor/clip_models/
+elfin_humble_ws/src/luggage_perception/weights/

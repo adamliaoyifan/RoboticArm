@@ -170,6 +170,20 @@ See [`PROGRESS.md`](PROGRESS.md) for the full **development timeline** and miles
 
 ---
 
+## ROS 2 Humble workspace
+
+The ROS 2 Humble migration of the luggage loading stack lives at
+[`elfin_humble_ws/`](elfin_humble_ws/). It is a colcon workspace (MoveIt 2,
+Gazebo / `ros_gz`, luggage perception/planning/packing packages).
+
+YOLO / CLIP weights (`*.pt`) and raw point-cloud scans (`*.las`) are not in
+git. See [`elfin_humble_ws/docs/README.md`](elfin_humble_ws/docs/README.md)
+for migration plans and status.
+
+Draft image: [`elfin_humble_ws/Dockerfile.humble`](elfin_humble_ws/Dockerfile.humble).
+
+---
+
 ## ROS2 trajectory executor (Docker)
 
 The ROS2 Humble executor for deployment on Ubuntu 20.04 hosts lives at

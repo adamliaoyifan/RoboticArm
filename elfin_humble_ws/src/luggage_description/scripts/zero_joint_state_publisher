@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+from luggage_description.zero_joint_state_publisher import main
+
+if __name__ == "__main__":
+    main()

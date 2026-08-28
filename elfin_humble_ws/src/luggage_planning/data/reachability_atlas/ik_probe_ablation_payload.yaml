@@ -1,0 +1,291 @@
+results:
+  empty_load:
+    box_size: null
+    box_h: null
+    groups:
+      A_opening:
+        n_cells: 18
+        configs:
+          1_baseline:
+            transit_ok: 10
+            contact_ok: 10
+            transit_pct: 55.6
+            contact_pct: 55.6
+          2_+seeds:
+            transit_ok: 11
+            contact_ok: 11
+            transit_pct: 61.1
+            contact_pct: 61.1
+          3_-collision:
+            transit_ok: 18
+            contact_ok: 18
+            transit_pct: 100.0
+            contact_pct: 100.0
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 12
+            transit_pct: 0.0
+            contact_pct: 66.7
+          5_+tol:
+            transit_ok: 12
+            contact_ok: 12
+            transit_pct: 66.7
+            contact_pct: 66.7
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 18
+            transit_pct: 0.0
+            contact_pct: 100.0
+      B_floor:
+        n_cells: 45
+        configs:
+          1_baseline:
+            transit_ok: 10
+            contact_ok: 0
+            transit_pct: 22.2
+            contact_pct: 0.0
+          2_+seeds:
+            transit_ok: 10
+            contact_ok: 0
+            transit_pct: 22.2
+            contact_pct: 0.0
+          3_-collision:
+            transit_ok: 21
+            contact_ok: 20
+            transit_pct: 46.7
+            contact_pct: 44.4
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 0
+            transit_pct: 0.0
+            contact_pct: 0.0
+          5_+tol:
+            transit_ok: 10
+            contact_ok: 0
+            transit_pct: 22.2
+            contact_pct: 0.0
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 20
+            transit_pct: 0.0
+            contact_pct: 44.4
+  carryon:
+    box_size:
+    - 0.55
+    - 0.4
+    - 0.25
+    box_h: 0.25
+    groups:
+      A_opening:
+        n_cells: 18
+        configs:
+          1_baseline:
+            transit_ok: 10
+            contact_ok: 10
+            transit_pct: 55.6
+            contact_pct: 55.6
+          2_+seeds:
+            transit_ok: 11
+            contact_ok: 11
+            transit_pct: 61.1
+            contact_pct: 61.1
+          3_-collision:
+            transit_ok: 18
+            contact_ok: 18
+            transit_pct: 100.0
+            contact_pct: 100.0
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 12
+            transit_pct: 0.0
+            contact_pct: 66.7
+          5_+tol:
+            transit_ok: 12
+            contact_ok: 12
+            transit_pct: 66.7
+            contact_pct: 66.7
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 18
+            transit_pct: 0.0
+            contact_pct: 100.0
+      B_floor:
+        n_cells: 15
+        configs:
+          1_baseline:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          2_+seeds:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          3_-collision:
+            transit_ok: 7
+            contact_ok: 7
+            transit_pct: 46.7
+            contact_pct: 46.7
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 0
+            transit_pct: 0.0
+            contact_pct: 0.0
+          5_+tol:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 7
+            transit_pct: 0.0
+            contact_pct: 46.7
+  standard:
+    box_size:
+    - 0.7
+    - 0.45
+    - 0.28
+    box_h: 0.28
+    groups:
+      A_opening:
+        n_cells: 18
+        configs:
+          1_baseline:
+            transit_ok: 10
+            contact_ok: 10
+            transit_pct: 55.6
+            contact_pct: 55.6
+          2_+seeds:
+            transit_ok: 11
+            contact_ok: 11
+            transit_pct: 61.1
+            contact_pct: 61.1
+          3_-collision:
+            transit_ok: 18
+            contact_ok: 18
+            transit_pct: 100.0
+            contact_pct: 100.0
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 12
+            transit_pct: 0.0
+            contact_pct: 66.7
+          5_+tol:
+            transit_ok: 12
+            contact_ok: 12
+            transit_pct: 66.7
+            contact_pct: 66.7
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 18
+            transit_pct: 0.0
+            contact_pct: 100.0
+      B_floor:
+        n_cells: 15
+        configs:
+          1_baseline:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          2_+seeds:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          3_-collision:
+            transit_ok: 7
+            contact_ok: 7
+            transit_pct: 46.7
+            contact_pct: 46.7
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 0
+            transit_pct: 0.0
+            contact_pct: 0.0
+          5_+tol:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 7
+            transit_pct: 0.0
+            contact_pct: 46.7
+  large:
+    box_size:
+    - 0.8
+    - 0.5
+    - 0.32
+    box_h: 0.32
+    groups:
+      A_opening:
+        n_cells: 18
+        configs:
+          1_baseline:
+            transit_ok: 10
+            contact_ok: 10
+            transit_pct: 55.6
+            contact_pct: 55.6
+          2_+seeds:
+            transit_ok: 11
+            contact_ok: 11
+            transit_pct: 61.1
+            contact_pct: 61.1
+          3_-collision:
+            transit_ok: 18
+            contact_ok: 18
+            transit_pct: 100.0
+            contact_pct: 100.0
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 12
+            transit_pct: 0.0
+            contact_pct: 66.7
+          5_+tol:
+            transit_ok: 12
+            contact_ok: 12
+            transit_pct: 66.7
+            contact_pct: 66.7
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 18
+            transit_pct: 0.0
+            contact_pct: 100.0
+      B_floor:
+        n_cells: 15
+        configs:
+          1_baseline:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          2_+seeds:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          3_-collision:
+            transit_ok: 7
+            contact_ok: 7
+            transit_pct: 46.7
+            contact_pct: 46.7
+          4_contact-only:
+            transit_ok: 0
+            contact_ok: 0
+            transit_pct: 0.0
+            contact_pct: 0.0
+          5_+tol:
+            transit_ok: 5
+            contact_ok: 0
+            transit_pct: 33.3
+            contact_pct: 0.0
+          6_all-relaxed:
+            transit_ok: 0
+            contact_ok: 7
+            transit_pct: 0.0
+            contact_pct: 46.7
+scene_tf: /catkin_ws/src/luggage_description/config/scene_tf.yaml.example

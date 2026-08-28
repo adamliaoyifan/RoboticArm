@@ -1,0 +1,28 @@
+<launch>
+  <!-- RealSense D435 + Cargo map debug visualization (RViz1).
+       Prerequisite: sim + mapper already running, e.g.:
+         Terminal 1: roslaunch luggage_bringup active_loading.launch
+         Terminal 2: roslaunch luggage_bringup camera_view.launch
+
+       RViz layers: RobotModel, TF, depth cloud, Cargo markers,
+       debug explore/pick/planning markers, MoveIt planning scene + planned path.
+       RGB/Depth image_view windows are optional. -->
+
+  <arg name="rviz_config" default="$(find luggage_bringup)/config/camera_view.rviz"/>
+  <arg name="show_rviz" default="true"/>
+  <arg name="show_rgb_view" default="true"/>
+  <arg name="show_depth_view" default="true"/>
+
+  <node if="$(arg show_rgb_view)" name="rgb_view" pkg="image_view" type="image_view" output="screen">
+    <remap from="image" to="/camera/color/image_raw"/>
+    <param name="window_name" value="RGB Camera"/>
+  </node>
+
+  <node if="$(arg show_depth_view)" name="depth_view" pkg="image_view" type="image_view" output="screen">
+    <remap from="image" to="/camera/depth/image_raw"/>
+    <param name="window_name" value="Depth Camera"/>
+  </node>
+
+  <node if="$(arg show_rviz)" name="rviz_camera" pkg="rviz" type="rviz" output="screen"
+        args="-d $(arg rviz_config)"/>
+</launch>

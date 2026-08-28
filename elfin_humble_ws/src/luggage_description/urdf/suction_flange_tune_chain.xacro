@@ -1,0 +1,112 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="suction_flange_tune_chain">
+
+  <!-- 6-DOF tune chain for suction panel flange (tx,ty,tz prismatic + rx,ry,rz revolute).
+       Mirrors adapter_mount_tune_chain.xacro but with suction_flange_* joint names.
+       The final link (suction_flange_rz_link) is where the flange mesh is attached. -->
+  <xacro:macro name="suction_flange_tune_chain" params="parent">
+    <xacro:property name="sf_tune_limit_linear" value="0.30"/>
+    <xacro:property name="sf_tune_rot" value="3.14159265359"/>
+    <xacro:property name="sf_tune_damping" value="500.0"/>
+
+    <xacro:macro name="sf_mount_link_gazebo" params="link_name">
+      <gazebo reference="${link_name}">
+        <gravity>false</gravity>
+        <selfCollide>false</selfCollide>
+        <kinematic>true</kinematic>
+      </gazebo>
+    </xacro:macro>
+
+    <xacro:macro name="sf_mount_joint_gazebo" params="joint_name">
+      <gazebo reference="${joint_name}">
+        <implicitSpringDamper>true</implicitSpringDamper>
+        <provideFeedback>false</provideFeedback>
+      </gazebo>
+    </xacro:macro>
+
+    <link name="suction_flange_tx_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_tx" type="prismatic">
+      <parent link="${parent}"/>
+      <child link="suction_flange_tx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-sf_tune_limit_linear}" upper="${sf_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_tx_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_tx"/>
+
+    <link name="suction_flange_ty_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_ty" type="prismatic">
+      <parent link="suction_flange_tx_link"/>
+      <child link="suction_flange_ty_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-sf_tune_limit_linear}" upper="${sf_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_ty_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_ty"/>
+
+    <link name="suction_flange_tz_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_tz" type="prismatic">
+      <parent link="suction_flange_ty_link"/>
+      <child link="suction_flange_tz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-sf_tune_limit_linear}" upper="${sf_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_tz_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_tz"/>
+
+    <link name="suction_flange_rx_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_rx" type="revolute">
+      <parent link="suction_flange_tz_link"/>
+      <child link="suction_flange_rx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-sf_tune_rot}" upper="${sf_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_rx_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_rx"/>
+
+    <link name="suction_flange_ry_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_ry" type="revolute">
+      <parent link="suction_flange_rx_link"/>
+      <child link="suction_flange_ry_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-sf_tune_rot}" upper="${sf_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_ry_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_ry"/>
+
+    <link name="suction_flange_rz_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="suction_flange_rz" type="revolute">
+      <parent link="suction_flange_ry_link"/>
+      <child link="suction_flange_rz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-sf_tune_rot}" upper="${sf_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${sf_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:sf_mount_link_gazebo link_name="suction_flange_rz_link"/>
+    <xacro:sf_mount_joint_gazebo joint_name="suction_flange_rz"/>
+  </xacro:macro>
+
+</robot>

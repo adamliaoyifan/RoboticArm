@@ -1,0 +1,34 @@
+# Manual step control for the active-loading state machine.
+#
+# The orchestrator owns the pipeline; a front-end (manual_loading_gui) drives it
+# one state at a time instead of re-implementing the states itself. In auto mode
+# the step gate is a no-op, so an automated acceptance run is unaffected.
+#
+# command:
+#   step   - run exactly one state, then pause again
+#   run    - run freely until a breakpoint, the next pause, or Idle
+#   run_to - run until target_state is about to execute, then pause
+#   pause  - pause before the next state
+#   abort  - end the run cleanly at the next state boundary (no half commit)
+#   taint  - mark the session as touched by out-of-band service calls, so its
+#            events file can never be presented as acceptance evidence
+#   status - query only, no state change
+string command
+# Only read for run_to.
+string target_state
+# States to pause before. Empty leaves the current set unchanged; use
+# clear_breakpoints to remove them all.
+string[] breakpoints
+bool clear_breakpoints
+# Free-text reason recorded with a taint command.
+string reason
+---
+bool success
+string message
+# State the orchestrator is paused before, or the state it is executing.
+string paused_state
+bool paused
+int32 placed_count
+string run_mode
+bool probe_touched
+string[] active_breakpoints

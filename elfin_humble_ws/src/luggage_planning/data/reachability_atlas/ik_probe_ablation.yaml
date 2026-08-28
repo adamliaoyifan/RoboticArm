@@ -1,0 +1,101 @@
+results:
+  A_opening:
+    n_cells: 18
+    configs:
+      1_baseline:
+        transit_ok: 10
+        contact_ok: 10
+        transit_pct: 55.6
+        contact_pct: 55.6
+      2_+seeds:
+        transit_ok: 11
+        contact_ok: 11
+        transit_pct: 61.1
+        contact_pct: 61.1
+      3_-collision:
+        transit_ok: 18
+        contact_ok: 18
+        transit_pct: 100.0
+        contact_pct: 100.0
+      4_contact-only:
+        transit_ok: 0
+        contact_ok: 12
+        transit_pct: 0.0
+        contact_pct: 66.7
+      5_+tol:
+        transit_ok: 12
+        contact_ok: 12
+        transit_pct: 66.7
+        contact_pct: 66.7
+      6_all-relaxed:
+        transit_ok: 0
+        contact_ok: 18
+        transit_pct: 0.0
+        contact_pct: 100.0
+  B_floor:
+    n_cells: 27
+    configs:
+      1_baseline:
+        transit_ok: 6
+        contact_ok: 0
+        transit_pct: 22.2
+        contact_pct: 0.0
+      2_+seeds:
+        transit_ok: 6
+        contact_ok: 0
+        transit_pct: 22.2
+        contact_pct: 0.0
+      3_-collision:
+        transit_ok: 12
+        contact_ok: 12
+        transit_pct: 44.4
+        contact_pct: 44.4
+      4_contact-only:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      5_+tol:
+        transit_ok: 6
+        contact_ok: 0
+        transit_pct: 22.2
+        contact_pct: 0.0
+      6_all-relaxed:
+        transit_ok: 0
+        contact_ok: 12
+        transit_pct: 0.0
+        contact_pct: 44.4
+  C_deep:
+    n_cells: 54
+    configs:
+      1_baseline:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      2_+seeds:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      3_-collision:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      4_contact-only:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      5_+tol:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+      6_all-relaxed:
+        transit_ok: 0
+        contact_ok: 0
+        transit_pct: 0.0
+        contact_pct: 0.0
+scene_tf: /catkin_ws/src/luggage_description/config/scene_tf.yaml.example

@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <!-- Pedestal box. Link origin at bottom-center on ground; geometry centered at z=height/2. -->
+  <model name="robot_pedestal">
+    <static>true</static>
+    <link name="pedestal_link">
+      <visual name="visual">
+        <pose>0 0 0.43 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.05 0.74 0.86</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.35 0.35 0.38 1</ambient>
+          <diffuse>0.45 0.45 0.48 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision">
+        <pose>0 0 0.43 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>1.05 0.74 0.86</size>
+          </box>
+        </geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

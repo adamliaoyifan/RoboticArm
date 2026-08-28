@@ -1,0 +1,75 @@
+<launch>
+  <!-- One-click reachability atlas builder: Gazebo + MoveIt + atlas builder.
+       Builds collision-aware reachability atlases for the empty-load baseline
+       and per-box-size payload variants.
+
+       Usage:
+         roslaunch luggage_bringup build_reachability_atlas.launch
+
+       Optional args (matching build_payload_atlas_sweep.sh semantics):
+         roslaunch luggage_bringup build_reachability_atlas.launch \
+           scene_tf_config:=/path/to/scene_tf.yaml \
+           output_dir:=/path/to/output \
+           arm_model:=s20 \
+           resolution_xyz:=0.15 \
+           avoid_collisions:=true
+
+       Payload-aware variants (one launch per box size):
+         roslaunch luggage_bringup build_reachability_atlas.launch \
+           payload_enabled:=true \
+           payload_size:="[0.55,0.40,0.25]" \
+           payload_offset:="[0.0,0.0,0.125]"
+  -->
+  <arg name="scene_tf_config"
+       default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+  <arg name="output_dir"
+       default="$(find luggage_planning)/data/reachability_atlas"/>
+  <arg name="arm_model" default="s20"/>
+  <arg name="resolution_xyz" default="0.15"/>
+  <arg name="avoid_collisions" default="true"/>
+
+  <!-- Payload-aware atlas (§5.6): attach a nominal box to the EE. -->
+  <arg name="payload_enabled" default="false"/>
+  <arg name="payload_size" default="[0.80,0.50,0.32]"/>
+  <arg name="payload_offset" default=""/>
+  <arg name="payload_attach_link" default="suction_contact_frame"/>
+
+  <!-- ========== Gazebo + Scene ========== -->
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch">
+    <arg name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="spawn_at_observe" value="true"/>
+    <arg name="hold_observe_on_start" value="true"/>
+    <arg name="clear_existing_models" value="true"/>
+    <arg name="spawn_suitcases" value="false"/>
+  </include>
+
+  <!-- ========== MoveIt (no RViz by default) ========== -->
+  <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">
+    <arg name="display" value="false"/>
+    <arg name="load_urdf" value="false"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+  </include>
+
+  <!-- ========== Scene manager (syncs container/pedestal as MoveIt collision) ========== -->
+  <node pkg="luggage_planning" type="scene_manager_node.py" name="scene_manager" output="screen"/>
+
+  <!-- ========== Atlas Builder ========== -->
+  <!-- The builder waits up to 60 s for /compute_ik (MoveIt), so the sleep
+       here is just to let Gazebo + MoveIt settle before the node starts. -->
+  <node pkg="luggage_planning" type="reachability_atlas_builder.py"
+        name="reachability_atlas_builder" output="screen"
+        launch-prefix="bash -c 'sleep 15; exec $0 $@' ">
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <param name="output_dir" value="$(arg output_dir)"/>
+    <param name="resolution_xyz" value="$(arg resolution_xyz)"/>
+    <param name="avoid_collisions" value="$(arg avoid_collisions)"/>
+
+    <!-- Payload parameters -->
+    <param name="payload_enabled" value="$(arg payload_enabled)"/>
+    <param name="payload_size" value="$(arg payload_size)"/>
+    <param name="payload_attach_link" value="$(arg payload_attach_link)"/>
+    <param if="$(eval arg('payload_offset') != '')" name="payload_offset"
+           value="$(arg payload_offset)"/>
+  </node>
+</launch>

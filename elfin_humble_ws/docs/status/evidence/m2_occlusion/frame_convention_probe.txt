@@ -1,0 +1,6 @@
+cloud frame_id: camera_depth_optical_frame points: 307200
+camera-frame stats: x 0.19..inf  y -0.78..inf  z -0.71..inf
+via camera_depth_optical_frame: z -inf..2.41 median 1.66 | pts z<1.2: 104702  z in[0.8,1.2]: 0  z>1.7: 140039
+   x nan..nan y nan..nan
+via camera_link: z nan..nan median nan | pts z<1.2: 80264  z in[0.8,1.2]: 74536  z>1.7: 0
+   x nan..nan y -0.71..inf

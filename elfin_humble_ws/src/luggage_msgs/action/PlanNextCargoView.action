@@ -1,0 +1,29 @@
+# Plan next cargo exploration view.
+string mode
+float64[] current_joint_values
+string[] joint_names
+int32 views_used
+# Start a fresh candidate-selection session. Retries for the same view count
+# keep this false so rejected candidates are not selected again.
+bool reset_session
+# Return a candidate for visualization without mutating session state.
+bool preview_only
+---
+bool success
+bool done
+string message
+float64[] joint_values
+string[] joint_names
+int32 view_index
+geometry_msgs/Pose camera_pose
+geometry_msgs/Pose[] waypoints
+string plan_type
+string stage
+string diagnostics
+string candidate_id
+string lane_id
+float64 insertion_depth
+int64 map_revision
+---
+string stage
+string candidate_id

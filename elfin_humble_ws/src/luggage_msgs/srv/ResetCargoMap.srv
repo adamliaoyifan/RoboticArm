@@ -1,0 +1,4 @@
+# Clear Cargo voxel map; all interior voxels become unknown.
+---
+bool success
+string message

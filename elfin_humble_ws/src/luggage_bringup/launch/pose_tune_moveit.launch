@@ -1,0 +1,7 @@
+<launch>
+  <!-- Observe pose tuning via MoveIt RViz interactive marker + RGB GUI + workspace preview. -->
+  <include file="$(find luggage_bringup)/launch/pose_tune.launch">
+    <arg name="display_moveit" value="true"/>
+    <arg name="enable_workspace_viz" value="true"/>
+  </include>
+</launch>

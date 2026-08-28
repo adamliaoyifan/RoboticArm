@@ -1,0 +1,97 @@
+{
+  "attach_xy": {
+    "mean": null,
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "std": null
+  },
+  "attach_z_abs": {
+    "mean": null,
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "std": null
+  },
+  "backend": "bbox_fill:yolov8s-world.pt",
+  "by_catalog": {
+    "carryon": {
+      "detect_ok": 2,
+      "n": 7,
+      "plan_ok": 0,
+      "retreat_ok": 0
+    },
+    "large": {
+      "detect_ok": 1,
+      "n": 6,
+      "plan_ok": 0,
+      "retreat_ok": 0
+    },
+    "standard": {
+      "detect_ok": 3,
+      "n": 7,
+      "plan_ok": 0,
+      "retreat_ok": 0
+    }
+  },
+  "by_visual": {
+    "suitcase_loafbrr": {
+      "detect_ok": 3,
+      "n": 12,
+      "plan_ok": 0,
+      "retreat_ok": 0
+    },
+    "suitcase_vintage": {
+      "detect_ok": 3,
+      "n": 8,
+      "plan_ok": 0,
+      "retreat_ok": 0
+    }
+  },
+  "commit": "",
+  "date": "2026-08-28",
+  "detect_err_xy": {
+    "p50": 0.0044266357503276845,
+    "p95": 0.023406643549844272
+  },
+  "detect_pass_rate": 1.0,
+  "dirty": false,
+  "expected_retreat_dz": 0.35,
+  "fail_codes": {
+    "GOTO_FAILED": 14,
+    "PLAN_pre_grasp": 6
+  },
+  "graph_error": "",
+  "interrupted": false,
+  "n": 20,
+  "n_detect_compared": 6,
+  "n_detect_ok": 6,
+  "n_plan_ok": 0,
+  "n_requested": 20,
+  "n_retreat_ok": 0,
+  "observe_pose": "pickup_observe",
+  "pick_pass_rate": 0.0,
+  "plan_pass_rate": 0.0,
+  "porcelain": "",
+  "retreat_delta_z": {
+    "mean": null,
+    "n": 0,
+    "p50": null,
+    "p95": null,
+    "std": null
+  },
+  "retreat_pass_rate": 0.0,
+  "retreat_tol": 0.08,
+  "ros_domain_id": "0",
+  "segment_failures": {
+    "pre_grasp": 6
+  },
+  "sequence_ids": "carryon,standard,large",
+  "tol_iou": 0.6,
+  "tol_size": 0.05,
+  "tol_xy": 0.03,
+  "tol_yaw": 0.15,
+  "tol_z": 0.02,
+  "use_semantic": true,
+  "visual_kind": "mesh"
+}

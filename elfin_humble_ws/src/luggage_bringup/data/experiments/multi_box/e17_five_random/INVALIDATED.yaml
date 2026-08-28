@@ -1,0 +1,15 @@
+schema_version: 1
+status: invalidated
+date: '2026-08-11'
+reason: >-
+  The orchestrator called clear_current_box after each logical commit, and the
+  spawner deleted the corresponding Gazebo model. placed_count therefore did
+  not represent persistent physical cargo.
+additional_missing_gates:
+  - actual_yaw_roll_pitch_not_measured
+  - suction_tilt_was_allowed_up_to_0.35_rad
+  - post_place_rgbd_verify_not_passing
+reuse_policy: >-
+  Logs may be used for detector/planner/state-machine diagnosis only. No run
+  may be counted toward physical multi-box acceptance after the persistence
+  fix; restart from seed 0.

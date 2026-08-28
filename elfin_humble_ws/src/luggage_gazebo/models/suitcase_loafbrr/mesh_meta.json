@@ -1,0 +1,11 @@
+{
+  "id": "suitcase_loafbrr",
+  "native_wdh_m": [
+    0.6448502540588379,
+    0.502486526966095,
+    0.2986837066709995
+  ],
+  "unit_aabb": true,
+  "convention": "X=width Y=depth Z=height, origin at AABB center",
+  "handle": "telescopic poles removed"
+}

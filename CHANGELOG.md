@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-28 — ROS 2 Humble workspace snapshot
+
+- Add `elfin_humble_ws/`: colcon workspace for the ROS 2 Humble luggage stack
+  (perception, planning, packing, Gazebo, MoveIt 2, docs).
+- ML weights, CLIP vendor blobs, and raw LAS scans remain local-only.
+
 ## 2026-05-28 — Container inspect pipeline (Phase 1)
 
 - **Container aim**: `aim_camera_at_container` service — look-at IK on `camera_depth_optical_frame`, optional `elfin_link6` XY path constraints, MoveIt plan/execute.

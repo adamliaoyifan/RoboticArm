@@ -1,0 +1,145 @@
+# Cargo interior exploration: geometry-driven smart views and probes.
+# Copy to exploration.yaml and tune task-space parameters with pose_tune_moveit.launch.
+
+voxel_resolution: 0.10
+max_views: 8
+unknown_threshold: 0.15
+settle_time_sec: 0.5
+
+joint_names:
+  - elfin_joint1
+  - elfin_joint2
+  - elfin_joint3
+  - elfin_joint4
+  - elfin_joint5
+  - elfin_joint6
+
+# Smart Phase 1 frontier scoring and workspace-preview constraints.
+view_planning:
+  camera_z_max: 1.45      # camera optical origin must stay below container top
+  wrist_z_max: 1.55       # elfin_link6 height ceiling
+  coverage_radius: 0.9    # frontier points within this distance of look_at count
+  alignment_min: 0.2      # min cos(angle) between view ray and frontier direction
+
+# Camera-model scoring for sensed interior candidates. Safety/corridor gates are
+# applied before these weights and can never be overridden by a high score.
+view_scoring:
+  information_gain_weight: 1.0
+  depth_weight: 0.15
+  risk_weight: 0.50
+  min_information_gain: 1.0
+  max_range: 2.5
+  pixel_stride: 16
+  range_decay: 2.5
+  grazing_power: 1.0
+  # Also measure how much of the fixed container inner floor each candidate
+  # camera actually sees. Recorded in selection_diagnostics and visualized on
+  # /luggage/debug/floor_coverage; it does not affect ranking or any gate.
+  evaluate_floor_coverage: true
+
+# Smart geometry-driven exploration (mode: smart).
+# Generates two-phase viewpoints from container dimensions. Phase 0 observes the opening from
+# a small arc above it; phase 1 sweeps a grid of viewpoints just outside
+# the opening looking into the interior. All views are filtered by tilt
+# (optical +Z vs world -Z) and IK reachability before being returned.
+smart_explore:
+  enabled: true
+  arm_reach: 1.6           # meters; views farther than this from base are dropped
+  phase0:
+    num_views: 3           # lateral samples across the opening width (hard cap)
+    arc_radius: 0.30       # standoff along the opening normal (meters)
+    height_above_opening: 0.60  # camera height above opening center (meters)
+    # Evaluated against the TF-derived executed downward orientation in
+    # strict-down mode (not the legacy opening-center look-at quaternion).
+    max_tilt_deg: 15.0
+    # Marginal-gain early stop (mirrors interior_probe): after at least one
+    # phase0 view, stop issuing more opening-arc views once the unknown_ratio
+    # improvement falls below min_improvement for stagnation_limit views in a
+    # row, and fall straight through to phase1. Never skips the first view.
+    min_improvement: 0.01
+    stagnation_limit: 1
+    # FOV early stop: before handing an about-to-run phase0 candidate (past
+    # the first) to motion_planner, skip it and the rest if its
+    # inside_container_fov_ratio is below this. 0.0 = disabled (never skips)
+    # until calibrated against real values from a live run -- do not guess a
+    # nonzero threshold without first checking selection_diagnostics/logs for
+    # the actual ratio a corrected (into-container) suction-down phase0 view
+    # achieves.
+    min_inside_fov: 0.0
+  phase1:
+    lateral_steps: 3       # samples across opening width
+    height_steps: 3        # samples from opening bottom to top
+    standoff_values: [0.05, 0.15, 0.30]  # distances outside opening (meters)
+    max_tilt_deg: 15.0     # strict-down interior views (was 60)
+    look_depth_ratio: 0.3  # look_at depth into container (fraction of inner_width)
+    camera_down_mode: true # use camera-down interior geometry + suction-down orientation
+  ik:
+    timeout: 0.2           # per-attempt IK timeout (seconds)
+    attempts: 3            # IK retries per candidate
+    avoid_collisions: true
+  termination:
+    unknown_threshold: 0.15  # stop when unknown_ratio <= this
+    max_views: 12            # hard cap on total views returned
+
+# Dual camera-down + suction-down path constraints for smart explore (and place
+# transit). The camera optical +Z and the suction normal are at a fixed
+# ~12.25 deg angle in the suction_panel frame, so the suction-down camera
+# orientation tilts the camera by that angle to land the suction on base -Z.
+# Feasibility (camera_max_tilt >= inter-axis) is checked at startup from TF.
+downward_constraints:
+  enabled: true
+  primary_constraint: suction # one OMPL constraint; camera is FK-validated
+  align_before_probe: true    # goal-only transition onto strict-down manifold
+  # Tolerance is around the TF-derived suction-down camera orientation (which
+  # is itself ~12.25 deg off straight-down). 18 deg admits the observe start
+  # pose (marginally outside 15 deg) so MoveIt does not enter its separate
+  # "planning to path constraints" phase, which produced branch-jumping wrist
+  # paths. Suction still lands at 0 deg (well within suction_max_tilt_deg).
+  camera_max_tilt_deg: 18.0
+  suction_max_tilt_deg: 5.0   # suction normal vs base -Z budget (rad 0.087)
+  free_yaw: true              # leave rotation about the down axis free
+  strict: true                # reject trajectories violating the tilt budgets
+  validate_trajectory: true   # per-point FK tilt check before execute
+  candidate_min_separation_m: 0.08
+
+# Camera-down probes whose optical origin is moved through the opening and
+# inside the container. This mode uses explicit aperture/wall clearances and
+# returns a pre-opening -> aperture -> internal Cartesian sequence.
+interior_probe:
+  enabled: true
+  lateral_steps: 3
+  depth_steps: 3
+  camera_z: null             # null keeps the optical origin at opening-center Z
+  depth_min_from_opening: 0.20
+  depth_max_ratio: 0.75
+  wall_clearance: 0.15
+  opening_clearance: 0.20    # pre-opening distance along outward normal
+  aperture_margin: 0.12      # inset safe window for wrist/camera envelope
+  look_down: 0.80
+  coverage_radius: 0.65
+  ik:
+    timeout: 0.5
+    attempts: 5
+    avoid_collisions: true
+  termination:
+    unknown_threshold: 0.15
+    max_views: 9
+    min_improvement: 0.005
+    stagnation_limit: 2
+
+# Receding-horizon safety budgets. One lane may deepen monotonically; changing
+# lanes requires retreat through the aperture.
+interior_loop:
+  max_depth_steps: 4
+  max_seconds: 120.0
+  max_candidate_attempts: 4
+  corridor_min_confidence: 0.95
+  depth_step: 0.15
+  camera_envelope:
+    half_width: 0.08
+    half_height: 0.05
+    physical_clearance: 0.05
+
+meta:
+  name: cargo_exploration_v1
+  version: 0.1.0

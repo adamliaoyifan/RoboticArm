@@ -1,0 +1,51 @@
+# Hybrid fiducial + RGB-D opening estimator defaults.
+# All geometry is expressed in the incoming PointCloud2 frame. Transform the
+# tag pose upstream into that same frame.
+
+hardware_strict: false
+
+tag_pose_topic: /luggage/container/tag_opening_pose
+depth_points_topic: /camera/depth/points
+output_frame: ""
+inner_size: [1.49, 1.97, 2.01]
+
+# The default adapter consumes geometry_msgs/PoseStamped and interprets local
+# +X as aperture width and local +Z as the outward plane normal. Set this to
+# "your_package.your_module:function" for another message/pose convention,
+# and set prior_message_type to that adapter's ROS message type. The type is
+# resolved at runtime, so no AprilTag package is required by this foundation.
+prior_message_type: geometry_msgs/PoseStamped
+prior_adapter: ""
+tag_aperture_width: 1.0
+tag_aperture_height: 1.0
+tag_confidence: 0.8
+
+# Optional normal-sign hint for depth-only operation, in the cloud frame.
+# Omit sensor_origin when the input plane orientation sign is not important.
+max_cloud_points: 12000
+
+estimator:
+  plane_distance_threshold: 0.012
+  prior_plane_window: 0.12
+  prior_aperture_margin: 0.20
+  ransac_iterations: 160
+  min_depth_points: 35
+  max_depth_points: 6000
+  aperture_quantile: 0.03
+  min_aperture_extent: 0.05
+  max_normal_deviation_deg: 35.0
+  max_age_sec: 0.75
+  min_confidence: 0.45
+  covariance_floor_position: 0.002
+  covariance_floor_angle_deg: 0.5
+  random_seed: 17
+
+# Disabled neutral fallback. Populate only when a site has a surveyed opening.
+fallback_prior:
+  enabled: false
+  center: [0.0, 0.0, 0.0]
+  normal: [0.0, 0.0, 1.0]
+  width_axis: [1.0, 0.0, 0.0]
+  width: 1.0
+  height: 1.0
+  confidence: 0.35

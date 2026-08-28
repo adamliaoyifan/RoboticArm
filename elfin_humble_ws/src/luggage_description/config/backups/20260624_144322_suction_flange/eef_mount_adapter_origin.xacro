@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- EEF sensor mount adapter origin on elfin_link6. Tuned via eef_mount_adapter_tune_gui.py -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="adapter_mount_parent" value="elfin_link6"/>
+  <xacro:property name="adapter_mount_xyz" value="0 0 0"/>
+  <xacro:property name="adapter_mount_rpy" value="0 0 0"/>
+</robot>

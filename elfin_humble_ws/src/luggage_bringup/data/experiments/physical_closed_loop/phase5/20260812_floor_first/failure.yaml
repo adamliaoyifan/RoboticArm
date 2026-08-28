@@ -1,0 +1,71 @@
+failure_class: EXECUTION_BLOCKERS_AFTER_WORKSPACE_WIDENING
+seeds: [0, 1, 2]
+placed_count: 0
+map_revision: 1
+last_safe_action: >-
+  Every run stopped before or during the first commit. No ghost slot was
+  written and no partially placed box was left: the descend failures happen
+  before vacuum release, and the detect failure happens before pick.
+
+root_cause: >-
+  Not the placement policy. Removing the near-ROI rectangle moved placements
+  further out and deeper than any previously accepted run, and three
+  independent execution-layer gates that were never exercised in that region
+  now fail.
+
+blockers:
+  - id: RELEASE_SETTLE_MARGINAL
+    seeds: [0, 1]
+    detail: >-
+      _ensure_release_settled requires joint velocity < 0.03 rad/s held for
+      0.25 s within a 3.0 s window, retried once after a hold trajectory. At
+      the new, more extended placement poses the observed maximum was 0.0313
+      and 0.0302 rad/s, i.e. it never dropped under the bar. The velocity
+      criterion is a payload-safety property and must not be relaxed; the
+      question is whether 3.0 s is simply too short for a more extended arm to
+      damp out, or whether there is a persistent residual (gravity sag or
+      controller jitter) that more time will not fix.
+    next_step: >-
+      Log the velocity trace during the settle window at a far placement pose
+      and check whether it is decaying or flat. Decaying means raise
+      release_settle_timeout; flat means the residual is structural and needs a
+      controller or hold-trajectory fix. Do not raise the 0.03 tolerance.
+  - id: DETECT_SIZE_MISMATCH
+    seeds: [2]
+    detail: >-
+      RGBD width/depth extents came in 0.10/0.05 m under the manifest size, so
+      the hard gate aborted the run. Already a known defect: a partially
+      visible top face systematically underestimates width/depth.
+    next_step: >-
+      Demote width/depth delta to telemetry and keep height plus pose/yaw as
+      hard gates, as already recorded in docs/plans/TODO.md under E17R.
+  - id: STAGE_TRANSIT_PLANNING
+    seeds: [0]
+    detail: >-
+      Smoke run, second box: transit failed with
+      sampler_or_collision_disconnected and stage_mid with goal_ik_unavailable.
+      The motion filter only checks the transit and contact poses, so a
+      candidate can pass the filter and still have no plannable staging path.
+    partial_fix: >-
+      The backup-candidate path now also triggers on stage/stage_mid/stage_late
+      failures, not just transit/traverse. All of those run before insertion,
+      so retrying another candidate cannot leave a partial placement.
+    next_step: >-
+      Consider checking the portal and staging poses inside
+      placement_motion_filter so candidates are rejected before execution
+      rather than after.
+
+do_not_repeat:
+  - Do not restore the hand-tuned near ROI to make these runs pass; it caps
+    usable floor area at 38% of the container and is what forced stacking from
+    the second box.
+  - Do not raise the 0.03 rad/s release-settle tolerance or the 5 degree
+    suction tilt gate to get a commit.
+  - Do not read the zero utilization numbers as a regression of the ranking
+    policy; the candidate logs show floor-first working in every seed.
+
+next_hypothesis: >-
+  The three blockers are independent of the ranking change and of each other.
+  Fix RELEASE_SETTLE_MARGINAL and DETECT_SIZE_MISMATCH first, since they abort
+  before any placement can be measured, then re-run this matrix to get real
+  floor_coverage_ratio and volume_utilization numbers.

@@ -1,0 +1,38 @@
+sensor_preprocessor:
+  ros__parameters:
+    input.color_image: /camera/color/image_raw
+    input.depth_image: /camera/depth/image_raw
+    input.camera_info: /camera/depth/camera_info
+    input.color_camera_info: ""
+    input.camera_points: /camera/depth/points
+    input.joint_states: /joint_states
+    input.lidar: /livox/lidar
+    input.imu: /livox/imu
+    output.color_image: /luggage/preprocessed/camera/color/image
+    output.color_info: /luggage/preprocessed/camera/color/camera_info
+    output.depth_image: /luggage/preprocessed/camera/depth/image
+    output.depth_info: /luggage/preprocessed/camera/depth/camera_info
+    output.camera_points: /luggage/preprocessed/camera/depth/points
+    output.status: /luggage/preprocessed/status
+    # Gazebo rgbd_camera points are in camera_link axes; the header says optical.
+    input_cloud_data_frame: camera_link
+    output_cloud_frame: camera_depth_optical_frame
+    enable_lidar_output: false
+    enable_imu: false
+    camera_slop_sec: 0.020
+    camera_info_max_age_sec: 1.0
+    camera_maxlen: 10
+    camera_horizon_sec: 0.35
+    joint_horizon_sec: 1.0
+    stale_sec: 0.15
+    motion_gate.joint_names:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    motion_gate.velocity_threshold: 0.02
+    motion_gate.settle_time_sec: 0.5
+    motion_gate.joint_state_timeout_sec: 1.0
+    motion_gate.enabled: true

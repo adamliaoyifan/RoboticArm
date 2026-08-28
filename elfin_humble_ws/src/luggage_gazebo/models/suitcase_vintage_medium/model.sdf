@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <!-- Suitcase suitcase_vintage visual+collision 0.700 x 0.450 x 0.280 m, 15.00 kg -->
+  <model name="suitcase_vintage_medium">
+    <link name="suitcase_link">
+      <inertial>
+        <mass>15.0000</mass>
+        <inertia>
+          <ixx>0.351125</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.710500</iyy><iyz>0</iyz>
+          <izz>0.865625</izz>
+        </inertia>
+      </inertial>
+      <visual name="suitcase_vintage_medium_visual">
+        <geometry>
+          <mesh>
+            <uri>model://suitcase_vintage_medium/meshes/suitcase.stl</uri>
+            <scale>1.000000 1.000000 1.000000</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.32 0.24 0.14 1</ambient>
+          <diffuse>0.48 0.36 0.20 1</diffuse>
+        </material>
+      </visual>
+      <collision name="body_collision">
+        <geometry>
+          <mesh>
+            <uri>model://suitcase_vintage_medium/meshes/suitcase.stl</uri>
+            <scale>1.000000 1.000000 1.000000</scale>
+          </mesh>
+        </geometry>
+        <surface>
+          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
+        </surface>
+      </collision>
+    </link>
+  </model>
+</sdf>

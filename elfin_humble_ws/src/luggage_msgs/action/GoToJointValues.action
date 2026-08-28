@@ -1,0 +1,9 @@
+float64[] values
+string[] joint_names
+---
+bool success
+bool already_there
+string message
+---
+string stage
+float64 remaining_error

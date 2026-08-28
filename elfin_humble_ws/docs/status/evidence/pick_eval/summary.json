@@ -1,0 +1,111 @@
+{
+  "attach_xy": {
+    "mean": 3.2237271093456395e-06,
+    "n": 11,
+    "p50": 3.2916421980304783e-06,
+    "p95": 3.8499142942779985e-06,
+    "std": 4.783970149939379e-07
+  },
+  "attach_xy_gt": {
+    "mean": 0.00935200951233884,
+    "n": 11,
+    "p50": 0.0051615915429037325,
+    "p95": 0.028724916561770807,
+    "std": 0.009644052871492625
+  },
+  "attach_z_abs": {
+    "mean": 5.555712798953717e-05,
+    "n": 11,
+    "p50": 5.7015713159414005e-05,
+    "p95": 6.6682765102688e-05,
+    "std": 8.215773224518864e-06
+  },
+  "attach_z_gt_abs": {
+    "mean": 0.007603905448285386,
+    "n": 11,
+    "p50": 0.005296862516926959,
+    "p95": 0.013791567180281183,
+    "std": 0.00463502733479547
+  },
+  "backend": "bbox_fill:yolov8s-world.pt",
+  "by_catalog": {
+    "carryon": {
+      "detect_ok": 5,
+      "n": 7,
+      "plan_ok": 5,
+      "retreat_ok": 5
+    },
+    "large": {
+      "detect_ok": 2,
+      "n": 7,
+      "plan_ok": 2,
+      "retreat_ok": 2
+    },
+    "standard": {
+      "detect_ok": 4,
+      "n": 6,
+      "plan_ok": 4,
+      "retreat_ok": 4
+    }
+  },
+  "by_visual": {
+    "suitcase_loafbrr": {
+      "detect_ok": 7,
+      "n": 10,
+      "plan_ok": 7,
+      "retreat_ok": 7
+    },
+    "suitcase_vintage": {
+      "detect_ok": 4,
+      "n": 10,
+      "plan_ok": 4,
+      "retreat_ok": 4
+    }
+  },
+  "commit": "",
+  "date": "2026-08-28",
+  "detect_err_xy": {
+    "p50": 0.007548262629586126,
+    "p95": 0.03870367607734821
+  },
+  "detect_pass_rate": 0.5789473684210527,
+  "dirty": false,
+  "expected_retreat_dz": 0.35,
+  "fail_codes": {
+    "DETECT_ESTIMATION_FAILED": 1,
+    "DETECT_GATE:iou": 1,
+    "DETECT_GATE:size": 1,
+    "DETECT_GATE:xy": 6
+  },
+  "graph_error": "",
+  "interrupted": false,
+  "n": 20,
+  "n_detect_compared": 19,
+  "n_detect_ok": 11,
+  "n_plan_ok": 11,
+  "n_requested": 20,
+  "n_retreat_ok": 11,
+  "observe_pose": "pickup_observe",
+  "pick_pass_rate": 0.55,
+  "plan_pass_rate": 1.0,
+  "porcelain": "",
+  "retreat_delta_z": {
+    "mean": 0.3498873100662989,
+    "n": 11,
+    "p50": 0.3498895636406678,
+    "p95": 0.3499101637216665,
+    "std": 1.64625636684751e-05
+  },
+  "retreat_pass_rate": 1.0,
+  "retreat_tol": 0.08,
+  "ros_domain_id": "0",
+  "segment_failures": {},
+  "sequence_ids": "carryon,standard,large",
+  "tol_iou": 0.6,
+  "tol_size": 0.05,
+  "tol_xy": 0.03,
+  "tol_yaw": 0.15,
+  "tol_z": 0.02,
+  "use_semantic": true,
+  "visual_kind": "mesh"
+}

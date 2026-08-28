@@ -1,0 +1,26 @@
+# EEF sensor mount adapter on elfin_link6 (metres / radians).
+# Tuned via eef_mount_adapter_tune_gui.py. Saved values populate
+# eef_mount_adapter_origin.xacro for the production URDF.
+
+mount:
+  parent_link: elfin_link6
+  child_link: eef_mount_adapter
+  fixed:
+    xyz: [0.0, 0.0, 0.0]
+    rpy: [0.0, 0.0, 0.0]
+
+mesh:
+  file: package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl
+  scale: [0.001, 0.001, 0.001]
+
+physical:
+  mass: 0.120
+  inertia_approx: box_0.15_0.13_0.086
+
+mid360_mount_frame:
+  xyz: [0.0, 0.0, 0.05]
+  rpy: [0.0, 0.0, 0.0]
+
+meta:
+  name: eef_mount_adapter
+  version: 1.0.0

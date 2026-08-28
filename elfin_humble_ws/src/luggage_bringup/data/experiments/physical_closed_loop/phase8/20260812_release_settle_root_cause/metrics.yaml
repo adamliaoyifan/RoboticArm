@@ -1,0 +1,100 @@
+schema_version: 1
+
+# Experiment A: the arm parked at observe, not commanded to move, 60 s.
+idle_noise_floor:
+  pose: observe
+  duration_sec: 59.98
+  sample_count: 3000
+  max_over_joints:
+    p50: 0.0013316
+    p95: 0.0013316
+    p100: 0.0013316
+  # Zero variance to seven digits: this is a steady readback, not noise.
+  per_joint_constant_rad_s:
+    elfin_joint1: 0.000404
+    elfin_joint2: 0.000739
+    elfin_joint3: 0.000272
+    elfin_joint4: 0.001174
+    elfin_joint5: 0.001332
+    elfin_joint6: 0.000234
+
+# Experiment B: the same steady reading at other configurations. Once the arm
+# leaves observe, elfin_joint2 (shoulder, largest gravity torque) dominates.
+pose_dependence:
+  observe: 0.0013
+  observe_j2_plus_0.3: 0.0117
+  observe_j2_minus_0.3: 0.0100
+  observe_j3_plus_0.3: 0.0034
+  pickup_observe: 0.0066
+
+# Shoulder sweep: monotonic in arm extension, crossing the 0.03 gate.
+joint2_sweep_rad_s:
+  "-1.33_observe": 0.0012
+  "-1.10": 0.0090
+  "-0.90": 0.0145
+  "-0.70": 0.0206
+  "-0.50": 0.0253
+  "-0.30": 0.0275
+  "-0.10": 0.0345
+  "0.00": 0.0352
+  "0.10": 0.0359
+gate_tolerance_rad_s: 0.03
+phase5_observed_failures_rad_s: [0.0313, 0.0302]
+phase7_observed_failure_rad_s: 0.0318
+
+# The decisive measurement: what the joint actually did while the velocity
+# signal claimed it was moving.
+static_position_drift_over_10s_rad:
+  observe: 0.0
+  observe_j2_plus_0.3: -1.0e-8
+  observe_j2_minus_0.3: -2.26e-6
+  observe_j3_plus_0.3: 2.4e-7
+  pickup_observe: 6.0e-8
+implied_drift_if_velocity_were_real_rad:
+  observe: 0.013
+  observe_j2_plus_0.3: 0.098
+  observe_j2_minus_0.3: 0.081
+  pickup_observe: 0.049
+controller_tracking_error_rad: 9.0e-6   # constant, does not grow
+
+# The other half of the defect: the signal does not just read high at rest, it
+# reads low while moving.
+mid_motion_under_report:
+  window_sec: 1.5
+  joint: elfin_joint2
+  actual_speed_from_positions_rad_s: 0.4786
+  reported_peak_velocity_rad_s: 0.0349
+  under_report_factor: 13.7
+  old_velocity_rule_verdict: settled     # would have released the payload
+  new_displacement_rule_verdict: not_settled
+
+# Repeatability at the extended configurations that used to fail, alternating
+# between two poses so every settle window follows a real motion.
+repeatability:
+  iterations: 20
+  poses: [j2=0.10, "j2=-0.10 with j3=-0.90"]
+  displacement_pass: 20
+  displacement_pass_rate: 1.0
+  displacement_elapsed_p95_sec: 0.26
+  displacement_elapsed_max_sec: 0.26
+  velocity_pass: 0
+  velocity_pass_rate: 0.0
+  max_position_excursion_rad: 5.73e-6
+
+offline_tests:
+  file: luggage_planning/test/test_settle_criterion.py
+  count: 11
+  fixtures:
+    - settle_idle_observe.json
+    - settle_static_extended.json
+    - settle_mid_motion.json
+
+regression:
+  luggage_bringup: 119 passed
+  luggage_packing: 77 passed
+  luggage_planning_per_file: pass
+  luggage_planning_whole_suite: 17 failed / 171 passed
+  # Pre-existing and documented in plans/TODO.md P4: mock pollution when the
+  # whole planning suite runs in one process. Same three files, same counts as
+  # before this change; every one of them passes when run alone.
+  luggage_planning_baseline_note: unchanged

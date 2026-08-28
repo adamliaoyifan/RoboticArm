@@ -1,0 +1,98 @@
+schema_version: 1
+generated_by: pytest test/test_orchestrator_step_parity.py test/test_step_gate.py
+question: >-
+  Does removing the panel's pipeline actually make it incapable of drifting, and
+  does the step gate leave the automated path untouched?
+
+studies:
+  drive_mode_parity:
+    question: Does stepping change what the run records?
+    rows:
+      auto:
+        driver: run() with no gate interaction
+        states_executed_through_gate: 0
+        records: 13
+        boxes_placed: 2
+      stepped:
+        driver: one Step per state, 13 steps
+        states_executed_through_gate: 13
+        records: 13
+        boxes_placed: 2
+    result: diff after dropping volatile fields = 0 records
+
+  gate_transparency:
+    question: Can the gate affect an automatic run at all?
+    rows:
+      auto_with_breakpoint_set:
+        breakpoints: [ExecPlace]
+        blocked: false
+        note: breakpoints are not consulted in auto mode
+      auto_pause_command:
+        accepted: false
+        message: refused, "start it with run_mode:=manual"
+      auto_taint_command:
+        accepted: true
+        note: >-
+          taint is deliberately accepted in auto mode too, otherwise an
+          out-of-band call during a headless run would go unrecorded
+
+  abort_point:
+    question: Where can an abort take effect?
+    rows:
+      abort_before_ExecPlace:
+        placements_recorded: 0
+        add_placed_called: false
+        remap_called: false
+        failure_class: RUN_ABORTED
+      abort_at_first_pause:
+        harness_verdict: failed
+        rejection_includes: zero_failures
+
+  taint_propagation:
+    question: Can a hand-poked session be presented as evidence?
+    rows:
+      clean_three_box_run:
+        harness_passed: true
+      same_run_plus_one_probe_call:
+        harness_passed: false
+        rejection_includes: untainted_session
+        taint_count: 1
+
+  failure_classification:
+    question: What class does a real failure get?
+    rows:
+      RELEASE_FAILED_AT_CONTACT:
+        classified_as: RELEASE_FAILED_AT_CONTACT
+      DETECT_IMPLAUSIBLE_SIZE:
+        classified_as: DETECT_IMPLAUSIBLE_SIZE
+      COMMIT_AABB_OVERLAP:
+        classified_as: COMMIT_AABB_OVERLAP
+      "place motion failed: Cartesian descend release settle failed":
+        classified_as: UNCLASSIFIED
+        note: >-
+          Motion-segment failures carry no class today. Recorded as unclassified
+          rather than guessed at; see result.yaml follow_ups.
+
+findings:
+  - >-
+    Stepping and running produce the same record stream through the real state
+    machine, which is the property that makes the panel unable to drift: there
+    is only one implementation left to drift from.
+  - >-
+    The gate reports zero states executed after a full automatic run. It returns
+    before reading any control state, so breakpoints, pause and step cannot
+    reach an acceptance run even if they are set.
+  - >-
+    Abort must return Idle rather than raise. Raising can land between the scene
+    write and the map write, which is precisely the half-committed state the
+    commit chain exists to prevent.
+
+do_not_repeat:
+  - >-
+    Do not fix panel/orchestrator divergence by extracting shared gate helpers
+    while keeping two state machines. Six of the nine divergences were ordering,
+    not missing logic, and a shared helper does not constrain call order.
+  - >-
+    Do not let the probe tab write to the same evidence file without marking it.
+    An unmarked hand-poked session is worse than no session, because its numbers
+    look legitimate.
