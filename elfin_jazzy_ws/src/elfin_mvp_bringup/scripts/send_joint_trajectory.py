@@ -86,7 +86,10 @@ class TrajectoryClient(Node):
         goal_point.time_from_start = Duration(sec=sec, nanosec=nsec)
         traj.points = [start_point, goal_point]
         goal.trajectory = traj
-        goal.goal_time_tolerance = Duration(sec=1, nanosec=0)
+        # Jazzy JTC honours this field (Humble ignored it). Keep it aligned
+        # with elfin_controllers_sim.yaml goal_time so large observe→goal
+        # motions are not aborted 1s after time_from_start.
+        goal.goal_time_tolerance = Duration(sec=15, nanosec=0)
 
         send_future = self._client.send_goal_async(goal)
         handle = self._wait_future(send_future, 10.0)

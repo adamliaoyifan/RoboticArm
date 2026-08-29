@@ -3,7 +3,7 @@
 <package format="3">
   <name>luggage_gazebo</name>
   <version>0.1.0</version>
-  <description>Gazebo Fortress worlds, models and spawners for the ROS 2 luggage loading simulation.</description>
+  <description>Gazebo Harmonic worlds, models and spawners for the ROS 2 luggage loading simulation.</description>
   <maintainer email="dev@todo.todo">RobotArm</maintainer>
   <license>BSD</license>
 

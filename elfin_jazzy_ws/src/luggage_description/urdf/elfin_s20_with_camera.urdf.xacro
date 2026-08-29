@@ -31,7 +31,7 @@
     <origin xyz="${cam_mount_xyz}" rpy="${cam_mount_rpy}"/>
   </xacro:realsense_d435>
 
-  <!-- use_gz_sim=true additionally emits the Gazebo Fortress Ros2Control
+  <!-- use_gz_sim=true additionally emits the Gazebo Harmonic Ros2Control
        system plugin so controller_manager runs inside gz sim (hardware_plugin
        should then be gz_ros2_control/GazeboSimSystem and the sim controllers
        yaml below carries the relaxed Gazebo tolerances). -->
@@ -60,10 +60,8 @@
 
   <xacro:if value="$(arg use_gz_sim)">
     <gazebo>
-      <plugin filename="ign_ros2_control-system"
-              name="ign_ros2_control::IgnitionROS2ControlPlugin">
-        <robot_param>robot_description</robot_param>
-        <robot_param_node>robot_state_publisher</robot_param_node>
+      <plugin filename="gz_ros2_control-system"
+              name="gz_ros2_control::GazeboSimROS2ControlPlugin">
         <parameters>$(arg controllers_yaml)</parameters>
       </plugin>
     </gazebo>

@@ -20,7 +20,7 @@ torch>=2.0.0
 torchvision>=0.15.0
 ultralytics>=8.1.0          # YOLO-World open-vocabulary detection
 opencv-python-headless>=4.8.0
-numpy>=1.24.0
+numpy>=1.24.0,<2
 PyYAML>=5.4
 # SAM2 provides pixel-accurate mask refinement for the "yolo_world_sam2"
 # backend. Not required for the "bbox_fill" or "stub" backends — the node

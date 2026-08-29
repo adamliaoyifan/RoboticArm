@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert Fortress rgbd_camera depth (32FC1 metres, inf misses) to D435-like 16UC1 mm.
+"""Convert Harmonic rgbd_camera depth (32FC1 metres, inf misses) to D435-like 16UC1 mm.
 
 RViz Image treats float metres as ~0–1 and breaks on inf, so the raw gz depth
 looks solid black even when the camera is publishing. Real D435 depth is

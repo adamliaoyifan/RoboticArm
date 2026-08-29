@@ -1,8 +1,8 @@
-"""Gazebo Fortress simulation world for the luggage loading closed loop.
+"""Gazebo Harmonic simulation world for the luggage loading closed loop.
 
 ROS 2 port of the noetic luggage_gazebo/sim_world.launch:
 
-- starts Gazebo Fortress (airport_loading.sdf) through ros_gz_sim,
+- starts Gazebo Harmonic (airport_loading.sdf) through ros_gz_sim,
 - publishes scene static TF (container_tf_publisher) and the scene-based
   robot_description (robot_state_publisher),
 - spawns pedestal / pickup platform / container from scene_tf.yaml, then
@@ -14,7 +14,7 @@ ROS 2 port of the noetic luggage_gazebo/sim_world.launch:
   controller is active. Pose-target pick segments cannot run on raw FJT.
 
 Backend switching stays inside the description: mock runs through
-elfin_mvp_bringup/control.launch.py, Fortress runs through this file. Joint
+elfin_mvp_bringup/control.launch.py, Harmonic runs through this file. Joint
 goals still use FollowJointTrajectory; Cartesian / pose targets go through
 ``move_group``.
 """
@@ -72,7 +72,7 @@ def _csv_strings(text):
 
 
 def _check_renderer():
-    """GPU hard gate: refuse to start Fortress on llvmpipe (see plan)."""
+    """GPU hard gate: refuse to start Harmonic on llvmpipe (see plan)."""
     ws_root = os.path.dirname(os.path.dirname(get_package_prefix("luggage_gazebo")))
     script = os.path.join(ws_root, "scripts", "check_gpu_renderer.sh")
     if not os.path.isfile(script):
@@ -218,7 +218,7 @@ def _move_group_node(robot_description):
             file_path="config/moveit_controllers.yaml",
             moveit_manage_controllers=False,
         )
-        .planning_pipelines(pipelines=["ompl"])
+        .planning_pipelines(default_planning_pipeline="ompl", pipelines=["ompl"])
         .to_moveit_configs()
     )
     moveit_config.robot_description = robot_description
@@ -353,7 +353,7 @@ def _launch_setup(context):
     # nonzero sim period; a paused world times out JSB/arm activation.
     # Moving-link gravity is off in the URDF so observe does not collapse
     # before the arm controller claims the joints.
-    gz_args = ("-r -v 3 " if gui else "-s -r -v 3 ") + world_path
+    gz_args = ("-r -v 3 " if gui else "-s -r --headless-rendering -v 3 ") + world_path
 
     gz_sim = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
@@ -710,6 +710,8 @@ def generate_launch_description():
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),
+            SetEnvironmentVariable("__GLX_VENDOR_LIBRARY_NAME", "nvidia"),
+            SetEnvironmentVariable("NVIDIA_DRIVER_CAPABILITIES", "all"),
             OpaqueFunction(function=_launch_setup),
         ]
     )

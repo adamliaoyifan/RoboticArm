@@ -3,7 +3,7 @@
 
   <xacro:arg name="hardware_plugin" default="mock_components/GenericSystem"/>
   <!-- fixed_world=true (default) welds elfin_base_link to the world via
-       world_base. Fortress converts parent=world into a fixed joint, so
+       world_base. Harmonic converts parent=world into a fixed joint, so
        spawn the model at the origin and put the scene pose on this joint
        (same as Noetic Classic Gazebo). fixed_world=false is only for a
        free-floating base; sim_world must not use it. -->

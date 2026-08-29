@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <sdf version="1.8">
-  <!-- Airport luggage loading world for Gazebo Fortress (ros_gz_sim).
+  <!-- Airport luggage loading world for Gazebo Harmonic (ros_gz_sim).
        ROS 2 port of the noetic airport_loading.world.
        Scene models (pedestal / pickup platform / container / suitcases) are
        spawned at runtime from scene_tf.yaml by gazebo_scene_spawner.py. -->
@@ -58,19 +58,19 @@
 
     <!-- Explicit server systems: UserCommands is required for the
          ros_gz_sim create/delete services used by the spawners. -->
-    <plugin filename="ignition-gazebo-physics-system"
-            name="ignition::gazebo::systems::Physics">
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics">
       <dt>0.001</dt>
     </plugin>
-    <plugin filename="ignition-gazebo-user-commands-system"
-            name="ignition::gazebo::systems::UserCommands"/>
-    <plugin filename="ignition-gazebo-scene-broadcaster-system"
-            name="ignition::gazebo::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
     <!-- Sensors system with GPU rendering: required by the D435 rgbd_camera
          on the robot. Headless rendering goes through EGL on the NVIDIA GPU
          (llvmpipe fails the launch GPU gate). -->
-    <plugin filename="ignition-gazebo-sensors-system"
-            name="ignition::gazebo::systems::Sensors">
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors">
       <render_engine>ogre2</render_engine>
     </plugin>
 

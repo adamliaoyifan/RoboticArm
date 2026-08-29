@@ -21,7 +21,7 @@ camera:
       - 1.570796326795402
     xyz: *id001
     rpy: *id002
-  # Color and depth share one Gazebo Fortress rgbd_camera
+  # Color and depth share one Gazebo Harmonic rgbd_camera
   # (realsense_d435.urdf.xacro). K is the gz pinhole for
   # horizontal_fov=1.5184 rad, which is Intel D435 datasheet depth HFOV
   # 87° ± 3° (https://www.intelrealsense.com/depth-camera-d435/).

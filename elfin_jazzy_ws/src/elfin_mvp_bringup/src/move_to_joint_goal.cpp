@@ -7,8 +7,8 @@
 #include <thread>
 #include <vector>
 
-#include <moveit/move_group_interface/move_group_interface.h>
-#include <moveit/utils/moveit_error_code.h>
+#include <moveit/move_group_interface/move_group_interface.hpp>
+#include <moveit/utils/moveit_error_code.hpp>
 #include <rclcpp/rclcpp.hpp>
 
 using namespace std::chrono_literals;
@@ -88,13 +88,13 @@ int main(int argc, char ** argv)
     if (!goal_ok) {
       RCLCPP_ERROR(
         node->get_logger(), "repeat %d goal failed (code=%s err=%.6f)", i,
-        moveit::core::error_code_to_string(go_result).c_str(), goal_err);
+        moveit::core::errorCodeToString(go_result).c_str(), goal_err);
       ++failures;
     } else if (!go_result) {
       RCLCPP_WARN(
         node->get_logger(),
         "repeat %d goal joints ok (err=%.6f) but MoveIt code=%s", i, goal_err,
-        moveit::core::error_code_to_string(go_result).c_str());
+        moveit::core::errorCodeToString(go_result).c_str());
     }
 
     move_group.setJointValueTarget(start_joints);
@@ -105,13 +105,13 @@ int main(int argc, char ** argv)
     if (!start_ok) {
       RCLCPP_ERROR(
         node->get_logger(), "repeat %d return failed (code=%s err=%.6f)", i,
-        moveit::core::error_code_to_string(back_result).c_str(), start_err);
+        moveit::core::errorCodeToString(back_result).c_str(), start_err);
       ++failures;
     } else if (!back_result) {
       RCLCPP_WARN(
         node->get_logger(),
         "repeat %d return joints ok (err=%.6f) but MoveIt code=%s", i, start_err,
-        moveit::core::error_code_to_string(back_result).c_str());
+        moveit::core::errorCodeToString(back_result).c_str());
     } else {
       RCLCPP_INFO(
         node->get_logger(), "repeat %d ok goal_err=%.6f start_err=%.6f", i, goal_err, start_err);

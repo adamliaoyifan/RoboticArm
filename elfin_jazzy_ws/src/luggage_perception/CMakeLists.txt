@@ -10,11 +10,13 @@ install(DIRECTORY config
   DESTINATION share/${PROJECT_NAME}
 )
 
-# YOLO-World checkpoint for the semantic backends. Installed so the node can
-# resolve it from the package share instead of downloading on first run.
-install(FILES yolov8s-world.pt
-  DESTINATION share/${PROJECT_NAME}/models
-)
+# YOLO-World checkpoint is gitignored (*.pt). Skip install when absent so
+# the package still builds; the semantic node falls back to a stub backend.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/yolov8s-world.pt")
+  install(FILES yolov8s-world.pt
+    DESTINATION share/${PROJECT_NAME}/models
+  )
+endif()
 
 # Offline CLIP vendor (package + deps + ViT-B/32 weights) so YOLO-World
 # backends never trigger ultralytics' network auto-install. Search order in

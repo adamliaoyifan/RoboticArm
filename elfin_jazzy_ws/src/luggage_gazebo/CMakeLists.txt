@@ -6,7 +6,7 @@ find_package(ament_cmake_python REQUIRED)
 
 ament_python_install_package(${PROJECT_NAME})
 
-install(DIRECTORY launch worlds models config rviz
+install(DIRECTORY launch worlds models rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -25,7 +25,7 @@ if(BUILD_TESTING)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and
-# package:// URIs inside the robot URDF resolve inside Gazebo Fortress.
+# package:// URIs inside the robot URDF resolve inside Gazebo Harmonic.
 ament_environment_hooks("env/${PROJECT_NAME}.dsv.in")
 
 ament_package()

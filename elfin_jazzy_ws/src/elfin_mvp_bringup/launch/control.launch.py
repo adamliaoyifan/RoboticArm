@@ -41,8 +41,7 @@ def generate_launch_description():
     control_node = Node(
         package="controller_manager",
         executable="ros2_control_node",
-        parameters=[robot_description, controllers],
-        remappings=[("~/robot_description", "/robot_description")],
+        parameters=[controllers],
         output="screen",
     )
     jsb_spawner = Node(

@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <!-- Overridable so Fortress sim can spawn at observe. Mock/MVP keeps these. -->
+  <!-- Overridable so Harmonic sim can spawn at observe. Mock/MVP keeps these. -->
   <xacro:arg name="initial_joint1" default="0.0"/>
   <xacro:arg name="initial_joint2" default="-0.5"/>
   <xacro:arg name="initial_joint3" default="0.0"/>

@@ -18,7 +18,7 @@ def generate_launch_description():
             file_path="config/moveit_controllers.yaml",
             moveit_manage_controllers=False,
         )
-        .planning_pipelines(pipelines=["ompl"])
+        .planning_pipelines(default_planning_pipeline="ompl", pipelines=["ompl"])
         .to_moveit_configs()
     )
 

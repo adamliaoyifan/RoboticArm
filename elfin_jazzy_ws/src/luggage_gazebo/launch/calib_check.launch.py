@@ -87,7 +87,7 @@ def _launch_setup(context):
             )
         ),
         launch_arguments={
-            "gz_args": "-s -r -v 3 " + world_path,
+            "gz_args": "-s -r --headless-rendering -v 3 " + world_path,
             "on_exit_shutdown": "true",
         }.items(),
     )

@@ -20,11 +20,10 @@ elfin_arm_controller:
     state_interfaces:
       - position
       - velocity
-    state_publish_rate: 50.0
     action_monitor_rate: 20.0
     allow_partial_joints_goal: false
     allow_nonzero_velocity_at_trajectory_end: true
-    open_loop_control: true
+    interpolate_from_desired_state: true
     constraints:
       stopped_velocity_tolerance: 0.05
       goal_time: 0.5
