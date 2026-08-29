@@ -1,11 +1,11 @@
-# Elfin Humble Workspace Documentation
+# Elfin Jazzy Workspace Documentation
 
-This directory owns all plans, research notes, and status records for the
-ROS 1 to ROS 2 Humble migration. Documentation for this migration must remain
-inside `elfin_humble_ws`.
+This directory owns plans, research notes, and status records for the
+ROS 2 Jazzy (Ubuntu 24.04 / Gazebo Harmonic) port of the luggage stack.
+Historical Humble/Fortress records under `status/` are kept as-is;
+new Jazzy measurements go in files such as `status/gate0_jazzy.md`.
 
-- `architecture/`: normative structure and data-pipeline rules; changes must
-  comply with them, and `.cursor/rules/` enforces the must-rules
-- `plans/`: migration designs and implementation plans
+- `architecture/`: normative structure and data-pipeline rules
+- `plans/`: migration designs (Humble-era plans are historical)
 - `research/`: ROS 2, MoveIt 2, Gazebo, and Huayan SDK research
-- `status/`: current migration state and validation records
+- `status/`: validation records

@@ -2,6 +2,8 @@
 
 Migration progress, validation results, and known blockers belong here.
 
+- [Gate 0 Jazzy environment](gate0_jazzy.md)
+- [Jazzy native validation](jazzy_validation.md)
 - [Gate 0 environment record](gate0_environment.md)
 - [GPU runtime hard gate](gpu_runtime.md)
 - [MVP Gates 1–5 acceptance](mvp_gates.md)
