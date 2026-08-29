@@ -170,17 +170,20 @@ See [`PROGRESS.md`](PROGRESS.md) for the full **development timeline** and miles
 
 ---
 
-## ROS 2 Humble workspace
+## ROS 2 Jazzy workspace (this branch)
 
-The ROS 2 Humble migration of the luggage loading stack lives at
-[`elfin_humble_ws/`](elfin_humble_ws/). It is a colcon workspace (MoveIt 2,
-Gazebo / `ros_gz`, luggage perception/planning/packing packages).
+The ROS 2 Jazzy port of the luggage loading stack lives at
+[`elfin_jazzy_ws/`](elfin_jazzy_ws/). It targets Ubuntu 24.04, MoveIt 2,
+Gazebo Harmonic (`ros_gz`), and the luggage perception/planning/packing
+packages.
 
 YOLO / CLIP weights (`*.pt`) and raw point-cloud scans (`*.las`) are not in
-git. See [`elfin_humble_ws/docs/README.md`](elfin_humble_ws/docs/README.md)
-for migration plans and status.
+git. See [`elfin_jazzy_ws/docs/README.md`](elfin_jazzy_ws/docs/README.md)
+for status. Native install is `/opt/ros/jazzy`. Backup image:
+[`elfin_jazzy_ws/Dockerfile.jazzy`](elfin_jazzy_ws/Dockerfile.jazzy).
 
-Draft image: [`elfin_humble_ws/Dockerfile.humble`](elfin_humble_ws/Dockerfile.humble).
+The Humble (Ubuntu 22.04 / Gazebo Fortress) tree remains on the
+`ros2_humble` branch as `elfin_humble_ws/`.
 
 ---
 
