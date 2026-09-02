@@ -17,7 +17,6 @@ from __future__ import division
 
 import json
 import math
-import os
 import random
 import threading
 import time
@@ -54,11 +53,9 @@ from luggage_description.scene_tf_config_utils import (
     pickup_source_in_world,
     resolve_scene_tf_config_path,
 )
-from ament_index_python.packages import get_package_share_directory
 
 from luggage_description.suitcase_visual import (
     VISUAL_IDS,
-    load_sized_suitcases_manifest,
     pickup_box_pose,
     pickup_visual_sdf,
     size_tier_name,
@@ -134,19 +131,12 @@ class PickupBoxSpawner(Node):
             self._size_mode = "catalog"
         settle_raw = float(self.get_parameter("visual_settle_sec").value)
         self._visual_settle_sec = max(0.0, settle_raw)
-        if self._visual_kind == "mesh" and abs(settle_raw - 2.0) < 1e-9:
-            # Node default is for box; mesh assets are preloaded.
-            self._visual_settle_sec = 0.0
-        models_root = str(self.get_parameter("models_root").value).strip()
-        if not models_root:
-            models_root = os.path.join(
-                get_package_share_directory("luggage_gazebo"), "models")
-        self._models_root = models_root
-        self._sized_manifest = load_sized_suitcases_manifest(self._models_root)
         self._current_box = None
         self._current_model = None
         self._finalized_models = []
         self._sequence = 0
+        self._generation = 0
+        self._published_id = None
 
         scene_config = load_scene_tf_config(scene_cfg_path)
         self._catalog_config = load_box_catalog(box_catalog_path, scene_config)
@@ -272,12 +262,20 @@ class PickupBoxSpawner(Node):
 
     def _publish_box_state(self):
         payload = {}
+        box_id = ""
         if self._current_box is not None:
             payload = self._box_to_record(
                 self._current_box,
                 yaw=getattr(self, "_current_yaw", 0.0),
                 mass_kg=getattr(self, "_current_mass", 0.0),
             )
+            box_id = str(payload.get("id") or "")
+        if self._published_id is None or box_id != self._published_id:
+            self._generation += 1
+            self._published_id = box_id
+        if self._current_box is None:
+            payload["id"] = ""
+        payload["generation"] = int(self._generation)
         self._box_pub.publish(String(data=json.dumps(payload, sort_keys=True)))
 
     # ------------------------------------------------------------------
@@ -356,21 +354,13 @@ class PickupBoxSpawner(Node):
         )
 
     def _gt_size(self, size, visual_id):
-        """Size written to GetCurrentBox.
+        """Size written to GetCurrentBox: catalog AABB for box and mesh.
 
-        Box visual: catalog AABB. Mesh: baked top-face footprint of that STL.
-        Pose still uses the catalog AABB height so the mesh sits on the platform.
+        Mesh lid-band (measure_size) stays on the sized-suitcase manifest for
+        diagnostics; it is not the spawn / planning / overlay GT.
         """
-        if self._visual_kind != "mesh":
-            return [float(v) for v in size]
-        tier = size_tier_name(size)
-        if not tier:
-            return [float(v) for v in size]
-        rec = self._sized_manifest.get(sized_model_name(visual_id, tier)) or {}
-        measure = rec.get("measure_size") or []
-        if len(measure) != 3:
-            return [float(v) for v in size]
-        return [float(v) for v in measure]
+        del visual_id
+        return [float(v) for v in size]
 
     # ------------------------------------------------------------------
     # Service handlers

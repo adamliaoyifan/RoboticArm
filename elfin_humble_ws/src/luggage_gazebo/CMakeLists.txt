@@ -16,12 +16,16 @@ install(PROGRAMS
   scripts/observe_pose_hold.py
   scripts/scene_viz_node.py
   scripts/pick_retreat_eval_driver.py
+  scripts/place_smoke_driver.py
+  scripts/pack_eval_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)
+  ament_add_pytest_test(place_metrics_pytest test/test_place_metrics.py)
+  ament_add_pytest_test(place_gt_dump_pytest test/test_place_gt_dump.py)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and

@@ -16,10 +16,12 @@
           <diffuse>0.35 0.45 0.55 1</diffuse>
         </material>
       </visual>
+      <!-- Physics mesh is a 2k-face decimation of container_collision.stl.
+           Visual stays high-res. MoveIt still loads the 8k collision STL. -->
       <collision name="collision_mesh">
         <geometry>
           <mesh>
-            <uri>model://airport_container_real/meshes/container_collision.stl</uri>
+            <uri>model://airport_container_real/meshes/container_collision_physics.stl</uri>
             <scale>1 1 1</scale>
           </mesh>
         </geometry>

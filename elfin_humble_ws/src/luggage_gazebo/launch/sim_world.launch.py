@@ -451,9 +451,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "visual_kind": LaunchConfiguration("visual_kind").perform(context),
             "size_mode": LaunchConfiguration("size_mode").perform(context),
-            "visual_settle_sec": (
-                0.0 if LaunchConfiguration("visual_kind").perform(context)
-                .strip().lower() == "mesh" else 2.0),
+            "visual_settle_sec": 2.0,
             "yaw_mode": LaunchConfiguration("yaw_mode").perform(context),
             "yaw_range": _csv_floats(
                 LaunchConfiguration("yaw_range").perform(context), (0.0, 0.0)),
@@ -554,10 +552,28 @@ def _launch_setup(context):
     motion_chain = [
         Node(
             package="luggage_planning",
+            executable="scene_manager_node.py",
+            name="scene_manager",
+            output="screen",
+            parameters=[{
+                "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
+                "world_frame": "world",
+                "pickup_object_id": "pickup_box",
+            }],
+            condition=IfCondition(LaunchConfiguration("use_motion")),
+        ),
+        Node(
+            package="luggage_planning",
             executable="waypoint_generator_node.py",
             name="waypoint_generator",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{
+                "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
+                "world_frame": "world",
+                "place_slot_frame": "elfin_base_link",
+            }],
             condition=IfCondition(LaunchConfiguration("use_motion")),
         ),
         Node(
@@ -568,6 +584,12 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "robot_poses_config": poses_path,
+                "named_pose_duration": float(
+                    LaunchConfiguration("named_pose_duration").perform(
+                        context)),
+                "named_pose_max_vel": float(
+                    LaunchConfiguration("named_pose_max_vel").perform(
+                        context)),
             }],
             condition=IfCondition(LaunchConfiguration("use_motion")),
         ),
@@ -620,6 +642,30 @@ def _launch_setup(context):
         segmenter,
         point_filter,
         *motion_chain,
+        Node(
+            package="luggage_perception",
+            executable="cargo_volume_mapper_node.py",
+            name="cargo_volume_mapper",
+            output="screen",
+            parameters=[{"use_sim_time": True}],
+            condition=IfCondition(LaunchConfiguration("use_cargo_map")),
+        ),
+        Node(
+            package="luggage_packing",
+            executable="placement_planner_node.py",
+            name="placement_planner",
+            output="screen",
+            parameters=[{"use_sim_time": True}],
+            condition=IfCondition(LaunchConfiguration("use_packing")),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="vacuum_controller_node.py",
+            name="vacuum_controller",
+            output="screen",
+            parameters=[{"use_sim_time": True}],
+            condition=IfCondition(LaunchConfiguration("use_vacuum")),
+        ),
         *_robot_state_publisher_actions(scene_tf_config, robot_description),
         *_spawn_scene_and_robot(context, initial_joint_args),
         jsb_spawner,
@@ -654,10 +700,35 @@ def generate_launch_description():
             DeclareLaunchArgument("gui", default_value="true"),
             DeclareLaunchArgument("use_rviz", default_value="true"),
             DeclareLaunchArgument(
+                "use_cargo_map", default_value="false",
+                description="Start cargo_volume_mapper (geometry-commit "
+                            "occupancy grid + surface_2d)."),
+            DeclareLaunchArgument(
+                "use_packing", default_value="false",
+                description="Start placement_planner (ComputePlacement with "
+                            "aperture + corridor gates)."),
+            DeclareLaunchArgument(
+                "use_vacuum", default_value="false",
+                description="Start vacuum_controller (sim backend: gz "
+                            "kinematic follow + PlanningScene attach)."),
+            DeclareLaunchArgument(
                 "use_motion", default_value="false",
                 description="Start waypoint_generator + motion_planner "
                             "(pick/retreat shells; move_group must also be "
                             "on via use_moveit)."),
+            DeclareLaunchArgument(
+                "named_pose_duration",
+                default_value="4.0",
+                description="Max GoToRobotPose FJT duration in seconds "
+                            "(was 8; actual time is min of this and "
+                            "max joint delta / named_pose_max_vel).",
+            ),
+            DeclareLaunchArgument(
+                "named_pose_max_vel",
+                default_value="1.0",
+                description="GoToRobotPose nominal joint speed in rad/s "
+                            "(joint_limits max is 1.57).",
+            ),
             DeclareLaunchArgument(
                 "use_semantic", default_value="false",
                 description="Start the YOLO semantic chain (segmenter + point "
