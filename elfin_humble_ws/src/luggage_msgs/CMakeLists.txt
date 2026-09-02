@@ -8,10 +8,14 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedLuggage.msg"
+  "msg/YoloBox.msg"
+  "msg/YoloDetections.msg"
+  "msg/DetectionFrame.msg"
   "msg/SlotSpec.msg"
   "msg/MotionSegment.msg"
   "msg/LoadTaskStatus.msg"
   "msg/ContainerOpeningEstimate.msg"
+  "msg/VacuumState.msg"
   "srv/DetectLuggage.srv"
   "srv/GetCurrentBox.srv"
   "srv/SpawnNextBox.srv"
