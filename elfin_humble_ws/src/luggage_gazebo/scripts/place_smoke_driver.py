@@ -854,11 +854,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.catalog_id = str(size_eval.get("catalog_id") or "")
         box_id, generation = parse_current_box_payload(
             self._current_box_topic["payload"])
+        if spawn.box.id and box_id != spawn.box.id:
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                box_id, generation = parse_current_box_payload(
+                    self._current_box_topic["payload"])
+                if box_id == spawn.box.id:
+                    break
+                time.sleep(0.05)
         yolo_stats = self.wait_yolo_boxes(
             generation, spawn.box.id, spawn_stamp,
             self._args.geometry_timeout)
         if not yolo_stats:
             trial.fail_code = "YOLO_NOT_READY"
+            trial.extras["spawn_id"] = spawn.box.id
+            trial.extras["spawn_generation"] = generation
+            trial.extras["topic_box_id"] = box_id
+            trial.extras["seg_stats"] = _parse_json(self._seg_stats["payload"])
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):

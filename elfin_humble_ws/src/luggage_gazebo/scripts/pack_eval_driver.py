@@ -32,6 +32,7 @@ from place_smoke_driver import (  # noqa: E402
 )
 
 from luggage_gazebo.place_metrics import place_ok  # noqa: E402
+from luggage_gazebo.place_gt_dump import write_pack_layout_dump  # noqa: E402
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     xyz_base_link_to_world,
     yaw_base_link_to_world,
@@ -82,6 +83,7 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._consecutive_failures = 0
         self._committed_ledger_boxes = []
         self._placed_slots = []
+        self._placed_records = []
         self._out = args.out
         self._dumps = os.path.join(self._out, "dumps")
         os.makedirs(self._dumps, exist_ok=True)
@@ -213,16 +215,17 @@ class PackEvalDriver(PlaceSmokeDriver):
             "source": "compute_placement",
         }
 
-    def _slot_world_msg(self, slot):
-        meta = self._slot_meta(slot)
+    def _slot_world_msg(self, slot, slot_meta=None):
+        if slot_meta is None:
+            slot_meta = self._slot_meta(slot)
         out = SlotSpec()
         out.layer, out.row, out.col = slot.layer, slot.row, slot.col
         out.width, out.depth, out.height = slot.width, slot.depth, slot.height
-        pos = meta["pose_world"]["position"]
+        pos = slot_meta["pose_world"]["position"]
         out.place_pose.position.x = float(pos[0])
         out.place_pose.position.y = float(pos[1])
         out.place_pose.position.z = float(pos[2])
-        out.place_pose.orientation = _yaw_quat(meta["pose_world"]["yaw"])
+        out.place_pose.orientation = _yaw_quat(slot_meta["pose_world"]["yaw"])
         return out
 
     def _dump_placement(self, dump_dir, box, size, spawn, extra=None):
@@ -263,6 +266,14 @@ class PackEvalDriver(PlaceSmokeDriver):
             rtf_end = self._sample_rtf()
             self._write_rtf(seq, rtf_start, rtf_end)
             rtf_start = rtf_end
+
+            goto_ok, goto_msg, _ = self._home_arm()
+            if not goto_ok:
+                termination = "ABORT"
+                self._ledger_line(
+                    seq=seq, committed=False, fail_code="GOTO_FAILED",
+                    spawn_id=None, catalog_id=None, message=goto_msg)
+                break
 
             t_spawn = time.time()
             spawn = self._call(
@@ -317,6 +328,10 @@ class PackEvalDriver(PlaceSmokeDriver):
                 dump_path = self._box_dump_dir(seq, dump_slug)
                 self._dump_placement(dump_path, box, size, spawn)
                 self._dump_json(dump_path, "commit.json", {"committed": False})
+                self._dump_json(dump_path, "final_layout.json", {
+                    "path": "../../final_layout",
+                    "note": "suite writes final_layout/ on stop",
+                })
                 self._ledger_line(
                     seq=seq, committed=False, fail_code="BIN_FULL",
                     spawn_id=spawn.box.id,
@@ -361,6 +376,25 @@ class PackEvalDriver(PlaceSmokeDriver):
                     self._committed_ledger_boxes.append(
                         (center_local, [slot.width, slot.depth, slot.height]))
                     self._placed_slots.append(copy.deepcopy(slot))
+                    self._placed_records.append({
+                        "seq": seq,
+                        "commit_index": self._commit_index,
+                        "catalog_id": self._catalog_id(spawn),
+                        "spawn_id": spawn.box.id,
+                        "gz_model": spawn.box.id,
+                        "size_wdh": size,
+                        "mass_kg": self._mass(spawn),
+                        "volume_m3": volume,
+                        "pose_world": {
+                            "position": slot_meta["pose_world"]["position"],
+                            "yaw": slot_meta["pose_world"]["yaw"],
+                            "rpy": [0.0, 0.0, slot_meta["pose_world"]["yaw"]],
+                        },
+                        "pose_base_link": {
+                            "position": slot_meta["pose_base_link"]["position"],
+                            "yaw": slot_meta["pose_base_link"]["yaw"],
+                        },
+                    })
                     dump_slug = "ok"
                     self._call(self._finalize, FinalizeCurrentBox.Request(),
                                timeout=15.0)
@@ -497,6 +531,16 @@ class PackEvalDriver(PlaceSmokeDriver):
         ids = [s.strip() for s in str(self._args.sequence_ids).split(",")
                if s.strip()]
         wall_total = time.time() - self._suite_t0
+        layout_dir = os.path.join(self._out, "final_layout")
+        layout_meta = write_pack_layout_dump(
+            layout_dir, self._scene_config, self._placed_records,
+            termination=termination,
+            extra_meta={
+                "last_rejected": self._last_rejected,
+                "surface_2d": bool(self._surface_2d),
+            })
+        if self._surface_2d:
+            self._dump_json(layout_dir, "surface_2d.json", self._surface_2d)
         cycles = [entry.get("cycle_wall_sec") for entry in committed
                   if entry.get("cycle_wall_sec") is not None]
         import statistics
@@ -525,6 +569,8 @@ class PackEvalDriver(PlaceSmokeDriver):
                 len(committed) / (wall_total / 60.0), 3) if wall_total
             else 0.0,
             "last_rejected": self._last_rejected,
+            "final_layout": "final_layout",
+            "final_layout_meta": layout_meta,
             "goto_failed_count": sum(
                 1 for entry in self._ledger
                 if "GOTO" in str(entry.get("fail_code", ""))),
@@ -556,6 +602,7 @@ def merge_args(argv=None):
         "--goto-timeout", str(known.goto_timeout),
         "--observe-pose", known.observe_pose,
         "--payload", "vacuum",
+        "--geometry-timeout", "25",
     ] + rest)
     for key, value in vars(known).items():
         setattr(smoke, key, value)
