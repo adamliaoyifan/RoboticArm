@@ -66,9 +66,9 @@ Three traps encoded above:
    Convert by 9.80665 at ingestion. Static z reading near 1.0 instead of 9.8
    means the conversion is missing.
 
-Mid-360 does not exist in simulation yet; `mid360_mount_frame` in
-[eef_sensor_mount.urdf.xacro](../../src/luggage_description/urdf/eef_sensor_mount.urdf.xacro)
-is a reserved empty link. Code must tolerate the lidar stream being absent.
+Mid-360 URDF now publishes `livox_frame` and `livox_imu_frame` (handbook
+initial values in [mid360_origin.xacro](../../src/luggage_description/config/mid360_origin.xacro)).
+Simulation still has no lidar stream; code must tolerate `/livox/lidar` being absent.
 
 ## Per-stream structures
 
