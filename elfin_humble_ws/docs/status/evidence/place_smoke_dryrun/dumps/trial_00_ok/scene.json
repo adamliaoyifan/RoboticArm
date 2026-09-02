@@ -1,0 +1,25 @@
+{
+  "acm_names": [
+    "airport_container_real",
+    "camera_color_optical_frame",
+    "camera_depth_optical_frame",
+    "camera_link",
+    "eef_mount_adapter",
+    "elfin_base",
+    "elfin_end_link",
+    "elfin_link1",
+    "elfin_link2",
+    "elfin_link3",
+    "elfin_link4",
+    "elfin_link5",
+    "elfin_link6",
+    "pickup_box",
+    "suction_panel"
+  ],
+  "attached": [],
+  "place_state": "HOME",
+  "world_objects": [
+    "airport_container_real",
+    "robot_pedestal"
+  ]
+}

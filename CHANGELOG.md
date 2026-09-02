@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-02 — Humble closed-loop pick / place / pack-eval
+
+Work since the 08-28 snapshot, on `ros2_humble` only (`elfin_humble_ws`).
+
+- **Perception**: YOLO detections + stamp-joined `DetectionFrame`, cargo instance
+  tracker, occupancy mapper node (`cargo_volume_mapper_node`).
+- **Planning**: vacuum attach/follow, pick–retreat, place waypoint sequence
+  (staging / insert / descend / retreat) and scene-manager mesh ACM.
+- **Gazebo**: `place_smoke_driver`, `pack_eval_driver` (spawn once, keep placed
+  via `FinalizeCurrentBox`), physics collision STL.
+- **Packing**: `ComputePlacement` returns `elfin_base_link`; floor-prior z is
+  usable-volume center; corridor G1 + 1 mm full-Y wall slop; dumps/ledger.
+- **Verified**: packing/corridor/waypoint/vacuum unit tests; mapper B1 and
+  planner B2 (empty + full-width wall `corridor_blocked`) without Gazebo.
+  B4 pack-to-full and B5 place N=3 still need a live `sim_world`.
+
 ## 2026-08-28 — ROS 2 Humble workspace snapshot
 
 - Add `elfin_humble_ws/`: colcon workspace for the ROS 2 Humble luggage stack
