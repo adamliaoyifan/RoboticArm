@@ -31,7 +31,7 @@ class CargoVolumeMapper:
 
     def __init__(
         self, inner_size, center_base, yaw, resolution, occupancy_params=None,
-        max_raycast_points=None,
+        max_raycast_points=None, hull_local_inside=None,
     ):
         self.resolution = float(resolution)
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
@@ -46,10 +46,13 @@ class CargoVolumeMapper:
         self.max_raycast_points = (
             None if max_raycast_points is None else max(1, int(max_raycast_points))
         )
+        self._hull_local_inside = hull_local_inside
+        self._active = None
         self._grid = None
         self._occupancy = None
         self._revision = 0
         self._placed_boxes = []
+        self._build_active_mask()
         self.reset()
 
     def reset(self, preserve_placed=False):
@@ -66,6 +69,19 @@ class CargoVolumeMapper:
         for placed in saved:
             self._rasterize_placed_box(
                 placed["center"], placed["size"], placed["yaw"])
+
+    def _build_active_mask(self):
+        total = self.nx * self.ny * self.nz
+        if self._hull_local_inside is None:
+            self._active = None
+            return
+        self._active = [True] * total
+        for iz in range(self.nz):
+            for iy in range(self.ny):
+                for ix in range(self.nx):
+                    if not self._hull_local_inside(
+                            *self._voxel_center_local(ix, iy, iz)):
+                        self._active[self._index(ix, iy, iz)] = False
 
     def _index(self, ix, iy, iz):
         return ix + self.nx * (iy + self.ny * iz)
@@ -95,6 +111,8 @@ class CargoVolumeMapper:
         ix = min(max(ix, 0), self.nx - 1)
         iy = min(max(iy, 0), self.ny - 1)
         iz = min(max(iz, 0), self.nz - 1)
+        if self._active is not None and not self._active[self._index(ix, iy, iz)]:
+            return None
         return ix, iy, iz
 
     def _voxel_center_local(self, ix, iy, iz):
@@ -416,19 +434,39 @@ class CargoVolumeMapper:
                         source=SOURCE_GEOMETRY,
                     )
 
+    def fill_unoccupied_as_free(self):
+        """Geometry GT: usable-hull empty cells are known-free."""
+        for i, cell in enumerate(self._grid):
+            if self._active is not None and not self._active[i]:
+                continue
+            if cell != OCCUPIED:
+                self._grid[i] = FREE
+
     def stats(self):
-        total = len(self._grid)
-        unknown = self._grid.count(UNKNOWN)
-        free = self._grid.count(FREE)
-        occupied = self._grid.count(OCCUPIED)
-        voxel_vol = self.resolution ** 3
+        unknown = 0
+        free = 0
+        occupied = 0
+        total = 0
+        inactive = 0
         label_dist = {}
-        for i in range(total):
-            if self._grid[i] == OCCUPIED and self._labels[i] > 0:
-                lbl = self._labels[i]
-                label_dist[lbl] = label_dist.get(lbl, 0) + 1
+        for i, cell in enumerate(self._grid):
+            if self._active is not None and not self._active[i]:
+                inactive += 1
+                continue
+            total += 1
+            if cell == UNKNOWN:
+                unknown += 1
+            elif cell == FREE:
+                free += 1
+            elif cell == OCCUPIED:
+                occupied += 1
+                if self._labels[i] > 0:
+                    lbl = self._labels[i]
+                    label_dist[lbl] = label_dist.get(lbl, 0) + 1
+        voxel_vol = self.resolution ** 3
         return {
             "total_voxels": total,
+            "inactive_count": inactive,
             "unknown_count": unknown,
             "free_count": free,
             "occupied_count": occupied,
@@ -447,6 +485,8 @@ class CargoVolumeMapper:
             for iy in range(self.ny):
                 for iz in range(self.nz):
                     idx = self._index(ix, iy, iz)
+                    if self._active is not None and not self._active[idx]:
+                        continue
                     if self._grid[idx] != UNKNOWN:
                         continue
                     if self._has_observed_neighbor(ix, iy, iz):
@@ -508,8 +548,12 @@ class CargoVolumeMapper:
                 observed = 0
                 has_unknown = False
                 label_counts = {}
+                active_in_col = 0
                 for iz in range(self.nz):
                     idx = self._index(ix, iy, iz)
+                    if self._active is not None and not self._active[idx]:
+                        continue
+                    active_in_col += 1
                     cell = self._grid[idx]
                     if cell == UNKNOWN:
                         has_unknown = True
@@ -542,7 +586,8 @@ class CargoVolumeMapper:
                 else:
                     state[ix][iy] = "unknown"
                     confidence[ix][iy] = "none"
-                known_ratio[ix][iy] = float(observed) / float(self.nz) if self.nz else 0.0
+                known_ratio[ix][iy] = (
+                    float(observed) / float(active_in_col) if active_in_col else 0.0)
 
         return {
             "frame": "container_local",
@@ -614,7 +659,10 @@ class CargoVolumeMapper:
         for ix in range(0, self.nx, step):
             for iy in range(0, self.ny, step):
                 for iz in range(0, self.nz, step):
-                    if self._grid[self._index(ix, iy, iz)] not in state_filter:
+                    idx = self._index(ix, iy, iz)
+                    if self._active is not None and not self._active[idx]:
+                        continue
+                    if self._grid[idx] not in state_filter:
                         continue
                     lx, ly, lz = self._voxel_center_local(ix, iy, iz)
                     points.append(self._local_to_world(lx, ly, lz))
@@ -633,7 +681,10 @@ class CargoVolumeMapper:
         for ix in range(self.nx):
             for iy in range(self.ny):
                 for iz in range(self.nz):
-                    state = self._grid[self._index(ix, iy, iz)]
+                    idx = self._index(ix, iy, iz)
+                    if self._active is not None and not self._active[idx]:
+                        continue
+                    state = self._grid[idx]
                     if state == UNKNOWN:
                         continue
                     if state == FREE and not include_free:
@@ -774,10 +825,10 @@ class CargoVolumeMapper:
             return MarkerArray()
 
         from luggage_description.scene_tf_config_utils import (  # noqa: WPS433
-            container_inner_floor_z,
+            container_aperture_edges_in_container,
+            container_inner_hull_edges_in_container,
             container_opening_in_container,
             container_outer_dimensions,
-            container_usable_dimensions,
         )
 
         markers = MarkerArray()
@@ -787,8 +838,6 @@ class CargoVolumeMapper:
         markers.markers.append(delete_all)
 
         outer_l, outer_w, outer_h = container_outer_dimensions(scene_config)
-        inner_l, inner_w, inner_h = container_usable_dimensions(scene_config)
-        floor_z = container_inner_floor_z(scene_config)
         container_frame = "container_link"
 
         self._append_line_marker(
@@ -800,21 +849,39 @@ class CargoVolumeMapper:
             self._make_color(0.6, 0.6, 0.6, 1.0),
             scale=0.055,
         )
+        hull_pts = []
+        for start, end in container_inner_hull_edges_in_container(scene_config):
+            hull_pts.append(tuple(start))
+            hull_pts.append(tuple(end))
         self._append_line_marker(
             markers,
             2,
             container_frame,
             stamp,
-            self._box_line_points(inner_l, inner_w, inner_h, z_base=floor_z),
+            hull_pts,
             self._make_color(0.0, 0.9, 0.9, 1.0),
             scale=0.045,
         )
+        aper_pts = []
+        for start, end in container_aperture_edges_in_container(scene_config):
+            aper_pts.append(tuple(start))
+            aper_pts.append(tuple(end))
+        if aper_pts:
+            self._append_line_marker(
+                markers,
+                3,
+                container_frame,
+                stamp,
+                aper_pts,
+                self._make_color(1.0, 0.82, 0.25, 1.0),
+                scale=0.055,
+            )
 
         opening_xyz, _opening_rpy = container_opening_in_container(scene_config)
         ox, oy, oz = opening_xyz
         self._append_line_marker(
             markers,
-            3,
+            4,
             container_frame,
             stamp,
             [(ox, oy - 0.2, oz), (ox, oy + 0.2, oz)],

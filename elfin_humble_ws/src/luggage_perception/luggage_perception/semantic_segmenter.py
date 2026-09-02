@@ -145,6 +145,8 @@ def _setup_clip_vendor():
         target = os.path.join(cache_dir, "ViT-B-32.pt")
         try:
             os.makedirs(cache_dir, exist_ok=True)
+            if os.path.islink(target) and not os.path.exists(target):
+                os.remove(target)
             if not os.path.exists(target):
                 os.symlink(weights, target)
         except OSError:

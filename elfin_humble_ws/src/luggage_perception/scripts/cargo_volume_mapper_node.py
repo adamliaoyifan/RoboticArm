@@ -44,6 +44,7 @@ from luggage_msgs.srv import (
 from ament_index_python.packages import get_package_share_directory
 
 from luggage_description.scene_tf_config_utils import (
+    container_hull_local_inside_fn,
     container_inner_ceiling_z,
     container_inner_dimensions,
     container_inner_floor_z,
@@ -85,6 +86,7 @@ class CargoVolumeMapperNode(Node):
             (0.0, 0.0, volume_center_z),
             0.0,
             resolution=float(self.get_parameter("resolution").value),
+            hull_local_inside=container_hull_local_inside_fn(scene),
         )
         self._frame = "container_link"
         self._world_from_container = self._load_container_pose(scene)
