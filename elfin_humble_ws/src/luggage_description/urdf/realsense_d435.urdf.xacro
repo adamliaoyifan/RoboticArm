@@ -57,6 +57,16 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
+    <!-- D555 (PoE) sits in the same printed pocket as this D435. Body pose
+         is camera_link (cam_mount_*). Driver publishes d555_* optical frames
+         from d555_link; do not duplicate those here. -->
+    <link name="d555_link"/>
+    <joint name="d555_body_joint" type="fixed">
+      <parent link="camera_link"/>
+      <child link="d555_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+    </joint>
+
     <link name="camera_depth_frame"/>
     <joint name="camera_depth_joint" type="fixed">
       <parent link="camera_link"/>

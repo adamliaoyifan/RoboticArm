@@ -3,16 +3,18 @@
 
   <!--
     3D-printed sensor mount adapter that bolts onto elfin_link6 (EOF).
-    Hosts the RealSense D435 camera and reserves a frame for MID360 lidar.
+    Hosts the RealSense D435 camera and the Mid-360S lidar frames.
     STL is in millimetres; scale 0.001 converts to metres for URDF.
   -->
+  <xacro:include filename="$(find luggage_description)/config/mid360_origin.xacro"/>
+
   <xacro:macro name="eef_sensor_mount" params="parent *origin">
 
     <link name="eef_mount_adapter">
       <visual>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-          <mesh filename="package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl"
+          <mesh filename="package://luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl"
                 scale="0.001 0.001 0.001"/>
         </geometry>
         <material name="adapter_grey">
@@ -22,7 +24,7 @@
       <collision>
         <origin xyz="0 0 0" rpy="0 0 0"/>
         <geometry>
-          <mesh filename="package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl"
+          <mesh filename="package://luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl"
                 scale="0.001 0.001 0.001"/>
         </geometry>
       </collision>
@@ -42,12 +44,40 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <!-- Reserved frame for MID360 lidar (empty link, no sensor yet). -->
-    <link name="mid360_mount_frame"/>
+    <!-- Mid-360S: mechanical mount plus optical and IMU frames.
+         Origins come from config/mid360_origin.xacro (handbook optical/IMU;
+         xyz/rpy are the camera-tower +Y pad, not jointly calibrated). -->
+
+    <link name="mid360_mount_frame">
+      <!-- Housing 65 x 65 x 60 mm, origin at base centre, +Z through the dome. -->
+      <visual>
+        <origin xyz="0 0 0.030" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.065 0.065 0.060"/>
+        </geometry>
+        <material name="livox_body">
+          <color rgba="0.15 0.45 0.75 0.7"/>
+        </material>
+      </visual>
+    </link>
     <joint name="mid360_mount_joint" type="fixed">
       <parent link="eef_mount_adapter"/>
       <child link="mid360_mount_frame"/>
-      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+      <origin xyz="${mid360_mount_xyz}" rpy="${mid360_mount_rpy}"/>
+    </joint>
+
+    <link name="livox_frame"/>
+    <joint name="livox_optical_joint" type="fixed">
+      <parent link="mid360_mount_frame"/>
+      <child link="livox_frame"/>
+      <origin xyz="${livox_optical_xyz}" rpy="${livox_optical_rpy}"/>
+    </joint>
+
+    <link name="livox_imu_frame"/>
+    <joint name="livox_imu_joint" type="fixed">
+      <parent link="livox_frame"/>
+      <child link="livox_imu_frame"/>
+      <origin xyz="${livox_imu_xyz}" rpy="${livox_imu_rpy}"/>
     </joint>
 
     <gazebo reference="eef_mount_adapter">

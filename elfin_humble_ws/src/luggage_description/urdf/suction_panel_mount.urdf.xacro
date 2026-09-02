@@ -9,7 +9,7 @@
     in CAD coords, so mesh origins are shifted by the negative of that.
     STLs are already in metres; scale = 1.
   -->
-  <xacro:property name="sp_mesh_dir" value="package://luggage_gazebo/models/suction_panel/collision"/>
+  <xacro:property name="sp_mesh_dir" value="package://luggage_description/meshes/suction_panel"/>
   <xacro:property name="sp_origin_x" value="-0.0909"/>
   <xacro:property name="sp_origin_y" value="-0.28583"/>
   <xacro:property name="sp_origin_z" value="-0.0909"/>

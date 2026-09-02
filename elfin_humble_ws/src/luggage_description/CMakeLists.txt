@@ -16,6 +16,18 @@ install(DIRECTORY launch
   PATTERN "*.launch" EXCLUDE
 )
 
+# EEF / suction STLs live in luggage_gazebo/models. Install a copy so RViz can
+# resolve them from luggage_description without building the Gazebo stack.
+set(_gz_models "${CMAKE_CURRENT_SOURCE_DIR}/../luggage_gazebo/models")
+if(EXISTS "${_gz_models}/arm_realsense/arm_realsense_v1.3.stl")
+  install(DIRECTORY "${_gz_models}/arm_realsense"
+    DESTINATION share/${PROJECT_NAME}/meshes)
+endif()
+if(EXISTS "${_gz_models}/suction_panel/collision")
+  install(DIRECTORY "${_gz_models}/suction_panel/collision/"
+    DESTINATION share/${PROJECT_NAME}/meshes/suction_panel)
+endif()
+
 install(PROGRAMS
   scripts/container_tf_publisher
   scripts/xacro_robot_with_scene_base

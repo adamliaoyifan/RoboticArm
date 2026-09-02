@@ -1,5 +1,9 @@
 # Scene static TF and Gazebo spawn poses. All world-frame entries are relative to world origin.
 #
+# SIMULATION DEFAULTS. Gate 3 on the real cell must copy this file and replace
+# pedestal / container / opening / pickup numbers with tape-measure values.
+# Do not feed this file to scene_hardware.launch.py as if it were surveyed.
+#
 # TF publishing (container_tf_publisher):
 #   Robot base: URDF world_base -> elfin_base_link (robot_state_publisher)
 #   Pedestal enabled: world -> pedestal_link (visual reference only)

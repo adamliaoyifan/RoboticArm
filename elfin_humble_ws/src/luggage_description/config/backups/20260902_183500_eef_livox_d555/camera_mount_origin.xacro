@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- Saved by eof_mount_stack_tune_gui.py -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="cam_mount_parent" value="eef_mount_adapter"/>
+  <xacro:property name="cam_mount_xyz" value="0.013000 0.097000 -0.021000"/>
+  <xacro:property name="cam_mount_rpy" value="0.03769911 1.36345121 1.57079633"/>
+</robot>
