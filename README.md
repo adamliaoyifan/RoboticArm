@@ -186,6 +186,13 @@ Draft image: [`elfin_humble_ws/Dockerfile.humble`](elfin_humble_ws/Dockerfile.hu
 
 ## ROS2 trajectory executor (Docker)
 
-The ROS2 Humble executor for deployment on Ubuntu 20.04 hosts lives at
-[`ros2_ws/src/elfin_trajectory_executor/Dockerfile`](ros2_ws/src/elfin_trajectory_executor/Dockerfile).
-It is separate from the Noetic simulation stack above.
+Real-robot TCP runtime lives in [`deployment_ws/`](deployment_ws/) (formerly `ros2_ws/`):
+
+- Humble: [`deployment_ws/src/elfin_trajectory_executor`](deployment_ws/src/elfin_trajectory_executor)
+- Noetic: [`deployment_ws/noetic/elfin_cps_executor`](deployment_ws/noetic/elfin_cps_executor)
+
+Huayan SDK sources used by those nodes: [`SDK_sample/`](SDK_sample/), [`third_party/`](third_party/).
+
+See [`deployment_ws/README.md`](deployment_ws/README.md) and
+[`deployment_ws/src/elfin_trajectory_executor/Dockerfile`](deployment_ws/src/elfin_trajectory_executor/Dockerfile).
+It is separate from the Noetic simulation stack and from `elfin_humble_ws`.

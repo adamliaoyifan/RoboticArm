@@ -1,0 +1,16 @@
+robot_ip: "192.168.0.10"
+robot_port: 10003
+default_velocity_deg: 30.0
+max_velocity_deg: 60.0
+poll_interval_s: 0.05
+blend_radius_mm: 5.0
+final_blend_radius_mm: 0.0
+controller_start_timeout_s: 30.0
+power_off_on_disconnect: false
+joint_names:
+  - elfin_joint1
+  - elfin_joint2
+  - elfin_joint3
+  - elfin_joint4
+  - elfin_joint5
+  - elfin_joint6

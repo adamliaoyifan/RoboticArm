@@ -1,0 +1,26 @@
+<launch>
+  <arg name="robot_ip" default="192.168.0.10"/>
+  <arg name="robot_port" default="10003"/>
+  <arg name="use_cpp" default="false"/>
+  <arg name="display" default="true"/>
+
+  <param name="robot_description" command="xacro '$(find elfin_description)/urdf/S20.urdf.xacro'"/>
+
+  <node pkg="robot_state_publisher" type="robot_state_publisher"
+        name="robot_state_publisher" output="screen"/>
+
+  <include file="$(find elfin_cps_executor)/launch/cps_executor.launch" unless="$(arg use_cpp)">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="robot_port" value="$(arg robot_port)"/>
+  </include>
+
+  <include file="$(find elfin_cps_executor)/launch/cpp_cps_executor.launch" if="$(arg use_cpp)">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="robot_port" value="$(arg robot_port)"/>
+  </include>
+
+  <include file="$(find elfin_s20_moveit_config)/launch/moveit_planning_execution.launch">
+    <arg name="load_robot_description" value="false"/>
+    <arg name="display" value="$(arg display)"/>
+  </include>
+</launch>

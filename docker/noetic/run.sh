@@ -9,6 +9,9 @@
 #   ./run.sh exec               Open a second shell in the running container
 #   ./run.sh gazebo             Launch Gazebo (S20) in running container
 #   ./run.sh moveit             Launch MoveIt + RViz (S20)
+#   ./run.sh cps                Launch Python SDK trajectory executor
+#   ./run.sh cpp-cps            Launch C++ SDK trajectory executor
+#   ./run.sh hw-exec            Real-robot execution stack (topic in, no MoveIt)
 #   ./run.sh api                Launch elfin_basic_api control panel
 #
 # Environment variables:
@@ -31,6 +34,7 @@ USE_GPU="${USE_GPU:-0}"
 LIBGL_ALWAYS_SOFTWARE="${LIBGL_ALWAYS_SOFTWARE:-0}"
 
 MODEL_PREFIX="elfin_${ELFIN_MODEL}"
+SDK_ENV='export PYTHONPATH=/opt/huayan:${PYTHONPATH:-}; export HUAYAN_CPP_SDK=/opt/huayan/cpp_sdk; export LD_LIBRARY_PATH=/opt/huayan/cpp_sdk/lib:/opt/huayan/cpp_sdk/HRCPS:${LD_LIBRARY_PATH:-}'
 
 common_run_args() {
     local detached="${1:-0}"
@@ -47,9 +51,16 @@ common_run_args() {
         --env QT_X11_NO_MITSHM=1
         --env XDG_RUNTIME_DIR=/tmp/runtime-root
         --env "LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE}"
+        --env PYTHONPATH=/opt/huayan
+        --env HUAYAN_CPP_SDK=/opt/huayan/cpp_sdk
+        --env LD_LIBRARY_PATH=/opt/huayan/cpp_sdk/lib:/opt/huayan/cpp_sdk/HRCPS
         --volume /tmp/.X11-unix:/tmp/.X11-unix:rw
         --volume "${HOME}/.gazebo:/root/.gazebo"
         --volume "${ELFIN_WS}/src:/catkin_ws/src"
+        --volume "${ROBOTARM_DIR}/deployment_ws/noetic/elfin_cps_executor:/catkin_ws/src/elfin_cps_executor"
+        --volume "${ROBOTARM_DIR}/third_party/huayan_python_sdk/CPS.py:/opt/huayan/CPS.py:ro"
+        --volume "${ROBOTARM_DIR}/SDK_sample/CppLinux_SDK/sdk:/opt/huayan/cpp_sdk:ro"
+        --volume "${ROBOTARM_DIR}/SDK_sample/CppLinux_SDK:/opt/huayan/cpp_sample:ro"
     )
     if [[ "${USE_GPU}" == "1" ]]; then
         args+=(--gpus all)
@@ -76,8 +87,8 @@ ensure_workspace() {
 
 cmd_build() {
     ensure_workspace
-    echo "Building ${IMAGE_NAME} from ${ELFIN_WS} ..."
-    docker build -f "${DOCKERFILE}" -t "${IMAGE_NAME}" "${ELFIN_WS}"
+    echo "Building ${IMAGE_NAME} from ${ROBOTARM_DIR} ..."
+    docker build -f "${DOCKERFILE}" -t "${IMAGE_NAME}" "${ROBOTARM_DIR}"
     echo "Done. Run: ${SCRIPT_DIR}/run.sh sim"
 }
 
@@ -110,7 +121,7 @@ cmd_hw() {
 }
 
 cmd_exec() {
-    docker exec -it "${CONTAINER_NAME}" bash -lc 'source /catkin_ws/devel/setup.bash && exec bash'
+    docker exec -it "${CONTAINER_NAME}" bash -lc "${SDK_ENV}; source /catkin_ws/devel/setup.bash && exec bash"
 }
 
 docker_exec_shell() {
@@ -125,12 +136,22 @@ cmd_roslaunch() {
     local pkg="$1"
     local launch="$2"
     shift 2
-    docker_exec_shell "source /catkin_ws/devel/setup.bash && roslaunch ${pkg} ${launch} $*"
+    docker_exec_shell "${SDK_ENV}; source /catkin_ws/devel/setup.bash && roslaunch ${pkg} ${launch} $*"
+}
+
+cmd_cps() {
+    local backend="$1"
+    shift
+    if [[ "${backend}" == "python" ]]; then
+        cmd_roslaunch elfin_cps_executor cps_executor.launch "${@}"
+    else
+        cmd_roslaunch elfin_cps_executor cpp_cps_executor.launch "${@}"
+    fi
 }
 
 has_robot_description() {
     docker exec "${CONTAINER_NAME}" bash -lc \
-        'source /catkin_ws/devel/setup.bash && rosparam get /robot_description >/dev/null 2>&1'
+        "${SDK_ENV}; source /catkin_ws/devel/setup.bash && rosparam get /robot_description >/dev/null 2>&1"
 }
 
 cmd_moveit() {
@@ -187,6 +208,15 @@ case "${1:-}" in
     moveit)
         cmd_moveit "${@:2}"
         ;;
+    cps)
+        cmd_cps python "${@:2}"
+        ;;
+    cpp-cps)
+        cmd_cps cpp "${@:2}"
+        ;;
+    hw-exec)
+        cmd_roslaunch elfin_cps_executor hardware_execution.launch "${@:2}"
+        ;;
     sim-all)
         cmd_sim_all "${@:2}"
         ;;
@@ -206,6 +236,9 @@ Commands:
   exec      Open another shell in the running container
   gazebo    roslaunch elfin_gazebo ${MODEL_PREFIX}_empty_world.launch
   moveit    MoveIt + RViz (auto-loads URDF if Gazebo not running)
+  cps       Python Huayan SDK FollowJointTrajectory executor
+  cpp-cps   C++ Huayan SDK FollowJointTrajectory executor
+  hw-exec   Real-robot execution only (topic /execute_trajectory, no MoveIt)
   sim-all   Gazebo + MoveIt + RViz in one launch (S20)
   api       roslaunch elfin_basic_api elfin_basic_api.launch
 
@@ -213,6 +246,7 @@ Environment:
   ELFIN_MODEL=${ELFIN_MODEL}   ELFIN_WS=${ELFIN_WS}
   CONTAINER_NAME=${CONTAINER_NAME}   USE_GPU=${USE_GPU}
   LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE}  (set 1 if RViz/Gazebo black window)
+  PYTHONPATH=/opt/huayan and HUAYAN_CPP_SDK=/opt/huayan/cpp_sdk are set in containers
 
 Simulation workflow (recommended — Gazebo must be first for execution):
   1. $(basename "$0") start

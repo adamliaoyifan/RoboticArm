@@ -1,0 +1,15 @@
+.git
+.cursor
+**/.git
+**/__pycache__
+**/*.pyc
+
+elfin_noetic_ws/build
+elfin_noetic_ws/devel
+elfin_noetic_ws/install
+ros2_ws/build
+ros2_ws/install
+ros2_ws/log
+
+SDK_sample/CppLinux_SDK/build
+SDK_sample/CppLinux_SDK/bin

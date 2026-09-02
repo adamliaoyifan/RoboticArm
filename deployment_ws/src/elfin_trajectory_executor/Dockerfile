@@ -5,13 +5,13 @@
 # can participate in the same DDS domain as the planning machine (Humble /
 # Ubuntu 22.04) while also reaching the HuayanRobot controller over TCP/IP.
 #
-# Build (run from the workspace root — the directory containing ros2_ws/):
+# Build (run from the workspace root — the directory containing deployment_ws/):
 #   # Copy the CPS SDK .so to the workspace root first:
 #   cp /path/to/CPS_python3_Linux.so /path/to/RobotArm/
 #
 #   cd /path/to/RobotArm
 #   docker build \
-#     -f ros2_ws/src/elfin_trajectory_executor/Dockerfile \
+#     -f deployment_ws/src/elfin_trajectory_executor/Dockerfile \
 #     -t elfin_executor .
 #
 # Run (simulation — no robot required):
@@ -63,10 +63,10 @@ ENV PYTHONPATH=/opt/huayan:${PYTHONPATH}
 # ---------------------------------------------------------------------------
 # ROS2 workspace
 # ---------------------------------------------------------------------------
-WORKDIR /ros2_ws
+WORKDIR /deployment_ws
 
-# Copy the source tree.
-COPY ros2_ws/src ./src
+# Copy only the Humble package. The Noetic executor lives in deployment_ws/noetic/.
+COPY deployment_ws/src/elfin_trajectory_executor ./src/elfin_trajectory_executor
 
 # Build with colcon (source Humble first).
 RUN source /opt/ros/humble/setup.bash \
@@ -76,7 +76,7 @@ RUN source /opt/ros/humble/setup.bash \
 
 # Source the workspace on every new shell.
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
-    && echo "source /ros2_ws/install/setup.bash" >> /root/.bashrc
+    && echo "source /deployment_ws/install/setup.bash" >> /root/.bashrc
 
 # ---------------------------------------------------------------------------
 # Entrypoint
@@ -86,7 +86,7 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc \
 # We patch it in-place to also source the workspace overlay so every
 # exec'd command sees both the Humble and the package install spaces.
 RUN sed -i \
-    's|exec "\$@"|source /ros2_ws/install/setup.bash \&\& exec "$@"|' \
+    's|exec "\$@"|source /deployment_ws/install/setup.bash \&\& exec "$@"|' \
     /ros2_entrypoint.sh \
     && echo "Entrypoint patched to source workspace overlay."
 

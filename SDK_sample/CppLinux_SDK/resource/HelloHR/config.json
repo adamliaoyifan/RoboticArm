@@ -1,0 +1,15 @@
+{
+  "name": "HelloHR",
+  "page_setting": "HelloHR.js",
+  "page_instruction": "instruct.js",
+  "logic_name": "AppDemo",
+  "logic_function": "libAppDemo.so",
+  "author": {
+    "name": "",
+    "email": "",
+    "url": ""
+  },
+  "description": "demo plugin",
+  "license": "",
+  "version": "1.0.0"
+}

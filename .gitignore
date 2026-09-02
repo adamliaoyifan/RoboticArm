@@ -40,3 +40,10 @@ elfin_humble_ws/src/luggage_perception/vendor/clip_pkg/
 elfin_humble_ws/src/luggage_perception/vendor/deps/
 elfin_humble_ws/src/luggage_perception/vendor/clip_models/
 elfin_humble_ws/src/luggage_perception/weights/
+
+# Docker bind-mount point for the Noetic TCP executor (source lives in deployment_ws)
+elfin_noetic_ws/src/elfin_cps_executor/
+
+# Nested clone metadata inside vendored SDK tree
+SDK_sample/.git/
+SDK_sample/CppLinux_SDK/bin/
