@@ -20,8 +20,10 @@ Latched ``/placement_planner/last_result`` (std_msgs/String JSON) lists every
 candidate (feasible + rejected) for pack-eval dumps.
 
 G2 aperture gate: a candidate footprint outside the opening-aperture Y
-shadow gets ``reason=outside_aperture``. Corridor check uses floor-relative
-container AABBs (insertion_corridor.corridor_blocked, single-box wall).
+shadow gets ``reason=outside_aperture``. The 7-face hull gate rejects boxes
+whose AABB corners leave the chamfered inner volume (``outside_hull``).
+Corridor check uses floor-relative container AABBs
+(insertion_corridor.corridor_blocked, single-box wall).
 """
 
 from __future__ import division
@@ -55,6 +57,7 @@ from luggage_description.scene_tf_config_utils import (
     container_opening_aperture_corners_in_container,
     load_scene_tf_config,
     origin_in_world,
+    point_inside_container_inner_hull_container,
     resolve_scene_tf_config_path,
     yaw_base_link_to_world,
     yaw_world_to_base_link,
@@ -65,6 +68,7 @@ from luggage_packing.placement_solver import generate_candidates
 # Reject reasons surfaced in the response message (A5 histogram inputs).
 REASON_OVERLAP = "overlap"
 REASON_OUTSIDE_APERTURE = "outside_aperture"
+REASON_OUTSIDE_HULL = "outside_hull"
 REASON_CORRIDOR_BLOCKED = "corridor_blocked"
 
 
@@ -277,6 +281,18 @@ class PlacementPlannerNode(Node):
         a_lo, a_hi = self._aperture_y
         return lo < a_lo - 1e-6 or hi > a_hi + 1e-6
 
+    def _hull_reject(self, candidate):
+        """True when any AABB corner sits in the cut-off +Y triangle."""
+        x0, y0, z0, x1, y1, z1 = self._candidate_aabb(candidate)
+        floor_z = self._floor_z
+        for x in (x0, x1):
+            for y in (y0, y1):
+                for z in (z0, z1):
+                    if not point_inside_container_inner_hull_container(
+                            [x, y, z + floor_z], self._scene):
+                        return True
+        return False
+
     def _placed_aabbs(self, placed_slots):
         """Floor-relative container AABBs from elfin_base_link SlotSpecs."""
         aabbs = []
@@ -364,6 +380,12 @@ class PlacementPlannerNode(Node):
                 candidate["reason"] = REASON_OUTSIDE_APERTURE
                 histogram[REASON_OUTSIDE_APERTURE] = \
                     histogram.get(REASON_OUTSIDE_APERTURE, 0) + 1
+                continue
+            if self._hull_reject(candidate):
+                candidate["feasible"] = False
+                candidate["reason"] = REASON_OUTSIDE_HULL
+                histogram[REASON_OUTSIDE_HULL] = \
+                    histogram.get(REASON_OUTSIDE_HULL, 0) + 1
                 continue
             if self._corridor_reject(candidate, request.placed):
                 candidate["feasible"] = False
