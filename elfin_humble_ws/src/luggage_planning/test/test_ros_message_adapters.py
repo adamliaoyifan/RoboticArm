@@ -55,8 +55,10 @@ class TestPoseRoundTrip(unittest.TestCase):
         msg.pose.orientation.z = 0.3826834
         msg.pose.orientation.w = 0.9238795  # yaw = pi/4
         msg.width, msg.depth, msg.height = 0.6, 0.4, 0.3
+        msg.yaw_valid = True
         pick = adapters.pick_from_detected(msg)
         self.assertAlmostEqual(pick.yaw, np.pi / 4.0, places=4)
+        self.assertTrue(pick.yaw_valid)
         self.assertEqual(pick.height, 0.3)
         self.assertAlmostEqual(pick.pose.orientation.z, 0.3826834, places=6)
         # build_sequence accesses these by attribute

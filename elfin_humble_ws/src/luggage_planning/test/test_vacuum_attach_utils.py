@@ -9,6 +9,8 @@ from luggage_planning.vacuum_attach_utils import (
     contact_distance,
     contact_ok,
     invert_transform,
+    top_face_contact_ok,
+    top_face_gap,
 )
 
 
@@ -38,6 +40,26 @@ class VacuumAttachUtilsTest(unittest.TestCase):
         box = [0.0, 0.0, 0.50]
         size = [0.80, 0.50, 0.32]
         self.assertFalse(contact_ok(panel, box, size, extra_margin=0.05))
+
+    def test_top_face_accepts_lid_contact(self):
+        panel = [-1.0, 0.0, 1.15]
+        box = [-1.0, 0.0, 1.01]
+        size = [0.70, 0.45, 0.28]
+        ok, gap = top_face_contact_ok(panel, box, size)
+        self.assertTrue(ok)
+        self.assertAlmostEqual(gap, 0.0, places=6)
+        self.assertAlmostEqual(top_face_gap(panel, box, size), 0.0, places=6)
+
+    def test_top_face_rejects_hover_and_side(self):
+        box = [-1.0, 0.0, 1.01]
+        size = [0.70, 0.45, 0.28]
+        hover = [-1.0, 0.0, 1.45]
+        ok, gap = top_face_contact_ok(hover, box, size)
+        self.assertFalse(ok)
+        self.assertAlmostEqual(gap, 0.30, places=6)
+        side = [-0.35, 0.0, 1.15]
+        ok, _ = top_face_contact_ok(side, box, size)
+        self.assertFalse(ok)
 
 
 if __name__ == "__main__":

@@ -95,3 +95,26 @@ def contact_ok(panel_xyz, box_xyz, box_size, extra_margin=0.05):
     return contact_distance(panel_xyz, box_xyz, box_size, extra_margin) <= (
         half_diag + float(extra_margin)
     )
+
+
+def top_face_gap(panel_xyz, box_xyz, box_size):
+    """Signed distance from the panel to the box top face (world +Z)."""
+    return float(panel_xyz[2]) - (
+        float(box_xyz[2]) + 0.5 * float(box_size[2]))
+
+
+def top_face_contact_ok(panel_xyz, box_xyz, box_size,
+                        xy_margin=0.05, gap_min=-0.01, gap_max=0.05):
+    """True when the panel is over the top face and within the gap band.
+
+    Returns ``(ok, gap)``. XY is axis-aligned in world (spawned boxes sit
+    yaw-aligned on the platform). ``gap`` is panel_z minus the top face.
+    """
+    dx = abs(float(panel_xyz[0]) - float(box_xyz[0]))
+    dy = abs(float(panel_xyz[1]) - float(box_xyz[1]))
+    in_footprint = (
+        dx <= 0.5 * float(box_size[0]) + float(xy_margin)
+        and dy <= 0.5 * float(box_size[1]) + float(xy_margin))
+    gap = top_face_gap(panel_xyz, box_xyz, box_size)
+    ok = in_footprint and float(gap_min) <= gap <= float(gap_max)
+    return ok, gap

@@ -13,6 +13,8 @@ from luggage_planning.waypoint_generator import (
     insertion_clearance,
     pick_tool_yaw,
     segment_names_for_phase,
+    staging_offset,
+    _perception_clearances,
 )
 
 
@@ -152,6 +154,36 @@ class TestWaypointGenerator(unittest.TestCase):
             places=6,
         )
 
+    def test_staging_offset_is_three_axis(self):
+        world_offset = staging_offset([-1.0, 0.0, 0.0], 0.65)
+        base_offset = staging_offset([0.0, 1.0, 0.0], 0.65)
+        self.assertAlmostEqual(
+            math.sqrt(sum(v * v for v in world_offset)), 0.65, places=6)
+        self.assertAlmostEqual(
+            math.sqrt(sum(v * v for v in base_offset)), 0.65, places=6)
+        self.assertAlmostEqual(world_offset[0], -0.65, places=6)
+        self.assertAlmostEqual(base_offset[1], 0.65, places=6)
+
+    def test_place_staging_along_world_negative_x_is_not_degenerate(self):
+        info = {
+            "point": [0.755, -0.27, 1.30],
+            "normal": [-1.0, 0.0, 0.0],
+            "outward_clearance": 0.15,
+            "stage_outward_clearance": 0.65,
+        }
+        segs = build_sequence(Box(), Slot(), "place", opening_info=info)
+        names = [segment.name for segment in segs]
+        self.assertIn("stage", names)
+        stage = next(s for s in segs if s.name == "stage")
+        transit = next(s for s in segs if s.name == "transit")
+        dx = stage.target_pose.position.x - transit.target_pose.position.x
+        dy = stage.target_pose.position.y - transit.target_pose.position.y
+        self.assertAlmostEqual(dx, -0.65, places=5)
+        self.assertAlmostEqual(dy, 0.0, places=5)
+        self.assertGreater(
+            math.hypot(dx, dy), 0.1,
+            "staging collapsed onto the portal (Y-only extrusion bug)")
+
     def test_pick_and_place_lift_off_names_are_distinct(self):
         """Pick lift-off is pick_retreat; place lift-off stays retreat."""
         self.assertEqual(
@@ -200,6 +232,106 @@ class TestWaypointGenerator(unittest.TestCase):
         q = segs[0].target_pose.orientation
         self.assertAlmostEqual(q.x, c)
         self.assertAlmostEqual(q.y, s)
+
+
+class TestPerceptionApproachClearance(unittest.TestCase):
+    def test_clearance_computation(self):
+        info = {"box_top_z": 1.0, "suction_z": 1.5}
+        c = _perception_clearances(info, None)
+        self.assertAlmostEqual(c["pre_grasp"], 0.5 * 0.6, places=4)
+        self.assertAlmostEqual(c["approach"], 0.5 * 0.3, places=4)
+        self.assertAlmostEqual(c["attach"], 0.0)
+        self.assertAlmostEqual(c["pick_retreat"], 0.35)
+
+        info2 = {"box_top_z": 1.0, "suction_z": 1.1}
+        c2 = _perception_clearances(info2, None)
+        self.assertAlmostEqual(c2["pre_grasp"], 0.20)
+        self.assertAlmostEqual(c2["approach"], 0.08)
+
+
+class TestCorridorClearance(unittest.TestCase):
+    """G1: traverse/extract heights must clear the tallest corridor neighbor.
+
+    The payload hangs a full box height below the suction frame (box top =
+    suction frame during tool-down carry), so the required suction height is
+    surface_max + box_height + margin (docs/plans/corridor_constraints.md).
+    """
+
+    def _segments(self, corridor_surface_max=None, box_height=0.30,
+                  slot_z=0.655, margin=0.05):
+        box = Box()
+        slot = Slot()
+        slot.place_pose.position.z = slot_z
+        slot.height = box_height
+        return build_sequence(
+            box, slot, "place",
+            opening_info={
+                "point": [0.755, 0.0, 1.30],
+                "normal": [-1.0, 0.0, 0.0],
+                "outward_clearance": 0.15,
+                "min_height_above_opening": 0.35,
+                "stage_outward_clearance": 0.65,
+            },
+            corridor_surface_max=corridor_surface_max,
+            corridor_margin=margin,
+        )
+
+    def test_none_corridor_keeps_single_slot_behavior(self):
+        segs_none = self._segments(corridor_surface_max=None)
+        segs_default = self._segments()
+        for a, b in zip(segs_none, segs_default):
+            self.assertAlmostEqual(a.target_pose.position.z,
+                                   b.target_pose.position.z, places=9)
+
+    def test_traverse_retreat_raised_above_tall_neighbor(self):
+        box_height = 0.30
+        slot_z = 0.655
+        contact_z = slot_z + box_height * 0.5  # 0.805
+        surface_max = 1.30  # a neighbor 0.5 m taller than our slot top
+        margin = 0.05
+        segs = self._segments(corridor_surface_max=surface_max,
+                              box_height=box_height, slot_z=slot_z,
+                              margin=margin)
+        by_name = {s.name: s for s in segs}
+        required = surface_max + box_height + margin  # 1.65
+        self.assertGreaterEqual(
+            by_name["traverse"].target_pose.position.z, required)
+        self.assertGreaterEqual(
+            by_name["retreat"].target_pose.position.z, required)
+        # Payload bottom (suction - box_height) clears by the margin.
+        self.assertGreaterEqual(
+            by_name["retreat"].target_pose.position.z - box_height
+            - surface_max, margin - 1e-9)
+
+    def test_low_neighbor_keeps_default_clearance(self):
+        # Neighbor below the slot top: no raise needed beyond default 0.15.
+        segs = self._segments(corridor_surface_max=0.60)
+        by_name = {s.name: s for s in segs}
+        self.assertAlmostEqual(
+            by_name["traverse"].target_pose.position.z, 0.805 + 0.15,
+            places=6)
+
+    def test_insert_descend_unchanged_by_corridor(self):
+        # Slot-column segments stay at their own heights regardless of the
+        # corridor: insert/descend only descend inside the slot column.
+        segs_a = self._segments(corridor_surface_max=None)
+        segs_b = self._segments(corridor_surface_max=1.30)
+        for name in ("insert", "descend"):
+            za = [s for s in segs_a if s.name == name][0].target_pose.position.z
+            zb = [s for s in segs_b if s.name == name][0].target_pose.position.z
+            self.assertAlmostEqual(za, zb, places=9, msg=name)
+
+    def test_corridor_clearance_unit(self):
+        from luggage_planning.waypoint_generator import corridor_clearance
+        # None -> passthrough.
+        self.assertEqual(corridor_clearance(None, 0.3, 0.8, 0.15), 0.15)
+        # Required below default -> default.
+        self.assertEqual(
+            corridor_clearance(0.60, 0.30, 0.805, 0.15), 0.15)
+        # Required above default -> surface + box + margin - contact_z.
+        self.assertAlmostEqual(
+            corridor_clearance(1.30, 0.30, 0.805, 0.15),
+            1.30 + 0.30 + 0.05 - 0.805, places=9)
 
 
 if __name__ == "__main__":

@@ -288,11 +288,22 @@ class TestSizedPickupAssets(unittest.TestCase):
                 uris.add(vis_uri)
         self.assertEqual(len(uris), 6)
 
-    def test_top_footprint_is_smaller_than_vertex_aabb(self):
-        stl = sized_stl_path(VISUAL_LOAFBRR, "large", GAZEBO_MODELS)
+    def test_top_footprint_uses_lid_band_not_full_aabb(self):
+        """Vintage GT is the lid XY, not the handle/body vertex AABB."""
+        stl = sized_stl_path(VISUAL_VINTAGE, "large", GAZEBO_MODELS)
         measure = mesh_top_footprint(stl)
-        self.assertLess(measure[0], 0.80 - 0.02)
-        self.assertLess(measure[1], 0.50 - 0.02)
+        mins, maxs = _stl_aabb(stl)
+        aabb = [maxs[i] - mins[i] for i in range(3)]
+        self.assertLess(measure[0], aabb[0] - 0.05)
+        self.assertLess(measure[1], aabb[1] - 0.02)
+        self.assertAlmostEqual(measure[2], aabb[2], places=5)
+
+    def test_vintage_large_gt_is_lid_band(self):
+        stl = sized_stl_path(VISUAL_VINTAGE, "large", GAZEBO_MODELS)
+        measure = mesh_top_footprint(stl)
+        # Full AABB is 0.80 x 0.50; the lid band is ~0.61 x 0.43.
+        self.assertAlmostEqual(measure[0], 0.61, places=2)
+        self.assertAlmostEqual(measure[1], 0.43, places=2)
         self.assertAlmostEqual(measure[2], 0.32, places=3)
 
     def test_top_footprint_scales_linearly(self):

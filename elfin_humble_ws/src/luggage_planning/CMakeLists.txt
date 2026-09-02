@@ -13,6 +13,8 @@ install(DIRECTORY data
 install(PROGRAMS
   scripts/waypoint_generator_node.py
   scripts/motion_planner_node.py
+  scripts/vacuum_controller_node.py
+  scripts/scene_manager_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

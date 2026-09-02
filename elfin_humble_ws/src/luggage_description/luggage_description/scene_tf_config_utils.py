@@ -623,6 +623,66 @@ def container_opening_normal_in_base_link(config):
     return [v / norm for v in rotated]
 
 
+def container_opening_target_point_in_world(config):
+    """Opening-frame origin as [x, y, z] in ``world``."""
+    local_xyz, _local_rpy = container_opening_in_container(config)
+    world_t, world_r = origin_in_world(config)
+    xyz, _ = _compose(world_t, world_r, local_xyz, [0.0, 0.0, 0.0])
+    return xyz
+
+
+def container_opening_normal_in_world(config):
+    """Unit opening normal in ``world`` (interior toward aperture)."""
+    axis, sign = container_opening_side(config)
+    local_normal = [0.0, 0.0, 0.0]
+    local_normal[axis] = sign
+    _xyz, rpy = origin_in_world(config)
+    rotated, _ = _compose(
+        [0.0, 0.0, 0.0], rpy, local_normal, [0.0, 0.0, 0.0])
+    return _normalize(rotated)
+
+
+def xyz_world_to_base_link(config, xyz):
+    """Map a world point into ``elfin_base_link``."""
+    base_t, base_r = robot_base_in_world(config)
+    inv_t, inv_r = _invert_transform(base_t, base_r)
+    out, _ = _compose(inv_t, inv_r, [float(v) for v in xyz], [0.0, 0.0, 0.0])
+    return out
+
+
+def xyz_base_link_to_world(config, xyz):
+    """Map an ``elfin_base_link`` point into ``world``."""
+    base_t, base_r = robot_base_in_world(config)
+    out, _ = _compose(
+        base_t, base_r, [float(v) for v in xyz], [0.0, 0.0, 0.0])
+    return out
+
+
+def yaw_world_to_base_link(config, yaw):
+    """Rotate a world-frame yaw into ``elfin_base_link``."""
+    _xyz, rpy = robot_base_in_world(config)
+    return float(yaw) - float(rpy[2])
+
+
+def yaw_base_link_to_world(config, yaw):
+    """Rotate an ``elfin_base_link`` yaw into ``world``."""
+    _xyz, rpy = robot_base_in_world(config)
+    return float(yaw) + float(rpy[2])
+
+
+def pedestal_collision_pose_in_world(config):
+    """Return (center_xyz, rpy) of the pedestal AABB in ``world``.
+
+    Gazebo's pedestal origin is the bottom-center; the MoveIt box primitive
+    is centered on the solid, so lift by half the pedestal height.
+    """
+    xyz, rpy = pedestal_in_world(config)
+    _length, _width, height = pedestal_dimensions(config)
+    center, _ = _compose(
+        xyz, rpy, [0.0, 0.0, height * 0.5], [0.0, 0.0, 0.0])
+    return center, list(rpy)
+
+
 def task_roi_from_scene(config):
     """Derive task-ROI geometry in elfin_base_link from scene_tf.
 

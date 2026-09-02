@@ -138,7 +138,9 @@ def mesh_top_footprint(path, z_band_frac=0.01, z_band_min=0.005):
     """Axis-aligned box of the top-face vertices plus full mesh height.
 
     Width/depth are the XY span of vertices within ``max(frac*h, min)`` of
-    zmax (what a top-down camera sees). Height is the full vertex AABB Z.
+    zmax (the lid / top face a top-down camera sits on). Height is the
+    full vertex AABB Z. A full-mesh XY AABB overestimates the body on
+    tapered meshes (vintage handles / sloped sides).
     """
     xs, ys, zs = [], [], []
     for x, y, z in iter_stl_vertices(path):
@@ -154,7 +156,11 @@ def mesh_top_footprint(path, z_band_frac=0.01, z_band_min=0.005):
     top_y = [y for y, z in zip(ys, zs) if z >= zmax - band]
     if not top_x:
         return [max(xs) - min(xs), max(ys) - min(ys), height]
-    return [max(top_x) - min(top_x), max(top_y) - min(top_y), height]
+    return [
+        max(top_x) - min(top_x),
+        max(top_y) - min(top_y),
+        height,
+    ]
 
 
 def write_scaled_stl(src_path, dest_path, scale):

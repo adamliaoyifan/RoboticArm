@@ -28,8 +28,9 @@ poses:
       - elfin_joint5
       - elfin_joint6
     # Collision-aware IK for camera_depth_optical_frame at world
-    # (-0.8, 0.0, 1.7), optical +Z down toward the pickup platform.
-    values: [1.9578, -1.4925, -1.6403, 4.7695, 1.7676, 1.9260]
+    # (-1.0, 0.0, 1.9), optical +Z down, centred on the pickup platform.
+    # Previous (-0.8, 0.0, 1.7) clipped large (0.80 m) on the image left.
+    values: [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
     tolerance: 0.15
 
 defaults:
@@ -40,4 +41,4 @@ defaults:
 
 meta:
   name: robot_poses_v1
-  version: 0.2.0
+  version: 0.2.1

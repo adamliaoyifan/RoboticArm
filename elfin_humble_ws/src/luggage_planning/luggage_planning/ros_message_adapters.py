@@ -74,9 +74,7 @@ def pick_from_detected(msg):
     """luggage_msgs/DetectedLuggage -> namespace for ``build_sequence``.
 
     ``build_sequence`` accesses ``pick.pose`` / ``pick.height`` /
-    ``pick.yaw`` (and optionally ``pick.yaw_valid``) by attribute. The
-    DetectedLuggage message carries no yaw-validity flag, so it is left
-    absent here and ``_luggage_yaw_valid`` defaults to trusting the yaw.
+    ``pick.yaw`` / ``pick.yaw_valid`` by attribute.
     """
     import math
     from types import SimpleNamespace
@@ -92,6 +90,7 @@ def pick_from_detected(msg):
         depth=float(msg.depth),
         height=float(msg.height),
         yaw=yaw,
+        yaw_valid=bool(getattr(msg, "yaw_valid", True)),
         detection_id=str(msg.id),
     )
 

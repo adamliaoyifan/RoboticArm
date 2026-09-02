@@ -30,11 +30,47 @@ DEFAULT_PICK_CLEARANCES = {
 INSERT_HEIGHT_FRACTION = 0.35
 INSERT_CLEARANCE_MIN = 0.06
 
+# Corridor margin (G1, docs/plans/corridor_constraints.md): when the caller
+# supplies the highest occupied surface along the opening corridor, the
+# traverse/extract heights are raised so the payload bottom clears that
+# surface by this margin. The payload hangs a full box height below the
+# suction frame (box top = suction frame during tool-down carry), so the
+# required suction height is surface_max + box_height + margin, not half.
+DEFAULT_CORRIDOR_MARGIN = 0.05
+
+
+def corridor_clearance(corridor_surface_max, box_height, contact_z,
+                       place_clearance_z, margin=DEFAULT_CORRIDOR_MARGIN):
+    """Effective place clearance honoring the corridor surface height.
+
+    Returns ``place_clearance_z`` when ``corridor_surface_max`` is None
+    (empty corridor / single-box slice-A behavior, backward compatible).
+    Otherwise the clearance above the contact pose is raised so that
+    ``contact_z + clearance >= corridor_surface_max + box_height + margin``
+    i.e. the payload bottom clears the tallest neighbor by ``margin``.
+    """
+    if corridor_surface_max is None:
+        return float(place_clearance_z)
+    required_suction_z = (
+        float(corridor_surface_max) + max(0.0, float(box_height))
+        + float(margin))
+    return max(float(place_clearance_z), required_suction_z - float(contact_z))
+
 
 def insertion_clearance(box_height, place_clearance_z):
     """Height above the contact pose where the insertion segment begins."""
     scaled = INSERT_HEIGHT_FRACTION * max(0.0, float(box_height))
     return max(INSERT_CLEARANCE_MIN, min(scaled, float(place_clearance_z)))
+
+
+def staging_offset(normal, stage_distance):
+    """World-frame offset of the stage waypoint along the opening normal.
+
+    The previous implementation only added ``normal[1] * distance`` (Y), which
+    is a no-op when the opening faces -X in world.
+    """
+    distance = float(stage_distance)
+    return [float(normal[i]) * distance for i in range(3)]
 
 
 def _clearance(clearances, name):
@@ -108,7 +144,9 @@ def _perception_clearances(perception_info, pick_clearances):
 
 def build_sequence(pick, place_slot, phase, pick_clearances=None,
                    place_clearance_z=None, perception_info=None,
-                   opening_info=None, fallback_yaw=0.0):
+                   opening_info=None, fallback_yaw=0.0,
+                   corridor_surface_max=None,
+                   corridor_margin=DEFAULT_CORRIDOR_MARGIN):
     """Build MotionSegment list for pick or place phase.
 
     Args:
@@ -121,9 +159,18 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         perception_info: optional dict with ``box_top_z`` and ``suction_z``
             for adaptive approach.  When *None* the fixed-clearance path is
             used (backward compatible).
+        opening_info: optional dict describing the container opening.
         fallback_yaw: tool-down azimuth used when ``pick.yaw_valid`` is false.
             The node should pass current wrist heading from TF; this module
             does not look up TF.
+        corridor_surface_max: optional float, highest occupied surface Z
+            (world) along the opening corridor between the portal and this
+            slot's near face. When given, traverse/retreat(extract) heights
+            are raised so the payload bottom clears it by
+            ``corridor_margin`` (G1 in docs/plans/corridor_constraints.md).
+            None keeps the single-slot fixed-clearance behavior.
+        corridor_margin: clearance kept between the payload bottom and the
+            corridor surface when raising heights.
 
     Returns:
         list[MotionSegment]
@@ -194,7 +241,13 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         contact_z = slot_pose.position.z + box_height * 0.5
         if place_clearance_z is None:
             place_clearance_z = DEFAULT_PLACE_CLEARANCE_Z
-        clearance = float(place_clearance_z)
+        # G1: raise the carry height when neighbors along the corridor are
+        # taller than this slot's own top. The payload hangs a full box
+        # height below the suction frame, so the required height keeps the
+        # payload bottom above corridor_surface_max + margin.
+        clearance = corridor_clearance(
+            corridor_surface_max, box_height, contact_z, place_clearance_z,
+            margin=corridor_margin)
         above_pose = _pose_at(slot_pose, contact_z + clearance, slot_yaw)
         transit_pose = above_pose
         stage_pose = None
@@ -216,11 +269,20 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
                 current[i] + normal[i] * (outward - signed)
                 for i in range(3)
             ]
+            # Entry at the portal must already satisfy the corridor height:
+            # a straight portal->above traverse crosses the opening plane at
+            # (or near) portal height, so a tall box just inside the door
+            # would clip an ascending entry that starts too low.
             portal[2] = max(
                 portal[2],
                 float(opening[2])
                 + float(opening_info.get("min_height_above_opening", 0.35)),
             )
+            if corridor_surface_max is not None:
+                portal[2] = max(
+                    portal[2],
+                    float(corridor_surface_max) + box_height
+                    + float(corridor_margin))
             transit_pose = Pose(
                 position=Point(
                     x=portal[0], y=portal[1], z=portal[2]),
@@ -233,12 +295,13 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             )
             stage_distance = float(
                 opening_info.get("stage_outward_clearance", 0.65))
+            offset = staging_offset(normal, stage_distance)
             stage_pose = Pose(
                 position=Point(
-                    x=portal[0],
-                    y=portal[1] + normal[1] * stage_distance,
+                    x=portal[0] + offset[0],
+                    y=portal[1] + offset[1],
                     z=max(
-                        portal[2],
+                        portal[2] + offset[2],
                         float(opening[2]) + float(
                             opening_info.get(
                                 "stage_height_above_opening", 0.65))),

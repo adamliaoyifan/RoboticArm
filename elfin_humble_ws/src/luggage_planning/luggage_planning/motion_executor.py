@@ -22,6 +22,9 @@ from __future__ import division
 
 import math
 import threading
+from dataclasses import dataclass
+
+from luggage_planning.ros_clock_wait import wait_event
 
 from builtin_interfaces.msg import Duration as DurationMsg
 from geometry_msgs.msg import Point as PointMsg, PoseStamped
@@ -48,6 +51,15 @@ JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
 _JOINT_LIMIT = 6.28
 _VEL_SCALE = 0.3
 _ACC_SCALE = 0.3
+
+
+@dataclass
+class SegmentExecResult:
+    success: bool
+    message: str
+    fraction: float = 0.0
+    used_ompl_fallback: bool = False
+    moveit_error_code: int = 0
 
 
 def _wrap_near(current, target, lower=-_JOINT_LIMIT, upper=_JOINT_LIMIT):
@@ -121,9 +133,8 @@ class MotionExecutor:
                         execute_timeout=45.0, current_joints=None):
         """Execute one luggage_msgs/MotionSegment.
 
-        Returns (success: bool, message: str, fraction: float). ``fraction``
-        is 1.0 for pose-target paths and the computed Cartesian fraction
-        otherwise.
+        Returns ``SegmentExecResult``. ``fraction`` is 1.0 for pose-target
+        paths and the computed Cartesian fraction otherwise.
         """
         seg_type = str(segment_msg.type)
         if seg_type == "pose_target":
@@ -132,24 +143,50 @@ class MotionExecutor:
         if seg_type == "cartesian":
             fraction, plan = self._plan_cartesian(segment_msg, feedback_cb)
             if plan is None:
-                return False, "compute_cartesian_path timeout", 0.0
+                return SegmentExecResult(
+                    False, "compute_cartesian_path timeout", 0.0)
             if fraction < self._min_fraction:
                 if segment_msg.allow_ompl_fallback:
                     self._notify(feedback_cb, "planning", segment_msg.name,
                                  fraction,
                                  "cartesian %.3f < %.3f; OMPL fallback"
                                  % (fraction, self._min_fraction))
-                    ok, fallback_msg, _f = self._run_pose_target(
+                    fallback = self._run_pose_target(
                         segment_msg, feedback_cb, execute_timeout,
                         current_joints)
-                    return ok, "%s (fallback from cartesian %.3f)" % (
-                        fallback_msg, fraction), fraction
-                return False, (
+                    fallback.message = "%s (fallback from cartesian %.3f)" % (
+                        fallback.message, fraction)
+                    fallback.fraction = fraction
+                    fallback.used_ompl_fallback = True
+                    return fallback
+                return SegmentExecResult(
+                    False,
                     "cartesian fraction %.3f below %.3f and no OMPL fallback"
-                    % (fraction, self._min_fraction)), fraction
+                    % (fraction, self._min_fraction),
+                    fraction)
             return self._execute_trajectory(plan, segment_msg, fraction,
                                             feedback_cb, execute_timeout)
-        return False, "unknown segment type %r" % seg_type, 0.0
+        return SegmentExecResult(
+            False, "unknown segment type %r" % seg_type, 0.0)
+
+    def probe_segment(self, segment_msg, start_joints=None):
+        """IK + optional cartesian fraction, no execution (dry-run)."""
+        ik = self._ik_joints(segment_msg.target_pose, start_joints)
+        record = {
+            "name": str(segment_msg.name),
+            "type": str(segment_msg.type),
+            "ik_ok": ik is not None,
+            "ik_joints": ik,
+            "fraction": None,
+            "cartesian_ok": None,
+        }
+        if str(segment_msg.type) == "cartesian":
+            fraction, plan = self._plan_cartesian(
+                segment_msg, None, start_joints=start_joints)
+            record["fraction"] = fraction if plan is not None else 0.0
+            record["cartesian_ok"] = (
+                plan is not None and fraction >= self._min_fraction)
+        return record
 
     # ------------------------------------------------------------------
     # pose_target
@@ -216,37 +253,87 @@ class MotionExecutor:
         goal.request.max_acceleration_scaling_factor = _ACC_SCALE
         ik_joints = self._ik_joints(segment_msg.target_pose, current_joints)
         if ik_joints is not None:
-            goal.request.goal_constraints = [
-                self._joint_constraints(ik_joints)]
             note = "IK joint goal"
-        else:
-            goal.request.goal_constraints = [self._build_goal_constraints(
-                segment_msg)]
-            note = "pose constraint fallback"
+            return self._run_joint_goal(
+                ik_joints, feedback_cb, execute_timeout, note)
+        goal.request.goal_constraints = [self._build_goal_constraints(
+            segment_msg)]
+        note = "pose constraint fallback"
         goal.planning_options.plan_only = False
         goal.planning_options.replan = False
 
         unimplemented = self._unimplemented_flags_note(segment_msg)
         if not self._move_group.wait_for_server(timeout_sec=5.0):
-            return False, "move_group action server unavailable", 0.0
+            return SegmentExecResult(
+                False, "move_group action server unavailable", 0.0)
         future = self._move_group.send_goal_async(
             goal, feedback_callback=self._movegroup_feedback(
                 feedback_cb, segment_msg.name))
         handle = self._wait_future(future, 5.0 + self._planning_time)
         if handle is None or not handle.accepted:
-            return False, "MoveGroup goal rejected/timeout", 0.0
+            return SegmentExecResult(
+                False, "MoveGroup goal rejected/timeout", 0.0)
         wrapped = self._wait_goal(handle, execute_timeout)
         if wrapped is None:
             handle.cancel_goal()
-            return False, "MoveGroup execution timeout", 0.0
+            return SegmentExecResult(
+                False, "MoveGroup execution timeout", 0.0)
         result = getattr(wrapped, "result", wrapped)
-        if result.error_code.val != MoveItErrorCodes.SUCCESS:
-            return False, "MoveGroup error_code=%s (%s)" % (
-                result.error_code.val, note), 0.0
+        code = int(result.error_code.val)
+        if code != MoveItErrorCodes.SUCCESS:
+            return SegmentExecResult(
+                False, "MoveGroup error_code=%s (%s)" % (code, note),
+                0.0, moveit_error_code=code)
         message = "pose_target ok (%s)" % note
         if unimplemented:
             message += "; " + unimplemented
-        return True, message, 1.0
+        return SegmentExecResult(True, message, 1.0, moveit_error_code=code)
+
+    def execute_joints(self, positions, feedback_cb=None, execute_timeout=45.0,
+                       current_joints=None):
+        """MoveIt joint-space plan/execute to ``positions`` (rad, JOINTS order)."""
+        wrapped = list(positions)
+        if current_joints and len(current_joints) == len(JOINTS):
+            wrapped = [
+                _wrap_near(cur, tgt) for cur, tgt in zip(current_joints, wrapped)]
+        return self._run_joint_goal(
+            wrapped, feedback_cb, execute_timeout, "named joint goal")
+
+    def _run_joint_goal(self, positions, feedback_cb, execute_timeout, note):
+        self._notify(feedback_cb, "planning", note, 0.0)
+        goal = MoveGroup.Goal()
+        goal.request.group_name = self._group
+        goal.request.num_planning_attempts = self._attempts
+        goal.request.allowed_planning_time = self._planning_time
+        goal.request.planner_id = self._planner_id
+        goal.request.start_state.is_diff = True
+        goal.request.max_velocity_scaling_factor = _VEL_SCALE
+        goal.request.max_acceleration_scaling_factor = _ACC_SCALE
+        goal.request.goal_constraints = [self._joint_constraints(positions)]
+        goal.planning_options.plan_only = False
+        goal.planning_options.replan = False
+        if not self._move_group.wait_for_server(timeout_sec=5.0):
+            return SegmentExecResult(
+                False, "move_group action server unavailable", 0.0)
+        future = self._move_group.send_goal_async(
+            goal, feedback_callback=self._movegroup_feedback(feedback_cb, note))
+        handle = self._wait_future(future, 5.0 + self._planning_time)
+        if handle is None or not handle.accepted:
+            return SegmentExecResult(
+                False, "MoveGroup goal rejected/timeout", 0.0)
+        wrapped = self._wait_goal(handle, execute_timeout)
+        if wrapped is None:
+            handle.cancel_goal()
+            return SegmentExecResult(
+                False, "MoveGroup execution timeout", 0.0)
+        result = getattr(wrapped, "result", wrapped)
+        code = int(result.error_code.val)
+        if code != MoveItErrorCodes.SUCCESS:
+            return SegmentExecResult(
+                False, "MoveGroup error_code=%s (%s)" % (code, note),
+                0.0, moveit_error_code=code)
+        return SegmentExecResult(
+            True, "joint_target ok (%s)" % note, 1.0, moveit_error_code=code)
 
     def _ik_joints(self, pose, current_joints):
         """IK seeded at the current arm, then wrap each joint nearest current.
@@ -261,6 +348,10 @@ class MotionExecutor:
         request.ik_request.ik_link_name = self._link
         request.ik_request.avoid_collisions = True
         request.ik_request.robot_state.is_diff = True
+        if current_joints and len(current_joints) == len(JOINTS):
+            request.ik_request.robot_state.joint_state.name = list(JOINTS)
+            request.ik_request.robot_state.joint_state.position = [
+                float(v) for v in current_joints]
         request.ik_request.timeout = DurationMsg(sec=1, nanosec=0)
         stamped = PoseStamped()
         stamped.header.frame_id = self._frame
@@ -299,13 +390,17 @@ class MotionExecutor:
     # ------------------------------------------------------------------
     # cartesian
 
-    def _plan_cartesian(self, segment_msg, feedback_cb):
+    def _plan_cartesian(self, segment_msg, feedback_cb, start_joints=None):
         self._notify(feedback_cb, "planning", segment_msg.name, 0.0)
         request = GetCartesianPath.Request()
         request.header.frame_id = self._frame
         request.group_name = self._group
         request.link_name = self._link
         request.start_state.is_diff = True
+        if start_joints is not None:
+            request.start_state.joint_state.name = list(JOINTS)
+            request.start_state.joint_state.position = [
+                float(v) for v in start_joints]
         request.waypoints = [segment_msg.target_pose]
         request.max_step = self._max_step
         request.jump_threshold = 0.0
@@ -322,24 +417,30 @@ class MotionExecutor:
         goal = ExecuteTrajectory.Goal()
         goal.trajectory = plan_response.solution
         if not self._execute.wait_for_server(timeout_sec=5.0):
-            return False, "execute_trajectory server unavailable", fraction
+            return SegmentExecResult(
+                False, "execute_trajectory server unavailable", fraction)
         future = self._execute.send_goal_async(goal)
         handle = self._wait_future(future, 10.0)
         if handle is None or not handle.accepted:
-            return False, "ExecuteTrajectory goal rejected", fraction
+            return SegmentExecResult(
+                False, "ExecuteTrajectory goal rejected", fraction)
         wrapped = self._wait_goal(handle, execute_timeout)
         if wrapped is None:
             handle.cancel_goal()
-            return False, "ExecuteTrajectory timeout", fraction
+            return SegmentExecResult(
+                False, "ExecuteTrajectory timeout", fraction)
         result = getattr(wrapped, "result", wrapped)
-        if result.error_code.val != MoveItErrorCodes.SUCCESS:
-            return False, "ExecuteTrajectory error_code=%s" % (
-                result.error_code.val), fraction
+        code = int(result.error_code.val)
+        if code != MoveItErrorCodes.SUCCESS:
+            return SegmentExecResult(
+                False, "ExecuteTrajectory error_code=%s" % code,
+                fraction, moveit_error_code=code)
         message = "cartesian ok (fraction %.3f)" % fraction
         unimplemented = self._unimplemented_flags_note(segment_msg)
         if unimplemented:
             message += "; " + unimplemented
-        return True, message, fraction
+        return SegmentExecResult(
+            True, message, fraction, moveit_error_code=code)
 
     # ------------------------------------------------------------------
     # helpers
@@ -384,9 +485,12 @@ class MotionExecutor:
         return future.result()
 
     def _wait_goal(self, handle, timeout_sec):
+        """Wait for an accepted goal. Timeout is sim seconds when use_sim_time."""
         event = threading.Event()
         future = handle.get_result_async()
         future.add_done_callback(lambda _f: event.set())
-        if not event.wait(timeout=timeout_sec):
+        reached, _reason = wait_event(
+            event, timeout_sec, clock=self._node.get_clock())
+        if not reached:
             return None
         return future.result()

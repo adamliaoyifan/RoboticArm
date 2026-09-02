@@ -15,6 +15,7 @@ Keeps the original node name per docs/plans/closed_loop_pick_retreat_nodes.md.
 
 from __future__ import division
 
+import json
 import os
 import threading
 import time
@@ -34,7 +35,8 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from luggage_msgs.action import GoToRobotPose, PlanMotion
 
-from luggage_planning.motion_executor import MotionExecutor
+from luggage_planning.motion_executor import MotionExecutor, _wrap_near
+from luggage_planning.ros_clock_wait import ClockTimeout, wait_event
 from luggage_planning.settle_criterion import SettleTracker
 
 JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
@@ -58,7 +60,10 @@ class MotionPlannerNode(Node):
         self.declare_parameter("settle_vel_tol", 0.02)
         self.declare_parameter("settle_hold_time", 0.5)
         self.declare_parameter("settle_timeout", 8.0)
-        self.declare_parameter("named_pose_duration", 8.0)
+        # Cap on GoToRobotPose FJT time_from_start. Actual duration is
+        # min(cap, max_joint_delta / named_pose_max_vel), at least 1 s.
+        self.declare_parameter("named_pose_duration", 4.0)
+        self.declare_parameter("named_pose_max_vel", 1.0)
 
         self._joint_state = None
         self._joint_lock = threading.Lock()
@@ -152,6 +157,10 @@ class MotionPlannerNode(Node):
         segment = goal_handle.request.segment
         result = PlanMotion.Result()
         name = str(segment.name)
+        result.fraction = 0.0
+        result.used_ompl_fallback = False
+        result.moveit_error_code = 0
+        result.settle_json = ""
 
         def feedback(stage, segment_name, fraction, note=""):
             fb = PlanMotion.Feedback()
@@ -171,7 +180,7 @@ class MotionPlannerNode(Node):
             return result
 
         try:
-            ok, message, fraction = self._executor_client.execute_segment(
+            exec_result = self._executor_client.execute_segment(
                 segment, feedback_cb=feedback,
                 execute_timeout=float(
                     self.get_parameter("execute_timeout").value),
@@ -183,6 +192,13 @@ class MotionPlannerNode(Node):
             result.message = "executor raised: %s" % exc
             return result
 
+        result.fraction = float(exec_result.fraction)
+        result.used_ompl_fallback = bool(exec_result.used_ompl_fallback)
+        result.moveit_error_code = int(exec_result.moveit_error_code)
+        ok = bool(exec_result.success)
+        message = exec_result.message
+        fraction = exec_result.fraction
+
         if not ok:
             if goal_handle.is_cancel_requested:
                 goal_handle.canceled()
@@ -192,8 +208,9 @@ class MotionPlannerNode(Node):
             result.message = message
             return result
 
-        settled = self._wait_settled(
+        settled, settle_diag = self._wait_settled(
             lambda: feedback("settling", name, fraction))
+        result.settle_json = json.dumps(settle_diag, sort_keys=True)
         if not settled:
             goal_handle.abort()
             result.success = False
@@ -211,26 +228,33 @@ class MotionPlannerNode(Node):
         result.message = message
         return result
 
+    def _named_pose_duration(self, current, target):
+        cap = max(0.5, float(self.get_parameter("named_pose_duration").value))
+        max_vel = max(0.1, float(self.get_parameter("named_pose_max_vel").value))
+        if current is None:
+            return cap
+        max_delta = max(
+            abs(float(a) - float(b)) for a, b in zip(current, target))
+        return max(1.0, min(cap, max_delta / max_vel))
+
     def _wait_settled(self, pulse, timeout=None):
         timeout = timeout or float(self.get_parameter("settle_timeout").value)
         tracker = SettleTracker(
             float(self.get_parameter("settle_vel_tol").value),
             float(self.get_parameter("settle_hold_time").value))
-        deadline = time.monotonic() + timeout
-        t0 = time.monotonic()
-        while time.monotonic() < deadline:
+        timer = ClockTimeout(self.get_clock(), timeout)
+        while not timer.done():
             time.sleep(0.05)
             positions, velocities = self._joint_positions()
             if positions is None:
                 continue
-            now = time.monotonic()
             pos_d = dict(zip(JOINTS, positions))
             vel_d = dict(zip(JOINTS, velocities or [0.0] * len(JOINTS)))
-            tracker.update(now - t0, vel_d, pos_d)
+            tracker.update(timer.elapsed(), vel_d, pos_d)
             if tracker.settled_at is not None:
-                return True
+                return True, tracker.diagnostics()
             pulse()
-        return tracker.settled_at is not None
+        return tracker.settled_at is not None, tracker.diagnostics()
 
     # ------------------------------------------------------------------
     # GoToRobotPose (named joint pose via FJT)
@@ -246,7 +270,7 @@ class MotionPlannerNode(Node):
             goal_handle.publish_feedback(fb)
 
         try:
-            target = self._named_pose(pose_name)
+            target = list(self._named_pose(pose_name))
         except Exception as exc:  # noqa: BLE001 - action boundary
             goal_handle.abort()
             result.success = False
@@ -254,6 +278,9 @@ class MotionPlannerNode(Node):
             return result
 
         positions, _ = self._joint_positions()
+        if positions is not None:
+            target = [
+                _wrap_near(cur, tgt) for cur, tgt in zip(positions, target)]
         if positions is not None and max(
                 abs(a - b) for a, b in zip(positions, target)) < 0.02:
             goal_handle.succeed()
@@ -272,14 +299,19 @@ class MotionPlannerNode(Node):
         goal = FollowJointTrajectory.Goal()
         traj = JointTrajectory()
         traj.joint_names = list(JOINTS)
-        point = JointTrajectoryPoint()
-        point.positions = target
-        point.velocities = [0.0] * len(JOINTS)
-        duration = float(self.get_parameter("named_pose_duration").value)
+        start = list(positions) if positions is not None else list(target)
+        p0 = JointTrajectoryPoint()
+        p0.positions = start
+        p0.velocities = [0.0] * len(JOINTS)
+        p0.time_from_start = Duration(sec=0, nanosec=0)
+        p1 = JointTrajectoryPoint()
+        p1.positions = target
+        p1.velocities = [0.0] * len(JOINTS)
+        duration = self._named_pose_duration(start, target)
         sec = int(duration)
-        point.time_from_start = Duration(
+        p1.time_from_start = Duration(
             sec=sec, nanosec=int((duration - sec) * 1e9))
-        traj.points = [point]
+        traj.points = [p0, p1]
         goal.trajectory = traj
         goal.goal_time_tolerance = Duration(sec=2, nanosec=0)
 
@@ -301,21 +333,44 @@ class MotionPlannerNode(Node):
         result_event = threading.Event()
         result_future = handle.get_result_async()
         result_future.add_done_callback(lambda _f: result_event.set())
-        if not result_event.wait(duration + 60.0):
+        reached, wait_reason = wait_event(
+            result_event, duration + 60.0, clock=self.get_clock())
+        if not reached:
             handle.cancel_goal()
             goal_handle.abort()
             result.success = False
-            result.message = "FJT execution timeout"
+            extra = " (%s)" % wait_reason if wait_reason else ""
+            result.message = "FJT execution timeout%s" % extra
             return result
         wrapped = result_future.result()
         if wrapped.status != GoalStatus.STATUS_SUCCEEDED:
-            goal_handle.abort()
-            result.success = False
-            result.message = "FJT status=%s error_code=%s" % (
-                wrapped.status, wrapped.result.error_code)
+            self.get_logger().warn(
+                "FJT named pose failed (%s %s); MoveIt joint fallback"
+                % (wrapped.status, wrapped.result.error_code))
+            moveit = self._executor_client.execute_joints(
+                target, execute_timeout=float(
+                    self.get_parameter("execute_timeout").value),
+                current_joints=positions)
+            if not moveit.success:
+                goal_handle.abort()
+                result.success = False
+                result.message = "FJT status=%s error_code=%s; %s" % (
+                    wrapped.status, wrapped.result.error_code, moveit.message)
+                return result
+            settled, _diag = self._wait_settled(
+                lambda: feedback("settling"))
+            if not settled:
+                goal_handle.abort()
+                result.success = False
+                result.message = "reached %s via MoveIt but settle timeout" % pose_name
+                return result
+            goal_handle.succeed()
+            result.success = True
+            result.already_there = False
+            result.message = "reached %s (MoveIt joint fallback)" % pose_name
             return result
 
-        settled = self._wait_settled(
+        settled, _diag = self._wait_settled(
             lambda: feedback("settling"))
         if not settled:
             goal_handle.abort()

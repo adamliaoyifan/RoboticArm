@@ -18,11 +18,14 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     container_opening_aperture_lateral_offsets,
     container_opening_axes_in_base_link,
     container_opening_dimensions,
+    container_opening_normal_in_world,
     container_opening_target_point,
+    container_opening_target_point_in_world,
     container_outer_dimensions,
     container_usable_center_in_base_link,
     container_usable_dimensions,
     load_scene_tf_config,
+    origin_in_world,
     pickup_platform_enabled,
     pickup_platform_top_in_world,
     pickup_source_in_world,
@@ -31,6 +34,8 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     robot_base_frame,
     static_transforms,
     urdf_world_base_pose,
+    xyz_base_link_to_world,
+    xyz_world_to_base_link,
     _local_point_to_base_link,
 )
 
@@ -202,6 +207,25 @@ class TestSceneTfConfigUtils(unittest.TestCase):
         self.assertAlmostEqual(actual, expected, places=6)
     for actual, expected in zip(urdf_rpy, plan_rpy):
         self.assertAlmostEqual(actual, expected, places=6)
+
+  def test_opening_in_world_uses_container_link_pose(self):
+    world = container_opening_target_point_in_world(self.example_scene)
+    origin, _ = origin_in_world(self.example_scene)
+    local, _ = container_opening_in_container(self.example_scene)
+    self.assertAlmostEqual(world[0], origin[0] + local[0], places=6)
+    self.assertAlmostEqual(world[1], origin[1] + local[1], places=6)
+    self.assertAlmostEqual(world[2], origin[2] + local[2], places=6)
+    normal = container_opening_normal_in_world(self.example_scene)
+    self.assertAlmostEqual(normal[0], -1.0, places=5)
+    self.assertAlmostEqual(normal[1], 0.0, places=5)
+    self.assertAlmostEqual(normal[2], 0.0, places=5)
+
+  def test_world_base_link_point_roundtrip(self):
+    world = [1.5, 0.0, 0.655]
+    base = xyz_world_to_base_link(self.example_scene, world)
+    back = xyz_base_link_to_world(self.example_scene, base)
+    for actual, expected in zip(back, world):
+      self.assertAlmostEqual(actual, expected, places=6)
 
 
 if __name__ == "__main__":
