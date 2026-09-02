@@ -1,0 +1,1154 @@
+{
+  "candidates": [
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.785,
+        0.655
+      ],
+      "center_base_link": [
+        -0.785,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.785,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.785,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.735,
+        0.655
+      ],
+      "center_base_link": [
+        -0.735,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.735,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.735,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.685,
+        0.655
+      ],
+      "center_base_link": [
+        -0.685,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.685,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.685,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.635,
+        0.655
+      ],
+      "center_base_link": [
+        -0.635,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.635,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.635,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.585,
+        0.655
+      ],
+      "center_base_link": [
+        -0.585,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.585,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.585,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.535,
+        0.655
+      ],
+      "center_base_link": [
+        -0.535,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.535,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.535,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.485,
+        0.655
+      ],
+      "center_base_link": [
+        -0.485,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.485,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.485,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.435,
+        0.655
+      ],
+      "center_base_link": [
+        -0.435,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.435,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.435,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.385,
+        0.655
+      ],
+      "center_base_link": [
+        -0.385,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.385,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.385,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.335,
+        0.655
+      ],
+      "center_base_link": [
+        -0.335,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.335,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.335,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.285,
+        0.655
+      ],
+      "center_base_link": [
+        -0.285,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.285,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.285,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.235,
+        0.655
+      ],
+      "center_base_link": [
+        -0.235,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.235,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.235,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.185,
+        0.655
+      ],
+      "center_base_link": [
+        -0.185,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.185,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.185,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.135,
+        0.655
+      ],
+      "center_base_link": [
+        -0.135,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.135,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.135,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.085,
+        0.655
+      ],
+      "center_base_link": [
+        -0.085,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.085,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.085,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        -0.035,
+        0.655
+      ],
+      "center_base_link": [
+        -0.035,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        -0.035,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        -0.035,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.015,
+        0.655
+      ],
+      "center_base_link": [
+        0.015,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.015,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.015,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.065,
+        0.655
+      ],
+      "center_base_link": [
+        0.065,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.065,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.065,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.115,
+        0.655
+      ],
+      "center_base_link": [
+        0.115,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.115,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.115,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.165,
+        0.655
+      ],
+      "center_base_link": [
+        0.165,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.165,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.165,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": true,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "ok",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.215,
+        0.655
+      ],
+      "center_base_link": [
+        0.215,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.215,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.215,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.265,
+        0.655
+      ],
+      "center_base_link": [
+        0.265,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.265,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.265,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.315,
+        0.655
+      ],
+      "center_base_link": [
+        0.315,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.315,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.315,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.47,
+        0.365,
+        0.655
+      ],
+      "center_base_link": [
+        0.365,
+        -1.03,
+        -0.205
+      ],
+      "center_local": [
+        -0.47,
+        0.365,
+        -0.615
+      ],
+      "center_world": [
+        1.03,
+        0.365,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    }
+  ],
+  "candidates_truncated": true,
+  "floor_prior": false,
+  "map_revision": 2,
+  "message": "slot score=1.000 feasible=705 rejected={\"outside_aperture\": 645}",
+  "n_candidates_total": 1350,
+  "n_feasible": 705,
+  "pose_base_link": [
+    -0.6850037833966351,
+    -1.0299974838475556,
+    -0.20499999999999985
+  ],
+  "pose_world": [
+    1.03,
+    -0.6849999999999999,
+    0.6550000000000001
+  ],
+  "reject_histogram": {
+    "outside_aperture": 645
+  },
+  "selected": {
+    "box_yaw": 0.0,
+    "center_base": [
+      -0.47,
+      -0.685,
+      0.655
+    ],
+    "center_base_link": [
+      -0.685,
+      -1.03,
+      -0.205
+    ],
+    "center_local": [
+      -0.47,
+      -0.685,
+      -0.615
+    ],
+    "center_world": [
+      1.03,
+      -0.685,
+      0.655
+    ],
+    "clearance_score": 1.0,
+    "clearance_top": 1.23,
+    "collision_margin": 1.23,
+    "confidence_ratio": 0.0,
+    "feasible": true,
+    "footprint": [
+      0.55,
+      0.4
+    ],
+    "reachability_score": -1.0,
+    "reason": "ok",
+    "score": 1.0,
+    "size": [
+      0.55,
+      0.4,
+      0.25
+    ],
+    "support_score": 1.0,
+    "support_source": "floor_prior",
+    "yaw": 0.0,
+    "yaw_base_link": -1.5708,
+    "yaw_world": 0.0
+  },
+  "size_wdh": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "success": true
+}

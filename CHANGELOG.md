@@ -5,16 +5,21 @@
 Work since the 08-28 snapshot, on `ros2_humble` only (`elfin_humble_ws`).
 
 - **Perception**: YOLO detections + stamp-joined `DetectionFrame`, cargo instance
-  tracker, occupancy mapper node (`cargo_volume_mapper_node`).
+  tracker, occupancy mapper node (`cargo_volume_mapper_node`). Broken CLIP cache
+  symlinks are replaced before load.
 - **Planning**: vacuum attach/follow, pick–retreat, place waypoint sequence
   (staging / insert / descend / retreat) and scene-manager mesh ACM.
 - **Gazebo**: `place_smoke_driver`, `pack_eval_driver` (spawn once, keep placed
-  via `FinalizeCurrentBox`), physics collision STL.
+  via `FinalizeCurrentBox`), physics collision STL. Pack-eval writes
+  `final_layout/` (PLY + HTML) on every stop.
 - **Packing**: `ComputePlacement` returns `elfin_base_link`; floor-prior z is
   usable-volume center; corridor G1 + 1 mm full-Y wall slop; dumps/ledger.
-- **Verified**: packing/corridor/waypoint/vacuum unit tests; mapper B1 and
-  planner B2 (empty + full-width wall `corridor_blocked`) without Gazebo.
-  B4 pack-to-full and B5 place N=3 still need a live `sim_world`.
+  Usable inner volume is the 7-face hull (ULD +Y chamfer + rectangular
+  aperture), not the semantic AABB; mapper voxels outside the hull are
+  inactive; candidates in the cut get `outside_hull`.
+- **Verified**: packing/corridor/waypoint/vacuum/place-gt unit tests; mapper B1
+  and planner B2 without Gazebo; **B5** place N=3 (3/3); **B4** carryon n=2
+  (`MAX_BOXES`). Homogeneous BIN_FULL n=50 still needs a clean sim at RTF≈1.
 
 ## 2026-08-28 — ROS 2 Humble workspace snapshot
 

@@ -1,0 +1,14 @@
+{
+  "catalog_id": "carryon",
+  "detection": {
+    "plan_approach": "ExecuteTrajectory error_code=-4",
+    "scene_add": "applied"
+  },
+  "mass_kg": 0.0,
+  "size_wdh": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "spawn_id": "pickup_box_0001_carryon"
+}

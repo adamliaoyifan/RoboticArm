@@ -222,6 +222,24 @@ dumps/box_00_ok/
 BIN_FULL 箱：`compute_placement.json` + `reject_histogram.json` + `commit.json`
 （`committed:false`），无运动段也可。
 
+停机时（BIN_FULL / MAX_BOXES / ABORT / SPAWN_EXHAUSTED）另写 **`final_layout/`**：
+
+内腔是 **7 面体**（长方体切掉 +Y 下棱三角柱，两端五边形），不是 AABB。
+`layout.html` 线框是该 hull，黄线是 −X 五边形上的矩形 aperture；PLY 内壁同样挖了开口、带斜切面。`interior_free.ply` 只含 hull 内 FREE 体素。
+
+```
+final_layout/
+  boxes.json                 # 全部已 commit 箱：尺寸、world/base 位姿、catalog
+  occupancy_gt.png/.json     # 停箱时 2.5D 堆型
+  container_and_boxes.ply    # 7 面内壁（开口挖洞）+ 所有已放箱表面（world）
+  interior_free.ply          # 剩余 FREE 体素中心（内部还能看见的空腔）
+  layout.ply                 # 上面两份合在一起
+  layout.html                # 浏览器打开即可转（箱子实体 + 空腔点 + hull/aperture 线框）
+  meta.json
+```
+
+浏览器打开 `final_layout/layout.html`。无网时用 CloudCompare / MeshLab 打开 ply。
+
 Ctrl-C：ledger 已逐行 flush；`suite.json` 在 `run()` 正常收尾才写。中断后仍应能
 从 `ledger.jsonl` 数已完成箱。
 
@@ -246,6 +264,7 @@ ros2 run luggage_gazebo place_smoke_driver.py --payload vacuum --n 3 \
 4. mapper `remove_placed_box` 中心+尺寸匹配（tol 0.05），与 add 不一致会 no match
 5. 候选 JSON 在 `last_result` 里可能较大（`keep_rejected=5000`），这是 A5 需要的
 6. 在线 G1 依赖 cargo_map commit 先于下一箱 `BuildMotionSequence`；第一箱走廊为空，不抬高度
+7. 占用栅格仍是 AABB 索引，切角三角形体素标为 inactive，不计入 FREE / occupancy_ratio；`outside_hull` 拒绝踏进切角的槽
 
 结果写 `docs/status/packing_eval_<name>.md`：B1–B5 命令摘录、suite 六组表、E1
 `verdict` 非 occupied。

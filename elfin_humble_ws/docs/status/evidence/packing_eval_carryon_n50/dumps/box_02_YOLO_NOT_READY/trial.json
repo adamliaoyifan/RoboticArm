@@ -1,0 +1,77 @@
+{
+  "catalog_id": "carryon",
+  "descend_fraction": null,
+  "drift": null,
+  "err_xy": null,
+  "err_yaw": null,
+  "err_z": null,
+  "extras": {
+    "seg_stats": {
+      "backend": "bbox_fill:yolov8s-world.pt",
+      "detect_sim_stamp": 51.779,
+      "detect_wall_sec": 1788334178.5304039,
+      "detection_count": 1,
+      "detections": [
+        {
+          "bbox": [
+            220,
+            162,
+            443,
+            323
+          ],
+          "confidence": 0.09615586698055267,
+          "held": false,
+          "label": 2,
+          "prompt": "luggage on a platform viewed from directly above"
+        }
+      ],
+      "detections_dropped_self_body": [],
+      "frame_id": "camera_depth_optical_frame",
+      "generation": 6,
+      "held": false,
+      "image_stamp": 51.778,
+      "inference_ms": 7.272005081176758,
+      "instance_id": "pickup_box_0003_carryon",
+      "label_counts": {
+        "0": 225217,
+        "1": 0,
+        "2": 35903,
+        "3": 46080,
+        "4": 0
+      },
+      "mask_stamp": 51.778,
+      "n_dropped_self_body": 0,
+      "n_yolo_cargo_before_self_body": 1,
+      "rate_limited_drops": 0,
+      "raw_cargo": true,
+      "recv_wall_sec": 1788334178.4663544,
+      "self_body_pixels": 12517,
+      "self_body_source": "tf",
+      "stamp": 51.778,
+      "temporal": {
+        "held": false,
+        "positive_frames": 2,
+        "positive_ratio": 1.0,
+        "raw_cargo": true,
+        "scene_change": false,
+        "window": 2
+      }
+    },
+    "spawn_generation": 4,
+    "spawn_id": "pickup_box_0011_carryon",
+    "topic_box_id": "pickup_box_0002_carryon"
+  },
+  "fail_code": "YOLO_NOT_READY",
+  "index": 2,
+  "inside_inner_box": null,
+  "lost_payload": false,
+  "pitch": null,
+  "place_state": "INIT",
+  "roll": null,
+  "segments_planned": 0,
+  "segments_succeeded": 0,
+  "staging_degenerate": false,
+  "used_ompl_fallback_descend": null,
+  "vac_attach": null,
+  "wall_time_sec": 27.016685009002686
+}

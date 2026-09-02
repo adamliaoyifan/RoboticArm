@@ -355,6 +355,10 @@ packing_eval_<name>/
 | `surface_2d.json` | 当时的图，解释「为什么无槽」 |
 | `occupancy_gt.png` | 停箱时堆型（已 commit 的箱子） |
 
+停机时驱动还在 suite 根目录写 **`final_layout/`**：`boxes.json`（全部已放箱）、
+`container_and_boxes.ply`（内壁+箱）、`interior_free.ply`（剩余空腔体素）、
+`layout.html`（浏览器可视化）。
+
 不要把完整 `cloud_xyz` 塞进 `trial.json`。运动中禁止 `ign model --pose`；pose 只在松手后静止采样。
 
 ### `trials.jsonl`

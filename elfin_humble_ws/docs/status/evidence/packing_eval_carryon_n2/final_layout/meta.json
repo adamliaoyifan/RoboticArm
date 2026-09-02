@@ -1,0 +1,23 @@
+{
+  "files": [
+    "boxes.json",
+    "occupancy_gt.json",
+    "occupancy_gt.png",
+    "container_and_boxes.ply",
+    "interior_free.ply",
+    "layout.ply",
+    "layout.html",
+    "meta.json"
+  ],
+  "frame": "world",
+  "free_count": 35090,
+  "last_rejected": null,
+  "n_box_points": 2600,
+  "n_boxes": 2,
+  "n_free_voxels": 35090,
+  "n_wall_points": 15453,
+  "occupancy_ratio": 0.025277777777777777,
+  "occupied_count": 910,
+  "surface_2d": true,
+  "termination": "MAX_BOXES"
+}

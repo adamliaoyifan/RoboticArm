@@ -1,0 +1,85 @@
+{
+  "boxes": [
+    {
+      "catalog_id": "carryon",
+      "commit_index": 0,
+      "gz_model": "pickup_box_0008_carryon",
+      "mass_kg": 8.0,
+      "pose_base_link": {
+        "position": [
+          -0.6850037833966351,
+          -1.0299974838475556,
+          -0.20499999999999985
+        ],
+        "yaw": -1.5708
+      },
+      "pose_world": {
+        "position": [
+          1.03,
+          -0.6849999999999998,
+          0.6550000000000001
+        ],
+        "rpy": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "yaw": 0.0
+      },
+      "rgb": [
+        220,
+        96,
+        32
+      ],
+      "seq": 0,
+      "size_wdh": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "spawn_id": "pickup_box_0008_carryon",
+      "volume_m3": 0.05500000000000001
+    },
+    {
+      "catalog_id": "carryon",
+      "commit_index": 1,
+      "gz_model": "pickup_box_0009_carryon",
+      "mass_kg": 8.0,
+      "pose_base_link": {
+        "position": [
+          -0.23500378339967107,
+          -1.029999136789852,
+          -0.20499999999999985
+        ],
+        "yaw": -1.5708
+      },
+      "pose_world": {
+        "position": [
+          1.0299999999999998,
+          -0.23499999999999996,
+          0.6550000000000001
+        ],
+        "rpy": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "yaw": 0.0
+      },
+      "rgb": [
+        220,
+        96,
+        32
+      ],
+      "seq": 1,
+      "size_wdh": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "spawn_id": "pickup_box_0009_carryon",
+      "volume_m3": 0.05500000000000001
+    }
+  ],
+  "termination": "MAX_BOXES"
+}

@@ -1,0 +1,71 @@
+{
+  "catalog_id": "carryon",
+  "detection": {
+    "add_placed": "added placed_0_0_0",
+    "build": "7 segments for phase=place",
+    "follow_skipped_delta": 0,
+    "place_debug": {
+      "color_err": "",
+      "gt_ply": "gt_interior_box.ply",
+      "gt_ply_points": 16753,
+      "gt_stats": {
+        "committed_box_count": 1,
+        "n_box_points": 1300,
+        "n_gt_points": 16753,
+        "n_wall_points": 15453,
+        "occupancy_ratio": 0.01375,
+        "occupied_count": 495
+      },
+      "occupancy": {
+        "committed_box_count": 1,
+        "inner_size": [
+          1.49,
+          1.97,
+          1.4799999999999998
+        ],
+        "nx": 30,
+        "ny": 40,
+        "occupancy_ratio": 0.01375,
+        "occupied_count": 495,
+        "resolution": 0.05
+      }
+    },
+    "place_support_touch": "place support touch ALLOWED (acm verified)",
+    "release_settle": "{\"criterion\": \"displacement\", \"displacement_tol\": 0.01, \"excursion_joint\": \"elfin_joint4\", \"fraction_below_tol\": 0.35, \"p50\": 0.07712830366102058, \"p95\": 0.19908163311653512, \"peak_excursion\": 0.01777660322666197, \"peak_joint\": \"elfin_joint4\", \"peak_time\": 0.004, \"peak_velocity\": 0.19908163311653512, \"quantile\": 1.0, \"sample_count\": 20, \"tail_ratio\": 0.47829690003895536, \"tail_velocity\": 0.09522012797433138, \"vel_tol\": 0.02}",
+    "return_observe": "exit=cartesian ok (fraction 1.000); goto=reached pickup_observe; rtf=0.989 (sim 5.74s / wall 5.81s)",
+    "scene_add": "applied",
+    "vac_attach": "attached pickup_box_0008_carryon (follow 30.0 Hz)",
+    "vac_detach": "detached pickup_box_0008_carryon",
+    "verify": {
+      "box_pose_after_drift_wait": [
+        1.0224,
+        -0.681554,
+        0.652755,
+        2e-06,
+        0.006412,
+        3.12098
+      ],
+      "box_pose_after_release": [
+        1.0224,
+        -0.681554,
+        0.652755,
+        2e-06,
+        0.006412,
+        3.12098
+      ],
+      "drift": 0.0,
+      "err_xy": 0.008344753801041686,
+      "err_z": -0.0022450000000001635,
+      "inside_inner_box": true,
+      "pitch": 0.006412,
+      "roll": 2e-06
+    }
+  },
+  "mass_kg": 0.0,
+  "size_wdh": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "spawn_id": "pickup_box_0008_carryon"
+}

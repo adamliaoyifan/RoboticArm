@@ -1,0 +1,47 @@
+{
+  "boxes_attempted": 3,
+  "boxes_packed": 0,
+  "boxes_per_min": 0.0,
+  "capacity_claim_valid": false,
+  "catalog_counts": {},
+  "cycle_sec": {
+    "max": null,
+    "mean": null,
+    "n": 0,
+    "p50": null
+  },
+  "final_layout": "final_layout",
+  "final_layout_meta": {
+    "files": [
+      "boxes.json",
+      "occupancy_gt.json",
+      "occupancy_gt.png",
+      "container_and_boxes.ply",
+      "interior_free.ply",
+      "layout.ply",
+      "layout.html",
+      "meta.json"
+    ],
+    "frame": "world",
+    "free_count": 36000,
+    "last_rejected": null,
+    "n_box_points": 0,
+    "n_boxes": 0,
+    "n_free_voxels": 36000,
+    "n_wall_points": 15453,
+    "occupancy_ratio": 0.0,
+    "occupied_count": 0,
+    "surface_2d": true,
+    "termination": "ABORT"
+  },
+  "floor_coverage": 0.0,
+  "goto_failed_count": 0,
+  "inner_volume_m3": 4.344,
+  "last_rejected": null,
+  "packed_volume_m3": 0,
+  "rtf_last": 0.0008,
+  "skip_unplaceable": false,
+  "termination_reason": "ABORT",
+  "volume_fraction": 0.0,
+  "wall_total_sec": 88.0
+}

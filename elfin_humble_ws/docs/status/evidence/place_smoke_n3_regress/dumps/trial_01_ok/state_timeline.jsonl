@@ -1,0 +1,14 @@
+{"from": "INIT", "guard": "", "note": "", "t_ros": 487.355, "t_wall": 1788333127.2077177, "to": "CARRY_READY"}
+{"from": "CARRY_READY", "guard": "", "note": "", "t_ros": 487.356, "t_wall": 1788333127.2085733, "to": "SLOT_RESOLVED"}
+{"from": "SLOT_RESOLVED", "guard": "", "note": "7 segments for phase=place", "t_ros": 487.36, "t_wall": 1788333127.2124195, "to": "SEQUENCE_BUILT"}
+{"from": "SEQUENCE_BUILT", "guard": "", "note": "", "t_ros": 487.36, "t_wall": 1788333127.2127545, "to": "STAGING"}
+{"from": "STAGING", "guard": "", "note": "", "t_ros": 490.266, "t_wall": 1788333130.259826, "to": "TRANSIT"}
+{"from": "TRANSIT", "guard": "", "note": "", "t_ros": 497.31, "t_wall": 1788333137.8808587, "to": "TRAVERSE"}
+{"from": "TRAVERSE", "guard": "", "note": "", "t_ros": 499.358, "t_wall": 1788333142.8200681, "to": "INSERT"}
+{"from": "INSERT", "guard": "", "note": "", "t_ros": 500.477, "t_wall": 1788333147.338222, "to": "DESCEND"}
+{"from": "DESCEND", "guard": "", "note": "", "t_ros": 501.395, "t_wall": 1788333149.377128, "to": "RELEASE_SETTLE"}
+{"from": "RELEASE_SETTLE", "guard": "", "note": "", "t_ros": 501.396, "t_wall": 1788333149.3779554, "to": "RELEASED"}
+{"from": "RELEASED", "guard": "", "note": "", "t_ros": 501.4, "t_wall": 1788333149.3817365, "to": "PLACE_RETREAT"}
+{"from": "PLACE_RETREAT", "guard": "", "note": "", "t_ros": 504.301, "t_wall": 1788333152.532241, "to": "COMMITTED"}
+{"from": "COMMITTED", "guard": "", "note": "", "t_ros": 504.309, "t_wall": 1788333152.5403497, "to": "VERIFIED"}
+{"from": "VERIFIED", "guard": "", "note": "", "t_ros": 504.877, "t_wall": 1788333153.11829, "to": "HOME"}

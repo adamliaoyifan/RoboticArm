@@ -1,0 +1,53 @@
+{
+  "catalog_id": "carryon",
+  "detection": {
+    "seg_stats": {
+      "backend": "bbox_fill:yolov8s-world.pt",
+      "detect_sim_stamp": 51.674,
+      "detect_wall_sec": 1788334140.6145124,
+      "detection_count": 0,
+      "detections": [],
+      "detections_dropped_self_body": [],
+      "frame_id": "camera_depth_optical_frame",
+      "generation": 1,
+      "held": false,
+      "image_stamp": 51.745,
+      "inference_ms": 7.899999618530273,
+      "instance_id": "",
+      "label_counts": {
+        "0": 261120,
+        "1": 0,
+        "2": 0,
+        "3": 46080,
+        "4": 0
+      },
+      "mask_stamp": 51.745,
+      "n_dropped_self_body": 0,
+      "n_yolo_cargo_before_self_body": 0,
+      "rate_limited_drops": 0,
+      "raw_cargo": false,
+      "recv_wall_sec": 1788334140.5259788,
+      "self_body_pixels": 12517,
+      "self_body_source": "tf",
+      "stamp": 51.745,
+      "temporal": {
+        "held": false,
+        "positive_frames": 0,
+        "positive_ratio": 0.0,
+        "raw_cargo": false,
+        "scene_change": false,
+        "window": 4
+      }
+    },
+    "spawn_generation": 4,
+    "spawn_id": "pickup_box_0010_carryon",
+    "topic_box_id": "pickup_box_0002_carryon"
+  },
+  "mass_kg": 8.0,
+  "size_wdh": [
+    0.55,
+    0.4,
+    0.25
+  ],
+  "spawn_id": "pickup_box_0002_carryon"
+}

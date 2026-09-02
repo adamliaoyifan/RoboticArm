@@ -1,0 +1,14 @@
+{
+  "boxes_in_corridor": 0,
+  "corridor_aabb": [
+    -0.745,
+    -0.635,
+    0.53,
+    -0.745,
+    0.165,
+    0.78
+  ],
+  "required_carry_z": null,
+  "surface_max": null,
+  "verdict": "free"
+}
