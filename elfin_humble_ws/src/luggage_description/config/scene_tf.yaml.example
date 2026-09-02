@@ -19,6 +19,9 @@
 # Container mesh rotation is baked in airport_container_real STL; container_link uses translation only.
 # Container semantic bounds live here too; collision geometry comes from:
 #   luggage_gazebo/models/<gazebo.container_model>/meshes/container_collision.stl
+# inner.chamfer clips the usable AABB to the 7-face hull (two pentagonal
+# end walls). Opening.aperture is a rectangle on the -X pentagon, not the
+# full face.
 #
 # Opening geometry:
 #   opening.aperture.corners — four [x,y,z] points in container_link (CCW viewed from outside).
@@ -55,6 +58,12 @@ container:
     # Legacy upper-Z coordinate retained for callers not yet migrated to
     # floor_z/ceiling_z. It is NOT the usable vertical span.
     height: 2.01
+    # Cuboid minus a triangular prism along +Y (ULD contour, from the STL).
+    # End walls (±X) become pentagons; the -X pentagon holds the aperture.
+    chamfer:
+      side: positive_y
+      floor_y: 0.55
+      wall_z: 0.90
   opening:
     side: negative_x
     # Derived spans from aperture.corners (kept for legacy callers).

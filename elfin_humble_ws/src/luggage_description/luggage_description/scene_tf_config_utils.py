@@ -290,6 +290,153 @@ def container_usable_dimensions(config):
     return inner_l, inner_w, ceiling_z - floor_z
 
 
+def container_inner_chamfer(config):
+    """Return the +Y contour cut, or None when the inner volume is a box.
+
+    ``floor_y`` is the usable +Y limit on the cargo floor. ``wall_z`` is where
+    that cut meets the +Y inner wall (``wall_y``, default half inner width).
+    The plane is extruded along X. Inside the hull: ``y <= y_max(z)``.
+    """
+    raw = container_semantic_config(config).get("inner", {}).get("chamfer")
+    if not raw:
+        return None
+    side = str(raw.get("side", "positive_y")).strip().lower()
+    if side != "positive_y":
+        return None
+    _inner_l, inner_w, _legacy = container_inner_dimensions(config)
+    hy = 0.5 * inner_w
+    floor_z = container_inner_floor_z(config)
+    floor_y = float(raw["floor_y"])
+    wall_z = float(raw["wall_z"])
+    wall_y = float(raw.get("wall_y", hy))
+    if wall_z <= floor_z:
+        return None
+    return {
+        "side": side,
+        "floor_y": floor_y,
+        "floor_z": floor_z,
+        "wall_y": wall_y,
+        "wall_z": wall_z,
+    }
+
+
+def container_inner_y_max(z, config, margin=0.0):
+    """Usable +Y limit in ``container_link`` at elevation ``z``."""
+    clearance = max(0.0, float(margin))
+    _inner_l, inner_w, _legacy = container_inner_dimensions(config)
+    hy = 0.5 * inner_w - clearance
+    chamfer = container_inner_chamfer(config)
+    if chamfer is None:
+        return hy
+    z = float(z)
+    if z >= chamfer["wall_z"] - 1e-9:
+        return hy
+    span = chamfer["wall_z"] - chamfer["floor_z"]
+    t = (z - chamfer["floor_z"]) / span
+    y_cut = chamfer["floor_y"] + t * (chamfer["wall_y"] - chamfer["floor_y"])
+    return min(hy, y_cut - clearance)
+
+
+def point_inside_container_inner_hull_container(local_xyz, config, margin=0.0):
+    """True when a ``container_link`` point is inside the usable 7-face hull."""
+    clearance = max(0.0, float(margin))
+    x, y, z = [float(v) for v in local_xyz]
+    inner_l, inner_w, _legacy = container_inner_dimensions(config)
+    floor_z = container_inner_floor_z(config)
+    ceiling_z = container_inner_ceiling_z(config)
+    hx = 0.5 * inner_l
+    hy = 0.5 * inner_w
+    if (
+            x < -hx + clearance - 1e-9
+            or x > hx - clearance + 1e-9
+            or y < -hy + clearance - 1e-9
+            or y > hy - clearance + 1e-9
+            or z < floor_z + clearance - 1e-9
+            or z > ceiling_z - clearance + 1e-9):
+        return False
+    return y <= container_inner_y_max(z, config, margin=clearance) + 1e-9
+
+
+def container_hull_local_inside_fn(config):
+    """Predicate on mapper-local XYZ (usable-volume center, container axes)."""
+    mid_z = 0.5 * (
+        container_inner_floor_z(config) + container_inner_ceiling_z(config))
+
+    def _inside(local_x, local_y, local_z):
+        return point_inside_container_inner_hull_container(
+            [local_x, local_y, local_z + mid_z], config)
+
+    return _inside
+
+
+def container_inner_hull_edges_in_container(config):
+    """Line segments of the usable 7-face hull in ``container_link``.
+
+    Without ``inner.chamfer`` this is the 12-edge AABB. With the +Y cut the
+    two ±X faces are pentagons and the lower +Y edge is replaced by the
+    slanted contour face.
+    """
+    inner_l, inner_w, _legacy = container_inner_dimensions(config)
+    hx, hy = 0.5 * inner_l, 0.5 * inner_w
+    floor_z = container_inner_floor_z(config)
+    ceil_z = container_inner_ceiling_z(config)
+    chamfer = container_inner_chamfer(config)
+
+    def _pt(x, y, z):
+        return [float(x), float(y), float(z)]
+
+    if chamfer is None:
+        corners = [
+            _pt(-hx, -hy, floor_z), _pt(hx, -hy, floor_z),
+            _pt(hx, hy, floor_z), _pt(-hx, hy, floor_z),
+            _pt(-hx, -hy, ceil_z), _pt(hx, -hy, ceil_z),
+            _pt(hx, hy, ceil_z), _pt(-hx, hy, ceil_z),
+        ]
+        index_pairs = (
+            (0, 1), (1, 2), (2, 3), (3, 0),
+            (4, 5), (5, 6), (6, 7), (7, 4),
+            (0, 4), (1, 5), (2, 6), (3, 7),
+        )
+        return [(corners[a], corners[b]) for a, b in index_pairs]
+
+    fy, wy, wz = chamfer["floor_y"], chamfer["wall_y"], chamfer["wall_z"]
+    # Five vertices per pentagonal ±X end wall.
+    a = _pt(-hx, -hy, floor_z)
+    b = _pt(-hx, fy, floor_z)
+    c = _pt(-hx, wy, wz)
+    d = _pt(-hx, hy, ceil_z)
+    e = _pt(-hx, -hy, ceil_z)
+    ap = _pt(hx, -hy, floor_z)
+    bp = _pt(hx, fy, floor_z)
+    cp = _pt(hx, wy, wz)
+    dp = _pt(hx, hy, ceil_z)
+    ep = _pt(hx, -hy, ceil_z)
+    edges = [
+        (a, b), (b, c), (c, d), (d, e), (e, a),
+        (ap, bp), (bp, cp), (cp, dp), (dp, ep), (ep, ap),
+        (a, ap), (b, bp), (c, cp), (d, dp), (e, ep),
+    ]
+    if abs(wy - hy) > 1e-6:
+        edges.extend([
+            (c, _pt(-hx, hy, wz)),
+            (cp, _pt(hx, hy, wz)),
+            (_pt(-hx, hy, wz), d),
+            (_pt(hx, hy, wz), dp),
+        ])
+    return edges
+
+
+def container_aperture_edges_in_container(config, margin=0.0):
+    """Four edges of the opening rectangle in ``container_link``."""
+    corners = container_opening_aperture_corners_in_container(config, margin)
+    if not corners or len(corners) != 4:
+        return []
+    return [
+        (corners[i], corners[(i + 1) % 4])
+        for i in range(4)
+    ]
+
+
 def _cross(a, b):
     return [
         a[1] * b[2] - a[2] * b[1],
@@ -574,10 +721,10 @@ def container_inner_box_in_base_link(config):
 
 
 def point_inside_container_inner_box(point, config, margin=0.0):
-    """Return whether a base-link point is inside the oriented inner box.
+    """Return whether a base-link point is inside the usable inner hull.
 
-    ``margin`` insets every face and is used as the conservative camera/link
-    wall clearance. A margin that consumes an axis makes the box empty.
+    Starts from the oriented inner AABB, then clips the +Y contour when
+    ``inner.chamfer`` is set. ``margin`` insets every face / the cut.
     """
     clearance = max(0.0, float(margin))
     base_xyz, base_rpy = container_in_base_link(config)
@@ -602,7 +749,8 @@ def point_inside_container_inner_box(point, config, margin=0.0):
                 or local[axis] < low - 1e-9
                 or local[axis] > high + 1e-9):
             return False
-    return True
+    return point_inside_container_inner_hull_container(
+        local, config, margin=clearance)
 
 
 def container_opening_normal_in_base_link(config):

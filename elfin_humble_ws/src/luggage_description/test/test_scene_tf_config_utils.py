@@ -10,8 +10,11 @@ PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     container_in_base_link,
     container_inner_ceiling_z,
+    container_inner_chamfer,
     container_inner_dimensions,
     container_inner_floor_z,
+    container_inner_hull_edges_in_container,
+    container_inner_y_max,
     container_opening_in_container,
     container_opening_aperture_corners,
     container_opening_aperture_corners_in_container,
@@ -29,6 +32,8 @@ from luggage_description.scene_tf_config_utils import (  # noqa: E402
     pickup_platform_enabled,
     pickup_platform_top_in_world,
     pickup_source_in_world,
+    point_inside_container_inner_box,
+    point_inside_container_inner_hull_container,
     point_inside_opening_aperture,
     robot_base_in_world,
     robot_base_frame,
@@ -226,6 +231,36 @@ class TestSceneTfConfigUtils(unittest.TestCase):
     back = xyz_base_link_to_world(self.example_scene, base)
     for actual, expected in zip(back, world):
       self.assertAlmostEqual(actual, expected, places=6)
+
+  def test_chamfer_clips_plus_y_floor_corner(self):
+    chamfer = container_inner_chamfer(self.example_scene)
+    self.assertIsNotNone(chamfer)
+    self.assertAlmostEqual(container_inner_y_max(0.53, self.example_scene), 0.55, places=2)
+    self.assertAlmostEqual(container_inner_y_max(1.20, self.example_scene), 0.985, places=3)
+    self.assertFalse(point_inside_container_inner_hull_container(
+        [0.0, 0.90, 0.55], self.example_scene))
+    self.assertTrue(point_inside_container_inner_hull_container(
+        [0.0, 0.90, 1.20], self.example_scene))
+    self.assertTrue(point_inside_container_inner_hull_container(
+        [0.0, -0.90, 0.55], self.example_scene))
+    corner_base = _local_point_to_base_link([0.0, 0.90, 0.55], self.example_scene)
+    self.assertFalse(point_inside_container_inner_box(corner_base, self.example_scene))
+
+  def test_chamfer_absent_keeps_aabb(self):
+    config = dict(self.example_scene)
+    config["container"] = dict(config["container"])
+    config["container"]["inner"] = dict(config["container"]["inner"])
+    config["container"]["inner"].pop("chamfer", None)
+    self.assertIsNone(container_inner_chamfer(config))
+    self.assertTrue(point_inside_container_inner_hull_container(
+        [0.0, 0.90, 0.55], config))
+    self.assertEqual(len(container_inner_hull_edges_in_container(config)), 12)
+
+  def test_hull_has_pentagon_end_walls(self):
+    edges = container_inner_hull_edges_in_container(self.example_scene)
+    self.assertGreaterEqual(len(edges), 15)
+    opening_face = [e for e in edges if abs(e[0][0] + 0.745) < 1e-3 and abs(e[1][0] + 0.745) < 1e-3]
+    self.assertEqual(len(opening_face), 5)
 
 
 if __name__ == "__main__":
