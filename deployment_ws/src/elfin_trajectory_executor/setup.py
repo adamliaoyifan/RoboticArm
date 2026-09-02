@@ -27,6 +27,7 @@ setup(
     entry_points={
         'console_scripts': [
             'trajectory_executor = elfin_trajectory_executor.trajectory_executor_node:main',
+            'send_joint_trajectory = elfin_trajectory_executor.send_joint_trajectory:main',
         ],
     },
 )

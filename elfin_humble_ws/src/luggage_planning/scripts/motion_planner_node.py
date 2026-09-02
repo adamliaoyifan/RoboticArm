@@ -64,6 +64,9 @@ class MotionPlannerNode(Node):
         # min(cap, max_joint_delta / named_pose_max_vel), at least 1 s.
         self.declare_parameter("named_pose_duration", 4.0)
         self.declare_parameter("named_pose_max_vel", 1.0)
+        # Must match elfin_trajectory_executor action_name (Jazzy real launch).
+        self.declare_parameter(
+            "fjt_action", "/elfin_arm_controller/follow_joint_trajectory")
 
         self._joint_state = None
         self._joint_lock = threading.Lock()
@@ -85,7 +88,7 @@ class MotionPlannerNode(Node):
         )
         self._fjt = rclpy.action.ActionClient(
             self, FollowJointTrajectory,
-            "/elfin_arm_controller/follow_joint_trajectory",
+            str(self.get_parameter("fjt_action").value),
             callback_group=self._group)
 
         self._plan_action = ActionServer(

@@ -54,7 +54,11 @@ def generate_launch_description() -> LaunchDescription:
         output='screen',
         parameters=[
             params_file,
-            {'mode': 'sim'},       # force simulation regardless of yaml
+            {
+                'mode': 'sim',
+                'use_sim_time': False,
+                'action_name': '/elfin_arm_controller/follow_joint_trajectory',
+            },
         ],
     )
 

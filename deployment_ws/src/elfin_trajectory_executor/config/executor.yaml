@@ -18,6 +18,10 @@ trajectory_executor:
     robot_ip: '192.168.0.10'
     robot_port: 10003
 
+    # Must match luggage motion_planner and MoveIt simple controller manager.
+    action_name: '/elfin_arm_controller/follow_joint_trajectory'
+    use_sim_time: false
+
     # ---------------------------------------------------------------
     # Velocity / acceleration limits
     #

@@ -528,6 +528,24 @@ class HuayanInterface:
         CPS_python3_Linux.so → CPS.so (or CPS.pyd on Windows) as per the
         official documentation so the import works as `from CPS import CPSClient`.
         """
+        import os
+        import sys
+        from pathlib import Path
+
+        candidates = []
+        if os.environ.get("HUAYAN_SDK"):
+            candidates.append(Path(os.environ["HUAYAN_SDK"]))
+        for part in os.environ.get("PYTHONPATH", "").split(os.pathsep):
+            if part:
+                candidates.append(Path(part))
+        for parent in Path(__file__).resolve().parents:
+            candidates.append(parent / "third_party" / "huayan_python_sdk")
+        for cand in candidates:
+            if (cand / "CPS.py").is_file():
+                path = str(cand)
+                if path not in sys.path:
+                    sys.path.insert(0, path)
+                break
         from CPS import CPSClient  # noqa: PLC0415
         return CPSClient()
 

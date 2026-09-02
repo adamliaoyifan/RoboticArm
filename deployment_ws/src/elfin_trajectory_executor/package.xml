@@ -3,10 +3,9 @@
 <package format="3">
   <name>elfin_trajectory_executor</name>
   <version>0.1.0</version>
-  <description>
-    ROS2 Humble trajectory execution node for the Elfin S20 robot arm.
-    Supports pure-software simulation (no hardware required) and real
-    hardware execution via the HuayanRobot CPSClient SDK.
+    <description>
+    ROS 2 trajectory execution node for the Elfin S20 (Humble or Jazzy).
+    Real hardware uses the Huayan CPS TCP SDK. No Gazebo.
   </description>
   <maintainer email="user@example.com">user</maintainer>
   <license>Apache-2.0</license>

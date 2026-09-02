@@ -44,6 +44,11 @@ elfin_humble_ws/src/luggage_perception/weights/
 # Docker bind-mount point for the Noetic TCP executor (source lives in deployment_ws)
 elfin_noetic_ws/src/elfin_cps_executor/
 
+# Site worksheet (keep the .example); Livox overlay workspace
+deployment_ws/config/site_vars.yaml
+deployment_ws/config/site_check_report.yaml
+deployment_ws/livox_ws/
+
 # Nested clone metadata inside vendored SDK tree
 SDK_sample/.git/
 SDK_sample/CppLinux_SDK/bin/
