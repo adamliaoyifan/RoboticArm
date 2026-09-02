@@ -24,7 +24,6 @@
 
   <test_depend>python3-pytest</test_depend>
   <test_depend>luggage_packing</test_depend>
-  <test_depend>luggage_planning</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

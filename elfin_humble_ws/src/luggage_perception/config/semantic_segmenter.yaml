@@ -89,6 +89,7 @@ semantic_segmenter:
     output.mask: /luggage/semantic/mask
     output.overlay: /luggage/semantic/overlay
     output.instance_mask: /luggage/semantic/instance_mask
+    output.yolo_detections: /luggage/semantic/yolo_detections
     output.stats: ~/stats_json
 
 semantic_point_filter:

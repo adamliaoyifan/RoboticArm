@@ -15,6 +15,13 @@ Differences from the ROS 1 node, per the migration plan section 9:
 - ``DetectLuggage`` waits until RGB leaves the pre-spawn suitcase view
   (``/luggage/current_box`` id change) so PCA is not run on a stale GPU
   frame. Timeout is ``DETECT_SUITCASE_NOT_UPDATED``, not GT fallback.
+- ``DetectLuggage`` refuses cargo whose ``stats_json.generation`` does not
+  match the current box (``DETECT_STALE_INSTANCE``). It does not wait for
+  preprocessor ``geometry_ok``; the cargo tracker keeps the latest
+  associated cloud.
+- YOLO + cargo are exact-stamp joined and PCA runs every joined frame on
+  ``/luggage/perception/detection_frame``. ``DetectLuggage`` reads that
+  window (generation gated) instead of fitting again.
 """
 
 from __future__ import division
@@ -34,7 +41,7 @@ from rclpy.qos import (
 )
 
 from geometry_msgs.msg import Point, Pose, Quaternion
-from luggage_msgs.msg import DetectedLuggage
+from luggage_msgs.msg import DetectedLuggage, DetectionFrame, YoloDetections
 from luggage_msgs.srv import DetectLuggage, GetCurrentBox
 from luggage_perception import ros_message_adapters as adapters
 from sensor_msgs.msg import Image, PointCloud2
@@ -55,6 +62,18 @@ from luggage_perception.luggage_box_estimator import estimate_box
 from luggage_perception.detection_temporal_gate import (
     SuitcaseViewWait,
     should_retry_estimate,
+)
+from luggage_perception.cargo_instance_tracker import parse_current_box_payload
+from luggage_perception.detection_frame_join import (
+    ExactStampJoin,
+    empty_cargo_pca_fields,
+    pca_fields_from_estimate,
+    pca_fields_from_failure,
+    stamp_key,
+)
+from luggage_perception.locked_stamp_window import LockedStampWindow
+from luggage_perception.motion_stability_filter import (
+    detection_replay_fields,
 )
 
 
@@ -126,6 +145,15 @@ class LuggageDetector(Node):
         self.declare_parameter(
             "color_topic", "/luggage/preprocessed/camera/color/image")
         self.declare_parameter("current_box_topic", "/luggage/current_box")
+        self.declare_parameter(
+            "preprocessor_status_topic", "/luggage/preprocessed/status")
+        self.declare_parameter(
+            "filter_stats_topic", "/semantic_point_filter/stats_json")
+        self.declare_parameter(
+            "yolo_topic", "/luggage/semantic/yolo_detections")
+        self.declare_parameter(
+            "detection_frame_topic", "/luggage/perception/detection_frame")
+        self.declare_parameter("join_buffer_maxlen", 10)
 
         scene_cfg_path = self.get_parameter("scene_tf_config").value
         if not scene_cfg_path:
@@ -171,6 +199,17 @@ class LuggageDetector(Node):
             self.get_parameter("evaluation_compare_gt").value)
         self._last_failure_reason = "not_run"
         self._last_cloud_stamp_sec = None
+        self._status = {"payload": None}
+        self._filter_stats = None
+        self._box_epoch_seen = False
+        self._box_id = ""
+        self._box_generation = 0
+        self._join = ExactStampJoin(
+            maxlen=max(1, int(self.get_parameter("join_buffer_maxlen").value)))
+        self._frame_window = LockedStampWindow(
+            maxlen=max(1, int(self.get_parameter("join_buffer_maxlen").value)))
+        self._frame_seq = 0
+        self._frame_lock = threading.Lock()
 
         # Transient local replaces the ROS 1 latched diagnostics publisher.
         transient = QoSProfile(
@@ -191,17 +230,23 @@ class LuggageDetector(Node):
         self._latest_stamp = None
         self._latest_frame = None
 
-        # Sensor QoS contract (plan section 10): best effort, depth 1.
-        sensor_qos = QoSProfile(
-            depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+        stream_qos = QoSProfile(
+            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         topic = (
             self.get_parameter("cargo_cloud_topic").value
             if self._use_semantic
             else self.get_parameter("depth_topic").value
         )
         self.create_subscription(
-            PointCloud2, topic, self._cloud_cb, sensor_qos,
+            PointCloud2, topic, self._cloud_cb, stream_qos,
             callback_group=self._group)
+        self.create_subscription(
+            YoloDetections, self.get_parameter("yolo_topic").value,
+            self._yolo_cb, stream_qos, callback_group=self._group)
+        self._frame_pub = self.create_publisher(
+            DetectionFrame,
+            self.get_parameter("detection_frame_topic").value,
+            stream_qos)
         self.get_logger().info("luggage_detector subscribing to %s" % topic)
 
         image_qos = QoSProfile(
@@ -215,6 +260,12 @@ class LuggageDetector(Node):
         self.create_subscription(
             String, self.get_parameter("current_box_topic").value,
             self._on_current_box, transient, callback_group=self._group)
+        self.create_subscription(
+            String, self.get_parameter("preprocessor_status_topic").value,
+            self._on_status, transient, callback_group=self._group)
+        self.create_subscription(
+            String, self.get_parameter("filter_stats_topic").value,
+            self._on_filter_stats, transient, callback_group=self._group)
 
         box_service = self.get_parameter("current_box_service").value
         self._current_box_cli = self.create_client(GetCurrentBox, box_service)
@@ -233,6 +284,30 @@ class LuggageDetector(Node):
             self._latest_cloud = msg
             self._latest_stamp = msg.header.stamp
             self._latest_frame = msg.header.frame_id
+        key = stamp_key(msg.header.stamp)
+        if key is None:
+            return
+        if self._use_semantic:
+            pair = self._join.push_right(key, msg)
+            if pair is not None:
+                self._emit_joined(pair[0], pair[1])
+            return
+        self._emit_joined(self._empty_yolo_for_cloud(msg), msg)
+
+    def _yolo_cb(self, msg):
+        key = stamp_key(msg.header.stamp)
+        if key is None:
+            return
+        pair = self._join.push_left(key, msg)
+        if pair is not None:
+            self._emit_joined(pair[0], pair[1])
+
+    def _empty_yolo_for_cloud(self, cloud_msg):
+        msg = YoloDetections()
+        msg.header = cloud_msg.header
+        msg.generation = int(self._box_generation)
+        msg.instance_id = str(self._box_id)
+        return msg
 
     def _rgb_cb(self, msg):
         image = adapters.image_array_from_msg(msg)
@@ -242,14 +317,12 @@ class LuggageDetector(Node):
             self._latest_rgb = image
 
     def _on_current_box(self, msg):
-        box_id = ""
-        if msg.data:
-            try:
-                data = json.loads(msg.data)
-            except (TypeError, ValueError):
-                data = None
-            if isinstance(data, dict):
-                box_id = str(data.get("id") or data.get("model_name") or "")
+        box_id, generation = parse_current_box_payload(msg.data)
+        self._box_epoch_seen = True
+        self._box_id = box_id
+        self._box_generation = generation
+        self._join.clear()
+        self._frame_window.clear()
         with self._view_lock:
             rgb = self._latest_rgb
             changed = self._view_wait.note_box_id(box_id, rgb)
@@ -257,6 +330,71 @@ class LuggageDetector(Node):
             self.get_logger().info(
                 "luggage_detector: waiting for suitcase RGB update (%s)"
                 % box_id)
+
+    def _on_filter_stats(self, msg):
+        if not msg.data:
+            return
+        try:
+            data = json.loads(msg.data)
+        except (TypeError, ValueError):
+            return
+        if isinstance(data, dict):
+            self._filter_stats = data
+
+    def _on_status(self, msg):
+        self._status["payload"] = msg.data
+
+    def _status_data(self):
+        payload = self._status.get("payload")
+        if not payload:
+            return None
+        try:
+            data = json.loads(payload)
+        except (TypeError, ValueError):
+            return None
+        return data if isinstance(data, dict) else None
+
+    def _instance_gate_reason(self):
+        """None when DetectLuggage may run. Skip when no current_box (real robot)."""
+        if not self._use_semantic or not self._box_epoch_seen:
+            return None
+        if not self._box_id:
+            return "DETECT_STALE_INSTANCE"
+        stats = self._filter_stats
+        if not stats:
+            return "DETECT_STALE_INSTANCE"
+        try:
+            gen = int(stats.get("generation") or 0)
+            raw = stats.get("last_cargo_n_points")
+            if raw is None:
+                raw = stats.get("n_points", 0)
+            n_points = int(raw if raw is not None else 0)
+        except (TypeError, ValueError):
+            return "DETECT_STALE_INSTANCE"
+        if gen != int(self._box_generation):
+            return "DETECT_STALE_INSTANCE"
+        if n_points <= 0:
+            return "DETECT_NO_CLOUD"
+        return None
+
+    def _wait_instance_ready(self):
+        """Block until tracker generation matches current_box, or timeout."""
+        if not self._use_semantic or not self._box_epoch_seen:
+            return True
+        timeout = max(
+            0.5,
+            (1.0 + float(self._estimate_retry_count))
+            * float(self._estimate_retry_period))
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            reason = self._instance_gate_reason()
+            if reason is None:
+                return True
+            self._last_failure_reason = reason
+            time.sleep(0.02)
+        if self._instance_gate_reason() is None:
+            return True
+        return False
 
     def _wait_suitcase_view(self):
         """Block until RGB leaves the pre-spawn view, or timeout.
@@ -358,112 +496,18 @@ class LuggageDetector(Node):
             self.get_logger().warning(msg)
             self._last_warn_ns = now
 
-    def _estimate_from_cloud(self):
-        """Run the full perception pipeline.
+    def _pca_source_label(self, n_points):
+        if int(n_points) <= 0:
+            return "empty"
+        stats = self._filter_stats or {}
+        source = str(stats.get("source") or "")
+        if source in ("measure", "hold_track", "empty"):
+            return source
+        return "measure"
 
-        Returns (DetectedLuggage, confidence) or (None, 0.0).
-        """
-        with self._cloud_lock:
-            cloud_msg = self._latest_cloud
-            stamp = self._latest_stamp
-            frame = self._latest_frame
-        self._last_cloud_stamp_sec = None
-        if stamp is not None:
-            self._last_cloud_stamp_sec = (
-                float(stamp.sec) + 1e-9 * float(stamp.nanosec))
-
-        if cloud_msg is None:
-            self._last_failure_reason = "DETECT_NO_CLOUD"
-            self._warn_throttled("luggage_detector: no point cloud received yet")
-            return None, 0.0
-
-        stamp_time = rclpy.time.Time.from_msg(stamp)
-        age = (self.get_clock().now() - stamp_time).nanoseconds / 1e9
-        if age > self._cloud_max_age:
-            self._last_failure_reason = "DETECT_STALE_CLOUD"
-            self._warn_throttled(
-                "luggage_detector: cloud too old (%.2fs)" % age)
-            return None, 0.0
-
-        # Vectorized decode via the shared adapter. The previous
-        # sensor_msgs_py generator unpacked ~110k points one-by-one into
-        # Python objects (about a second per call, GIL-held, starving the
-        # cloud subscription - the back-to-back DETECT_STALE_CLOUD bug);
-        # see docs/status/todo1_semantic_chain.md (GIL section).
-        _t0 = time.monotonic()
-        pts_camera = adapters.cloud_points_from_msg(cloud_msg)
-        if pts_camera is None:
-            self._last_failure_reason = "DETECT_CLOUD_DECODE_FAILED"
-            self._warn_throttled(
-                "luggage_detector: dropping cloud with unsupported layout")
-            return None, 0.0
-        # cloud_points_from_msg does not drop non-finite values (the old
-        # read_points path only skipped NaN anyway). Far-plane misses
-        # arrive as inf and silently break RANSAC/PCA. See
-        # docs/status/m2_perception_occlusion_problem.md (Bug 2).
-        pts_camera = pts_camera[np.isfinite(pts_camera).all(axis=1)]
-        self._timing["read_ms"] = (time.monotonic() - _t0) * 1000.0
-        if len(pts_camera) < self._min_points:
-            self._last_failure_reason = "DETECT_TOO_FEW_POINTS"
-            self._warn_throttled(
-                "luggage_detector: too few points (%d)" % len(pts_camera))
-            return None, 0.0
-
-        _t0 = time.monotonic()
-        source_frame = self._cloud_data_frame or frame
-        pts_world, tf_err = _transform_points_to_world(
-            self._tf_buffer, pts_camera, source_frame,
-            self._world_frame, stamp_time,
-        )
-        if pts_world is None:
-            self._last_failure_reason = "DETECT_TF_FAILED"
-            self._warn_throttled(
-                "luggage_detector: TF %s->%s failed: %s"
-                % (source_frame, self._world_frame, tf_err))
-            return None, 0.0
-        self._timing["tf_ms"] = (time.monotonic() - _t0) * 1000.0
-
-        est = estimate_box(
-            pts_world,
-            roi_center_xy=(self._source_xyz[0], self._source_xyz[1]),
-            roi_margin=self._roi_margin,
-            platform_z=self._platform_z,
-            catalog_entries=(
-                self._catalog_entries if self._catalog_snap else None),
-            catalog_tolerance=self._catalog_tol,
-            min_points=self._min_points,
-            min_height_above_platform=self._min_height_above_platform,
-            voxel_size=self._voxel_size,
-            timing=self._timing,
-        )
-        if est is None:
-            self._last_failure_reason = "DETECT_ESTIMATION_FAILED"
-            self._warn_throttled("luggage_detector: box estimation failed")
-            return None, 0.0
-        if est.confidence < self._min_confidence:
-            self._last_failure_reason = "DETECT_LOW_CONFIDENCE"
-            self._warn_throttled(
-                "luggage_detector: confidence %.2f below %.2f"
-                % (est.confidence, self._min_confidence))
-            return None, est.confidence
-
-        box_id = est.matched_catalog_id or "detected_box"
-        t = self._timing
-        self.get_logger().info(
-            "detect timing: read=%.1fms tf=%.1fms voxel=%.1fms(%d->%d) "
-            "ransac=%.1fms refine=%.1fms"
-            % (t.get("read_ms", -1), t.get("tf_ms", -1), t.get("voxel_ms", 0.0),
-               t.get("voxel_from", -1), t.get("voxel_to", -1),
-               t.get("ransac_ms", -1), t.get("refine_ms", -1)))
-        self.get_logger().info(
-            "luggage_detector: estimated box '%s' at (%.3f, %.3f, %.3f) "
-            "size=(%.3f, %.3f, %.3f) conf=%.2f yaw_valid=%s aspect=%.2f"
-            % (box_id, est.center_xyz[0], est.center_xyz[1], est.center_xyz[2],
-               est.width, est.depth, est.height, est.confidence,
-               est.yaw_valid, est.aspect_ratio))
-        self._last_failure_reason = "ok"
+    def _detected_from_estimate(self, est):
         return DetectedLuggage(
-            id=box_id,
+            id=est.matched_catalog_id or "detected_box",
             width=est.width,
             depth=est.depth,
             height=est.height,
@@ -482,20 +526,238 @@ class LuggageDetector(Node):
                     w=float(est.quaternion_xyzw[3]),
                 ),
             ),
-        ), est.confidence
+        )
+
+    def _pca_from_cloud_msg(self, cloud_msg):
+        """Fit a world-frame box from one cargo/depth cloud.
+
+        Returns ``(pca_fields, DetectedLuggage or None)``. Always returns
+        fields so the stream can publish ``pca_valid=false`` frames.
+        """
+        stamp = cloud_msg.header.stamp
+        frame = cloud_msg.header.frame_id
+        stamp_time = rclpy.time.Time.from_msg(stamp)
+        _t0 = time.monotonic()
+        pts_camera = adapters.cloud_points_from_msg(cloud_msg)
+        if pts_camera is None:
+            return pca_fields_from_failure(
+                "DETECT_CLOUD_DECODE_FAILED", 0, "empty"), None
+        pts_camera = pts_camera[np.isfinite(pts_camera).all(axis=1)]
+        self._timing["read_ms"] = (time.monotonic() - _t0) * 1000.0
+        n_points = int(len(pts_camera))
+        source = self._pca_source_label(n_points)
+        if n_points <= 0:
+            return empty_cargo_pca_fields(0), None
+        if n_points < self._min_points:
+            return pca_fields_from_failure(
+                "DETECT_TOO_FEW_POINTS", n_points, source), None
+
+        _t0 = time.monotonic()
+        source_frame = self._cloud_data_frame or frame
+        pts_world, tf_err = _transform_points_to_world(
+            self._tf_buffer, pts_camera, source_frame,
+            self._world_frame, stamp_time,
+        )
+        if pts_world is None:
+            return pca_fields_from_failure(
+                "DETECT_TF_FAILED", n_points, source), None
+        self._timing["tf_ms"] = (time.monotonic() - _t0) * 1000.0
+        centroid = tuple(float(v) for v in pts_world.mean(axis=0))
+
+        est = estimate_box(
+            pts_world,
+            roi_center_xy=(self._source_xyz[0], self._source_xyz[1]),
+            roi_margin=self._roi_margin,
+            platform_z=self._platform_z,
+            catalog_entries=(
+                self._catalog_entries if self._catalog_snap else None),
+            catalog_tolerance=self._catalog_tol,
+            min_points=self._min_points,
+            min_height_above_platform=self._min_height_above_platform,
+            voxel_size=self._voxel_size,
+            timing=self._timing,
+        )
+        if est is None:
+            return pca_fields_from_failure(
+                "DETECT_ESTIMATION_FAILED", n_points, source, centroid), None
+        if est.confidence < self._min_confidence:
+            fields = pca_fields_from_failure(
+                "DETECT_LOW_CONFIDENCE", n_points, source,
+                tuple(float(v) for v in est.center_xyz))
+            fields["pca_confidence"] = float(est.confidence)
+            return fields, None
+        return pca_fields_from_estimate(est, n_points, source), (
+            self._detected_from_estimate(est))
+
+    def _make_detection_frame(self, yolo_msg, cloud_msg, fields, box):
+        msg = DetectionFrame()
+        msg.header.stamp = cloud_msg.header.stamp
+        msg.header.frame_id = self._world_frame
+        msg.yolo_optical_frame = (
+            yolo_msg.header.frame_id or cloud_msg.header.frame_id)
+        with self._frame_lock:
+            msg.frame_seq = self._frame_seq
+            self._frame_seq += 1
+        msg.generation = int(yolo_msg.generation)
+        msg.instance_id = str(yolo_msg.instance_id)
+        msg.yolo = list(yolo_msg.detections)
+        msg.pca_valid = bool(fields["pca_valid"])
+        msg.pca_reason = str(fields["pca_reason"])
+        msg.pca_source = str(fields["pca_source"])
+        msg.pca_confidence = float(fields["pca_confidence"])
+        msg.n_cargo_points = int(fields["n_cargo_points"])
+        cx, cy, cz = fields["centroid"]
+        msg.centroid = Point(x=float(cx), y=float(cy), z=float(cz))
+        if box is not None and fields["pca_valid"]:
+            msg.box = box
+        return msg
+
+    def _emit_joined(self, yolo_msg, cloud_msg):
+        fields, box = self._pca_from_cloud_msg(cloud_msg)
+        if not fields["pca_valid"]:
+            reason = fields["pca_reason"]
+            if reason in (
+                    "DETECT_CLOUD_DECODE_FAILED",
+                    "DETECT_TF_FAILED",
+                    "DETECT_TOO_FEW_POINTS"):
+                self._warn_throttled(
+                    "luggage_detector: stream %s (n=%d)"
+                    % (reason, fields["n_cargo_points"]))
+        frame = self._make_detection_frame(yolo_msg, cloud_msg, fields, box)
+        self._frame_pub.publish(frame)
+        self._frame_window.push(
+            adapters.stamp_to_sec(cloud_msg.header.stamp), frame)
+
+    def _wait_newer_frame(self, prev_stamp, timeout):
+        if timeout <= 0.0:
+            return False
+        deadline = time.time() + float(timeout)
+        while time.time() < deadline:
+            time.sleep(0.02)
+            hit = self._frame_window.latest()
+            if hit is not None and hit[0] != prev_stamp:
+                return True
+        return False
+
+    def _frame_to_detect(self, frame):
+        stamp_time = rclpy.time.Time.from_msg(frame.header.stamp)
+        age = (self.get_clock().now() - stamp_time).nanoseconds / 1e9
+        self._last_cloud_stamp_sec = (
+            float(frame.header.stamp.sec)
+            + 1e-9 * float(frame.header.stamp.nanosec))
+        if age > self._cloud_max_age:
+            self._last_failure_reason = "DETECT_STALE_CLOUD"
+            return None, 0.0
+        if self._use_semantic and self._box_epoch_seen:
+            if int(frame.generation) != int(self._box_generation):
+                self._last_failure_reason = "DETECT_STALE_INSTANCE"
+                return None, 0.0
+        if not frame.pca_valid:
+            self._last_failure_reason = str(
+                frame.pca_reason or "DETECT_ESTIMATION_FAILED")
+            return None, float(frame.pca_confidence)
+        self._last_failure_reason = "ok"
+        return frame.box, float(frame.pca_confidence)
+
+    def _detect_from_window_with_retries(self):
+        attempts = 1 + int(self._estimate_retry_count)
+        detected, confidence = None, 0.0
+        prev_stamp = None
+        for attempt in range(attempts):
+            hit = self._frame_window.latest()
+            if hit is None:
+                self._last_failure_reason = "DETECT_NO_CLOUD"
+            else:
+                prev_stamp, frame = hit
+                detected, confidence = self._frame_to_detect(frame)
+                if detected is not None:
+                    if attempt:
+                        self.get_logger().info(
+                            "luggage_detector: window ok on retry %d/%d"
+                            % (attempt, self._estimate_retry_count))
+                    return detected, confidence
+            if attempt + 1 >= attempts:
+                break
+            if not should_retry_estimate(self._last_failure_reason):
+                break
+            self._wait_newer_frame(prev_stamp, self._estimate_retry_period)
+        return detected, confidence
+
+    def _estimate_from_cloud(self):
+        """Run the full perception pipeline on the latest cloud.
+
+        Used when the DetectionFrame window is empty (raw-depth path).
+        """
+        with self._cloud_lock:
+            cloud_msg = self._latest_cloud
+            stamp = self._latest_stamp
+        self._last_cloud_stamp_sec = None
+        if stamp is not None:
+            self._last_cloud_stamp_sec = (
+                float(stamp.sec) + 1e-9 * float(stamp.nanosec))
+
+        if cloud_msg is None:
+            self._last_failure_reason = "DETECT_NO_CLOUD"
+            self._warn_throttled("luggage_detector: no point cloud received yet")
+            return None, 0.0
+
+        stamp_time = rclpy.time.Time.from_msg(stamp)
+        age = (self.get_clock().now() - stamp_time).nanoseconds / 1e9
+        if age > self._cloud_max_age:
+            self._last_failure_reason = "DETECT_STALE_CLOUD"
+            self._warn_throttled(
+                "luggage_detector: cloud too old (%.2fs)" % age)
+            return None, 0.0
+
+        fields, box = self._pca_from_cloud_msg(cloud_msg)
+        self._last_failure_reason = (
+            "ok" if fields["pca_valid"] else fields["pca_reason"])
+        if fields["pca_valid"]:
+            t = self._timing
+            self.get_logger().info(
+                "detect timing: read=%.1fms tf=%.1fms voxel=%.1fms(%d->%d) "
+                "ransac=%.1fms refine=%.1fms"
+                % (t.get("read_ms", -1), t.get("tf_ms", -1),
+                   t.get("voxel_ms", 0.0),
+                   t.get("voxel_from", -1), t.get("voxel_to", -1),
+                   t.get("ransac_ms", -1), t.get("refine_ms", -1)))
+            self.get_logger().info(
+                "luggage_detector: estimated box '%s' at (%.3f, %.3f, %.3f) "
+                "size=(%.3f, %.3f, %.3f) conf=%.2f yaw_valid=%s aspect=%.2f"
+                % (box.id, box.pose.position.x, box.pose.position.y,
+                   box.pose.position.z, box.width, box.depth, box.height,
+                   fields["pca_confidence"], box.yaw_valid, box.aspect_ratio))
+            return box, fields["pca_confidence"]
+        self._warn_throttled(
+            "luggage_detector: %s" % self._last_failure_reason)
+        return None, fields["pca_confidence"]
 
     def _publish_diagnostics(self, source, success, confidence, reason,
                              detected=None, gt=None):
+        now_sec = self.get_clock().now().nanoseconds / 1e9
+        ctype = self.get_clock().clock_type
+        clock_name = ctype.name if hasattr(ctype, "name") else str(ctype)
         record = {
-            "stamp": self.get_clock().now().nanoseconds / 1e9,
+            "stamp": now_sec,
             "source": source,
             "success": bool(success),
             "confidence": float(confidence),
             "reason": str(reason),
             "allow_gt_fallback": self._allow_gt_fallback,
         }
-        if self._last_cloud_stamp_sec is not None:
-            record["cloud_stamp"] = float(self._last_cloud_stamp_sec)
+        record.update(detection_replay_fields(
+            self._status_data(),
+            self._last_cloud_stamp_sec,
+            now_sec,
+            clock_name,
+        ))
+        record["box_generation"] = int(self._box_generation)
+        record["box_id"] = str(self._box_id)
+        stats = self._filter_stats or {}
+        record["cargo_generation"] = int(stats.get("generation") or 0)
+        record["cargo_n_points"] = int(
+            stats.get("last_cargo_n_points", stats.get("n_points", 0)) or 0)
+        record["cargo_source"] = str(stats.get("source") or "")
         if detected is not None:
             record["detected"] = {
                 "id": detected.id,
@@ -542,7 +804,21 @@ class LuggageDetector(Node):
                     "luggage_detector: suitcase RGB did not update "
                     "within %.1fs" % self._suitcase_update_timeout)
                 return response
-            detected, confidence = self._estimate_with_retries()
+            if not self._wait_instance_ready():
+                reason = self._last_failure_reason or "DETECT_STALE_INSTANCE"
+                self._last_failure_reason = reason
+                self._publish_diagnostics(
+                    "perception", False, 0.0, self._last_failure_reason)
+                response.luggage = []
+                response.success = False
+                response.message = self._last_failure_reason
+                self.get_logger().warning(
+                    "luggage_detector: cargo instance not ready (%s)"
+                    % self._last_failure_reason)
+                return response
+            detected, confidence = self._detect_from_window_with_retries()
+            if detected is None and not self._use_semantic:
+                detected, confidence = self._estimate_with_retries()
         except Exception as exc:  # noqa: BLE001 - service boundary
             self.get_logger().error("detect_luggage handler failed: %s" % exc)
             response.luggage = []

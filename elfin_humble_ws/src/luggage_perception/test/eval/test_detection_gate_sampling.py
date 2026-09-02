@@ -11,6 +11,7 @@ from luggage_perception.eval.detection_gate_sampling import (
     FRESH_SEC,
     MASK_VIZ_RGB,
     annotate_overlay_boxes,
+    annotate_yolo_detections,
     apply_dump_timestamp_banners,
     build_aligned_dump,
     colorize_mask_rgb,
@@ -157,6 +158,19 @@ class TestWaitFreshness(unittest.TestCase):
             status_data={
                 "flags": {"geometry_ok": False},
                 "motion_gate": {"state": "stable"},
+                "primary_stamp": 10.2,
+            },
+            cloud_recv=100.5,
+            stamp_at_start=10.0,
+            wait_started=100.0,
+            now=101.0,
+        ))
+
+    def test_disabled_gate_is_ready(self):
+        self.assertTrue(wait_ready(
+            status_data={
+                "flags": {"geometry_ok": True},
+                "motion_gate": {"state": "disabled"},
                 "primary_stamp": 10.2,
             },
             cloud_recv=100.5,
@@ -408,6 +422,21 @@ class TestOverlayBoxProjection(unittest.TestCase):
         self.assertFalse(meta["boxes_projected"])
         self.assertEqual(meta["project_error"], "no_camera")
         np.testing.assert_array_equal(out, overlay)
+
+    def test_dropped_yolo_boxes_draw_magenta(self):
+        try:
+            import cv2  # noqa: F401
+        except ImportError:
+            self.skipTest("cv2 not installed")
+        overlay = np.zeros((80, 80, 3), dtype=np.uint8)
+        out = annotate_yolo_detections(
+            overlay,
+            [{"bbox": [10, 12, 40, 50], "self_body_overlap": 0.9}],
+            color_bgr=(255, 0, 255),
+            thickness=1)
+        self.assertGreater(int((out[:, :, 0] > 200).sum()), 0)
+        self.assertGreater(int((out[:, :, 2] > 200).sum()), 0)
+        self.assertEqual(int(overlay.sum()), 0)
 
 
 if __name__ == "__main__":

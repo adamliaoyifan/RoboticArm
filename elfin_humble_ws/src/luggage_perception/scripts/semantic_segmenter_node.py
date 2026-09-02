@@ -15,8 +15,9 @@ Subscribes the *preprocessed* color image so the mask inherits the RGB
 with the preprocessed cloud.
 
 The mask/instance-mask/overlay outputs are BEST_EFFORT (sensor-stream
-contract); ``~/stats_json`` is transient-local so a late consumer sees the
-last record.
+contract); ``/luggage/semantic/yolo_detections`` is the structured per-frame
+box list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
+late consumer sees the last record.
 """
 
 from __future__ import division
@@ -24,6 +25,8 @@ from __future__ import division
 import json
 import os
 import time
+
+import numpy as np
 
 import rclpy
 from rclpy.executors import ExternalShutdownException
@@ -35,7 +38,10 @@ from tf2_ros import Buffer, TransformException, TransformListener
 
 from ament_index_python.packages import get_package_share_directory
 
+from luggage_msgs.msg import YoloBox, YoloDetections
 from luggage_perception import ros_message_adapters as adapters
+from luggage_perception.cargo_instance_tracker import parse_current_box_payload
+from luggage_perception.detection_frame_join import yolo_box_fields_from_detections
 from luggage_perception.detect_overlay import (
     draw_timestamp_banner,
     timestamp_banner_lines,
@@ -93,7 +99,9 @@ class SemanticSegmenterNode(Node):
             "output.mask": "/luggage/semantic/mask",
             "output.overlay": "/luggage/semantic/overlay",
             "output.instance_mask": "/luggage/semantic/instance_mask",
+            "output.yolo_detections": "/luggage/semantic/yolo_detections",
             "output.stats": "~/stats_json",
+            "current_box_topic": "/luggage/current_box",
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -148,11 +156,19 @@ class SemanticSegmenterNode(Node):
         self._self_body_source = "none"
         self._tf_buffer = Buffer()
         self._tf_listener = TransformListener(self._tf_buffer, self)
+        self._box_id = ""
+        self._box_generation = 0
+        self._last_hw = None
+        self._last_frame_id = "camera_depth_optical_frame"
+        self._last_stamp = None
+        self._yolo_seq = 0
 
         sensor_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         mask_qos = QoSProfile(
             depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        stream_qos = QoSProfile(
+            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         stats_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -163,6 +179,10 @@ class SemanticSegmenterNode(Node):
             Image, self.get_parameter("output.overlay").value, mask_qos)
         self._instance_pub = self.create_publisher(
             Image, self.get_parameter("output.instance_mask").value, mask_qos)
+        self._yolo_pub = self.create_publisher(
+            YoloDetections,
+            self.get_parameter("output.yolo_detections").value,
+            stream_qos)
         self._stats_pub = self.create_publisher(
             String, self.get_parameter("output.stats").value, stats_qos)
 
@@ -172,6 +192,9 @@ class SemanticSegmenterNode(Node):
         self.create_subscription(
             CameraInfo, self.get_parameter("input.camera_info").value,
             self._on_camera_info, sensor_qos)
+        self.create_subscription(
+            String, self.get_parameter("current_box_topic").value,
+            self._on_current_box, stats_qos)
         self._rebuild_self_body_mask()
 
         self.get_logger().info(
@@ -197,6 +220,36 @@ class SemanticSegmenterNode(Node):
     def _on_camera_info(self, msg):
         self._camera_info = msg
         self._rebuild_self_body_mask()
+
+    def _on_current_box(self, msg):
+        box_id, generation = parse_current_box_payload(msg.data)
+        if (generation == self._box_generation
+                and box_id == self._box_id):
+            return
+        self._box_id = box_id
+        self._box_generation = generation
+        gate = getattr(self._segmenter, "temporal_gate", None)
+        if gate is not None:
+            gate.reset()
+        self._publish_empty_epoch()
+
+    def _publish_empty_epoch(self):
+        if self._last_hw is None:
+            return
+        height, width = self._last_hw
+        stamp = self._last_stamp
+        if stamp is None:
+            stamp = adapters.sec_to_stamp(
+                self.get_clock().now().nanoseconds / 1e9)
+        frame_id = self._last_frame_id
+        zeros = np.zeros((height, width), dtype=np.uint8)
+        self._mask_pub.publish(adapters.mask_msg_from_array(
+            zeros, stamp, frame_id))
+        self._instance_pub.publish(adapters.instance_mask_msg_from_array(
+            np.zeros((height, width), dtype=np.uint16), stamp, frame_id))
+        self.get_logger().info(
+            "semantic_segmenter: epoch reset generation=%s id=%r"
+            % (self._box_generation, self._box_id))
 
     def _mesh_paths(self):
         names = [str(n) for n in self.get_parameter("self_body_meshes").value
@@ -287,6 +340,9 @@ class SemanticSegmenterNode(Node):
             self._drop_count += 1
             return
         self._last_process_sec = frame.stamp
+        self._last_hw = (int(frame.image.shape[0]), int(frame.image.shape[1]))
+        self._last_frame_id = frame.frame_id or self._last_frame_id
+        self._last_stamp = adapters.sec_to_stamp(frame.stamp)
         if self._segmenter.self_body_mask is None:
             self._rebuild_self_body_mask()
 
@@ -301,8 +357,31 @@ class SemanticSegmenterNode(Node):
         if out.instance_map is not None:
             self._instance_pub.publish(adapters.instance_mask_msg_from_array(
                 out.instance_map, stamp, out.frame_id))
+        self._publish_yolo(out, stamp)
         self._publish_overlay(frame.image, out, stamp, pub_ms=pub_ms)
         self._publish_stats(out, recv_wall=recv_wall)
+
+    def _publish_yolo(self, out, stamp):
+        msg = YoloDetections()
+        msg.header.stamp = stamp
+        msg.header.frame_id = out.frame_id or self._last_frame_id
+        msg.frame_seq = self._yolo_seq
+        self._yolo_seq += 1
+        msg.generation = int(self._box_generation)
+        msg.instance_id = str(self._box_id)
+        height, width = out.label_map.shape[:2]
+        msg.image_width = int(width)
+        msg.image_height = int(height)
+        msg.backend = str((out.stats or {}).get("backend", ""))
+        for fields in yolo_box_fields_from_detections(out.detections):
+            box = YoloBox()
+            box.label = int(fields["label"])
+            box.prompt = str(fields["prompt"])
+            box.confidence = float(fields["confidence"])
+            box.bbox = [int(v) for v in fields["bbox"]]
+            box.held = bool(fields["held"])
+            msg.detections.append(box)
+        self._yolo_pub.publish(msg)
 
     def _publish_overlay(self, rgb_image, out, stamp, pub_ms=None):
         if not self._overlay_ok:
@@ -337,6 +416,7 @@ class SemanticSegmenterNode(Node):
     def _publish_stats(self, out, recv_wall=None):
         record = dict(out.stats)
         record["stamp"] = out.stamp
+        record["mask_stamp"] = out.stamp
         record["image_stamp"] = out.stamp
         record["frame_id"] = out.frame_id
         record["detect_sim_stamp"] = (
@@ -346,6 +426,8 @@ class SemanticSegmenterNode(Node):
             record["recv_wall_sec"] = float(recv_wall)
         record["rate_limited_drops"] = self._drop_count
         record["self_body_source"] = self._self_body_source
+        record["generation"] = int(self._box_generation)
+        record["instance_id"] = str(self._box_id)
         if self._segmenter.self_body_mask is not None:
             record["self_body_pixels"] = int(self._segmenter.self_body_mask.sum())
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))

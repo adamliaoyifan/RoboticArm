@@ -18,9 +18,11 @@ from luggage_perception.semantic_segmenter import (  # noqa: E402
     StubSegmenter,
     apply_self_body_mask,
     apply_wrist_self_body,
+    bbox_mask_overlap,
     build_segmenter,
     colorize_label_map,
     compact_detections,
+    detections_dropped_by_self_body,
 )
 
 
@@ -321,6 +323,22 @@ class TestWristSelfBody(unittest.TestCase):
         self.assertEqual(len(kept), 1)
         self.assertEqual(kept[0]["prompt"], "box")
 
+    def test_bbox_overlap_and_dropped_list(self):
+        body = np.zeros((20, 20), dtype=bool)
+        body[16:, :] = True
+        before = [
+            {"label": LABEL_CARGO, "prompt": "box", "confidence": 0.4,
+             "bbox": [0, 0, 10, 10]},
+            {"label": LABEL_CARGO, "prompt": "panel", "confidence": 0.3,
+             "bbox": [0, 16, 20, 20]},
+        ]
+        after = [before[0]]
+        dropped = detections_dropped_by_self_body(before, after, body)
+        self.assertEqual(len(dropped), 1)
+        self.assertEqual(dropped[0]["prompt"], "panel")
+        self.assertGreaterEqual(dropped[0]["self_body_overlap"], 0.99)
+        self.assertAlmostEqual(bbox_mask_overlap([0, 0, 10, 10], body), 0.0)
+
     def test_update_applies_config_frac(self):
         seg = build_segmenter({
             "backend": "stub",
@@ -398,7 +416,45 @@ class TestCombinedSelfBody(unittest.TestCase):
         self.assertFalse(out.stats["raw_cargo"])
         self.assertEqual(out.stats["n_yolo_cargo_before_self_body"], 2)
         self.assertEqual(out.stats["n_dropped_self_body"], 2)
+        dropped = out.stats["detections_dropped_self_body"]
+        self.assertEqual(len(dropped), 2)
+        for item in dropped:
+            self.assertEqual(item["dropped"], "self_body")
+            self.assertGreaterEqual(item["self_body_overlap"], 0.5)
+            self.assertIn("bbox", item)
         self.assertFalse(out.stats["held"])
+
+    def test_update_premasks_self_body_before_segment(self):
+        """A backend that only fires on bright panel pixels must see grey."""
+        from luggage_perception.semantic_segmenter import SemanticSegmenter
+
+        class _BrightPanel(SemanticSegmenter):
+            def segment(self, rgb_image):
+                labels = np.zeros(rgb_image.shape[:2], dtype=np.uint8)
+                dets = []
+                bottom = rgb_image[85:, :, 0]
+                if bottom.size and float(bottom.mean()) > 200.0:
+                    labels[85:] = LABEL_CARGO
+                    dets.append({
+                        "label": LABEL_CARGO, "prompt": "panel",
+                        "confidence": 0.9, "bbox": [0, 85, 10, 100],
+                    })
+                labels[10:40, :] = LABEL_CARGO
+                dets.insert(0, {
+                    "label": LABEL_CARGO, "prompt": "box",
+                    "confidence": 0.9, "bbox": [0, 10, 10, 40],
+                })
+                return labels, dets
+
+        seg = _BrightPanel(["box"], {"box": LABEL_CARGO})
+        seg.self_body_row_start_frac = 0.85
+        rgb = np.full((100, 10, 3), 255, dtype=np.uint8)
+        seg.update(rgb, stamp=1.0, frame_id="f")
+        out = seg.copy_output()
+        prompts = [d["prompt"] for d in out.detections]
+        self.assertIn("box", prompts)
+        self.assertNotIn("panel", prompts)
+        self.assertTrue(np.all(out.label_map[85:] != LABEL_CARGO))
 
 
 class TestUpdateTemporalHold(unittest.TestCase):

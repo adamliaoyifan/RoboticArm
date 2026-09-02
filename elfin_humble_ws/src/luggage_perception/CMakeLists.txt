@@ -34,6 +34,7 @@ install(PROGRAMS
   scripts/sensor_preprocessor_node.py
   scripts/semantic_segmenter_node.py
   scripts/semantic_point_filter_node.py
+  scripts/cargo_volume_mapper_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

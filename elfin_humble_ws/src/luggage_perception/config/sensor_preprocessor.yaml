@@ -25,6 +25,9 @@ sensor_preprocessor:
     camera_horizon_sec: 0.35
     joint_horizon_sec: 1.0
     stale_sec: 0.15
+    # Annotates geometry_ok on /luggage/preprocessed/status only.
+    # Does not drop RGB/depth/points. DetectLuggage does not wait on this gate;
+    # the cargo tracker publishes the latest associated cloud instead.
     motion_gate.joint_names:
       - elfin_joint1
       - elfin_joint2
@@ -35,4 +38,4 @@ sensor_preprocessor:
     motion_gate.velocity_threshold: 0.02
     motion_gate.settle_time_sec: 0.5
     motion_gate.joint_state_timeout_sec: 1.0
-    motion_gate.enabled: true
+    motion_gate.enabled: false

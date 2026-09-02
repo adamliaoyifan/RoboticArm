@@ -223,8 +223,10 @@ class SemanticPointFilter:
             cargo_pts = _tuples(cargo_mask)
             obstacle_pts = _tuples(obstacle_mask)
         else:
-            cargo_pts = pts_valid[cargo_mask].tolist()
-            obstacle_pts = pts_valid[obstacle_mask].tolist()
+            # Stay in numpy. tolist() of a 100k-point cargo cloud was several
+            # seconds per frame and stalled the exclusive join callback.
+            cargo_pts = pts_valid[cargo_mask]
+            obstacle_pts = pts_valid[obstacle_mask]
 
         self._last_stats = {
             "raw_count": raw_count,
@@ -234,3 +236,43 @@ class SemanticPointFilter:
             "out_of_frame_count": out_of_frame,
         }
         return cargo_pts, obstacle_pts
+
+
+class JoinStampTracker:
+    """Camera stamps for cargo join replay. 0 join stamp means never joined.
+
+    ``last_cargo_n_points`` is -1 until the first join, then 0 means that
+    join had no cargo pixels (not that join never happened).
+    """
+
+    def __init__(self):
+        self.last_cloud_stamp = 0.0
+        self.last_mask_stamp = 0.0
+        self.last_join_stamp = 0.0
+        self.last_cargo_n_points = -1
+        self.generation = 0
+        self.instance_id = ""
+
+    def note_cloud(self, stamp_sec):
+        self.last_cloud_stamp = float(stamp_sec)
+
+    def note_mask(self, stamp_sec):
+        self.last_mask_stamp = float(stamp_sec)
+
+    def note_join(self, stamp_sec, n_cargo):
+        self.last_join_stamp = float(stamp_sec)
+        self.last_cargo_n_points = int(n_cargo)
+
+    def note_epoch(self, generation, instance_id=""):
+        self.generation = int(generation or 0)
+        self.instance_id = str(instance_id or "")
+
+    def as_dict(self):
+        return {
+            "last_cloud_stamp": self.last_cloud_stamp,
+            "last_mask_stamp": self.last_mask_stamp,
+            "last_join_stamp": self.last_join_stamp,
+            "last_cargo_n_points": self.last_cargo_n_points,
+            "generation": int(self.generation),
+            "instance_id": str(self.instance_id),
+        }

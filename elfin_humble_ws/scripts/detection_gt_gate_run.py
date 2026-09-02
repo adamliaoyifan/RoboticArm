@@ -87,7 +87,7 @@ from luggage_perception.detect_overlay import (  # noqa: E402
 
 JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
           "elfin_joint4", "elfin_joint5", "elfin_joint6"]
-PICKUP_OBSERVE = [1.9578, -1.4925, -1.6403, 4.7695, 1.7676, 1.9260]
+PICKUP_OBSERVE = [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
 POSE_NAME = "pickup_observe"
 
 OUT_DIR = os.path.join(
@@ -516,7 +516,7 @@ class GateRun(Node):
             time.sleep(0.05)
         return False
 
-    def goto_pickup_observe(self, duration=8.0):
+    def goto_pickup_observe(self, duration=4.0):
         if not self._fjt.wait_for_server(timeout_sec=20.0):
             raise RuntimeError("FJT action server unavailable")
         goal = FollowJointTrajectory.Goal()

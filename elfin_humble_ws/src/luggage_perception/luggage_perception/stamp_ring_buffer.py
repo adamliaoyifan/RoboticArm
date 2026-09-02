@@ -44,6 +44,9 @@ class StampRingBuffer(object):
     def stamps(self):
         return list(self._stamps)
 
+    def items(self):
+        return list(zip(self._stamps, self._items))
+
     def insert(self, stamp, item):
         """Insert ``item`` at ``stamp``. Returns False if the stamp is rejected."""
         stamp = float(stamp)

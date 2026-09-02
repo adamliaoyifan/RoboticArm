@@ -171,7 +171,7 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertEqual(int(copy_b.rgb.image[0, 0, 0]), 3)
         self.assertIsNot(obs.rgb.image, copy_b.rgb.image)
 
-    def test_missing_joints_suppress_geometry_but_keep_images(self):
+    def test_missing_joints_suppress_geometry_but_keep_cloud(self):
         pre = SensorPreprocessor(camera_slop_sec=0.020, joint_names=["j1"])
         pre.update_depth(_depth(8.0))
         pre.update_camera_cloud(_cloud(8.0), point_transform=np.eye(4))
@@ -179,9 +179,23 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertTrue(obs.flags.rgb_ok)
         self.assertTrue(obs.flags.depth_ok)
         self.assertFalse(obs.flags.geometry_ok)
-        self.assertIsNone(obs.camera_points)
+        self.assertTrue(obs.flags.cloud_ok)
+        np.testing.assert_allclose(obs.camera_points, [[1.0, 0.0, 0.0]])
 
-    def test_moving_arm_suppresses_geometry(self):
+    def test_disabled_gate_keeps_geometry_without_joints(self):
+        gate = MotionStabilityGate(joint_names=["j1"], enabled=False)
+        pre = SensorPreprocessor(
+            camera_slop_sec=0.020, motion_gate=gate, joint_names=["j1"])
+        pre.update_depth(_depth(8.0))
+        pre.update_camera_cloud(_cloud(8.0), point_transform=np.eye(4))
+        obs = pre.update_rgb(_rgb(8.0))
+        self.assertTrue(obs.flags.geometry_ok)
+        self.assertTrue(obs.flags.cloud_ok)
+        self.assertFalse(obs.flags.motion_too_large)
+        self.assertAlmostEqual(pre.diagnostics()["last_geometry_ok_stamp"], 8.0)
+        np.testing.assert_allclose(obs.camera_points, [[1.0, 0.0, 0.0]])
+
+    def test_moving_arm_keeps_cloud_and_flags_geometry(self):
         pre = SensorPreprocessor(
             camera_slop_sec=0.020, motion_gate=_stable_gate(), joint_names=["j1"])
         _hold_stable(pre, t0=9.0)
@@ -192,9 +206,46 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertTrue(obs.flags.rgb_ok)
         self.assertTrue(obs.flags.motion_too_large)
         self.assertFalse(obs.flags.geometry_ok)
-        self.assertIsNone(obs.camera_points)
+        self.assertTrue(obs.flags.cloud_ok)
+        np.testing.assert_allclose(obs.camera_points, [[1.0, 0.0, 0.0]])
 
-    def test_lidar_never_blocks_or_attaches(self):
+    def test_last_geometry_ok_stamp_freezes_while_moving(self):
+        pre = SensorPreprocessor(
+            camera_slop_sec=0.020, motion_gate=_stable_gate(), joint_names=["j1"])
+        _hold_stable(pre, t0=9.0)
+        pre.update_depth(_depth(9.20))
+        pre.update_camera_cloud(_cloud(9.20), point_transform=np.eye(4))
+        obs = pre.update_rgb(_rgb(9.20))
+        self.assertTrue(obs.flags.geometry_ok)
+        diag = pre.diagnostics()
+        self.assertAlmostEqual(diag["primary_stamp"], 9.20)
+        self.assertAlmostEqual(diag["last_geometry_ok_stamp"], 9.20)
+
+        pre.update_joint_state(_joint(9.40, 0.2))
+        pre.update_depth(_depth(9.40))
+        pre.update_camera_cloud(_cloud(9.40), point_transform=np.eye(4))
+        obs = pre.update_rgb(_rgb(9.40))
+        self.assertFalse(obs.flags.geometry_ok)
+        diag = pre.diagnostics()
+        self.assertAlmostEqual(diag["primary_stamp"], 9.40)
+        self.assertAlmostEqual(diag["last_geometry_ok_stamp"], 9.20)
+
+        for i in range(4):
+            pre.update_joint_state(_joint(9.50 + 0.05 * i, 0.2))
+        pre.update_depth(_depth(9.70))
+        pre.update_camera_cloud(_cloud(9.70), point_transform=np.eye(4))
+        obs = pre.update_rgb(_rgb(9.70))
+        self.assertTrue(obs.flags.geometry_ok)
+        diag = pre.diagnostics()
+        self.assertAlmostEqual(diag["primary_stamp"], 9.70)
+        self.assertAlmostEqual(diag["last_geometry_ok_stamp"], 9.70)
+
+    def test_missing_joints_leave_geometry_ok_stamp_zero(self):
+        pre = SensorPreprocessor(camera_slop_sec=0.020, joint_names=["j1"])
+        pre.update_depth(_depth(8.0))
+        pre.update_camera_cloud(_cloud(8.0), point_transform=np.eye(4))
+        pre.update_rgb(_rgb(8.0))
+        self.assertAlmostEqual(pre.diagnostics()["last_geometry_ok_stamp"], 0.0)
         pre = SensorPreprocessor(camera_slop_sec=0.020)
         scan = LidarScan(
             stamp_start=10.0, stamp_end=10.0, frame_id="livox_frame",
@@ -252,7 +303,8 @@ class TestSensorPreprocessor(unittest.TestCase):
         obs = pre.update_rgb(_rgb(15.0))
         self.assertTrue(obs.flags.rgb_ok)
         self.assertFalse(obs.flags.geometry_ok)
-        self.assertIsNone(obs.camera_points)
+        self.assertTrue(obs.flags.cloud_ok)
+        np.testing.assert_allclose(obs.camera_points, [[1.0, 0.0, 0.0]])
 
     def test_transform_points_helper(self):
         matrix = np.eye(4)

@@ -169,6 +169,42 @@ class TestMotionStabilityGate(unittest.TestCase):
         with self.assertRaises(ValueError):
             MotionStabilityGate(criterion="average_velocity")
 
+    def test_status_geometry_stable(self):
+        from luggage_perception.motion_stability_filter import (
+            status_geometry_stable)
+        self.assertTrue(status_geometry_stable({
+            "flags": {"geometry_ok": True},
+            "motion_gate": {"state": "stable"},
+        }))
+        self.assertTrue(status_geometry_stable({
+            "flags": {"geometry_ok": True},
+            "motion_gate": {"state": "disabled"},
+        }))
+        self.assertFalse(status_geometry_stable({
+            "flags": {"geometry_ok": True},
+            "motion_gate": {"state": "moving"},
+        }))
+        self.assertFalse(status_geometry_stable({
+            "flags": {"geometry_ok": False},
+            "motion_gate": {"state": "stable"},
+        }))
+        self.assertFalse(status_geometry_stable(None))
+        self.assertFalse(status_geometry_stable("x"))
+
+    def test_detection_replay_fields(self):
+        from luggage_perception.motion_stability_filter import (
+            detection_replay_fields)
+        fields = detection_replay_fields(
+            {"last_geometry_ok_stamp": 1.5}, 1.4, 2.0, "ROS_TIME")
+        self.assertEqual(fields["geometry_ok_stamp"], 1.5)
+        self.assertEqual(fields["cloud_stamp"], 1.4)
+        self.assertAlmostEqual(fields["cloud_age_sec"], 0.6)
+        self.assertEqual(fields["clock_type"], "ROS_TIME")
+        no_cloud = detection_replay_fields(None, None, 9.0, "SYSTEM_TIME")
+        self.assertEqual(no_cloud["geometry_ok_stamp"], 0.0)
+        self.assertNotIn("cloud_stamp", no_cloud)
+        self.assertNotIn("cloud_age_sec", no_cloud)
+
 
 if __name__ == "__main__":
     unittest.main()

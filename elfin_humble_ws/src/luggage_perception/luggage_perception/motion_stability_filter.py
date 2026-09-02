@@ -257,3 +257,43 @@ class MotionStabilityGate:
             "displacement_tolerance": self.displacement_tolerance,
             "excursion_joint": self._excursion_joint,
         }
+
+
+def status_geometry_stable(data):
+    """True when preprocessor status says the arm is settled for geometry.
+
+    ``geometry_ok`` is the motion-gate verdict. ``motion_gate.state`` must be
+    ``stable`` (or ``disabled`` when the gate is turned off in yaml).
+    """
+    if not isinstance(data, dict):
+        return False
+    flags = data.get("flags") or {}
+    if not bool(flags.get("geometry_ok")):
+        return False
+    state = (data.get("motion_gate") or {}).get("state")
+    return state in ("stable", "disabled")
+
+
+def detection_replay_fields(status_data, cloud_stamp_sec, now_sec, clock_type):
+    """Stamp fields for ``/luggage/perception/detection/latest``.
+
+    Ages are node-clock minus cloud header, not status recv time. The 1 Hz
+    preprocessor timer republishes the same ``primary_stamp``.
+    """
+    geometry_ok_stamp = 0.0
+    if isinstance(status_data, dict):
+        try:
+            geometry_ok_stamp = float(
+                status_data.get("last_geometry_ok_stamp") or 0.0)
+        except (TypeError, ValueError):
+            geometry_ok_stamp = 0.0
+    fields = {
+        "geometry_ok_stamp": geometry_ok_stamp,
+        "clock_type": str(clock_type),
+    }
+    if cloud_stamp_sec is None:
+        return fields
+    cloud_stamp = float(cloud_stamp_sec)
+    fields["cloud_stamp"] = cloud_stamp
+    fields["cloud_age_sec"] = float(now_sec) - cloud_stamp
+    return fields

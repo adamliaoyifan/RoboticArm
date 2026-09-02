@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Camera-triggered sensor pairing, filtering, and motion gating (no ROS)."""
+"""Camera-triggered sensor pairing (no ROS).
+
+The joint motion gate only annotates ``geometry_ok`` / ``motion_too_large``.
+A matched cloud is always attached so downstream viz and YOLO see live
+points; DetectLuggage (and eval) refuse geometry until the arm is stable.
+"""
 
 from __future__ import division
 
@@ -82,6 +87,7 @@ class SensorPreprocessor(object):
         self._output = None
         self._last_rejection = ""
         self._last_dropped_nonfinite = 0
+        self._last_geometry_ok_stamp = 0.0
 
     def copy_output(self):
         if self._output is None:
@@ -121,6 +127,7 @@ class SensorPreprocessor(object):
             "primary_stamp": (
                 self._output.primary_stamp if self._output is not None else 0.0
             ),
+            "last_geometry_ok_stamp": self._last_geometry_ok_stamp,
             "depth_dt": self._output.depth_dt if self._output is not None else -1.0,
             "cloud_dt": self._output.cloud_dt if self._output is not None else -1.0,
             "lidar_dt": -1.0,
@@ -237,6 +244,8 @@ class SensorPreprocessor(object):
                 continue
             self._emitted.add(stamp)
             self._output = observation
+            if observation.flags.geometry_ok:
+                self._last_geometry_ok_stamp = float(observation.primary_stamp)
             emitted = observation
             break
         return None if emitted is None else emitted.copy()
@@ -268,17 +277,15 @@ class SensorPreprocessor(object):
         geometry_ok = bool(self._gate.accepts_cloud(rgb_stamp, now=gate_now))
         motion_too_large = gate_state in ("moving", "settling")
         motion_score = float(self._gate.peak_excursion or 0.0)
-        if gate_state in ("unknown", "stale") or not self._joints:
+        if gate_state != "disabled" and (
+                gate_state in ("unknown", "stale") or not self._joints):
             geometry_ok = False
 
         camera_points = None
         dropped = 0
         data_frame = ""
-        if cloud is not None and geometry_ok:
+        if cloud is not None:
             camera_points = np.array(cloud.points, copy=True)
-            dropped = int(cloud.dropped_nonfinite)
-            data_frame = cloud.data_frame
-        elif cloud is not None:
             dropped = int(cloud.dropped_nonfinite)
             data_frame = cloud.data_frame
 
@@ -287,7 +294,7 @@ class SensorPreprocessor(object):
             depth_ok=depth is not None,
             color_info_ok=color_info is not None,
             depth_info_ok=depth_info is not None,
-            cloud_ok=cloud is not None and geometry_ok,
+            cloud_ok=cloud is not None,
             lidar_ok=False,
             deskewed=False,
             stale=(now_hint - rgb_stamp) > self.stale_sec,

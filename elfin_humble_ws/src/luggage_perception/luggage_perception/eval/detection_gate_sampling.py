@@ -30,6 +30,7 @@ from luggage_perception.detect_overlay import (
     project_detection,
     timestamp_banner_lines,
 )
+from luggage_perception.motion_stability_filter import status_geometry_stable
 
 FRESH_SEC = 2.0
 GT_FALLBACK_TOKEN = "gt fallback"
@@ -68,8 +69,9 @@ FRAME_JOIN_AFTER_SPAWN_SEC = 5.0
 COLOR_GT_BOX_BGR = (0, 255, 0)
 COLOR_MEASURED_BOX_BGR = COLOR_PERCEPTION_BGR
 OVERLAY_BOX_LEGEND = {
-    "gt": "green 3D OBB (GetCurrentBox)",
+    "gt": "green 3D OBB (visible top / depth blob)",
     "measured": "cyan 3D OBB (DetectLuggage)",
+    "yolo_dropped": "magenta 2D bbox (dropped by self-body)",
 }
 
 
@@ -116,11 +118,7 @@ def is_perception_estimate(success, message, has_luggage, diag=None):
 
 
 def status_is_stable(data):
-    if not isinstance(data, dict):
-        return False
-    flags = data.get("flags") or {}
-    gate = data.get("motion_gate") or {}
-    return bool(flags.get("geometry_ok")) and gate.get("state") == "stable"
+    return status_geometry_stable(data)
 
 
 def receipt_is_fresh(recv_time, now, wait_started, max_age=FRESH_SEC):
@@ -560,6 +558,43 @@ def annotate_overlay_boxes(
         meta["project_error"] = "no_boxes"
         return overlay_rgb, meta
     return bgr[:, :, ::-1], meta
+
+
+def annotate_yolo_detections(overlay_rgb, detections, color_bgr=(255, 0, 255),
+                             thickness=2):
+    """Draw 2D YOLO boxes (typically self-body-dropped) onto an RGB overlay."""
+    if overlay_rgb is None or not detections:
+        return overlay_rgb
+    try:
+        import cv2  # noqa: WPS433  dump path only
+    except ImportError:
+        return overlay_rgb
+    rgb = np.asarray(overlay_rgb)
+    if rgb.ndim != 3 or rgb.shape[2] != 3:
+        return overlay_rgb
+    bgr = rgb[:, :, ::-1].copy()
+    h, w = bgr.shape[:2]
+    for det in detections:
+        bbox = det.get("bbox") if isinstance(det, dict) else None
+        if bbox is None or len(bbox) < 4:
+            continue
+        x1, y1, x2, y2 = (int(v) for v in bbox[:4])
+        x1, x2 = max(0, min(w - 1, x1)), max(0, min(w - 1, x2))
+        y1, y2 = max(0, min(h - 1, y1)), max(0, min(h - 1, y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        cv2.rectangle(bgr, (x1, y1), (x2, y2), color_bgr, int(thickness))
+        overlap = det.get("self_body_overlap")
+        label = "drop"
+        if overlap is not None:
+            try:
+                label = "drop %.2f" % float(overlap)
+            except (TypeError, ValueError):
+                pass
+        cv2.putText(
+            bgr, label, (x1, max(12, y1 - 4)),
+            cv2.FONT_HERSHEY_SIMPLEX, 0.4, color_bgr, 1, cv2.LINE_AA)
+    return bgr[:, :, ::-1]
 
 
 def dump_failure_bundle(dump_dir, record, images=None, extras=None, arrays=None):

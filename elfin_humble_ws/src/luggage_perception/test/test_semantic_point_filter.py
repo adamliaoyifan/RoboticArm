@@ -18,6 +18,7 @@ PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from luggage_perception.semantic_point_filter import (  # noqa: E402
     CameraIntrinsics,
     DepthToColorExtrinsics,
+    JoinStampTracker,
     SemanticPointFilter,
     _project_to_color,
 )
@@ -108,8 +109,7 @@ class TestFilterRouting(unittest.TestCase):
         cargo, obstacle = f.filter_points([self.point], mask)
         self.assertEqual(len(cargo), 1)
         self.assertEqual(len(obstacle), 1)
-        # filter_points returns lists of lists (from numpy tolist()).
-        self.assertAlmostEqual(cargo[0][0], self.point[0])
+        self.assertAlmostEqual(float(cargo[0][0]), self.point[0])
         self.assertAlmostEqual(cargo[0][1], self.point[1])
         self.assertAlmostEqual(cargo[0][2], self.point[2])
 
@@ -117,8 +117,8 @@ class TestFilterRouting(unittest.TestCase):
         f = self._make_filter(cargo_labels=[2], obstacle_labels=[2, 4])
         mask = np.zeros((480, 640), dtype=np.uint8)
         cargo, obstacle = f.filter_points([self.point], mask)
-        self.assertEqual(cargo, [])
-        self.assertEqual(obstacle, [])
+        self.assertEqual(len(cargo), 0)
+        self.assertEqual(len(obstacle), 0)
         stats = f.last_stats
         self.assertEqual(stats["raw_count"], 1)
         self.assertEqual(stats["excluded_count"], 1)
@@ -127,7 +127,7 @@ class TestFilterRouting(unittest.TestCase):
         f = self._make_filter(cargo_labels=[2], obstacle_labels=[2, 4])
         mask = np.full((480, 640), 4, dtype=np.uint8)  # unknown everywhere
         cargo, obstacle = f.filter_points([self.point], mask)
-        self.assertEqual(cargo, [])
+        self.assertEqual(len(cargo), 0)
         self.assertEqual(len(obstacle), 1)
 
     def test_out_of_frame_point_is_counted(self):
@@ -137,8 +137,8 @@ class TestFilterRouting(unittest.TestCase):
         f = self._make_filter(cargo_labels=[2], obstacle_labels=[2, 4])
         mask = np.zeros((480, 640), dtype=np.uint8)
         cargo, obstacle = f.filter_points([(10.0, 0.0, 1.0)], mask)
-        self.assertEqual(cargo, [])
-        self.assertEqual(obstacle, [])
+        self.assertEqual(len(cargo), 0)
+        self.assertEqual(len(obstacle), 0)
         stats = f.last_stats
         self.assertEqual(stats["out_of_frame_count"], 1)
 
@@ -222,6 +222,34 @@ class TestIntrinsicsFromConfig(unittest.TestCase):
         self.assertAlmostEqual(depth.fy, expected_fx, places=9)
         # depth_to_color translation: 15mm along color-Y per realsense_d435.yaml
         self.assertAlmostEqual(extr.translation[1], 0.015, places=4)
+
+
+class TestJoinStampTracker(unittest.TestCase):
+    def test_cloud_without_join_does_not_invent_join_stamp(self):
+        tracker = JoinStampTracker()
+        tracker.note_cloud(1.2)
+        tracker.note_mask(1.1)
+        payload = tracker.as_dict()
+        self.assertAlmostEqual(payload["last_cloud_stamp"], 1.2)
+        self.assertAlmostEqual(payload["last_mask_stamp"], 1.1)
+        self.assertEqual(payload["last_join_stamp"], 0.0)
+        self.assertEqual(payload["last_cargo_n_points"], -1)
+        self.assertEqual(payload["generation"], 0)
+        self.assertEqual(payload["instance_id"], "")
+
+    def test_join_zero_cargo_is_not_never_joined(self):
+        tracker = JoinStampTracker()
+        tracker.note_join(2.0, 0)
+        payload = tracker.as_dict()
+        self.assertAlmostEqual(payload["last_join_stamp"], 2.0)
+        self.assertEqual(payload["last_cargo_n_points"], 0)
+
+    def test_note_epoch_is_in_payload(self):
+        tracker = JoinStampTracker()
+        tracker.note_epoch(4, "pickup_box_0004_carryon")
+        payload = tracker.as_dict()
+        self.assertEqual(payload["generation"], 4)
+        self.assertEqual(payload["instance_id"], "pickup_box_0004_carryon")
 
 
 if __name__ == "__main__":

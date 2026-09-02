@@ -216,8 +216,62 @@ def compact_detections(detections):
         bbox = det.get("bbox")
         if bbox is not None and len(bbox) >= 4:
             item["bbox"] = [int(round(float(v))) for v in bbox[:4]]
+        if "self_body_overlap" in det:
+            try:
+                item["self_body_overlap"] = float(det["self_body_overlap"])
+            except (TypeError, ValueError):
+                item["self_body_overlap"] = None
+        if det.get("dropped"):
+            item["dropped"] = str(det.get("dropped"))
         out.append(item)
     return out
+
+
+def bbox_mask_overlap(bbox, mask):
+    """Fraction of the bbox rectangle that sits on a boolean mask."""
+    if bbox is None or mask is None or len(bbox) < 4:
+        return None
+    body = np.asarray(mask)
+    if body.ndim != 2 or body.size == 0:
+        return None
+    height, width = body.shape[:2]
+    x1, y1, x2, y2 = (int(v) for v in bbox[:4])
+    x1, x2 = max(0, min(width, x1)), max(0, min(width, x2))
+    y1, y2 = max(0, min(height, y1)), max(0, min(height, y2))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    patch = body[y1:y2, x1:x2]
+    if patch.size == 0:
+        return None
+    return float(patch.mean())
+
+
+def detections_dropped_by_self_body(before, after, body_mask):
+    """Cargo boxes present in *before* but removed by ``apply_self_body_mask``."""
+    after_keys = set()
+    for det in after or []:
+        bbox = det.get("bbox")
+        if bbox is not None and len(bbox) >= 4:
+            after_keys.add(tuple(int(round(float(v))) for v in bbox[:4]))
+    dropped = []
+    for det in before or []:
+        try:
+            label = int(det.get("label", -1))
+        except (TypeError, ValueError):
+            continue
+        if label != LABEL_CARGO:
+            continue
+        bbox = det.get("bbox")
+        key = None
+        if bbox is not None and len(bbox) >= 4:
+            key = tuple(int(round(float(v))) for v in bbox[:4])
+        if key is not None and key in after_keys:
+            continue
+        item = compact_detections([det])[0]
+        item["dropped"] = "self_body"
+        item["self_body_overlap"] = bbox_mask_overlap(bbox, body_mask)
+        dropped.append(item)
+    return dropped
 
 
 def apply_self_body_mask(label_map, detections, body_mask,
@@ -359,18 +413,29 @@ class SemanticSegmenter:
         is copied here; a previously returned ``SegmenterOutput`` is never
         mutated by a later ``update``. No publishing, no I/O. ``stamp`` /
         ``frame_id`` must come from the input header, not from wall clock.
+
+        Panel pixels are painted letterbox-grey *before* ``segment()`` so
+        YOLO never proposes the suction panel as cargo. ``apply_self_body_mask``
+        still runs afterwards as a fallback.
         """
-        label_map, detections = self.segment(rgb_uint8)
-        n_before = cargo_detection_count(detections)
         body = combined_self_body_mask(
             self.self_body_mask, self.self_body_row_start_frac,
-            label_map.shape[:2])
+            rgb_uint8.shape[:2])
+        rgb_in = rgb_uint8
+        if body is not None and np.any(body):
+            rgb_in = np.array(rgb_uint8, copy=True)
+            rgb_in[body] = 114
+        label_map, detections = self.segment(rgb_in)
+        detections_before = list(detections or [])
+        n_before = cargo_detection_count(detections_before)
         label_map, detections, instance_map, n_self = apply_self_body_mask(
             label_map, detections, body, instance_map=self._instance_map)
         n_after = cargo_detection_count(detections)
         stats = dict(self._last_stats)
         stats["n_yolo_cargo_before_self_body"] = int(n_before)
         stats["n_dropped_self_body"] = int(max(0, n_before - n_after))
+        stats["detections_dropped_self_body"] = detections_dropped_by_self_body(
+            detections_before, detections, body)
         stats["raw_cargo"] = bool(n_after > 0)
         stats["held"] = False
         # Self-body first, then the vote. A panel flank scored as cargo on

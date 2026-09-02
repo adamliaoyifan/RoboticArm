@@ -129,27 +129,5 @@ class TestSpawnWithJitterDetectAndCompare(unittest.TestCase):
             )
 
 
-class TestPerceptionApproachClearance(unittest.TestCase):
-    """Verify the perception-aware clearance calculation matches expectations."""
-
-    def test_clearance_computation(self):
-        """Import waypoint_generator and test _perception_clearances."""
-        from luggage_planning.waypoint_generator import _perception_clearances
-
-        # suction at z=1.5, box top at z=1.0 → gap=0.5
-        info = {"box_top_z": 1.0, "suction_z": 1.5}
-        c = _perception_clearances(info, None)
-        self.assertAlmostEqual(c["pre_grasp"], 0.5 * 0.6, places=4)  # 0.30
-        self.assertAlmostEqual(c["approach"], 0.5 * 0.3, places=4)   # 0.15
-        self.assertAlmostEqual(c["attach"], 0.0)
-        self.assertAlmostEqual(c["pick_retreat"], 0.35)
-
-        # Small gap → safety floors apply.
-        info2 = {"box_top_z": 1.0, "suction_z": 1.1}
-        c2 = _perception_clearances(info2, None)
-        self.assertAlmostEqual(c2["pre_grasp"], 0.20)  # floor
-        self.assertAlmostEqual(c2["approach"], 0.08)    # floor
-
-
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,7 @@ class TestRetryPolicy(unittest.TestCase):
     def test_estimation_failed_is_retryable(self):
         self.assertTrue(should_retry_estimate("DETECT_ESTIMATION_FAILED"))
         self.assertTrue(should_retry_estimate("DETECT_STALE_CLOUD"))
+        self.assertTrue(should_retry_estimate("DETECT_STALE_INSTANCE"))
         self.assertFalse(should_retry_estimate("DETECT_HANDLER_ERROR"))
         self.assertFalse(should_retry_estimate("ok"))
 

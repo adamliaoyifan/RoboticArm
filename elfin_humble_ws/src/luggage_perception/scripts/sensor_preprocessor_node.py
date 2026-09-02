@@ -173,7 +173,7 @@ class SensorPreprocessorNode(Node):
             "motion_gate.velocity_threshold": 0.02,
             "motion_gate.settle_time_sec": 0.5,
             "motion_gate.joint_state_timeout_sec": 1.0,
-            "motion_gate.enabled": True,
+            "motion_gate.enabled": False,
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
@@ -278,7 +278,7 @@ class SensorPreprocessorNode(Node):
         if obs.depth_info is not None and obs.flags.depth_info_ok:
             self._pub_depth_info.publish(
                 adapters.camera_info_msg_from_frame(obs.depth_info, stamp))
-        if obs.camera_points is not None and obs.flags.cloud_ok:
+        if obs.camera_points is not None:
             self._pub_cloud.publish(adapters.cloud_msg_from_points(
                 obs.camera_points, stamp, obs.frame_id))
 

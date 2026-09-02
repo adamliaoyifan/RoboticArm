@@ -63,6 +63,12 @@ class TestStampRingBuffer(unittest.TestCase):
         self.assertEqual(len(buf), 1)
         self.assertEqual(buf.latest()[1], "b")
 
+    def test_items_pairs_stamps(self):
+        buf = StampRingBuffer(maxlen=4, horizon_sec=1.0)
+        buf.insert(1.0, "a")
+        buf.insert(1.1, "b")
+        self.assertEqual(buf.items(), [(1.0, "a"), (1.1, "b")])
+
 
 if __name__ == "__main__":
     unittest.main()
