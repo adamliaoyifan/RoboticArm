@@ -62,7 +62,9 @@ def corridor_blocked(ems, boxes, inner_size, smallest_size,
         if not (b[0] < cx1 and b[3] > cx0 and b[2] < cz1 and b[5] > cz0):
             continue
         # Wall: spans the full container Y width at this x/z.
-        if b[1] <= full_y_min + 1e-9 and b[4] >= full_y_max - 1e-9:
+        # Wall: spans the full container Y width at this x/z.
+        # 1 mm slop: yaw quantization / catalog width == inner_w.
+        if b[1] <= full_y_min + 1e-3 and b[4] >= full_y_max - 1e-3:
             return True
     return False
 

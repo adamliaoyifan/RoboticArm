@@ -48,6 +48,23 @@ class TestSourceTracking(unittest.TestCase):
                     found_geometry = True
         self.assertTrue(found_geometry, "Expected at least one geometry-occupied cell")
 
+    def test_surface_center_base_is_usable_volume_center(self):
+        """Node constructor (floor + inner_h/2) must be what generate_candidates sees."""
+        floor_z, inner_h = 0.53, 1.48
+        mapper = CargoVolumeMapper(
+            inner_size=[1.49, 1.97, inner_h],
+            center_base=[0.0, 0.0, floor_z + 0.5 * inner_h],
+            yaw=0.0,
+            resolution=0.05,
+        )
+        surface = mapper.surface_map_2d()
+        self.assertAlmostEqual(
+            surface["center_base"][2], floor_z + 0.5 * inner_h, places=6)
+        self.assertAlmostEqual(surface["floor_z"], 0.0)
+        self.assertTrue(all(
+            abs(cell) < 1e-9
+            for row in surface["height"] for cell in row))
+
     def test_reset_preserve_placed_replays_geometry(self):
         m = self._make_mapper()
         m.mark_placed_box([0.0, 0.0, 1.0], [0.5, 0.5, 0.5])

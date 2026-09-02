@@ -30,6 +30,13 @@ class TestCorridor(unittest.TestCase):
         wall = (-1.0, -1.0, 0.0, -0.5, 1.0, 0.5)  # near opening, full y, z[0,0.5]
         self.assertTrue(corridor_blocked(deep_ems, [wall], INNER, SMALL))
 
+    def test_full_width_wall_allows_1mm_slop(self):
+        """Catalog width == inner_w plus yaw noise still counts as a wall."""
+        inner = (1.49, 1.97, 1.48)
+        deep = (0.125, -0.2, 0.0, 0.675, 0.2, 0.25)
+        wall = (-0.4, -0.984995, 0.0, 0.0, 0.985005, 0.32)
+        self.assertTrue(corridor_blocked(deep, [wall], inner, (0.55, 0.40, 0.25)))
+
     def test_corridor_not_blocked_by_box_outside_z(self):
         """A box at a different z-level does not block the corridor."""
         deep_ems = (0.5, -0.5, 0.0, 1.0, 0.5, 0.5)
