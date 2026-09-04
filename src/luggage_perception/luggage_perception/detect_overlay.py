@@ -48,7 +48,8 @@ _MIN_PROJECTION_Z = 1e-6
 
 DetectionRecord = namedtuple(
     "DetectionRecord",
-    ["success", "source", "reason", "confidence", "position", "quat", "size"],
+    ["success", "source", "reason", "confidence", "position", "quat", "size",
+     "height_valid"],
 )
 
 
@@ -92,6 +93,11 @@ def parse_detection_record(record):
         position=position,
         quat=quat,
         size=size,
+        # Platform-free contract: None = legacy record without the field.
+        height_valid=(
+            None if not isinstance(detected, dict) or (
+                "height_valid" not in detected)
+            else bool(detected.get("height_valid"))),
     )
 
 
@@ -183,10 +189,17 @@ def source_color_bgr(source):
 
 
 def format_detection_label(record):
-    """One-line summary drawn next to the box."""
+    """One-line summary drawn next to the box.
+
+    Top-only results (height_valid false) are tagged so a measured full
+    box and a prior-height outline are visually distinct.
+    """
     size = record.size if record.size is not None else (0.0, 0.0, 0.0)
-    return "%s %.2fx%.2fx%.2f conf=%.2f" % (
+    label = "%s %.2fx%.2fx%.2f conf=%.2f" % (
         record.source, size[0], size[1], size[2], record.confidence)
+    if getattr(record, "height_valid", None) is False:
+        label += " [TOP-ONLY]"
+    return label
 
 
 def _finite_point(uv):

@@ -60,6 +60,12 @@ def _stamp_key(msg):
     return (msg.header.stamp.sec, msg.header.stamp.nanosec)
 
 
+def _stamp_to_tf_time(stamp):
+    """ROS stamp message -> rclpy Time for stamped TF lookups (PF-R3)."""
+    return rclpy.time.Time(
+        seconds=int(stamp.sec), nanoseconds=int(stamp.nanosec))
+
+
 class SemanticPointFilterNode(Node):
 
     def __init__(self):
@@ -259,13 +265,19 @@ class SemanticPointFilterNode(Node):
             if oldest == key:
                 break
 
-    def _lookup_rt(self, target, source, _stamp):
-        """Latest TF. Do not block the join callback on a lookup timeout."""
+    def _lookup_rt(self, target, source, stamp):
+        """TF at the acquisition stamp (PF-R3). Latest-TF fallback is
+        forbidden: a missing historical transform is an explicit miss, so
+        the frame is dropped rather than transformed with a pose the
+        robot no longer holds. The bounded 50 ms wait covers TF buffering
+        lag without stalling the join callback."""
         if not target or not source:
             return None
         try:
             tf_msg = self._tf_buffer.lookup_transform(
-                target, source, rclpy.time.Time())
+                target, source,
+                _stamp_to_tf_time(stamp),
+                rclpy.duration.Duration(seconds=0.05))
         except TransformException:
             return None
         t = tf_msg.transform.translation

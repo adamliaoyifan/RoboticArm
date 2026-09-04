@@ -44,6 +44,15 @@ class TestExactStampJoin(unittest.TestCase):
         pair = join.push_right((3, 0), "new")
         self.assertEqual(pair, ("c", "new"))
 
+    def test_one_nanosecond_mismatch_does_not_fuse(self):
+        join = ExactStampJoin(maxlen=8)
+        self.assertIsNone(join.push_left((1, 0), "yolo"))
+        self.assertIsNone(join.push_right((1, 1), "cargo"))
+        pair = join.push_right((1, 0), "cargo-match")
+        self.assertEqual(pair, ("yolo", "cargo-match"))
+        leftover = join.push_left((1, 1), "yolo-ns")
+        self.assertEqual(leftover, ("yolo-ns", "cargo"))
+
 
 class TestYoloBoxFields(unittest.TestCase):
     def test_compact_detections_map_to_yolo_box_fields(self):

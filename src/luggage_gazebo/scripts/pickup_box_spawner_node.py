@@ -27,7 +27,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from geometry_msgs.msg import Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion
 from luggage_msgs.msg import DetectedLuggage
 from luggage_msgs.srv import (
     ClearCurrentBox,
@@ -475,6 +475,22 @@ class PickupBoxSpawner(Node):
         box.aspect_ratio = (
             max(abs(gt_size[0]), abs(gt_size[1])) / short
             if short > 1e-12 else 1.0)
+        # Platform-free contract (E0/E4): this is eval-side Gazebo truth,
+        # standing in for what a perfect sensor would measure, so it
+        # carries full validity. Online nodes never read it for geometry
+        # (E5); eval drivers compare it against the detector output.
+        box.header.frame_id = "world"
+        box.top_surface_pose = Pose(
+            position=Point(
+                x=pose.position.x, y=pose.position.y,
+                z=pose.position.z + gt_size[2] * 0.5),
+            orientation=pose.orientation,
+        )
+        box.top_surface_valid = True
+        box.top_surface_confidence = 1.0
+        box.height_valid = True
+        box.height_confidence = 1.0
+        box.height_source = DetectedLuggage.HEIGHT_SOURCE_MEASURED_SUPPORT
         self._current_model = model_name
         self._current_box = box
         self._current_yaw = yaw

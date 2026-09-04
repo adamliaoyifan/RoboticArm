@@ -28,6 +28,23 @@ ALLOWED_DEPTH_ENCODINGS = ("16UC1", "mono16")
 ALLOWED_DEPTH_UNITS = ("millimetres", "mm")
 
 
+def _stamp_int_parts(seconds):
+    """Float seconds -> exact (sec, nanosec) for the status payload.
+
+    Round-trips ``stamp_to_sec`` exactly: the sub-second remainder times
+    1e9 rounds back to the original nanosecond (float64 error at ROS
+    epoch is well under 1 ns).
+    """
+    if seconds <= 0.0:
+        return 0, 0
+    whole = int(seconds)
+    nanosec = int(round((seconds - whole) * 1e9))
+    if nanosec >= 1000000000:
+        whole += 1
+        nanosec -= 1000000000
+    return whole, nanosec
+
+
 class SensorPreprocessor(object):
     """RGB-primary pairing of D435 streams with a joint-state motion gate.
 
@@ -116,6 +133,9 @@ class SensorPreprocessor(object):
             if self._output is not None
             else ObservationFlags().as_dict()
         )
+        primary = (
+            self._output.primary_stamp if self._output is not None else 0.0)
+        primary_sec, primary_nanosec = _stamp_int_parts(primary)
         return {
             "schema": "luggage.preprocessed.status.v1",
             "buffers": occupancy,
@@ -124,9 +144,12 @@ class SensorPreprocessor(object):
             "dropped_nonfinite": self._last_dropped_nonfinite,
             "output_cloud_frame": self.output_cloud_frame,
             "motion_gate": self._gate.diagnostics(now=now),
-            "primary_stamp": (
-                self._output.primary_stamp if self._output is not None else 0.0
-            ),
+            "primary_stamp": primary,
+            # Exact integer stamp of the acquisition this payload
+            # describes (PF-R3 same-acquisition evidence join; a float
+            # alone cannot be compared exactly across producers).
+            "primary_stamp_sec": primary_sec,
+            "primary_stamp_nanosec": primary_nanosec,
             "last_geometry_ok_stamp": self._last_geometry_ok_stamp,
             "depth_dt": self._output.depth_dt if self._output is not None else -1.0,
             "cloud_dt": self._output.cloud_dt if self._output is not None else -1.0,

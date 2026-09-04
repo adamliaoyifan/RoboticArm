@@ -25,6 +25,9 @@ class Box:
             orientation=Quaternion(w=1.0),
         )
         self.height = 0.50
+        # Platform-free contract: fixture boxes carry measured geometry.
+        self.height_valid = True
+        self.top_surface_valid = False
 
 
 class Slot:
@@ -203,6 +206,22 @@ class TestWaypointGenerator(unittest.TestCase):
 
     def test_pick_tool_yaw_keeps_detection_when_valid(self):
         self.assertAlmostEqual(pick_tool_yaw(1.2, True, fallback_yaw=0.3), 1.2)
+
+    def test_pick_top_z_prefers_top_surface_pose(self):
+        box = Box()
+        box.top_surface_valid = True
+        box.top_surface_pose = Pose(position=Point(x=1.0, y=2.0, z=0.71))
+        # Measured top (0.71) beats the legacy center+height/2 (0.50).
+        segs = build_sequence(box, Slot(), "pick")
+        self.assertAlmostEqual(
+            segs[0].target_pose.position.z, 0.71 + DEFAULT_PICK_CLEARANCES["pre_grasp"])
+
+    def test_pick_top_z_rejects_prior_only_height(self):
+        box = Box()
+        box.height_valid = False  # catalog prior only
+        with self.assertRaises(ValueError) as ctx:
+            build_sequence(box, Slot(), "pick")
+        self.assertIn("DETECT_FULL_GEOMETRY_REQUIRED", str(ctx.exception))
 
     def test_pick_tool_yaw_uses_fallback_when_invalid(self):
         self.assertAlmostEqual(pick_tool_yaw(1.2, False, fallback_yaw=0.3), 0.3)

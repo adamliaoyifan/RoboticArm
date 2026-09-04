@@ -74,7 +74,12 @@ def pick_from_detected(msg):
     """luggage_msgs/DetectedLuggage -> namespace for ``build_sequence``.
 
     ``build_sequence`` accesses ``pick.pose`` / ``pick.height`` /
-    ``pick.yaw`` / ``pick.yaw_valid`` by attribute.
+    ``pick.yaw`` / ``pick.yaw_valid`` by attribute, and
+    ``pick_contact_top_z`` additionally reads the E0 platform-free
+    contract fields. Every one of them must survive this conversion:
+    dropping ``top_surface_valid`` / ``height_valid`` here would make the
+    live pick path raise ``DETECT_FULL_GEOMETRY_REQUIRED`` on every
+    detection (the G0 failure this adapter now guarantees against).
     """
     import math
     from types import SimpleNamespace
@@ -84,6 +89,7 @@ def pick_from_detected(msg):
         2.0 * (orientation.w * orientation.z + orientation.x * orientation.y),
         1.0 - 2.0 * (orientation.y * orientation.y
                       + orientation.z * orientation.z))
+    stamp = getattr(msg.header, "stamp", None)
     return SimpleNamespace(
         pose=pose_from_msg(msg.pose),
         width=float(msg.width),
@@ -92,6 +98,18 @@ def pick_from_detected(msg):
         yaw=yaw,
         yaw_valid=bool(getattr(msg, "yaw_valid", True)),
         detection_id=str(msg.id),
+        aspect_ratio=float(getattr(msg, "aspect_ratio", 0.0) or 0.0),
+        # --- E0 platform-free contract (PF-R1) ---
+        acquisition_stamp_sec=(
+            None if stamp is None
+            else float(stamp.sec) + 1e-9 * float(stamp.nanosec)),
+        acquisition_frame=str(getattr(msg.header, "frame_id", "") or ""),
+        top_surface_pose=pose_from_msg(msg.top_surface_pose),
+        top_surface_valid=bool(msg.top_surface_valid),
+        top_surface_confidence=float(msg.top_surface_confidence),
+        height_valid=bool(msg.height_valid),
+        height_confidence=float(msg.height_confidence),
+        height_source=int(msg.height_source),
     )
 
 

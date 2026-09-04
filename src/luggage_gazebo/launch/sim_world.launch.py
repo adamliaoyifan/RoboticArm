@@ -586,10 +586,10 @@ def _launch_setup(context):
             "cloud_max_age_sec": 2.5,
             "estimate_retry_count": 4,
             "estimate_retry_period_sec": 0.25,
-            # No spawn GT on the real robot; keep sim on the same path so
-            # DetectLuggage reports real misses instead of GetCurrentBox.
-            "allow_gt_fallback": False,
-            "evaluation_compare_gt": False,
+            # Platform-free height (E3): measured support only; no
+            # configured platform Z (omitted is valid configuration).
+            "support_mode": "auto",
+            "platform_z": "",
             # SuitcaseViewWait kept but unused (0 = skip).
             "suitcase_update_timeout_sec": 0.0,
         }],
