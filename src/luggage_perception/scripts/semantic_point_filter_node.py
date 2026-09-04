@@ -269,17 +269,25 @@ class SemanticPointFilterNode(Node):
         """TF at the acquisition stamp (PF-R3). Latest-TF fallback is
         forbidden: a missing historical transform is an explicit miss, so
         the frame is dropped rather than transformed with a pose the
-        robot no longer holds. The bounded 50 ms wait covers TF buffering
-        lag without stalling the join callback."""
+        robot no longer holds. The retry is bounded by a *wall-clock*
+        deadline: a tf2 sim-time timeout never expires when the
+        simulation clock stalls, which wedged the join callback."""
+        import time as _time
         if not target or not source:
             return None
-        try:
-            tf_msg = self._tf_buffer.lookup_transform(
-                target, source,
-                _stamp_to_tf_time(stamp),
-                rclpy.duration.Duration(seconds=0.05))
-        except TransformException:
-            return None
+        deadline = _time.monotonic() + 0.05
+        while True:
+            try:
+                tf_msg = self._tf_buffer.lookup_transform(
+                    target, source,
+                    _stamp_to_tf_time(stamp),
+                    rclpy.duration.Duration(seconds=0))
+                break
+            except TransformException:
+                tf_msg = None
+            if _time.monotonic() >= deadline:
+                return None
+            _time.sleep(0.01)
         t = tf_msg.transform.translation
         r = tf_msg.transform.rotation
         rot = rotation_from_xyzw(r.x, r.y, r.z, r.w)

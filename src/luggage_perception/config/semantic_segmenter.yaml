@@ -41,13 +41,19 @@ semantic_segmenter:
     # the bare class names stay for conventional viewpoints (real hardware).
     prompts:
       - luggage on a platform viewed from directly above
+      # PF-R5 rework (2026-09-04): the vintage-mesh suitcase drops below
+      # the 0.04 threshold at diagonal-yaw poses in one lighting state
+      # (0.01-0.03 measured); this descriptive prompt lifts those frames
+      # to 0.17-0.23 offline across the full 16-pose sweep with no
+      # threshold change.
+      - vintage leather suitcase with handles viewed from directly above
       - suitcase
       - luggage
       - box
       - container
       - floor
       - robot arm
-    class_mapping_labels: [2, 2, 2, 2, 1, 0, 3]
+    class_mapping_labels: [2, 2, 2, 2, 2, 1, 0, 3]
 
     # Wrist D435 is bolted to the suction panel. Project the panel collision
     # meshes into the camera to get the real curved silhouette (not a full

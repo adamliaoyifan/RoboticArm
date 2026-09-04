@@ -296,7 +296,7 @@ class TestSemanticStampedTfLookup(unittest.TestCase):
         buffer = RecordingBuffer()
         node, _ = self._node(buffer)
         node._lookup_rt("world", "camera_link", FakeStamp())
-        self.assertEqual(len(buffer.calls), 1)
+        self.assertGreaterEqual(len(buffer.calls), 1)
         target, source, time, _timeout = buffer.calls[0]
         self.assertEqual((target, source), ("world", "camera_link"))
         # Stamp equality: nanoseconds must survive the conversion.
@@ -311,19 +311,25 @@ class TestSemanticStampedTfLookup(unittest.TestCase):
 
         class MissingBuffer(object):
             def __init__(self):
-                self.calls = 0
+                self.calls = []
 
-            def lookup_transform(self, *_args, **_kwargs):
-                self.calls += 1
+            def lookup_transform(self, target, source, time,
+                                 timeout=None):
+                self.calls.append(time.nanoseconds)
                 raise TransformException("no stamped transform")
 
         buffer = MissingBuffer()
         node, _ = self._node(buffer)
+
         class FakeStamp(object):
             sec, nanosec = 1234, 567000000
         result = node._lookup_rt("world", "camera_link", FakeStamp())
         self.assertIsNone(result)
-        self.assertEqual(buffer.calls, 1)  # no latest-TF retry
+        # Wall-bounded retry only: every attempt carries the SAME
+        # acquisition stamp — a latest-TF (time=0) fallback never appears.
+        self.assertGreaterEqual(len(buffer.calls), 1)
+        self.assertTrue(all(ns == 1234567000000 for ns in buffer.calls))
+        # And the retry is bounded (no infinite loop; we returned).
 
 
 if __name__ == "__main__":

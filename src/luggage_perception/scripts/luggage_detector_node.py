@@ -85,15 +85,35 @@ from luggage_perception.top_support_estimator import (
 )
 
 
-def _transform_points_to_world(tf_buffer, points, source_frame, target_frame, stamp):
-    """Rigid-body transform an (N,3) array from *source_frame* to *target_frame*."""
-    try:
-        tf_msg = tf_buffer.lookup_transform(
-            target_frame, source_frame, stamp, rclpy.duration.Duration(seconds=0.5)
-        )
-    except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
-            tf2_ros.ExtrapolationException) as exc:
-        return None, str(exc)
+def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
+                               stamp, wall_timeout_sec=0.5,
+                               poll_sec=0.02):
+    """Rigid-body transform an (N,3) array into the target frame.
+
+    The lookup retries a zero-timeout query on a *wall-clock* deadline:
+    tf2 timeouts run on the node clock, and when the simulation clock
+    stalls (gz_ros2_control failure) a sim-time timeout never expires —
+    concurrent lookups then block forever and starve the executor
+    (observed as the recurring launch-context detector wedge).
+    """
+    import time as _time
+    deadline = _time.monotonic() + float(wall_timeout_sec)
+    tf_msg = None
+    err = None
+    while True:
+        try:
+            tf_msg = tf_buffer.lookup_transform(
+                target_frame, source_frame, stamp,
+                rclpy.duration.Duration(seconds=0))
+            break
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as exc:
+            err = str(exc)
+        if _time.monotonic() >= deadline:
+            break
+        _time.sleep(poll_sec)
+    if tf_msg is None:
+        return None, err
 
     t = tf_msg.transform.translation
     r = tf_msg.transform.rotation
