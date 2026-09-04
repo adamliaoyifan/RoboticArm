@@ -1,0 +1,76 @@
+<launch>
+  <!-- MoveIt with camera URDF aligned to Gazebo sim_world. -->
+  <arg name="display" default="false"/>
+  <!-- false when sim_world.launch already loaded /robot_description -->
+  <arg name="load_urdf" default="true"/>
+  <arg name="rviz_config" default="$(find luggage_bringup)/config/pose_tune_moveit.rviz"/>
+  <!-- Arm model selector: s05 | s10 | s20 | s30. Joints/links/group are shared across
+       the Elfin S series; kinematics.yaml and joint_limits.yaml are identical, so only
+       the URDF (geometry) and SRDF (self-collision pairs) change. The Gazebo controller
+       namespace stays /S20 (joint names identical) regardless of arm_model. -->
+  <arg name="arm_model" default="s20"/>
+  <arg name="arm_upper" value="$(eval arg('arm_model').upper())"/>
+  <arg name="camera_urdf" default="$(find luggage_description)/urdf/elfin_$(arg arm_model)_with_camera.urdf.xacro"/>
+  <arg name="camera_srdf" default="$(find luggage_description)/config/$(arg arm_upper)_with_camera.srdf"/>
+  <!-- Enable MoveIt octomap from depth cloud for dynamic obstacle avoidance -->
+  <arg name="enable_octomap" default="true"/>
+  <!-- Override elfin_arm/longest_valid_segment_fraction after ompl_planning.yaml
+       loads (S20 default is 0.002, 5-25x denser than MoveIt's usual 0.5%,
+       for a loud "state invalid" instead of a silently missed mid-segment
+       collision; see ompl_planning.yaml comment). -1 keeps the yaml value. -->
+  <arg name="lvsf" default="-1.0"/>
+
+  <param if="$(arg load_urdf)" name="robot_description"
+         command="$(find xacro)/xacro --inorder '$(arg camera_urdf)'"/>
+
+  <include file="$(find elfin_s20_moveit_config)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="false"/>
+  </include>
+
+  <!-- planning_context loads base S20.srdf; override for camera collision pairs. -->
+  <param name="robot_description_semantic" textfile="$(arg camera_srdf)"/>
+
+  <include ns="move_group" file="$(find elfin_s20_moveit_config)/launch/planning_pipeline.launch.xml">
+    <arg name="pipeline" value="ompl"/>
+  </include>
+
+  <!-- Written after the rosparam-load above, so a positive value wins over
+       the yaml default (rosparam set is last-write-wins on the param server). -->
+  <param if="$(eval float(arg('lvsf')) > 0)"
+         name="move_group/elfin_arm/longest_valid_segment_fraction"
+         value="$(arg lvsf)"/>
+
+  <include ns="move_group" file="$(find elfin_s20_moveit_config)/launch/trajectory_execution.launch.xml">
+    <arg name="moveit_manage_controllers" value="true"/>
+    <arg name="moveit_controller_manager" value="S20"/>
+  </include>
+  <!-- Override upstream controller_list: Gazebo ros_control action lives under /S20. -->
+  <rosparam ns="move_group" file="$(find luggage_bringup)/config/s20_sim_controllers.yaml"/>
+  <!-- Relax start-state validation: Gazebo arm drifts (especially J6 with camera
+       weight) between plan and execute. 0.0 disables the start-state check entirely
+       for simulation. Real hardware uses 0.01 (vendor servo holds position tightly). -->
+  <param name="move_group/trajectory_execution/allowed_start_tolerance" value="0.0"/>
+
+  <include if="$(arg enable_octomap)" ns="move_group" file="$(find elfin_s20_moveit_config)/launch/sensor_manager.launch.xml">
+    <arg name="moveit_sensor_manager" value="S20"/>
+  </include>
+
+  <!-- Use global /robot_description (from sim_world). Do NOT set /move_group/robot_description:
+       an empty or alias value there shadows the global URDF and crashes move_group. -->
+  <node name="move_group" pkg="moveit_ros_move_group" type="move_group" respawn="false" output="screen"
+        launch-prefix="bash -c 'until rosparam get /robot_description 2>/dev/null | grep -q &quot;&lt;robot&quot;; do sleep 0.5; done; exec $0 $@' ">
+    <param name="allow_trajectory_execution" value="true"/>
+    <param name="default_planning_pipeline" value="ompl"/>
+    <param name="max_safe_path_cost" value="1"/>
+    <param name="jiggle_fraction" value="0.05"/>
+    <param name="planning_scene_monitor/publish_planning_scene" value="true"/>
+    <param name="planning_scene_monitor/publish_geometry_updates" value="true"/>
+    <param name="planning_scene_monitor/publish_state_updates" value="true"/>
+    <param name="planning_scene_monitor/publish_transforms_updates" value="true"/>
+  </node>
+
+  <node if="$(arg display)" pkg="rviz" type="rviz" name="moveit_rviz" output="screen"
+        args="-d $(arg rviz_config)">
+    <rosparam command="load" file="$(find elfin_s20_moveit_config)/config/kinematics.yaml"/>
+  </node>
+</launch>

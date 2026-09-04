@@ -1,0 +1,4 @@
+Suitcase visual (Loafbrr / OpenGameArt "Cases").
+License: CC0
+Source: https://opengameart.org/content/cases
+Processed: lid closed (export pose), telescopic handle retracted, lying Z-up, AABB unit-normalized.

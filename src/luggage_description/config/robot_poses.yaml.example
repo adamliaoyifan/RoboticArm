@@ -1,0 +1,44 @@
+# Robot named poses for luggage loading (joint targets in radians).
+# Copy to robot_poses.yaml and tune for camera field of view.
+
+poses:
+  observe:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    # Tuned via pose_tune_moveit.launch — camera RGB facing ground/luggage.
+    # J1 and J5 use the +2π equivalent branch that matches MoveIt/controller
+    # desired values; see luggage_description/scripts/joint_angle_utils.py.
+    # Equivalent legacy branch: [-2.7130, ..., ..., 3.9564, -4.6598, 0.4522].
+    values: [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
+    # Gazebo settles near equivalent wrapped angles; allow small controller/physics error.
+    tolerance: 0.15
+  pickup_observe:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    # Collision-aware IK for camera_depth_optical_frame at world
+    # (-1.0, 0.0, 1.9), optical +Z down, centred on the pickup platform.
+    # Previous (-0.8, 0.0, 1.7) clipped large (0.80 m) on the image left.
+    values: [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
+    tolerance: 0.15
+
+defaults:
+  observe_pose: observe
+  planning_time: 30.0
+  max_velocity_scaling: 0.3
+  max_acceleration_scaling: 0.3
+
+meta:
+  name: robot_poses_v1
+  version: 0.2.1

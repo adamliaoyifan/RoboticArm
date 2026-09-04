@@ -1,0 +1,2154 @@
+{
+  "hold_time": 0.25,
+  "joint_names": [
+    "elfin_joint1",
+    "elfin_joint2",
+    "elfin_joint3",
+    "elfin_joint4",
+    "elfin_joint5",
+    "elfin_joint6"
+  ],
+  "recorded_at": "2026-08-12T12:49:38",
+  "recordings": [
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_00",
+      "max_position_excursion": 3.787192781601334e-12,
+      "position_excursion": {
+        "elfin_joint1": 3.787192781601334e-12,
+        "elfin_joint2": 2.19735341033811e-12,
+        "elfin_joint3": 9.592326932761353e-14,
+        "elfin_joint4": 1.6964207816272392e-13,
+        "elfin_joint5": 3.907985046680551e-13,
+        "elfin_joint6": 1.758593271006248e-13
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0007824957504749653,
+            "p100": 0.0007824957953404584,
+            "p50": 0.0007824957952526029,
+            "p95": 0.0007824957953262565
+          },
+          "elfin_joint2": {
+            "mean": 0.032279946012886696,
+            "p100": 0.03227994700510992,
+            "p50": 0.03227994601546576,
+            "p95": 0.03227994601552041
+          },
+          "elfin_joint3": {
+            "mean": 0.0013031328370985342,
+            "p100": 0.0013031328870045655,
+            "p50": 0.0013031328371100118,
+            "p95": 0.0013031328371151188
+          },
+          "elfin_joint4": {
+            "mean": 0.0023135437627963087,
+            "p100": 0.0023135439170833133,
+            "p50": 0.002313543761812163,
+            "p95": 0.002313543761872358
+          },
+          "elfin_joint5": {
+            "mean": 0.0002997977143371281,
+            "p100": 0.00029979771960559964,
+            "p50": 0.0002997977195141888,
+            "p95": 0.0002997977195799494
+          },
+          "elfin_joint6": {
+            "mean": 0.0010802315729977765,
+            "p100": 0.001080231745658735,
+            "p50": 0.0010802315704494148,
+            "p95": 0.001080231570678102
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.032279946012886696,
+          "p100": 0.03227994700510992,
+          "p50": 0.03227994601546576,
+          "p95": 0.03227994601552041
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032279946015462684,
+            "p95": 0.032279946084728436,
+            "peak_excursion": 3.785416424761934e-12,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.01999999999998181,
+            "peak_velocity": 0.03227994700510992,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03227994700510992,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03227994601546576,
+            "p95": 0.03227994601552041,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.01999999999998181,
+            "peak_velocity": 0.03227994700510992,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999693433633,
+            "tail_velocity": 0.032279946015515315,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_00",
+      "max_position_excursion": 5.725849518967152e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849518967152e-06,
+        "elfin_joint2": 4.552176446459555e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.5645376540973643e-06,
+        "elfin_joint5": 3.6596996846327556e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011114919023355603,
+            "p100": 0.0028556972921948702,
+            "p50": 0.0007715671199053707,
+            "p95": 0.002607579439550084
+          },
+          "elfin_joint2": {
+            "mean": 0.03298788463657106,
+            "p100": 0.03602565355218371,
+            "p50": 0.03237709900602063,
+            "p95": 0.0359472568146652
+          },
+          "elfin_joint3": {
+            "mean": 0.0013192836907549672,
+            "p100": 0.0015103113251319841,
+            "p50": 0.0012735563027969979,
+            "p95": 0.0014917473148426466
+          },
+          "elfin_joint4": {
+            "mean": 0.0018427022345405234,
+            "p100": 0.0024789092674437907,
+            "p50": 0.0019105296766361302,
+            "p95": 0.0023768149151721443
+          },
+          "elfin_joint5": {
+            "mean": 0.000738600818969431,
+            "p100": 0.0020245236913640175,
+            "p50": 0.0005563113456374381,
+            "p95": 0.0017794253882331623
+          },
+          "elfin_joint6": {
+            "mean": 0.0009705429873475943,
+            "p100": 0.001503174017750776,
+            "p50": 0.0009697782301289618,
+            "p95": 0.0014689039396178782
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03298788463657106,
+          "p100": 0.03602565355218371,
+          "p50": 0.03237709900602063,
+          "p95": 0.0359472568146652
+        },
+        "sample_count": 151
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032377099005926016,
+            "p95": 0.0337468424090869,
+            "peak_excursion": 4.20489903074639e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.10000000000002274,
+            "peak_velocity": 0.03562568739519707,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03562568739519707,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900602063,
+            "p95": 0.0359472568146652,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 1.3999999999999773,
+            "peak_velocity": 0.03602565355218371,
+            "quantile": 1.0,
+            "sample_count": 151,
+            "tail_ratio": 0.9989321615858587,
+            "tail_velocity": 0.03598718397542615,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 3.0,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_01",
+      "max_position_excursion": 4.081642911657468e-06,
+      "position_excursion": {
+        "elfin_joint1": 3.06187623877463e-06,
+        "elfin_joint2": 4.081642911657468e-06,
+        "elfin_joint3": 2.7411625680429097e-07,
+        "elfin_joint4": 1.2517790706212395e-06,
+        "elfin_joint5": 3.7455965955501824e-06,
+        "elfin_joint6": 1.05481371281968e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0015623736857251914,
+            "p100": 0.0031468934233849478,
+            "p50": 0.0013771359921817181,
+            "p95": 0.0031468934232126984
+          },
+          "elfin_joint2": {
+            "mean": 0.03302831367707547,
+            "p100": 0.03580519071319017,
+            "p50": 0.0327953729417511,
+            "p95": 0.03580519071314921
+          },
+          "elfin_joint3": {
+            "mean": 0.0013728639034205753,
+            "p100": 0.00151192295939033,
+            "p50": 0.0013186376301864283,
+            "p95": 0.0015119229593833355
+          },
+          "elfin_joint4": {
+            "mean": 0.0018102645490713288,
+            "p100": 0.002329429907425032,
+            "p50": 0.001783061985095112,
+            "p95": 0.002329429907379499
+          },
+          "elfin_joint5": {
+            "mean": 0.001046071241297872,
+            "p100": 0.0027183632949976068,
+            "p50": 0.0006885297703872343,
+            "p95": 0.002718363294930943
+          },
+          "elfin_joint6": {
+            "mean": 0.0007486172373489869,
+            "p100": 0.0013393778396193286,
+            "p50": 0.0009041662823062594,
+            "p95": 0.0013393778395437692
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03302831367707547,
+          "p100": 0.03580519071319017,
+          "p50": 0.0327953729417511,
+          "p95": 0.03580519071314921
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03279537294206881,
+            "p95": 0.03395419780176772,
+            "peak_excursion": 4.056011751352173e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.1999999999999318,
+            "peak_velocity": 0.03580519071319017,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03580519071319017,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.0327953729417511,
+            "p95": 0.03580519071314921,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.1999999999999318,
+            "peak_velocity": 0.03580519071319017,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999999996397,
+            "tail_velocity": 0.03580519071317727,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_01",
+      "max_position_excursion": 5.725851107918345e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725851107918345e-06,
+        "elfin_joint2": 4.5521764455713765e-06,
+        "elfin_joint3": 3.3360018125705437e-07,
+        "elfin_joint4": 1.5645376540973643e-06,
+        "elfin_joint5": 3.6596996837445772e-06,
+        "elfin_joint6": 1.0411886277594817e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011214410220901372,
+            "p100": 0.002855698881977546,
+            "p50": 0.0007715671199944194,
+            "p95": 0.0026075794395122327
+          },
+          "elfin_joint2": {
+            "mean": 0.03298575139771711,
+            "p100": 0.036025653552191755,
+            "p50": 0.03237709900590026,
+            "p95": 0.03594725681468155
+          },
+          "elfin_joint3": {
+            "mean": 0.0013204713611065903,
+            "p100": 0.0015103113253088288,
+            "p50": 0.0012735563027966856,
+            "p95": 0.0014917473157605929
+          },
+          "elfin_joint4": {
+            "mean": 0.0018476966770653495,
+            "p100": 0.0024789092674575436,
+            "p50": 0.0019105296766580016,
+            "p95": 0.002376814915200233
+          },
+          "elfin_joint5": {
+            "mean": 0.0007349552694375478,
+            "p100": 0.0020245236912788053,
+            "p50": 0.0005563113455415209,
+            "p95": 0.0017794253882698772
+          },
+          "elfin_joint6": {
+            "mean": 0.0009785010238560355,
+            "p100": 0.001503174017755328,
+            "p50": 0.0009697782300902165,
+            "p95": 0.0014760267775532042
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03298575139771711,
+          "p100": 0.036025653552191755,
+          "p50": 0.03237709900590026,
+          "p95": 0.03594725681468155
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03213143853314618,
+            "p95": 0.03375692811523806,
+            "peak_excursion": 4.486918511403815e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.2400000000000091,
+            "peak_velocity": 0.03598718397553839,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03598718397553839,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900590026,
+            "p95": 0.03594725681468155,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 2.7799999999999727,
+            "peak_velocity": 0.036025653552191755,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.036025653552191755,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.9799999999999045,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_02",
+      "max_position_excursion": 9.299228054260311e-13,
+      "position_excursion": {
+        "elfin_joint1": 1.9184653865522705e-13,
+        "elfin_joint2": 9.299228054260311e-13,
+        "elfin_joint3": 3.375077994860476e-14,
+        "elfin_joint4": 3.552713678800501e-14,
+        "elfin_joint5": 2.842170943040401e-14,
+        "elfin_joint6": 1.3322676295501878e-14
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.00042174815359385823,
+            "p100": 0.0004217481827543025,
+            "p50": 0.00042174815453707243,
+            "p95": 0.0004217481546460692
+          },
+          "elfin_joint2": {
+            "mean": 0.03585132126169223,
+            "p100": 0.0358513219813958,
+            "p50": 0.03585132125650472,
+            "p95": 0.03585132125654218
+          },
+          "elfin_joint3": {
+            "mean": 0.001245088895415294,
+            "p100": 0.001245088921815178,
+            "p50": 0.0012450888952089817,
+            "p95": 0.001245088895213263
+          },
+          "elfin_joint4": {
+            "mean": 0.0010552443884045022,
+            "p100": 0.0010552444205871175,
+            "p50": 0.0010552443881165774,
+            "p95": 0.0010552443881590157
+          },
+          "elfin_joint5": {
+            "mean": 0.0008825157000457099,
+            "p100": 0.0008825157269836909,
+            "p50": 0.0008825156996204414,
+            "p95": 0.0008825156997191982
+          },
+          "elfin_joint6": {
+            "mean": 0.0008489509131826591,
+            "p100": 0.0008489509252826394,
+            "p50": 0.0008489509130168766,
+            "p95": 0.0008489509130467595
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03585132126169223,
+          "p100": 0.0358513219813958,
+          "p50": 0.03585132125650472,
+          "p95": 0.03585132125654218
+        },
+        "sample_count": 151
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03585132125650541,
+            "p95": 0.03585132147432989,
+            "peak_excursion": 9.299228054260311e-13,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0358513219813958,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.9999999858564237,
+            "tail_velocity": 0.03585132147432989,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2600000000001046,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03585132125650472,
+            "p95": 0.03585132125654218,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0358513219813958,
+            "quantile": 1.0,
+            "sample_count": 151,
+            "tail_ratio": 0.9999999797815637,
+            "tail_velocity": 0.035851321256538136,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 3.0,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_02",
+      "max_position_excursion": 5.725849520743509e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849520743509e-06,
+        "elfin_joint2": 4.552176444683198e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.564537653209186e-06,
+        "elfin_joint5": 3.659699685520934e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.00109942287818976,
+            "p100": 0.002855697292062474,
+            "p50": 0.0007715669351728274,
+            "p95": 0.0026075794395813514
+          },
+          "elfin_joint2": {
+            "mean": 0.032977436003726816,
+            "p100": 0.0360256535522082,
+            "p50": 0.03237709900593003,
+            "p95": 0.03594725681464437
+          },
+          "elfin_joint3": {
+            "mean": 0.0013171246999638287,
+            "p100": 0.0015103113251271824,
+            "p50": 0.001273556302794611,
+            "p95": 0.0014917473157618488
+          },
+          "elfin_joint4": {
+            "mean": 0.001839980741035497,
+            "p100": 0.002478909267429316,
+            "p50": 0.0019105296766576546,
+            "p95": 0.0023768149151976725
+          },
+          "elfin_joint5": {
+            "mean": 0.00072326621910805,
+            "p100": 0.002024523691385084,
+            "p50": 0.0005563113455661621,
+            "p95": 0.0017794253882283209
+          },
+          "elfin_joint6": {
+            "mean": 0.000978327587687032,
+            "p100": 0.0015031740177631784,
+            "p50": 0.000969778230096455,
+            "p95": 0.0014760267774996199
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.032977436003726816,
+          "p100": 0.0360256535522082,
+          "p50": 0.03237709900593003,
+          "p95": 0.03594725681464437
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03224965334836372,
+            "p95": 0.03562568740907283,
+            "peak_excursion": 4.290166022435926e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.020000000000095497,
+            "peak_velocity": 0.03598718377179234,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03598718377179234,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900593003,
+            "p95": 0.03594725681464437,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 1.5400000000000773,
+            "peak_velocity": 0.0360256535522082,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9361109685738139,
+            "tail_velocity": 0.03372400944026228,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_03",
+      "max_position_excursion": 4.233952823007314e-06,
+      "position_excursion": {
+        "elfin_joint1": 3.29208921456825e-06,
+        "elfin_joint2": 4.233952823007314e-06,
+        "elfin_joint3": 3.1483203066784426e-07,
+        "elfin_joint4": 1.05863741595158e-06,
+        "elfin_joint5": 4.153350239732845e-06,
+        "elfin_joint6": 1.1025918915663624e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0008441558781659621,
+            "p100": 0.0028233395894332884,
+            "p50": 0.0007920812885906427,
+            "p95": 0.0028233395861536515
+          },
+          "elfin_joint2": {
+            "mean": 0.033325083064976634,
+            "p100": 0.036159979897359695,
+            "p50": 0.03284997501972431,
+            "p95": 0.03615997989727267
+          },
+          "elfin_joint3": {
+            "mean": 0.0012952298854077141,
+            "p100": 0.0015212135976033075,
+            "p50": 0.0012708445323615855,
+            "p95": 0.0015212135975985475
+          },
+          "elfin_joint4": {
+            "mean": 0.0017456257342130755,
+            "p100": 0.0022811780795306408,
+            "p50": 0.001834180425133218,
+            "p95": 0.002281178079467233
+          },
+          "elfin_joint5": {
+            "mean": 0.0010145180845306657,
+            "p100": 0.0024461132217194564,
+            "p50": 0.000846957547700596,
+            "p95": 0.002446113221250818
+          },
+          "elfin_joint6": {
+            "mean": 0.0009099963936827121,
+            "p100": 0.0014033745319545453,
+            "p50": 0.0009625442054968982,
+            "p95": 0.0014033745319144602
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.033325083064976634,
+          "p100": 0.036159979897359695,
+          "p50": 0.03284997501972431,
+          "p95": 0.03615997989727267
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03238005313575652,
+            "p95": 0.03582114076045392,
+            "peak_excursion": 4.233952659582485e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.01999999999998181,
+            "peak_velocity": 0.03615997973454819,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03615997973454819,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03284997501972431,
+            "p95": 0.03615997989727267,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.7000000000000455,
+            "peak_velocity": 0.036159979897359695,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999999983714,
+            "tail_velocity": 0.036159979897300805,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_03",
+      "max_position_excursion": 5.725849534954364e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849534954364e-06,
+        "elfin_joint2": 4.5521764455713765e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.5645376540973643e-06,
+        "elfin_joint5": 3.6596996846327556e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011146766783795986,
+            "p100": 0.002855697308437281,
+            "p50": 0.0007715671199596048,
+            "p95": 0.002607579439571627
+          },
+          "elfin_joint2": {
+            "mean": 0.03299309054908589,
+            "p100": 0.036025653552172174,
+            "p50": 0.03237709900595805,
+            "p95": 0.035947256814685295
+          },
+          "elfin_joint3": {
+            "mean": 0.0013196974539109077,
+            "p100": 0.0015103113251357173,
+            "p50": 0.0012735563027996971,
+            "p95": 0.001491747315757616
+          },
+          "elfin_joint4": {
+            "mean": 0.0018459222038200195,
+            "p100": 0.002478909267473302,
+            "p50": 0.001910529676660444,
+            "p95": 0.002376814915156504
+          },
+          "elfin_joint5": {
+            "mean": 0.0007362516794604534,
+            "p100": 0.0020245236912953745,
+            "p50": 0.0005563113456073256,
+            "p95": 0.0017794253882652859
+          },
+          "elfin_joint6": {
+            "mean": 0.0009765655087495175,
+            "p100": 0.0015031740177716517,
+            "p50": 0.0009697782301077556,
+            "p95": 0.001476026777504515
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03299309054908589,
+          "p100": 0.036025653552172174,
+          "p50": 0.03237709900595805,
+          "p95": 0.035947256814685295
+        },
+        "sample_count": 151
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03263052195326926,
+            "p95": 0.03372400944075088,
+            "peak_excursion": 4.4472162938902216e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.03594725780865218,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.9381524905255447,
+            "tail_velocity": 0.03372400944075088,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900595805,
+            "p95": 0.035947256814685295,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 2.9400000000000546,
+            "peak_velocity": 0.036025653552172174,
+            "quantile": 1.0,
+            "sample_count": 151,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.036025653552172174,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 3.0,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_04",
+      "max_position_excursion": 6.696865284538944e-13,
+      "position_excursion": {
+        "elfin_joint1": 5.684341886080802e-14,
+        "elfin_joint2": 6.696865284538944e-13,
+        "elfin_joint3": 2.930988785010413e-14,
+        "elfin_joint4": 5.684341886080802e-14,
+        "elfin_joint5": 2.5757174171303632e-14,
+        "elfin_joint6": 1.9539925233402755e-14
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.00037177631824726555,
+            "p100": 0.0003717763725123677,
+            "p50": 0.00037177631748427426,
+            "p95": 0.0003717763176511629
+          },
+          "elfin_joint2": {
+            "mean": 0.031927089244486444,
+            "p100": 0.031927089730511934,
+            "p50": 0.03192708924240142,
+            "p95": 0.031927089242437236
+          },
+          "elfin_joint3": {
+            "mean": 0.001269821489451055,
+            "p100": 0.0012698215097584134,
+            "p50": 0.0012698214893749268,
+            "p95": 0.001269821489379333
+          },
+          "elfin_joint4": {
+            "mean": 0.0018954538963252224,
+            "p100": 0.0018954539343914029,
+            "p50": 0.0018954538962063713,
+            "p95": 0.0018954538962522235
+          },
+          "elfin_joint5": {
+            "mean": 0.0002648000485648365,
+            "p100": 0.0002648000626538859,
+            "p50": 0.00026480004853997763,
+            "p95": 0.00026480004860034
+          },
+          "elfin_joint6": {
+            "mean": 0.0010576789922790936,
+            "p100": 0.0010576790041893973,
+            "p50": 0.0010576789922495866,
+            "p95": 0.0010576789922696825
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.031927089244486444,
+          "p100": 0.031927089730511934,
+          "p50": 0.03192708924240142,
+          "p95": 0.031927089242437236
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03192708924238532,
+            "p95": 0.03192708928606782,
+            "peak_excursion": 6.696865284538944e-13,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.031927089730511934,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.9999999860794041,
+            "tail_velocity": 0.03192708928606782,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03192708924240142,
+            "p95": 0.031927089242437236,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.031927089730511934,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999847126817,
+            "tail_velocity": 0.03192708924243235,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_04",
+      "max_position_excursion": 5.725858739147327e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725858739147327e-06,
+        "elfin_joint2": 4.5521764455713765e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.564537653209186e-06,
+        "elfin_joint5": 3.659699685520934e-06,
+        "elfin_joint6": 1.041188873784904e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011019266317767455,
+            "p100": 0.002855706520375915,
+            "p50": 0.0007715671179059235,
+            "p95": 0.002607579439663981
+          },
+          "elfin_joint2": {
+            "mean": 0.03297645759385993,
+            "p100": 0.03602565355216774,
+            "p50": 0.03237709900595064,
+            "p95": 0.03594725681468153
+          },
+          "elfin_joint3": {
+            "mean": 0.001316475391516405,
+            "p100": 0.0015103113251403247,
+            "p50": 0.0012723394405163846,
+            "p95": 0.0014917473157527589
+          },
+          "elfin_joint4": {
+            "mean": 0.0018404250984612755,
+            "p100": 0.0024789092674237165,
+            "p50": 0.0018335690503992058,
+            "p95": 0.0023768149151964305
+          },
+          "elfin_joint5": {
+            "mean": 0.0007315736814030587,
+            "p100": 0.0020245236913549024,
+            "p50": 0.0005563113455433047,
+            "p95": 0.0017794253882700724
+          },
+          "elfin_joint6": {
+            "mean": 0.0009730513464773989,
+            "p100": 0.0015031740177602207,
+            "p50": 0.0009697782246747071,
+            "p95": 0.0014760267774704466
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03297645759385993,
+          "p100": 0.03602565355216774,
+          "p50": 0.03237709900595064,
+          "p95": 0.03594725681468153
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.0326305393873837,
+            "p95": 0.033724010723981235,
+            "peak_excursion": 4.261974163810578e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.22000000000002728,
+            "peak_velocity": 0.03375692812464015,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03375692812464015,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900595064,
+            "p95": 0.03594725681468153,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.7799999999999727,
+            "peak_velocity": 0.03602565355216774,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999999998781,
+            "tail_velocity": 0.03602565355216335,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_05",
+      "max_position_excursion": 4.081643126596646e-06,
+      "position_excursion": {
+        "elfin_joint1": 3.061876670429342e-06,
+        "elfin_joint2": 4.081643126596646e-06,
+        "elfin_joint3": 2.7411625680429097e-07,
+        "elfin_joint4": 1.2517790706212395e-06,
+        "elfin_joint5": 3.745596594662004e-06,
+        "elfin_joint6": 1.0548137137078584e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0015555671401680934,
+            "p100": 0.0031468938544473054,
+            "p50": 0.0013771359922817217,
+            "p95": 0.0031468934231984793
+          },
+          "elfin_joint2": {
+            "mean": 0.033023843085854494,
+            "p100": 0.03580519071322081,
+            "p50": 0.032795372941720226,
+            "p95": 0.035805190713124185
+          },
+          "elfin_joint3": {
+            "mean": 0.001372086359882923,
+            "p100": 0.001511922959389303,
+            "p50": 0.0013186376301847075,
+            "p95": 0.001502799316005339
+          },
+          "elfin_joint4": {
+            "mean": 0.0018104941620220951,
+            "p100": 0.0023294299074245114,
+            "p50": 0.001783061985106589,
+            "p95": 0.0023294299072740624
+          },
+          "elfin_joint5": {
+            "mean": 0.0010561380833983983,
+            "p100": 0.002718363294958918,
+            "p50": 0.0006885297703871235,
+            "p95": 0.0027183632945909295
+          },
+          "elfin_joint6": {
+            "mean": 0.0007492815676200853,
+            "p100": 0.0013393778395715786,
+            "p50": 0.0009041662823147947,
+            "p95": 0.0013393778395564945
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.033023843085854494,
+          "p100": 0.03580519071322081,
+          "p50": 0.032795372941720226,
+          "p95": 0.035805190713124185
+        },
+        "sample_count": 151
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03258779239779436,
+            "p95": 0.033797516946769225,
+            "peak_excursion": 3.0618764998990855e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.05999999999994543,
+            "peak_velocity": 0.034015829786523566,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.034015829786523566,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032795372941720226,
+            "p95": 0.035805190713124185,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 2.659999999999968,
+            "peak_velocity": 0.03580519071322081,
+            "quantile": 1.0,
+            "sample_count": 151,
+            "tail_ratio": 0.9999999999973014,
+            "tail_velocity": 0.035805190713124185,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 3.0,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_05",
+      "max_position_excursion": 5.725849518078974e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849518078974e-06,
+        "elfin_joint2": 4.552176452676804e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.564537653209186e-06,
+        "elfin_joint5": 3.659699737923461e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.001110987918647083,
+            "p100": 0.0028556972922247252,
+            "p50": 0.0007715671199522347,
+            "p95": 0.0026075794396379173
+          },
+          "elfin_joint2": {
+            "mean": 0.03298611561869704,
+            "p100": 0.0360256535586231,
+            "p50": 0.032377099005864766,
+            "p95": 0.035947256814700776
+          },
+          "elfin_joint3": {
+            "mean": 0.0013188783853239025,
+            "p100": 0.0015103113251231093,
+            "p50": 0.001273556302795499,
+            "p95": 0.0014917473157540842
+          },
+          "elfin_joint4": {
+            "mean": 0.0018405277659095801,
+            "p100": 0.002478909267413655,
+            "p50": 0.0019105296766361024,
+            "p95": 0.002376814915175829
+          },
+          "elfin_joint5": {
+            "mean": 0.0007386116673247019,
+            "p100": 0.0020245236912937673,
+            "p50": 0.0005563113496652715,
+            "p95": 0.0017794253882815038
+          },
+          "elfin_joint6": {
+            "mean": 0.0009814363180190259,
+            "p100": 0.0015031740177519097,
+            "p50": 0.000969778230161974,
+            "p95": 0.0014760267775009996
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03298611561869704,
+          "p100": 0.0360256535586231,
+          "p50": 0.032377099005864766,
+          "p95": 0.035947256814700776
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.0320251486208707,
+            "p95": 0.03594725681481848,
+            "peak_excursion": 4.552176451788625e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.12000000000000455,
+            "peak_velocity": 0.0360256535586231,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.0360256535586231,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032377099005864766,
+            "p95": 0.035947256814700776,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.12000000000000455,
+            "peak_velocity": 0.0360256535586231,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9888977406356294,
+            "tail_velocity": 0.0356256874090443,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_06",
+      "max_position_excursion": 8.411049634560186e-13,
+      "position_excursion": {
+        "elfin_joint1": 6.572520305780927e-14,
+        "elfin_joint2": 8.411049634560186e-13,
+        "elfin_joint3": 3.6415315207705135e-14,
+        "elfin_joint4": 7.105427357601002e-14,
+        "elfin_joint5": 3.108624468950438e-14,
+        "elfin_joint6": 2.3092638912203256e-14
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.00037177631822764843,
+            "p100": 0.0003717763839741065,
+            "p50": 0.0003717763174968553,
+            "p95": 0.00037177631774144474
+          },
+          "elfin_joint2": {
+            "mean": 0.03192708924643491,
+            "p100": 0.0319270899726867,
+            "p50": 0.03192708924240032,
+            "p95": 0.03192708924246089
+          },
+          "elfin_joint3": {
+            "mean": 0.001269821489537749,
+            "p100": 0.0012698215211655664,
+            "p50": 0.0012698214893751766,
+            "p95": 0.0012698214893802628
+          },
+          "elfin_joint4": {
+            "mean": 0.0018954538964870767,
+            "p100": 0.001895453956478256,
+            "p50": 0.0018954538962052611,
+            "p95": 0.0018954538962527578
+          },
+          "elfin_joint5": {
+            "mean": 0.00026480004851517326,
+            "p100": 0.0002648000589150768,
+            "p50": 0.00026480004854388694,
+            "p95": 0.00026480004862017384
+          },
+          "elfin_joint6": {
+            "mean": 0.0010576789923269735,
+            "p100": 0.0010576790109921206,
+            "p50": 0.0010576789922487643,
+            "p95": 0.001057678992271974
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03192708924643491,
+          "p100": 0.0319270899726867,
+          "p50": 0.03192708924240032,
+          "p95": 0.03192708924246089
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.031927089242411305,
+            "p95": 0.031927089293242034,
+            "peak_excursion": 8.411049634560186e-13,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0319270899726867,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.9999999787188664,
+            "tail_velocity": 0.031927089293242034,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03192708924240032,
+            "p95": 0.03192708924246089,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0319270899726867,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999771283122,
+            "tail_velocity": 0.031927089242460266,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.9799999999999045,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_06",
+      "max_position_excursion": 5.725849520743509e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849520743509e-06,
+        "elfin_joint2": 4.5521764455713765e-06,
+        "elfin_joint3": 3.3360018392158963e-07,
+        "elfin_joint4": 1.5645376540973643e-06,
+        "elfin_joint5": 3.659699696179075e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0010935113105176295,
+            "p100": 0.0028556972922760947,
+            "p50": 0.0007241499085244251,
+            "p95": 0.0026075794395866527
+          },
+          "elfin_joint2": {
+            "mean": 0.0329715830839783,
+            "p100": 0.03602565355258559,
+            "p50": 0.03236734149672029,
+            "p95": 0.035947256814683345
+          },
+          "elfin_joint3": {
+            "mean": 0.0013175947193811688,
+            "p100": 0.0015103113251384095,
+            "p50": 0.0012735563027953256,
+            "p95": 0.0014917473157636182
+          },
+          "elfin_joint4": {
+            "mean": 0.0018495630572227576,
+            "p100": 0.0024789092681099384,
+            "p50": 0.0019105296766847302,
+            "p95": 0.002376814915202148
+          },
+          "elfin_joint5": {
+            "mean": 0.0007444609518011329,
+            "p100": 0.002024523691343204,
+            "p50": 0.0005563113462856849,
+            "p95": 0.001779425388297224
+          },
+          "elfin_joint6": {
+            "mean": 0.0009811597185650815,
+            "p100": 0.001503174017754726,
+            "p50": 0.0009697782301247395,
+            "p95": 0.0014760267775031583
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.0329715830839783,
+          "p100": 0.03602565355258559,
+          "p50": 0.03236734149672029,
+          "p95": 0.035947256814683345
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032025148801927764,
+            "p95": 0.0359433511093531,
+            "peak_excursion": 5.217649155397908e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.18000000000006366,
+            "peak_velocity": 0.03602565355258559,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03602565355258559,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03236734149672029,
+            "p95": 0.035947256814683345,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.18000000000006366,
+            "peak_velocity": 0.03602565355258559,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9989321615735626,
+            "tail_velocity": 0.03598718397538462,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_07",
+      "max_position_excursion": 7.043254868221993e-13,
+      "position_excursion": {
+        "elfin_joint1": 2.6645352591003757e-14,
+        "elfin_joint2": 7.043254868221993e-13,
+        "elfin_joint3": 2.4868995751603507e-14,
+        "elfin_joint4": 2.1316282072803006e-14,
+        "elfin_joint5": 2.398081733190338e-14,
+        "elfin_joint6": 1.0658141036401503e-14
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0004217481546059277,
+            "p100": 0.0004217481663953187,
+            "p50": 0.0004217481545456182,
+            "p95": 0.00042174815463515153
+          },
+          "elfin_joint2": {
+            "mean": 0.03585132125843324,
+            "p100": 0.0358513217449487,
+            "p50": 0.035851321256497336,
+            "p95": 0.03585132125653922
+          },
+          "elfin_joint3": {
+            "mean": 0.0012450888952955839,
+            "p100": 0.0012450889140751958,
+            "p50": 0.0012450888952088013,
+            "p95": 0.0012450888952130201
+          },
+          "elfin_joint4": {
+            "mean": 0.0010552443882437276,
+            "p100": 0.0010552444075393672,
+            "p50": 0.001055244388114794,
+            "p95": 0.0010552443881540613
+          },
+          "elfin_joint5": {
+            "mean": 0.0008825156998611361,
+            "p100": 0.000882515722886531,
+            "p50": 0.0008825156996222479,
+            "p95": 0.0008825156996981756
+          },
+          "elfin_joint6": {
+            "mean": 0.0008489509130958247,
+            "p100": 0.000848950922471931,
+            "p50": 0.0008489509130165422,
+            "p95": 0.0008489509130415629
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03585132125843324,
+          "p100": 0.0358513217449487,
+          "p50": 0.035851321256497336,
+          "p95": 0.03585132125653922
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.035851321256427156,
+            "p95": 0.03585132130241475,
+            "peak_excursion": 7.043254868221993e-13,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0358513217449487,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.999999987656412,
+            "tail_velocity": 0.03585132130241475,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.035851321256497336,
+            "p95": 0.03585132125653922,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0358513217449487,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999863760994,
+            "tail_velocity": 0.03585132125651386,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_07",
+      "max_position_excursion": 5.725849960391827e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849960391827e-06,
+        "elfin_joint2": 4.552176446459555e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.564537653209186e-06,
+        "elfin_joint5": 3.6596996846327556e-06,
+        "elfin_joint6": 1.041188592232345e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011019261110114312,
+            "p100": 0.002855697731473547,
+            "p50": 0.0007715671198228622,
+            "p95": 0.0026075794396025176
+          },
+          "elfin_joint2": {
+            "mean": 0.03297645744468932,
+            "p100": 0.036025653552197286,
+            "p50": 0.03237709900590101,
+            "p95": 0.035947256814687446
+          },
+          "elfin_joint3": {
+            "mean": 0.0013164753948137545,
+            "p100": 0.0015103113252093459,
+            "p50": 0.001272339440513262,
+            "p95": 0.001491747315760683
+          },
+          "elfin_joint4": {
+            "mean": 0.0018404251069720542,
+            "p100": 0.0024789092674099913,
+            "p50": 0.0018335690504205568,
+            "p95": 0.0023768149151731227
+          },
+          "elfin_joint5": {
+            "mean": 0.0007315737165327779,
+            "p100": 0.0020245236912945575,
+            "p50": 0.0005563113455658762,
+            "p95": 0.001779425388266654
+          },
+          "elfin_joint6": {
+            "mean": 0.0009730513269544651,
+            "p100": 0.0015031740177588442,
+            "p50": 0.0009697782298279407,
+            "p95": 0.0014760267775156342
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03297645744468932,
+          "p100": 0.036025653552197286,
+          "p50": 0.03237709900590101,
+          "p95": 0.035947256814687446
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03263052176125125,
+            "p95": 0.03372400941786634,
+            "peak_excursion": 4.2619697930845746e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.2199999999997999,
+            "peak_velocity": 0.0337569281141956,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.0337569281141956,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900590101,
+            "p95": 0.035947256814687446,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.7799999999999727,
+            "peak_velocity": 0.036025653552197286,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999999990535,
+            "tail_velocity": 0.03602565355216319,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.979999999999791,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_08",
+      "max_position_excursion": 4.081643086628617e-06,
+      "position_excursion": {
+        "elfin_joint1": 3.0618765816115e-06,
+        "elfin_joint2": 4.081643086628617e-06,
+        "elfin_joint3": 2.7411625591611255e-07,
+        "elfin_joint4": 1.251779071509418e-06,
+        "elfin_joint5": 3.745596596438361e-06,
+        "elfin_joint6": 1.0548137137078584e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0015625850288567575,
+            "p100": 0.0031468937661342862,
+            "p50": 0.0013771359922131509,
+            "p95": 0.003146893423198624
+          },
+          "elfin_joint2": {
+            "mean": 0.0330053007686545,
+            "p100": 0.03580519071317484,
+            "p50": 0.03279537294175089,
+            "p95": 0.0358051907131303
+          },
+          "elfin_joint3": {
+            "mean": 0.00137298153900007,
+            "p100": 0.001511922959389747,
+            "p50": 0.0013186376301863104,
+            "p95": 0.0015119229593777012
+          },
+          "elfin_joint4": {
+            "mean": 0.0018153797554456693,
+            "p100": 0.002329429907447139,
+            "p50": 0.0017830619850881663,
+            "p95": 0.00232942990736542
+          },
+          "elfin_joint5": {
+            "mean": 0.0010563309491348892,
+            "p100": 0.0027183632966375233,
+            "p50": 0.0006885297703910205,
+            "p95": 0.002718363294913757
+          },
+          "elfin_joint6": {
+            "mean": 0.0007480802412714584,
+            "p100": 0.0013393778395694362,
+            "p50": 0.0009041662823086639,
+            "p95": 0.0013393778395463767
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.0330053007686545,
+          "p100": 0.03580519071317484,
+          "p50": 0.03279537294175089,
+          "p95": 0.0358051907131303
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03258779239742997,
+            "p95": 0.03379751695000635,
+            "peak_excursion": 3.0618764217393846e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.05999999999994543,
+            "peak_velocity": 0.03401582983721618,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03401582983721618,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03279537294175089,
+            "p95": 0.0358051907131303,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.9600000000000364,
+            "peak_velocity": 0.03580519071317484,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.950025098195197,
+            "tail_velocity": 0.03401582982318168,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_08",
+      "max_position_excursion": 5.725849517190795e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849517190795e-06,
+        "elfin_joint2": 4.552176450900447e-06,
+        "elfin_joint3": 3.3360018036887595e-07,
+        "elfin_joint4": 1.5645376540973643e-06,
+        "elfin_joint5": 3.659699734370747e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0011109879208356537,
+            "p100": 0.002855697292190202,
+            "p50": 0.000771567119967848,
+            "p95": 0.0026075794395752343
+          },
+          "elfin_joint2": {
+            "mean": 0.03298611561851207,
+            "p100": 0.03602565355777208,
+            "p50": 0.03237709900591195,
+            "p95": 0.035947256814714765
+          },
+          "elfin_joint3": {
+            "mean": 0.0013188783853204421,
+            "p100": 0.0015103113251258155,
+            "p50": 0.0012735563027951383,
+            "p95": 0.001491747315762744
+          },
+          "elfin_joint4": {
+            "mean": 0.001840527765922245,
+            "p100": 0.0024789092674232793,
+            "p50": 0.0019105296766655858,
+            "p95": 0.002376814915197263
+          },
+          "elfin_joint5": {
+            "mean": 0.0007386116672292716,
+            "p100": 0.002024523691335301,
+            "p50": 0.0005563113495916916,
+            "p95": 0.0017794253882803725
+          },
+          "elfin_joint6": {
+            "mean": 0.0009814363180139563,
+            "p100": 0.0015031740177555647,
+            "p50": 0.000969778230155272,
+            "p95": 0.0014760267775493273
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03298611561851207,
+          "p100": 0.03602565355777208,
+          "p50": 0.03237709900591195,
+          "p95": 0.035947256814714765
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032025148655495446,
+            "p95": 0.03594725681479406,
+            "peak_excursion": 4.5521764500122686e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.12000000000011823,
+            "peak_velocity": 0.03602565355777208,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03602565355777208,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709900591195,
+            "p95": 0.035947256814714765,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.12000000000011823,
+            "peak_velocity": 0.03602565355777208,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9888977406584744,
+            "tail_velocity": 0.03562568740902574,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_a_09",
+      "max_position_excursion": 7.842615445952106e-13,
+      "position_excursion": {
+        "elfin_joint1": 6.750155989720952e-14,
+        "elfin_joint2": 7.842615445952106e-13,
+        "elfin_joint3": 3.4638958368304884e-14,
+        "elfin_joint4": 7.105427357601002e-14,
+        "elfin_joint5": 3.108624468950438e-14,
+        "elfin_joint6": 2.3092638912203256e-14
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0003717763182400946,
+            "p100": 0.0003717763803996762,
+            "p50": 0.0003717763174917242,
+            "p95": 0.0003717763176364937
+          },
+          "elfin_joint2": {
+            "mean": 0.031927089245670816,
+            "p100": 0.0319270898946429,
+            "p50": 0.03192708924240084,
+            "p95": 0.031927089242438596
+          },
+          "elfin_joint3": {
+            "mean": 0.001269821489503648,
+            "p100": 0.0012698215174027777,
+            "p50": 0.0012698214893752044,
+            "p95": 0.0012698214893793747
+          },
+          "elfin_joint4": {
+            "mean": 0.0018954538964248277,
+            "p100": 0.0018954539494010283,
+            "p50": 0.0018954538962067183,
+            "p95": 0.0018954538962412532
+          },
+          "elfin_joint5": {
+            "mean": 0.0002648000485389983,
+            "p100": 0.00026480006135220965,
+            "p50": 0.0002648000485487057,
+            "p95": 0.00026480004861631853
+          },
+          "elfin_joint6": {
+            "mean": 0.0010576789923073982,
+            "p100": 0.0010576790089394284,
+            "p50": 0.001057678992247851,
+            "p95": 0.0010576789922660647
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.031927089245670816,
+          "p100": 0.0319270898946429,
+          "p50": 0.03192708924240084,
+          "p95": 0.031927089242438596
+        },
+        "sample_count": 150
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.031927089242391515,
+            "p95": 0.03192708929303069,
+            "peak_excursion": 7.842615445952106e-13,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0319270898946429,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 0.999999981156685,
+            "tail_velocity": 0.03192708929303069,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03192708924240084,
+            "p95": 0.031927089242438596,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.0,
+            "peak_velocity": 0.0319270898946429,
+            "quantile": 1.0,
+            "sample_count": 150,
+            "tail_ratio": 0.9999999795714477,
+            "tail_velocity": 0.031927089242418674,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 2.980000000000018,
+          "settled": false
+        }
+      }
+    },
+    {
+      "duration_sec": 3.0,
+      "hold_time": 0.25,
+      "label": "far_b_09",
+      "max_position_excursion": 5.725849518078974e-06,
+      "position_excursion": {
+        "elfin_joint1": 5.725849518078974e-06,
+        "elfin_joint2": 4.5521764455713765e-06,
+        "elfin_joint3": 3.3360018392158963e-07,
+        "elfin_joint4": 1.564537653209186e-06,
+        "elfin_joint5": 3.6596996970672535e-06,
+        "elfin_joint6": 1.0411885780214902e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.001092172116489616,
+            "p100": 0.002855697292100396,
+            "p50": 0.0007715671199517261,
+            "p95": 0.002607579439544718
+          },
+          "elfin_joint2": {
+            "mean": 0.03296687596457403,
+            "p100": 0.03602565355256046,
+            "p50": 0.03237709894380111,
+            "p95": 0.03594725681466615
+          },
+          "elfin_joint3": {
+            "mean": 0.0013163628004803393,
+            "p100": 0.0015103113251269742,
+            "p50": 0.0012735551036162363,
+            "p95": 0.0014902580590705206
+          },
+          "elfin_joint4": {
+            "mean": 0.0018456927822603536,
+            "p100": 0.002478909267992456,
+            "p50": 0.0019105296766590424,
+            "p95": 0.0023768149151693688
+          },
+          "elfin_joint5": {
+            "mean": 0.000730860545070585,
+            "p100": 0.0020245236914092643,
+            "p50": 0.0005563113454873834,
+            "p95": 0.0017794253882388949
+          },
+          "elfin_joint6": {
+            "mean": 0.0009803493964338525,
+            "p100": 0.001503174017748736,
+            "p50": 0.0009697782301316166,
+            "p95": 0.001476026777487796
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.03296687596457403,
+          "p100": 0.03602565355256046,
+          "p50": 0.03237709894380111,
+          "p95": 0.03594725681466615
+        },
+        "sample_count": 151
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint1",
+            "fraction_below_tol": 0.0,
+            "p50": 0.032682625713637364,
+            "p95": 0.03578030746829327,
+            "peak_excursion": 5.302415226005053e-06,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.22000000000002728,
+            "peak_velocity": 0.03594335110922221,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.03594335110922221,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03237709894380111,
+            "p95": 0.03594725681466615,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.2799999999999727,
+            "peak_velocity": 0.03602565355256046,
+            "quantile": 1.0,
+            "sample_count": 151,
+            "tail_ratio": 0.9989321615764889,
+            "tail_velocity": 0.03598718397546494,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 3.0,
+          "settled": false
+        }
+      }
+    }
+  ],
+  "repeat": 10,
+  "schema_version": 1,
+  "settle_delay_sec": 0.0,
+  "summary": {
+    "displacement": {
+      "elapsed_max": 0.2600000000001046,
+      "elapsed_p95": 0.2599999999999909,
+      "pass_count": 20,
+      "pass_rate": 1.0,
+      "total": 20
+    },
+    "velocity": {
+      "elapsed_max": null,
+      "elapsed_p95": null,
+      "pass_count": 0,
+      "pass_rate": 0.0,
+      "total": 20
+    }
+  },
+  "vel_tol": 0.03
+}

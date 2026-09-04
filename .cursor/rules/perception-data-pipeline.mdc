@@ -1,0 +1,48 @@
+---
+description: Preprocessing, multi-rate alignment, and buffering rules for perception data
+globs: src/luggage_perception/**,src/luggage_planning/**
+alwaysApply: false
+---
+
+# Perception data pipeline
+
+Full contract: `docs/architecture/sensor_data_pipeline.md`.
+
+Single-stream adapters may canonicalize one topic. Only the preprocessor
+pairs streams, keeps history, corrects frames, and scores motion.
+
+Downstream nodes subscribe to `/luggage/preprocessed/...`. They do not
+subscribe to raw D435 / Mid-360 / joints to invent alignment.
+`SyncedObservation` is internal to the preprocessor, not a ROS message.
+
+## Must
+
+- Do not hand-roll tolerance pairing (`message_filters` slop, "latest RGB +
+  latest cloud") in a consumer. Exact-join identical stamps is allowed.
+- A single-input consumer may cache one preprocessed message and reject it
+  by age against `primary_stamp`.
+- Every per-stream struct carries its own `stamp`. `DepthFrame` also carries
+  `units`; clouds carry `data_frame` separately from `frame_id`.
+- Pick detection is camera-triggered. Never block until lidar is present.
+- Tolerate an absent lidar stream.
+
+## Missing data is flagged, not faked
+
+```python
+# BAD
+obs.lidar_points = np.empty((0, 3))
+
+# GOOD
+obs.lidar_points = None
+obs.flags.lidar_ok = False
+```
+
+## Buffers
+
+Bounded ring buffers, pruned by stamp. Unbounded queues are a defect.
+
+| Stream | Retain |
+|---|---|
+| RGB / depth / camera points | 5-10 frames |
+| Lidar scans | 2-4 scans |
+| Lidar IMU, `joint_states` | 0.5-1 s |

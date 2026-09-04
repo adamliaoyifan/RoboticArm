@@ -1,0 +1,59 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="eef_sensor_mount">
+
+  <!--
+    3D-printed sensor mount adapter that bolts onto elfin_link6 (EOF).
+    Hosts the RealSense D435 camera and reserves a frame for MID360 lidar.
+    STL is in millimetres; scale 0.001 converts to metres for URDF.
+  -->
+  <xacro:macro name="eef_sensor_mount" params="parent *origin">
+
+    <link name="eef_mount_adapter">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="adapter_grey">
+          <color rgba="0.6 0.6 0.65 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- Approximate: ~120g PLA print, box 0.15 x 0.13 x 0.086 m -->
+        <mass value="0.120"/>
+        <origin xyz="0.0225 0.0451 0.0296" rpy="0 0 0"/>
+        <inertia ixx="0.000180" ixy="0.0" ixz="0.0"
+                 iyy="0.000250" iyz="0.0"
+                 izz="0.000200"/>
+      </inertial>
+    </link>
+
+    <joint name="eef_mount_adapter_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="eef_mount_adapter"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <!-- Reserved frame for MID360 lidar (empty link, no sensor yet). -->
+    <link name="mid360_mount_frame"/>
+    <joint name="mid360_mount_joint" type="fixed">
+      <parent link="eef_mount_adapter"/>
+      <child link="mid360_mount_frame"/>
+      <origin xyz="0 0 0.05" rpy="0 0 0"/>
+    </joint>
+
+    <gazebo reference="eef_mount_adapter">
+      <gravity>false</gravity>
+      <selfCollide>false</selfCollide>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

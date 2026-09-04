@@ -1,0 +1,21 @@
+# 136px 横向错位复测：已消失（2026-08-26）
+
+条件：
+- ros2 launch luggage_gazebo sim_world.launch.py gui:=false use_rviz:=false
+- 机械臂 pickup_observe（相机 TF 实测 (-0.800, -0.000, 1.700)，垂直向下）
+- 箱子 pickup_box_0001_gen，中心 z=0.987（箱顶 z≈1.115），平放取货源
+- 数据源：/luggage/preprocessed/camera/depth/points（预处理层输出，
+  frame_id=camera_depth_optical_frame，标签与数据约定一致）
+- TF 按帧 stamp 查 world <- camera_depth_optical_frame
+
+结果（对照 2026-08-20 的 lateral_displacement_analysis.txt）：
+- 箱顶带(|z-1.115|<0.02) 88704 点（错位期同带仅 ~12.6k，箱子被幻影遮掉大半）
+- 箱顶重建中心 (-1.000, 0.000) vs GT (-1.000, 0.000)：横向误差 0.000 m
+- 箱顶 xy 范围 x -1.30..-0.69 / y -0.22..0.22，与 0.68x0.44 footprint 吻合
+- （z=0.86 带中心 -0.547 属正常：该带混合了取货平台+底座顶面+箱子遮挡，
+  中位数落在两者之间，不是错位）
+
+结论：错位不再存在于当前链路。修复归因未定位（候选：预处理层接入、
+depth_image_republisher 桥路、栈重启消除陈旧帧缓存之一或组合）；
+系统级结论明确，Todo 2 的 3cm/IoU 门不再被此问题威胁。
+复现脚本见本文件同日会话（displ_verify.py 逻辑内嵌于记录）。

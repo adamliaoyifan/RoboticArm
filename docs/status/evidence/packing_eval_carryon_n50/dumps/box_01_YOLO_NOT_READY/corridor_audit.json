@@ -1,0 +1,14 @@
+{
+  "boxes_in_corridor": 0,
+  "corridor_aabb": [
+    -0.745,
+    -1.085,
+    0.53,
+    -0.745,
+    -0.285,
+    0.78
+  ],
+  "required_carry_z": null,
+  "surface_max": null,
+  "verdict": "empty_map"
+}

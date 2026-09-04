@@ -1,0 +1,485 @@
+<launch>
+  <!-- Active Cargo loading: one runtime pickup box, inspect Cargo, compute slot, pick/place/update loop. -->
+  <arg name="start_orchestrator" default="true"/>
+  <arg name="orchestrator_required" default="false"/>
+  <arg name="max_placed" default="3"/>
+  <arg name="pickup_random_seed" default="42"/>
+  <arg name="pickup_sequence_ids" default="[]"/>
+  <!-- continuous: sample L/W/H inside the catalog envelope so perception must
+       measure the box; catalog: replay the three fixed sizes for regression. -->
+  <arg name="box_size_mode" default="continuous"/>
+  <arg name="skip_reset" default="false"/>
+  <arg name="pickup_observe_pose" default="pickup_observe"/>
+  <arg name="post_pick_stage_pose" default=""/>
+  <arg name="inspect_mode" default="gazebo_gt"/>
+  <arg name="use_post_place_inspect" default="false"/>
+  <arg name="dry_run_motion" default="false"/>
+  <arg name="run_initial_explore" default="true"/>
+  <!-- smart = geometry-driven exterior explore.
+       interior_probe = camera-down Cartesian insertion through the opening. -->
+  <arg name="exploration_mode" default="smart"/>
+  <arg name="exploration_config" default="$(find luggage_description)/config/exploration.yaml.example"/>
+  <arg name="explore_ik_diagnostics" default="false"/>
+  <arg name="explore_ik_diagnostics_run_id" default=""/>
+  <!-- Dual camera-down + suction-down path constraints for smart explore. -->
+  <arg name="strict_downward" default="true"/>
+  <arg name="place_transit_tilt_tolerance" default="0.0872665"/>
+  <arg name="placement_filter_transit_clearance" default="0.30"/>
+  <arg name="placement_filter_stack_clearance" default="0.15"/>
+  <!-- Empty means "use the waypoint_generator default"; set only to override. -->
+  <arg name="place_clearance_z" default="0.15"/>
+  <arg name="place_wrist_rotation_threshold" default="1.5"/>
+  <arg name="downward_validate_trajectory" default="true"/>
+  <!-- Release settle gate (EX1). The tolerance is a payload-safety property:
+       the payload must not be moving when the vacuum lets go. Do NOT raise it
+       to make a run pass. settle_quantile is a different knob - it says how
+       the sampled velocity signal is judged against that tolerance, not what
+       the tolerance is. 1.0 = every sample in the hold window must be below
+       it; lower values ignore isolated measurement spikes but still reject an
+       arm that is genuinely moving. -->
+  <arg name="release_settle_velocity_tolerance" default="0.03"/>
+  <arg name="release_settle_timeout" default="3.0"/>
+  <arg name="settle_quantile" default="1.0"/>
+  <arg name="voxel_resolution" default="0.10"/>
+  <arg name="max_explore_views" default="8"/>
+  <arg name="unknown_threshold" default="0.15"/>
+  <arg name="box_catalog_config" default="$(find luggage_description)/config/box_catalog.yaml.example"/>
+  <arg name="scene_tf_config" default="$(find luggage_description)/config/scene_tf.yaml.example"/>
+  <!-- Arm model selector: s05 | s10 | s20 | s30. Selects the arm URDF/SRDF; the
+       Elfin S series shares joints/links/group/kinematics/joint_limits, so only
+       geometry + self-collision pairs change. Gazebo controller ns stays /S20. -->
+  <arg name="arm_model" default="s20"/>
+  <arg name="arm_upper" value="$(eval arg('arm_model').upper())"/>
+  <param name="/robot_name" value="elfin_$(arg arm_model)_with_camera"/>
+  <arg name="occupancy_fusion_config" default="$(find luggage_perception)/config/occupancy_fusion.yaml.example"/>
+  <arg name="motion_gate_enabled" default="true"/>
+  <arg name="motion_gate_velocity_threshold" default="0.03"/>
+  <arg name="known_scene_filter_enabled" default="true"/>
+  <arg name="log_odds_enabled" default="true"/>
+  <!-- XY jitter for pickup box position: [max_dx, max_dy] in metres. -->
+  <arg name="xy_jitter_range" default="[0.0, 0.0]"/>
+  <arg name="strict_perception" default="false"/>
+  <arg name="allow_gt_fallback" default="$(eval not arg('strict_perception'))"/>
+  <arg name="detector_min_confidence" default="0.70"/>
+  <arg name="detect_retries" default="3"/>
+  <arg name="detect_settle_sec" default="$(eval 3.0 if arg('strict_perception') else 0.3)"/>
+  <arg name="post_place_verify" default="$(arg strict_perception)"/>
+  <arg name="verify_actual_pose" default="$(arg strict_perception)"/>
+  <arg name="simulation_pose_oracle" default="true"/>
+  <arg name="post_place_settle_sec" default="1.5"/>
+  <!-- Use the 2.5D surface-map placement planner (+MoveIt filter) instead of bin_packer. -->
+  <arg name="use_placement_planner" default="false"/>
+  <arg name="use_motion_filter" default="true"/>
+  <!-- Placement workspace bounds.
+       Lateral limits come from the opening aperture (scene_tf geometry) and
+       depth from the reachability atlas, so the hand-tuned near-ROI rectangle
+       is off by default. It used to cap usable floor area at 38% of the
+       container regardless of what the arm could reach, which forced stacking
+       from the second box. Re-enable only to isolate a specific region. -->
+  <arg name="near_roi_enabled" default="false"/>
+  <arg name="near_roi_x_min" default="-1.0e9"/>
+  <arg name="near_roi_x_max" default="1.0e9"/>
+  <arg name="near_roi_y_min" default="-1.0e9"/>
+  <arg name="near_roi_y_max" default="1.0e9"/>
+  <arg name="aperture_gate_enabled" default="true"/>
+  <arg name="use_reachability_atlas" default="true"/>
+  <arg name="atlas_basename" default="s20_container_collision_aware"/>
+  <!-- Counterweight to proxy_score's structural stack bonus (a committed box
+       top scores 1 on observation_confidence and support_quality, an
+       unobserved floor column scores 0). Higher = fill the floor first. -->
+  <arg name="score_w_floor_first" default="0.60"/>
+  <arg name="enable_robot_self_filter" default="true"/>
+  <arg name="robot_self_filter_config" default="$(find luggage_description)/config/robot_self_filter.yaml.example"/>
+  <!-- PR4: URDF-driven self-filter + Task ROI (replaces manual self_filter for
+       the cloud pipeline). When true, task_cloud_filter_node produces
+       points_robot_filtered (global) and points_task_roi (container ROI);
+       mappers and motion relay consume those instead of raw points, and the
+       old manual RobotSelfPointFilter is disabled. -->
+  <arg name="enable_urdf_self_filter" default="true"/>
+  <arg name="enable_task_roi" default="true"/>
+  <!-- Planning-scene obstacle sources. Both can pollute the MoveIt start
+       state with false collisions (dyn_obs_* boxes from world_scene_mapper
+       clusters, or octomap voxels from depth) when self-filtering is imperfect.
+       Disable independently to isolate START_STATE_IN_COLLISION causes:
+         roslaunch luggage_bringup active_loading.launch \
+           enable_dynamic_scene:=false enable_octomap:=false
+       Perception visualization (world_scene_mapper markers/octomap) still
+       runs; only the planning-scene injection is gated. -->
+  <arg name="enable_dynamic_scene" default="true"/>
+  <arg name="enable_octomap" default="true"/>
+  <!-- Grasp clearances are measured above the current box top for the
+       pose_target_link (suction_contact_frame = cup face).
+       attach = 0.0 so the cup face lands ON the box top (contact). This is
+       safe because scene_manager adds an ACM allowing suction_panel <->
+       current_pickup_box, so the touch is not a GOAL_IN_COLLISION. The
+       approach/attach/retreat descent is a Cartesian straight-line path
+       (motion_planner _execute_cartesian_target) so the forearm cannot
+       swing into the box. If contact still misbehaves, raise approach (not
+       attach) and check the ACM log "ACM: allowed current_pickup_box <->
+       suction_panel". -->
+  <arg name="pick_pre_grasp_clearance" default="0.30"/>
+  <arg name="pick_approach_clearance" default="0.25"/>
+  <arg name="pick_attach_clearance" default="0.0"/>
+  <arg name="pick_retreat_clearance" default="0.35"/>
+  <arg name="vacuum_sim_mode" default="gazebo_follow"/>
+  <arg name="vacuum_contact_margin" default="0.08"/>
+  <arg name="vacuum_hardware_config"
+       default="$(find luggage_description)/config/vacuum_hardware.yaml.example"/>
+
+  <!-- Semantic perception (RGB segmentation + point cloud filtering).
+       When enabled, cargo_volume_mapper reads /luggage/semantic/cargo_points
+       and world_scene_mapper reads /luggage/semantic/obstacle_points
+       instead of the raw /camera/depth/points. Default off for backward
+       compatibility. See .cursor/plans/semantic_perception_pipeline_4ade087b.plan.md. -->
+  <arg name="enable_semantic" default="true"/>
+  <arg name="semantic_device" default="cpu"/>
+  <arg name="semantic_backend" default="stub"/>
+  <arg name="semantic_config" default="$(find luggage_perception)/config/semantic_segmenter.yaml"/>
+  <arg name="semantic_segmenter_enabled" default="true"/>
+  <!-- Real-hardware opening geometry: Tag pose refined by aligned RGB-D. In
+       simulation/non-strict mode smart planning may retain scene_tf fallback. -->
+  <arg name="enable_opening_estimator" default="false"/>
+  <arg name="opening_hardware_strict" default="false"/>
+  <arg name="use_sensed_opening" default="false"/>
+  <arg name="opening_estimator_config"
+       default="$(find luggage_perception)/config/container_opening_estimator.yaml"/>
+
+  <!-- Camera view / RViz debug visualization.
+       Headless verification runs should pass gui:=false start_camera_view:=false
+       so no gzclient/RViz/image window is created (no X or xhost needed). -->
+  <arg name="gui" default="true"/>
+  <arg name="start_camera_view" default="true"/>
+  <!-- Detection overlay: republishes each pickup-box detection as an image
+       overlay plus world markers. One frame per detection, not per camera
+       frame, so it costs nothing between detections; still off for headless
+       acceptance runs, which have no viewer. -->
+  <arg name="enable_detect_viz" default="true"/>
+  <arg name="show_image_views" default="false"/>
+  <!-- Console verbosity: info (development) | warn (acceptance runs).
+       Two channels are required and neither covers the other:
+         ROSCONSOLE_CONFIG_FILE  -> log4cxx, i.e. move_group/OMPL/controllers
+         LUGGAGE_LOG_LEVEL       -> rospy nodes, read before init_node
+       Acceptance-critical records are emitted at WARN, so `warn` keeps every
+       field the harness and a reviewer need while dropping routine chatter. -->
+  <arg name="log_level" default="info"/>
+  <!-- Run mode. auto = the orchestrator drives itself, exactly as acceptance
+       runs have always done. manual = it pauses before every state and waits
+       for /orchestrator/step, which is how manual_loading_gui.launch walks the
+       pipeline without re-implementing it. The state bodies are identical in
+       both modes, which is what makes a manual run comparable to an auto run.
+       events_path writes the structured record stream the bag harness
+       consumes; empty disables recording. -->
+  <arg name="run_mode" default="auto"/>
+  <arg name="events_path" default=""/>
+  <arg name="step_breakpoints" default="[]"/>
+  <env name="ROSCONSOLE_CONFIG_FILE"
+       value="$(find luggage_bringup)/config/rosconsole_$(arg log_level).conf"/>
+  <env name="LUGGAGE_LOG_LEVEL" value="$(arg log_level)"/>
+  <arg name="rviz_config" default="$(find luggage_bringup)/config/camera_view.rviz"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world.launch">
+    <arg name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="gui" value="$(arg gui)"/>
+    <arg name="spawn_at_observe" value="true"/>
+    <arg name="hold_observe_on_start" value="true"/>
+    <arg name="clear_existing_models" value="true"/>
+    <arg name="spawn_suitcases" value="false"/>
+  </include>
+
+  <include file="$(find luggage_bringup)/launch/moveit_with_camera.launch">
+    <arg name="display" value="false"/>
+    <arg name="load_urdf" value="false"/>
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="enable_octomap" value="$(arg enable_octomap)"/>
+  </include>
+
+  <!-- Derives the task-ROI container/opening geometry from scene_tf and sets it
+       on task_cloud_filter before that node starts (see its launch-prefix). -->
+  <node pkg="luggage_description" type="description_params_node.py" name="description_params" output="screen">
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <param name="task_roi_namespace" value="/task_cloud_filter"/>
+  </node>
+  <node pkg="luggage_gazebo" type="pickup_box_spawner_node.py" name="pickup_box_spawner" output="screen">
+    <param name="box_catalog_config" value="$(arg box_catalog_config)"/>
+    <param name="random_seed" value="$(arg pickup_random_seed)"/>
+    <param name="size_mode" value="$(arg box_size_mode)"/>
+    <rosparam param="sequence_ids" subst_value="true">$(arg pickup_sequence_ids)</rosparam>
+    <rosparam param="xy_jitter_range" subst_value="true">$(arg xy_jitter_range)</rosparam>
+  </node>
+  <node pkg="luggage_perception" type="luggage_detector_node.py" name="luggage_detector" output="screen">
+    <param name="use_semantic" value="$(arg enable_semantic)"/>
+    <param name="allow_gt_fallback" value="$(arg allow_gt_fallback)"/>
+    <param name="evaluation_compare_gt" value="false"/>
+    <param name="min_confidence" value="$(arg detector_min_confidence)"/>
+    <!-- Only meaningful when the spawner replays the three catalog sizes. -->
+    <param name="catalog_snap_enabled"
+           value="$(eval arg('box_size_mode') == 'catalog')"/>
+    <!-- Pickup ROI is spatially separated from the arm; use the full-rate raw
+         RGBD cloud. The URDF filter runs at ~0.4 Hz and violates strict
+         detector freshness, while raw depth is ~12 Hz. -->
+    <param name="depth_topic" value="/camera/depth/points"/>
+  </node>
+  <node if="$(arg enable_detect_viz)"
+        pkg="luggage_perception" type="detect_overlay_node.py"
+        name="detect_overlay" output="screen">
+    <param name="detection_topic" value="/luggage_detector/diagnostics_json"/>
+    <param name="color_image_topic" value="/camera/color/image_raw"/>
+    <param name="color_info_topic" value="/camera/color/camera_info"/>
+    <param name="hold_sec" value="10.0"/>
+  </node>
+  <node if="$(arg enable_opening_estimator)"
+        pkg="luggage_perception"
+        type="container_opening_estimator_node.py"
+        name="container_opening_estimator"
+        output="screen">
+    <rosparam command="load" file="$(arg opening_estimator_config)"/>
+    <param name="hardware_strict" value="$(arg opening_hardware_strict)"/>
+    <param name="depth_points_topic" value="/camera/depth/points"/>
+  </node>
+
+  <!-- Semantic perception: RGB segmentation + point cloud filtering.
+       Runs only when enable_semantic:=true. The segmenter publishes a label
+       mask; the point filter syncs it with depth and republishes filtered
+       clouds that the mappers below consume. -->
+  <group if="$(arg enable_semantic)">
+    <node pkg="luggage_perception" type="semantic_segmenter_node.py" name="semantic_segmenter" output="screen"
+          launch-prefix="bash -c 'sleep 8; exec $0 $@' ">
+      <param name="config" value="$(arg semantic_config)"/>
+      <param name="backend" value="$(arg semantic_backend)"/>
+      <param name="device" value="$(arg semantic_device)"/>
+      <param name="enabled" value="$(arg semantic_segmenter_enabled)"/>
+    </node>
+    <node pkg="luggage_perception" type="semantic_point_filter_node.py" name="semantic_point_filter" output="screen"
+          launch-prefix="bash -c 'sleep 10; exec $0 $@' ">
+      <param name="semantic_config" value="$(arg semantic_config)"/>
+      <param name="mask_timeout_sec" value="0.5"/>
+      <param name="fallback_to_raw" value="true"/>
+    </node>
+
+
+  </group>
+
+  <node pkg="luggage_perception" type="cargo_volume_mapper_node.py" name="cargo_volume_mapper" output="screen">
+    <rosparam command="load" file="$(arg occupancy_fusion_config)"/>
+    <param name="motion_gate/enabled" value="$(arg motion_gate_enabled)"/>
+    <param name="motion_gate/velocity_threshold" value="$(arg motion_gate_velocity_threshold)"/>
+    <param name="occupancy/enabled" value="$(arg log_odds_enabled)"/>
+    <param name="voxel_resolution" value="$(arg voxel_resolution)"/>
+    <param name="publish_viz" value="true"/>
+    <param name="viz_frame_id" value="elfin_base_link"/>
+    <param name="viz_show_free" value="false"/>
+    <param name="viz_show_unknown" value="true"/>
+    <param name="depth_points_topic" value="$(eval '/camera/depth/points_robot_filtered' if arg('enable_urdf_self_filter') else '/camera/depth/points')"/>
+    <param name="self_filter/enabled" value="$(eval not arg('enable_urdf_self_filter'))"/>
+    <param name="self_filter_config" value="$(arg robot_self_filter_config)"/>
+    <param name="use_semantic_filter" value="$(arg enable_semantic)"/>
+  </node>
+  <node pkg="luggage_perception" type="placed_pose_verifier_node.py"
+        name="placed_pose_verifier" output="screen">
+    <param name="cloud_topic"
+           value="$(eval '/camera/depth/points_robot_filtered' if arg('enable_urdf_self_filter') else '/camera/depth/points')"/>
+    <param name="allow_stable_latest_tf_fallback" value="true"/>
+  </node>
+  <node pkg="luggage_perception" type="world_scene_mapper_node.py" name="world_scene_mapper" output="screen">
+    <rosparam command="load" file="$(arg occupancy_fusion_config)"/>
+    <param name="motion_gate/enabled" value="$(arg motion_gate_enabled)"/>
+    <param name="known_scene_filter/enabled" value="$(arg known_scene_filter_enabled)"/>
+    <param name="occupancy/enabled" value="$(arg log_odds_enabled)"/>
+    <param name="resolution" value="0.05"/>
+    <param name="stale_seconds" value="30.0"/>
+    <param name="max_range" value="3.0"/>
+    <param name="update_rate" value="2.0"/>
+    <param name="publish_viz" value="true"/>
+    <param name="depth_points_topic" value="$(eval '/camera/depth/points_robot_filtered' if arg('enable_urdf_self_filter') else '/camera/depth/points')"/>
+    <param name="self_filter/enabled" value="$(eval not arg('enable_urdf_self_filter'))"/>
+    <param name="self_filter_config" value="$(arg robot_self_filter_config)"/>
+    <param name="use_semantic_filter" value="$(arg enable_semantic)"/>
+  </node>
+  <!-- Strip the current pickup box from the depth cloud before the MoveIt
+       octomap sees it. The box is collision-handled by the named
+       current_pickup_box object + suction_panel ACM (contact allowed); this
+       keeps its duplicate voxels out of the <octomap> so the cup can descend
+       to contact. Point the octomap sensor at the filtered topic
+       (sensors_d435_pointcloud.yaml). -->
+  <node pkg="luggage_perception" type="pickup_box_pointcloud_filter_node.py" name="pickup_box_pointcloud_filter" output="screen">
+    <param name="input_cloud" value="/camera/depth/points"/>
+    <param name="output_cloud" value="/camera/depth/points_filtered"/>
+    <param name="box_param" value="/luggage/current_box"/>
+    <param name="box_padding" value="0.02"/>
+    <param name="allow_latest_tf_fallback" value="false"/>
+  </node>
+  <!-- PR4: URDF-driven task cloud filter. Subscribes to points_filtered,
+       produces points_robot_filtered (global self-masked) and
+       points_task_roi (container ROI). Mappers consume robot_filtered;
+       motion relay consumes points_planning (mode-dependent). -->
+  <!-- container_center / container_dims / container_yaw / opening_center /
+       opening_normal / aperture_* are NOT set here. They are derived from
+       scene_tf by description_params_node, which also sets them as real
+       numeric lists: roslaunch types `value="[0.0, -1.5, 0.145]"` as a string,
+       so the C++ node's std::vector<double> lookup silently fell back to its
+       defaults (a 1 m cube at the robot origin). The launch-prefix sleep keeps
+       the derivation ahead of this node's startup. -->
+  <node if="$(arg enable_urdf_self_filter)" pkg="luggage_perception"
+        type="task_cloud_filter_node" name="task_cloud_filter"
+        output="screen"
+        launch-prefix="bash -c 'sleep 6; exec $0 $@' ">
+    <param name="robot_description" value="/robot_description"/>
+    <param name="planning_group" value="elfin_arm"/>
+    <param name="input_cloud" value="/camera/depth/points_filtered"/>
+    <param name="body_padding" value="0.03"/>
+    <param name="body_scale" value="1.05"/>
+    <param name="planning_mode" value="EXPLORE_CONTAINER"/>
+    <param name="container_margin" value="0.03"/>
+    <param name="opening_lateral_margin" value="0.05"/>
+    <param name="opening_vertical_margin" value="0.05"/>
+    <param name="opening_outward_depth" value="0.35"/>
+    <param name="opening_inward_depth" value="0.30"/>
+  </node>
+  <node pkg="luggage_perception" type="motion_gated_pointcloud_relay_node.py" name="motion_gated_pointcloud_relay" output="screen">
+    <rosparam command="load" file="$(arg occupancy_fusion_config)"/>
+    <param name="motion_gate/enabled" value="$(arg motion_gate_enabled)"/>
+    <param name="known_scene_filter/enabled" value="$(arg known_scene_filter_enabled)"/>
+    <param name="self_filter/enabled" value="$(eval not arg('enable_urdf_self_filter'))"/>
+    <param name="self_filter_config" value="$(arg robot_self_filter_config)"/>
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <param name="input_cloud" value="$(eval '/camera/depth/points_planning' if arg('enable_urdf_self_filter') else '/camera/depth/points_filtered')"/>
+    <param name="output_cloud" value="/camera/depth/points_settled"/>
+  </node>
+  <node pkg="luggage_perception" type="container_inspector_node.py" name="container_inspector" output="screen">
+    <param name="allow_gt_fallback" value="$(arg allow_gt_fallback)"/>
+    <param name="require_free_slots" value="$(eval not arg('use_placement_planner'))"/>
+    <param name="box_catalog_config" value="$(arg box_catalog_config)"/>
+    <param name="grid_resolution" value="$(arg voxel_resolution)"/>
+  </node>
+  <node pkg="luggage_planning" type="cargo_exploration_planner_node.py" name="cargo_exploration_planner" output="screen">
+    <param name="exploration_config" value="$(arg exploration_config)"/>
+    <param name="max_explore_views" value="$(arg max_explore_views)"/>
+    <param name="unknown_threshold" value="$(arg unknown_threshold)"/>
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+    <param name="ik_wait_timeout" value="60.0"/>
+    <param name="ik_attempts" value="20"/>
+    <param name="ik_timeout" value="5.0"/>
+    <param name="ik_diagnostics/enabled" value="$(arg explore_ik_diagnostics)"/>
+    <param name="ik_diagnostics/run_id" value="$(arg explore_ik_diagnostics_run_id)"/>
+    <param name="use_sensed_opening" value="$(arg use_sensed_opening)"/>
+    <param name="opening_hardware_strict"
+           value="$(arg opening_hardware_strict)"/>
+  </node>
+  <node pkg="luggage_packing" type="bin_packer_node.py" name="bin_packer" output="screen"/>
+  <node pkg="luggage_packing" type="placement_planner_node.py" name="placement_planner" output="screen">
+    <param name="base_frame" value="elfin_base_link"/>
+    <param name="publish_rate" value="0.0"/>
+    <param name="use_free_space_model" value="true"/>
+    <param name="near_roi/enabled" value="$(arg near_roi_enabled)"/>
+    <param name="near_roi/x_min" value="$(arg near_roi_x_min)"/>
+    <param name="near_roi/x_max" value="$(arg near_roi_x_max)"/>
+    <param name="near_roi/y_min" value="$(arg near_roi_y_min)"/>
+    <param name="near_roi/y_max" value="$(arg near_roi_y_max)"/>
+    <param name="aperture_gate/enabled" value="$(arg aperture_gate_enabled)"/>
+    <param name="use_reachability_atlas" value="$(arg use_reachability_atlas)"/>
+    <param name="atlas_basename" value="$(arg atlas_basename)"/>
+    <param name="score/w_floor_first" value="$(arg score_w_floor_first)"/>
+    <param name="scene_tf_config" value="$(arg scene_tf_config)"/>
+  </node>
+  <node if="$(arg use_motion_filter)" pkg="luggage_planning" type="placement_motion_filter_node.py" name="placement_motion_filter" output="screen"
+        launch-prefix="bash -c 'sleep 20; exec $0 $@' ">
+    <param name="move_group" value="elfin_arm"/>
+    <param name="ik_link" value="suction_contact_frame"/>
+    <param name="ik_service" value="/compute_ik"/>
+    <param name="ik_wait_timeout" value="60.0"/>
+    <param name="transit_clearance"
+           value="$(arg placement_filter_transit_clearance)"/>
+    <param name="stack_transit_clearance"
+           value="$(arg placement_filter_stack_clearance)"/>
+    <param name="ik_timeout" value="0.5"/>
+    <param name="ik_attempts" value="10"/>
+    <param name="deadline_sec" value="10.0"/>
+  </node>
+  <node pkg="luggage_planning" type="scene_manager_node.py" name="scene_manager" output="screen"/>
+  <node if="$(arg enable_dynamic_scene)" pkg="luggage_planning" type="dynamic_scene_manager_node.py" name="dynamic_scene_manager" output="screen"
+        launch-prefix="bash -c 'sleep 25; exec $0 $@' ">
+    <param name="enabled" value="true"/>
+    <param name="update_rate" value="1.0"/>
+    <param name="obstacle_box_size" value="0.08"/>
+    <param name="cluster_radius" value="0.10"/>
+    <param name="robot_self_filter_config" value="$(arg robot_self_filter_config)"/>
+    <param name="robot_self_filter/enabled" value="$(arg enable_robot_self_filter)"/>
+  </node>
+  <node pkg="luggage_planning" type="waypoint_generator_node.py" name="waypoint_generator" output="screen">
+    <param name="pick_pre_grasp_clearance" value="$(arg pick_pre_grasp_clearance)"/>
+    <param name="pick_approach_clearance" value="$(arg pick_approach_clearance)"/>
+    <param name="pick_attach_clearance" value="$(arg pick_attach_clearance)"/>
+    <param name="pick_retreat_clearance" value="$(arg pick_retreat_clearance)"/>
+    <param name="place_clearance_z" value="$(arg place_clearance_z)"/>
+  </node>
+  <node pkg="luggage_planning" type="motion_planner_node.py" name="motion_planner" output="screen" launch-prefix="bash -c 'sleep 5; exec $0 $@' ">
+    <param name="move_group_wait_timeout" value="120.0"/>
+    <param name="exploration_config" value="$(arg exploration_config)"/>
+    <param name="strict_downward" value="$(arg strict_downward)"/>
+    <param name="tool_down_roll_pitch_tolerance" value="$(arg place_transit_tilt_tolerance)"/>
+    <param name="wrist_j5_j6_rotation_threshold" value="$(arg place_wrist_rotation_threshold)"/>
+    <param name="downward_validate_trajectory" value="$(arg downward_validate_trajectory)"/>
+    <param name="release_settle_velocity_tolerance" value="$(arg release_settle_velocity_tolerance)"/>
+    <param name="release_settle_timeout" value="$(arg release_settle_timeout)"/>
+    <param name="settle_quantile" value="$(arg settle_quantile)"/>
+  </node>
+  <node pkg="luggage_planning" type="vacuum_simulator_node.py" name="vacuum_simulator" output="screen">
+    <rosparam command="load" file="$(arg vacuum_hardware_config)" ns="retention"/>
+    <param name="mode" value="$(arg vacuum_sim_mode)"/>
+    <param name="robot_link" value="suction_panel"/>
+    <param name="box_link" value="suitcase_link"/>
+    <param name="contact_margin" value="$(arg vacuum_contact_margin)"/>
+    <param name="follow_rate" value="50.0"/>
+    <param name="attached_param" value="/luggage/vacuum/attached"/>
+    <param name="attach_scene_service" value="/scene_manager/attach_pickup_box"/>
+    <param name="detach_scene_service" value="/scene_manager/detach_pickup_box"/>
+  </node>
+  <!-- Actual EE trajectory trace: samples the EE link TF and draws a LINE_STRIP
+       of where the arm really moved (vs target-point markers / planned path).
+       Reset between cycles via ~reset_trace. -->
+  <node pkg="luggage_planning" type="ee_trajectory_trace_node.py" name="ee_trajectory_trace" output="screen">
+    <param name="ee_link" value="suction_contact_frame"/>
+    <param name="base_frame" value="elfin_base_link"/>
+    <param name="rate_hz" value="20.0"/>
+    <param name="min_step" value="0.005"/>
+    <param name="topic" value="/luggage/debug/ee_trace"/>
+  </node>
+
+  <!-- Camera view / RViz (auto-start, image windows optional) -->
+  <include if="$(arg start_camera_view)" file="$(find luggage_bringup)/launch/camera_view.launch">
+    <arg name="rviz_config" value="$(arg rviz_config)"/>
+    <arg name="show_rviz" value="true"/>
+    <arg name="show_rgb_view" value="$(arg show_image_views)"/>
+    <arg name="show_depth_view" value="$(arg show_image_views)"/>
+  </include>
+
+  <node if="$(arg start_orchestrator)" pkg="luggage_bringup" type="orchestrator_node.py" name="orchestrator" output="screen"
+        required="$(arg orchestrator_required)">
+    <param name="active_loading" value="true"/>
+    <param name="strict_perception" value="$(arg strict_perception)"/>
+    <param name="pickup_observe_pose" value="$(arg pickup_observe_pose)"/>
+    <param name="post_pick_stage_pose" value="$(arg post_pick_stage_pose)"/>
+    <param name="detect_retries" value="$(arg detect_retries)"/>
+    <param name="detect_settle_sec" value="$(arg detect_settle_sec)"/>
+    <param name="post_place_verify" value="$(arg post_place_verify)"/>
+    <param name="verify_actual_pose" value="$(arg verify_actual_pose)"/>
+    <param name="simulation_pose_oracle" value="$(arg simulation_pose_oracle)"/>
+    <param name="post_place_settle_sec" value="$(arg post_place_settle_sec)"/>
+    <param name="max_placed" value="$(arg max_placed)"/>
+    <param name="skip_reset" value="$(arg skip_reset)"/>
+    <param name="inspect_mode" value="$(arg inspect_mode)"/>
+    <param name="use_post_place_inspect" value="$(arg use_post_place_inspect)"/>
+    <param name="dry_run_motion" value="$(arg dry_run_motion)"/>
+    <param name="run_initial_explore" value="$(arg run_initial_explore)"/>
+    <param name="exploration_mode" value="$(arg exploration_mode)"/>
+    <param name="unknown_threshold" value="$(arg unknown_threshold)"/>
+    <param name="settle_time_sec" value="0.5"/>
+    <param name="explore_candidate_retries" value="4"/>
+    <param name="run_mode" value="$(arg run_mode)"/>
+    <param name="events_path" value="$(arg events_path)"/>
+    <rosparam param="step_breakpoints" subst_value="true">$(arg step_breakpoints)</rosparam>
+    <param name="placement_ns" value="placement_planner" if="$(arg use_placement_planner)"/>
+    <param name="filter_ns" value="placement_motion_filter" if="$(eval arg('use_placement_planner') and arg('use_motion_filter'))"/>
+  </node>
+</launch>

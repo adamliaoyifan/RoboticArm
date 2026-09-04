@@ -1,0 +1,39 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="elfin_s30_with_camera">
+
+  <!-- Include the base Elfin S30 (longer reach than S20; joints/links identical, so
+       the suction/camera/eef mounts attach to elfin_end_link the same way). -->
+  <xacro:include filename="$(find elfin_description)/urdf/S30.urdf.xacro"/>
+
+  <!-- Suction panel assembly (p01-p05) on elfin_end_link -->
+  <xacro:include filename="$(find luggage_description)/urdf/suction_panel_mount.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/suction_flange_origin.xacro"/>
+
+  <xacro:suction_panel_mount parent="${suction_flange_parent}">
+    <origin xyz="${suction_flange_xyz}" rpy="${suction_flange_rpy}"/>
+  </xacro:suction_panel_mount>
+
+  <!-- EEF sensor mount adapter (3D-printed bracket on suction_panel) -->
+  <xacro:include filename="$(find luggage_description)/urdf/eef_sensor_mount.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/eef_mount_adapter_origin.xacro"/>
+
+  <xacro:eef_sensor_mount parent="${adapter_mount_parent}">
+    <origin xyz="${adapter_mount_xyz}" rpy="${adapter_mount_rpy}"/>
+  </xacro:eef_sensor_mount>
+
+  <!-- Include the RealSense D435 macro -->
+  <xacro:include filename="$(find luggage_description)/urdf/realsense_d435.urdf.xacro"/>
+
+  <!-- Mount params from config/camera_mount_origin.xacro (tuned via camera_mount_tune_gui) -->
+  <xacro:include filename="$(find luggage_description)/config/camera_mount_origin.xacro"/>
+
+  <xacro:realsense_d435 parent="${cam_mount_parent}">
+    <origin xyz="${cam_mount_xyz}" rpy="${cam_mount_rpy}"/>
+  </xacro:realsense_d435>
+
+  <gazebo reference="camera_link">
+    <gravity>false</gravity>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+</robot>

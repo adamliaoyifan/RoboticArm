@@ -1,0 +1,64 @@
+# Default yaw randomization for spawned pickup boxes (world XY plane).
+#   yaw_mode: continuous -> uniform sample in yaw_range
+#   yaw_mode: discrete   -> pick one of the entry's allowed_yaws
+# Per-entry yaw_mode / yaw_range override these catalog defaults.
+yaw_mode: continuous
+yaw_range: [-3.14159265, 3.14159265]
+
+# Visual mesh families (unit AABB sources; pickup uses pre-scaled copies):
+#   suitcase_loafbrr  — wheeled hard-shell (CC0)
+#   suitcase_vintage  — canvas vintage (CC BY-SA 2.5)
+# Per-entry `visual` selects the family. Spawn size_mode defaults to catalog:
+# pick one of the three rows (small/medium/large). Mesh spawn then loads
+# model://suitcase_<visual>_{small,medium,large} (visual=collision, no runtime
+# scale). size_mode: continuous remains an opt-in for box-visual experiments.
+#
+# size_range / mass_model still describe the continuous envelope and the
+# density fit through these three reference masses (atlases, opt-in sampling).
+size_range:
+  width: [0.55, 0.80]
+  depth: [0.40, 0.50]
+  height: [0.25, 0.32]
+
+# Mass model for continuously sized boxes.
+#
+# A single density cannot reproduce the three catalog masses: the implied
+# densities are 145.5 / 170.1 / 179.7 kg/m3, i.e. larger cases are packed
+# fuller. Density is therefore affine in volume, fitted through the carryon and
+# large reference points:
+#     rho(V) = density_base_kg_m3 + density_slope_kg_m6 * V
+# which yields 8.0 / 14.2 / 23.0 kg for carryon / standard / large. Keeping the
+# top of the envelope at 23 kg matters: that is the vacuum rated payload the
+# retention model was validated against (E23 margin 2.483), so the hardest case
+# stays reachable by sampling.
+#
+# Real suitcases of equal volume differ in contents, so density is jittered.
+mass_model:
+  density_base_kg_m3: 119.7
+  density_slope_kg_m6: 468.5
+  density_jitter: 0.20   # multiplicative, uniform in +/- this fraction
+  min_kg: 2.0
+  max_kg: 23.0           # vacuum rated payload; sampling is clamped here
+
+box_catalog:
+  - id: carryon
+    model: suitcase_carryon
+    visual: suitcase_loafbrr
+    size: [0.55, 0.40, 0.25]
+    weight: 0.35
+    mass_kg: 8.0
+    allowed_yaws: [0.0, 1.5708]
+  - id: standard
+    model: suitcase_standard
+    visual: suitcase_vintage
+    size: [0.70, 0.45, 0.28]
+    weight: 0.45
+    mass_kg: 15.0
+    allowed_yaws: [0.0, 1.5708]
+  - id: large
+    model: suitcase_large
+    visual: suitcase_loafbrr
+    size: [0.80, 0.50, 0.32]
+    weight: 0.20
+    mass_kg: 23.0
+    allowed_yaws: [0.0, 1.5708]

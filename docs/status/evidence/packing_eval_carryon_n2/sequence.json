@@ -1,0 +1,17 @@
+{
+  "max_boxes": 2,
+  "planned": [
+    {
+      "catalog_id": "carryon",
+      "seq": null,
+      "template": true
+    }
+  ],
+  "seed": 0,
+  "sequence_ids": [
+    "carryon"
+  ],
+  "size_mode": "catalog",
+  "skip_unplaceable": false,
+  "visual_kind": "mesh"
+}

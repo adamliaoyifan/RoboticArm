@@ -1,0 +1,68 @@
+---
+description: Algorithm class versus ROS node layering for ROS 2 Humble packages
+globs: src/**/*.py
+alwaysApply: false
+---
+
+# Node structure
+
+Full contract: `docs/architecture/perception_architecture.md`.
+
+## Layers
+
+Split by role, not directory.
+
+- Algorithm module: no `rclpy`, `rospy`, `tf2_ros`, or message imports, **not
+  even lazily inside a method**. Building a `Marker` in an algorithm class is a
+  violation. Need a transform? The node resolves it and passes plain numbers.
+- Node module: lives in `<pkg>/scripts/*.py`, or in `<pkg>/<pkg>/*.py` with a
+  `main()` and a few-line `scripts/` wrapper (preferred when tests import it).
+  In the second form keep ROS imports inside `main()` or the node class so the
+  package still imports without ROS.
+- Message adapter module (`ros_message_adapters.py`): node-layer, converts
+  messages to/from the plain structures and nothing else. Top-level message
+  imports are correct here; algorithm modules must not import it. A decoder
+  returns `None` for an unsupported layout so the node drops the message —
+  never guess. Zero points is not an error, it is an empty array.
+- A `rospy` file absent from its package's `install(PROGRAMS ...)` is an
+  unported ROS 1 reference: read it, port it, never extend it. This covers
+  `scripts/ros1_reference/` and the unported files still in
+  `luggage_planning/scripts/` and `luggage_packing/scripts/`.
+- A node past ~500 lines means logic that belongs in an algorithm module.
+
+## Stateful classes: update + copy out
+
+```python
+# BAD: no stamp, hands out internal state
+class Segmenter:
+    def segment(self, rgb):
+        self._instance_map = mask
+        return label_map, detections
+    @property
+    def instance_map(self):
+        return self._instance_map      # caller can mutate our state
+
+# GOOD
+class Segmenter:
+    def update(self, rgb, stamp, frame_id):
+        self._output = Output(stamp=stamp, frame_id=frame_id, ...)
+    def copy_output(self):
+        return self._output.copy()     # independent copy
+```
+
+- Internal buffers are private (`_name`); getters return copies.
+- `update` never publishes and never blocks on I/O.
+
+## Stamps
+
+Every output describing the world carries `stamp` (the input data's
+acquisition time, never `now()`) and `frame_id` (the frame the numbers are
+actually in). This holds for stubs too.
+
+Exception: a node that originates data with no upstream measurement (a
+synthesised `JointState`, for example) may stamp with the current clock.
+Republishers and derived outputs inherit the input stamp.
+
+New topics/services/actions go in `luggage_msgs` per
+`docs/status/phase2_interfaces.md`. Internal per-frame structs stay plain
+Python objects.

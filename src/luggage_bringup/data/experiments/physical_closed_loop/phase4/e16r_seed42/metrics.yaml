@@ -1,0 +1,16 @@
+placed_physical_best: 2
+target_boxes: 3
+gazebo_finalized_models_best: 2
+planning_scene_placed_best: 2
+mapper_committed_best: 2
+two_physical_stacks: false
+gt_fallback_count: 0
+pose_gate_failures_on_best_run: 0
+retention_faults_on_best_run: 0
+third_box_candidates: 8
+third_box_transit_ik_unreachable: 7
+third_box_deadline_exhausted: 1
+rejected_overhang_pose:
+  z_error_m: 0.051
+  roll_deg: 3.61
+  pitch_deg: 2.58

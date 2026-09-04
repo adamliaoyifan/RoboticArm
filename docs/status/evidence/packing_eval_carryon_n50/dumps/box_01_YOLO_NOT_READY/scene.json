@@ -1,0 +1,23 @@
+{
+  "acm_names": [
+    "camera_color_optical_frame",
+    "camera_depth_optical_frame",
+    "camera_link",
+    "eef_mount_adapter",
+    "elfin_base",
+    "elfin_end_link",
+    "elfin_link1",
+    "elfin_link2",
+    "elfin_link3",
+    "elfin_link4",
+    "elfin_link5",
+    "elfin_link6",
+    "suction_panel"
+  ],
+  "attached": [],
+  "place_state": "INIT",
+  "world_objects": [
+    "pickup_box",
+    "robot_pedestal"
+  ]
+}

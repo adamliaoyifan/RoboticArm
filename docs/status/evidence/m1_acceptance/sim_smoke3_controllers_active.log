@@ -1,0 +1,152 @@
+[INFO] [launch]: All log files can be found below /home/adamliao/.ros/log/2026-08-19-17-27-48-304761-adamliao-X870-EAGLE-WIFI7-304790
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ign gazebo-1]: process started with pid [304806]
+[INFO] [parameter_bridge-2]: process started with pid [304808]
+[INFO] [container_tf_publisher-3]: process started with pid [304811]
+[INFO] [robot_state_publisher-4]: process started with pid [304813]
+[INFO] [create-5]: process started with pid [304815]
+[INFO] [spawner-6]: process started with pid [304817]
+[robot_state_publisher-4] [INFO] [1787131668.806003008] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-4] [INFO] [1787131668.806069242] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-4] [INFO] [1787131668.806072969] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-4] [INFO] [1787131668.806075303] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-4] [INFO] [1787131668.806077537] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-4] [INFO] [1787131668.806079441] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-4] [INFO] [1787131668.806082617] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-4] [INFO] [1787131668.806084340] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-4] [INFO] [1787131668.806086043] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-4] [INFO] [1787131668.806087807] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-4] [INFO] [1787131668.806089510] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-4] [INFO] [1787131668.806091163] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-4] [INFO] [1787131668.806093187] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-4] [INFO] [1787131668.806094840] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-4] [INFO] [1787131668.806096593] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-4] [INFO] [1787131668.806098206] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-4] [INFO] [1787131668.806099739] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-4] [INFO] [1787131668.806101352] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-4] [INFO] [1787131668.806102995] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-4] [INFO] [1787131668.806104538] [robot_state_publisher]: got segment world
+[parameter_bridge-2] [INFO] [1787131668.808750681] [clock_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[spawner-6] [INFO] [1787131668.926296764] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[container_tf_publisher-3] [INFO] [1787131668.954902827] [container_tf_publisher]: Static TF from /home/adamliao/work/elfin_humble_ws/install/luggage_description/share/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-3] [INFO] [1787131668.955075379] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412
+[create-5] [INFO] [1787131669.079101785] [ros_gz_sim]: Requested creation of entity.
+[create-5] [INFO] [1787131669.079173308] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-5]: process has finished cleanly [pid 304815]
+[INFO] [create-7]: process started with pid [304944]
+[INFO] [create-8]: process started with pid [304946]
+[INFO] [create-9]: process started with pid [304948]
+[create-7] [INFO] [1787131669.405468064] [ros_gz_sim]: Requested creation of entity.
+[create-7] [INFO] [1787131669.405578059] [ros_gz_sim]: OK creation of entity.
+[create-9] [INFO] [1787131669.505566244] [ros_gz_sim]: Requested creation of entity.
+[create-9] [INFO] [1787131669.505689414] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-7]: process has finished cleanly [pid 304944]
+[create-8] [INFO] [1787131669.605735447] [ros_gz_sim]: Requested creation of entity.
+[create-8] [INFO] [1787131669.605814214] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-9]: process has finished cleanly [pid 304948]
+[INFO] [create-8]: process has finished cleanly [pid 304946]
+[ign gazebo-1] [INFO] [1787131670.884195353] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_state_publisher
+[ign gazebo-1] [INFO] [1787131670.884217094] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_description
+[ign gazebo-1] [INFO] [1787131671.228125969] [gz_ros2_control]: connected to service!! robot_state_publisher asking for robot_description
+[ign gazebo-1] [INFO] [1787131671.228450966] [gz_ros2_control]: Received URDF from param server
+[ign gazebo-1] [INFO] [1787131671.230473744] [gz_ros2_control]: The position_proportional_gain has been set to: 0.1
+[ign gazebo-1] [INFO] [1787131671.230503550] [gz_ros2_control]: Loading joint: elfin_joint1
+[ign gazebo-1] [INFO] [1787131671.230508188] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230510994] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230514931] [gz_ros2_control]: 			 found initial value: 0.000000
+[ign gazebo-1] [INFO] [1787131671.230518297] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230520702] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230523106] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230529659] [gz_ros2_control]: Loading joint: elfin_joint2
+[ign gazebo-1] [INFO] [1787131671.230531722] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230533375] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230535620] [gz_ros2_control]: 			 found initial value: -0.500000
+[ign gazebo-1] [INFO] [1787131671.230537814] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230539497] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230541130] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230544566] [gz_ros2_control]: Loading joint: elfin_joint3
+[ign gazebo-1] [INFO] [1787131671.230546510] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230548103] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230549916] [gz_ros2_control]: 			 found initial value: 0.000000
+[ign gazebo-1] [INFO] [1787131671.230551860] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230553784] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230555326] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230558452] [gz_ros2_control]: Loading joint: elfin_joint4
+[ign gazebo-1] [INFO] [1787131671.230560226] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230561939] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230563532] [gz_ros2_control]: 			 found initial value: 0.000000
+[ign gazebo-1] [INFO] [1787131671.230565335] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230566988] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230568591] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230572298] [gz_ros2_control]: Loading joint: elfin_joint5
+[ign gazebo-1] [INFO] [1787131671.230573991] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230575554] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230577598] [gz_ros2_control]: 			 found initial value: 0.000000
+[ign gazebo-1] [INFO] [1787131671.230579522] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230581135] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230582888] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230586465] [gz_ros2_control]: Loading joint: elfin_joint6
+[ign gazebo-1] [INFO] [1787131671.230588248] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1787131671.230589901] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230591504] [gz_ros2_control]: 			 found initial value: 0.000000
+[ign gazebo-1] [INFO] [1787131671.230593347] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1787131671.230594900] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1787131671.230596343] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1787131671.230628353] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1787131671.230660844] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1787131671.230680069] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1787131671.230681723] [gz_ros2_control]: System Successfully configured!
+[ign gazebo-1] [INFO] [1787131671.230685550] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1787131671.230688455] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1787131671.230691180] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1787131671.230693535] [gz_ros2_control]: Loading controller_manager
+[ign gazebo-1] [INFO] [1787131671.430937576] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-6] [INFO] [1787131671.435236215] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ign gazebo-1] [INFO] [1787131671.435703307] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1787131671.435760073] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mIgnition Gazebo Server v[0m[1;32m6.18.0[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading SDF world file[[0m[1;32m/home/adamliao/work/elfin_humble_ws/install/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf[0m[1;32m].[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing entity system service on [[0m[1;32m/[0m[1;32mentity/system/add[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mCreate service on [[0m[1;32m/world/airport_loading/create[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mRemove service on [[0m[1;32m/world/airport_loading/remove[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose_vector[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLight configuration service on [[0m[1;32m/world/airport_loading/light_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPhysics service on [[0m[1;32m/world/airport_loading/set_physics[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mSphericalCoordinates service on [[0m[1;32m/world/airport_loading/set_spherical_coordinates[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mEnable collision service on [[0m[1;32m/world/airport_loading/enable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mDisable collision service on [[0m[1;32m/world/airport_loading/disable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/visual_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/wheel_slip[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoaded level [[0m[1;32m3[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world controls on [[0m[1;32m/world/airport_loading[0m[1;32m/control], [[0m[1;32m/world/airport_loading[0m[1;32m/control/state] and [[0m[1;32m/world/airport_loading[0m[1;32m/playback/control][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing GUI information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgui/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mWorld [[0m[1;32mairport_loading[0m[1;32m] initialized with [[0m[1;32m1ms[0m[1;32m] physics profile.[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world SDF generation service on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgenerate_world_sdf[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world names on [[0m[1;32m/gazebo/worlds[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path add service on [[0m[1;32m/gazebo/resource_paths/add[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path get service on [[0m[1;32m/gazebo/resource_paths/get[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path resolve service on [[0m[1;32m/gazebo/resource_paths/resolve[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource paths published on [[0m[1;32m/gazebo/resource_paths[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServer control service on [[0m[1;32m/server_control[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /stats, adding root stats topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /clock, adding root clock topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing scene information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing graph information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/graph[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state (async) on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate_async[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [WARN] [1787131671.455177251] [gz_ros2_control]:  Desired controller update period (0.01 s) is slower than the gazebo simulation period (0.001 s).
+[spawner-6] [INFO] [1787131671.478209151] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[INFO] [spawner-6]: process has finished cleanly [pid 304817]
+[INFO] [spawner-10]: process started with pid [305065]
+[ign gazebo-1] [INFO] [1787131671.752820978] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ign gazebo-1] [WARN] [1787131671.757627416] [elfin_arm_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-10] [INFO] [1787131671.771300775] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ign gazebo-1] [INFO] [1787131671.771665095] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1787131671.771734465] [elfin_arm_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ign gazebo-1] [INFO] [1787131671.771743161] [elfin_arm_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ign gazebo-1] [INFO] [1787131671.771752579] [elfin_arm_controller]: Using 'splines' interpolation method.
+[ign gazebo-1] [INFO] [1787131671.772152105] [elfin_arm_controller]: Controller state will be published at 50.00 Hz.
+[ign gazebo-1] [INFO] [1787131671.772975163] [elfin_arm_controller]: Action status changes will be monitored at 20.00 Hz.
+[spawner-10] [INFO] [1787131671.796021539] [spawner_elfin_arm_controller]: [92mConfigured and activated [1melfin_arm_controller[0m
+[INFO] [spawner-10]: process has finished cleanly [pid 305065]

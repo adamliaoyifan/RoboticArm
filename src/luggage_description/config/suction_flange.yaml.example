@@ -1,0 +1,29 @@
+mount:
+  parent_link: elfin_end_link
+  child_link: suction_panel
+  fixed:
+    xyz:
+    - 0.0006
+    - 0.0
+    - 0.0
+    rpy:
+    - -1.5707963
+    - 0.0
+    - 3.14159265
+mesh:
+  files:
+  - p01.stl
+  - p02.stl
+  - p03.stl
+  - p04.stl
+  - p05.stl
+  scale:
+  - 1.0
+  - 1.0
+  - 1.0
+physical:
+  mass: 0.5
+  inertia_approx: assembly_0.18_0.283_0.18
+meta:
+  name: suction_panel
+  version: 2.0.0

@@ -1,0 +1,9 @@
+{"box_gz": null, "label": "before_stage_mid", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.57, "vacuum": {}}
+{"box_gz": null, "label": "before_stage_late", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.576, "vacuum": {}}
+{"box_gz": null, "label": "before_transit", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.581, "vacuum": {}}
+{"box_gz": null, "label": "i3_transit", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.583, "vacuum": {}}
+{"box_gz": null, "label": "before_traverse", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.584, "vacuum": {}}
+{"box_gz": null, "label": "i3_traverse", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.597, "vacuum": {}}
+{"box_gz": null, "label": "before_insert", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.598, "vacuum": {}}
+{"box_gz": null, "label": "before_descend", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.607, "vacuum": {}}
+{"box_gz": null, "label": "before_retreat", "suction": [-0.9863981458877307, -0.21618996842935517, 1.6912669500219673], "suction_err": "", "t_ros": 387.612, "vacuum": {}}

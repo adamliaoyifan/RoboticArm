@@ -1,0 +1,160 @@
+run_id: '20260727_042529'
+baseline_container_xyz:
+- 1.5
+- 0.0
+- 0.0
+union_mode: collision_aware
+sweep:
+  axes:
+  - x
+  - y
+  - z
+  x:
+    min: -0.5
+    max: 0.5
+    step: 0.5
+  y:
+    min: -0.8
+    max: 0.4
+    step: 0.4
+  z:
+    min: -0.4
+    max: 0.4
+    step: 0.4
+  coarse_resolution_xyz: 0.15
+  refine_resolution_xyz: 0.15
+  refine_step: 0.0
+  coarse_yaw_bins:
+  - 0.0
+  yaw_bins:
+  - 0.0
+  - 1.5707963267948966
+coarse:
+  n_offsets: 36
+  n_valid: 36
+  coverage_rate: 0.9088
+refined_kinematic:
+  n_stops: 8
+  coverage_rate: 0.9088
+collision_aware_slices:
+- offset:
+  - 0.5
+  - 0.0
+  - 0.4
+  coverage_rate: 0.0
+  score: 0.0
+- offset:
+  - 0.5
+  - 0.4
+  - 0.4
+  coverage_rate: 0.0981
+  score: 0.2925
+- offset:
+  - 0.5
+  - 0.4
+  - 0.0
+  coverage_rate: 0.2027
+  score: 0.36
+- offset:
+  - 0.5
+  - -0.4
+  - 0.4
+  coverage_rate: 0.0
+  score: 0.0
+- offset:
+  - 0.5
+  - -0.4
+  - 0.0
+  coverage_rate: 0.2346
+  score: 0.3731
+- offset:
+  - 0.5
+  - -0.8
+  - 0.4
+  coverage_rate: 0.0514
+  score: 0.2656
+selected_stops:
+- offset:
+  - 0.5
+  - -0.4
+  - 0.0
+  coverage_rate: 0.2346
+- offset:
+  - 0.5
+  - 0.4
+  - 0.0
+  coverage_rate: 0.2027
+- offset:
+  - 0.5
+  - -0.8
+  - 0.4
+  coverage_rate: 0.0514
+base_movement_envelope:
+  x:
+    min: 0.5
+    max: 0.5
+    count: 3
+  y:
+    min: -0.8
+    max: 0.4
+    count: 3
+  z:
+    min: 0.0
+    max: 0.4
+    count: 3
+union:
+  mode: collision_aware
+  coverage_rate: 0.267
+  covered_cells: 972
+  total_cells: 3640
+  remaining_blind: 2668
+  region_coverage:
+    depth_front: 0.2857142857142857
+    depth_mid: 0.3131868131868132
+    depth_back: 0.22664835164835165
+    lateral_left: 0.3403846153846154
+    lateral_center: 0.34
+    lateral_right: 0.14461538461538462
+    layer_bottom: 0.15535714285714286
+    layer_mid: 0.7232142857142857
+    layer_top: 0.0
+baseline:
+  offset:
+  - 0.5
+  - 0.0
+  - 0.4
+  score:
+    has_opening_anchor: false
+    coverage_rate: 0.0
+    worst_region: 0.0
+    mean_joint_margin: 0.0
+    mean_neighbor_confidence: 0.0
+    score: 0.0
+    reason: no_opening_connected_anchor
+best_fixed:
+  offset:
+  - 0.5
+  - -0.4
+  - 0.0
+  score:
+    has_opening_anchor: true
+    coverage_rate: 0.2346
+    worst_region: 0.0
+    mean_joint_margin: 0.7802
+    mean_neighbor_confidence: 0.8615
+    score: 0.3731
+    region_stats:
+      depth_front: 0.23443223443223443
+      depth_mid: 0.31135531135531136
+      depth_back: 0.1936813186813187
+      lateral_left: 0.3
+      lateral_center: 0.32
+      lateral_right: 0.11538461538461539
+      layer_bottom: 0.13392857142857142
+      layer_mid: 0.65
+      layer_top: 0.0
+    reason: ok
+decision:
+  recommendation: fixed
+  reason: best fixed (23.5%) is sufficient; union gain modest (26.7%)
+computation_time_sec: 10766.2

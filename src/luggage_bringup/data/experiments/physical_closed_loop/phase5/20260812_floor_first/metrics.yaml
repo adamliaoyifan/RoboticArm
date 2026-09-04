@@ -1,0 +1,66 @@
+# Placement-policy metrics (the change under test) and execution metrics
+# (pre-existing blockers that the widened workspace exposed).
+placement_policy:
+  # Every seed offered only floor candidates for the first box, and the smoke
+  # run still offered only floor candidates for the second box after the first
+  # was committed. This is the behaviour the near-ROI rectangle used to make
+  # impossible: it left 0.045 x 0.145 m of floor after box one.
+  first_box_candidates_total: 8
+  first_box_candidates_on_floor: 8
+  second_box_candidates_total: 8       # smoke run, map_revision=2, placed=1
+  second_box_candidates_on_floor: 8
+  atlas_rejected_candidates: 0
+  premature_stack_count: 0
+  committed_container_y_first_box: -0.635   # old near_roi_y_min was -0.59
+
+offline_replay:
+  # 20 sequences x 60 boxes, real slab-top atlas.
+  mvp_three_term_online:
+    reachable_fill_rate: 0.9156
+    items_placed: 9.6
+    floor_items: 3.30
+  b2_proxy_score:
+    reachable_fill_rate: 0.9201
+    items_placed: 9.6
+    floor_items: 3.30
+  b4_production_scorer:
+    reachable_fill_rate: 0.9181
+    items_placed: 9.9
+    floor_items: 3.50
+    floor_coverage: 0.354
+    w_floor_first: 0.60
+
+gazebo_matrix:
+  seeds: 3
+  box_budget: 6
+  clean_run_rate: 0.0
+  mean_placed_count: 0.0
+  mean_floor_items: 0.0
+  mean_floor_coverage_ratio: 0.0
+  mean_volume_utilization: 0.0
+  gt_fallback_count: 0
+  premature_stack_count: 0
+
+gazebo_smoke:
+  # Same build, single seed, before the staging-backup fix.
+  seed: 0
+  placed_count: 1
+  floor_items: 1
+  floor_coverage_ratio: 0.1363
+  volume_utilization: 0.0295
+
+execution_blockers:
+  release_settle_failed:
+    seeds: [0, 1]
+    observed_max_velocity: [0.0313, 0.0302]
+    tolerance: 0.03
+    timeout_sec: 3.0
+  detect_size_mismatch:
+    seeds: [2]
+    errors_m: [0.10, 0.05, 0.04]
+    tolerance: 0.05
+  stage_transit_planning:
+    seeds: [0]   # smoke run, second box
+    classifications:
+      sampler_or_collision_disconnected: 3
+      goal_ik_unavailable: 2

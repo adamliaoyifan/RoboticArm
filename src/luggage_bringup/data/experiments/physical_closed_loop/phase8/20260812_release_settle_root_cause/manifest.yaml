@@ -1,0 +1,42 @@
+schema_version: 2
+phase: phase8_release_settle_root_cause
+run_id: 20260812_release_settle_root_cause
+status: passed
+hypothesis: >-
+  The release-settle gate rejects arms that are not moving. If the residual it
+  measures is flat rather than decaying, more time will not help and the signal
+  itself is wrong; the safety property "the payload is not moving" should then
+  be measured as movement, not as reported velocity.
+git_sha: 0f75484c1eb0a841cac52f89a8035c018b3b4cca
+dirty_diff_sha256: c1eac861b118938d08861f1efdc61bbf56f5d2bd0662a02c9df9f6b11fedd791
+docker_image: sha256:07e442893d2dab63aa58aed0e11c4055d407fe59a66909ec409082dfa323916e
+config_hashes:
+  gazebo_pid_gains: kinematic_setposition_no_pid
+  elfin_arm_control_sim: stopped_velocity_tolerance_0
+command: >-
+  roslaunch luggage_gazebo sim_world.launch spawn_suitcases:=false
+  spawn_at_observe:=true hold_observe_on_start:=true gui:=false;
+  rosrun luggage_planning joint_velocity_trace.py (idle 60 s, pose sweep,
+  joint2 sweep, motion trace, 20x repeatability);
+  pytest luggage_planning/test/test_settle_criterion.py
+seeds: []
+started_at: '2026-08-12T20:26:00+08:00'
+ended_at: '2026-08-12T20:52:00+08:00'
+required_evidence:
+  - raw.log
+  - metrics.yaml
+  - result.yaml
+  - process.md
+  - ablations.yaml
+  - traces/idle_observe_summary.json
+  - traces/j2_sweep_summary.json
+  - traces/moving_trace_summary.json
+  - traces/repeatability_summary.json
+hard_gates:
+  noise_floor_quantified: true
+  root_cause_identified_with_data: true
+  offline_replay_accepts_motionless_arm: true
+  offline_replay_rejects_moving_arm: true
+  repeatability_20_of_20: true
+  settle_elapsed_p95_under_1s: true
+  no_regression_in_existing_tests: true

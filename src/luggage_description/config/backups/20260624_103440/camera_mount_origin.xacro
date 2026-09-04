@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!-- D435 side mount. tune_joints -> fixed URDF (sim_full). Sync via tune GUI Save or sync_camera_mount_config.py -->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:property name="cam_mount_parent" value="elfin_link6"/>
+  <xacro:property name="cam_mount_xyz" value="-0.017202 0.129806 0.101650"/>
+  <xacro:property name="cam_mount_rpy" value="1.57079632679 -1.57079632679 0.00000000000"/>
+</robot>

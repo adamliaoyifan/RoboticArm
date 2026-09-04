@@ -1,0 +1,37 @@
+schema_version: 1
+atlas: /home/adamliao/work/RobotArm/elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz
+seeds: 20
+length: 60
+scenarios:
+- label: REAL atlas (configured slab-top floor)
+  b0:
+    n_sequences: 20
+    reachable_fill_rate_mean: 0.0
+    reachable_fill_rate_stdev: 0.0
+    reachable_fill_rate_min: 0.0
+    reachable_fill_rate_max: 0.0
+    items_placed_mean: 0
+    floor_items_mean: 0
+    floor_coverage_mean: 0.0
+    reachable_volume_ratio: 0.18489983527628745
+  b2:
+    n_sequences: 20
+    reachable_fill_rate_mean: 0.92014939309057
+    reachable_fill_rate_stdev: 0.09680732247469842
+    reachable_fill_rate_min: 0.7708683473389357
+    reachable_fill_rate_max: 1.1109866168689704
+    items_placed_mean: 9.6
+    floor_items_mean: 3.3
+    floor_coverage_mean: 0.3591626068885634
+    reachable_volume_ratio: 0.18489983527628745
+  b3: null
+  b4:
+    n_sequences: 20
+    reachable_fill_rate_mean: 0.9180952380952384
+    reachable_fill_rate_stdev: 0.08907680265788714
+    reachable_fill_rate_min: 0.7815748521630878
+    reachable_fill_rate_max: 1.0696545284780583
+    items_placed_mean: 9.95
+    floor_items_mean: 3.5
+    floor_coverage_mean: 0.35447824753858215
+    reachable_volume_ratio: 0.18489983527628745

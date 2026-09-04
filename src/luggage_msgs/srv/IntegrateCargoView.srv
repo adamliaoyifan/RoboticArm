@@ -1,0 +1,7 @@
+# Integrate latest depth point cloud at current settled arm pose.
+int32 frame_count
+---
+bool success
+string message
+float64 unknown_ratio
+float64 occupancy_ratio

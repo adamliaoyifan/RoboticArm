@@ -1,0 +1,20 @@
+{
+  "planning_frame": "world",
+  "pose_base_link": {
+    "position": [
+      -5.509807655019861e-06,
+      -1.4999999999898805,
+      -0.20499999999999996
+    ],
+    "yaw": -1.5708
+  },
+  "pose_world": {
+    "position": [
+      1.5,
+      0.0,
+      0.655
+    ],
+    "yaw": 0.0
+  },
+  "source": "fixed_floor_center"
+}

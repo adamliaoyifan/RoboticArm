@@ -1,0 +1,161 @@
+schema_version: 1
+generated_at: '2026-08-11T07:02:53.138863Z'
+slab_top_z: 0.53
+frame: container_link
+resolution: 0.15
+scene_tf_path: /catkin_ws/src/luggage_description/config/scene_tf.yaml
+scene_tf_sha256: 9e2b100af9be1a0192b26b65c17e43ee5651b7c5d234eb8be7d6c4dffc3ffeb0
+robot_description_sha256: bcc437dce7eae0aad768d428a8fb4d10898c13e951c49e028468f88e8087aba7
+ik_link: suction_contact_frame
+ik_group: elfin_arm
+avoid_collisions_for_ik: false
+state_validity_check: true
+results:
+- box: carryon
+  size:
+  - 0.55
+  - 0.4
+  - 0.25
+  ix: 1
+  container_x: -0.52
+  container_y: 0.14
+  contact_z: 0.78
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: carryon
+  size:
+  - 0.55
+  - 0.4
+  - 0.25
+  ix: 3
+  container_x: -0.22
+  container_y: 0.14
+  contact_z: 0.78
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: carryon
+  size:
+  - 0.55
+  - 0.4
+  - 0.25
+  ix: 5
+  container_x: 0.08
+  container_y: 0.14
+  contact_z: 0.78
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: carryon
+  size:
+  - 0.55
+  - 0.4
+  - 0.25
+  ix: 7
+  container_x: 0.38
+  container_y: 0.14
+  contact_z: 0.78
+  ik_solved: false
+  state_valid: false
+  contacts: []
+- box: standard
+  size:
+  - 0.7
+  - 0.45
+  - 0.28
+  ix: 1
+  container_x: -0.52
+  container_y: 0.14
+  contact_z: 0.81
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: standard
+  size:
+  - 0.7
+  - 0.45
+  - 0.28
+  ix: 3
+  container_x: -0.22
+  container_y: 0.14
+  contact_z: 0.81
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: standard
+  size:
+  - 0.7
+  - 0.45
+  - 0.28
+  ix: 5
+  container_x: 0.08
+  container_y: 0.14
+  contact_z: 0.81
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: standard
+  size:
+  - 0.7
+  - 0.45
+  - 0.28
+  ix: 7
+  container_x: 0.38
+  container_y: 0.14
+  contact_z: 0.81
+  ik_solved: false
+  state_valid: false
+  contacts: []
+- box: large
+  size:
+  - 0.8
+  - 0.5
+  - 0.32
+  ix: 1
+  container_x: -0.52
+  container_y: 0.14
+  contact_z: 0.85
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: large
+  size:
+  - 0.8
+  - 0.5
+  - 0.32
+  ix: 3
+  container_x: -0.22
+  container_y: 0.14
+  contact_z: 0.85
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: large
+  size:
+  - 0.8
+  - 0.5
+  - 0.32
+  ix: 5
+  container_x: 0.08
+  container_y: 0.14
+  contact_z: 0.85
+  ik_solved: true
+  state_valid: true
+  contacts: []
+- box: large
+  size:
+  - 0.8
+  - 0.5
+  - 0.32
+  ix: 7
+  container_x: 0.38
+  container_y: 0.14
+  contact_z: 0.85
+  ik_solved: false
+  state_valid: false
+  contacts: []
+summary:
+  total: 12
+  ik_solved: 9
+  valid: 9

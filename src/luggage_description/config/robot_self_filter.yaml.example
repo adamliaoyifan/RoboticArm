@@ -1,0 +1,68 @@
+# Robot self point cloud filter (base frame geometric bodies).
+# Used by cargo_volume_mapper and world_scene_mapper before voxel integration.
+# Bodies are defined in each link's local frame; padding expands all dimensions.
+
+self_filter:
+  enabled: true
+  base_frame: elfin_base_link
+  padding: 0.03
+  bodies:
+    - name: link1
+      frame: elfin_link1
+      type: sphere
+      center: [0.0, 0.0, 0.0]
+      radius: 0.14
+
+    - name: link2
+      frame: elfin_link2
+      type: box
+      center: [0.0, 0.0, 0.0]
+      size: [0.18, 0.22, 0.18]
+
+    - name: link3
+      frame: elfin_link3
+      type: box
+      center: [0.0, 0.0, 0.0]
+      size: [0.20, 0.24, 0.18]
+
+    - name: link4
+      frame: elfin_link4
+      type: box
+      center: [0.0, 0.0, 0.0]
+      size: [0.16, 0.16, 0.16]
+
+    - name: link5
+      frame: elfin_link5
+      type: sphere
+      center: [0.0, 0.0, 0.0]
+      radius: 0.10
+
+    - name: wrist
+      frame: elfin_link6
+      type: sphere
+      center: [0.0, 0.0, 0.0]
+      radius: 0.12
+
+    - name: end_link
+      frame: elfin_end_link
+      type: sphere
+      center: [0.0, 0.0, 0.0]
+      radius: 0.08
+
+    - name: suction_panel
+      frame: suction_panel
+      type: box
+      center: [0.0, -0.146, 0.0]
+      size: [0.22, 0.33, 0.22]
+
+    - name: eef_mount_adapter
+      frame: eef_mount_adapter
+      type: box
+      center: [0.0225, 0.0451, 0.0296]
+      size: [0.18, 0.16, 0.12]
+
+    - name: camera_link
+      frame: camera_link
+      type: box
+      center: [0.0, -0.0175, 0.0]
+      size: [0.05, 0.12, 0.06]

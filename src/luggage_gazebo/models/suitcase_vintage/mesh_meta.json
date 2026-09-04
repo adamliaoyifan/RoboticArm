@@ -1,0 +1,10 @@
+{
+  "id": "suitcase_vintage",
+  "native_wdh_m": [
+    0.5122250175476074,
+    0.42440973825752737,
+    0.18919019937515263
+  ],
+  "unit_aabb": true,
+  "convention": "X=width Y=depth Z=height, origin at AABB center"
+}

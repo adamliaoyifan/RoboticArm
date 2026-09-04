@@ -1,0 +1,16 @@
+frame pairing: color+depth from same rgbd render, matched by header stamp
+classification counts use TF world<-camera_depth_optical_frame at frame stamp
+B=box-top(1.115±0.02) P=platform(0.86±0.02) M=mystery(1.13-1.45) n=panel(1.45-1.8) g=ground(<0.5)
+
+frame_00 stamp=73563.337  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_01 stamp=73563.370  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_02 stamp=73563.403  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_03 stamp=73563.436  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_04 stamp=73563.469  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_05 stamp=73563.502  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_06 stamp=73563.535  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_07 stamp=73563.568  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_08 stamp=73563.601  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_09 stamp=73563.634  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_10 stamp=73563.667  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200
+frame_11 stamp=73563.700  B=12260 P=3741 M=93493 n=12253 g=6256  finite=185858/307200

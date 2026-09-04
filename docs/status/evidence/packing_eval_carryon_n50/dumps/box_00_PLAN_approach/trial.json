@@ -1,0 +1,25 @@
+{
+  "catalog_id": "carryon",
+  "descend_fraction": null,
+  "drift": null,
+  "err_xy": null,
+  "err_yaw": null,
+  "err_z": null,
+  "extras": {
+    "plan_approach": "ExecuteTrajectory error_code=-4",
+    "scene_add": "applied"
+  },
+  "fail_code": "PLAN_approach",
+  "index": 0,
+  "inside_inner_box": null,
+  "lost_payload": false,
+  "pitch": null,
+  "place_state": "INIT",
+  "roll": null,
+  "segments_planned": 0,
+  "segments_succeeded": 0,
+  "staging_degenerate": false,
+  "used_ompl_fallback_descend": null,
+  "vac_attach": null,
+  "wall_time_sec": 6.348685026168823
+}

@@ -1,0 +1,29 @@
+<launch>
+  <!-- Unified EOF mount stack tune: calibrate all three TF layers in one GUI.
+       Layer 1: elfin_end_link -> suction_panel
+       Layer 2: suction_panel -> eef_mount_adapter (arm_realsense connector)
+       Layer 3: eef_mount_adapter -> camera_link
+       Uses the tune URDF with 18 tune joints (3 x 6-DOF chains). -->
+  <arg name="move_to_observe_on_start" default="true"/>
+  <arg name="software_gl" default="true" doc="Use Mesa software GL for PyQt in Docker"/>
+  <!-- Arm model selector: s05 | s10 | s20 | s30 (needs elfin_<model>_with_camera_tune URDF). -->
+  <arg name="arm_model" default="s20"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world_tune.launch">
+    <arg name="arm_model" value="$(arg arm_model)"/>
+    <arg name="spawn_at_observe" value="$(arg move_to_observe_on_start)"/>
+  </include>
+
+  <!-- Initialize arm to observe pose and apply mount joint defaults from YAML. -->
+  <node pkg="luggage_bringup" type="camera_mount_tune_init.py" name="camera_mount_tune_init" output="screen">
+    <param name="set_observe_on_start" value="$(arg move_to_observe_on_start)"/>
+    <param name="apply_mount_on_start" value="true"/>
+    <param name="gazebo_wait_timeout" value="120.0"/>
+    <param name="controller_wait_timeout" value="120.0"/>
+  </node>
+
+  <!-- Unified 3-layer tune GUI. -->
+  <node pkg="luggage_bringup" type="eof_mount_stack_tune_gui.py" name="eof_mount_stack_tune_gui" output="screen">
+    <env if="$(arg software_gl)" name="LIBGL_ALWAYS_SOFTWARE" value="1"/>
+  </node>
+</launch>

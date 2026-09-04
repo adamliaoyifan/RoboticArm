@@ -1,0 +1,44 @@
+{
+  "box_budget": 3,
+  "clean_run_rate": 0.0,
+  "gt_fallback_count": 0,
+  "log_level": "warn",
+  "mean_floor_coverage_ratio": 0.1363,
+  "mean_floor_items": 1.0,
+  "mean_placed_count": 1.0,
+  "mean_volume_utilization": 0.0295,
+  "passed": false,
+  "post_verify": false,
+  "premature_stack_count": 0,
+  "run_count": 1,
+  "runs": [
+    {
+      "box_budget": 3,
+      "capacity_exhausted": false,
+      "commit_count": 1,
+      "elapsed_sec": 445.547,
+      "failure_messages": [
+        "place motion failed: Planning failed for stage_mid (error -6) after 3 attempts [settle TIMEOUT 3.01s/0.0096 tool_down(suction rp=0.087,yaw=3.142); classification=goal_ik_unavailable; start: valid camera=12.25deg(ok<=18.00) suction=0.00deg(ok<=5.00); goal: IK unavailable]",
+        "place motion failed: Planning failed for stage_mid (error -6) after 3 attempts [settle TIMEOUT 3.00s/0.0096 tool_down(suction rp=0.087,yaw=3.142); classification=goal_ik_unavailable; start: valid camera=12.25deg(ok<=18.00) suction=0.00deg(ok<=5.00); goal: IK unavailable]",
+        "place motion failed: Planning failed for stage_mid (error -6) after 3 attempts [settle TIMEOUT 3.01s/0.0096 tool_down(suction rp=0.087,yaw=3.142); classification=goal_ik_unavailable; start: valid camera=12.25deg(ok<=18.00) suction=0.00deg(ok<=5.00); goal: IK unavailable]",
+        "place motion failed: Planning failed for stage_mid (error -6) after 3 attempts [settle TIMEOUT 3.01s/0.0096 tool_down(suction rp=0.087,yaw=3.142); classification=goal_ik_unavailable; start: valid camera=12.25deg(ok<=18.00) suction=0.00deg(ok<=5.00); goal: IK unavailable]",
+        "orchestrator finished"
+      ],
+      "floor_coverage_ratio": 0.1363,
+      "floor_items": 1,
+      "gt_fallback_count": 0,
+      "log_path": "/catkin_ws/src/luggage_bringup/data/experiments/physical_closed_loop/phase5_loglevel/warn/seed_000_boxes_03.log",
+      "perception_estimate_count": 0,
+      "placed_count": 1,
+      "placed_volume_m3": 0.128,
+      "premature_stack_count": 0,
+      "return_code": 0,
+      "seed": 0,
+      "success": false,
+      "timed_out": false,
+      "volume_utilization": 0.0295
+    }
+  ],
+  "schema_version": 2,
+  "successful_runs": 0
+}

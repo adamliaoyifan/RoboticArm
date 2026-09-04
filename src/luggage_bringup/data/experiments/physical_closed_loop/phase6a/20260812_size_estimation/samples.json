@@ -1,0 +1,1333 @@
+{
+  "gates": {
+    "center_xy_error": true,
+    "conservative_commit": true,
+    "footprint_error": true,
+    "height_error": true,
+    "no_catalog_snapping": true,
+    "plausibility": true,
+    "success_rate": true,
+    "yaw_error": true
+  },
+  "metrics": {
+    "catalog_snap_count": 0,
+    "center_xy_error_p95_m": 0.004879847930139861,
+    "committed_covers_true_rate": 1.0,
+    "height_error_p95_m": 0.00028528729990478786,
+    "in_envelope_rate": 1.0,
+    "major_error_mean_m": -0.003022886402165976,
+    "major_error_p95_m": 0.009525123245026529,
+    "minor_error_p95_m": 0.007462358904773371,
+    "sample_count": 50,
+    "success_count": 50,
+    "success_rate": 1.0,
+    "xy_margin_m": 0.02,
+    "yaw_error_p95_rad_mod_pi": 0.033272570786257095,
+    "z_margin_m": 0.01
+  },
+  "passed": true,
+  "samples": [
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6336,
+        0.4878,
+        0.301
+      ],
+      "height_error_m": -0.0002321171739982364,
+      "in_envelope": true,
+      "index": 0,
+      "major_error_m": -0.010037561586175525,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.00725570108314888,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6436,
+        0.4951,
+        0.3012
+      ],
+      "xy_error_m": 0.0013114100638237922,
+      "yaw_error_rad_mod_pi": 0.028356137847387008
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7363,
+        0.4002,
+        0.2585
+      ],
+      "height_error_m": -5.766072618818008e-05,
+      "in_envelope": true,
+      "index": 1,
+      "major_error_m": -0.005653486283716758,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0038842357551677753,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.742,
+        0.4041,
+        0.2586
+      ],
+      "xy_error_m": 0.0017110380588873319,
+      "yaw_error_rad_mod_pi": 0.007577091007783476
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.742,
+        0.4759,
+        0.3149
+      ],
+      "height_error_m": 3.158715678780455e-05,
+      "in_envelope": true,
+      "index": 2,
+      "major_error_m": -0.004030562485127898,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0021947284640242426,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.746,
+        0.4781,
+        0.3149
+      ],
+      "xy_error_m": 0.004995441554895458,
+      "yaw_error_rad_mod_pi": 0.016811338809200382
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7566,
+        0.489,
+        0.2663
+      ],
+      "height_error_m": 1.714996937351998e-06,
+      "in_envelope": true,
+      "index": 3,
+      "major_error_m": -0.00011951804418997014,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.004017850456606409,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7567,
+        0.485,
+        0.2663
+      ],
+      "xy_error_m": 0.0014660544069072443,
+      "yaw_error_rad_mod_pi": 0.007164448285754687
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5991,
+        0.409,
+        0.2971
+      ],
+      "height_error_m": -9.454868090846835e-05,
+      "in_envelope": true,
+      "index": 4,
+      "major_error_m": -0.003460243641207339,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.000679325881266124,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6025,
+        0.4083,
+        0.2972
+      ],
+      "xy_error_m": 0.003627152841809171,
+      "yaw_error_rad_mod_pi": 0.005753910347242152
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6475,
+        0.4387,
+        0.2581
+      ],
+      "height_error_m": -1.430668490282061e-05,
+      "in_envelope": true,
+      "index": 5,
+      "major_error_m": -0.006103303236985269,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0076314425770115935,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6536,
+        0.4463,
+        0.2581
+      ],
+      "xy_error_m": 0.004115184078780996,
+      "yaw_error_rad_mod_pi": 0.006035292863980535
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6395,
+        0.4453,
+        0.2686
+      ],
+      "height_error_m": 2.0913810812706046e-05,
+      "in_envelope": true,
+      "index": 6,
+      "major_error_m": -0.004922600593652904,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.001680031635182655,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6444,
+        0.447,
+        0.2686
+      ],
+      "xy_error_m": 0.0011059907830270113,
+      "yaw_error_rad_mod_pi": 0.0031793221388075723
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.751,
+        0.4072,
+        0.2986
+      ],
+      "height_error_m": -0.00011732190783397822,
+      "in_envelope": true,
+      "index": 7,
+      "major_error_m": -0.0011031839503833352,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.0031263209711457907,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7521,
+        0.4041,
+        0.2987
+      ],
+      "xy_error_m": 0.0010608626275566656,
+      "yaw_error_rad_mod_pi": 0.001526031185718468
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6847,
+        0.4081,
+        0.2533
+      ],
+      "height_error_m": -0.0001733290777983787,
+      "in_envelope": true,
+      "index": 8,
+      "major_error_m": -0.003954295817389708,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.005125524099976353,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6886,
+        0.4132,
+        0.2534
+      ],
+      "xy_error_m": 0.0018826252612342837,
+      "yaw_error_rad_mod_pi": 0.008776692446621813
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6296,
+        0.4948,
+        0.2658
+      ],
+      "height_error_m": 0.0002866342268764699,
+      "in_envelope": true,
+      "index": 9,
+      "major_error_m": -0.004263267701255513,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0010038919842417227,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6339,
+        0.4958,
+        0.2655
+      ],
+      "xy_error_m": 0.0029773206354309256,
+      "yaw_error_rad_mod_pi": 0.004129010539297262
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6426,
+        0.4077,
+        0.2921
+      ],
+      "height_error_m": -2.518094254111425e-05,
+      "in_envelope": true,
+      "index": 10,
+      "major_error_m": -0.004283001926748464,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0007639115799224494,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6469,
+        0.4084,
+        0.2922
+      ],
+      "xy_error_m": 0.0003437697386661646,
+      "yaw_error_rad_mod_pi": 0.006697533983080694
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6109,
+        0.4587,
+        0.3195
+      ],
+      "height_error_m": 0.00027117336907955814,
+      "in_envelope": true,
+      "index": 11,
+      "major_error_m": -0.0005429236976370877,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.001161772387771709,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6115,
+        0.4599,
+        0.3192
+      ],
+      "xy_error_m": 0.002647718399218135,
+      "yaw_error_rad_mod_pi": 0.011554245124855245
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6385,
+        0.4826,
+        0.2891
+      ],
+      "height_error_m": 0.0002836410558282876,
+      "in_envelope": true,
+      "index": 12,
+      "major_error_m": -0.011430084493924908,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.005037000969693006,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.65,
+        0.4876,
+        0.2888
+      ],
+      "xy_error_m": 0.0027609695057526154,
+      "yaw_error_rad_mod_pi": 0.011864538603966291
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7413,
+        0.4754,
+        0.2819
+      ],
+      "height_error_m": 0.00011448557408577642,
+      "in_envelope": true,
+      "index": 13,
+      "major_error_m": 0.008423791587955365,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.009600626612833507,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7329,
+        0.485,
+        0.2818
+      ],
+      "xy_error_m": 0.0017043916895141471,
+      "yaw_error_rad_mod_pi": 0.010154545512507484
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6327,
+        0.4106,
+        0.2776
+      ],
+      "height_error_m": -0.0001037000536752708,
+      "in_envelope": true,
+      "index": 14,
+      "major_error_m": 0.001125701482849295,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0065559960406637585,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6316,
+        0.4171,
+        0.2777
+      ],
+      "xy_error_m": 0.0010332902448464485,
+      "yaw_error_rad_mod_pi": 0.03434866743399022
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5691,
+        0.4825,
+        0.309
+      ],
+      "height_error_m": -4.067583367428629e-05,
+      "in_envelope": true,
+      "index": 15,
+      "major_error_m": -0.0029562938966823937,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0020965776298141336,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.572,
+        0.4846,
+        0.309
+      ],
+      "xy_error_m": 0.0036387549338540407,
+      "yaw_error_rad_mod_pi": 0.004447209930557694
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6827,
+        0.4614,
+        0.2763
+      ],
+      "height_error_m": 0.0002464462745181417,
+      "in_envelope": true,
+      "index": 16,
+      "major_error_m": 7.281568080352852e-05,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.002791402543613597,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6826,
+        0.4586,
+        0.2761
+      ],
+      "xy_error_m": 0.0039907053613590015,
+      "yaw_error_rad_mod_pi": 0.0035338502676812824
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6561,
+        0.4148,
+        0.2782
+      ],
+      "height_error_m": 0.0001061349587341831,
+      "in_envelope": true,
+      "index": 17,
+      "major_error_m": -0.002289170408071972,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.004619720886942291,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6584,
+        0.4194,
+        0.2781
+      ],
+      "xy_error_m": 0.002711995825731179,
+      "yaw_error_rad_mod_pi": 0.01010539321051218
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6811,
+        0.4902,
+        0.2669
+      ],
+      "height_error_m": -8.39454262109296e-05,
+      "in_envelope": true,
+      "index": 18,
+      "major_error_m": 0.004328750582992091,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.006519180704564087,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6767,
+        0.4968,
+        0.2669
+      ],
+      "xy_error_m": 0.004738566833216353,
+      "yaw_error_rad_mod_pi": 0.0006358313176950681
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7057,
+        0.4428,
+        0.2809
+      ],
+      "height_error_m": 0.00016094831342938765,
+      "in_envelope": true,
+      "index": 19,
+      "major_error_m": -0.00698911123441559,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.0030220232825646787,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7127,
+        0.4398,
+        0.2807
+      ],
+      "xy_error_m": 0.0009897270505663286,
+      "yaw_error_rad_mod_pi": 0.015895984355897674
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.597,
+        0.4778,
+        0.2688
+      ],
+      "height_error_m": 0.00017446969315099148,
+      "in_envelope": true,
+      "index": 20,
+      "major_error_m": -0.007472216619100358,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.003051730852418444,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6045,
+        0.4808,
+        0.2686
+      ],
+      "xy_error_m": 0.0027524315167304437,
+      "yaw_error_rad_mod_pi": 0.013478254450083006
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6692,
+        0.4593,
+        0.252
+      ],
+      "height_error_m": 0.00012073633638154391,
+      "in_envelope": true,
+      "index": 21,
+      "major_error_m": -0.0010764270238465823,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0033660473862431872,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6703,
+        0.4627,
+        0.2519
+      ],
+      "xy_error_m": 0.0028588268068807246,
+      "yaw_error_rad_mod_pi": 0.0033883750608829644
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7882,
+        0.4944,
+        0.2997
+      ],
+      "height_error_m": 0.00021287418805154834,
+      "in_envelope": true,
+      "index": 22,
+      "major_error_m": -0.003438106224375348,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0033182770791911342,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7917,
+        0.4977,
+        0.2995
+      ],
+      "xy_error_m": 0.0008636247208101099,
+      "yaw_error_rad_mod_pi": 0.003170376312194634
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5671,
+        0.4323,
+        0.2625
+      ],
+      "height_error_m": -6.227771383776615e-05,
+      "in_envelope": true,
+      "index": 23,
+      "major_error_m": -0.0027259655853405507,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.00013239043915386217,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.5698,
+        0.4325,
+        0.2626
+      ],
+      "xy_error_m": 0.0032974905224823475,
+      "yaw_error_rad_mod_pi": 0.01609853661405669
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6499,
+        0.4297,
+        0.2883
+      ],
+      "height_error_m": -9.245173480265656e-05,
+      "in_envelope": true,
+      "index": 24,
+      "major_error_m": -0.004226246827632507,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.001024749390160895,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6541,
+        0.4286,
+        0.2883
+      ],
+      "xy_error_m": 0.0020344420656426385,
+      "yaw_error_rad_mod_pi": 0.004235133185887074
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7807,
+        0.4566,
+        0.2827
+      ],
+      "height_error_m": 0.00022746918598753885,
+      "in_envelope": true,
+      "index": 25,
+      "major_error_m": -0.006945882428369465,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.001443998804440405,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7876,
+        0.458,
+        0.2824
+      ],
+      "xy_error_m": 0.0052104182456404816,
+      "yaw_error_rad_mod_pi": 0.0014989328391847856
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5968,
+        0.4567,
+        0.2662
+      ],
+      "height_error_m": 7.573474760264043e-05,
+      "in_envelope": true,
+      "index": 26,
+      "major_error_m": 0.0016332256454500982,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.0006829179076432434,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.5952,
+        0.456,
+        0.2661
+      ],
+      "xy_error_m": 0.0028217075230269496,
+      "yaw_error_rad_mod_pi": 0.03683793141127202
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6218,
+        0.4968,
+        0.2767
+      ],
+      "height_error_m": 0.00015871890907681596,
+      "in_envelope": true,
+      "index": 27,
+      "major_error_m": 0.002420448737728176,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.002739252412525983,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6193,
+        0.4996,
+        0.2765
+      ],
+      "xy_error_m": 0.0016357545851701579,
+      "yaw_error_rad_mod_pi": 0.012560193397431085
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5839,
+        0.4832,
+        0.3107
+      ],
+      "height_error_m": 2.964240602643109e-06,
+      "in_envelope": true,
+      "index": 28,
+      "major_error_m": -0.005985858194595628,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.0008397718017150169,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.5899,
+        0.4824,
+        0.3107
+      ],
+      "xy_error_m": 0.004424746809034206,
+      "yaw_error_rad_mod_pi": 0.03195734155013885
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6322,
+        0.4933,
+        0.2621
+      ],
+      "height_error_m": 0.0002917406095477859,
+      "in_envelope": true,
+      "index": 29,
+      "major_error_m": -0.002152861162577069,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0031917600167583604,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6344,
+        0.4965,
+        0.2618
+      ],
+      "xy_error_m": 0.00021959398685814107,
+      "yaw_error_rad_mod_pi": 0.008624315775901935
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6831,
+        0.4712,
+        0.258
+      ],
+      "height_error_m": 0.00011263604891087464,
+      "in_envelope": true,
+      "index": 30,
+      "major_error_m": -0.0024653615797158857,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0009234802472357084,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6856,
+        0.4721,
+        0.2579
+      ],
+      "xy_error_m": 0.0005431302515191242,
+      "yaw_error_rad_mod_pi": 0.01629773694103166
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6672,
+        0.4562,
+        0.2603
+      ],
+      "height_error_m": 0.0001782298001359317,
+      "in_envelope": true,
+      "index": 31,
+      "major_error_m": -0.009041042196056615,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0024847973730147688,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6762,
+        0.4587,
+        0.2601
+      ],
+      "xy_error_m": 0.004561199940183706,
+      "yaw_error_rad_mod_pi": 0.011770665570380546
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6612,
+        0.4896,
+        0.2686
+      ],
+      "height_error_m": -0.00010884059230570342,
+      "in_envelope": true,
+      "index": 32,
+      "major_error_m": -0.001394706441051996,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.000987527875848715,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6625,
+        0.4905,
+        0.2687
+      ],
+      "xy_error_m": 0.0015596955059804822,
+      "yaw_error_rad_mod_pi": 0.006884926551278037
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7073,
+        0.4493,
+        0.2634
+      ],
+      "height_error_m": 3.9376900022536354e-05,
+      "in_envelope": true,
+      "index": 33,
+      "major_error_m": 0.001996717795754166,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.001503637455531559,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7053,
+        0.4508,
+        0.2634
+      ],
+      "xy_error_m": 0.0031659488712244125,
+      "yaw_error_rad_mod_pi": 0.0026519872341412842
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.753,
+        0.4748,
+        0.2795
+      ],
+      "height_error_m": -7.28256212421674e-05,
+      "in_envelope": true,
+      "index": 34,
+      "major_error_m": -0.005116832566494645,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.000618898556355385,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7581,
+        0.4754,
+        0.2796
+      ],
+      "xy_error_m": 0.0022237047671090997,
+      "yaw_error_rad_mod_pi": 0.014941318734211118
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5545,
+        0.4011,
+        0.2971
+      ],
+      "height_error_m": -0.00027294308766145914,
+      "in_envelope": true,
+      "index": 35,
+      "major_error_m": -0.005459991888683069,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.006144295807795963,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.56,
+        0.4072,
+        0.2973
+      ],
+      "xy_error_m": 0.002753442116058733,
+      "yaw_error_rad_mod_pi": 0.0024226662856420395
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7311,
+        0.4031,
+        0.2642
+      ],
+      "height_error_m": -6.357197771833523e-05,
+      "in_envelope": true,
+      "index": 36,
+      "major_error_m": -0.005371717734426129,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.005511777374735405,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7365,
+        0.4086,
+        0.2643
+      ],
+      "xy_error_m": 0.0015661300801572897,
+      "yaw_error_rad_mod_pi": 0.016135025145037275
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.667,
+        0.4219,
+        0.3043
+      ],
+      "height_error_m": -0.00011951719338082478,
+      "in_envelope": true,
+      "index": 37,
+      "major_error_m": -0.009327010303154415,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0020877278789302456,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6763,
+        0.424,
+        0.3044
+      ],
+      "xy_error_m": 0.0030050722818898276,
+      "yaw_error_rad_mod_pi": 0.019745004774225805
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5824,
+        0.4292,
+        0.2644
+      ],
+      "height_error_m": -0.00011833162584728996,
+      "in_envelope": true,
+      "index": 38,
+      "major_error_m": -0.0014804308341018757,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0058572892423539025,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.5838,
+        0.435,
+        0.2645
+      ],
+      "xy_error_m": 0.0024511202252261543,
+      "yaw_error_rad_mod_pi": 0.011627399776264936
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6813,
+        0.4287,
+        0.2924
+      ],
+      "height_error_m": 8.234859285027873e-05,
+      "in_envelope": true,
+      "index": 39,
+      "major_error_m": -0.0026185932176252535,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.005712973089588569,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6839,
+        0.4344,
+        0.2923
+      ],
+      "xy_error_m": 0.0034334603014089843,
+      "yaw_error_rad_mod_pi": 0.007812586833214175
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7265,
+        0.4707,
+        0.3176
+      ],
+      "height_error_m": 0.000124621102363498,
+      "in_envelope": true,
+      "index": 40,
+      "major_error_m": -0.0009994602295259059,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.002108735396442296,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7275,
+        0.4728,
+        0.3175
+      ],
+      "xy_error_m": 0.002199415937656269,
+      "yaw_error_rad_mod_pi": 0.006274417472918026
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7566,
+        0.433,
+        0.3044
+      ],
+      "height_error_m": 4.4486853327474485e-05,
+      "in_envelope": true,
+      "index": 41,
+      "major_error_m": -0.009687215652012804,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0014506733667367655,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7663,
+        0.4345,
+        0.3043
+      ],
+      "xy_error_m": 0.004692591784864635,
+      "yaw_error_rad_mod_pi": 0.005060472919508163
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7883,
+        0.4281,
+        0.2581
+      ],
+      "height_error_m": 2.8874923189481372e-05,
+      "in_envelope": true,
+      "index": 42,
+      "major_error_m": 0.0006875082053455772,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.002118058412269974,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7876,
+        0.4302,
+        0.2581
+      ],
+      "xy_error_m": 0.001198818851287625,
+      "yaw_error_rad_mod_pi": 0.0033617793982038237
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6385,
+        0.4136,
+        0.3056
+      ],
+      "height_error_m": -0.00011697518810893648,
+      "in_envelope": true,
+      "index": 43,
+      "major_error_m": 0.00042389489243177536,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.002615364683736965,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6381,
+        0.4162,
+        0.3057
+      ],
+      "xy_error_m": 0.0018301024545939284,
+      "yaw_error_rad_mod_pi": 0.00022471310412019996
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.5759,
+        0.4203,
+        0.3145
+      ],
+      "height_error_m": 2.0879060378176106e-05,
+      "in_envelope": true,
+      "index": 44,
+      "major_error_m": -0.007730565514398879,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0041683030866685455,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.5836,
+        0.4244,
+        0.3145
+      ],
+      "xy_error_m": 0.006650551876814037,
+      "yaw_error_rad_mod_pi": 0.03810046608260288
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6382,
+        0.4203,
+        0.2886
+      ],
+      "height_error_m": -0.00036256643692872403,
+      "in_envelope": true,
+      "index": 45,
+      "major_error_m": -0.006101765892846833,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.00023112375111838945,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6443,
+        0.42,
+        0.289
+      ],
+      "xy_error_m": 0.0005237283291747122,
+      "yaw_error_rad_mod_pi": 0.0013701084422362956
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6578,
+        0.501,
+        0.3014
+      ],
+      "height_error_m": 1.5149846643691678e-05,
+      "in_envelope": true,
+      "index": 46,
+      "major_error_m": 0.002227531424724094,
+      "matched_catalog_id": null,
+      "minor_error_m": 0.0012124120057310783,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6556,
+        0.4998,
+        0.3014
+      ],
+      "xy_error_m": 0.004050362844743631,
+      "yaw_error_rad_mod_pi": 0.014128960444373607
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.6652,
+        0.4203,
+        0.2801
+      ],
+      "height_error_m": -7.039294528515816e-05,
+      "in_envelope": true,
+      "index": 47,
+      "major_error_m": -0.0019197529504653144,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.004956604143009968,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.6672,
+        0.4252,
+        0.2801
+      ],
+      "xy_error_m": 0.0025149871116625397,
+      "yaw_error_rad_mod_pi": 0.008166490922977178
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7521,
+        0.3992,
+        0.2606
+      ],
+      "height_error_m": 0.00022425891856309166,
+      "in_envelope": true,
+      "index": 48,
+      "major_error_m": 0.002890225594241902,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.0008020335748470386,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7492,
+        0.4,
+        0.2603
+      ],
+      "xy_error_m": 0.0014726967407561163,
+      "yaw_error_rad_mod_pi": 0.0035945896668251208
+    },
+    {
+      "committed_covers_height": true,
+      "committed_covers_major": true,
+      "committed_covers_minor": true,
+      "confidence": 1.0,
+      "estimated": [
+        0.7176,
+        0.4806,
+        0.2879
+      ],
+      "height_error_m": 0.00011218070703450378,
+      "in_envelope": true,
+      "index": 49,
+      "major_error_m": -0.0024983116746131184,
+      "matched_catalog_id": null,
+      "minor_error_m": -0.00866658554214289,
+      "occlusion": 0.0,
+      "success": true,
+      "true_size": [
+        0.7201,
+        0.4893,
+        0.2877
+      ],
+      "xy_error_m": 0.0008533834812431855,
+      "yaw_error_rad_mod_pi": 0.018058807208847453
+    }
+  ],
+  "schema_version": 1,
+  "seed": 42
+}

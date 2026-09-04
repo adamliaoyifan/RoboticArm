@@ -1,0 +1,132 @@
+schema_version: 1
+generated_by: >-
+  joint_velocity_trace.py (sim_world.launch only) and
+  pytest luggage_planning/test/test_settle_criterion.py
+question: >-
+  What does the release-settle gate actually measure, and which signal proves
+  the payload is not moving?
+
+studies:
+  hypotheses_tested:
+    rows:
+      H0_gravity_sag_or_pid_limit_cycle:
+        verdict: refuted before measuring
+        reason: >-
+          pid_gains is empty, so the joints run in Gazebo's kinematic
+          SetPosition mode. There is no effort loop to limit-cycle and no
+          gravity torque acting on the arm.
+      H0_contact_noise_from_the_box:
+        verdict: refuted before measuring
+        reason: >-
+          gazebo_follow teleports the box with set_model_state and zero twist.
+          No mechanical path from box to arm.
+      H1_measurement_noise_floor:
+        verdict: refuted as stated, but led to the answer
+        idle_p100_rad_s: 0.0013316
+        idle_variance: 0.0
+        reason: >-
+          At observe the reading is 23x below tolerance AND has zero variance.
+          Not noise: a steady per-configuration constant.
+      H2_trajectory_tail:
+        verdict: refuted
+        tail_ratio: 1.00
+        reason: >-
+          Recorded with zero delay after the motion ends, the first sample
+          already equals the steady value and never decays. More timeout
+          changes nothing.
+      H3_configuration_dependence:
+        verdict: confirmed, and it is the mechanism
+        dominant_joint: elfin_joint2
+        range_rad_s: [0.0012, 0.0359]
+
+  joint2_sweep:
+    question: Does the steady reading scale with arm extension?
+    tolerance: 0.03
+    rows:
+      "-1.33": {reading: 0.0012, crosses_gate: false}
+      "-1.10": {reading: 0.0090, crosses_gate: false}
+      "-0.90": {reading: 0.0145, crosses_gate: false}
+      "-0.70": {reading: 0.0206, crosses_gate: false}
+      "-0.50": {reading: 0.0253, crosses_gate: false}
+      "-0.30": {reading: 0.0275, crosses_gate: false}
+      "-0.10": {reading: 0.0345, crosses_gate: true}
+      "0.00": {reading: 0.0352, crosses_gate: true}
+      "0.10": {reading: 0.0359, crosses_gate: true}
+
+  is_the_arm_actually_moving:
+    question: Does the position change while the velocity reads high?
+    rows:
+      observe_j2_plus_0.3:
+        reported_velocity_rad_s: 0.0092
+        implied_drift_over_10s_rad: 0.098
+        measured_drift_over_10s_rad: -1.0e-8
+        tracking_error_rad: -9.0e-6
+        ratio_implied_to_measured: 9.8e6
+    finding: The joint is static to eight decimal places.
+
+  signal_fidelity_during_motion:
+    question: Does the reported velocity track real motion?
+    rows:
+      mid_motion_window_1.5s:
+        actual_speed_from_positions_rad_s: 0.4786
+        reported_peak_rad_s: 0.0349
+        under_report_factor: 13.7
+        velocity_rule_verdict: settled
+        displacement_rule_verdict: not_settled
+    finding: >-
+      The old signal fails in both directions: it blocks a motionless arm and
+      passes a moving one.
+
+  criterion_comparison:
+    question: Which rule is right on the same recordings?
+    rows:
+      idle_at_observe:
+        displacement: settled
+        velocity: settled
+      static_extended_j2_0.10:
+        max_position_excursion_rad: 0.0
+        displacement: settled
+        velocity: not_settled     # the blocker, reproduced in isolation
+      mid_motion:
+        actual_speed_rad_s: 0.4786
+        displacement: not_settled
+        velocity: settled         # the safety hole
+      synthetic_creep_0.05_rad_s:
+        displacement: not_settled
+        velocity: not_settled
+      synthetic_creep_0.015_rad_s:
+        displacement: settled
+        note: half the tolerance uses half the displacement budget
+      synthetic_oscillation_zero_net:
+        displacement: not_settled
+        note: peak-to-peak, not start-to-end
+
+  repeatability:
+    question: Does the fix hold at the configurations that used to fail?
+    iterations: 20
+    rows:
+      displacement: {pass: 20, rate: 1.0, elapsed_p95_sec: 0.26}
+      velocity: {pass: 0, rate: 0.0}
+      max_position_excursion_rad: 5.73e-6
+
+findings:
+  - >-
+    The gate was measuring a signal that has no relationship to motion in this
+    simulation. Both the failure at rest and the pass during motion follow from
+    that one fact.
+  - >-
+    The blocker was invisible until E25 widened the workspace, because the
+    readback bias scales with arm extension and the gate had never been
+    exercised that far out.
+  - >-
+    The fix changes the signal, not the tolerance. vel_tol * hold_time is the
+    same budget expressed as displacement, so nothing is loosened.
+
+do_not_repeat:
+  - >-
+    Do not raise the 0.03 rad/s tolerance or the 3.0 s timeout. Measured: zero
+    actual motion at the failing poses, and a flat tail ratio.
+  - >-
+    Do not fix this by loosening the estimator (accepting a quantile of samples
+    above tolerance). It hides the bias at rest and leaves the mid-motion hole
+    open, which is the dangerous half.

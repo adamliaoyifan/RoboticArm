@@ -1,0 +1,30 @@
+failure_class: STACK_TRANSIT_IK_UNREACHABLE
+seed: 42
+box_index: 3
+candidate_ids:
+  - m3_p2_c0
+  - m3_p2_c1
+  - m3_p2_c2
+  - m3_p2_c3
+  - m3_p2_c4
+  - m3_p2_c5
+  - m3_p2_c6
+  - m3_p2_c7
+map_revision: 3
+placed_count: 2
+last_safe_action: >-
+  Automatic loop stopped before pickup of box 3; the two verified physical
+  Gazebo models were left settled and no ghost third slot was committed.
+root_cause: >-
+  The only physically full-supported carryon poses on the standard-box top
+  have no collision-free strict tool-down transit IK for the current S20 and
+  scene layout. Equivalent 180-degree wrist yaws and all support-contained
+  offsets were checked.
+do_not_repeat:
+  - Do not restore CoG-only overhang; it produced 51mm Z error and 3.6deg tilt.
+  - Do not relax suction above 5deg.
+  - Do not count logical placed_count as physical success.
+next_hypothesis: >-
+  Change upstream stack-column selection using a payload-aware multi-step
+  reachability rollout, or change robot/container relative layout; do not tune
+  the final carryon candidate in isolation.

@@ -1,0 +1,62 @@
+# Parametric cargo model from cropped point cloud (hex body + opening + legs)
+# Copy to measure_cargo.yaml and set input_las (or input_cloud) to your absolute path.
+
+input_las: "/path/to/box_export.las"
+output_dir: ./output
+
+preprocess:
+  up_axis: auto
+  min_height_span: 1.0
+  sor:
+    nb_neighbors: 20
+    std_ratio: 3.0
+  dbscan:
+    enabled: true
+    eps: 0.12
+    min_points: 20
+    keep_largest_components: 2
+  ground:
+    mode: z_min_gap
+    anchor_floor_to_z0: true
+    bin_width: 0.02
+    floor_max_thickness: 0.05
+    floor_clearance: 0.03
+    min_gap_to_deck: 0.12
+    floor_peak_drop_ratio: 0.15
+    deck_peak_min_ratio: 0.25
+    min_leg_height: 0.08
+    distance_threshold: 0.03
+    refine_plane: false
+  segmentation:
+    method: plane_and_vertical_obb   # z_band_only | plane_and_vertical_obb
+    body_bottom_z: null
+    deck_exclude_band: 0.04
+    wall_thickness: 0.05
+    plane_distance: 0.03
+    max_planes: 10
+    deck_flat_max_span: 0.08
+    deck_flat_min_xy: 0.25
+    leg_dbscan_eps: 0.08
+    leg_dbscan_min_points: 12
+    leg_obb:
+      min_height: 0.08
+      max_cross_section: 0.25
+      min_aspect_ratio: 3.0
+      max_tilt_deg: 20
+  alignment:
+    method: floor_plane
+    opening_side: positive_y
+
+fit:
+  body:
+    hex_vertices: 6
+    chamfer_x_ratio: 0.08
+    depth_y: null
+  opening:
+    manual: null
+  legs:
+    dbscan_eps: 0.08
+    dbscan_min_points: 12
+
+gazebo:
+  model_name: airport_container_measured

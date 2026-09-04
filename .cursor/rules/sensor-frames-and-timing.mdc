@@ -1,0 +1,50 @@
+---
+description: Sensor frames, units, stamped TF lookups, and motion compensation for eye-in-hand sensors
+globs: src/luggage_perception/**,src/luggage_description/**,src/luggage_gazebo/**
+alwaysApply: false
+---
+
+# Sensor frames and timing
+
+Full contract: `docs/architecture/motion_compensation.md`.
+
+Camera and Mid-360 are mounted on the end-effector, so every arm motion moves
+them with 6 DOF.
+
+## TF at the data stamp
+
+```python
+# BAD: newest transform applied to older data
+tf = buffer.lookup_transform(target, source, rclpy.time.Time())
+
+# GOOD
+tf = buffer.lookup_transform(target, source, stamp, Duration(seconds=0.2))
+```
+
+A failed stamped lookup drops the frame. It never falls back to latest.
+Accumulating multiple frames means transforming each with its own stamp.
+
+## Frames and units
+
+- gz Fortress `rgbd_camera` publishes `points` in `camera_link` (+X forward)
+  while labelling them with the optical frame; images and `camera_info` really
+  are optical. The preprocessor takes the cloud's data frame from a parameter
+  (`input_cloud_data_frame`), not the header, and publishes optical-frame
+  points. See `docs/status/m2_perception_occlusion_problem.md`.
+- Far-plane misses are `inf`, not NaN. `read_points(skip_nans=True)` keeps them
+  and poisons RANSAC/PCA: filter with `np.isfinite(pts).all(axis=1)`.
+- Depth exists as 32FC1 metres and 16UC1 millimetres. State which one.
+- Livox IMU accelerations are in **g**; convert by 9.80665 to m/s^2.
+
+## Deskew
+
+- Pose source is FK from `/joint_states` (50 Hz) plus the fixed
+  `T_flange_sensor`. Interpolate positions; do not integrate the `velocity`
+  field, and never repackage joints as a synthetic `/imu` for an IMU-based
+  deskew.
+- Lidar points use per-point time (`offset_time` / `PointXYZRTLT.timestamp`):
+  `p_ref = inv(T(t_ref)) * T(t_i) * p_i`. No per-point time means
+  `deskewed=false`, not a pretend compensated cloud.
+- Depth gets no per-pixel deskew; transform once at the frame stamp.
+- Keep the `MotionStabilityGate` veto after compensation. Residuals from
+  encoder quantisation, FK latency, and mount flex remain.

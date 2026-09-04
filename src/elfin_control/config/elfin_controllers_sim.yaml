@@ -1,0 +1,54 @@
+# Elfin S20 controllers for the Gazebo Fortress backend (gz_ros2_control).
+#
+# ROS 2 port of the noetic elfin_arm_control_sim.yaml lesson: J5/J6 carry the
+# camera off-axis weight and the simulation position servo cannot track a
+# corrective trajectory tightly while the arm settles from the spawn gravity
+# gap. Trajectory checking is therefore disabled (0.0) and goal tolerances
+# are loose, otherwise a PATH_TOLERANCE_VIOLATED abort leaves the arm
+# wherever it was - usually collapsed against the pedestal - and every later
+# plan fails from that bad start state. Tight tolerances (0.1/0.02) stay in
+# elfin_control/config/elfin_controllers.yaml for the mock backend.
+# gz_ros2_control hardware node (name from the plugin). Default P=0.1 is
+# enough for the tucked mock pose, not for observe with camera+panel load.
+gz_ros2_control:
+  ros__parameters:
+    position_proportional_gain: 0.8
+
+controller_manager:
+  ros__parameters:
+    update_rate: 100  # Hz
+    position_proportional_gain: 0.8
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+    elfin_arm_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+elfin_arm_controller:
+  ros__parameters:
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    state_publish_rate: 50.0
+    action_monitor_rate: 20.0
+    allow_partial_joints_goal: false
+    allow_nonzero_velocity_at_trajectory_end: true
+    open_loop_control: true
+    constraints:
+      # 0.0 disables the stopped-velocity check at goal time.
+      stopped_velocity_tolerance: 0.0
+      goal_time: 5.0
+      elfin_joint1: {trajectory: 0.0, goal: 0.30}
+      elfin_joint2: {trajectory: 0.0, goal: 0.30}
+      elfin_joint3: {trajectory: 0.0, goal: 0.30}
+      elfin_joint4: {trajectory: 0.0, goal: 0.30}
+      elfin_joint5: {trajectory: 0.0, goal: 0.50}
+      elfin_joint6: {trajectory: 0.0, goal: 3.14}

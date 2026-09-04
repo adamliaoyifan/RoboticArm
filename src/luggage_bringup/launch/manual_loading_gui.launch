@@ -1,0 +1,21 @@
+<launch>
+  <!-- Step-through panel for the active-loading pipeline.
+
+       The panel does not execute the pipeline; the orchestrator does. Start
+       the stack in manual mode first, with an events file so the run can be
+       judged by the bag harness afterwards:
+
+         roslaunch luggage_bringup active_loading.launch \
+           run_mode:=manual \
+           events_path:=/tmp/manual_events.jsonl \
+           use_placement_planner:=true strict_perception:=true
+
+       then this panel:
+
+         roslaunch luggage_bringup manual_loading_gui.launch
+
+       start_orchestrator:=false is NOT used any more: without the orchestrator
+       there is nothing to step, and the panel deliberately has no pipeline of
+       its own. -->
+  <node pkg="luggage_bringup" type="manual_loading_gui.py" name="manual_loading_gui" output="screen"/>
+</launch>

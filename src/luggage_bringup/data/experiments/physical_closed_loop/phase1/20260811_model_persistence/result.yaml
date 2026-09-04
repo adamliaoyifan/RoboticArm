@@ -1,0 +1,5 @@
+status: passed
+summary: >-
+  FinalizeCurrentBox preserves physical Gazebo luggage while clearing only the
+  pickup role. Three finalized dynamic models remain and match logical counts.
+next_phase: phase2_actual_pose_reconcile

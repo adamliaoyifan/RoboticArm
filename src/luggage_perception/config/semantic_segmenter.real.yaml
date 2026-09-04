@@ -1,0 +1,17 @@
+# Overlay for a real D435. Load after semantic_segmenter.yaml.
+#
+#   ros2 run ... --ros-args --params-file semantic_segmenter.yaml \
+#     --params-file semantic_segmenter.real.yaml \
+#     -p semantic_point_filter.realsense_extrinsics_config:=<share>/realsense_d435.yaml
+#
+# device is cpu until nvidia-smi works. Switch this back to cuda on a GPU host.
+
+semantic_segmenter:
+  ros__parameters:
+    # This host has no NVIDIA GPU; override back to cuda after nvidia-smi works.
+    device: cpu
+
+semantic_point_filter:
+  ros__parameters:
+    extrinsics_source: config
+    realsense_extrinsics_config: ""

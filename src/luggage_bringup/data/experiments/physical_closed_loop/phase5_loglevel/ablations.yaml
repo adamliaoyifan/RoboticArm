@@ -1,0 +1,55 @@
+schema_version: 1
+generated_by: multi_box_gazebo_matrix.py --log-level {info,warn}
+question: >-
+  Does raising the console level for acceptance runs actually cut the noise,
+  and does it cut any acceptance evidence with it?
+studies:
+  console_verbosity:
+    rows:
+      info:
+        config: rosconsole_info.conf + LUGGAGE_LOG_LEVEL=info
+        elapsed_sec: 86
+        total_lines: 1192
+        info_lines: 507
+        info_lines_per_sec: 5.90
+        acceptance_records: 7
+        empty_jointstate_errors: 0
+      warn_rootlogger_only:
+        config: rosconsole_warn.conf without log4j.logger.ros override
+        elapsed_sec: 99
+        total_lines: 885
+        info_lines: 222
+        info_lines_per_sec: 2.24
+        acceptance_records: 10
+        empty_jointstate_errors: 0
+      warn_shipped:
+        config: rosconsole_warn.conf with log4j.logger.ros=WARN
+        elapsed_sec: 91
+        total_lines: 694
+        info_lines: 38
+        info_lines_per_sec: 0.42
+        acceptance_records: 7
+        empty_jointstate_errors: 0
+findings:
+  - >-
+    log4j.rootLogger=WARN alone only removed 62% of INFO. rosconsole loads its
+    built-in config first, which pins log4j.logger.ros=INFO, and every ROS
+    logger inherits from it. Overriding `ros` explicitly took INFO from 507 to
+    38 lines, a 93% reduction at comparable run length.
+  - >-
+    The first warn run silently lost `perception estimate`, dropping
+    perception_estimate_count from 1 to 0 while still reporting a commit. The
+    detector message reaches the log through orchestrator publish_status, which
+    was INFO. Promoted to warn, and multi_box_gazebo_matrix now fails a run
+    where commits exist but no detection was recorded, so this class of silent
+    evidence loss cannot recur unnoticed.
+  - >-
+    `Found empty JointState message` went from 55 per run to 0. It came from
+    MoveIt (libmoveit_robot_state), triggered by our own code passing a
+    default-constructed RobotState as the IK seed in placement_motion_filter
+    and cargo_exploration_planner. Seeding from live /joint_states removed it
+    and also starts IK from where the arm actually is.
+do_not_repeat:
+  - >-
+    Do not suppress the empty-JointState ERROR by logger name. It was our
+    defect, and filtering it would have hidden a real IK seeding bug.

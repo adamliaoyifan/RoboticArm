@@ -1,0 +1,99 @@
+camera:
+  name: realsense_d435
+  type: depth_rgb
+  mount:
+    parent_link: eef_mount_adapter
+    tune_joints:
+      tx: 0.013000000000000012
+      ty: 0.09699999999999998
+      tz: -0.02100000000000002
+      rx: -1.3634512116580602
+      ry: 0.03769911184308006
+      rz: 1.5707963267950005
+    fixed:
+      xyz: &id001
+      - 0.013000000000000012
+      - 0.09699999999999998
+      - -0.02100000000000002
+      rpy: &id002
+      - 0.037699111843573746
+      - 1.3634512116580564
+      - 1.570796326795402
+    xyz: *id001
+    rpy: *id002
+  # Color and depth share one Gazebo Fortress rgbd_camera
+  # (realsense_d435.urdf.xacro). K is the gz pinhole for
+  # horizontal_fov=1.5184 rad, which is Intel D435 datasheet depth HFOV
+  # 87° ± 3° (https://www.intelrealsense.com/depth-camera-d435/).
+  # fx = fy = (640/2) / tan(1.5184/2) = 337.22194822727283, matching live
+  # /camera/depth/camera_info. Official RGB FOV is ~69°; this sim does not
+  # model a separate RGB imager, so color K equals depth K.
+  color:
+    width: 640
+    height: 480
+    fps: 30
+    format: RGB8
+    intrinsics: &sim_rgbd_intrinsics
+      fx: 337.22194822727283
+      fy: 337.22194822727283
+      cx: 320.0
+      cy: 240.0
+      distortion_model: plumb_bob
+      distortion_coeffs:
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 0.0
+  depth:
+    width: 640
+    height: 480
+    fps: 30
+    format: Z16
+    intrinsics: *sim_rgbd_intrinsics
+    range:
+      min: 0.105
+      max: 4.0
+  extrinsics:
+    depth_to_color:
+      rotation:
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      - 0.0
+      - 0.0
+      - 0.0
+      - 1.0
+      translation:
+      - 0.0
+      - 0.015
+      - 0.0
+  physical:
+    body_size:
+    - 0.02505
+    - 0.09
+    - 0.025
+    long_axis: camera_link_y
+    lens_face: camera_link_plus_x
+    mass: 0.072
+    baseline: 0.05
+  topics:
+    color_image: /camera/color/image_raw
+    color_info: /camera/color/camera_info
+    depth_image: /camera/depth/image_raw
+    depth_info: /camera/depth/camera_info
+    point_cloud: /camera/depth/points
+simulation:
+  realism:
+    enabled: true
+    max_reliable_range: 3.0
+    hard_max_range: 4.0
+    range_noise_sigma: 0.004
+    dropout_rate: 0.02
+    edge_dropout_rate: 0.0
+    random_seed: null
+meta:
+  name: realsense_d435_sim
+  version: 1.3.0

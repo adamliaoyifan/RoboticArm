@@ -1,0 +1,123 @@
+{
+  "hold_time": 0.25,
+  "joint_names": [
+    "elfin_joint1",
+    "elfin_joint2",
+    "elfin_joint3",
+    "elfin_joint4",
+    "elfin_joint5",
+    "elfin_joint6"
+  ],
+  "recorded_at": "2026-08-12T12:44:44",
+  "recordings": [
+    {
+      "duration_sec": 4.0,
+      "hold_time": 0.25,
+      "label": "moving_to_observe",
+      "max_position_excursion": 1.4263351133718531,
+      "position_excursion": {
+        "elfin_joint1": 6.172286350469847e-06,
+        "elfin_joint2": 1.4263351133718531,
+        "elfin_joint3": 1.2385549634785775e-06,
+        "elfin_joint4": 1.4187642873864093e-06,
+        "elfin_joint5": 3.1491513396986193e-06,
+        "elfin_joint6": 1.6408062322170736e-06
+      },
+      "statistics": {
+        "joints": {
+          "elfin_joint1": {
+            "mean": 0.0008263541034272829,
+            "p100": 0.0033848871443932825,
+            "p50": 0.0004533393433623047,
+            "p95": 0.002577179067383086
+          },
+          "elfin_joint2": {
+            "mean": 0.02046140633232061,
+            "p100": 0.035851358452738825,
+            "p50": 0.02281271182664373,
+            "p95": 0.03585132125648559
+          },
+          "elfin_joint3": {
+            "mean": 0.0009503137786229265,
+            "p100": 0.0015101231878700133,
+            "p50": 0.0011553169748088066,
+            "p95": 0.0013312715867855249
+          },
+          "elfin_joint4": {
+            "mean": 0.0015560866464895964,
+            "p100": 0.0024740044421165328,
+            "p50": 0.0015212207553840012,
+            "p95": 0.002117994263617525
+          },
+          "elfin_joint5": {
+            "mean": 0.0007440463087778763,
+            "p100": 0.001956412537476341,
+            "p50": 0.0006974432445471255,
+            "p95": 0.001402271910792887
+          },
+          "elfin_joint6": {
+            "mean": 0.0005739547351706896,
+            "p100": 0.001352934525459485,
+            "p50": 0.0006492574184751142,
+            "p95": 0.0010444910804652723
+          }
+        },
+        "max_over_joints": {
+          "mean": 0.020501465018326986,
+          "p100": 0.035851358452738825,
+          "p50": 0.02281271182664373,
+          "p95": 0.03585132125648559
+        },
+        "sample_count": 217
+      },
+      "vel_tol": 0.03,
+      "verdicts": {
+        "displacement": {
+          "diagnostics": {
+            "criterion": "displacement",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "elfin_joint2",
+            "fraction_below_tol": 0.0,
+            "p50": 0.03585132125649576,
+            "p95": 0.035851321256548066,
+            "peak_excursion": 0.00019408062248693625,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.2400000000000091,
+            "peak_velocity": 0.035851358452738825,
+            "quantile": 1.0,
+            "sample_count": 14,
+            "tail_ratio": 1.0,
+            "tail_velocity": 0.035851358452738825,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 0.2599999999999909,
+          "settled": true
+        },
+        "velocity": {
+          "diagnostics": {
+            "criterion": "velocity",
+            "displacement_tol": 0.0075,
+            "excursion_joint": "",
+            "fraction_below_tol": 0.21176470588235294,
+            "p50": 0.03532437445437397,
+            "p95": 0.035851321256505086,
+            "peak_excursion": 0.0,
+            "peak_joint": "elfin_joint2",
+            "peak_time": 0.2400000000000091,
+            "peak_velocity": 0.035851358452738825,
+            "quantile": 1.0,
+            "sample_count": 85,
+            "tail_ratio": 0.8117409775018457,
+            "tail_velocity": 0.029102016755195272,
+            "vel_tol": 0.03
+          },
+          "elapsed_sec": 1.6800000000000637,
+          "settled": true
+        }
+      }
+    }
+  ],
+  "schema_version": 1,
+  "settle_delay_sec": 1.0,
+  "vel_tol": 0.03
+}

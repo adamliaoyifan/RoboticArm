@@ -1,0 +1,163 @@
+run_id: '20260723_062440'
+baseline_container_xyz:
+- 1.5
+- 0.0
+- 0.0
+union_mode: collision_aware
+sweep:
+  axes:
+  - x
+  - y
+  - z
+  x:
+    min: -0.5
+    max: 0.5
+    step: 0.5
+  y:
+    min: -0.8
+    max: 0.4
+    step: 0.4
+  z:
+    min: -0.4
+    max: 0.4
+    step: 0.4
+  coarse_resolution_xyz: 0.15
+  refine_resolution_xyz: 0.15
+  refine_step: 0.0
+  coarse_yaw_bins:
+  - 0.0
+  yaw_bins:
+  - 0.0
+  - 1.5707963
+coarse:
+  n_offsets: 36
+  n_valid: 36
+  coverage_rate: 0.8308
+refined_kinematic:
+  n_stops: 8
+  coverage_rate: 0.8308
+collision_aware_slices:
+- offset:
+  - 0.5
+  - 0.0
+  - 0.0
+  coverage_rate: 0.253
+  score: 0.401
+- offset:
+  - 0.5
+  - 0.0
+  - 0.4
+  coverage_rate: 0.1245
+  score: 0.3075
+- offset:
+  - 0.5
+  - 0.4
+  - 0.0
+  coverage_rate: 0.1838
+  score: 0.3599
+- offset:
+  - 0.5
+  - 0.4
+  - 0.4
+  coverage_rate: 0.1401
+  score: 0.319
+- offset:
+  - 0.5
+  - -0.4
+  - 0.4
+  coverage_rate: 0.0
+  score: 0.0
+- offset:
+  - 0.5
+  - -0.8
+  - 0.4
+  coverage_rate: 0.1239
+  score: 0.3032
+selected_stops:
+- offset:
+  - 0.5
+  - 0.0
+  - 0.0
+  coverage_rate: 0.253
+- offset:
+  - 0.5
+  - 0.4
+  - 0.4
+  coverage_rate: 0.1401
+- offset:
+  - 0.5
+  - -0.8
+  - 0.4
+  coverage_rate: 0.1239
+- offset:
+  - 0.5
+  - 0.4
+  - 0.0
+  coverage_rate: 0.1838
+- offset:
+  - 0.5
+  - 0.0
+  - 0.4
+  coverage_rate: 0.1245
+base_movement_envelope:
+  x:
+    min: 0.5
+    max: 0.5
+    count: 5
+  y:
+    min: -0.8
+    max: 0.4
+    count: 5
+  z:
+    min: 0.0
+    max: 0.4
+    count: 5
+union:
+  mode: collision_aware
+  coverage_rate: 0.3044
+  covered_cells: 1108
+  total_cells: 3640
+  remaining_blind: 2532
+  region_coverage:
+    depth_front: 0.336996336996337
+    depth_mid: 0.3663003663003663
+    depth_back: 0.25137362637362637
+    lateral_left: 0.3769230769230769
+    lateral_center: 0.3923076923076923
+    lateral_right: 0.17846153846153845
+    layer_bottom: 0.15535714285714286
+    layer_mid: 0.7214285714285714
+    layer_top: 0.10857142857142857
+baseline:
+  offset:
+  - 0.5
+  - 0.0
+  - 0.0
+  score: &id001
+    has_opening_anchor: true
+    coverage_rate: 0.253
+    worst_region: 0.0829
+    mean_joint_margin: 0.7915
+    mean_neighbor_confidence: 0.8608
+    score: 0.401
+    region_stats:
+      depth_front: 0.2875457875457875
+      depth_mid: 0.3626373626373626
+      depth_back: 0.16346153846153846
+      lateral_left: 0.325
+      lateral_center: 0.32769230769230767
+      lateral_right: 0.14153846153846153
+      layer_bottom: 0.1357142857142857
+      layer_mid: 0.6071428571428571
+      layer_top: 0.08285714285714285
+    reason: ok
+best_fixed:
+  offset:
+  - 0.5
+  - 0.0
+  - 0.0
+  score: *id001
+decision:
+  recommendation: multi_axis_insufficient
+  reason: best fixed (25.3%) not significantly better than baseline (25.3%)
+computation_time_sec: 9559.1

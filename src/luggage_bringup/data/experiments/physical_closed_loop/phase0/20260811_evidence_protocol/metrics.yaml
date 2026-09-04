@@ -1,0 +1,5 @@
+schema_tests: 3
+schema_tests_passed: 3
+invalidated_artifacts:
+  - data/experiments/multi_box/e16_three_stack.yaml
+  - data/experiments/multi_box/e17_five_random/INVALIDATED.yaml

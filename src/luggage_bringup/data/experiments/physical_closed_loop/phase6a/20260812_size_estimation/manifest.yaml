@@ -1,0 +1,35 @@
+schema_version: 2
+phase: phase6a_continuous_size_estimation
+run_id: 20260812_size_estimation
+status: passed
+hypothesis: >-
+  With boxes sampled continuously, perception can own the size: the top-face
+  rectangle gives width/depth and the known platform elevation gives height,
+  accurately enough that a modest commit margin still covers the true box.
+git_sha: 0f75484c1eb0a841cac52f89a8035c018b3b4cca
+dirty_diff_sha256: b8e1622f8d2f722676bdf6d91dca8647a85d33fca4548d928d3bfc715eaf19fc
+docker_image: sha256:07e442893d2dab63aa58aed0e11c4055d407fe59a66909ec409082dfa323916e
+config_hashes:
+  box_catalog: 9e2de43739f8e9cc881317dc2f061052796259466439a046ef72959c9a58b765
+command: >-
+  continuous_size_matrix.py --samples 50 --max-occlusion 0.0
+  (ablation sweep at 0.00 / 0.02 / 0.05 / 0.10)
+seeds: [42]
+started_at: '2026-08-12T18:05:00+08:00'
+ended_at: '2026-08-12T18:12:00+08:00'
+required_evidence:
+  - raw.log
+  - metrics.yaml
+  - result.yaml
+  - samples.json
+  - process.md
+  - ablations.yaml
+hard_gates:
+  success_rate_ge_095: true
+  height_error_p95_le_10mm: true
+  footprint_error_p95_le_30mm: true
+  center_xy_error_p95_le_20mm: true
+  yaw_error_p95_le_5deg: true
+  conservative_commit_ge_099: true
+  plausibility_rate_1: true
+  no_catalog_snapping: true

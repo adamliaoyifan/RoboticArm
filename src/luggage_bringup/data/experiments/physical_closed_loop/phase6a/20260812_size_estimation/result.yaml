@@ -1,0 +1,37 @@
+status: passed
+summary: >-
+  Perception can own the box size. All eight gates pass on 50 continuously
+  sampled boxes with a fully visible top face, and the height axis -- the one
+  derived from the known platform elevation -- is accurate to sub-millimetre.
+
+metrics_headline:
+  height_error_p95_m: 0.00029
+  footprint_major_error_p95_m: 0.0095
+  footprint_minor_error_p95_m: 0.0075
+  center_xy_error_p95_m: 0.0049
+  yaw_error_p95_deg: 1.91
+  committed_covers_true_rate: 1.0
+
+validated:
+  - Height from depth plus the known table height is by far the strongest axis
+    (p95 0.29 mm vs ~10 mm for the footprint).
+  - No catalog snapping occurred; the estimator reports measured sizes rather
+    than rounding to one of three shapes.
+  - Every estimate landed inside the sampling envelope, so the plausibility
+    gate that replaced DETECT_SIZE_MISMATCH does not reject valid boxes.
+  - The 20 mm commit margin covers the true size in 100% of samples, which is
+    what keeps the next box from being planned into this one.
+
+not_validated:
+  - Real occlusion at the Gazebo pickup view. The sweep in ablations.yaml shows
+    what each occlusion level would cost, but the actual level in this scene has
+    not been measured; if it is non-zero the margin has to be re-derived.
+  - Grasp centring and retention on continuously sized boxes (Phase 6b).
+  - Placement and the AABB overlap gate on a real loading run (Phase 6c),
+    which stays blocked on the P0-EX execution failures.
+
+evidence:
+  - samples.json
+  - metrics.yaml
+  - ablations.yaml
+  - process.md

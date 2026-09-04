@@ -1,0 +1,4 @@
+status: passed
+summary: >-
+  Phase evidence is fail-close and invalid logical-only multi-box results are
+  explicitly excluded from physical acceptance.

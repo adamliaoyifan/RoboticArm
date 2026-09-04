@@ -1,0 +1,7 @@
+moveit_setup_assistant_config:
+  urdf:
+    package: elfin_description
+    relative_path: urdf/S20.urdf.xacro
+    xacro_args: "hardware_plugin:=mock_components/GenericSystem"
+  srdf:
+    relative_path: config/S20.srdf

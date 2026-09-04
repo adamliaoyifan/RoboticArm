@@ -1,0 +1,9 @@
+organized cloud: 640x480 frame=camera_depth_optical_frame | depth image: 640x480 enc=32FC1 frame=camera_depth_optical_frame | K fx=337.22 cx=320.0 cy=240.0 frame=camera_depth_optical_frame
+cloud pixel count: 307200 expected: 307200
+finite pixels: 202347 / 307200
+box_top_center (-1.0, 0, 1.12) -> nearest cloud pixel (u=202, v=239), world err 0.003 m, cloud_cam=(0.58,0.20,0.00)
+platform_center (-1.0, 0, 0.86) -> nearest cloud pixel (u=199, v=185), world err 0.175 m, cloud_cam=(0.72,0.26,0.12)
+prediction if image = optical w.r.t. labeled optical frame (x_opt=-y_cl): u=225
+prediction if image u along +y_cl:                                  u=415
+depth image at (u=202,v=239): 0.578 m | cloud forward dist x_cl at same pixel: 0.578 m
+depth image center (320,240): 0.473 | corner (0,0): inf | corner (639,479): 0.200

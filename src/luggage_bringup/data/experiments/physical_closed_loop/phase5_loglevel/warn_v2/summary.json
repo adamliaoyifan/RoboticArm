@@ -1,0 +1,43 @@
+{
+  "box_budget": 1,
+  "clean_run_rate": 0.0,
+  "evidence_consistent": true,
+  "gt_fallback_count": 0,
+  "log_level": "warn",
+  "mean_floor_coverage_ratio": 0.0,
+  "mean_floor_items": 0.0,
+  "mean_placed_count": 0.0,
+  "mean_volume_utilization": 0.0,
+  "passed": false,
+  "post_verify": false,
+  "premature_stack_count": 0,
+  "run_count": 1,
+  "runs": [
+    {
+      "box_budget": 1,
+      "capacity_exhausted": false,
+      "commit_count": 0,
+      "elapsed_sec": 90.978,
+      "evidence_consistent": true,
+      "failure_messages": [
+        "place motion failed: Cartesian descend release settle failed after hold 3.01s/0.0313",
+        "orchestrator finished"
+      ],
+      "floor_coverage_ratio": 0.0,
+      "floor_items": 0,
+      "gt_fallback_count": 0,
+      "log_path": "/catkin_ws/src/luggage_bringup/data/experiments/physical_closed_loop/phase5_loglevel/warn_v2/seed_000_boxes_01.log",
+      "perception_estimate_count": 1,
+      "placed_count": 0,
+      "placed_volume_m3": 0,
+      "premature_stack_count": 0,
+      "return_code": 0,
+      "seed": 0,
+      "success": false,
+      "timed_out": false,
+      "volume_utilization": 0.0
+    }
+  ],
+  "schema_version": 2,
+  "successful_runs": 0
+}

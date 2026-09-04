@@ -1,0 +1,72 @@
+schema_version: 1
+generated_by: continuous_size_matrix.py --max-occlusion {0.00,0.02,0.05,0.10}
+studies:
+  top_face_occlusion:
+    question: How much of the footprint error is the estimator itself, and how much
+      is an unobservable occluded edge?
+    rows:
+      max_occlusion=0.00:
+        major_error_mean_m: -0.003
+        major_error_p95_m: 0.0095
+        minor_error_p95_m: 0.0075
+        height_error_p95_m: 0.00029
+        center_xy_error_p95_m: 0.0049
+        committed_covers_true_rate_at_2cm: 1.0
+      max_occlusion=0.02:
+        major_error_mean_m: -0.0097
+        major_error_p95_m: 0.0164
+        minor_error_p95_m: 0.0074
+        height_error_p95_m: 0.00029
+        center_xy_error_p95_m: 0.0077
+        committed_covers_true_rate_at_2cm: 1.0
+      max_occlusion=0.05:
+        major_error_mean_m: -0.0195
+        major_error_p95_m: 0.0324
+        minor_error_p95_m: 0.0075
+        height_error_p95_m: 0.00029
+        center_xy_error_p95_m: 0.0148
+        committed_covers_true_rate_at_2cm: 0.98
+      max_occlusion=0.10:
+        major_error_mean_m: -0.0361
+        major_error_p95_m: 0.0605
+        minor_error_p95_m: 0.0074
+        height_error_p95_m: 0.00029
+        center_xy_error_p95_m: 0.0293
+        committed_covers_true_rate_at_2cm: 0.62
+  percentile_trim_debias:
+    question: Does compensating the [0.5,99.5] percentile trim remove the systematic
+      underestimate?
+    rows:
+      before_no_occlusion:
+        major_error_mean_m: -0.0097
+        major_error_p95_m: 0.0162
+        committed_covers_true_rate_at_2cm: 1.0
+      after_no_occlusion:
+        major_error_mean_m: -0.003
+        major_error_p95_m: 0.0095
+        committed_covers_true_rate_at_2cm: 1.0
+      before_occlusion_0.10:
+        major_error_mean_m: -0.0424
+        major_error_p95_m: 0.0663
+        committed_covers_true_rate_at_2cm: 0.4
+      after_occlusion_0.10:
+        major_error_mean_m: -0.0361
+        major_error_p95_m: 0.0605
+        committed_covers_true_rate_at_2cm: 0.62
+findings:
+- Height is the most accurate axis by two orders of magnitude (p95 0.29 mm) because
+  the platform elevation is a known prior and the top plane is measured directly.
+  The user's proposal to derive height from depth plus the table height is not just
+  workable, it is the strongest part of the estimate.
+- 'The estimator is unbiased on a fully visible top face after the trim compensation
+  (mean -3.0 mm, p95 9.5 mm). The remaining error under occlusion is not an estimation
+  defect: an edge that is not observed cannot be measured, so it has to be covered
+  by the commit margin.'
+- The 20 mm commit margin covers 100% of cases with no occlusion and 62% at 10% occlusion.
+  If Gazebo shows real occlusion at the pickup view, the margin must be raised to
+  roughly half the measured major-axis p95 rather than left at 20 mm.
+do_not_repeat:
+- Do not re-enable catalog snapping to make the size error look smaller. With continuous
+  sizes it discards the measurement instead of cleaning it.
+- 'Do not judge the estimator on the occluded rows: those quantify how much margin
+  occlusion needs, not how well it measures.'

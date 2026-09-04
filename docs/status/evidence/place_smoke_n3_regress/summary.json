@@ -1,0 +1,20 @@
+{
+  "commit": "",
+  "date": "2026-09-02",
+  "dirty": false,
+  "drift_mean": 0.0,
+  "err_xy_mean": 0.0076518862915254645,
+  "err_z_mean": -0.00225066666666666,
+  "fail_codes": {},
+  "n": 3,
+  "n_descend_ok": 3,
+  "n_inside_inner_box": 3,
+  "n_lost_payload": 0,
+  "n_place_ok": 3,
+  "n_requested": 3,
+  "payload": "vacuum",
+  "place_pass_rate": 1.0,
+  "plan_only": false,
+  "porcelain": "",
+  "ros_domain_id": "7"
+}

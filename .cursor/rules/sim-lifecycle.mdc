@@ -1,0 +1,28 @@
+---
+description: Stop agent-started sims after tests; inspect dumps, not a live GUI
+alwaysApply: true
+---
+
+# Sim lifecycle (agent-run)
+
+After any sim or eval **this agent started**, stop the stack before ending
+the turn. Failures are already on disk under `docs/status/evidence/<run>/`
+(`dumps/`, `ledger.jsonl`, `suite.json`, `final_layout/`). Do not leave
+Gazebo / RViz / MoveIt occupying CPU or GPU for post-mortem.
+
+## Must
+
+- Agent evals: `gui:=false use_rviz:=false` and a dedicated `ROS_DOMAIN_ID`
+  (convention: `7`). Write the launch PID to
+  `/tmp/elfin_humble_sim.pid` (or `$ELFIN_SIM_PIDFILE`).
+- When the driver exits, run `scripts/stop_sim.sh`. That sends SIGINT to
+  `ros2 launch` (same as Ctrl+C), waits, then SIGTERM leftover PIDs.
+- Do not `pkill -f "ign gazebo"` (matches the calling shell). Do not
+  SIGKILL `rviz2` / `move_group` as the first step.
+- Do not keep a GUI sim up so a human can "see what happened". Open the
+  dump directory instead.
+
+## Do not
+
+- Stop a sim the user launched and is still using.
+- Run `--all` unless leftover dual-sim is the problem.

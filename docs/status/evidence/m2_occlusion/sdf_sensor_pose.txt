@@ -1,0 +1,13 @@
+# SDF sensor attachment after URDF->SDF fixed-joint lumping (ign sdf -p /tmp/elfin_s20_gazebo.urdf)
+# sensor 'd435' rgbd_camera lives in link 'elfin_link6' with lumped pose == camera_link pose in link6:
+602:      <sensor name='d435' type='rgbd_camera'>
+603-        <always_on>true</always_on>
+604-        <update_rate>30</update_rate>
+
+# camera_link visual (same orientation/translation) for comparison:
+576:      <visual name='elfin_link6_fixed_joint_lump__camera_link_visual_7'>
+577-        <pose>-0.01415538681237094 0.1664550428363158 0.1630676919528752 -3.073381347778932 -1.363357399117063 1.540945208590957</pose>
+578-        <geometry>
+
+# gz_frame_id currently claims camera_depth_optical_frame, but points are
+# published in the SENSOR frame convention (+X forward) = camera_link.

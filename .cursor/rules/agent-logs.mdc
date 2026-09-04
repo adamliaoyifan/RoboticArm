@@ -1,0 +1,30 @@
+---
+description: Role logs plus async mailbox so CLI agents can discuss via files
+alwaysApply: true
+---
+
+# Agent role logs and cross-CLI discuss
+
+Contract: `docs/agents/README.md` and root `AGENTS.md`.
+
+After durable work, write `docs/agents/<role>/YYYY-MM-DD_HHMM_<slug>.md`.
+Skip ack-only turns. Do not copy dumps or chat traces.
+
+## Cross-CLI discussion (async)
+
+There is no live chat between Cursor, Claude Code, and Codex. They share
+files.
+
+1. Session start: read `docs/agents/discuss/OPEN.md`.
+2. If `to` is your role or `any`, append a `## Reply` on that thread and
+   update `OPEN.md`.
+3. To ask another CLI/role: create or append a `discuss/` thread and add
+   an `OPEN.md` row (`to`, `from`, `cli`, `thread`, `question`).
+4. Re-read `OPEN.md` immediately before editing it.
+
+| Role | Directory |
+|---|---|
+| reviews | `docs/agents/reviews/` |
+| eng | `docs/agents/eng/` |
+| test | `docs/agents/test/` (pointers only) |
+| discuss | `docs/agents/discuss/` |

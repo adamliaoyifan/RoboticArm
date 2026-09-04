@@ -1,0 +1,23 @@
+gazebo_oracle:
+  xy_error_m: 0.000027
+  z_error_m: 0.000994
+  yaw_error_rad: 0.000159
+  roll_rad: 0.000004
+  pitch_rad: -0.00000005
+  drift_3s_m: 0.0
+rgbd:
+  point_count: 12902
+  xy_error_m: 0.008684
+  z_error_m: 0.000142
+  yaw_error_rad: 0.001705
+  roll_rad: 0.000419
+  pitch_rad: -0.000076
+  drift_3s_m: 0.001322
+map:
+  voxel_m: 0.1
+  top_error_m: 0.051
+counts:
+  gazebo: 1
+  planning_scene: 1
+  mapper: 1
+  orchestrator: 1

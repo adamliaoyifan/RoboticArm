@@ -1,0 +1,10 @@
+# GT (from /luggage/perception/size_eval/spawned, transient-local):
+data: '{"depth": 0.443, "height": 0.264, "mass_kg": 10.779450849220266, "model_name": "pickup_box_0001_gen", "width": 0.621, "yaw": 0.0...'
+---
+
+# DetectLuggage response (with the two bugs present):
+requester: making request: luggage_msgs.srv.DetectLuggage_Request()
+
+response:
+luggage_msgs.srv.DetectLuggage_Response(luggage=[luggage_msgs.msg.DetectedLuggage(id='detected_box', pose=geometry_msgs.msg.Pose(position=geometry_msgs.msg.Point(x=-0.5829034353200024, y=0.08159151486641701, z=1.345684975832151), orientation=geometry_msgs.msg.Quaternion(x=0.0, y=0.0, z=0.6345499532555208, w=0.772881851788109)), width=0.2897572927238717, height=0.9713699516643021, depth=0.06834334636639898)], success=True, message='perception estimate (conf=1.00)')
+

@@ -1,0 +1,4 @@
+{"active_loading": true, "dry_run_motion": false, "exploration_mode": "none", "filter_ns": "placement_motion_filter", "first_state": "ResetObserve", "inspect_mode": "fused", "kind": "session", "max_placed": 1, "placement_ns": "placement_planner", "post_place_verify": false, "probe_touched": false, "run_mode": "auto", "schema_version": 1, "size_xy_margin": 0.02, "size_z_margin": 0.01, "strict_perception": true, "t": 1786535893.543}
+{"kind": "detection", "message": "perception estimate (conf=1.00)", "source": "perception", "success": true, "t": 1786535905.706}
+{"failure_class": "UNCLASSIFIED", "kind": "failure", "message": "place motion failed: Cartesian descend release settle failed after hold 3.01s/0.0318", "state": "ExecPlace", "t": 1786535958.899}
+{"kind": "status", "placed_count": 0, "state": "Idle", "t": 1786535958.9}

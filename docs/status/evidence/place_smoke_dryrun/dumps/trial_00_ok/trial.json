@@ -1,0 +1,37 @@
+{
+  "catalog_id": "carryon",
+  "descend_fraction": 1.0,
+  "drift": null,
+  "err_xy": null,
+  "err_yaw": null,
+  "err_z": null,
+  "extras": {
+    "build": "7 segments for phase=place",
+    "follow_skipped_delta": 0,
+    "place_support_touch": "place support touch ALLOWED (acm verified)",
+    "release_settle": "probe",
+    "verify": {
+      "box_pose_after_drift_wait": null,
+      "box_pose_after_release": null,
+      "drift": null,
+      "err_xy": null,
+      "err_z": null,
+      "inside_inner_box": null,
+      "pitch": null,
+      "roll": null
+    }
+  },
+  "fail_code": "",
+  "index": 0,
+  "inside_inner_box": null,
+  "lost_payload": false,
+  "pitch": null,
+  "place_state": "HOME",
+  "roll": null,
+  "segments_planned": 7,
+  "segments_succeeded": 7,
+  "staging_degenerate": false,
+  "used_ompl_fallback_descend": false,
+  "vac_attach": null,
+  "wall_time_sec": 0.0
+}

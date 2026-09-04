@@ -1,0 +1,8 @@
+status: passed
+summary: >-
+  Settled Gazebo oracle and independent RGBD plane estimates both pass the
+  strict pose gates. Logical scene/map commit uses verified actual pose and
+  map top reconciles within one voxel.
+production_path: >-
+  When simulation_pose_oracle=false, RGBD is the actual-pose decision source;
+  no Gazebo service is called.

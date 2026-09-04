@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="elfin_s20_with_camera_tune">
+
+  <!-- Include the base Elfin S20 -->
+  <xacro:include filename="$(find elfin_description)/urdf/S20.urdf.xacro"/>
+
+  <!-- ===== Layer 1: Suction panel tune chain ===== -->
+  <!-- elfin_end_link -> suction_flange_tx..rz -> suction_flange_rz_link -> suction_panel -->
+  <xacro:include filename="$(find luggage_description)/urdf/suction_panel_mount.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/urdf/suction_flange_tune_chain.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/suction_flange_origin.xacro"/>
+
+  <xacro:suction_flange_tune_chain parent="${suction_flange_parent}"/>
+
+  <xacro:suction_panel_mount parent="suction_flange_rz_link">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:suction_panel_mount>
+
+  <!-- ===== Layer 2: EEF adapter tune chain ===== -->
+  <!-- suction_panel -> adapter_mount_tx..rz -> adapter_mount_rz_link -> eef_mount_adapter -->
+  <xacro:include filename="$(find luggage_description)/urdf/eef_sensor_mount.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/urdf/adapter_mount_tune_chain.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/eef_mount_adapter_origin.xacro"/>
+
+  <xacro:adapter_mount_tune_chain parent="${adapter_mount_parent}"/>
+
+  <xacro:eef_sensor_mount parent="adapter_mount_rz_link">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:eef_sensor_mount>
+
+  <!-- ===== Layer 3: Camera tune chain ===== -->
+  <!-- eef_mount_adapter -> cam_mount_tx..rz -> cam_mount_rz_link -> camera_link -->
+  <xacro:include filename="$(find luggage_description)/urdf/realsense_d435.urdf.xacro"/>
+  <xacro:include filename="$(find luggage_description)/urdf/camera_mount_tune_chain.xacro"/>
+  <xacro:include filename="$(find luggage_description)/config/camera_mount_origin.xacro"/>
+
+  <xacro:camera_mount_tune_chain parent="${cam_mount_parent}"/>
+
+  <xacro:realsense_d435 parent="cam_mount_rz_link">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:realsense_d435>
+
+  <gazebo reference="camera_link">
+    <gravity>false</gravity>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+</robot>

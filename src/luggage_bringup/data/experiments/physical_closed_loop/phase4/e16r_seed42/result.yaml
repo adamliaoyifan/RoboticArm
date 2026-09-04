@@ -1,0 +1,10 @@
+status: failed
+failure_class: STACK_TRANSIT_IK_UNREACHABLE
+summary: >-
+  E16R reached two physically persistent, pose-verified boxes. The third box
+  cannot be both fully supported and collision-free reachable under the strict
+  5-degree payload-carry constraint with the current layout.
+downstream_phases_blocked:
+  - phase5_e17r_five_random
+  - phase6_e19_ten_endurance
+  - final_gazebo_dod

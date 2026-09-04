@@ -1,0 +1,22 @@
+<launch>
+  <!-- Tune EEF sensor mount adapter: elfin_link6 -> eef_mount_adapter xyz/rpy.
+       Uses the same tune URDF as camera_mount_tune but launches the adapter GUI. -->
+  <arg name="move_to_observe_on_start" default="true"/>
+  <arg name="software_gl" default="true" doc="Use Mesa software GL for PyQt in Docker"/>
+
+  <include file="$(find luggage_gazebo)/launch/sim_world_tune.launch">
+    <arg name="spawn_at_observe" value="$(arg move_to_observe_on_start)"/>
+  </include>
+
+  <!-- After model + elfin_arm_controller are up: trajectory to observe + mount joints. -->
+  <node pkg="luggage_bringup" type="camera_mount_tune_init.py" name="camera_mount_tune_init" output="screen">
+    <param name="set_observe_on_start" value="$(arg move_to_observe_on_start)"/>
+    <param name="apply_mount_on_start" value="true"/>
+    <param name="gazebo_wait_timeout" value="120.0"/>
+    <param name="controller_wait_timeout" value="120.0"/>
+  </node>
+
+  <node pkg="luggage_bringup" type="eef_mount_adapter_tune_gui.py" name="eef_mount_adapter_tune_gui" output="screen">
+    <env if="$(arg software_gl)" name="LIBGL_ALWAYS_SOFTWARE" value="1"/>
+  </node>
+</launch>

@@ -1,0 +1,24 @@
+# Batch sensor-model evaluation of candidate camera poses.
+geometry_msgs/Pose[] camera_poses
+float64[] insertion_depths
+geometry_msgs/Pose opening_pose
+float64 corridor_radius
+float64 max_range
+# Also evaluate FOV coverage of the fixed container inner floor. Observation
+# only: these metrics are recorded and visualized, never used as a gate.
+bool evaluate_floor_coverage
+# Render the first candidate's floor coverage on /luggage/debug/floor_coverage.
+# Requires evaluate_floor_coverage; used for one-pose follow-up calls that
+# visualize the view the planner actually selected.
+bool publish_floor_coverage_debug
+---
+bool success
+string message
+float64[] expected_information_gain
+int32[] visible_unknown_count
+float64[] occlusion_ratio
+float64[] corridor_free_confidence
+# Empty unless evaluate_floor_coverage was requested.
+float64[] floor_xy_coverage
+float64[] floor_unknown_gain
+float64[] inside_container_fov_ratio

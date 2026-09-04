@@ -1,0 +1,138 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="eef_sensor_mount">
+
+  <!--
+    3D-printed sensor mount adapter that bolts onto elfin_link6 (EOF).
+    Hosts the RealSense D435 camera and the Mid-360S lidar frames.
+    STL is in millimetres; scale 0.001 converts to metres for URDF.
+  -->
+  <xacro:include filename="$(find luggage_description)/config/mid360_origin.xacro"/>
+
+  <xacro:macro name="eef_sensor_mount" params="parent *origin">
+
+    <link name="eef_mount_adapter">
+      <visual>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+        <material name="adapter_grey">
+          <color rgba="0.6 0.6 0.65 1"/>
+        </material>
+      </visual>
+      <collision>
+        <origin xyz="0 0 0" rpy="0 0 0"/>
+        <geometry>
+          <mesh filename="package://luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl"
+                scale="0.001 0.001 0.001"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <!-- Approximate: ~120g PLA print, box 0.15 x 0.13 x 0.086 m -->
+        <mass value="0.120"/>
+        <origin xyz="0.0225 0.0451 0.0296" rpy="0 0 0"/>
+        <inertia ixx="0.000180" ixy="0.0" ixz="0.0"
+                 iyy="0.000250" iyz="0.0"
+                 izz="0.000200"/>
+      </inertial>
+    </link>
+
+    <joint name="eef_mount_adapter_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="eef_mount_adapter"/>
+      <xacro:insert_block name="origin"/>
+    </joint>
+
+    <!-- Mid-360S: mechanical mount plus optical and IMU frames.
+         Origins come from config/mid360_origin.xacro (handbook optical/IMU;
+         xyz/rpy are the camera-tower +Y pad, not jointly calibrated). -->
+
+    <link name="mid360_mount_frame">
+      <!-- Housing 65 x 65 x 60 mm, origin at base centre, +Z through the dome.
+           Visual only: a collision mesh at the optical origin would fill a
+           360° gpu_lidar with self-hits. Range min 0.1 m already covers the
+           60 mm body. -->
+      <visual>
+        <origin xyz="0 0 0.030" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.065 0.065 0.060"/>
+        </geometry>
+        <material name="livox_body">
+          <color rgba="0.15 0.45 0.75 0.7"/>
+        </material>
+      </visual>
+      <inertial>
+        <mass value="0.265"/>
+        <origin xyz="0 0 0.030" rpy="0 0 0"/>
+        <inertia ixx="0.000180" ixy="0.0" ixz="0.0"
+                 iyy="0.000180" iyz="0.0"
+                 izz="0.000180"/>
+      </inertial>
+    </link>
+    <joint name="mid360_mount_joint" type="fixed">
+      <parent link="eef_mount_adapter"/>
+      <child link="mid360_mount_frame"/>
+      <origin xyz="${mid360_mount_xyz}" rpy="${mid360_mount_rpy}"/>
+    </joint>
+
+    <link name="livox_frame"/>
+    <joint name="livox_optical_joint" type="fixed">
+      <parent link="mid360_mount_frame"/>
+      <child link="livox_frame"/>
+      <origin xyz="${livox_optical_xyz}" rpy="${livox_optical_rpy}"/>
+    </joint>
+
+    <link name="livox_imu_frame"/>
+    <joint name="livox_imu_joint" type="fixed">
+      <parent link="livox_frame"/>
+      <child link="livox_imu_frame"/>
+      <origin xyz="${livox_imu_xyz}" rpy="${livox_imu_rpy}"/>
+    </joint>
+
+    <gazebo reference="eef_mount_adapter">
+      <gravity>false</gravity>
+      <selfCollide>false</selfCollide>
+    </gazebo>
+
+    <!-- Fortress gpu_lidar at the optical origin. Publishes LaserScan on
+         /livox/scan and PointCloudPacked on /livox/scan/points; sim_world
+         remaps the cloud to /livox/lidar. No per-point times, so consumers
+         must keep deskewed=false. IMU is not simulated (real /livox/imu
+         accelerations are in g). -->
+    <gazebo reference="mid360_mount_frame">
+      <gravity>false</gravity>
+      <selfCollide>false</selfCollide>
+      <sensor name="mid360s" type="gpu_lidar">
+        <always_on>true</always_on>
+        <update_rate>${livox_sim_update_hz}</update_rate>
+        <visualize>false</visualize>
+        <topic>livox/scan</topic>
+        <gz_frame_id>livox_frame</gz_frame_id>
+        <pose>${livox_optical_xyz} ${livox_optical_rpy}</pose>
+        <lidar>
+          <scan>
+            <horizontal>
+              <samples>${livox_sim_h_samples}</samples>
+              <resolution>1</resolution>
+              <min_angle>${livox_sim_h_min}</min_angle>
+              <max_angle>${livox_sim_h_max}</max_angle>
+            </horizontal>
+            <vertical>
+              <samples>${livox_sim_v_samples}</samples>
+              <resolution>1</resolution>
+              <min_angle>${livox_sim_v_min}</min_angle>
+              <max_angle>${livox_sim_v_max}</max_angle>
+            </vertical>
+          </scan>
+          <range>
+            <min>${livox_sim_range_min}</min>
+            <max>${livox_sim_range_max}</max>
+            <resolution>0.01</resolution>
+          </range>
+        </lidar>
+      </sensor>
+    </gazebo>
+
+  </xacro:macro>
+</robot>

@@ -1,0 +1,7 @@
+.git
+**/.git
+**/build
+**/devel
+**/install
+**/log
+src/pointcloud

@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<sdf version="1.6">
+  <model name="airport_container_measured">
+    <static>true</static>
+    <link name="container_link">
+      <pose>0 0 0 0 0 0</pose>
+      <visual name="visual">
+        <geometry>
+          <mesh>
+            <uri>model://airport_container_measured/meshes/container_visual.stl</uri>
+            <scale>1 1 1</scale>
+          </mesh>
+        </geometry>
+        <material>
+          <ambient>0.25 0.35 0.45 1</ambient>
+          <diffuse>0.35 0.45 0.55 1</diffuse>
+        </material>
+      </visual>
+      <collision name="collision_0_body_main">
+        <pose>-0.016949991505991857 0.08259390630376129 0.7202500000000001 0 0 0</pose>
+        <geometry><box><size>2.432714285714286 2.1870000000000003 2.1245000000000003</size></box></geometry>
+      </collision>
+      <collision name="collision_1_lintel">
+        <pose>-0.4851984387109607 1.1460939063037614 1.267217391304348 0 0 0</pose>
+        <geometry><box><size>0.215695652173913 0.06 0.1</size></box></geometry>
+      </collision>
+      <collision name="collision_2_sill">
+        <pose>-0.4851984387109607 1.1460939063037614 0.1537826086956522 0 0 0</pose>
+        <geometry><box><size>0.215695652173913 0.06 0.1</size></box></geometry>
+      </collision>
+      <collision name="collision_3_left_pillar">
+        <pose>-0.6430462647979173 1.1460939063037614 0.7105000000000001 0 0 0</pose>
+        <geometry><box><size>0.1 0.06 1.0134347826086958</size></box></geometry>
+      </collision>
+      <collision name="collision_4_right_pillar">
+        <pose>-0.3273506126240042 1.1460939063037614 0.7105000000000001 0 0 0</pose>
+        <geometry><box><size>0.1 0.06 1.0134347826086958</size></box></geometry>
+      </collision>
+      <collision name="collision_5_leg_front_left">
+        <pose>-0.9396671343631349 -0.7484660936962388 0.06 0 0 0</pose>
+        <geometry><box><size>0.12 0.12 0.12</size></box></geometry>
+      </collision>
+      <collision name="collision_6_leg_front_right">
+        <pose>0.9390528656368655 -0.7484660936962388 0.06 0 0 0</pose>
+        <geometry><box><size>0.12 0.12 0.12</size></box></geometry>
+      </collision>
+      <collision name="collision_7_leg_back_left">
+        <pose>-0.9396671343631349 0.9136539063037614 0.06 0 0 0</pose>
+        <geometry><box><size>0.12 0.12 0.12</size></box></geometry>
+      </collision>
+      <collision name="collision_8_leg_back_right">
+        <pose>0.9390528656368655 0.9136539063037614 0.06 0 0 0</pose>
+        <geometry><box><size>0.12 0.12 0.12</size></box></geometry>
+      </collision>
+    </link>
+  </model>
+</sdf>

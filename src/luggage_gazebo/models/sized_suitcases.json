@@ -1,0 +1,104 @@
+{
+  "suitcase_loafbrr_large": {
+    "catalog_id": "large",
+    "mass_kg": 23.0,
+    "measure_size": [
+      0.6612416505813599,
+      0.44012051820755005,
+      0.3199999928474426
+    ],
+    "size": [
+      0.8,
+      0.5,
+      0.32
+    ],
+    "tier": "large",
+    "uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
+    "visual_id": "suitcase_loafbrr"
+  },
+  "suitcase_loafbrr_medium": {
+    "catalog_id": "standard",
+    "mass_kg": 15.0,
+    "measure_size": [
+      0.620204508304596,
+      0.4387931823730469,
+      0.2800000011920929
+    ],
+    "size": [
+      0.7,
+      0.45,
+      0.28
+    ],
+    "tier": "medium",
+    "uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
+    "visual_id": "suitcase_loafbrr"
+  },
+  "suitcase_loafbrr_small": {
+    "catalog_id": "carryon",
+    "mass_kg": 8.0,
+    "measure_size": [
+      0.4873035401105881,
+      0.390038400888443,
+      0.25
+    ],
+    "size": [
+      0.55,
+      0.4,
+      0.25
+    ],
+    "tier": "small",
+    "uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
+    "visual_id": "suitcase_loafbrr"
+  },
+  "suitcase_vintage_large": {
+    "catalog_id": "large",
+    "mass_kg": 23.0,
+    "measure_size": [
+      0.6069081127643585,
+      0.42597928643226624,
+      0.3199999928474426
+    ],
+    "size": [
+      0.8,
+      0.5,
+      0.32
+    ],
+    "tier": "large",
+    "uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
+    "visual_id": "suitcase_vintage"
+  },
+  "suitcase_vintage_medium": {
+    "catalog_id": "standard",
+    "mass_kg": 15.0,
+    "measure_size": [
+      0.6552294790744781,
+      0.38338135182857513,
+      0.2800000011920929
+    ],
+    "size": [
+      0.7,
+      0.45,
+      0.28
+    ],
+    "tier": "medium",
+    "uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
+    "visual_id": "suitcase_vintage"
+  },
+  "suitcase_vintage_small": {
+    "catalog_id": "carryon",
+    "mass_kg": 8.0,
+    "measure_size": [
+      0.5148231685161591,
+      0.35336706042289734,
+      0.25
+    ],
+    "size": [
+      0.55,
+      0.4,
+      0.25
+    ],
+    "tier": "small",
+    "uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
+    "visual_id": "suitcase_vintage"
+  }
+}

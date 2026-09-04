@@ -1,0 +1,117 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="adapter_mount_tune_chain">
+
+  <!-- 6-DOF tune chain for EEF sensor mount adapter (tx,ty,tz prismatic + rx,ry,rz revolute).
+       Mirrors camera_mount_tune_chain.xacro but with adapter_mount_* joint names.
+       The final link (adapter_mount_rz_link) is where the adapter mesh is attached. -->
+  <xacro:macro name="adapter_mount_tune_chain" params="parent">
+    <xacro:property name="adp_tune_limit_linear" value="0.30"/>
+    <xacro:property name="adp_tune_rot" value="3.14159265359"/>
+    <xacro:property name="adp_tune_damping" value="500.0"/>
+
+    <!-- Tune-only chain: not part of physics. Each link is kinematic so ODE
+         skips dynamics on this 6-DOF chain (mass=0.001 / inertia=1e-6 /
+         damping=500 was numerically unstable and produced NaN twist on the
+         whole robot when SetModelConfiguration set all 6 joints at once).
+         Joints stay movable via SetModelConfiguration. -->
+    <xacro:macro name="adp_mount_link_gazebo" params="link_name">
+      <gazebo reference="${link_name}">
+        <gravity>false</gravity>
+        <selfCollide>false</selfCollide>
+        <kinematic>true</kinematic>
+      </gazebo>
+    </xacro:macro>
+
+    <xacro:macro name="adp_mount_joint_gazebo" params="joint_name">
+      <gazebo reference="${joint_name}">
+        <implicitSpringDamper>true</implicitSpringDamper>
+        <provideFeedback>false</provideFeedback>
+      </gazebo>
+    </xacro:macro>
+
+    <link name="adapter_mount_tx_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_tx" type="prismatic">
+      <parent link="${parent}"/>
+      <child link="adapter_mount_tx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-adp_tune_limit_linear}" upper="${adp_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_tx_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_tx"/>
+
+    <link name="adapter_mount_ty_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_ty" type="prismatic">
+      <parent link="adapter_mount_tx_link"/>
+      <child link="adapter_mount_ty_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-adp_tune_limit_linear}" upper="${adp_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_ty_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_ty"/>
+
+    <link name="adapter_mount_tz_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_tz" type="prismatic">
+      <parent link="adapter_mount_ty_link"/>
+      <child link="adapter_mount_tz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-adp_tune_limit_linear}" upper="${adp_tune_limit_linear}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_tz_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_tz"/>
+
+    <link name="adapter_mount_rx_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_rx" type="revolute">
+      <parent link="adapter_mount_tz_link"/>
+      <child link="adapter_mount_rx_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="1 0 0"/>
+      <limit lower="${-adp_tune_rot}" upper="${adp_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_rx_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_rx"/>
+
+    <link name="adapter_mount_ry_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_ry" type="revolute">
+      <parent link="adapter_mount_rx_link"/>
+      <child link="adapter_mount_ry_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <limit lower="${-adp_tune_rot}" upper="${adp_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_ry_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_ry"/>
+
+    <link name="adapter_mount_rz_link">
+      <inertial><mass value="0.001"/><inertia ixx="1e-6" ixy="0" ixz="0" iyy="1e-6" iyz="0" izz="1e-6"/></inertial>
+    </link>
+    <joint name="adapter_mount_rz" type="revolute">
+      <parent link="adapter_mount_ry_link"/>
+      <child link="adapter_mount_rz_link"/>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <axis xyz="0 0 1"/>
+      <limit lower="${-adp_tune_rot}" upper="${adp_tune_rot}" effort="1000" velocity="1.0"/>
+      <dynamics damping="${adp_tune_damping}" friction="0"/>
+    </joint>
+    <xacro:adp_mount_link_gazebo link_name="adapter_mount_rz_link"/>
+    <xacro:adp_mount_joint_gazebo joint_name="adapter_mount_rz"/>
+  </xacro:macro>
+
+</robot>

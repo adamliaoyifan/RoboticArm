@@ -1,0 +1,4 @@
+[INFO] [1787132344.237544488] [send_joint_trajectory]: repeat 19 ok=True error_codes=(0,0) goal_err=0.001599 start_err=0.001778 dt=8.111s
+[INFO] [1787132344.237872548] [send_joint_trajectory]: done repeats=20 failures=0 worst_abs_err=0.002709
+terminate called without an active exception
+[ros2run]: Aborted

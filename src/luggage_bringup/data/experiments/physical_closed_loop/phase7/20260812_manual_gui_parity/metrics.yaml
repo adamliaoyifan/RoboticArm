@@ -1,0 +1,87 @@
+schema_version: 1
+
+code_removed:
+  # The panel's own pipeline. Every one of these was a second implementation of
+  # a state the orchestrator already owns.
+  manual_gui_lines_before: 971
+  manual_gui_lines_after: 682
+  duplicated_methods_deleted:
+    - _explore_step
+    - _explore_loop
+    - _execute_probe
+    - _execute_segments
+    - update_occupancy
+    - _best_param_to_slot
+    - plan_pick
+    - plan_place
+    - compute_placement
+    - detect_pickup_box
+    - pickup_package
+  # Counted by the same AST check that now guards the file.
+  pipeline_service_references_outside_probe_before: 33
+  pipeline_service_references_outside_probe_after: 0
+  pipeline_service_references_inside_probe_after: 1   # clear_current_box
+  total_service_name_literals_before: 60
+  total_service_name_literals_after: 21
+
+divergences_closed:
+  # Behaviour the panel got wrong, now unreachable because it no longer runs
+  # the pipeline at all.
+  - detection_failure_fell_back_to_spawner_ground_truth
+  - no_size_plausibility_gate
+  - sync_pickup_box_instead_of_sync_detected_pickup_box
+  - vacuum_opened_on_retreat_instead_of_attach
+  - no_post_pick_staging_pose
+  - no_attached_payload_placement_replan
+  - no_backup_candidate_retry
+  - release_after_all_segments_instead_of_at_contact
+  - commit_skipped_verify_margin_overlap_and_map_reconcile
+  - clear_current_box_instead_of_finalize_current_box
+
+tests:
+  luggage_bringup_suite: 119        # in-container, all passing
+  new_tests: 39
+  files:
+    - test_step_gate.py             # 15
+    - test_run_events_recorder.py   # 14
+    - test_manual_gui_no_pipeline_services.py  # 5
+    - test_orchestrator_step_parity.py         # 6 (counted in new_tests)
+
+events_parity_state_machine:
+  # Same fixture driven twice: once automatically, once one state at a time.
+  states_stepped: 13
+  boxes_placed: 2
+  record_count: 13
+  diff_after_dropping_volatile_fields: 0
+  volatile_fields: [t, cycle_sec, started_at, ended_at, elapsed_sec, run_mode, events_path]
+
+gazebo_auto_run:
+  # Wiring check, not a utilization result: one box, headless, warn level.
+  seed: 0
+  box_budget: 1
+  elapsed_sec: 80.824
+  events_file_written: true
+  evidence_consistent: true          # console log and events file agree
+  commit_count: 0
+  gt_fallback_count: 0
+  perception_estimate_count: 1
+  records_written: 4                 # session, detection, failure, status
+  terminal_failure: >-
+    place motion failed: Cartesian descend release settle failed after
+    hold 3.01s/0.0318
+  harness_verdict_from_events:
+    passed: false
+    rejection_reasons:
+      - expected_placed_count
+      - floor_layer_used
+      - release_before_retreat
+      - zero_failures
+    failure_classes:
+      UNCLASSIFIED: 1
+
+known_blocker_reproduced:
+  # Unchanged behaviour: the run stops on the same EX1 gate at the same value.
+  gate: release settle joint velocity
+  tolerance_rad_s: 0.03
+  observed_rad_s: 0.0318
+  phase5_observed_rad_s: [0.0313, 0.0302]

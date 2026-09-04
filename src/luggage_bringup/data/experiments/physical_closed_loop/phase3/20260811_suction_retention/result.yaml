@@ -1,0 +1,7 @@
+status: passed
+summary: >-
+  All payload-carry segments are fail-close per-point FK validated. Suction and
+  camera p100 stay within 5/18 degrees; 23kg retention margin remains above 2.
+next_phase_observation: >-
+  Large-box settled pose narrowly missed XY/yaw gates and must be corrected
+  before E16R can pass.

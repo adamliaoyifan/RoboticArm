@@ -1,0 +1,323 @@
+{
+  "gates": {
+    "catalog_match": true,
+    "success_rate": true,
+    "xy_error": true,
+    "yaw_error": true,
+    "z_error": true
+  },
+  "metrics": {
+    "catalog_match_rate": 1.0,
+    "sample_count": 30,
+    "success_count": 30,
+    "success_rate": 1.0,
+    "xy_error_p95_m": 0.018969632896803035,
+    "yaw_error_p95_rad_mod_pi": 0.08778994391729707,
+    "z_error_p95_m": 0.00030965350756852455
+  },
+  "passed": true,
+  "samples": [
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 0,
+      "success": true,
+      "xy_error_m": 0.0075614122207557175,
+      "yaw_error_rad_mod_pi": 0.013298416088863174,
+      "z_error_m": 0.0002803022127512156
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 1,
+      "success": true,
+      "xy_error_m": 0.007204325723244876,
+      "yaw_error_rad_mod_pi": 0.026082405199682412,
+      "z_error_m": 4.8938136670062526e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 2,
+      "success": true,
+      "xy_error_m": 0.0034435749063339116,
+      "yaw_error_rad_mod_pi": 0.008165490328176704,
+      "z_error_m": 4.7744889152046e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 3,
+      "success": true,
+      "xy_error_m": 0.001207747048903512,
+      "yaw_error_rad_mod_pi": 0.014028005611300465,
+      "z_error_m": 4.380759370481435e-06
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 4,
+      "success": true,
+      "xy_error_m": 0.006737439517957537,
+      "yaw_error_rad_mod_pi": 0.04076468979712011,
+      "z_error_m": 2.6676872517561456e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 5,
+      "success": true,
+      "xy_error_m": 0.009560271072105546,
+      "yaw_error_rad_mod_pi": 0.026482260409492628,
+      "z_error_m": 1.7723428442639744e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 6,
+      "success": true,
+      "xy_error_m": 0.005330985651209369,
+      "yaw_error_rad_mod_pi": 0.05641165138027115,
+      "z_error_m": 5.5391691012762756e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 7,
+      "success": true,
+      "xy_error_m": 0.0022259222935133035,
+      "yaw_error_rad_mod_pi": 0.01949903080872627,
+      "z_error_m": 0.00012642435773069227
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 8,
+      "success": true,
+      "xy_error_m": 0.0069545946875234545,
+      "yaw_error_rad_mod_pi": 0.08859224686833843,
+      "z_error_m": 0.00016718240084867553
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 9,
+      "success": true,
+      "xy_error_m": 0.002671118238813228,
+      "yaw_error_rad_mod_pi": 0.02751601262346114,
+      "z_error_m": 0.00033900027578448455
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 10,
+      "success": true,
+      "xy_error_m": 0.006008633928729084,
+      "yaw_error_rad_mod_pi": 0.06403118776656935,
+      "z_error_m": 1.247770013756977e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 11,
+      "success": true,
+      "xy_error_m": 0.0065185544904218535,
+      "yaw_error_rad_mod_pi": 0.029218342187939627,
+      "z_error_m": 0.00024999390416069467
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 12,
+      "success": true,
+      "xy_error_m": 0.008466693938482844,
+      "yaw_error_rad_mod_pi": 0.041850934844658856,
+      "z_error_m": 0.0002567383278205826
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 13,
+      "success": true,
+      "xy_error_m": 0.00837029689385162,
+      "yaw_error_rad_mod_pi": 0.035632466368277445,
+      "z_error_m": 7.885119069106494e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 14,
+      "success": true,
+      "xy_error_m": 0.02600337660524454,
+      "yaw_error_rad_mod_pi": 0.04781970876846131,
+      "z_error_m": 0.00011891741017855395
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 15,
+      "success": true,
+      "xy_error_m": 0.012300023771367047,
+      "yaw_error_rad_mod_pi": 0.022721002838043347,
+      "z_error_m": 2.174390168663276e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 16,
+      "success": true,
+      "xy_error_m": 0.007753447631735298,
+      "yaw_error_rad_mod_pi": 0.08680935142157985,
+      "z_error_m": 0.0002349391469445017
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 17,
+      "success": true,
+      "xy_error_m": 0.006845569519765585,
+      "yaw_error_rad_mod_pi": 0.05548319523898293,
+      "z_error_m": 2.1189123895481998e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 18,
+      "success": true,
+      "xy_error_m": 0.012042092625873599,
+      "yaw_error_rad_mod_pi": 0.05897006756939449,
+      "z_error_m": 8.186695200274041e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 19,
+      "success": true,
+      "xy_error_m": 0.003933089825795238,
+      "yaw_error_rad_mod_pi": 0.01627028036335654,
+      "z_error_m": 6.183907665890942e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 20,
+      "success": true,
+      "xy_error_m": 0.020016459714391904,
+      "yaw_error_rad_mod_pi": 0.0019862445254279493,
+      "z_error_m": 3.8289091507826e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 21,
+      "success": true,
+      "xy_error_m": 0.012579283581760406,
+      "yaw_error_rad_mod_pi": 0.07797861788022997,
+      "z_error_m": 0.0001070937763004709
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 22,
+      "success": true,
+      "xy_error_m": 0.003555759300475786,
+      "yaw_error_rad_mod_pi": 0.06402946213586992,
+      "z_error_m": 0.00024219949536652408
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 23,
+      "success": true,
+      "xy_error_m": 0.010409123362974853,
+      "yaw_error_rad_mod_pi": 0.015687908768201586,
+      "z_error_m": 3.0060908526641228e-05
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 24,
+      "success": true,
+      "xy_error_m": 0.009203926797996182,
+      "yaw_error_rad_mod_pi": 0.06956569762088805,
+      "z_error_m": 0.0001055098234589158
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 25,
+      "success": true,
+      "xy_error_m": 0.0006685314084257306,
+      "yaw_error_rad_mod_pi": 0.09774014779314198,
+      "z_error_m": 0.0003336682033281413
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 26,
+      "success": true,
+      "xy_error_m": 0.005937343061628811,
+      "yaw_error_rad_mod_pi": 0.003986835760621099,
+      "z_error_m": 0.00012100418498373067
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "carryon",
+      "expected_id": "carryon",
+      "index": 27,
+      "success": true,
+      "xy_error_m": 0.007836427041141103,
+      "yaw_error_rad_mod_pi": 0.016969171664931292,
+      "z_error_m": 0.00013916055299578733
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "standard",
+      "expected_id": "standard",
+      "index": 28,
+      "success": true,
+      "xy_error_m": 0.017690177897527762,
+      "yaw_error_rad_mod_pi": 0.07777846349671824,
+      "z_error_m": 0.00013283695606503
+    },
+    {
+      "confidence": 1.0,
+      "detected_id": "large",
+      "expected_id": "large",
+      "index": 29,
+      "success": true,
+      "xy_error_m": 0.0002154501457329374,
+      "yaw_error_rad_mod_pi": 0.034859211159131806,
+      "z_error_m": 0.00020720551385489117
+    }
+  ],
+  "schema_version": 1,
+  "seed": 42
+}

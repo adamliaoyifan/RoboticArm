@@ -1,0 +1,10 @@
+output/
+config/extract_cargo.yaml
+config/measure_cargo.yaml
+
+# Large scan artifacts (keep locally; do not commit)
+*.las
+*.bin
+*.tar
+*.ply
+elfin-noetic.tar

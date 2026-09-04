@@ -1,0 +1,12 @@
+# Generate Gazebo model from real CAD STL (visual + simplified mesh collision)
+
+input_stl: ./realcontainer.STL
+model_name: airport_container_real
+output_dir: ./output/real_container_gazebo
+collision_triangles: 8000
+anchor_floor_z: true
+anchor_bottom_center: true
+mesh_align_rpy: [1.5708, 0.0, 3.1415926]
+friction_mu: 0.6
+install: true
+install_dir: null
