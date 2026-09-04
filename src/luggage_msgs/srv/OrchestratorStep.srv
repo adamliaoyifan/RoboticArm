@@ -5,6 +5,8 @@
 # the step gate is a no-op, so an automated acceptance run is unaffected.
 #
 # command:
+#   start  - explicit visible operator consent; the only command that leaves
+#            WAIT_START
 #   step   - run exactly one state, then pause again
 #   run    - run freely until a breakpoint, the next pause, or Idle
 #   run_to - run until target_state is about to execute, then pause

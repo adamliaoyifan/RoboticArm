@@ -1,5 +1,12 @@
 # Plan next cargo exploration view.
+uint32 SCHEMA_VERSION=1
+uint32 schema_version
 string mode
+string session_id
+string geometry_hash
+int64 map_revision
+builtin_interfaces/Time snapshot_stamp_start
+builtin_interfaces/Time snapshot_stamp_end
 float64[] current_joint_values
 string[] joint_names
 int32 views_used
@@ -9,9 +16,14 @@ bool reset_session
 # Return a candidate for visualization without mutating session state.
 bool preview_only
 ---
+uint32 schema_version
 bool success
 bool done
 string message
+string reason_code
+string policy_id
+string proposal_schema_id
+string view_request_id
 float64[] joint_values
 string[] joint_names
 int32 view_index
@@ -23,7 +35,14 @@ string diagnostics
 string candidate_id
 string lane_id
 float64 insertion_depth
+int64 expected_map_revision
 int64 map_revision
+string geometry_hash
+builtin_interfaces/Time source_acquisition_stamp
 ---
+uint32 schema_version
 string stage
 string candidate_id
+string policy_id
+string reason_code
+int64 map_revision

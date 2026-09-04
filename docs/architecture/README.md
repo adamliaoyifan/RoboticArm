@@ -13,6 +13,9 @@ preference.
   depth and Livox Mid-360 point clouds.
 - [Container geometry](container_geometry.md): authoritative usable-space hull,
   descriptor/hash identity, and exact clipped geometry semantics.
+- [Production orchestration](production_orchestration.md): operator
+  authorization, ROS-free state/effect contracts, request-ID correlation, and
+  exploration boundaries.
 
 ## Enforcement
 
@@ -25,6 +28,7 @@ injected into every agent session:
 | `perception-data-pipeline.mdc` | `luggage_perception`, `luggage_planning` | [sensor_data_pipeline.md](sensor_data_pipeline.md) |
 | `sensor-frames-and-timing.mdc` | perception, description, gazebo | [motion_compensation.md](motion_compensation.md) |
 | `container-geometry.mdc` | description, perception, packing, planning, bringup, gazebo | [container_geometry.md](container_geometry.md) |
+| `production-orchestration.mdc` | planning, bringup, msgs, gazebo | [production_orchestration.md](production_orchestration.md) |
 
 The rule files carry only the hard "must / must not" lines. Rationale, tables,
 sizing numbers, and vendor protocol details stay here. When the two disagree,

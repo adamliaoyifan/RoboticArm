@@ -1,7 +1,23 @@
-# Integrate latest depth point cloud at current settled arm pose.
+# Integrate one settled cargo-view depth acquisition.
+#
+# Latest-cloud semantics are intentionally insufficient. The mapper must
+# correlate the accepted settled view, acquisition stamp, expected prior map
+# revision, and geometry hash, and fail closed on stale or mismatched input.
+uint32 SCHEMA_VERSION=1
+uint32 schema_version
+string view_request_id
+string candidate_id
+builtin_interfaces/Time source_acquisition_stamp
+int64 expected_map_revision
+string geometry_hash
+bool settled
 int32 frame_count
 ---
+uint32 schema_version
 bool success
 string message
+string reason_code
 float64 unknown_ratio
 float64 occupancy_ratio
+int64 resulting_map_revision
+builtin_interfaces/Time integrated_acquisition_stamp
