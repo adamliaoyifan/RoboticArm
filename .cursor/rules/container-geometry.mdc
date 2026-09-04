@@ -1,0 +1,24 @@
+---
+description: Container usable-space geometry authority and clipping rules
+globs: src/luggage_description/**,src/luggage_perception/**,src/luggage_packing/**,src/luggage_planning/**,src/luggage_bringup/**,src/luggage_gazebo/**
+alwaysApply: false
+---
+
+# Container geometry
+
+Full contract: `docs/architecture/container_geometry.md`.
+
+## Must
+
+- Use `luggage_description.container_geometry` as the authority for container
+  usable-space descriptor/hash, containment, area, and volume.
+- Treat AABBs as indexing or broad-phase structures only. Clip to the hull
+  before reporting usable, free, reachable, blocked, covered, or placeable
+  space.
+- Check complete oriented payload boxes or swept boxes. Center-point checks
+  alone are invalid.
+- Run hull filtering before ranking, retention, `top_n`, or first-feasible
+  selection.
+- Fail closed on missing, invalid, unsupported, or mismatched geometry. Do not
+  silently fall back from seven-face geometry to legacy `inner_size`.
+- Keep eval/Gazebo truth out of online geometry and usable-space denominators.
