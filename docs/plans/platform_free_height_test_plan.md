@@ -182,9 +182,12 @@ failed frames instead of merging them into one detection-success rate.
 ## Gate 5 - Rosbag Replay
 
 Dataset readiness and metadata validation are implemented under PF-A2 in
-`platform_free_height_remediation.md`. Passing the PF-A2 checker is necessary
+`platform_free_height_remediation.md`. The normative topic/type/time/TF/
+reference contract is
+`docs/plans/platform_free_height_gate5_bag_contract.md`, checked by
+`scripts/gate5_bag_readiness.py`. Passing the PF-A2 checker is necessary
 but not sufficient for Gate 5: accuracy acceptance still requires real sensor
-data and independent references.
+data and independent references. The checker must not claim Gate 5 accuracy.
 
 When real data is available, record canonical preprocessed RGB, depth, points,
 camera info, joint states/TF, masks or reproducible segmentation inputs, and

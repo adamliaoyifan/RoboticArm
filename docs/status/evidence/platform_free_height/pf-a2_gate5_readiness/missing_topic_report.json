@@ -1,0 +1,15 @@
+{
+  "gate5_accuracy": "not_claimed",
+  "issues": [
+    {
+      "code": "BAG_MISSING_TOPIC",
+      "detail": "",
+      "topic": "/luggage/preprocessed/status"
+    }
+  ],
+  "ready": false,
+  "reasons": [
+    "BAG_MISSING_TOPIC"
+  ],
+  "schema": "gate5_bag_manifest/v1"
+}
