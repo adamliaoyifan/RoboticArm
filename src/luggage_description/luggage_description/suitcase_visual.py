@@ -255,19 +255,23 @@ def _mesh_geometry_xml(uri, scale):
     )
 
 
-def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="box",
+def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR):
-    """SDF for a pickup spawn. Default visual is a primitive box.
+    """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
-    ``visual_kind=mesh`` references a pre-scaled ``model://`` URI. It does not
-    write a new STL. *models_root* and *scaled_dir* are unused for mesh spawn
-    (kept so callers do not break).
+    References a pre-scaled ``model://`` URI; it does not write a new STL.
+    *models_root* and *scaled_dir* are unused (kept so callers do not
+    break). The untextured primitive-box visual was removed: YOLO-World
+    cannot reliably detect a textureless box, and the semantic chain is
+    the accepted perception path.
     """
     del models_root, scaled_dir
-    kind = str(visual_kind or "box").strip().lower()
+    kind = str(visual_kind or "mesh").strip().lower()
     if kind != "mesh":
-        return suitcase_sdf(
-            model_name, size, mass_kg, visual_id, visual_kind="box")
+        raise ValueError(
+            "visual_kind must be 'mesh' (textureless primitive boxes were "
+            "removed: YOLO-World cannot detect them reliably), got %r"
+            % (visual_kind,))
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
@@ -285,9 +289,10 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh"):
     """SDF: visual and collision share one geometry at the link origin.
 
-    *visual_kind* ``box`` uses a primitive box for both. ``mesh`` uses the
-    suitcase STL for both (same URI and scale). *mesh_already_scaled* sets
-    mesh ``<scale>`` to 1 1 1.
+    Mesh only: visual and collision use the suitcase STL (same URI and
+    scale). *mesh_already_scaled* sets mesh ``<scale>`` to 1 1 1. The
+    primitive-box branch was removed (untextured boxes are undetectable
+    by the open-vocabulary perception chain).
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -295,19 +300,16 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     ambient, diffuse = VISUAL_DIFFUSE.get(
         visual_id, VISUAL_DIFFUSE[VISUAL_LOAFBRR])
     kind = str(visual_kind or "mesh").strip().lower()
-    if kind == "box":
-        geometry = (
-            "          <box><size>%.6f %.6f %.6f</size></box>"
-            % (length, width, height))
-        comment_kind = "box"
-        collision_geom = geometry
-    else:
-        uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
-        mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
-            length, width, height)
-        geometry = _mesh_geometry_xml(uri, mesh_scale)
-        comment_kind = visual_id
-        collision_geom = geometry
+    if kind != "mesh":
+        raise ValueError(
+            "visual_kind must be 'mesh' (primitive-box visuals were "
+            "removed), got %r" % (visual_kind,))
+    uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
+    mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
+        length, width, height)
+    geometry = _mesh_geometry_xml(uri, mesh_scale)
+    comment_kind = visual_id
+    collision_geom = geometry
     return """<?xml version="1.0"?>
 <sdf version="1.6">
   <!-- Suitcase %s visual+collision %.3f x %.3f x %.3f m, %.2f kg -->

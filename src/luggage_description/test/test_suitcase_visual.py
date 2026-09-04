@@ -77,18 +77,13 @@ class TestSuitcaseSdf(unittest.TestCase):
         self.assertIsNone(root.find(".//collision/geometry/box"))
         self.assertIsNotNone(root.find(".//visual/material/diffuse"))
 
-    def test_box_visual_matches_collision(self):
-        size = [0.73, 0.48, 0.28]
-        xml = suitcase_sdf(
-            "pickup_box_1", size, 12.0, VISUAL_VINTAGE, visual_kind="box")
-        root = ET.fromstring(xml)
-        visual = [float(v) for v in root.find(
-            ".//visual/geometry/box/size").text.split()]
-        collision = [float(v) for v in root.find(
-            ".//collision/geometry/box/size").text.split()]
-        self.assertIsNone(root.find(".//visual/geometry/mesh"))
-        self.assertEqual(visual, size)
-        self.assertEqual(collision, size)
+    def test_box_visual_kind_is_rejected(self):
+        """Untextured primitive-box visuals were removed (YOLO-World
+        cannot detect them reliably); mesh is the only supported kind."""
+        with self.assertRaises(ValueError):
+            suitcase_sdf(
+                "pickup_box_1", [0.73, 0.48, 0.28], 12.0, VISUAL_VINTAGE,
+                visual_kind="box")
 
     def test_already_scaled_keeps_unit_mesh_scale_on_both(self):
         size = [0.77, 0.48, 0.25]
@@ -232,15 +227,11 @@ class TestWriteScaledStl(unittest.TestCase):
 
 
 class TestPickupVisualSdf(unittest.TestCase):
-    def test_box_kind_has_no_mesh(self):
-        xml = pickup_visual_sdf(
-            "pickup_box_1", [0.55, 0.40, 0.25], 8.0, VISUAL_LOAFBRR,
-            visual_kind="box")
-        root = ET.fromstring(xml)
-        self.assertIsNone(root.find(".//visual/geometry/mesh"))
-        visual = [float(v) for v in root.find(
-            ".//visual/geometry/box/size").text.split()]
-        self.assertEqual(visual, [0.55, 0.40, 0.25])
+    def test_box_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            pickup_visual_sdf(
+                "pickup_box_1", [0.55, 0.40, 0.25], 8.0, VISUAL_LOAFBRR,
+                visual_kind="box")
 
     def test_mesh_kind_uses_prebuilt_uri_and_writes_no_stl(self):
         dest_dir = tempfile.mkdtemp()

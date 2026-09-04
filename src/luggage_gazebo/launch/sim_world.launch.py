@@ -77,7 +77,7 @@ def _default_launch_values():
         "named_pose_max_vel": "1.0",
         "use_semantic": "false",
         "semantic_require_backend": "",
-        "visual_kind": "box",
+        "visual_kind": "mesh",
         "size_mode": "catalog",
         "yaw_mode": "",
         "yaw_range": "0.0,0.0",

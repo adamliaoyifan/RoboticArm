@@ -101,7 +101,7 @@ class PickupBoxSpawner(Node):
         # Box visual: ogre2 can lag create. Mesh uses preloaded URIs (0).
         self.declare_parameter("visual_settle_sec", 2.0)
         # box: primitive AABB. mesh: pre-scaled model:// visual=collision.
-        self.declare_parameter("visual_kind", "box")
+        self.declare_parameter("visual_kind", "mesh")
         self.declare_parameter("models_root", "")
 
         scene_cfg = self.get_parameter("scene_tf_config").value
@@ -124,7 +124,15 @@ class PickupBoxSpawner(Node):
         self._size_mode = str(
             self.get_parameter("size_mode").value).strip().lower() or "catalog"
         self._visual_kind = str(
-            self.get_parameter("visual_kind").value).strip().lower() or "box"
+            self.get_parameter("visual_kind").value).strip().lower() or "mesh"
+        if self._visual_kind != "mesh":
+            # Untextured primitive boxes were removed: YOLO-World cannot
+            # reliably detect them, and the semantic chain is the
+            # accepted perception path.
+            self.get_logger().warning(
+                "visual_kind=%s is not supported; forcing 'mesh' "
+                "(thirdparty suitcase assets)" % self._visual_kind)
+            self._visual_kind = "mesh"
         if self._visual_kind == "mesh" and self._size_mode == "continuous":
             self.get_logger().warning(
                 "visual_kind=mesh ignores size_mode=continuous; using catalog")
