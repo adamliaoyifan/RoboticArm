@@ -1,6 +1,7 @@
 # 2026-09-04 - Pickup support hardware plan review
 
 - role: reviews
+- agent: codex
 - cli: codex
 - status: done
 

@@ -8,6 +8,9 @@ Usage:
   scripts/agent_notify.sh --to ROLE --from ROLE --cli CLI --slug SLUG --question TEXT [options]
 
 Options:
+  --to-agent AGENT    Concrete target agent. Defaults to any.
+  --from-agent AGENT  Concrete sender agent. Defaults to --cli.
+  --agent AGENT       Alias for --from-agent.
   --body TEXT       Thread post body. Defaults to --question.
   --pointer PATH    Add one pointer. May be repeated.
   --thread FILE     Append to an existing discuss thread filename.
@@ -29,12 +32,23 @@ trim_cell() {
   printf '%s' "$value"
 }
 
+trim() {
+  local value="$*"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
 valid_to_role() {
   [[ "$1" =~ ^(reviews|eng|test|discuss|any)$ ]]
 }
 
 valid_from_role() {
   [[ "$1" =~ ^(reviews|eng|test|discuss)$ ]]
+}
+
+valid_agent_id() {
+  [[ "$1" =~ ^[[:alnum:]_.@/-]+$ ]]
 }
 
 safe_slug() {
@@ -64,8 +78,57 @@ next_question_id() {
   printf '%s%s' "$prefix" "$((max + 1))"
 }
 
+open_header() {
+  printf '| id | to_role | to_agent | from_role | from_agent | cli | thread | question |\n'
+}
+
+open_separator() {
+  printf '|---|---|---|---|---|---|---|---|\n'
+}
+
+parse_first_cell() {
+  local line="$1"
+  line="${line#|}"
+  line="${line%%|*}"
+  trim "$line"
+}
+
+upsert_open_row() {
+  local open_file="$1"
+  local id="$2"
+  local row="$3"
+  local thread="$4"
+  local tmp line existing_id found updated_row
+
+  tmp="$(mktemp)"
+  found=0
+  while IFS= read -r line; do
+    if [[ "$line" == "| id "* ]]; then
+      open_header >> "$tmp"
+    elif [[ "$line" == "|---"* ]]; then
+      open_separator >> "$tmp"
+    elif [[ "$line" == \|* && "$line" == *"| $thread |"* ]]; then
+      existing_id="$(parse_first_cell "$line")"
+      updated_row="| $existing_id |${row#| $id |}"
+      printf '%s\n' "$updated_row" >> "$tmp"
+      found=1
+    else
+      printf '%s\n' "$line" >> "$tmp"
+    fi
+  done < "$open_file"
+
+  if [[ "$found" -eq 0 ]]; then
+    printf '%s\n' "$row" >> "$tmp"
+  fi
+
+  mv "$tmp" "$open_file"
+  [[ "$found" -eq 0 ]]
+}
+
 TO=""
+TO_AGENT="any"
 FROM=""
+FROM_AGENT=""
 CLI=""
 SLUG=""
 QUESTION=""
@@ -77,7 +140,9 @@ POINTERS=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --to) TO="${2:-}"; shift 2 ;;
+    --to-agent) TO_AGENT="${2:-}"; shift 2 ;;
     --from) FROM="${2:-}"; shift 2 ;;
+    --from-agent|--agent) FROM_AGENT="${2:-}"; shift 2 ;;
     --cli) CLI="${2:-}"; shift 2 ;;
     --slug) SLUG="${2:-}"; shift 2 ;;
     --question) QUESTION="${2:-}"; shift 2 ;;
@@ -110,10 +175,32 @@ valid_from_role "$FROM" || {
   echo "invalid --from role: $FROM" >&2
   exit 2
 }
+FROM_AGENT="${FROM_AGENT:-$CLI}"
+valid_agent_id "$TO_AGENT" || {
+  echo "invalid --to-agent: $TO_AGENT" >&2
+  exit 2
+}
+valid_agent_id "$FROM_AGENT" || {
+  echo "invalid --from-agent: $FROM_AGENT" >&2
+  exit 2
+}
 
 ROOT="${AGENT_COORD_ROOT:-}"
 if [[ -z "$ROOT" ]]; then
   ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+else
+  # A leftover exported AGENT_COORD_ROOT (e.g. a sandbox path in /tmp) must
+  # not silently retarget the mailbox. Require the coordination root to look
+  # like this workspace; opt out explicitly for deliberate sandboxes.
+  echo "AGENT_COORD_ROOT is set: mailbox root -> $ROOT" >&2
+  if [[ ! -f "$ROOT/docs/agents/README.md" || ! -d "$ROOT/src/luggage_gazebo" ]] \
+      && [[ "${AGENT_MAILBOX_ALLOW_ANY_ROOT:-0}" != "1" ]]; then
+    echo "refusing: $ROOT does not look like the primary workspace" \
+         "(missing docs/agents/README.md or src/luggage_gazebo)." \
+         "Unset AGENT_COORD_ROOT or set AGENT_MAILBOX_ALLOW_ANY_ROOT=1" \
+         "for a deliberate sandbox." >&2
+    exit 1
+  fi
 fi
 cd "$ROOT"
 
@@ -155,12 +242,13 @@ if [[ ! -f "$THREAD_PATH" ]]; then
   {
     printf '# %s -- %s\n\n' "$DATE" "$TITLE"
     printf -- '- status: open\n'
-    printf -- '- to: %s\n\n' "$TO"
+    printf -- '- to_role: %s\n' "$TO"
+    printf -- '- to_agent: %s\n\n' "$TO_AGENT"
   } > "$THREAD_PATH"
 fi
 
 {
-  printf '## Post -- %s -- %s -- %s\n\n' "$FROM" "$HUMAN_TIME" "$CLI"
+  printf '## Post -- %s/%s -- %s -- %s\n\n' "$FROM" "$FROM_AGENT" "$HUMAN_TIME" "$CLI"
   printf '%s\n\n' "$BODY"
   if [[ ${#POINTERS[@]} -gt 0 ]]; then
     printf '## Pointers\n\n'
@@ -173,13 +261,13 @@ fi
   printf -- '- %s\n\n' "$QUESTION"
 } >> "$THREAD_PATH"
 
-if grep -F "| $THREAD |" "$OPEN_FILE" >/dev/null 2>&1; then
-  echo "thread already listed in $OPEN_FILE: $THREAD" >&2
-  exit 1
-fi
-
 ID="$(next_question_id "$OPEN_FILE")"
-printf '| %s | %s | %s | %s | %s | %s |\n' \
-  "$ID" "$TO" "$FROM" "$(trim_cell "$CLI")" "$THREAD" "$(trim_cell "$QUESTION")" >> "$OPEN_FILE"
+ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s |' \
+  "$ID" "$TO" "$TO_AGENT" "$FROM" "$FROM_AGENT" "$(trim_cell "$CLI")" \
+  "$THREAD" "$(trim_cell "$QUESTION")")"
 
-echo "notified $TO as $ID via $THREAD"
+if upsert_open_row "$OPEN_FILE" "$ID" "$ROW" "$THREAD"; then
+  echo "notified $TO/$TO_AGENT as $ID via $THREAD"
+else
+  echo "updated $TO/$TO_AGENT notification via $THREAD"
+fi

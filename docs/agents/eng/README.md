@@ -9,6 +9,7 @@ or migration work.
 # YYYY-MM-DD — short title
 
 - role: eng
+- agent: cursor | claude-code | codex | custom-agent-id
 - cli: cursor | claude-code | codex | other
 - status: done | open
 

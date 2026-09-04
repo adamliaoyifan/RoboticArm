@@ -1,6 +1,7 @@
 # 2026-09-04 — agent contract hardening
 
 - role: eng
+- agent: codex
 - cli: codex
 - status: done
 

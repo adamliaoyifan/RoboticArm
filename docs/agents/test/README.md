@@ -10,6 +10,7 @@ runs, regression triage, or evidence indexing.
 # YYYY-MM-DD — short title
 
 - role: test
+- agent: cursor | claude-code | codex | custom-agent-id
 - cli: cursor | claude-code | codex | other
 - status: done | open
 

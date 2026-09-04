@@ -1,6 +1,7 @@
 # 2026-09-04 — agent framework review
 
 - role: reviews
+- agent: codex
 - cli: codex
 - status: done
 

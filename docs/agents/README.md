@@ -4,6 +4,15 @@ Multiple agents (Cursor, Claude Code, Codex, and other CLIs) share this
 workspace. Chat transcripts stay in each product. Durable notes go here,
 split by **role**, not by model.
 
+Roles are responsibility pools, not unique workers. `eng`, `reviews`, and
+`test` may each be handled by more than one concrete agent. Use:
+
+- `role`: responsibility, such as `eng`, `reviews`, or `test`
+- `agent`: concrete worker identity, such as `codex`, `claude-code`,
+  `cursor`, or `codex-pick-fix`
+- `cli`: the CLI product that wrote the note, such as `codex`,
+  `claude-code`, or `cursor`
+
 Any CLI that can read and write this tree can talk to the others **asynchronously**
 through `discuss/` threads plus the mailbox `discuss/OPEN.md`. There is no
 live socket: the other agent only replies the next time it is started and
@@ -25,8 +34,9 @@ Cross-CLI contract: root `AGENTS.md` (Claude Code also follows `CLAUDE.md`).
 ## Session start (every CLI)
 
 1. Read `docs/agents/discuss/OPEN.md`.
-2. If a row's `to` is your role or `any`, open that thread, **append a reply**,
-   then update or remove the row.
+2. If a row's `to_role` is your role or `any`, and `to_agent` is `any` or
+   matches your concrete agent id, open that thread, **append a reply**, then
+   update or remove the row.
 3. Do not start a parallel thread for the same question.
 
 ## Cross-agent thread
@@ -39,9 +49,10 @@ Replies **append** to that same file. Never overwrite earlier sections.
 # YYYY-MM-DD — short title
 
 - status: open | done
-- to: reviews | eng | test | discuss | any
+- to_role: reviews | eng | test | discuss | any
+- to_agent: any | codex | claude-code | cursor | custom-agent-id
 
-## Post — eng — 2026-09-04 10:07 — cursor
+## Post -- eng/codex-pick-fix -- 2026-09-04 10:07 -- codex
 
 Question or proposal. One short paragraph.
 
@@ -53,7 +64,7 @@ Question or proposal. One short paragraph.
 
 - Should place planning stay in `world`?
 
-## Reply — reviews — 2026-09-04 10:20 — claude-code
+## Reply -- reviews/claude-code -- 2026-09-04 10:20 -- claude-code
 
 Answer. If this closes the question, set `status: done` in the header
 and delete the row from `OPEN.md`.
@@ -64,8 +75,10 @@ Mailbox row in `discuss/OPEN.md`:
 | Column | Meaning |
 |---|---|
 | `id` | `Q-YYYYMMDD-N` |
-| `to` | role that should answer, or `any` |
-| `from` | role that asked |
+| `to_role` | role that should answer, or `any` |
+| `to_agent` | concrete target agent, or `any` for the role pool |
+| `from_role` | role that asked |
+| `from_agent` | concrete asking agent |
 | `cli` | `cursor` / `claude-code` / `codex` / other |
 | `thread` | filename in `discuss/` |
 | `question` | one line |
@@ -85,7 +98,9 @@ Preferred helper:
 ```bash
 scripts/agent_notify.sh \
   --to eng \
+  --to-agent any \
   --from test \
+  --from-agent cursor-eval \
   --cli codex \
   --slug yolo-regression \
   --question "Eval packing_eval_carryon_n50 regressed at YOLO_NOT_READY." \
@@ -98,7 +113,7 @@ workspace so the mailbox does not split:
 
 ```bash
 AGENT_COORD_ROOT=/home/adamliao/work/elfin_humble_ws \
-  scripts/agent_notify.sh --to eng --from test --cli codex --slug ... --question ...
+  scripts/agent_notify.sh --to eng --to-agent any --from test --from-agent codex --cli codex --slug ... --question ...
 ```
 
 Example: a test agent finishes an eval and needs eng to inspect a regression.
@@ -112,7 +127,7 @@ Example: a test agent finishes an eval and needs eng to inspect a regression.
 4. Re-read `docs/agents/discuss/OPEN.md`, then add:
 
 ```markdown
-| Q-YYYYMMDD-N | eng | test | codex | YYYY-MM-DD_HHMM_<regression-slug>.md | Eval <run> regressed; please inspect failure in <one line>. |
+| Q-YYYYMMDD-N | eng | any | test | cursor-eval | cursor | YYYY-MM-DD_HHMM_<regression-slug>.md | Eval <run> regressed; please inspect failure in <one line>. |
 ```
 
 The eng agent replies in the same thread. If the ask is answered, it removes
@@ -147,6 +162,7 @@ docs/agents/<role>/YYYY-MM-DD_HHMM_<slug>.md
 # YYYY-MM-DD — short title
 
 - role: reviews | eng | test
+- agent: codex | claude-code | cursor | custom-agent-id
 - cli: cursor | claude-code | codex
 - status: done | open
 
