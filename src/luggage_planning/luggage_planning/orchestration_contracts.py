@@ -6,12 +6,18 @@ ROS, sleeps, reads configuration, looks up TF, or executes motion.
 
 from __future__ import annotations
 
+import math
+import uuid
 from dataclasses import dataclass, replace
 from enum import Enum
 from typing import FrozenSet, Iterable, Mapping, Optional, Tuple
 
 
 SCHEMA_VERSION = 1
+
+
+class _FrozenMapping(tuple):
+    pass
 
 
 class OrchestratorState(str, Enum):
@@ -71,14 +77,10 @@ class Effect:
     payload: Mapping[str, object] = None
 
     def __post_init__(self) -> None:
-        object.__setattr__(
-            self,
-            "payload",
-            tuple(sorted((str(key), value) for key, value in (self.payload or {}).items())),
-        )
+        object.__setattr__(self, "payload", _freeze_mapping(self.payload or {}))
 
     def payload_dict(self) -> dict[str, object]:
-        return dict(self.payload)
+        return _plain_mapping(self.payload)
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -98,8 +100,17 @@ class OperatorEvent:
     request_id: Optional[str] = None
     operator_id: str = ""
     reason_code: str = ""
+    operation_id: Optional[str] = None
+    box_id: Optional[str] = None
+    session_id: Optional[str] = None
     schema_version: int = SCHEMA_VERSION
     payload_released: bool = False
+
+
+@dataclass(frozen=True)
+class PendingOperation:
+    operation_id: str
+    name: str
 
 
 @dataclass(frozen=True)
@@ -108,9 +119,13 @@ class OrchestratorContractState:
     started: bool = False
     carrying: bool = False
     vacuum_enabled: bool = False
+    session_id: Optional[str] = None
     current_request_id: Optional[str] = None
     consumed_request_ids: FrozenSet[str] = frozenset()
     prompt_sequence: int = 0
+    operation_sequence: int = 0
+    pending_operation: Optional[PendingOperation] = None
+    active_box_id: Optional[str] = None
     committed_box_ids: FrozenSet[str] = frozenset()
 
     @property
@@ -182,8 +197,10 @@ def initial_state() -> OrchestratorContractState:
     return OrchestratorContractState()
 
 
-def command(command_name: str) -> OperatorEvent:
-    return OperatorEvent(EventType.COMMAND, command=command_name)
+def command(command_name: str, session_id: Optional[str] = None) -> OperatorEvent:
+    if command_name.strip().lower() == "start" and session_id is None:
+        session_id = "session-%s" % uuid.uuid4().hex
+    return OperatorEvent(EventType.COMMAND, command=command_name, session_id=session_id)
 
 
 def pickup_ready(
@@ -199,12 +216,18 @@ def pickup_ready(
     )
 
 
-def operation_succeeded() -> OperatorEvent:
-    return OperatorEvent(EventType.OPERATION_SUCCEEDED)
+def operation_succeeded(
+    operation_id: Optional[str] = None, box_id: Optional[str] = None
+) -> OperatorEvent:
+    return OperatorEvent(
+        EventType.OPERATION_SUCCEEDED, operation_id=operation_id, box_id=box_id
+    )
 
 
-def operation_failed(reason_code: str) -> OperatorEvent:
-    return OperatorEvent(EventType.OPERATION_FAILED, reason_code=reason_code)
+def operation_failed(reason_code: str, operation_id: Optional[str] = None) -> OperatorEvent:
+    return OperatorEvent(
+        EventType.OPERATION_FAILED, reason_code=reason_code, operation_id=operation_id
+    )
 
 
 def has_motion(effects: Iterable[Effect]) -> bool:
@@ -229,10 +252,10 @@ def reduce_event(
         return _handle_pickup_ready(model, event)
 
     if event.event_type == EventType.OPERATION_SUCCEEDED:
-        return _handle_success(model)
+        return _handle_success(model, event)
 
     if event.event_type == EventType.OPERATION_FAILED:
-        return _handle_failure(model, event.reason_code or "operation_failed")
+        return _handle_failure(model, event.reason_code or "operation_failed", event)
 
     if event.event_type == EventType.ABORT:
         return _handle_abort(model, event.reason_code or "operator_abort")
@@ -248,13 +271,21 @@ def _handle_command(
 ) -> Transition:
     name = event.command.strip().lower()
     if model.state == OrchestratorState.WAIT_START and name == "start":
-        next_state = replace(
-            model, state=OrchestratorState.RESET_CARGO_MAP, started=True
+        session_id = _valid_session_id(event.session_id)
+        if session_id is None:
+            return _status(model, "start_session_id_required")
+        base_state = replace(
+            model,
+            state=OrchestratorState.RESET_CARGO_MAP,
+            started=True,
+            session_id=session_id,
+            pending_operation=None,
         )
+        next_state, reset_effect = _begin_service(base_state, "ResetCargoMap")
         return Transition(
             next_state,
             (
-                _call_service("ResetCargoMap"),
+                reset_effect,
                 _publish_status("start_accepted", next_state),
             ),
         )
@@ -290,140 +321,210 @@ def _handle_pickup_ready(
     ):
         return _status(model, "pickup_ready_stale_or_wrong_id")
 
-    next_state = replace(
+    base_state = replace(
         model,
         state=OrchestratorState.DETECT,
         current_request_id=None,
         consumed_request_ids=model.consumed_request_ids | frozenset({request_id}),
+        active_box_id=None,
+    )
+    next_state, detect_effect = _begin_service(
+        base_state, "DetectLuggage", detect=True
     )
     return Transition(
         next_state,
         (
-            _call_service("DetectLuggage", detect=True),
+            detect_effect,
             _publish_status("pickup_ready_accepted", next_state),
         ),
     )
 
 
-def _handle_success(model: OrchestratorContractState) -> Transition:
+def _handle_success(
+    model: OrchestratorContractState, event: OperatorEvent
+) -> Transition:
+    if not _operation_matches(model, event):
+        return _status(model, "operation_stale_or_wrong_id")
+    completed = model.pending_operation
+    model = replace(model, pending_operation=None)
     state = model.state
-    if state == OrchestratorState.RESET_CARGO_MAP:
-        next_state = replace(model, state=OrchestratorState.EXPLORE_CONTAINER)
+    operation_name = completed.name
+
+    if state == OrchestratorState.RESET_CARGO_MAP and operation_name == "ResetCargoMap":
+        base_state = replace(model, state=OrchestratorState.EXPLORE_CONTAINER)
+        next_state, view_effect = _begin_action(base_state, "PlanNextCargoView")
         return Transition(
             next_state,
             (
-                _call_action("PlanNextCargoView"),
+                view_effect,
                 _publish_status("cargo_map_reset", next_state),
             ),
         )
 
-    if state == OrchestratorState.EXPLORE_CONTAINER:
-        next_state = replace(model, state=OrchestratorState.RETURN_PICK_OBSERVE)
-        return Transition(
-            next_state,
-            (
-                _call_action("GoToRobotPose", motion=True, pose_name="pick_observe_pose"),
-                _publish_status("exploration_complete", next_state),
-            ),
-        )
+    if state == OrchestratorState.EXPLORE_CONTAINER and operation_name == "PlanNextCargoView":
+        return _return_pick_observe(model, "exploration_complete")
 
-    if state == OrchestratorState.RETURN_PICK_OBSERVE:
+    if (
+        state == OrchestratorState.RETURN_PICK_OBSERVE
+        and operation_name == "GoToRobotPose"
+    ):
         return _enter_wait_pickup_ready(model, "pickup_prompt")
 
-    if state == OrchestratorState.DETECT:
-        next_state = replace(model, state=OrchestratorState.COMPUTE_PLACEMENT)
+    if state == OrchestratorState.DETECT and operation_name == "DetectLuggage":
+        box_id = _valid_identity(event.box_id)
+        if box_id is None:
+            return _return_pick_observe(model, "box_identity_required")
+        if box_id in model.committed_box_ids:
+            return _return_pick_observe(model, "box_identity_already_committed")
+        base_state = replace(
+            model, state=OrchestratorState.COMPUTE_PLACEMENT, active_box_id=box_id
+        )
+        next_state, compute_effect = _begin_service(base_state, "ComputePlacement")
         return Transition(
             next_state,
             (
-                _call_service("ComputePlacement"),
+                compute_effect,
                 _publish_status("detection_complete", next_state),
             ),
         )
 
-    if state == OrchestratorState.COMPUTE_PLACEMENT:
-        next_state = replace(model, state=OrchestratorState.PLAN_PICK)
+    if (
+        state == OrchestratorState.COMPUTE_PLACEMENT
+        and operation_name == "ComputePlacement"
+    ):
+        base_state = replace(model, state=OrchestratorState.PLAN_PICK)
+        next_state, plan_effect = _begin_service(base_state, "BuildMotionSequence")
         return Transition(
             next_state,
             (
-                _call_service("BuildMotionSequence"),
+                plan_effect,
                 _publish_status("placement_computed", next_state),
             ),
         )
 
-    if state == OrchestratorState.PLAN_PICK:
-        next_state = replace(model, state=OrchestratorState.EXEC_PICK)
+    if state == OrchestratorState.PLAN_PICK and operation_name == "BuildMotionSequence":
+        base_state = replace(model, state=OrchestratorState.EXEC_PICK)
+        next_state, pick_effect = _begin_action(
+            base_state, "PlanMotion", motion=True, segment="pick"
+        )
         return Transition(
             next_state,
             (
-                _call_action("PlanMotion", motion=True, segment="pick"),
+                pick_effect,
                 _publish_status("pick_plan_ready", next_state),
             ),
         )
 
-    if state == OrchestratorState.EXEC_PICK:
-        next_state = replace(
+    if state == OrchestratorState.EXEC_PICK and operation_name == "PlanMotion":
+        next_state, vacuum_effect = _begin_service(
+            model, "VacuumCommand", vacuum=True, enable=True
+        )
+        return Transition(
+            next_state,
+            (
+                vacuum_effect,
+                _publish_status("pick_motion_complete", next_state),
+            ),
+        )
+
+    if state == OrchestratorState.EXEC_PICK and operation_name == "VacuumCommand":
+        base_state = replace(
             model,
             state=OrchestratorState.PLAN_PLACE,
             carrying=True,
             vacuum_enabled=True,
         )
+        next_state, plan_effect = _begin_service(base_state, "BuildMotionSequence")
         return Transition(
             next_state,
             (
-                _call_service("VacuumCommand", vacuum=True, enable=True),
-                _call_service("BuildMotionSequence"),
+                plan_effect,
                 _publish_status("payload_attached", next_state),
             ),
         )
 
-    if state == OrchestratorState.PLAN_PLACE:
-        next_state = replace(model, state=OrchestratorState.EXEC_PLACE)
+    if state == OrchestratorState.PLAN_PLACE and operation_name == "BuildMotionSequence":
+        base_state = replace(model, state=OrchestratorState.EXEC_PLACE)
+        next_state, place_effect = _begin_action(
+            base_state, "PlanMotion", motion=True, segment="place"
+        )
         return Transition(
             next_state,
             (
-                _call_action("PlanMotion", motion=True, segment="place"),
+                place_effect,
                 _publish_status("place_plan_ready", next_state),
             ),
         )
 
-    if state == OrchestratorState.EXEC_PLACE:
-        next_state = replace(
+    if state == OrchestratorState.EXEC_PLACE and operation_name == "PlanMotion":
+        next_state, release_effect = _begin_service(
+            model, "VacuumCommand", vacuum=True, enable=False
+        )
+        return Transition(
+            next_state,
+            (
+                release_effect,
+                _publish_status("place_motion_complete", next_state),
+            ),
+        )
+
+    if state == OrchestratorState.EXEC_PLACE and operation_name == "VacuumCommand":
+        base_state = replace(
             model,
             state=OrchestratorState.COMMIT_AND_VERIFY,
             carrying=False,
             vacuum_enabled=False,
         )
+        next_state, verify_effect = _begin_service(base_state, "VerifyPlacedBox")
         return Transition(
             next_state,
             (
-                _call_service("VacuumCommand", vacuum=True, enable=False),
-                _call_service("VerifyPlacedBox"),
+                verify_effect,
                 _publish_status("payload_released", next_state),
             ),
         )
 
-    if state == OrchestratorState.COMMIT_AND_VERIFY:
-        box_id = "box-%06d" % (model.placed_count + 1)
-        next_state = replace(
-            model,
-            state=OrchestratorState.RETURN_PICK_OBSERVE,
-            committed_box_ids=model.committed_box_ids | frozenset({box_id}),
+    if (
+        state == OrchestratorState.COMMIT_AND_VERIFY
+        and operation_name == "VerifyPlacedBox"
+    ):
+        if not model.active_box_id:
+            return _status(model, "box_identity_required")
+        next_state, finalize_effect = _begin_service(
+            model, "FinalizeCurrentBox", box_id=model.active_box_id
         )
         return Transition(
             next_state,
             (
-                _call_service("FinalizeCurrentBox"),
-                _call_action("GoToRobotPose", motion=True, pose_name="pick_observe_pose"),
-                _publish_status("placement_committed", next_state),
+                finalize_effect,
+                _publish_status("placement_verified", next_state),
             ),
         )
+
+    if (
+        state == OrchestratorState.COMMIT_AND_VERIFY
+        and operation_name == "FinalizeCurrentBox"
+    ):
+        box_id = model.active_box_id
+        if not box_id:
+            return _status(model, "box_identity_required")
+        committed = model.committed_box_ids | frozenset({box_id})
+        base_state = replace(model, committed_box_ids=committed, active_box_id=None)
+        return _return_pick_observe(base_state, "placement_committed")
+
+    if state == OrchestratorState.WAIT_RECOVERY and operation_name == "VacuumCommand":
+        return _return_pick_observe(model, "recovery_release_complete")
 
     return _status(model, "success_ignored")
 
 
 def _handle_failure(
-    model: OrchestratorContractState, reason_code: str
+    model: OrchestratorContractState, reason_code: str, event: OperatorEvent
 ) -> Transition:
+    if not _operation_matches(model, event):
+        return _status(model, "operation_stale_or_wrong_id")
+    model = replace(model, pending_operation=None)
+
     if model.carrying or model.vacuum_enabled:
         next_state = replace(
             model,
@@ -443,8 +544,11 @@ def _handle_failure(
             (_publish_status(reason_code, next_state, boundary="verification"),),
         )
 
+    if model.state == OrchestratorState.WAIT_PICKUP_READY:
+        return _status(model, reason_code)
+
     if model.state in FAILURE_TRANSITIONS[FailureBoundary.PRE_PICK]["states"]:
-        return _enter_wait_pickup_ready(model, reason_code)
+        return _return_pick_observe(model, reason_code)
 
     return _status(model, reason_code)
 
@@ -458,12 +562,13 @@ def _handle_abort(
             state=OrchestratorState.CARRY_FAULT,
             carrying=True,
             vacuum_enabled=True,
+            pending_operation=None,
         )
         return Transition(
             next_state,
             (_publish_status(reason_code, next_state, boundary="abort_carrying"),),
         )
-    next_state = replace(model, state=OrchestratorState.ABORTED)
+    next_state = replace(model, state=OrchestratorState.ABORTED, pending_operation=None)
     return Transition(
         next_state, (_publish_status(reason_code, next_state, boundary="abort"),)
     )
@@ -481,17 +586,46 @@ def _handle_recovery(
     if model.state == OrchestratorState.CARRY_FAULT and not event.payload_released:
         return _status(model, "recovery_requires_explicit_release")
 
-    next_state = replace(
+    base_state = replace(
         model,
-        state=OrchestratorState.RETURN_PICK_OBSERVE,
+        state=OrchestratorState.WAIT_RECOVERY,
         carrying=False,
         vacuum_enabled=False,
+        pending_operation=None,
+    )
+    if model.vacuum_enabled:
+        next_state, vacuum_effect = _begin_service(
+            base_state, "VacuumCommand", vacuum=True, enable=False
+        )
+        return Transition(
+            next_state,
+            (
+                vacuum_effect,
+                _publish_status("recovery_confirmed", next_state, boundary="recovery"),
+            ),
+        )
+    return _return_pick_observe(base_state, "recovery_confirmed")
+
+
+def _return_pick_observe(
+    model: OrchestratorContractState, reason_code: str
+) -> Transition:
+    base_state = replace(
+        model,
+        state=OrchestratorState.RETURN_PICK_OBSERVE,
+        current_request_id=None,
+        active_box_id=(
+            model.active_box_id if model.carrying or model.vacuum_enabled else None
+        ),
+    )
+    next_state, observe_effect = _begin_action(
+        base_state, "GoToRobotPose", motion=True, pose_name="pick_observe_pose"
     )
     return Transition(
         next_state,
         (
-            _call_service("VacuumCommand", vacuum=True, enable=False),
-            _publish_status("recovery_confirmed", next_state, boundary="recovery"),
+            observe_effect,
+            _publish_status(reason_code, next_state),
         ),
     )
 
@@ -500,7 +634,7 @@ def _enter_wait_pickup_ready(
     model: OrchestratorContractState, reason_code: str
 ) -> Transition:
     sequence = model.prompt_sequence + 1
-    request_id = "pickup-%06d" % sequence
+    request_id = "%s:pickup-%06d" % (model.session_id, sequence)
     next_state = replace(
         model,
         state=OrchestratorState.WAIT_PICKUP_READY,
@@ -566,3 +700,117 @@ def _publish_status(
     }
     status.update(payload)
     return Effect(EffectType.PUBLISH_STATUS, "LoadTaskStatus", payload=status)
+
+
+def _begin_action(
+    model: OrchestratorContractState,
+    name: str,
+    motion: bool = False,
+    **payload: object,
+) -> tuple[OrchestratorContractState, Effect]:
+    return _begin_operation(model, EffectType.CALL_ACTION, name, motion=motion, **payload)
+
+
+def _begin_service(
+    model: OrchestratorContractState,
+    name: str,
+    vacuum: bool = False,
+    detect: bool = False,
+    **payload: object,
+) -> tuple[OrchestratorContractState, Effect]:
+    return _begin_operation(
+        model, EffectType.CALL_SERVICE, name, vacuum=vacuum, detect=detect, **payload
+    )
+
+
+def _begin_operation(
+    model: OrchestratorContractState,
+    effect_type: EffectType,
+    name: str,
+    motion: bool = False,
+    vacuum: bool = False,
+    detect: bool = False,
+    **payload: object,
+) -> tuple[OrchestratorContractState, Effect]:
+    if not model.session_id:
+        raise ValueError("operation requires a started session")
+    sequence = model.operation_sequence + 1
+    operation_id = "%s:%s-%06d" % (model.session_id, name, sequence)
+    operation = PendingOperation(operation_id=operation_id, name=name)
+    next_state = replace(
+        model, operation_sequence=sequence, pending_operation=operation
+    )
+    payload = dict(payload)
+    payload["operation_id"] = operation_id
+    return next_state, Effect(
+        effect_type,
+        name,
+        motion=motion,
+        vacuum=vacuum,
+        detect=detect,
+        payload=payload,
+    )
+
+
+def _operation_matches(
+    model: OrchestratorContractState, event: OperatorEvent
+) -> bool:
+    return (
+        model.pending_operation is not None
+        and event.operation_id == model.pending_operation.operation_id
+    )
+
+
+def _valid_session_id(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    session_id = value.strip()
+    if not session_id:
+        return None
+    return session_id
+
+
+def _valid_identity(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    identity = value.strip()
+    if not identity:
+        return None
+    return identity
+
+
+def _freeze_plain(value: object) -> object:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("plain float values must be finite")
+        return value
+    if isinstance(value, Mapping):
+        return _freeze_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_plain(item) for item in value)
+    raise TypeError("unsupported plain value type: %s" % type(value).__name__)
+
+
+def _plain_value(value: object) -> object:
+    if isinstance(value, _FrozenMapping):
+        return _plain_mapping(value)
+    if isinstance(value, tuple):
+        return [_plain_value(item) for item in value]
+    return value
+
+
+def _freeze_mapping(values: Mapping[str, object]) -> Tuple[Tuple[str, object], ...]:
+    frozen = []
+    for key, value in values.items():
+        if not isinstance(key, str):
+            raise TypeError("plain mapping keys must be strings")
+        frozen.append((key, _freeze_plain(value)))
+    return _FrozenMapping(sorted(frozen))
+
+
+def _plain_mapping(values: Tuple[Tuple[str, object], ...]) -> dict[str, object]:
+    return {key: _plain_value(value) for key, value in values}

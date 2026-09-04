@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, Iterable, Mapping, Optional, Protocol, Tuple
@@ -12,6 +13,10 @@ PlainValue = object
 FrozenItems = Tuple[Tuple[str, PlainValue], ...]
 
 
+class _FrozenMapping(tuple):
+    pass
+
+
 class ViewOutcomeStatus(str, Enum):
     ACCEPTED = "accepted"
     REJECTED = "rejected"
@@ -19,14 +24,77 @@ class ViewOutcomeStatus(str, Enum):
     INTEGRATED = "integrated"
 
 
+def _freeze_plain(value: PlainValue) -> PlainValue:
+    if value is None or isinstance(value, (str, bool)):
+        return value
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("plain float values must be finite")
+        return value
+    if isinstance(value, Mapping):
+        return _freeze_mapping(value)
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_plain(item) for item in value)
+    raise TypeError("unsupported plain value type: %s" % type(value).__name__)
+
+
+def _plain_value(value: PlainValue) -> PlainValue:
+    if isinstance(value, _FrozenMapping):
+        return _plain_mapping(value)
+    if isinstance(value, tuple):
+        return [_plain_value(item) for item in value]
+    return value
+
+
 def _freeze_mapping(values: Optional[Mapping[str, PlainValue]]) -> FrozenItems:
     if not values:
         return ()
-    return tuple(sorted((str(key), value) for key, value in values.items()))
+    frozen = []
+    for key, value in values.items():
+        if not isinstance(key, str):
+            raise TypeError("plain mapping keys must be strings")
+        frozen.append((key, _freeze_plain(value)))
+    return _FrozenMapping(sorted(frozen))
 
 
 def _plain_mapping(values: FrozenItems) -> Dict[str, PlainValue]:
-    return {key: value for key, value in values}
+    return {key: _plain_value(value) for key, value in values}
+
+
+@dataclass(frozen=True, order=True)
+class AcquisitionStamp:
+    """Exact ROS Time-compatible acquisition stamp."""
+
+    sec: int
+    nanosec: int
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.sec, int)
+            or isinstance(self.sec, bool)
+            or not isinstance(self.nanosec, int)
+            or isinstance(self.nanosec, bool)
+        ):
+            raise TypeError("acquisition stamp sec/nanosec must be integers")
+        if self.sec < 0:
+            raise ValueError("acquisition stamp sec must be non-negative")
+        if self.nanosec < 0 or self.nanosec > 999_999_999:
+            raise ValueError("acquisition stamp nanosec out of range")
+
+    @classmethod
+    def coerce(cls, value: PlainValue) -> "AcquisitionStamp":
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, Mapping):
+            return cls(sec=value["sec"], nanosec=value["nanosec"])
+        if isinstance(value, tuple) and len(value) == 2:
+            return cls(sec=value[0], nanosec=value[1])
+        raise TypeError("acquisition stamp must be AcquisitionStamp, mapping, or tuple")
+
+    def to_dict(self) -> Dict[str, int]:
+        return {"sec": self.sec, "nanosec": self.nanosec}
 
 
 @dataclass(frozen=True)
@@ -66,8 +134,8 @@ class ExplorationContext:
 class ExplorationSnapshot:
     """Immutable online map/view snapshot supplied to a policy."""
 
-    acquisition_stamp_start: float
-    acquisition_stamp_end: float
+    acquisition_stamp_start: AcquisitionStamp
+    acquisition_stamp_end: AcquisitionStamp
     map_revision: int
     occupancy_summary: Mapping[str, PlainValue]
     visibility_summary: Mapping[str, PlainValue]
@@ -77,6 +145,16 @@ class ExplorationSnapshot:
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "acquisition_stamp_start",
+            AcquisitionStamp.coerce(self.acquisition_stamp_start),
+        )
+        object.__setattr__(
+            self,
+            "acquisition_stamp_end",
+            AcquisitionStamp.coerce(self.acquisition_stamp_end),
+        )
         object.__setattr__(
             self, "occupancy_summary", _freeze_mapping(self.occupancy_summary)
         )
@@ -94,8 +172,8 @@ class ExplorationSnapshot:
     def to_dict(self) -> Dict[str, PlainValue]:
         return {
             "schema_version": self.schema_version,
-            "acquisition_stamp_start": self.acquisition_stamp_start,
-            "acquisition_stamp_end": self.acquisition_stamp_end,
+            "acquisition_stamp_start": self.acquisition_stamp_start.to_dict(),
+            "acquisition_stamp_end": self.acquisition_stamp_end.to_dict(),
             "map_revision": self.map_revision,
             "occupancy_summary": _plain_mapping(self.occupancy_summary),
             "visibility_summary": _plain_mapping(self.visibility_summary),
@@ -119,6 +197,11 @@ class CandidateView:
     def __post_init__(self) -> None:
         object.__setattr__(self, "position_xyz", tuple(self.position_xyz))
         object.__setattr__(self, "orientation_xyzw", tuple(self.orientation_xyzw))
+        if len(self.position_xyz) != 3 or len(self.orientation_xyzw) != 4:
+            raise ValueError("candidate pose must have 3 position and 4 orientation values")
+        for value in self.position_xyz + self.orientation_xyzw + (self.score,):
+            if not isinstance(value, (int, float)) or not math.isfinite(float(value)):
+                raise ValueError("candidate numeric values must be finite")
         object.__setattr__(self, "diagnostics", _freeze_mapping(self.diagnostics))
 
     def to_dict(self) -> Dict[str, PlainValue]:
@@ -145,7 +228,10 @@ class PolicyProposal:
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
-        object.__setattr__(self, "candidates", tuple(self.candidates))
+        candidates = tuple(self.candidates)
+        if not all(isinstance(candidate, CandidateView) for candidate in candidates):
+            raise TypeError("policy proposal candidates must be CandidateView values")
+        object.__setattr__(self, "candidates", candidates)
         object.__setattr__(self, "diagnostics", _freeze_mapping(self.diagnostics))
 
     def to_dict(self) -> Dict[str, PlainValue]:
@@ -167,13 +253,18 @@ class ViewOutcome:
     status: ViewOutcomeStatus
     reason_code: str
     candidate_id: str = ""
-    acquisition_stamp: float = 0.0
+    acquisition_stamp: AcquisitionStamp = field(
+        default_factory=lambda: AcquisitionStamp(0, 0)
+    )
     prior_map_revision: int = -1
     resulting_map_revision: int = -1
     diagnostics: Mapping[str, PlainValue] = field(default_factory=dict)
     schema_version: int = SCHEMA_VERSION
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "acquisition_stamp", AcquisitionStamp.coerce(self.acquisition_stamp)
+        )
         object.__setattr__(self, "diagnostics", _freeze_mapping(self.diagnostics))
 
     def to_dict(self) -> Dict[str, PlainValue]:
@@ -182,7 +273,7 @@ class ViewOutcome:
             "status": self.status.value,
             "reason_code": self.reason_code,
             "candidate_id": self.candidate_id,
-            "acquisition_stamp": self.acquisition_stamp,
+            "acquisition_stamp": self.acquisition_stamp.to_dict(),
             "prior_map_revision": self.prior_map_revision,
             "resulting_map_revision": self.resulting_map_revision,
             "diagnostics": _plain_mapping(self.diagnostics),
