@@ -7,7 +7,7 @@
 - status: done
 - parent: SIM-R1-20260904
 - subtask: EXP-A1
-- revision: c5921d5f29ae5252747c7430ba2724214d1cbfc4
+- revision: 408f6d5dd9aeb8536377f0f14d06155be7a904d5
 
 ## Summary
 
@@ -48,10 +48,10 @@ cannot contaminate results:
 ```bash
 set -euo pipefail
 export SOURCE_ROOT=/home/adamliao/work/elfin_humble_ws
-export BASE_REV=c5921d5f29ae5252747c7430ba2724214d1cbfc4
+export BASE_REV=408f6d5dd9aeb8536377f0f14d06155be7a904d5
 export RUN_ID="$(date +%Y-%m-%d_%H%M%S)_exp-a1"
 export EVIDENCE="$SOURCE_ROOT/docs/status/evidence/sim_r1/$RUN_ID"
-export AUDIT_ROOT="$(mktemp -d /tmp/elfin_exp_a1_c5921d5.XXXXXX)"
+export AUDIT_ROOT="$(mktemp -d /tmp/elfin_exp_a1_408f6d5.XXXXXX)"
 mkdir -p "$EVIDENCE"
 git -C "$SOURCE_ROOT" archive "$BASE_REV" | tar -x -C "$AUDIT_ROOT"
 test "$(git -C "$SOURCE_ROOT" rev-parse "$BASE_REV")" = "$BASE_REV"
@@ -171,6 +171,13 @@ git status --short > "$EVIDENCE/primary_status_after.txt"
 - Thread: `docs/agents/discuss/2026-09-04_1801_sim-r1-gpt55-consensus.md`
 - Result: reached; this separately requested audit does not amend production
   behavior or the approved subtask ownership
+
+## Pointers
+
+- `docs/architecture/production_orchestration.md`
+- `docs/plans/sim_r1_production_orchestrator_exploration.md`
+- `docs/plans/true_container_inner_geometry.md`
+- `docs/agents/discuss/2026-09-04_2021_exp-a1-nbv-readiness-audit.md`
 
 ## Open
 

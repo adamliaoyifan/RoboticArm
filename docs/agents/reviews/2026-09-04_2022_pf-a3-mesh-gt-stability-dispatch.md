@@ -7,7 +7,7 @@
 - status: done
 - parent: PFH-REMEDIATION-20260904
 - subtask: PF-A3
-- revision: c5921d5f29ae5252747c7430ba2724214d1cbfc4
+- revision: 408f6d5dd9aeb8536377f0f14d06155be7a904d5
 
 ## Summary
 
@@ -55,10 +55,10 @@ Use the same immutable-snapshot pattern as EXP-A1:
 ```bash
 set -euo pipefail
 export SOURCE_ROOT=/home/adamliao/work/elfin_humble_ws
-export BASE_REV=c5921d5f29ae5252747c7430ba2724214d1cbfc4
+export BASE_REV=408f6d5dd9aeb8536377f0f14d06155be7a904d5
 export RUN_ID="$(date +%Y-%m-%d_%H%M%S)_pf-a3"
 export EVIDENCE="$SOURCE_ROOT/docs/status/evidence/platform_free_height/$RUN_ID"
-export AUDIT_ROOT="$(mktemp -d /tmp/elfin_pf_a3_c5921d5.XXXXXX)"
+export AUDIT_ROOT="$(mktemp -d /tmp/elfin_pf_a3_408f6d5.XXXXXX)"
 mkdir -p "$EVIDENCE"
 git -C "$SOURCE_ROOT" archive "$BASE_REV" | tar -x -C "$AUDIT_ROOT"
 test "$(git -C "$SOURCE_ROOT" rev-parse "$BASE_REV")" = "$BASE_REV"
@@ -187,6 +187,13 @@ git status --short > "$EVIDENCE/primary_status_after.txt"
 - Thread: `docs/agents/discuss/2026-09-04_1453_pfh-remediation-r5.md`
 - Result: reached for mesh-observable GT use; this user-requested audit validates
   the definition without changing it
+
+## Pointers
+
+- `docs/plans/platform_free_height_remediation.md`
+- `docs/plans/platform_free_height_test_plan.md`
+- `docs/agents/reviews/2026-09-04_1943_pfr5-vintage-segmenter-decision.md`
+- `docs/agents/discuss/2026-09-04_2022_pf-a3-mesh-gt-stability-audit.md`
 
 ## Open
 
