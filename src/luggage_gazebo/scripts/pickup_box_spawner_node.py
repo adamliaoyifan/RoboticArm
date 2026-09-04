@@ -17,6 +17,7 @@ from __future__ import division
 
 import json
 import math
+import os
 import random
 import threading
 import time
@@ -56,8 +57,10 @@ from luggage_description.scene_tf_config_utils import (
 
 from luggage_description.suitcase_visual import (
     VISUAL_IDS,
+    mesh_observable_reference,
     pickup_box_pose,
     pickup_visual_sdf,
+    sized_stl_path,
     size_tier_name,
     sized_model_name,
     visual_id_for_entry,
@@ -123,6 +126,17 @@ class PickupBoxSpawner(Node):
             if len(xy_jitter) >= 2 else (0.0, 0.0))
         self._size_mode = str(
             self.get_parameter("size_mode").value).strip().lower() or "catalog"
+        models_root = str(self.get_parameter("models_root").value or "")
+        if not models_root:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                models_root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+            except Exception:  # noqa: BLE001 - package share may be absent
+                models_root = ""
+        self._models_root_dir = models_root
+        self._observable_cache = {}
         self._visual_kind = str(
             self.get_parameter("visual_kind").value).strip().lower() or "mesh"
         if self._visual_kind != "mesh":
@@ -362,13 +376,48 @@ class PickupBoxSpawner(Node):
         )
 
     def _gt_size(self, size, visual_id):
-        """Size written to GetCurrentBox: catalog AABB for box and mesh.
+        """Size written to GetCurrentBox: the mesh's observable geometry.
 
-        Mesh lid-band (measure_size) stays on the sized-suitcase manifest for
-        diagnostics; it is not the spawn / planning / overlay GT.
+        The sized suitcase STLs have an AABB exactly equal to the catalog
+        size, but a top-down camera observes the *surface* (rounded lid,
+        tapered sides). The GT therefore reports the deterministic
+        STL-derived observable reference (see
+        ``mesh_observable_reference``): lid-plane width/depth and the
+        observable height from the lid plane down. Physics keeps the
+        catalog-sized collision; only the reported GT changes.
         """
-        del visual_id
-        return [float(v) for v in size]
+        ref = self._observable_reference(size, visual_id)
+        return [ref["width"], ref["depth"], ref["height"]]
+
+    def _observable_reference(self, size, visual_id):
+        """Cached observable reference for one sized model (or catalog
+        fallback when the STL is unavailable)."""
+        tier = size_tier_name(size)
+        key = (str(visual_id), str(tier))
+        if key in self._observable_cache:
+            return self._observable_cache[key]
+        ref = None
+        if tier is not None and self._models_root_dir:
+            stl = sized_stl_path(visual_id, tier, self._models_root_dir)
+            try:
+                w, d, lid_off, full_h = mesh_observable_reference(stl)
+                ref = {
+                    "width": float(w), "depth": float(d),
+                    # observable height: lid plane down to the AABB bottom
+                    "height": float(full_h - lid_off),
+                    "lid_offset": float(lid_off),
+                }
+            except (IOError, OSError, ValueError) as exc:
+                self.get_logger().warning(
+                    "mesh observable reference unavailable (%s); using "
+                    "catalog size" % exc)
+        if ref is None:
+            ref = {
+                "width": float(size[0]), "depth": float(size[1]),
+                "height": float(size[2]), "lid_offset": 0.0,
+            }
+        self._observable_cache[key] = ref
+        return ref
 
     # ------------------------------------------------------------------
     # Service handlers
@@ -472,9 +521,19 @@ class PickupBoxSpawner(Node):
         if self._visual_settle_sec > 0.0:
             time.sleep(self._visual_settle_sec)
 
+        # Observable reference: the lid plane sits lid_offset below the
+        # AABB top, so the observable top/center come from the lid plane
+        # and the observable height (lid plane down to the AABB bottom).
+        ref = self._observable_reference(size, visual_id)
+        observable_top_z = (
+            pose.position.z + float(size[2]) * 0.5 - ref["lid_offset"])
+
         box = DetectedLuggage()
         box.id = model_name
         box.pose = pose
+        # Report the observable box: its center keeps XY/yaw from the
+        # spawn; Z moves to the observable box's midpoint.
+        box.pose.position.z = observable_top_z - gt_size[2] * 0.5
         box.width = gt_size[0]
         box.depth = gt_size[1]
         box.height = gt_size[2]
@@ -491,7 +550,7 @@ class PickupBoxSpawner(Node):
         box.top_surface_pose = Pose(
             position=Point(
                 x=pose.position.x, y=pose.position.y,
-                z=pose.position.z + gt_size[2] * 0.5),
+                z=observable_top_z),
             orientation=pose.orientation,
         )
         box.top_surface_valid = True

@@ -163,6 +163,55 @@ def mesh_top_footprint(path, z_band_frac=0.01, z_band_min=0.005):
     ]
 
 
+def mesh_observable_reference(path, top_band_frac=0.25, z_bin=0.001):
+    """Deterministic observable geometry of a sized suitcase STL.
+
+    The mesh AABB equals the catalog size exactly, but a top-down camera
+    observes the *surface*: a rounded lid and tapered sides. This returns
+    the estimator-independent observable reference a top-view RGB-D chain
+    can actually measure, derived purely from the STL vertices:
+
+    - ``lid_z_offset``: how far the lid's modal top plane sits below the
+      AABB top. The lid plateau is found by histogramming vertices in the
+      top band (densest 1 mm z-bin, median of its vertices).
+    - ``observable_width/depth``: XY span of the vertices at the lid
+      plateau (within one bin of the modal z) — the footprint a
+      horizontal-plane fit latches onto.
+
+    Returns ``(observable_w, observable_d, lid_z_offset, full_height)``.
+    """
+    xs, ys, zs = [], [], []
+    for x, y, z in iter_stl_vertices(path):
+        xs.append(x)
+        ys.append(y)
+        zs.append(z)
+    if not zs:
+        raise ValueError("empty STL: %s" % path)
+    zmax, zmin = max(zs), min(zs)
+    height = zmax - zmin
+    band = max(float(top_band_frac) * height, float(z_bin) * 2.0)
+    top = [(x, y, z) for x, y, z in zip(xs, ys, zs) if z >= zmax - band]
+    if not top:
+        return max(xs) - min(xs), max(ys) - min(ys), 0.0, height
+    # Densest 1 mm z-bin within the top band = the lid plateau.
+    bins = {}
+    for _x, _y, z in top:
+        key = int(z / z_bin)
+        bins.setdefault(key, []).append(z)
+    modal_key = max(bins, key=lambda k: len(bins[k]))
+    modal_z = sorted(bins[modal_key])[len(bins[modal_key]) // 2]
+    plateau = [(x, y) for x, y, z in zip(xs, ys, zs)
+               if abs(z - modal_z) <= z_bin]
+    if not plateau:
+        plateau = [(x, y) for x, y, _z in top]
+    return (
+        max(p[0] for p in plateau) - min(p[0] for p in plateau),
+        max(p[1] for p in plateau) - min(p[1] for p in plateau),
+        float(zmax - modal_z),
+        float(height),
+    )
+
+
 def write_scaled_stl(src_path, dest_path, scale):
     """Copy a binary STL with vertices multiplied by ``scale`` (W, D, H).
 

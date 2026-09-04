@@ -176,15 +176,37 @@ def _matrix_coverage(trials_gt):
     Sizes, XY offsets, yaw values, and per-size trial counts. Placement
     variation comes from the spawner/eval side only; this reports what
     was actually covered so thin matrices fail the coverage gate.
+
+    The size matrix counts CATALOG tiers, not observable dimensions: the
+    spawner randomly picks one of two suitcase meshes per tier, so the
+    observable GT size splits into two variants per tier and would
+    wrongly fail the per-size coverage rule.
     """
+    from luggage_description.box_catalog_utils import (
+        box_catalog_entries, load_box_catalog)
+    from luggage_description.scene_tf_config_utils import (
+        load_scene_tf_config, resolve_scene_tf_config_path)
+    try:
+        tiers = [tuple(float(v) for v in e["size"])
+                 for e in box_catalog_entries(load_box_catalog(
+                     scene_config=load_scene_tf_config(
+                         resolve_scene_tf_config_path())))]
+    except Exception:  # noqa: BLE001 - catalog is advisory here
+        tiers = []
+
+    def _tier_of(w, d, h):
+        if not tiers:
+            return (round(w, 3), round(d, 3), round(h, 3))
+        return min(tiers, key=lambda t: (
+            abs(t[0] - w) + abs(t[1] - d) + abs(t[2] - h)))
+
     sizes = {}
     offsets = set()
     yaws = set()
     for g in trials_gt:
         if not g or g.get("gt_width") is None:
             continue
-        key = (round(g["gt_width"], 3), round(g["gt_depth"], 3),
-               round(g["gt_height"], 3))
+        key = _tier_of(g["gt_width"], g["gt_depth"], g["gt_height"])
         sizes[key] = sizes.get(key, 0) + 1
         offsets.add((round(g["gt_xy"][0], 2), round(g["gt_xy"][1], 2)))
         yaws.add(round(math.degrees(g["gt_yaw"]), 0))
@@ -232,6 +254,15 @@ def main():
     t_run_start = time.monotonic()
     spawn_failures = 0
     try:
+        # Let the stream settle before trial 0 (arm/observe/camera
+        # warmup after launch): a first trial started mid-warmup fails
+        # all of its frames.
+        settle_deadline = time.monotonic() + 20.0
+        while time.monotonic() < settle_deadline:
+            before = len(node._frames)
+            node.collect(1.0)
+            if before > 0 and len(node._frames) - before >= 2:
+                break
         for trial in range(args.trials):
             spawn = node.spawn_next()
             if spawn is None or not spawn.success:

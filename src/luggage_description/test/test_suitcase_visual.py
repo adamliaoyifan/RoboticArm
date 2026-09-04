@@ -20,6 +20,7 @@ from luggage_description.suitcase_visual import (
     cuboid_inertia,
     file_uri,
     load_sized_suitcases_manifest,
+    mesh_observable_reference,
     mesh_top_footprint,
     mesh_uri,
     pickup_box_pose,
@@ -323,3 +324,35 @@ class TestSizedPickupAssets(unittest.TestCase):
         self.assertEqual(size_tier_name([0.80, 0.50, 0.32]), "large")
         self.assertIsNone(size_tier_name([0.61, 0.44, 0.27]))
 
+
+
+class TestMeshObservableReference(unittest.TestCase):
+    """GT option A (user decision 2026-09-04): observable mesh geometry.
+
+    The sized suitcase AABB equals the catalog size exactly, so the GT
+    reports the STL-derived observable surface instead: lid-plane XY
+    extent and the observable height below the lid plane.
+    """
+
+    def test_reference_is_inside_catalog_and_below_top(self):
+        for visual in (VISUAL_LOAFBRR, VISUAL_VINTAGE):
+            for tier, size in (("small", (0.55, 0.40, 0.25)),
+                               ("medium", (0.70, 0.45, 0.28)),
+                               ("large", (0.80, 0.50, 0.32))):
+                stl = sized_stl_path(visual, tier, GAZEBO_MODELS)
+                w, d, lid_off, h = mesh_observable_reference(stl)
+                # Observable extent never exceeds the catalog AABB...
+                self.assertLessEqual(w + 1e-6, size[0], (visual, tier))
+                self.assertLessEqual(d + 1e-6, size[1], (visual, tier))
+                self.assertLessEqual(h + 1e-6, size[2] + lid_off)
+                # ...the lid sits measurably below the AABB top...
+                self.assertGreater(lid_off, 0.005, (visual, tier))
+                self.assertLess(lid_off, 0.030, (visual, tier))
+                # ...and the observable height is positive and sane.
+                self.assertGreater(h - lid_off, 0.0)
+                self.assertLessEqual(h, size[2] + 1e-6)
+
+    def test_reference_is_deterministic(self):
+        stl = sized_stl_path(VISUAL_LOAFBRR, "medium", GAZEBO_MODELS)
+        self.assertEqual(mesh_observable_reference(stl),
+                         mesh_observable_reference(stl))
