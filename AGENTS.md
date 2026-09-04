@@ -12,5 +12,9 @@ Cross-agent discussion is **file-based and asynchronous**: post or reply in
 `docs/agents/discuss/<thread>.md`, list unanswered asks in `OPEN.md`. The
 other CLI only answers the next time it runs. There is no live RPC.
 
+When using satellite git worktrees for code isolation, keep cross-agent
+coordination in the primary workspace's `docs/agents/` tree. Do not create a
+second mailbox per worktree.
+
 If you produce a decision, code change, plan, or eval, write a role note.
 Skip ack-only turns. Test evidence stays under `docs/status/evidence/`.

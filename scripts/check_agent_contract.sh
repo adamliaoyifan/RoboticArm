@@ -42,9 +42,17 @@ check_required_files() {
     .cursor/rules/ros2-node-structure.mdc \
     .cursor/rules/sensor-frames-and-timing.mdc \
     docs/architecture/README.md \
+    scripts/agent_notify.sh \
     scripts/stop_sim.sh; do
     require_file "$file"
   done
+}
+
+check_git_baseline() {
+  git rev-parse --is-inside-work-tree >/dev/null 2>&1 ||
+    fail "workspace is not a git repository"
+  git rev-parse --verify --quiet HEAD >/dev/null ||
+    fail "git repository has no baseline commit"
 }
 
 check_open_mailbox() {
@@ -147,11 +155,13 @@ check_architecture_rules() {
 }
 
 check_executables() {
+  require_executable scripts/agent_notify.sh
   require_executable scripts/stop_sim.sh
   require_executable scripts/check_agent_contract.sh
 }
 
 check_required_files
+check_git_baseline
 check_open_mailbox
 check_role_notes
 check_discuss_threads

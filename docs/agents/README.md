@@ -80,6 +80,27 @@ adding one row to `discuss/OPEN.md`. The target role sees that row at its next
 session start, opens the thread, appends a reply, then updates or removes the
 row. This is asynchronous handoff, not live chat.
 
+Preferred helper:
+
+```bash
+scripts/agent_notify.sh \
+  --to eng \
+  --from test \
+  --cli codex \
+  --slug yolo-regression \
+  --question "Eval packing_eval_carryon_n50 regressed at YOLO_NOT_READY." \
+  --pointer docs/agents/test/YYYY-MM-DD_HHMM_eval.md \
+  --pointer docs/status/evidence/packing_eval_carryon_n50/
+```
+
+When running from a satellite git worktree, point the helper at the primary
+workspace so the mailbox does not split:
+
+```bash
+AGENT_COORD_ROOT=/home/adamliao/work/elfin_humble_ws \
+  scripts/agent_notify.sh --to eng --from test --cli codex --slug ... --question ...
+```
+
 Example: a test agent finishes an eval and needs eng to inspect a regression.
 
 1. Write a test note:
@@ -97,6 +118,22 @@ Example: a test agent finishes an eval and needs eng to inspect a regression.
 The eng agent replies in the same thread. If the ask is answered, it removes
 the row from `OPEN.md`; if still blocked, it leaves the row with a shorter
 current question.
+
+## Parallel worktrees
+
+Use worktrees when two agents need to edit `src/` at the same time. Keep one
+branch per task and one worktree per active editing agent:
+
+```bash
+git worktree add ../elfin_humble_ws_eng_pick -b agent/eng/pick-fix master
+git worktree add ../elfin_humble_ws_test_eval -b agent/test/eval-gate master
+```
+
+Code changes live in the task worktree. Cross-agent messages still go through
+the primary workspace's `docs/agents/` tree, using `AGENT_COORD_ROOT` or by
+running the notification command from the primary workspace. Sim/eval worktrees
+must use a distinct `ROS_DOMAIN_ID` and still stop agent-started sims with
+`scripts/stop_sim.sh`.
 
 ## Other roles (reviews / eng / test)
 
