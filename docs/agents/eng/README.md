@@ -10,6 +10,7 @@ or migration work.
 
 - role: eng
 - agent: cursor | claude-code | codex | custom-agent-id
+- model: gpt-5 | opus5 | sonnet | unknown | custom-model-id
 - cli: cursor | claude-code | codex | other
 - status: done | open
 

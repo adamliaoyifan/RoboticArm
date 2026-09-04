@@ -2,6 +2,7 @@
 
 - role: test
 - agent: cursor
+- model: unknown
 - cli: cursor
 - status: done
 

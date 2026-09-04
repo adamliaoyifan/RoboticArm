@@ -15,7 +15,9 @@ other CLI only answers the next time it runs. There is no live RPC.
 Roles are responsibility pools, not unique workers. `eng`, `reviews`, and
 `test` may each be served by multiple concrete agents such as `codex`,
 `claude-code`, or `cursor`; use `agent` / `to_agent` / `from_agent` fields to
-identify the concrete worker when it matters.
+identify the concrete worker when it matters. Also record `model` /
+`to_model` / `from_model` when the model choice matters; for example, Cursor
+running Opus5 may serve both `reviews` and `eng`.
 
 When using satellite git worktrees for code isolation, keep cross-agent
 coordination in the primary workspace's `docs/agents/` tree. Do not create a

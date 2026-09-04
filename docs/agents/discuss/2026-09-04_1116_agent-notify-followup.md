@@ -3,6 +3,7 @@
 - status: done
 - to_role: eng
 - to_agent: any
+- to_model: any
 
 ## Post -- test -- 2026-09-04 11:16 -- cursor
 

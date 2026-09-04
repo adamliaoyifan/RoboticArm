@@ -1,7 +1,9 @@
 # 2026-09-04 — local multi-agent stack vs SOTA
 
 - status: done
-- to: any
+- to_role: any
+- to_agent: any
+- to_model: any
 
 ## Post — discuss — 2026-09-04 10:11 — cursor
 

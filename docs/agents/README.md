@@ -12,6 +12,19 @@ Roles are responsibility pools, not unique workers. `eng`, `reviews`, and
   `cursor`, or `codex-pick-fix`
 - `cli`: the CLI product that wrote the note, such as `codex`,
   `claude-code`, or `cursor`
+- `model`: model identity, such as `gpt-5`, `opus5`, `sonnet`, or `unknown`
+
+`reviews` is the canonical role name for review work. `reviewers` is accepted
+as a human-facing alias by helper scripts, but files and mailbox rows use
+`reviews`.
+
+## Role Eligibility
+
+Default capability is role-based: any concrete agent may serve a role if the
+user or mailbox targets that role and the agent is safe for the task. Model
+identity refines that routing when needed. Current local rule:
+
+- `cli=cursor`, `model=opus5`: may serve `reviews` and `eng`
 
 Any CLI that can read and write this tree can talk to the others **asynchronously**
 through `discuss/` threads plus the mailbox `discuss/OPEN.md`. There is no
@@ -35,8 +48,9 @@ Cross-CLI contract: root `AGENTS.md` (Claude Code also follows `CLAUDE.md`).
 
 1. Read `docs/agents/discuss/OPEN.md`.
 2. If a row's `to_role` is your role or `any`, and `to_agent` is `any` or
-   matches your concrete agent id, open that thread, **append a reply**, then
-   update or remove the row.
+   matches your concrete agent id, and `to_model` is `any` or matches your
+   model id, open that thread, **append a reply**, then update or remove the
+   row.
 3. Do not start a parallel thread for the same question.
 
 ## Cross-agent thread
@@ -51,8 +65,9 @@ Replies **append** to that same file. Never overwrite earlier sections.
 - status: open | done
 - to_role: reviews | eng | test | discuss | any
 - to_agent: any | codex | claude-code | cursor | custom-agent-id
+- to_model: any | gpt-5 | opus5 | sonnet | unknown | custom-model-id
 
-## Post -- eng/codex-pick-fix -- 2026-09-04 10:07 -- codex
+## Post -- eng/codex-pick-fix -- 2026-09-04 10:07 -- codex/gpt-5
 
 Question or proposal. One short paragraph.
 
@@ -64,7 +79,7 @@ Question or proposal. One short paragraph.
 
 - Should place planning stay in `world`?
 
-## Reply -- reviews/claude-code -- 2026-09-04 10:20 -- claude-code
+## Reply -- reviews/claude-code -- 2026-09-04 10:20 -- claude-code/opus5
 
 Answer. If this closes the question, set `status: done` in the header
 and delete the row from `OPEN.md`.
@@ -77,8 +92,10 @@ Mailbox row in `discuss/OPEN.md`:
 | `id` | `Q-YYYYMMDD-N` |
 | `to_role` | role that should answer, or `any` |
 | `to_agent` | concrete target agent, or `any` for the role pool |
+| `to_model` | model target, or `any` for any model |
 | `from_role` | role that asked |
 | `from_agent` | concrete asking agent |
+| `from_model` | model that created the ask |
 | `cli` | `cursor` / `claude-code` / `codex` / other |
 | `thread` | filename in `discuss/` |
 | `question` | one line |
@@ -99,9 +116,11 @@ Preferred helper:
 scripts/agent_notify.sh \
   --to eng \
   --to-agent any \
+  --to-model any \
   --from test \
   --from-agent cursor-eval \
-  --cli codex \
+  --from-model opus5 \
+  --cli cursor \
   --slug yolo-regression \
   --question "Eval packing_eval_carryon_n50 regressed at YOLO_NOT_READY." \
   --pointer docs/agents/test/YYYY-MM-DD_HHMM_eval.md \
@@ -113,7 +132,7 @@ workspace so the mailbox does not split:
 
 ```bash
 AGENT_COORD_ROOT=/home/adamliao/work/elfin_humble_ws \
-  scripts/agent_notify.sh --to eng --to-agent any --from test --from-agent codex --cli codex --slug ... --question ...
+  scripts/agent_notify.sh --to eng --to-agent any --to-model any --from test --from-agent codex --from-model gpt-5 --cli codex --slug ... --question ...
 ```
 
 Example: a test agent finishes an eval and needs eng to inspect a regression.
@@ -127,7 +146,7 @@ Example: a test agent finishes an eval and needs eng to inspect a regression.
 4. Re-read `docs/agents/discuss/OPEN.md`, then add:
 
 ```markdown
-| Q-YYYYMMDD-N | eng | any | test | cursor-eval | cursor | YYYY-MM-DD_HHMM_<regression-slug>.md | Eval <run> regressed; please inspect failure in <one line>. |
+| Q-YYYYMMDD-N | eng | any | any | test | cursor-eval | opus5 | cursor | YYYY-MM-DD_HHMM_<regression-slug>.md | Eval <run> regressed; please inspect failure in <one line>. |
 ```
 
 The eng agent replies in the same thread. If the ask is answered, it removes
@@ -163,6 +182,7 @@ docs/agents/<role>/YYYY-MM-DD_HHMM_<slug>.md
 
 - role: reviews | eng | test
 - agent: codex | claude-code | cursor | custom-agent-id
+- model: gpt-5 | opus5 | sonnet | unknown | custom-model-id
 - cli: cursor | claude-code | codex
 - status: done | open
 

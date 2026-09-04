@@ -57,10 +57,10 @@ check_git_baseline() {
 
 check_open_mailbox() {
   local open_file="docs/agents/discuss/OPEN.md"
-  local line id to_role to_agent from_role from_agent cli thread question
+  local line id to_role to_agent to_model from_role from_agent from_model cli thread question
 
   [[ -f "$open_file" ]] || return
-  grep -q '^| id | to_role | to_agent | from_role | from_agent | cli | thread | question |$' "$open_file" ||
+  grep -q '^| id | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | question |$' "$open_file" ||
     fail "$open_file is missing the expected table header"
 
   while IFS= read -r line; do
@@ -70,12 +70,14 @@ check_open_mailbox() {
 
     line="${line#|}"
     line="${line%|}"
-    IFS='|' read -r id to_role to_agent from_role from_agent cli thread question <<< "$line"
+    IFS='|' read -r id to_role to_agent to_model from_role from_agent from_model cli thread question <<< "$line"
     id="$(trim "$id")"
     to_role="$(trim "$to_role")"
     to_agent="$(trim "$to_agent")"
+    to_model="$(trim "$to_model")"
     from_role="$(trim "$from_role")"
     from_agent="$(trim "$from_agent")"
+    from_model="$(trim "$from_model")"
     cli="$(trim "$cli")"
     thread="$(trim "$thread")"
     question="$(trim "$question")"
@@ -86,10 +88,14 @@ check_open_mailbox() {
       fail "$open_file row $id has invalid to_role: $to_role"
     [[ -n "$to_agent" ]] ||
       fail "$open_file row $id has empty to_agent"
+    [[ -n "$to_model" ]] ||
+      fail "$open_file row $id has empty to_model"
     [[ "$from_role" =~ ^(reviews|eng|test|discuss)$ ]] ||
       fail "$open_file row $id has invalid from_role: $from_role"
     [[ -n "$from_agent" ]] ||
       fail "$open_file row $id has empty from_agent"
+    [[ -n "$from_model" ]] ||
+      fail "$open_file row $id has empty from_model"
     [[ -n "$cli" ]] || fail "$open_file row $id has empty cli"
     [[ -n "$question" ]] || fail "$open_file row $id has empty question"
     [[ -f "docs/agents/discuss/$thread" ]] ||
@@ -112,6 +118,8 @@ check_role_notes() {
         fail "$file is missing '- role: $role'"
       grep -Eq '^- agent: .+$' "$file" ||
         fail "$file is missing '- agent: ...'"
+      grep -Eq '^- model: .+$' "$file" ||
+        fail "$file is missing '- model: ...'"
       grep -Eq '^- cli: .+$' "$file" ||
         fail "$file is missing '- cli: ...'"
       grep -Eq '^- status: (done|open)$' "$file" ||
@@ -140,6 +148,16 @@ check_discuss_threads() {
     if grep -Eq '^- to_role: ' "$file"; then
       grep -Eq '^- to_agent: .+$' "$file" ||
         fail "$file has to_role but is missing '- to_agent: ...'"
+      grep -Eq '^- to_model: .+$' "$file" ||
+        fail "$file has to_role but is missing '- to_model: ...'"
+    fi
+    if grep -Eq '^- role: ' "$file"; then
+      grep -Eq '^- agent: .+$' "$file" ||
+        fail "$file has role but is missing '- agent: ...'"
+      grep -Eq '^- model: .+$' "$file" ||
+        fail "$file has role but is missing '- model: ...'"
+      grep -Eq '^- cli: .+$' "$file" ||
+        fail "$file has role but is missing '- cli: ...'"
     fi
     grep -Eq '^## (Post|Summary)' "$file" ||
       fail "$file is missing a post or summary section"

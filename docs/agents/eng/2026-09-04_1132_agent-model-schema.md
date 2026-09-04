@@ -1,4 +1,4 @@
-# 2026-09-04 — agent identity schema
+# 2026-09-04 — agent model schema
 
 - role: eng
 - agent: codex
@@ -8,10 +8,10 @@
 
 ## Summary
 
-Split agent coordination identity into role pools and concrete agents. Mailbox
-rows now carry `to_role`, `to_agent`, `from_role`, and `from_agent`; role notes
-carry `agent`; and `agent_notify.sh` can target or identify a concrete worker
-while still allowing role-pool handoffs with `to_agent=any`.
+Added model identity to the shared agent coordination contract. Role notes now
+carry `model`, mailbox rows carry `to_model` and `from_model`, and
+`agent_notify.sh` can target model-specific work such as Cursor running Opus5
+for either `reviews` or `eng`.
 
 ## Changed
 
@@ -30,9 +30,10 @@ while still allowing role-pool handoffs with `to_agent=any`.
 - `bash -n scripts/check_agent_contract.sh`
 - `bash -n scripts/agent_notify.sh`
 - `scripts/agent_notify.sh --help`
-- `/tmp` sandbox notify smoke: new row, existing `--thread` row update, bad
+- `/tmp` sandbox notify smoke for `--to reviewers`, `--to-model opus5`,
+  `--from-model opus5`, existing `--thread` refresh, and bad
   `AGENT_COORD_ROOT` refusal
 
 ## Pointers
 
-- `docs/agents/discuss/2026-09-04_1116_agent-notify-followup.md`
+- `docs/agents/README.md`

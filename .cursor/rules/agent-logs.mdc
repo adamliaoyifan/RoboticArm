@@ -8,12 +8,14 @@ alwaysApply: true
 Contract: `docs/agents/README.md` and root `AGENTS.md`.
 
 After durable work, write `docs/agents/<role>/YYYY-MM-DD_HHMM_<slug>.md`.
-Include `role`, `agent`, `cli`, and `status`. Skip ack-only turns. Do not copy
-dumps or chat traces.
+Include `role`, `agent`, `model`, `cli`, and `status`. Skip ack-only turns. Do
+not copy dumps or chat traces.
 
 Roles are responsibility pools; multiple concrete agents may act as `eng`,
 `reviews`, or `test`. Use `agent` / `to_agent` / `from_agent` when a handoff is
-for a specific Codex, Claude Code, Cursor, or named instance.
+for a specific Codex, Claude Code, Cursor, or named instance. Use `model` /
+`to_model` / `from_model` when routing depends on model capability. Cursor
+running Opus5 may act as either `reviews` or `eng`.
 
 ## Cross-CLI discussion (async)
 
@@ -21,11 +23,12 @@ There is no live chat between Cursor, Claude Code, and Codex. They share
 files.
 
 1. Session start: read `docs/agents/discuss/OPEN.md`.
-2. If `to_role` is your role or `any`, and `to_agent` is `any` or matches your
-   concrete agent id, append a `## Reply` on that thread and update `OPEN.md`.
+2. If `to_role` is your role or `any`, `to_agent` is `any` or matches your
+   concrete agent id, and `to_model` is `any` or matches your model id, append
+   a `## Reply` on that thread and update `OPEN.md`.
 3. To ask another CLI/role: create or append a `discuss/` thread and add
-   an `OPEN.md` row (`to_role`, `to_agent`, `from_role`, `from_agent`, `cli`,
-   `thread`, `question`).
+   an `OPEN.md` row (`to_role`, `to_agent`, `to_model`, `from_role`,
+   `from_agent`, `from_model`, `cli`, `thread`, `question`).
 4. Re-read `OPEN.md` immediately before editing it.
 
 | Role | Directory |

@@ -1,7 +1,9 @@
 # 2026-09-04 — cross-CLI async discuss mailbox
 
 - status: done
-- to: any
+- to_role: any
+- to_agent: any
+- to_model: any
 
 ## Post — discuss — 2026-09-04 10:07 — cursor
 

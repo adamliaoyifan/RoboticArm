@@ -9,8 +9,11 @@ Usage:
 
 Options:
   --to-agent AGENT    Concrete target agent. Defaults to any.
+  --to-model MODEL    Concrete target model. Defaults to any.
   --from-agent AGENT  Concrete sender agent. Defaults to --cli.
+  --from-model MODEL  Concrete sender model. Defaults to unknown.
   --agent AGENT       Alias for --from-agent.
+  --model MODEL       Alias for --from-model.
   --body TEXT       Thread post body. Defaults to --question.
   --pointer PATH    Add one pointer. May be repeated.
   --thread FILE     Append to an existing discuss thread filename.
@@ -19,6 +22,7 @@ Options:
 
 Roles:
   reviews, eng, test, discuss, any
+  reviewers is accepted as an alias for reviews.
 
 Set AGENT_COORD_ROOT to write the mailbox in the primary workspace when
 running from a satellite git worktree.
@@ -51,6 +55,17 @@ valid_agent_id() {
   [[ "$1" =~ ^[[:alnum:]_.@/-]+$ ]]
 }
 
+valid_model_id() {
+  [[ "$1" =~ ^[[:alnum:]_.@/-]+$ ]]
+}
+
+normalize_role() {
+  case "$1" in
+    reviewers) printf 'reviews' ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 safe_slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]_-' '-'
 }
@@ -79,11 +94,11 @@ next_question_id() {
 }
 
 open_header() {
-  printf '| id | to_role | to_agent | from_role | from_agent | cli | thread | question |\n'
+  printf '| id | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | question |\n'
 }
 
 open_separator() {
-  printf '|---|---|---|---|---|---|---|---|\n'
+  printf '|---|---|---|---|---|---|---|---|---|---|\n'
 }
 
 parse_first_cell() {
@@ -125,10 +140,60 @@ upsert_open_row() {
   [[ "$found" -eq 0 ]]
 }
 
+set_thread_target() {
+  local file="$1"
+  local to_role="$2"
+  local to_agent="$3"
+  local to_model="$4"
+  local tmp line state saw_role saw_agent saw_model
+
+  tmp="$(mktemp)"
+  state="preamble"
+  saw_role=0
+  saw_agent=0
+  saw_model=0
+
+  while IFS= read -r line; do
+    if [[ "$state" == "preamble" && "$line" != "- "* ]]; then
+      printf '%s\n' "$line" >> "$tmp"
+      continue
+    fi
+
+    if [[ "$state" == "preamble" ]]; then
+      state="meta"
+    fi
+
+    if [[ "$state" == "meta" && "$line" == "- to_role:"* ]]; then
+      printf -- '- to_role: %s\n' "$to_role" >> "$tmp"
+      saw_role=1
+    elif [[ "$state" == "meta" && "$line" == "- to_agent:"* ]]; then
+      printf -- '- to_agent: %s\n' "$to_agent" >> "$tmp"
+      saw_agent=1
+    elif [[ "$state" == "meta" && "$line" == "- to_model:"* ]]; then
+      printf -- '- to_model: %s\n' "$to_model" >> "$tmp"
+      saw_model=1
+    elif [[ "$state" == "meta" && "$line" == "- to:"* ]]; then
+      continue
+    elif [[ "$state" == "meta" && -z "$line" ]]; then
+      [[ "$saw_role" -eq 1 ]] || printf -- '- to_role: %s\n' "$to_role" >> "$tmp"
+      [[ "$saw_agent" -eq 1 ]] || printf -- '- to_agent: %s\n' "$to_agent" >> "$tmp"
+      [[ "$saw_model" -eq 1 ]] || printf -- '- to_model: %s\n' "$to_model" >> "$tmp"
+      printf '\n' >> "$tmp"
+      state="body"
+    else
+      printf '%s\n' "$line" >> "$tmp"
+    fi
+  done < "$file"
+
+  mv "$tmp" "$file"
+}
+
 TO=""
 TO_AGENT="any"
+TO_MODEL="any"
 FROM=""
 FROM_AGENT=""
+FROM_MODEL="unknown"
 CLI=""
 SLUG=""
 QUESTION=""
@@ -141,8 +206,10 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --to) TO="${2:-}"; shift 2 ;;
     --to-agent) TO_AGENT="${2:-}"; shift 2 ;;
+    --to-model) TO_MODEL="${2:-}"; shift 2 ;;
     --from) FROM="${2:-}"; shift 2 ;;
     --from-agent|--agent) FROM_AGENT="${2:-}"; shift 2 ;;
+    --from-model|--model) FROM_MODEL="${2:-}"; shift 2 ;;
     --cli) CLI="${2:-}"; shift 2 ;;
     --slug) SLUG="${2:-}"; shift 2 ;;
     --question) QUESTION="${2:-}"; shift 2 ;;
@@ -167,6 +234,8 @@ done
   echo "missing --slug or --thread" >&2
   exit 2
 }
+TO="$(normalize_role "$TO")"
+FROM="$(normalize_role "$FROM")"
 valid_to_role "$TO" || {
   echo "invalid --to role: $TO" >&2
   exit 2
@@ -182,6 +251,14 @@ valid_agent_id "$TO_AGENT" || {
 }
 valid_agent_id "$FROM_AGENT" || {
   echo "invalid --from-agent: $FROM_AGENT" >&2
+  exit 2
+}
+valid_model_id "$TO_MODEL" || {
+  echo "invalid --to-model: $TO_MODEL" >&2
+  exit 2
+}
+valid_model_id "$FROM_MODEL" || {
+  echo "invalid --from-model: $FROM_MODEL" >&2
   exit 2
 }
 
@@ -243,12 +320,15 @@ if [[ ! -f "$THREAD_PATH" ]]; then
     printf '# %s -- %s\n\n' "$DATE" "$TITLE"
     printf -- '- status: open\n'
     printf -- '- to_role: %s\n' "$TO"
-    printf -- '- to_agent: %s\n\n' "$TO_AGENT"
+    printf -- '- to_agent: %s\n' "$TO_AGENT"
+    printf -- '- to_model: %s\n\n' "$TO_MODEL"
   } > "$THREAD_PATH"
 fi
+set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL"
 
 {
-  printf '## Post -- %s/%s -- %s -- %s\n\n' "$FROM" "$FROM_AGENT" "$HUMAN_TIME" "$CLI"
+  printf '## Post -- %s/%s -- %s -- %s/%s\n\n' \
+    "$FROM" "$FROM_AGENT" "$HUMAN_TIME" "$CLI" "$FROM_MODEL"
   printf '%s\n\n' "$BODY"
   if [[ ${#POINTERS[@]} -gt 0 ]]; then
     printf '## Pointers\n\n'
@@ -262,12 +342,12 @@ fi
 } >> "$THREAD_PATH"
 
 ID="$(next_question_id "$OPEN_FILE")"
-ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s |' \
-  "$ID" "$TO" "$TO_AGENT" "$FROM" "$FROM_AGENT" "$(trim_cell "$CLI")" \
-  "$THREAD" "$(trim_cell "$QUESTION")")"
+ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' \
+  "$ID" "$TO" "$TO_AGENT" "$TO_MODEL" "$FROM" "$FROM_AGENT" \
+  "$FROM_MODEL" "$(trim_cell "$CLI")" "$THREAD" "$(trim_cell "$QUESTION")")"
 
 if upsert_open_row "$OPEN_FILE" "$ID" "$ROW" "$THREAD"; then
-  echo "notified $TO/$TO_AGENT as $ID via $THREAD"
+  echo "notified $TO/$TO_AGENT/$TO_MODEL as $ID via $THREAD"
 else
-  echo "updated $TO/$TO_AGENT notification via $THREAD"
+  echo "updated $TO/$TO_AGENT/$TO_MODEL notification via $THREAD"
 fi

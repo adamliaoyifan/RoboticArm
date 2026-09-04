@@ -2,6 +2,7 @@
 
 - role: reviews
 - agent: codex
+- model: gpt-5
 - cli: codex
 - status: done
 

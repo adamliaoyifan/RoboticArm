@@ -1,6 +1,9 @@
 # 2026-09-04 — agent role-log workspace
 
 - role: discuss
+- agent: cursor
+- model: unknown
+- cli: cursor
 - status: done
 
 ## Summary
