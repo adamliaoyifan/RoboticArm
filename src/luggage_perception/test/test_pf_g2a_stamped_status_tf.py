@@ -206,8 +206,8 @@ class TestPipelineStatusFailClosed(unittest.TestCase):
         self.assertEqual(result.box.reason, DETECT_SUPPORT_STAMP_MISMATCH)
 
     def test_stale_support_not_relabeled(self):
-        """A status failure resets the window: a later valid frame cannot
-        relabel the earlier estimate as a current measurement."""
+        """Absence-of-evidence misses do not reset the stability window;
+        positive motion evidence does (PF-R5 field evidence)."""
         cargo, raw = _scene()
         det = PlatformFreeDetector(CONFIG, support_mode="auto",
                                    stability_window=3)
@@ -215,15 +215,32 @@ class TestPipelineStatusFailClosed(unittest.TestCase):
                    stamp_sec=100.0)
         det.update(cargo, raw, source="measure", geometry_ok=True,
                    stamp_sec=100.25)
-        # Stale status frame: must not extend or bless the window.
+        det.update(cargo, raw, source="measure", geometry_ok=True,
+                   stamp_sec=100.5)
+        # Stale status frame: TOP_ONLY, but the fitted window survives.
         result = det.update(cargo, raw, source="measure", geometry_ok=False,
                             geometry_gate_reason="status_stale",
-                            stamp_sec=100.5)
-        self.assertFalse(result.height_valid)
-        # Window was reset, so the next valid frame is warming up again.
-        result = det.update(cargo, raw, source="measure", geometry_ok=True,
                             stamp_sec=100.75)
         self.assertFalse(result.height_valid)
+        result = det.update(cargo, raw, source="measure", geometry_ok=True,
+                            stamp_sec=101.0)
+        self.assertTrue(result.height_valid)
+        # Raw-buffer miss: same skip semantics.
+        result = det.update(cargo, None, source="measure", geometry_ok=True,
+                            stamp_sec=101.25)
+        self.assertFalse(result.height_valid)
+        result = det.update(cargo, raw, source="measure", geometry_ok=True,
+                            stamp_sec=101.5)
+        self.assertTrue(result.height_valid)
+        # Motion evidence (geometry_not_settled) DOES reset the window:
+        # the scene may have moved, past measurements are stale.
+        result = det.update(cargo, raw, source="measure", geometry_ok=False,
+                            geometry_gate_reason=None,
+                            stamp_sec=101.75)
+        self.assertFalse(result.height_valid)
+        result = det.update(cargo, raw, source="measure", geometry_ok=True,
+                            stamp_sec=102.0)
+        self.assertFalse(result.height_valid)  # warming up again
 
 
 class TestExactStampJoinOneNanosecond(unittest.TestCase):

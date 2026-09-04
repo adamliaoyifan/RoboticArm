@@ -304,7 +304,18 @@ class PlatformFreeDetector:
 
     def _fit_support(self, top, raw_points_world, source, geometry_ok,
                      raw_same_stamp, stamp_sec, geometry_gate_reason=None):
-        """Gate + fit the local support plane. Returns (support, gate)."""
+        """Gate + fit the local support plane. Returns (support, gate).
+
+        Stability-window policy (PF-R5 field evidence): only *positive
+        motion evidence* (``geometry_not_settled``) and unusable fitted
+        supports reset the window — the scene may have moved, so past
+        measurements are no longer valid. Absence of evidence
+        (missing/malformed/stale status, raw stamp mismatch, hold_track)
+        adds no measurement and must not reset: those misses were
+        callback-ordering artifacts that cleared the window several times
+        per trial and starved FULL_3D. The window still only ever
+        contains *fitted, same-instance* support Zs.
+        """
         if self.support_mode == "top_only":
             self._stability.update(None)
             return None, "mode_top_only"
@@ -314,19 +325,18 @@ class PlatformFreeDetector:
         if source != "measure":
             # hold_track cargo is an earlier acquisition; fusing it with a
             # new raw cloud would fake a measured height.
-            self._stability.update(None)
             return None, "hold_track"
         if geometry_gate_reason in ("status_missing", "status_malformed",
                                     "status_stale"):
             # PF-R3: status evidence does not cover this acquisition; the
             # frame stays TOP_ONLY with the distinct machine reason.
-            self._stability.update(None)
             return None, geometry_gate_reason
         if not geometry_ok:
             self._stability.update(None)
             return None, "geometry_not_settled"
         if raw_points_world is None or not raw_same_stamp:
-            self._stability.update(None)
+            # No evidence about the support this frame (buffer race);
+            # skip the window rather than reset it.
             return (
                 SupportPlaneEstimate(
                     support_z=float("nan"),

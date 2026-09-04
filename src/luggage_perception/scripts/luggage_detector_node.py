@@ -32,6 +32,8 @@ import numpy as np
 
 import rclpy
 from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.exceptions import ParameterUninitializedException
+from rclpy.parameter import Parameter
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import (
@@ -120,10 +122,14 @@ class LuggageDetector(Node):
         self.declare_parameter("min_points", 50)
         self.declare_parameter("min_confidence", 0.70)
         # --- Platform-free geometry (E2/E3) ---
-        # Pickup workspace center XY; empty -> scene_tf pickup_source XY
-        # (measured static workspace geometry, allowed).
-        self.declare_parameter("workspace_center_xy", [0.0, 0.0])
-        self.declare_parameter("workspace_half_extents", [0.5, 0.5])
+        # Pickup workspace center XY; empty (unset) -> scene_tf
+        # pickup_source XY (measured static workspace geometry, allowed).
+        # Declared as an empty DOUBLE_ARRAY so "unset" is distinct from
+        # the legitimate value [0.0, 0.0].
+        self.declare_parameter("workspace_center_xy",
+                               Parameter.Type.DOUBLE_ARRAY)
+        self.declare_parameter("workspace_half_extents",
+                               Parameter.Type.DOUBLE_ARRAY)
         self.declare_parameter("min_luggage_height", 0.15)
         self.declare_parameter("max_luggage_height", 0.60)
         self.declare_parameter("support_inner_margin", 0.03)
@@ -214,10 +220,17 @@ class LuggageDetector(Node):
         # Platform-free geometry pipeline (E2). The pickup workspace
         # defaults to the scene pickup XY (static workspace geometry) with
         # the ROI margin as half extents; pickup_source.z never enters.
-        ws_center = list(self.get_parameter("workspace_center_xy").value)
+        # Parameters declared as a bare DOUBLE_ARRAY start uninitialized,
+        # so reading .value raises until they are set.
+        def _ws_param(name):
+            try:
+                return list(self.get_parameter(name).value or [])
+            except ParameterUninitializedException:
+                return []
+        ws_center = _ws_param("workspace_center_xy")
         if not ws_center:
             ws_center = [self._source_xyz[0], self._source_xyz[1]]
-        ws_half = list(self.get_parameter("workspace_half_extents").value)
+        ws_half = _ws_param("workspace_half_extents")
         if not ws_half:
             ws_half = [self._roi_margin, self._roi_margin]
         platform_z_raw = str(self.get_parameter("platform_z").value).strip()
@@ -426,6 +439,23 @@ class LuggageDetector(Node):
         """Exact-stamp raw world points, or None."""
         with self._raw_lock:
             return self._raw_buffer.get(key)
+
+    def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
+        """Exact-stamp raw points with a bounded same-stamp re-check.
+
+        The raw-depth and cargo callbacks run on separate executor
+        threads; for the same acquisition the raw cloud can be inserted
+        microseconds after the joined cargo frame is processed. The
+        retry only re-reads the exact-stamp key — it never accepts a
+        different stamp (no fusion semantics change).
+        """
+        raw = self._pop_raw_world(key)
+        for _ in range(max(0, attempts)):
+            if raw is not None:
+                return raw
+            time.sleep(period_sec)
+            raw = self._pop_raw_world(key)
+        return raw
 
     def _empty_yolo_for_cloud(self, cloud_msg):
         msg = YoloDetections()
@@ -761,7 +791,7 @@ class LuggageDetector(Node):
         self._timing["tf_ms"] = (time.monotonic() - _t0) * 1000.0
         centroid = tuple(float(v) for v in pts_world.mean(axis=0))
 
-        raw_world = self._pop_raw_world(stamp_key(stamp))
+        raw_world = self._pop_raw_world_with_retry(stamp_key(stamp))
         # PF-R3: the support fit runs only when same-acquisition status
         # evidence exists for this exact stamp. N-1, out-of-order,
         # missing, malformed, or not-settled status yields TOP_ONLY with

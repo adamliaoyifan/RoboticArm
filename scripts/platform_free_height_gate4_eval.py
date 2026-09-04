@@ -111,6 +111,8 @@ def _row(frame, gt, trial, box_id):
         "frame_id": frame.header.frame_id,
         "pca_valid": bool(frame.pca_valid),
         "pca_reason": str(frame.pca_reason),
+        "pca_source": str(frame.pca_source),
+        "n_cargo_points": int(frame.n_cargo_points),
         "geometry_level": int(frame.geometry_level),
         "support_valid": bool(frame.support_valid),
         "support_reason": str(frame.support_reason),
