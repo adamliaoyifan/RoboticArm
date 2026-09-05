@@ -428,54 +428,57 @@ class LuggageDetector(Node):
             self._emit_joined(pair[0], pair[1])
 
     def _raw_cloud_cb(self, msg):
-        """Decode + transform the raw depth cloud into world points, keyed
-        by exact acquisition stamp (bounded buffer).
+        """Buffer the raw depth cloud message by exact stamp (PF-R6 opt 1).
 
-        Decoding here costs a few ms per cloud; the support fit then runs
-        on the already-transformed array with zero extra copies.
+        Decoding + TFing every raw cloud (~250k points at 4 Hz) competed
+        with the join/geometry callbacks on the same executor — the
+        dominant yolo->frame latency in the PF-R6 baseline. The message
+        is already in memory from the subscription, so buffering it is
+        free; the transform happens lazily, once, only for stamps whose
+        cargo cloud actually joins (see _pop_raw_world_with_retry).
         """
         key = stamp_key(msg.header.stamp)
         if key is None:
             return
-        pts = adapters.cloud_points_from_msg(msg)
-        if pts is None:
-            return
-        pts = pts[np.isfinite(pts).all(axis=1)]
-        if len(pts) == 0:
-            return
-        stamp_time = rclpy.time.Time.from_msg(msg.header.stamp)
-        source_frame = self._cloud_data_frame or msg.header.frame_id
-        pts_world, _err = _transform_points_to_world(
-            self._tf_buffer, pts, source_frame, self._world_frame,
-            stamp_time)
-        if pts_world is None:
-            return
         with self._raw_lock:
-            self._raw_buffer[key] = pts_world
+            self._raw_buffer[key] = msg
             while len(self._raw_buffer) > self._raw_buffer_maxlen:
                 self._raw_buffer.popitem(last=False)
 
-    def _pop_raw_world(self, key):
-        """Exact-stamp raw world points, or None."""
-        with self._raw_lock:
-            return self._raw_buffer.get(key)
-
     def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
-        """Exact-stamp raw points with a bounded same-stamp re-check.
+        """Exact-stamp raw world points, transformed on demand (PF-R6).
 
-        The raw-depth and cargo callbacks run on separate executor
-        threads; for the same acquisition the raw cloud can be inserted
-        microseconds after the joined cargo frame is processed. The
-        retry only re-reads the exact-stamp key — it never accepts a
-        different stamp (no fusion semantics change).
+        The raw cloud is buffered lazily as a message by
+        ``_raw_cloud_cb``; it is decoded + transformed here once, only
+        for stamps whose cargo cloud joined (the dominant PF-R6 baseline
+        cost was transforming every raw cloud at 4 Hz on the shared
+        executor). The bounded same-stamp re-check covers the executor
+        ordering race and never accepts a different stamp — no fusion
+        semantics change.
         """
-        raw = self._pop_raw_world(key)
-        for _ in range(max(0, attempts)):
-            if raw is not None:
-                return raw
-            time.sleep(period_sec)
-            raw = self._pop_raw_world(key)
-        return raw
+        last = max(1, attempts)
+        for attempt in range(last):
+            msg = None
+            with self._raw_lock:
+                msg = self._raw_buffer.get(key)
+            if msg is not None:
+                pts = adapters.cloud_points_from_msg(msg)
+                if pts is not None and len(pts):
+                    pts = pts[np.isfinite(pts).all(axis=1)]
+                    if len(pts):
+                        stamp_time = rclpy.time.Time.from_msg(
+                            msg.header.stamp)
+                        source_frame = (self._cloud_data_frame
+                                        or msg.header.frame_id)
+                        pts_world, _err = _transform_points_to_world(
+                            self._tf_buffer, pts, source_frame,
+                            self._world_frame, stamp_time)
+                        if pts_world is not None:
+                            return pts_world
+                return None  # undecodable same-stamp cloud
+            if attempt + 1 < last:
+                time.sleep(period_sec)
+        return None
 
     def _empty_yolo_for_cloud(self, cloud_msg):
         msg = YoloDetections()

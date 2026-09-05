@@ -223,6 +223,16 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     points = np.asarray(raw_points_world, dtype=np.float64).reshape(-1, 3)
     points = points[np.isfinite(points).all(axis=1)]
     points = _crop_workspace(points, workspace[0], workspace[1])
+    # PF-R6 opt 3: the height band needs only top_z (already known), so
+    # apply it BEFORE the rectangle rotation/annulus math — on the raw
+    # depth cloud most points sit far outside the plausible support band
+    # (floor below, box body above) and are rejected by two comparisons
+    # instead of the full rotate + annulus pipeline.
+    band = (
+        (top_estimate.top_z - points[:, 2] >= config.min_luggage_height)
+        & (top_estimate.top_z - points[:, 2] <= config.max_luggage_height)
+    )
+    points = points[band]
     if len(points) < int(config.min_support_points):
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
@@ -240,11 +250,7 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     ) & (
         (np.abs(u) < outer_w) & (np.abs(v) < outer_d)
     )
-    band = (
-        (top_estimate.top_z - points[:, 2] >= config.min_luggage_height)
-        & (top_estimate.top_z - points[:, 2] <= config.max_luggage_height)
-    )
-    candidates = points[in_annulus & band]
+    candidates = points[in_annulus]
     if len(candidates) < int(config.min_support_points):
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
