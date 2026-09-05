@@ -55,6 +55,7 @@ check_required_files() {
     scripts/poll_eng_completed.py \
     scripts/test_agent_lifecycle_smoke.sh \
     scripts/test_agent_mailbox_freshness.sh \
+    scripts/test_agent_scheduler_poller_freshness.sh \
     scripts/eng_checkpoint_gates.json \
     scripts/stop_sim.sh; do
     require_file "$file"
@@ -360,6 +361,7 @@ check_executables() {
   require_executable scripts/poll_eng_completed.py
   require_executable scripts/test_agent_lifecycle_smoke.sh
   require_executable scripts/test_agent_mailbox_freshness.sh
+  require_executable scripts/test_agent_scheduler_poller_freshness.sh
   require_executable scripts/stop_sim.sh
   require_executable scripts/check_agent_contract.sh
 }
