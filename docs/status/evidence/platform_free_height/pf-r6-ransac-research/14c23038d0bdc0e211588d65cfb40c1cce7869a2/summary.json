@@ -1,0 +1,228 @@
+{
+  "aggregate": {
+    "baseline_ransac": {
+      "err_mm": {
+        "max": 0.0,
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "false_measured_support_on_negatives": 0,
+      "n_fixtures": 18,
+      "negatives_rejected": "5/5",
+      "positive_fixtures": 13,
+      "reasons": {
+        "DETECT_SUPPORT_UNOBSERVABLE": 4,
+        "DETECT_SUPPORT_UNSTABLE": 1,
+        "ok": 13
+      },
+      "valid_on_positive": 13
+    },
+    "grid_seed_robust_z": {
+      "err_mm": {
+        "max": 10.0,
+        "median": 5.0,
+        "p95": 7.6
+      },
+      "false_measured_support_on_negatives": 0,
+      "n_fixtures": 18,
+      "negatives_rejected": "5/5",
+      "positive_fixtures": 13,
+      "reasons": {
+        "DETECT_SUPPORT_UNOBSERVABLE": 4,
+        "DETECT_SUPPORT_UNSTABLE": 1,
+        "ok": 13
+      },
+      "valid_on_positive": 13
+    },
+    "one_point_constrained_ransac": {
+      "err_mm": {
+        "max": 0.0,
+        "median": 0.0,
+        "p95": 0.0
+      },
+      "false_measured_support_on_negatives": 0,
+      "n_fixtures": 18,
+      "negatives_rejected": "5/5",
+      "positive_fixtures": 13,
+      "reasons": {
+        "DETECT_SUPPORT_UNOBSERVABLE": 4,
+        "DETECT_SUPPORT_UNSTABLE": 1,
+        "ok": 13
+      },
+      "valid_on_positive": 13
+    },
+    "zmode_median": {
+      "err_mm": {
+        "max": 6.0,
+        "median": 0.0,
+        "p95": 5.4
+      },
+      "false_measured_support_on_negatives": 0,
+      "n_fixtures": 18,
+      "negatives_rejected": "5/5",
+      "positive_fixtures": 13,
+      "reasons": {
+        "DETECT_SUPPORT_UNOBSERVABLE": 4,
+        "DETECT_SUPPORT_UNSTABLE": 1,
+        "ok": 13
+      },
+      "valid_on_positive": 13
+    }
+  },
+  "gates": {
+    "grid_seed_robust_z": {
+      "1_p95_err_le_15mm_max_le_25mm": "pass",
+      "2_zero_false_measured_support": "pass",
+      "3_fail_closed_semantics": "pass (every comparator runs inside the unchanged committed estimate_local_support validation: band, annulus, min points, side coverage, reason codes)",
+      "4_p95_le_75ms_and_2x_speedup": "pass",
+      "5_p50_le_50ms": "pass",
+      "6_deterministic_fixed_input_seed": "pass",
+      "7_no_privileged_input_or_production_import": "pass (research prototypes; committed snapshot imported read-only as the required baseline)",
+      "8_three_size_valid_rate_regression": "pass (sim capture: 156 frames, 3 sizes, max delta 0.0 pp)",
+      "_latency_ms": {
+        "p50": 1.887,
+        "p95": 2.307,
+        "speedup_vs_baseline_here": 49.32
+      }
+    },
+    "one_point_constrained_ransac": {
+      "1_p95_err_le_15mm_max_le_25mm": "pass",
+      "2_zero_false_measured_support": "pass",
+      "3_fail_closed_semantics": "pass (every comparator runs inside the unchanged committed estimate_local_support validation: band, annulus, min points, side coverage, reason codes)",
+      "4_p95_le_75ms_and_2x_speedup": "pass",
+      "5_p50_le_50ms": "pass",
+      "6_deterministic_fixed_input_seed": "pass",
+      "7_no_privileged_input_or_production_import": "pass (research prototypes; committed snapshot imported read-only as the required baseline)",
+      "8_three_size_valid_rate_regression": "pass (sim capture: 156 frames, 3 sizes, max delta 0.0 pp)",
+      "_latency_ms": {
+        "p50": 0.238,
+        "p95": 0.286,
+        "speedup_vs_baseline_here": 397.86
+      }
+    },
+    "zmode_median": {
+      "1_p95_err_le_15mm_max_le_25mm": "pass",
+      "2_zero_false_measured_support": "pass",
+      "3_fail_closed_semantics": "pass (every comparator runs inside the unchanged committed estimate_local_support validation: band, annulus, min points, side coverage, reason codes)",
+      "4_p95_le_75ms_and_2x_speedup": "pass",
+      "5_p50_le_50ms": "pass",
+      "6_deterministic_fixed_input_seed": "pass",
+      "7_no_privileged_input_or_production_import": "pass (research prototypes; committed snapshot imported read-only as the required baseline)",
+      "8_three_size_valid_rate_regression": "pass (sim capture: 156 frames, 3 sizes, max delta 0.0 pp)",
+      "_latency_ms": {
+        "p50": 0.237,
+        "p95": 0.27,
+        "speedup_vs_baseline_here": 421.44
+      }
+    }
+  },
+  "latency": [
+    {
+      "max_ms": 90.032,
+      "method": "baseline_ransac",
+      "n": 30,
+      "p50_ms": 80.527,
+      "p95_ms": 89.707,
+      "points": 21000
+    },
+    {
+      "max_ms": 1.367,
+      "method": "grid_seed_robust_z",
+      "n": 30,
+      "p50_ms": 1.218,
+      "p95_ms": 1.318,
+      "points": 21000
+    },
+    {
+      "max_ms": 0.18,
+      "method": "one_point_constrained_ransac",
+      "n": 30,
+      "p50_ms": 0.107,
+      "p95_ms": 0.168,
+      "points": 21000
+    },
+    {
+      "max_ms": 0.185,
+      "method": "zmode_median",
+      "n": 30,
+      "p50_ms": 0.144,
+      "p95_ms": 0.183,
+      "points": 21000
+    },
+    {
+      "max_ms": 107.148,
+      "method": "baseline_ransac",
+      "n": 30,
+      "p50_ms": 96.875,
+      "p95_ms": 105.515,
+      "points": 26000
+    },
+    {
+      "max_ms": 1.825,
+      "method": "grid_seed_robust_z",
+      "n": 30,
+      "p50_ms": 1.502,
+      "p95_ms": 1.672,
+      "points": 26000
+    },
+    {
+      "max_ms": 0.225,
+      "method": "one_point_constrained_ransac",
+      "n": 30,
+      "p50_ms": 0.148,
+      "p95_ms": 0.19,
+      "points": 26000
+    },
+    {
+      "max_ms": 0.089,
+      "method": "zmode_median",
+      "n": 30,
+      "p50_ms": 0.066,
+      "p95_ms": 0.083,
+      "points": 26000
+    },
+    {
+      "max_ms": 114.373,
+      "method": "baseline_ransac",
+      "n": 30,
+      "p50_ms": 105.58,
+      "p95_ms": 113.789,
+      "points": 31000
+    },
+    {
+      "max_ms": 2.563,
+      "method": "grid_seed_robust_z",
+      "n": 30,
+      "p50_ms": 1.887,
+      "p95_ms": 2.307,
+      "points": 31000
+    },
+    {
+      "max_ms": 0.29,
+      "method": "one_point_constrained_ransac",
+      "n": 30,
+      "p50_ms": 0.238,
+      "p95_ms": 0.286,
+      "points": 31000
+    },
+    {
+      "max_ms": 0.276,
+      "method": "zmode_median",
+      "n": 30,
+      "p50_ms": 0.237,
+      "p95_ms": 0.27,
+      "points": 31000
+    }
+  ],
+  "production_reference_ransac_ms": {
+    "p50": 126.008,
+    "p95": 183.909
+  },
+  "provenance": {
+    "committed_revision": "14c23038d0bdc0e211588d65cfb40c1cce7869a2",
+    "machine": "x86_64",
+    "numpy": "2.2.6",
+    "platform": "Linux-6.8.0-138-generic-x86_64-with-glibc2.35",
+    "python": "3.10.12"
+  }
+}
