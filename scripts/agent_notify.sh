@@ -5,16 +5,30 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/agent_notify.sh --to ROLE --from ROLE --cli CLI --slug SLUG --question TEXT [options]
+  scripts/agent_notify.sh --to ROLE --from ROLE --cli CLI --slug SLUG --request TEXT [options]
 
 Options:
+  --kind KIND          question, consensus, subtask, integration, or regression.
+                       Defaults to question.
+  --parent TASK        Unified parent task id. Defaults to n/a.
+  --subtask ID         Executable subtask id. Defaults to n/a.
+  --depends-on IDS     Comma-separated prerequisite subtask/mailbox ids, or none.
+                       Defaults to none.
+  --base-revision REV  Commit, branch, tag, or isolated worktree revision.
+                       Defaults to n/a.
+  --generation N       Runnable task generation. Required for new runnable work.
+  --plan-revision REV  Exact approved plan commit for new runnable work.
+  --checkpoint ID      Deprecated alias for --subtask.
+  --revision REV       Deprecated alias for --base-revision.
   --to-agent AGENT    Concrete target agent. Defaults to any.
   --to-model MODEL    Concrete target model. Defaults to any.
   --from-agent AGENT  Concrete sender agent. Defaults to --cli.
   --from-model MODEL  Concrete sender model. Defaults to unknown.
   --agent AGENT       Alias for --from-agent.
   --model MODEL       Alias for --from-model.
-  --body TEXT       Thread post body. Defaults to --question.
+  --request TEXT     One-line requested action.
+  --question TEXT    Backward-compatible alias for --request.
+  --body TEXT       Thread post body. Defaults to --request.
   --pointer PATH    Add one pointer. May be repeated.
   --thread FILE     Append to an existing discuss thread filename.
   --title TEXT      Thread title for a new thread.
@@ -59,6 +73,18 @@ valid_model_id() {
   [[ "$1" =~ ^[[:alnum:]_.@/-]+$ ]]
 }
 
+valid_kind() {
+  [[ "$1" =~ ^(question|consensus|subtask|integration|regression|task|checkpoint)$ ]]
+}
+
+valid_route_token() {
+  [[ "$1" =~ ^[[:alnum:]_.@:/-]+$ ]]
+}
+
+valid_dependency_list() {
+  [[ "$1" =~ ^[[:alnum:]_.@:/,-]+$ ]]
+}
+
 normalize_role() {
   case "$1" in
     reviewers) printf 'reviews' ;;
@@ -94,11 +120,11 @@ next_question_id() {
 }
 
 open_header() {
-  printf '| id | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | question |\n'
+  printf '| id | kind | parent | subtask | depends_on | revision | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | request | generation | plan_revision |\n'
 }
 
 open_separator() {
-  printf '|---|---|---|---|---|---|---|---|---|---|\n'
+  printf '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n'
 }
 
 parse_first_cell() {
@@ -145,13 +171,30 @@ set_thread_target() {
   local to_role="$2"
   local to_agent="$3"
   local to_model="$4"
-  local tmp line state saw_role saw_agent saw_model
+  local kind="$5"
+  local parent="$6"
+  local subtask="$7"
+  local depends_on="$8"
+  local revision="$9"
+  local generation="${10}"
+  local plan_revision="${11}"
+  local tmp line state saw_role saw_agent saw_model saw_kind saw_parent
+  local saw_subtask saw_depends_on saw_revision saw_consensus saw_generation
+  local saw_plan_revision
 
   tmp="$(mktemp)"
   state="preamble"
   saw_role=0
   saw_agent=0
   saw_model=0
+  saw_kind=0
+  saw_parent=0
+  saw_subtask=0
+  saw_depends_on=0
+  saw_revision=0
+  saw_consensus=0
+  saw_generation=0
+  saw_plan_revision=0
 
   while IFS= read -r line; do
     if [[ "$state" == "preamble" && "$line" != "- "* ]]; then
@@ -172,12 +215,50 @@ set_thread_target() {
     elif [[ "$state" == "meta" && "$line" == "- to_model:"* ]]; then
       printf -- '- to_model: %s\n' "$to_model" >> "$tmp"
       saw_model=1
+    elif [[ "$state" == "meta" && "$line" == "- kind:"* ]]; then
+      printf -- '- kind: %s\n' "$kind" >> "$tmp"
+      saw_kind=1
+    elif [[ "$state" == "meta" && "$line" == "- parent:"* ]]; then
+      printf -- '- parent: %s\n' "$parent" >> "$tmp"
+      saw_parent=1
+    elif [[ "$state" == "meta" && "$line" == "- subtask:"* ]]; then
+      printf -- '- subtask: %s\n' "$subtask" >> "$tmp"
+      saw_subtask=1
+    elif [[ "$state" == "meta" && "$line" == "- depends_on:"* ]]; then
+      printf -- '- depends_on: %s\n' "$depends_on" >> "$tmp"
+      saw_depends_on=1
+    elif [[ "$state" == "meta" && "$line" == "- checkpoint:"* ]]; then
+      continue
+    elif [[ "$state" == "meta" && "$line" == "- revision:"* ]]; then
+      printf -- '- revision: %s\n' "$revision" >> "$tmp"
+      saw_revision=1
+    elif [[ "$state" == "meta" && "$line" == "- generation:"* ]]; then
+      [[ -n "$generation" ]] && printf -- '- generation: %s\n' "$generation" >> "$tmp"
+      saw_generation=1
+    elif [[ "$state" == "meta" && "$line" == "- plan_revision:"* ]]; then
+      [[ -n "$plan_revision" ]] && printf -- '- plan_revision: %s\n' "$plan_revision" >> "$tmp"
+      saw_plan_revision=1
+    elif [[ "$state" == "meta" && "$line" == "- consensus:"* ]]; then
+      printf '%s\n' "$line" >> "$tmp"
+      saw_consensus=1
     elif [[ "$state" == "meta" && "$line" == "- to:"* ]]; then
       continue
     elif [[ "$state" == "meta" && -z "$line" ]]; then
       [[ "$saw_role" -eq 1 ]] || printf -- '- to_role: %s\n' "$to_role" >> "$tmp"
       [[ "$saw_agent" -eq 1 ]] || printf -- '- to_agent: %s\n' "$to_agent" >> "$tmp"
       [[ "$saw_model" -eq 1 ]] || printf -- '- to_model: %s\n' "$to_model" >> "$tmp"
+      [[ "$saw_kind" -eq 1 ]] || printf -- '- kind: %s\n' "$kind" >> "$tmp"
+      [[ "$saw_parent" -eq 1 ]] || printf -- '- parent: %s\n' "$parent" >> "$tmp"
+      [[ "$saw_subtask" -eq 1 ]] || printf -- '- subtask: %s\n' "$subtask" >> "$tmp"
+      [[ "$saw_depends_on" -eq 1 ]] || printf -- '- depends_on: %s\n' "$depends_on" >> "$tmp"
+      [[ "$saw_revision" -eq 1 ]] || printf -- '- revision: %s\n' "$revision" >> "$tmp"
+      if [[ "$kind" =~ ^(subtask|integration|regression)$ ]]; then
+        [[ "$saw_generation" -eq 1 ]] || printf -- '- generation: %s\n' "$generation" >> "$tmp"
+        [[ "$saw_plan_revision" -eq 1 ]] || printf -- '- plan_revision: %s\n' "$plan_revision" >> "$tmp"
+      fi
+      if [[ "$kind" == "consensus" && "$saw_consensus" -eq 0 ]]; then
+        printf -- '- consensus: open\n' >> "$tmp"
+      fi
       printf '\n' >> "$tmp"
       state="body"
     else
@@ -191,6 +272,14 @@ set_thread_target() {
 TO=""
 TO_AGENT="any"
 TO_MODEL="any"
+KIND="question"
+KIND_SET=0
+PARENT="n/a"
+SUBTASK="n/a"
+DEPENDS_ON="none"
+REVISION="n/a"
+GENERATION=""
+PLAN_REVISION=""
 FROM=""
 FROM_AGENT=""
 FROM_MODEL="unknown"
@@ -204,6 +293,13 @@ POINTERS=()
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --kind) KIND="${2:-}"; KIND_SET=1; shift 2 ;;
+    --parent) PARENT="${2:-}"; shift 2 ;;
+    --subtask|--checkpoint) SUBTASK="${2:-}"; shift 2 ;;
+    --depends-on) DEPENDS_ON="${2:-}"; shift 2 ;;
+    --base-revision|--revision) REVISION="${2:-}"; shift 2 ;;
+    --generation) GENERATION="${2:-}"; shift 2 ;;
+    --plan-revision) PLAN_REVISION="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --to-agent) TO_AGENT="${2:-}"; shift 2 ;;
     --to-model) TO_MODEL="${2:-}"; shift 2 ;;
@@ -212,7 +308,7 @@ while [[ $# -gt 0 ]]; do
     --from-model|--model) FROM_MODEL="${2:-}"; shift 2 ;;
     --cli) CLI="${2:-}"; shift 2 ;;
     --slug) SLUG="${2:-}"; shift 2 ;;
-    --question) QUESTION="${2:-}"; shift 2 ;;
+    --request|--question) QUESTION="${2:-}"; shift 2 ;;
     --body) BODY="${2:-}"; shift 2 ;;
     --pointer) POINTERS+=("${2:-}"); shift 2 ;;
     --thread) THREAD="${2:-}"; shift 2 ;;
@@ -234,6 +330,10 @@ done
   echo "missing --slug or --thread" >&2
   exit 2
 }
+if [[ -n "$THREAD" && "$KIND_SET" -eq 0 ]]; then
+  echo "reusing --thread requires explicit --kind" >&2
+  exit 2
+fi
 TO="$(normalize_role "$TO")"
 FROM="$(normalize_role "$FROM")"
 valid_to_role "$TO" || {
@@ -244,7 +344,76 @@ valid_from_role "$FROM" || {
   echo "invalid --from role: $FROM" >&2
   exit 2
 }
+valid_kind "$KIND" || {
+  echo "invalid --kind: $KIND" >&2
+  exit 2
+}
+valid_route_token "$PARENT" || {
+  echo "invalid --parent: $PARENT" >&2
+  exit 2
+}
+valid_route_token "$SUBTASK" || {
+  echo "invalid --subtask: $SUBTASK" >&2
+  exit 2
+}
+valid_dependency_list "$DEPENDS_ON" || {
+  echo "invalid --depends-on: $DEPENDS_ON" >&2
+  exit 2
+}
+valid_route_token "$REVISION" || {
+  echo "invalid --base-revision: $REVISION" >&2
+  exit 2
+}
+if [[ -n "$GENERATION" && ! "$GENERATION" =~ ^[1-9][0-9]*$ ]]; then
+  echo "invalid --generation: $GENERATION" >&2
+  exit 2
+fi
+if [[ -n "$PLAN_REVISION" ]]; then
+  valid_route_token "$PLAN_REVISION" || {
+    echo "invalid --plan-revision: $PLAN_REVISION" >&2
+    exit 2
+  }
+fi
 FROM_AGENT="${FROM_AGENT:-$CLI}"
+if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+      ( "$PARENT" == "n/a" || "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+  echo "--kind $KIND requires --parent, --subtask, and --base-revision" >&2
+  exit 2
+fi
+if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+      ( -z "$GENERATION" || -z "$PLAN_REVISION" ) ]]; then
+  echo "--kind $KIND requires --generation and --plan-revision" >&2
+  exit 2
+fi
+if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+      ( "$TO_AGENT" == "any" || "$TO_MODEL" == "any" ) ]]; then
+  echo "--kind $KIND requires concrete --to-agent and --to-model values" >&2
+  exit 2
+fi
+if [[ "$KIND" == "consensus" && \
+      ( "$PARENT" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+  echo "--kind consensus requires --parent and --base-revision" >&2
+  exit 2
+fi
+if [[ "$KIND" == "consensus" && \
+      ( "$TO_AGENT" != codex* || "$TO_AGENT" == "$FROM_AGENT" ) ]]; then
+  echo "--kind consensus requires a distinct Codex --to-agent" >&2
+  exit 2
+fi
+if [[ "$KIND" == "consensus" && \
+      ( "$FROM" != "reviews" || "$TO" != "reviews" ) ]]; then
+  echo "--kind consensus must be a reviews-to-reviews Codex consultation" >&2
+  exit 2
+fi
+if [[ "$KIND" =~ ^(subtask|integration)$ && "$FROM" != "reviews" ]]; then
+  echo "--kind $KIND must be dispatched by reviews" >&2
+  exit 2
+fi
+if [[ "$KIND" =~ ^(task|checkpoint)$ && \
+      ( "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+  echo "legacy --kind $KIND requires --subtask/--checkpoint and --base-revision/--revision" >&2
+  exit 2
+fi
 valid_agent_id "$TO_AGENT" || {
   echo "invalid --to-agent: $TO_AGENT" >&2
   exit 2
@@ -321,10 +490,25 @@ if [[ ! -f "$THREAD_PATH" ]]; then
     printf -- '- status: open\n'
     printf -- '- to_role: %s\n' "$TO"
     printf -- '- to_agent: %s\n' "$TO_AGENT"
-    printf -- '- to_model: %s\n\n' "$TO_MODEL"
+    printf -- '- to_model: %s\n' "$TO_MODEL"
+    printf -- '- kind: %s\n' "$KIND"
+    printf -- '- parent: %s\n' "$PARENT"
+    printf -- '- subtask: %s\n' "$SUBTASK"
+    printf -- '- depends_on: %s\n' "$DEPENDS_ON"
+    printf -- '- revision: %s\n' "$REVISION"
+    if [[ "$KIND" =~ ^(subtask|integration|regression)$ ]]; then
+      printf -- '- generation: %s\n' "$GENERATION"
+      printf -- '- plan_revision: %s\n' "$PLAN_REVISION"
+    fi
+    if [[ "$KIND" == "consensus" ]]; then
+      printf -- '- consensus: open\n'
+    fi
+    printf '\n'
   } > "$THREAD_PATH"
 fi
-set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL"
+set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL" \
+  "$KIND" "$PARENT" "$SUBTASK" "$DEPENDS_ON" "$REVISION" \
+  "$GENERATION" "$PLAN_REVISION"
 
 {
   printf '## Post -- %s/%s -- %s -- %s/%s\n\n' \
@@ -342,12 +526,19 @@ set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL"
 } >> "$THREAD_PATH"
 
 ID="$(next_question_id "$OPEN_FILE")"
-ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' \
-  "$ID" "$TO" "$TO_AGENT" "$TO_MODEL" "$FROM" "$FROM_AGENT" \
-  "$FROM_MODEL" "$(trim_cell "$CLI")" "$THREAD" "$(trim_cell "$QUESTION")")"
+ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' \
+  "$ID" "$KIND" "$(trim_cell "$PARENT")" "$(trim_cell "$SUBTASK")" \
+  "$(trim_cell "$DEPENDS_ON")" "$(trim_cell "$REVISION")" "$TO" \
+  "$TO_AGENT" "$TO_MODEL" "$FROM" "$FROM_AGENT" "$FROM_MODEL" \
+  "$(trim_cell "$CLI")" "$THREAD" "$(trim_cell "$QUESTION")")"
+if [[ "$KIND" =~ ^(subtask|integration|regression)$ ]]; then
+  ROW="${ROW% |} | $(trim_cell "$GENERATION") | $(trim_cell "$PLAN_REVISION") |"
+else
+  ROW="${ROW% |} |  |  |"
+fi
 
 if upsert_open_row "$OPEN_FILE" "$ID" "$ROW" "$THREAD"; then
-  echo "notified $TO/$TO_AGENT/$TO_MODEL as $ID via $THREAD"
+  echo "notified $TO/$TO_AGENT/$TO_MODEL for $KIND/$PARENT/$SUBTASK at $REVISION as $ID via $THREAD"
 else
-  echo "updated $TO/$TO_AGENT/$TO_MODEL notification via $THREAD"
+  echo "updated $TO/$TO_AGENT/$TO_MODEL for $KIND/$PARENT/$SUBTASK at $REVISION via $THREAD"
 fi

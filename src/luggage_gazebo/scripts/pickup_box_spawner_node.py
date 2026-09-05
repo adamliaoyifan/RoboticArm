@@ -56,11 +56,12 @@ from luggage_description.scene_tf_config_utils import (
 )
 
 from luggage_description.suitcase_visual import (
+    OBSERVABLE_REFERENCE_VERSION,
     VISUAL_IDS,
-    mesh_observable_reference,
+    MeshReferenceError,
     pickup_box_pose,
     pickup_visual_sdf,
-    sized_stl_path,
+    resolve_observable_reference,
     size_tier_name,
     sized_model_name,
     visual_id_for_entry,
@@ -155,6 +156,7 @@ class PickupBoxSpawner(Node):
         self._visual_settle_sec = max(0.0, settle_raw)
         self._current_box = None
         self._current_model = None
+        self._current_ref = None
         self._finalized_models = []
         self._sequence = 0
         self._generation = 0
@@ -257,7 +259,7 @@ class PickupBoxSpawner(Node):
     # ------------------------------------------------------------------
 
     def _box_to_record(self, box, yaw=0.0, mass_kg=0.0):
-        return {
+        record = {
             "id": box.id,
             "width": box.width,
             "depth": box.depth,
@@ -281,6 +283,19 @@ class PickupBoxSpawner(Node):
                 },
             },
         }
+        # PF-R5A: GT reference identity on the eval-side records only
+        # (never in DetectedLuggage / online paths).
+        ref = getattr(self, "_current_ref", None)
+        if ref is not None:
+            record["gt_reference"] = {
+                "version": ref["version"],
+                "stl_sha256": ref["stl_sha256"],
+                "stl_path": ref["stl_path"],
+                "visual_id": ref["visual_id"],
+                "tier": ref["tier"],
+                "lid_offset": float(ref["lid_offset"]),
+            }
+        return record
 
     def _publish_box_state(self):
         payload = {}
@@ -385,37 +400,26 @@ class PickupBoxSpawner(Node):
         ``mesh_observable_reference``): lid-plane width/depth and the
         observable height from the lid plane down. Physics keeps the
         catalog-sized collision; only the reported GT changes.
+
+        PF-R5A: fail closed - an unresolvable reference raises
+        MeshReferenceError and the spawn fails explicitly. Catalog
+        dimensions are never substituted.
         """
         ref = self._observable_reference(size, visual_id)
         return [ref["width"], ref["depth"], ref["height"]]
 
     def _observable_reference(self, size, visual_id):
-        """Cached observable reference for one sized model (or catalog
-        fallback when the STL is unavailable)."""
-        tier = size_tier_name(size)
-        key = (str(visual_id), str(tier))
+        """Cached observable reference for one sized model.
+
+        Raises :class:`MeshReferenceError` when the reference cannot be
+        resolved (unknown tier, missing/corrupt/malformed STL) — no
+        fallback, ever.
+        """
+        key = (str(visual_id), OBSERVABLE_REFERENCE_VERSION)
         if key in self._observable_cache:
             return self._observable_cache[key]
-        ref = None
-        if tier is not None and self._models_root_dir:
-            stl = sized_stl_path(visual_id, tier, self._models_root_dir)
-            try:
-                w, d, lid_off, full_h = mesh_observable_reference(stl)
-                ref = {
-                    "width": float(w), "depth": float(d),
-                    # observable height: lid plane down to the AABB bottom
-                    "height": float(full_h - lid_off),
-                    "lid_offset": float(lid_off),
-                }
-            except (IOError, OSError, ValueError) as exc:
-                self.get_logger().warning(
-                    "mesh observable reference unavailable (%s); using "
-                    "catalog size" % exc)
-        if ref is None:
-            ref = {
-                "width": float(size[0]), "depth": float(size[1]),
-                "height": float(size[2]), "lid_offset": 0.0,
-            }
+        ref = resolve_observable_reference(
+            self._models_root_dir, size, visual_id)
         self._observable_cache[key] = ref
         return ref
 
@@ -427,6 +431,7 @@ class PickupBoxSpawner(Node):
         response = ClearCurrentBox.Response()
         if not self._current_model:
             self._current_box = None
+            self._current_ref = None
             self._publish_box_state()
             response.success = True
             response.message = "no current pickup box"
@@ -504,7 +509,18 @@ class PickupBoxSpawner(Node):
         visual_id = visual_id_for_entry(entry)
         if self._visual_kind == "mesh":
             visual_id = self._rng.choice(list(VISUAL_IDS))
-        gt_size = self._gt_size(size, visual_id)
+        # PF-R5A fail-closed: resolve the observable reference BEFORE any
+        # world mutation or state publication. An unresolvable reference
+        # fails the spawn explicitly; no box state, GetCurrentBox
+        # dimensions, or size_eval data are published for this instance.
+        try:
+            gt_size = self._gt_size(size, visual_id)
+        except MeshReferenceError as exc:
+            self.get_logger().error(
+                "spawn rejected (mesh observable GT fail-closed): %s" % exc)
+            response.success = False
+            response.message = "MESH_REFERENCE_UNAVAILABLE: %s" % exc
+            return response
         try:
             err = self._spawn_model(
                 model_name, pose,
@@ -559,6 +575,7 @@ class PickupBoxSpawner(Node):
         box.height_confidence = 1.0
         box.height_source = DetectedLuggage.HEIGHT_SOURCE_MEASURED_SUPPORT
         self._current_model = model_name
+        self._current_ref = self._observable_reference(size, visual_id)
         self._current_box = box
         self._current_yaw = yaw
         self._current_mass = mass_kg
@@ -579,6 +596,9 @@ class PickupBoxSpawner(Node):
             "height": box.height,
             "mass_kg": float(mass_kg),
             "yaw": float(yaw),
+            # PF-R5A: deterministic GT-reference identity.
+            "gt_reference_version": self._current_ref["version"],
+            "gt_reference_stl_sha256": self._current_ref["stl_sha256"],
         }, sort_keys=True)))
         self.get_logger().info(
             "Spawned %s visual=%s/%s size=%.3fx%.3fx%.3f gt=%.3fx%.3fx%.3f "

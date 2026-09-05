@@ -1,0 +1,13 @@
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '- role: eng'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '- agent: ...'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '- model: ...'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '- cli: ...'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '- status: done|open'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '## Summary'
+FAIL: docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md is missing '## Pointers'
+FAIL: docs/agents/eng/2026-09-05_0010_pf-r1-r6-summary.md is missing '## Pointers'
+FAIL: docs/agents/eng/2026-09-05_0010_pf-r1-r6-summary.md has parent but is missing '- subtask: ...'
+FAIL: docs/agents/eng/2026-09-05_0010_pf-r1-r6-summary.md has parent but is missing '- base_revision: ...'
+FAIL: docs/agents/eng/2026-09-05_0010_pf-r1-r6-summary.md has parent but is missing '- started_at: ...'
+FAIL: docs/agents/eng/2026-09-05_0010_pf-r1-r6-summary.md has parent but is missing '- completed_at: ...'
+agent contract check failed: 12 issue(s)
