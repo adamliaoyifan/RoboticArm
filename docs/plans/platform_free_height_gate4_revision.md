@@ -1,7 +1,12 @@
 # Platform-free Gate 4 Revision — detection availability split
 
-Date: 2026-09-04 (user ruling, recorded by eng; supersedes the single
-top_surface_rate gate in `platform_free_height_test_plan.md` Gate 4)
+> **Status: PROPOSAL — pending explicit user confirmation.**
+> Recorded from an in-session user direction but not yet confirmed on
+> the record; PF-R5 closure does NOT depend on this split (run8 passed
+> the original unreduced gate).
+
+Date: 2026-09-04 (proposal recorded by eng; supersedes nothing until
+confirmed)
 
 ## Unchanged hard gates (no relaxation)
 
