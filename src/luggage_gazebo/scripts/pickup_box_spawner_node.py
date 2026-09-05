@@ -412,10 +412,13 @@ class PickupBoxSpawner(Node):
         """Cached observable reference for one sized model.
 
         Raises :class:`MeshReferenceError` when the reference cannot be
-        resolved (unknown tier, missing/corrupt/malformed STL) — no
-        fallback, ever.
+        resolved (unknown visual, unknown tier, missing/corrupt/malformed
+        STL) — no fallback, ever. The cache key carries the resolved
+        tier: same visual across tiers must never reuse another tier's
+        dimensions or SHA-256.
         """
-        key = (str(visual_id), OBSERVABLE_REFERENCE_VERSION)
+        tier = size_tier_name(size)
+        key = (str(visual_id), str(tier), OBSERVABLE_REFERENCE_VERSION)
         if key in self._observable_cache:
             return self._observable_cache[key]
         ref = resolve_observable_reference(
@@ -494,25 +497,16 @@ class PickupBoxSpawner(Node):
         return response
 
     def handle_spawn_next(self, _req, _response):
-        clear = self.handle_clear(None, None)
         response = SpawnNextBox.Response()
-        if not clear.success:
-            response.success = False
-            response.message = clear.message
-            return response
-
         entry, size, mass_kg, _generated, id_suffix = self._sample_box()
-        self._sequence += 1
-        model_name = "%s_%04d_%s" % (
-            self._model_prefix, self._sequence, id_suffix)
         pose, yaw = self._entry_pose(entry, size)
         visual_id = visual_id_for_entry(entry)
         if self._visual_kind == "mesh":
             visual_id = self._rng.choice(list(VISUAL_IDS))
-        # PF-R5A fail-closed: resolve the observable reference BEFORE any
-        # world mutation or state publication. An unresolvable reference
-        # fails the spawn explicitly; no box state, GetCurrentBox
-        # dimensions, or size_eval data are published for this instance.
+        # PF-R5A-FIX1 fail-closed: resolve and validate the prospective
+        # mesh reference BEFORE clearing the current instance or any
+        # delete/create/publication/state/sequence mutation. A bad
+        # reference must leave the existing model and state untouched.
         try:
             gt_size = self._gt_size(size, visual_id)
         except MeshReferenceError as exc:
@@ -521,6 +515,16 @@ class PickupBoxSpawner(Node):
             response.success = False
             response.message = "MESH_REFERENCE_UNAVAILABLE: %s" % exc
             return response
+
+        # Reference validated: now clear the previous instance.
+        clear = self.handle_clear(None, None)
+        if not clear.success:
+            response.success = False
+            response.message = clear.message
+            return response
+        self._sequence += 1
+        model_name = "%s_%04d_%s" % (
+            self._model_prefix, self._sequence, id_suffix)
         try:
             err = self._spawn_model(
                 model_name, pose,

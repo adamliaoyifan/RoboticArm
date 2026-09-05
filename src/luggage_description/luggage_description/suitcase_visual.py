@@ -249,6 +249,13 @@ def resolve_observable_reference(models_root, size, visual_id):
     malformed/non-finite geometry, or a non-positive result. Catalog
     dimensions are never substituted.
     """
+    if str(visual_id) not in VISUAL_IDS:
+        # Reject BEFORE any path normalization: sized_model_name would
+        # silently resolve an unknown visual id to the loafbrr asset and
+        # record the requested id against the wrong STL.
+        raise MeshReferenceError(
+            "unknown visual id %r (known: %s)"
+            % (visual_id, ", ".join(VISUAL_IDS)))
     tier = size_tier_name(size)
     if tier is None:
         raise MeshReferenceError(
