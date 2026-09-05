@@ -498,6 +498,11 @@ class PickupBoxSpawner(Node):
 
     def handle_spawn_next(self, _req, _response):
         response = SpawnNextBox.Response()
+        # PF-R5A-FIX2: sampling below advances the RNG; snapshot it so a
+        # mesh-reference failure rolls back to the exact pre-call state.
+        # A retry then selects the SAME candidate instead of silently
+        # walking past a missing/invalid asset.
+        rng_state = self._rng.getstate()
         entry, size, mass_kg, _generated, id_suffix = self._sample_box()
         pose, yaw = self._entry_pose(entry, size)
         visual_id = visual_id_for_entry(entry)
@@ -510,6 +515,7 @@ class PickupBoxSpawner(Node):
         try:
             gt_size = self._gt_size(size, visual_id)
         except MeshReferenceError as exc:
+            self._rng.setstate(rng_state)
             self.get_logger().error(
                 "spawn rejected (mesh observable GT fail-closed): %s" % exc)
             response.success = False

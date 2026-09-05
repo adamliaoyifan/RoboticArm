@@ -105,6 +105,7 @@ class TestSpawnFailClosedHandler(unittest.TestCase):
     def test_reference_failure_mutates_and_publishes_nothing(self):
         with tempfile.TemporaryDirectory() as empty_root:
             node, calls = _make_spawner(empty_root)
+            rng_before = node._rng.getstate()
             response = _mod.SpawnNextBox.Response()
             out = node.handle_spawn_next(None, response)
             self.assertFalse(out.success)
@@ -122,6 +123,27 @@ class TestSpawnFailClosedHandler(unittest.TestCase):
             self.assertEqual(node._box_pub.published, [])
             self.assertEqual(node._size_eval_pub.published, [])
             self.assertEqual(node._finalized_pub.published, [])
+            # PF-R5A-FIX2: exact RNG-state rollback on failure.
+            self.assertEqual(node._rng.getstate(), rng_before)
+
+    def test_repeated_failures_select_the_same_candidate(self):
+        """Deterministic rollback: every retry samples the SAME invalid
+        candidate (same failure message), and the RNG never advances
+        across failures."""
+        with tempfile.TemporaryDirectory() as empty_root:
+            node, calls = _make_spawner(empty_root)
+            rng_before = node._rng.getstate()
+            messages = []
+            for _ in range(3):
+                response = _mod.SpawnNextBox.Response()
+                out = node.handle_spawn_next(None, response)
+                self.assertFalse(out.success)
+                messages.append(out.message)
+                self.assertEqual(node._rng.getstate(), rng_before)
+            self.assertEqual(len(set(messages)), 1,
+                             "retry selected a different candidate")
+            self.assertEqual(calls["clear"], 0)
+            self.assertEqual(calls["spawn"], 0)
 
     def test_valid_reference_clears_and_spawns(self):
         node, calls = _make_spawner(_MODELS)
