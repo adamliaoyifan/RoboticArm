@@ -1,0 +1,124 @@
+{
+  "revision": {
+    "git_commit": "a3dba5e7e0c2fb219062cfb2a091267f6f2d606d",
+    "git_dirty_files": 0,
+    "worktree": "/tmp/pfr5b_clean"
+  },
+  "param_dump": {
+    "/luggage_detector": "/luggage_detector:\n  ros__parameters:\n    cargo_cloud_topic: /luggage/semantic/cargo_points\n    catalog_match_tolerance: 0.08\n    cloud_data_frame: ''\n    cloud_max_age_sec: 2.5\n    color_topic: /luggage/preprocessed/camera/color/image\n    current_box_topic: /luggage/current_box\n    depth_topic: /luggage/preprocessed/camera/depth/points\n    detection_frame_topic: /luggage/perception/detection_frame\n    estimate_retry_count: 4\n    estimate_retry_period_sec: 0.25\n    filter_stats_topic: /semantic_point_filter/stats_json\n    geometry_status_buffer_maxlen: 16\n    join_buffer_maxlen: 10\n    max_luggage_height: 0.6\n    min_confidence: 0.7\n    min_luggage_height: 0.15\n    min_points: 50\n    min_support_points: 80\n    min_support_sides: 2\n    normal_tolerance_deg: 5.0\n    platform_z: ''\n    preprocessor_status_topic: /luggage/preprocessed/status\n    ransac_dist_thresh: 0.008\n    roi_margin: 0.5\n    scene_tf_config: /tmp/pfr5b_clean/install/luggage_description/share/luggage_description/config/scene_tf.yaml.example\n    stability_max_z_spread: 0.015\n    stability_window: 5\n    suitcase_stable_frames: 2\n    suitcase_stable_mad: 4.0\n    suitcase_update_mad: 10.0\n    suitcase_update_timeout_sec: 0.0\n    support_inner_margin: 0.03\n    support_mode: auto\n    support_outer_margin: 0.18\n    use_semantic: true\n    use_sim_time: true\n    voxel_size: 0.01\n    workspace_center_xy: '# Parameter not set'\n    workspace_half_extents: '# Parameter not set'\n    world_frame: world\n    yolo_topic: /luggage/semantic/yolo_detections\n\n",
+    "/pickup_box_spawner": "/pickup_box_spawner:\n  ros__parameters:\n    box_catalog_config: ''\n    model_prefix: pickup_box\n    models_root: ''\n    random_seed: -1\n    scene_tf_config: /tmp/pfr5b_clean/install/luggage_description/share/luggage_description/config/scene_tf.yaml.example\n    sequence_ids:\n    - carryon\n    - standard\n    - large\n    size_mode: catalog\n    use_sim_time: false\n    visual_kind: mesh\n    visual_settle_sec: 2.0\n    world: airport_loading\n    world_frame: world\n    xy_jitter_range:\n    - 0.0\n    - 0.0\n    yaw_mode: ''\n    yaw_range:\n    - 0.0\n    - 0.0\n\n",
+    "/semantic_segmenter": "/semantic_segmenter:\n  ros__parameters:\n    backend: yolo_world\n    class_mapping_labels:\n    - 2\n    - 2\n    - 2\n    - 2\n    - 2\n    - 1\n    - 0\n    - 3\n    confidence_threshold: 0.04\n    current_box_topic: /luggage/current_box\n    device: cuda\n    input:\n      camera_info: /luggage/preprocessed/camera/color/camera_info\n      color_image: /luggage/preprocessed/camera/color/image\n    max_rate_hz: 0.0\n    model_name: yolov8s-world.pt\n    output:\n      instance_mask: /luggage/semantic/instance_mask\n      mask: /luggage/semantic/mask\n      overlay: /luggage/semantic/overlay\n      stats: ~/stats_json\n      yolo_detections: /luggage/semantic/yolo_detections\n    prompts:\n    - luggage on a platform viewed from directly above\n    - vintage leather suitcase with handles viewed from directly above\n    - suitcase\n    - luggage\n    - box\n    - container\n    - floor\n    - robot arm\n    publish_overlay: true\n    require_backend: ''\n    sam2:\n      checkpoint: facebook/sam2-hiera-small\n      model_type: sam2_hiera_s\n    self_body_adapter_rpy:\n    - 1.57707939\n    - -3.948e-05\n    - -3.13530959\n    self_body_adapter_xyz:\n    - 0.0168\n    - -0.0156\n    - 0.0702\n    self_body_camera_frame: camera_depth_optical_frame\n    self_body_camera_rpy:\n    - 0.03769911\n    - 1.36345121\n    - 1.57079633\n    self_body_camera_xyz:\n    - 0.013\n    - 0.097\n    - -0.021\n    self_body_dilate_px: 6\n    self_body_from_mesh: true\n    self_body_mesh_dir: models/suction_panel/collision\n    self_body_mesh_origin:\n    - -0.0909\n    - -0.28583\n    - -0.0909\n    self_body_mesh_package: luggage_gazebo\n    self_body_meshes:\n    - p01.stl\n    - p02.stl\n    - p03.stl\n    - p04.stl\n    - p05.stl\n    self_body_panel_frame: suction_panel\n    self_body_row_start_frac: 0.85\n    temporal_bbox_iou_reset: 0.3\n    temporal_min_positive_ratio: 0.5\n    temporal_scene_change_mad: 10.0\n    temporal_window_frames: 5\n    use_sim_time: true\n\n",
+    "/semantic_point_filter": "/semantic_point_filter:\n  ros__parameters:\n    use_sim_time: true\n\n",
+    "/sensor_preprocessor": ""
+  },
+  "static_online_truth_audit": {
+    "scanned": [
+      "src/luggage_perception/scripts/luggage_detector_node.py",
+      "src/luggage_perception/scripts/semantic_point_filter_node.py",
+      "src/luggage_perception/scripts/semantic_segmenter_node.py",
+      "src/luggage_perception/scripts/sensor_preprocessor_node.py",
+      "src/luggage_planning/scripts/waypoint_generator_node.py",
+      "src/luggage_planning/scripts/vacuum_controller_node.py",
+      "src/luggage_planning/scripts/scene_manager_node.py",
+      "src/luggage_packing/scripts/placement_planner_node.py"
+    ],
+    "hits": {},
+    "method": "AST code references (docstrings/comments excluded)",
+    "pass": true
+  },
+  "runtime_online_truth_audit": {
+    "nodes": {
+      "/luggage_detector": {
+        "suspect_subscriptions": []
+      },
+      "/semantic_point_filter": {
+        "suspect_subscriptions": []
+      },
+      "/waypoint_generator": {
+        "suspect_subscriptions": []
+      },
+      "/vacuum_controller": {
+        "suspect_subscriptions": []
+      },
+      "/scene_manager": {
+        "suspect_subscriptions": []
+      }
+    },
+    "pass": true
+  },
+  "no_box_negative_control": {
+    "frames": 38,
+    "valid_top": 0,
+    "valid_geometry": 0,
+    "reasons": [
+      "DETECT_NO_CLOUD"
+    ],
+    "pass": true
+  },
+  "positive_mesh_smoke": [
+    {
+      "requested": "carryon",
+      "spawn_success": true,
+      "gt_dims": [
+        0.534302145242691,
+        0.3617800325155258,
+        0.23457206040620804
+      ],
+      "tier": "small",
+      "matches_pinned": true,
+      "top_surface_valid": true,
+      "height_valid": true,
+      "height_source": 1,
+      "identity": {
+        "version": "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,lid=densest-bin-median,extent=plateau_band)",
+        "stl_sha256": "bdb6da58e779e0215104c972c7ad529aa3f06cf95324f69de69e2e01f2a9ccc3",
+        "visual_id": "suitcase_vintage",
+        "tier": "small"
+      },
+      "pass": true
+    },
+    {
+      "requested": "standard",
+      "spawn_success": true,
+      "gt_dims": [
+        0.6819288432598114,
+        0.4090859740972519,
+        0.26363950967788696
+      ],
+      "tier": "medium",
+      "matches_pinned": true,
+      "top_surface_valid": true,
+      "height_valid": true,
+      "height_source": 1,
+      "identity": {
+        "version": "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,lid=densest-bin-median,extent=plateau_band)",
+        "stl_sha256": "bafe1316aa134bf675cd94039726919aa86931128b61ea3fcd5ab054e613fcc4",
+        "visual_id": "suitcase_vintage",
+        "tier": "medium"
+      },
+      "pass": true
+    },
+    {
+      "requested": "large",
+      "spawn_success": true,
+      "gt_dims": [
+        0.7503799200057983,
+        0.48754799365997314,
+        0.3039523810148239
+      ],
+      "tier": "large",
+      "matches_pinned": true,
+      "top_surface_valid": true,
+      "height_valid": true,
+      "height_source": 1,
+      "identity": {
+        "version": "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,lid=densest-bin-median,extent=plateau_band)",
+        "stl_sha256": "e4026bc7bcfb9d125a7621952c5a24a279e4c592f2368141109002c08659a141",
+        "visual_id": "suitcase_loafbrr",
+        "tier": "large"
+      },
+      "pass": true
+    }
+  ],
+  "overall_pass": true
+}
