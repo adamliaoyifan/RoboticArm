@@ -437,7 +437,7 @@ def validate_completion_freshness(thread_path: Path, row: dict[str, str], meta: 
     for subtask, claimed_generation in parse_dependency_snapshot(
         claim.get("claimed_dependencies", "none")
     ).items():
-        current = highest_generation(threads_dir, meta["parent"], subtask, legacy_ok=False)
+        current = highest_generation(threads_dir, meta["parent"], subtask, legacy_ok=True)
         if current is None:
             raise SystemExit(f"claimed dependency missing: {subtask}")
         dep_path, dep_meta, current_generation = current
