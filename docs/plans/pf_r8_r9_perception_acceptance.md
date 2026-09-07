@@ -58,7 +58,10 @@ mask does not reduce `active_output_hz`; the measured 3.34-3.75 Hz simply
 tracks the preprocessor's 3.63 Hz emission rate. Therefore:
 
 - PF-R8 owns `top_surface_rate` and cannot move `active_output_hz`.
-- PF-R9 owns `active_output_hz` and cannot move `top_surface_rate`.
+- PF-R9 primarily owns `active_output_hz`. It also *raises* `top_surface_rate`
+  as a side effect, because a frame with no cloud fails closed and can never
+  produce a valid top surface; restoring cloud availability restores those
+  frames. PF-R9 must not be scored as if it were `top_surface_rate`-neutral.
 
 Suppression (A1) and hold repair (A2) are nevertheless one subtask because the
 accept predicate *defines* the gate's notion of a positive sample: A2 is not
@@ -242,12 +245,23 @@ dependency so `agent_start.sh` enforces it instead of leaving it in prose.
   in **all three** runs. Two-of-three is not a pass; the failures being fixed
   are intermittent.
 - **C2** PF-G6S as defined in `docs/plans/platform_free_height_remediation.md`
-  ("Focused gate PF-G6S"), imported rather than restated loosely: accepted
-  semantic geometry output >= 4 Hz on the accepted GPU profile; per-stage
-  P50/P95/max and active-window end-to-end latency reported; join buffers
-  remain bounded; callback lag and RSS **do not grow monotonically** across
-  the run (report first-vs-last-quartile means, not a single absolute cap);
-  residual process count 0 after `scripts/stop_sim.sh`.
+  ("Focused gate PF-G6S"): accepted semantic geometry output >= 4 Hz on the
+  accepted GPU profile, with per-stage P50/P95/max and active-window
+  end-to-end latency reported. The parent's "buffers remain bounded" and
+  "callback lag and RSS do not grow monotonically" are qualitative, so this
+  plan makes them decidable for this run. Let Q1 and Q4 be the first and last
+  quartiles of the run by wall time. Pass requires **all** of:
+  - every bounded buffer's peak `buffer_occupancy` <= its configured maxlen
+    (`camera_maxlen` 10, filter `buffer_maxlen` 10, `join_buffer_maxlen` 10,
+    `geometry_status_buffer_maxlen` 16), **and** its Q4 mean occupancy
+    <= 0.5 x maxlen. Occupancy pinned at maxlen is a backlog, not a bound;
+  - `executor_lag_sec`: Q4 mean <= 0.20 s **and** <= 1.25 x Q1 mean;
+  - RSS per online perception node: Q4 mean <= 1.10 x Q1 mean + 50 MiB;
+  - residual process count exactly 0 after `scripts/stop_sim.sh`.
+
+  These thresholds tighten the parent gate; they do not relax it. If a
+  threshold proves wrong on measurement, report the measured value and raise
+  it as an amendment rather than silently rescoring.
 - **C3** Evidence under `docs/status/evidence/platform_free_height/<run>/`
   recording the exact commit and dirty-file count.
 
