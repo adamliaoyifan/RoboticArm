@@ -253,8 +253,13 @@ dependency so `agent_start.sh` enforces it instead of leaving it in prose.
   quartiles of the run by wall time. Pass requires **all** of:
   - every bounded buffer's peak `buffer_occupancy` <= its configured maxlen
     (`camera_maxlen` 10, filter `buffer_maxlen` 10, `join_buffer_maxlen` 10,
-    `geometry_status_buffer_maxlen` 16), **and** its Q4 mean occupancy
-    <= 0.5 x maxlen. Occupancy pinned at maxlen is a backlog, not a bound;
+    `geometry_status_buffer_maxlen` 16). The 0.5 x maxlen mean rule applies
+    **only to pending-work buffers** — the filter's `_clouds` / `_masks` and
+    the detector's join buffers — whose Q4 mean occupancy must be
+    <= 0.5 x maxlen, because occupancy pinned at maxlen there is a backlog.
+    It does **not** apply to the preprocessor's `camera_*` ring buffers,
+    which are deliberate history: `camera_horizon_sec` 0.35 at ~21 Hz fills
+    roughly 7 of 10 slots with no backlog at all;
   - `executor_lag_sec`: Q4 mean <= 0.20 s **and** <= 1.25 x Q1 mean;
   - RSS per online perception node: Q4 mean <= 1.10 x Q1 mean + 50 MiB;
   - residual process count exactly 0 after `scripts/stop_sim.sh`.
