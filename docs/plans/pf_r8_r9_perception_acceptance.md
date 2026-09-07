@@ -129,7 +129,7 @@ still losing the tail.
 
 |     ID     | Owner agent/model | Depends on | Bounded scope | Acceptance | Required tests |
 |---|---|---|---|---|---|
-| PF-R8 | `claude/glm-5.3` | PF-R6 | Cargo detection availability: suppress the static/border false positive and repair the temporal hold. Files: `luggage_perception/detection_temporal_gate.py`, `luggage_perception/semantic_segmenter.py`, `config/semantic_segmenter.yaml` | A1-A5 below | Focused unit tests + offline replay of the 155-frame capture + vintage-pose regression |
+| PF-R8 | `claude/glm-5.3` | PF-R6 | Cargo detection availability: accepted-detection predicate, temporal-hold repair, **and** suitcase recall. Files: `luggage_perception/detection_temporal_gate.py`, `luggage_perception/semantic_segmenter.py`, `scripts/semantic_segmenter_node.py`, `config/semantic_segmenter.yaml` | A1-A5 below | Focused unit tests + causal offline replay + vintage-pose regression + a recall measurement run |
 | PF-R9 | `claude/glm-5.3` | PF-R6 | Preprocessor throughput and cloud-wait semantics. Files: `luggage_perception/sensor_preprocessor.py`, `scripts/sensor_preprocessor_node.py`, `config/sensor_preprocessor.yaml`, stats throttle in `scripts/semantic_point_filter_node.py` | B1-B6 below | Focused preprocessor unit tests + a >=60 s live stage probe |
 | PF-R10 | `claude/glm-5.3` | PF-R6,PF-R8,PF-R9 | Integration: whole-chain gate4 re-baseline on one committed revision | C1-C3 below | `gate4_short6` x3 + PF-G6S lifecycle |
 
@@ -158,84 +158,182 @@ dependency so `agent_start.sh` enforces it instead of leaving it in prose.
 
 ### PF-R8 acceptance
 
-- **A1** A cargo detection is rejected unless it is plausibly the payload.
-  The predicate is the owner's choice inside scope. Measure it against a
-  frozen labelled fixture derived from the 155-frame capture and committed
-  alongside the test, in the style of `test/fixtures/` used by
-  `test_vintage_pose_regression.py`:
-  - expected negatives: the 184 border-touching detection instances, whose
-    static identity is established by the recurring bboxes
-    (`[611,112,640,295]` x42, `[620,119,640,291]` x42, `[611,111,640,296]`
-    x32, `[606,116,640,365]` x27, `[606,117,640,368]` x21,
-    `[606,116,640,367]` x20);
-  - expected positives: the 120 non-border cargo detections;
-  - required metric: **0 false accepts and 0 false rejects** on that fixture.
-  The 20 frames that have RGB snapshots MUST have their labels visually
-  confirmed; the remaining labels rest on bbox identity, and the note must say
-  so. Candidate signals: back-projection outside the pickup workspace XY
-  extent already known to `top_support_estimator`, static-across-spawns
-  persistence, or an image-border test. State the chosen predicate.
-- **A2** `DetectionTemporalGate` treats "this frame saw cargo" as "saw an
-  **accepted** cargo detection", so a surviving false positive can no longer
-  short-circuit the hold, and window reset is driven by scene change rather
-  than a largest-bbox identity flip between two disjoint objects.
-- **A3** Offline replay, in two parts, because the capture stores detection
-  metadata rather than the RGB frames and label maps that
-  `DetectionTemporalGate.apply` consumes:
-  - **A3a (deterministic)** Drive the gate with the 155-frame detection
-    sequence from `failed_cases.jsonl`, reconstructing each label map from the
-    captured bboxes. This is faithful because the captured backend is
-    `bbox_fill:yolov8s-world.pt`, for which the label map *is* the union of
-    bbox rectangles. Frames without an RGB snapshot use a no-scene-change
-    signal, and the note must record that assumption. Required: each of the 16
-    `DETECT_TOP_UNOBSERVABLE` frames and the 26 false-positive-only
-    `DETECT_NO_CLOUD` frames yields a held cargo bbox whose IoU against the
-    nearest accepted in-region detection within +/-5 frames is **>= 0.5**.
-    Report accepted / held / empty counts before and after.
-  - **A3b (live)** One fresh capture run that records per-frame
-    accepted/held/empty, showing **0** frames whose only cargo mask originates
-    from an unaccepted detection.
-- **A4** Detection recall does not regress. Baseline is the PF-R5 official
-  run8 flat-STL frame recall **0.9606** recorded in
-  `docs/status/evidence/platform_free_height/2026-09-04_2110_pfr5-g4s-run8-official/RESULT.md`;
-  recall is (settled frames with an accepted cargo detection) / (settled
-  frames). `src/luggage_perception/test/test_vintage_pose_regression.py` must
-  still pass. `confidence_threshold` stays 0.04 unless the note argues the
-  change.
-- **A5** New focused tests, GPU-free, including: hold still fires while a
-  persistent unaccepted detection is present; the accept predicate rejects the
-  captured false-positive bbox and accepts `[178,144,405,297]`; window reset
-  does not trigger on a suitcase/false-positive alternation.
+Generation 2 scope (user decision, 2026-09-07): the false-positive predicate,
+the temporal-hold repair, **and** raising suitcase recall are one subtask,
+because the measured dropouts are ~5 s and the hold can only bridge ~1.4 s.
+
+#### A1 — accepted-detection predicate
+
+The predicate is the owner's choice, but it MUST satisfy this contract:
+
+- Inputs limited to what `semantic_segmenter_node` already has: live
+  `camera_info` intrinsics, its TF buffer at the frame stamp,
+  `/luggage/current_box` id and generation, and static configured workspace
+  geometry of the same kind the detector already accepts
+  (`workspace_center_xy` / `workspace_half_extents`, documented there as
+  "measured static workspace geometry, allowed"). Per-trial spawner geometry is
+  GT and is forbidden.
+- Output is a per-detection boolean plus a recorded reason, exposed in
+  `~/stats_json` so A3b and PF-R10 can count it.
+- Choosing a predicate that needs an input the segmenter does not have (depth,
+  for example) means either adding that input or relocating the predicate to a
+  node that has it. Both are scope changes and require an amendment, not an
+  in-place widening.
+
+Measured against a frozen labelled fixture committed with the test, in the
+style of `test/fixtures/` used by `test_vintage_pose_regression.py`:
+
+- expected negatives: the 184 border-touching detection instances, whose static
+  identity is established by the recurring bboxes (`[611,112,640,295]` x42,
+  `[620,119,640,291]` x42, `[611,111,640,296]` x32, `[606,116,640,365]` x27,
+  `[606,117,640,368]` x21, `[606,116,640,367]` x20);
+- expected positives: the 120 non-border cargo detections, **plus at least one
+  labelled edge-clipped true positive**. Without it the fixture cannot
+  distinguish a pure border test from a workspace-projection test, and the
+  Risks section calls border-only rejection unsafe. Source it from the PF-R5
+  sweep artifacts or a targeted capture; the pose yaml already documents a
+  genuine "0.80 m box clipped at image left" case. If no such frame can be
+  obtained, the note MUST explicitly adopt border rejection and record the
+  limitation instead of keeping a contradictory safety claim.
+- required metric: **0 false accepts and 0 false rejects** on the fixture.
+
+Labels for the 20 frames that have RGB snapshots MUST be visually confirmed;
+the rest rest on bbox identity, and the note must say so.
+
+#### A2 — temporal-hold repair
+
+`DetectionTemporalGate` treats "this frame saw cargo" as "saw an **accepted**
+cargo detection", so a surviving unaccepted detection can no longer
+short-circuit the hold, and window reset is driven by scene change rather than
+a largest-bbox identity flip between two disjoint objects. If the window is
+lengthened beyond 5, the hold MUST keep a bounded lifetime, MUST expire to
+empty rather than to a stale bbox, and MUST still clear on a
+`/luggage/current_box` epoch change.
+
+#### A3 — causal offline replay
+
+The capture stores detection metadata, not the RGB frames and label maps that
+`DetectionTemporalGate.apply` consumes, so the replay is defined on what the
+capture can actually prove. Reconstruct each label map from the captured
+bboxes; this is faithful because the captured backend is
+`bbox_fill:yolov8s-world.pt`, for which the label map *is* the union of bbox
+rectangles. Frames without an RGB snapshot use a no-scene-change signal, and
+the note must record that assumption. Drive the gate **causally** — only prior
+frames may inform a hold.
+
+Measured facts the criterion is built on: of the 42 false-positive-only frames,
+37 have no accepted detection in the prior 5 frames, and rows 0-20 and 122-142
+are contiguous 21-frame runs (median row spacing 0.263 s against a ~0.26-0.29 s
+frame period, so they are real dropouts, not capture filtering).
+
+Required:
+
+- **0** frames where the gate emits a held mask without a qualifying prior
+  window (no acausal holds).
+- **0** frames where a qualifying prior window exists but no hold is emitted
+  (no missed holds).
+- Report the count of target frames that remain unrecoverable by any causal
+  5-frame hold. Those belong to A4, not to A2. Recovering them is explicitly
+  **not** required of the gate.
+
+#### A4 — suitcase recall
+
+The binding sub-problem. In-region confidence today is p50 0.240, p25 0.124,
+min 0.042, with 42/155 frames below the 0.04 threshold in multi-second runs.
+
+- **A4-1** Maximum run of consecutive settled frames with no accepted in-region
+  detection <= **2**. This is derived, not chosen: with
+  `temporal_window_frames: 5` and `temporal_min_positive_ratio: 0.5`, a run of
+  k misses leaves ratio `(5-k)/5 >= 0.5`, so `k <= 2`. At `k <= 2` the existing
+  gate bridges every dropout; above it, no hold of that window can.
+- **A4-2** Per-frame accepted-detection recall >= **0.95** on settled frames,
+  where recall is (settled frames with an accepted in-region cargo detection) /
+  (settled frames).
+- **A4-3** Scene or robot false positives producing valid geometry: **0**, per
+  the representative-detection gate in
+  `docs/plans/platform_free_height_gate4_revision.md`.
+- **A4-4** Baseline. The PF-R5 run8 value 0.9606
+  (`docs/status/evidence/platform_free_height/2026-09-04_2110_pfr5-g4s-run8-official/RESULT.md`)
+  predates the A1 predicate and does not share A4-2's numerator, so it is
+  **not** a valid comparison. Recompute a pre-change baseline for A4-1 and
+  A4-2 on the PF-R6 generation 3 commit with the same command, record it, and
+  report the delta. `src/luggage_perception/test/test_vintage_pose_regression.py`
+  must still pass.
+- Measurement command and window are the owner's choice but MUST be stated
+  exactly and be re-runnable. `confidence_threshold` may change; if it does,
+  A4-3 is the guard that the change did not buy recall with false positives.
+
+#### A5 — focused tests
+
+GPU-free, including: the hold still fires while a persistent unaccepted
+detection is present; the predicate rejects the captured false-positive bboxes
+and accepts both `[178,144,405,297]` and the edge-clipped positive; window
+reset does not trigger on a suitcase/false-positive alternation; a held mask
+expires to empty rather than to a stale bbox; an epoch change clears the hold.
 
 ### PF-R9 acceptance
 
-- **B1** Record the missing measurement first: header-stamp period **versus**
-  arrival-time period for `/camera/depth/points` and `/camera/color/image_raw`
-  over >= 60 s, in evidence. This decides whether gz drops frames or the
-  RELIABLE depth=5 backlog manufactures the bursts, and it is the evidence
-  that either justifies or retires the original fix direction 1.
-- **B2** Split `camera_slop_sec` into an exact-ish pairing tolerance and a
-  separate wait deadline. A cloud that is co-stamped but late (within the
-  deadline) MUST be attached; a cloud outside the pairing tolerance MUST NOT
-  be attached to a different RGB stamp. Keep both bounded by
-  `camera_horizon_sec`.
-- **B3** Emitted-observation rate >= 0.8 x input `raw_img` rate, and
-  `raw_img->pre_rgb` p50 <= 60 ms, on the same stage probe used for B1.
-- **B4** `cloud_ok` true on >= 95 % of emitted observations (denominator:
-  observations emitted by the preprocessor over the probe window). From the
-  `semantic_point_filter` stats over the same window: exact-join success
-  `joined / cloud` >= 0.95, and stale drops
+Common measurement window for B3 and B4: a single probe run of >= 120 s with
+the arm at `pickup_observe`, discarding the first 15 s as warmup. State the
+exact command. All rates and ratios below are computed on that window.
+
+- **B1** Record the discriminating measurement first, in evidence:
+  - per-topic **header-stamp** period and **arrival-time** period for
+    `/camera/depth/points` and `/camera/color/image_raw`, stated with the clock
+    domain used (sim `/clock` versus wall clock, and which one each series is
+    in);
+  - the matched-header **cloud-versus-RGB receipt lag** distribution (p50, p95,
+    max) for pairs sharing a header stamp, which is the quantity B2's deadline
+    is derived from — per-topic periods alone cannot set it;
+  - the fraction of RGB frames with no same-stamp cloud at all (unmatched
+    fraction).
+  This is the evidence that either justifies or retires the original fix
+  direction 1. State the rule mapping the measurement to the chosen parameter
+  values.
+- **B2** Split `camera_slop_sec` into a pairing tolerance and a wait deadline.
+  - The pairing tolerance bounds |cloud stamp - RGB stamp| and should be
+    ~exact, because gz `rgbd_camera` co-stamps colour/depth/points.
+  - The deadline bounds how long an unemitted RGB stamp waits, measured on a
+    stated clock; it MUST NOT be driven by unrelated streams the way the
+    current `now_hint` is advanced by 50 Hz `/joint_states`.
+  - Set the deadline from B1's receipt-lag p95. If that value reaches or
+    exceeds `camera_horizon_sec` (0.35), do **not** silently clamp: raise
+    `camera_horizon_sec` with the buffer-occupancy consequence recorded, or
+    report that the cloud path cannot meet B3 and escalate the out-of-scope
+    pixel-space change. Emitting RGB-only must stay a flagged outcome
+    (`cloud_ok=False`), never a faked cloud.
+- **B3** On the common window: emitted-observation rate >= 0.8 x the
+  `/camera/color/image_raw` arrival rate over the same window (denominator is
+  unique RGB header stamps received, not callbacks), and `raw_img->pre_rgb`
+  p50 <= 60 ms.
+- **B4** On the common window: `cloud_ok` true on >= 95 % of observations
+  emitted by the preprocessor. From `semantic_point_filter` stats over the same
+  window, using the counter deltas across the window rather than lifetime
+  totals: exact-join success `joined / cloud` >= 0.95, and stale drops
   `(stale_cloud_dropped + stale_mask_dropped) / (cloud + mask)` < 0.05.
 - **B5** Cost reductions are in scope and expected: multi-threaded executor
   with the cloud in its own callback group (keep it exclusive — the sibling
-  filter node records a prior thread-explosion incident), float32 cloud math,
-  removal of the redundant whole-observation copy, BEST_EFFORT depth=1 sensor
-  inputs, optional cloud decimation, and a timer-throttled stats publish
-  instead of one `json.dumps` per sensor callback. Any subset that meets
-  B3/B4 is acceptable; justify what was skipped.
+  filter node records a MultiThreadedExecutor + Reentrant combination that
+  spawned ~70 threads and froze `/stats_json`), float32 cloud math, removal of
+  the redundant whole-observation copy, BEST_EFFORT depth=1 sensor inputs,
+  optional cloud decimation, and a timer-throttled stats publish instead of one
+  `json.dumps` per sensor callback. Any subset that meets B3/B4 is acceptable;
+  justify what was skipped. Two constraints are not negotiable:
+  - **Mutation isolation is preserved.** `copy_output` and the per-stream
+    structs must keep handing out independent copies; removing the redundant
+    copy must not let a consumer mutate preprocessor state. Add or keep an
+    explicit mutation-isolation test
+    (`.cursor/rules/ros2-node-structure.mdc`, "getters return copies").
+  - **If decimation is selected**, state the retained point density and show
+    geometry non-regression: top-plane inlier count stays above
+    `min_top_points` with margin, and PF-R10's geometry error limits and
+    `false_measured_height == 0` still hold. Decimation that meets B3 by
+    degrading geometry is a failure.
 - **B6** Existing preprocessor unit tests pass, plus new tests for the split
-  parameters: late-but-co-stamped cloud attached; out-of-tolerance cloud not
-  attached; RGB-only emission still flagged (`cloud_ok=False`), never faked.
+  parameters: late-but-co-stamped cloud attached within the deadline;
+  out-of-tolerance cloud not attached to a different RGB stamp; deadline not
+  advanced by `/joint_states`; RGB-only emission still flagged
+  (`cloud_ok=False`), never faked.
 
 ### PF-R10 acceptance
 
@@ -261,18 +359,37 @@ dependency so `agent_start.sh` enforces it instead of leaving it in prose.
     which are deliberate history: `camera_horizon_sec` 0.35 at ~21 Hz fills
     roughly 7 of 10 slots with no backlog at all;
   - `executor_lag_sec`: Q4 mean <= 0.20 s **and** <= 1.25 x Q1 mean;
-  - RSS per online perception node: Q4 mean <= 1.10 x Q1 mean + 50 MiB;
+  - RSS per online perception node: fit a least-squares line to the per-sample
+    RSS series over the scored run and require slope <= **2 MiB/min**, **and**
+    Q4 mean <= 1.10 x Q1 mean + 50 MiB. The slope is the growth test; the
+    quartile ratio alone measures net drift, not absence of growth;
   - residual process count exactly 0 after `scripts/stop_sim.sh`.
 
-  These thresholds tighten the parent gate; they do not relax it. If a
-  threshold proves wrong on measurement, report the measured value and raise
-  it as an amendment rather than silently rescoring.
+  Run duration for C2 is the same three `gate4_short6` runs as C1, scored
+  per run; a single run may not be used. These thresholds tighten the parent
+  gate; they do not relax it. If a threshold proves wrong on measurement,
+  report the measured value and raise it as an amendment rather than silently
+  rescoring.
 - **C3** Evidence under `docs/status/evidence/platform_free_height/<run>/`
   recording the exact commit and dirty-file count.
 
-PF-R10 is the integration subtask for *this* plan. It does not replace PF-R7
-(`Q-20260904-2`), which remains the parent-level independent E2E audit owned by
-`cursor/grok-4.6`.
+## 4a. PF-R7 must be superseded to depend on PF-R10
+
+PF-R10 is the integration subtask for *this* plan. PF-R7 (`Q-20260904-2`)
+remains the parent-level independent E2E audit owned by `cursor/grok-4.6`, but
+its authoritative dependency list is
+`PF-R1,PF-R2,PF-R3,PF-R4,PF-R5,PF-R6,PF-A1` — it excludes PF-R8, PF-R9, and
+PF-R10. So PF-R7 becomes runnable the moment PF-R6 closes and could certify the
+pre-fix chain as the integrated acceptance.
+
+Decision (user, 2026-09-07): supersede PF-R7 with generation 2 whose
+`depends_on` adds `PF-R8,PF-R9,PF-R10`, keeping owner `cursor/grok-4.6`, scope,
+and acceptance otherwise unchanged, and mark generation 1 superseded pointing at
+the replacement. Per `docs/agents/README.md` this is a supersede rather than an
+in-place edit, because generation 1's dependency list is claimed requirement
+state. The two integration paths stay distinct: PF-R10 is this plan's own
+whole-chain regression run by the implementing owner; PF-R7 is the independent
+audit that must run last.
 
 ## 5. Risks
 
@@ -280,7 +397,16 @@ PF-R10 is the integration subtask for *this* plan. It does not replace PF-R7
   workspace-projection predicate is safer than a pure border test, because a
   legitimately edge-clipped suitcase should still be accepted; a border test
   alone would fail closed on a real clipping case. Prefer the projection test
-  and keep the border signal as a diagnostic.
+  and keep the border signal as a diagnostic. A1 now requires a labelled
+  edge-clipped positive precisely so the fixture can tell the two apart.
+- A4 is the largest and least predictable item, because open-vocabulary recall
+  on a flat-shaded STL suitcase is a known weak point already documented in
+  `config/semantic_segmenter.yaml` and the PF-R5 notes. If A4-1 cannot reach
+  <= 2 with prompt, threshold, or backend work inside scope, the honest
+  outcome is a `blocked` Result recording the measured best, not a lengthened
+  hold that papers over a multi-second dropout with a stale bbox.
+- Lowering `confidence_threshold` is the cheapest way to raise A4-2 and the
+  fastest way to break A4-3. They must be reported together.
 - B2 changes emission timing, so `active_output_hz` measurement windows shift.
   Re-baseline against fresh runs; do not compare against the 09-05 numbers.
 - B5 touches concurrency. The `semantic_point_filter_node` comments record a
