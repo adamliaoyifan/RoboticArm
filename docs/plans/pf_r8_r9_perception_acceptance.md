@@ -158,9 +158,11 @@ dependency so `agent_start.sh` enforces it instead of leaving it in prose.
 
 ### PF-R8 acceptance
 
-Generation 2 scope (user decision, 2026-09-07): the false-positive predicate,
-the temporal-hold repair, **and** raising suitcase recall are one subtask,
-because the measured dropouts are ~5 s and the hold can only bridge ~1.4 s.
+Scope note (user decision, 2026-09-07): the false-positive predicate, the
+temporal-hold repair, **and** raising suitcase recall are one subtask, because
+the measured dropouts are ~5 s and the hold can only bridge ~1.4 s. This is the
+second revision of the *plan text*, not a task generation: PF-R8 has never been
+claimed, so it dispatches as `generation: 1`.
 
 #### A1 — accepted-detection predicate
 
@@ -174,7 +176,7 @@ The predicate is the owner's choice, but it MUST satisfy this contract:
   "measured static workspace geometry, allowed"). Per-trial spawner geometry is
   GT and is forbidden.
 - Output is a per-detection boolean plus a recorded reason, exposed in
-  `~/stats_json` so A3b and PF-R10 can count it.
+  `~/stats_json` so A4 and PF-R10 can count it.
 - Choosing a predicate that needs an input the segmenter does not have (depth,
   for example) means either adding that input or relocating the predicate to a
   node that has it. Both are scope changes and require an amendment, not an
