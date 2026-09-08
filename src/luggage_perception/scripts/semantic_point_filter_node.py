@@ -88,6 +88,10 @@ class SemanticPointFilterNode(Node):
             "extrinsics_source": "identity",
             "realsense_extrinsics_config": "",
             "buffer_maxlen": 10,
+            # PF-R9 B5: stats serialization moved off the per-callback path
+            # onto a timer (0 keeps the legacy per-call behaviour for unit
+            # tests).
+            "stats_publish_hz": 1.0,
             "world_frame": "world",
             "associate_radius_m": 0.15,
             "current_box_topic": "/luggage/current_box",
@@ -103,6 +107,10 @@ class SemanticPointFilterNode(Node):
             0.0, float(self.get_parameter("output.cargo_voxel_size").value))
         self._buffer_maxlen = max(2, int(self.get_parameter("buffer_maxlen").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
+        stats_hz = float(self.get_parameter("stats_publish_hz").value)
+        self._stats_publish_interval_sec = (
+            0.0 if stats_hz <= 0.0 else 1.0 / stats_hz)
+        self._stats_dirty = False
 
         extrinsics = self._load_extrinsics()
         self._intrinsics = None          # from live camera_info
@@ -182,9 +190,21 @@ class SemanticPointFilterNode(Node):
             String, self.get_parameter("current_box_topic").value,
             self._on_current_box, stats_qos, callback_group=self._box_group)
 
+        if self._stats_publish_interval_sec > 0.0:
+            # PF-R9 B5: serialize stats off the sensor-callback path.
+            self.create_timer(
+                self._stats_publish_interval_sec, self._on_stats_timer)
+
         self.get_logger().info(
             "semantic_point_filter ready (extrinsics=%s, cargo_labels=%s)"
             % (self.get_parameter("extrinsics_source").value, self._cargo_labels))
+
+    def _on_stats_timer(self):
+        if not self._stats_dirty:
+            return
+        self._stats_dirty = False
+        with self._lock:
+            self._publish_stats_now()
 
     # ------------------------------------------------------------------
     # Config
@@ -279,7 +299,8 @@ class SemanticPointFilterNode(Node):
                 stamp = self.get_clock().now().to_msg()
             self._publish_cargo(
                 [], stamp, self._last_cloud_frame, n_points=0)
-            self._publish_stats()
+            # Epoch resets are rare; publish immediately, not on the timer.
+            self._publish_stats_now()
 
     def _store(self, buffer_, key, msg, evict_counter):
         buffer_[key] = msg
@@ -499,6 +520,20 @@ class SemanticPointFilterNode(Node):
             self._publish_stats()
 
     def _publish_stats(self):
+        """Mark stats dirty; the timer serializes (PF-R9 B5 throttle).
+
+        _publish_stats used to run json.dumps(sort_keys=True) on a nested
+        dict on EVERY cloud/mask callback (~60-70 Hz) inside the same
+        exclusive callback group as the join; now the timer publishes at
+        stats_publish_hz (0 keeps the legacy per-call behaviour, used by
+        unit tests that assert per-event records).
+        """
+        if self._stats_publish_interval_sec <= 0.0:
+            self._publish_stats_now()
+            return
+        self._stats_dirty = True
+
+    def _publish_stats_now(self):
         record = dict(self._filter.last_stats) if self._filter is not None else {}
         record.update(self._counts)
         record.update(self._join_stamps.as_dict())

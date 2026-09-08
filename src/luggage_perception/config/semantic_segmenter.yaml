@@ -144,6 +144,9 @@ semantic_point_filter:
     realsense_extrinsics_config: ""
     # Exact-stamp join buffer depth per side (clouds / masks).
     buffer_maxlen: 10
+    # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
+    # callback (~60-70 Hz json.dumps inside the join's callback group).
+    stats_publish_hz: 1.0
     # NOTE: no sync_slop and no fallback_to_raw. Pairing is an exact
     # (sec, nanosec) join on the preprocessor's primary stamp; slop-based
     # pairing lives only in the preprocessor. An unfiltered cloud is never

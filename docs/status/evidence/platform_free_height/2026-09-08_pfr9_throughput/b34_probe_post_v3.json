@@ -1,0 +1,22 @@
+{
+ "duration_sec": 125.0,
+ "rgb_unique_in_window": 2883,
+ "emitted_in_window": 840,
+ "b3_emission_over_rgb": 0.29136316337148804,
+ "b3_raw_to_pre_rgb_sec": {
+  "n": 671,
+  "p50": 0.09985017398139462,
+  "p95": 0.20622611400904134,
+  "max": 0.5577809559763409
+ },
+ "b4_cloud_ok_fraction": 0.0,
+ "b4_filter": {
+  "cloud_delta": 1071,
+  "mask_delta": 1069,
+  "joined_delta": 1050,
+  "stale_cloud_dropped_delta": 21,
+  "stale_mask_dropped_delta": 8,
+  "exact_join_joined_over_cloud": 0.9803921568627451,
+  "stale_drop_ratio": 0.013551401869158878
+ }
+}
