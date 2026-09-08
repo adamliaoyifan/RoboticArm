@@ -1,10 +1,15 @@
-# Open cross-agent questions
+# Open cross-agent work
 
-Read this at session start. If `to_role` is your role or `any`, `to_agent` is
-your concrete agent id or `any`, and `to_model` is your model id or `any`,
-append a reply in the thread, then remove the row (or leave it with a one-line
-note if still blocked). Add a row when you need another CLI/role/model to
-answer.
+Read this at session start. Claim a row only when `to_agent` and `to_model`
+match your concrete identity and every `depends_on` item is complete. The
+assigned owner reads the requirement, implements, tests, repairs failures, and
+closes runnable work end to end. Add a row when another agent must act.
 
-| id | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | question |
-|---|---|---|---|---|---|---|---|---|---|
+| id | kind | parent | subtask | depends_on | revision | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | request | generation | plan_revision |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Q-20260905-3 | integration | MPF-20260905 | MPF-INTEGRATION | MPF-1,MPF-2 | b52a4f0 | eng | codex | gpt-5 | reviews | codex-reviews-main | gpt-5.6-sol | codex | 2026-09-05_1518_mpf-integration.md | After MPF-1 and MPF-2 pass, migrate the live mailbox/registry and run the complete lifecycle regression. |
+| Q-20260905-14 | regression | PFH-REMEDIATION-20260904 | PF-R6-VERIFY | PF-R4,PF-R5 | 18ebc7c62d94a90f2293a78153fa7f5f5dbaa8b3-wt-pfr6-g2-checkpoint | test | cursor | grok-4.6 | eng | codex | gpt-5 | codex | 2026-09-05_1840_pf-r6-grok-validation.md | Independently validate the current PF-R6 generation 2 checkpoint on the shared worktree; run short acceptance probes and return pass/fail evidence without closing PF-R6. | 1 | a001be7 |
+| Q-20260907-3 | subtask | PFH-REMEDIATION-20260904 | PF-R8 | PF-R6 | f34d9171f8448d7bf92ce84897dc188a110216e2 | eng | claude | glm-5.3 | reviews | cursor | opus5 | claude-code | 2026-09-07_2039_pf-r8-cargo-detection-availability.md | Implement PF-R8 to plan acceptance A1-A5: suppress the static border cargo false positive and repair DetectionTemporalGate so the consensus hold can fire. Fully offline-testable; do not open a sim. | 1 | 3460bff538af177217ce71c64e31d1d208cb2e67 |
+| Q-20260907-4 | subtask | PFH-REMEDIATION-20260904 | PF-R9 | PF-R6 | f34d9171f8448d7bf92ce84897dc188a110216e2 | eng | claude | glm-5.3 | reviews | cursor | opus5 | claude-code | 2026-09-07_2039_pf-r9-preprocessor-throughput.md | Implement PF-R9 to plan acceptance B1-B6: record the stamp-vs-arrival period measurement first, then split camera_slop_sec into a pairing tolerance and a wait deadline and restore preprocessor emission throughput. Keep tolerance pairing inside the preprocessor only. | 1 | 3460bff538af177217ce71c64e31d1d208cb2e67 |
+| Q-20260907-5 | integration | PFH-REMEDIATION-20260904 | PF-R10 | PF-R6,PF-R8,PF-R9 | f34d9171f8448d7bf92ce84897dc188a110216e2 | eng | claude | glm-5.3 | reviews | cursor | opus5 | claude-code | 2026-09-07_2039_pf-r10-gate4-integration.md | Run PF-R10 integration to plan acceptance C1-C3: gate4_short6 six trials, three consecutive passing runs, plus PF-G6S, on one committed revision with dirty=0. Does not replace PF-R7. | 1 | 3460bff538af177217ce71c64e31d1d208cb2e67 |
+| Q-20260907-6 | integration | PFH-REMEDIATION-20260904 | PF-R7 | PF-R1,PF-R2,PF-R3,PF-R4,PF-R5,PF-R6,PF-A1,PF-R8,PF-R9,PF-R10 | f34d9171f8448d7bf92ce84897dc188a110216e2 | test | cursor | grok-4.6 | reviews | cursor | opus5 | cursor | 2026-09-07_2057_pf-r7-e2e-audit-generation2.md | Generation 2 supersedes generation 1 by adding PF-R8,PF-R9,PF-R10 to depends_on so the audit cannot certify the pre-fix chain. Run G0-G4/G6 E2E on the exact revision PF-R10 passes at; scope and acceptance otherwise unchanged. | 2 | 3460bff538af177217ce71c64e31d1d208cb2e67 |
