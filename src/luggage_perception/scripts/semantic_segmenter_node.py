@@ -47,6 +47,7 @@ from luggage_perception.detect_overlay import (
     timestamp_banner_lines,
 )
 from luggage_perception.semantic_segmenter import (
+    WorkspaceAcceptanceContext,
     build_segmenter,
     draw_detections_overlay,
 )
@@ -94,6 +95,17 @@ class SemanticSegmenterNode(Node):
             "self_body_adapter_rpy": [0.0, 0.0, 0.0],
             "self_body_camera_xyz": [0.0, 0.0, 0.0],
             "self_body_camera_rpy": [0.0, 0.0, 0.0],
+            # Accepted-detection predicate (PF-R8 A1): backproject each
+            # cargo bbox centre onto the workspace ground plane and accept
+            # it when it lands in the pickup workspace region. Static
+            # measured geometry of the same kind the detector crops with;
+            # per-trial spawner geometry stays forbidden.
+            "workspace_accept_enabled": False,
+            "workspace_center_xy": [-1.0, 0.0],
+            "workspace_half_extents": [0.5, 0.5],
+            "workspace_plane_z": 0.86,
+            "workspace_margin_m": 0.15,
+            "workspace_world_frame": "world",
             "input.color_image": "/luggage/preprocessed/camera/color/image",
             "input.camera_info": "/luggage/preprocessed/camera/color/camera_info",
             "output.mask": "/luggage/semantic/mask",
@@ -139,6 +151,19 @@ class SemanticSegmenterNode(Node):
                 self.get_parameter("self_body_row_start_frac").value),
         }
         self._segmenter = build_segmenter(config)
+        self._workspace_accept = bool(
+            self.get_parameter("workspace_accept_enabled").value)
+        self._workspace_center = [
+            float(v) for v in self.get_parameter("workspace_center_xy").value]
+        self._workspace_half = [
+            float(v) for v in
+            self.get_parameter("workspace_half_extents").value]
+        self._workspace_plane_z = float(
+            self.get_parameter("workspace_plane_z").value)
+        self._workspace_margin = float(
+            self.get_parameter("workspace_margin_m").value)
+        self._workspace_world_frame = str(
+            self.get_parameter("workspace_world_frame").value)
         backend = self._segmenter.last_stats["backend"]
         require = str(self.get_parameter("require_backend").value)
         if require and not backend.startswith(require):
@@ -328,6 +353,48 @@ class SemanticSegmenterNode(Node):
 
     # ------------------------------------------------------------------
 
+    def _workspace_ctx_for(self, stamp_sec, frame_id):
+        """WorkspaceAcceptanceContext for one frame, or None.
+
+        Uses live camera_info intrinsics and a stamped TF lookup (no
+        latest-TF fallback, sensor-frames-and-timing rule). Any miss leaves
+        the predicate unavailable, which fails open with a recorded reason.
+        """
+        if not self._workspace_accept:
+            return None
+        info = self._camera_info
+        if info is None or info.width <= 0 or info.height <= 0:
+            return None
+        try:
+            stamp_msg = adapters.sec_to_stamp(float(stamp_sec))
+            tf_msg = self._tf_buffer.lookup_transform(
+                self._workspace_world_frame,
+                frame_id or "camera_depth_optical_frame",
+                rclpy.time.Time.from_msg(stamp_msg))
+        except (TransformException, ValueError):
+            return None
+        trans = tf_msg.transform.translation
+        rot = tf_msg.transform.rotation
+        matrix = matrix_from_translation_quaternion(
+            (trans.x, trans.y, trans.z),
+            (rot.x, rot.y, rot.z, rot.w))
+        # matrix_from_translation_quaternion returns a 4x4 homogeneous
+        # optical->world matrix; WorkspaceAcceptanceContext wants row-major
+        # 3x4 (R|t).
+        optical_to_world = tuple(
+            tuple(float(matrix[r][c]) for c in range(4)) for r in range(3))
+        return WorkspaceAcceptanceContext(
+            fx=float(info.k[0]),
+            fy=float(info.k[4]),
+            cx=float(info.k[2]),
+            cy=float(info.k[5]),
+            plane_z=self._workspace_plane_z,
+            center_xy=tuple(self._workspace_center),
+            half_xy=tuple(self._workspace_half),
+            margin=self._workspace_margin,
+            optical_to_world=optical_to_world,
+        )
+
     def _on_image(self, msg):
         recv_wall = time.time()
         frame = adapters.rgb_frame_from_msg(msg)
@@ -347,6 +414,8 @@ class SemanticSegmenterNode(Node):
             self._rebuild_self_body_mask()
 
         t0 = time.monotonic()
+        self._segmenter.workspace_ctx = self._workspace_ctx_for(
+            frame.stamp, frame.frame_id or self._last_frame_id)
         self._segmenter.update(frame.image, frame.stamp, frame.frame_id)
         out = self._segmenter.copy_output()
         stamp = adapters.sec_to_stamp(out.stamp)

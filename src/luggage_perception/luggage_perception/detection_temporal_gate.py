@@ -63,13 +63,32 @@ def _bbox_area(bbox):
         0.0, float(bbox[3]) - float(bbox[1]))
 
 
-def largest_cargo_bbox(detections, cargo_labels):
-    """Largest-area cargo bbox in *detections*, or None."""
+def detection_accepted(det):
+    """Whether one detection passed the accepted-detection predicate.
+
+    Detections carry ``accepted`` (bool) once a predicate ran; a missing key
+    means "no predicate" and keeps historic accept-all behaviour so old
+    callers and recordings stay valid.
+    """
+    if "accepted" not in det:
+        return True
+    return bool(det["accepted"])
+
+
+def largest_cargo_bbox(detections, cargo_labels, accepted_only=False):
+    """Largest-area cargo bbox in *detections*, or None.
+
+    With ``accepted_only`` the search skips detections the accepted-detection
+    predicate rejected, so a persistent static false positive can neither
+    become the gate's positive sample nor flip the window's bbox identity.
+    """
     best = None
     best_area = 0.0
     labels = set(int(v) for v in cargo_labels)
     for det in detections or []:
         if int(det.get("label", -1)) not in labels:
+            continue
+        if accepted_only and not detection_accepted(det):
             continue
         bbox = det.get("bbox")
         area = _bbox_area(bbox)
@@ -240,7 +259,13 @@ class DetectionTemporalGate:
         self._last_sig = None
 
     def apply(self, label_map, detections, rgb_uint8):
-        """Return (label_map, detections, stats). Inputs are not mutated."""
+        """Return (label_map, detections, stats). Inputs are not mutated.
+
+        "This frame saw cargo" means it saw an **accepted** cargo detection:
+        a surviving rejected detection (a static border false positive) can
+        no longer short-circuit the hold nor flip the window's bbox identity,
+        because only accepted bboxes enter the window and its IoU check.
+        """
         labels = np.asarray(label_map)
         dets = list(detections or [])
         stats = {
@@ -250,10 +275,14 @@ class DetectionTemporalGate:
             "positive_frames": 0,
             "positive_ratio": 0.0,
             "raw_cargo": False,
+            "accepted_cargo": False,
         }
         bbox = largest_cargo_bbox(dets, self.cargo_labels)
-        had = bbox is not None
-        stats["raw_cargo"] = bool(had)
+        accepted_bbox = largest_cargo_bbox(
+            dets, self.cargo_labels, accepted_only=True)
+        had = accepted_bbox is not None
+        stats["raw_cargo"] = bool(bbox is not None)
+        stats["accepted_cargo"] = bool(had)
 
         sig = rgb_signature(rgb_uint8)
         if (self._last_sig is not None
@@ -269,11 +298,12 @@ class DetectionTemporalGate:
                 if rec.get("bbox") is not None:
                     prev = rec["bbox"]
                     break
-            if prev is not None and bbox_iou(bbox, prev) < self.bbox_iou_reset:
+            if (prev is not None
+                    and bbox_iou(accepted_bbox, prev) < self.bbox_iou_reset):
                 self._window.clear()
                 stats["scene_change"] = True
 
-        self._window.append({"had_cargo": had, "bbox": bbox})
+        self._window.append({"had_cargo": had, "bbox": accepted_bbox})
         n = len(self._window)
         n_pos = sum(1 for rec in self._window if rec["had_cargo"])
         ratio = (float(n_pos) / float(n)) if n else 0.0
@@ -301,6 +331,7 @@ class DetectionTemporalGate:
             "confidence": float(ratio),
             "bbox": consensus,
             "held": True,
+            "accepted": True,
         }
         stats["held"] = True
         stats["held_bbox"] = list(consensus)
