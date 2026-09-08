@@ -1,0 +1,52 @@
+{
+  "comment": "Maps completed eng work to focused test gates. Poller: scripts/poll_eng_completed.py",
+  "path_prefixes": [
+    {"prefix": "scripts/agent_notify.sh", "checkpoint": "WF1"},
+    {"prefix": "scripts/check_agent_contract.sh", "checkpoint": "WF1"},
+    {"prefix": "AGENTS.md", "checkpoint": "WF1"},
+    {"prefix": "CLAUDE.md", "checkpoint": "WF1"},
+    {"prefix": "docs/agents/", "checkpoint": "WF1"},
+    {"prefix": ".cursor/rules/agent-logs.mdc", "checkpoint": "WF1"},
+    {"prefix": ".gitignore", "checkpoint": "GIT"},
+    {"prefix": "src/luggage_msgs/msg/DetectedLuggage.msg", "checkpoint": "E0"},
+    {"prefix": "src/luggage_msgs/msg/DetectionFrame.msg", "checkpoint": "E0"},
+    {"prefix": "src/luggage_perception/luggage_perception/top_support_estimator.py", "checkpoint": "E1"},
+    {"prefix": "src/luggage_perception/test/test_top_support_estimator.py", "checkpoint": "E1"},
+    {"prefix": "src/luggage_perception/luggage_perception/platform_free_pipeline.py", "checkpoint": "E2"}
+  ],
+  "code_scan": [
+    {
+      "checkpoint": "E0",
+      "files": [
+        "src/luggage_msgs/msg/DetectedLuggage.msg",
+        "src/luggage_msgs/msg/DetectionFrame.msg"
+      ]
+    },
+    {
+      "checkpoint": "E1",
+      "files": [
+        "src/luggage_perception/luggage_perception/top_support_estimator.py",
+        "src/luggage_perception/test/test_top_support_estimator.py"
+      ]
+    },
+    {
+      "checkpoint": "E2",
+      "files": [
+        "src/luggage_perception/luggage_perception/platform_free_pipeline.py"
+      ]
+    }
+  ],
+  "gates": {
+    "WF1": {"builtin": "wf1_contract"},
+    "GIT": {"builtin": "git_workspace"},
+    "E0": {"builtin": "e0_interface"},
+    "E1": {
+      "argv": [
+        "python3", "-m", "pytest", "-q", "--tb=short",
+        "src/luggage_perception/test/test_top_support_estimator.py"
+      ],
+      "env": {"PYTHONPATH": "src/luggage_perception"}
+    },
+    "E2": {"builtin": "e2_pipeline_smoke"}
+  }
+}

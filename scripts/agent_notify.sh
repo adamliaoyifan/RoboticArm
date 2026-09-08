@@ -18,6 +18,8 @@ Options:
                        Defaults to n/a.
   --generation N       Runnable task generation. Required for new runnable work.
   --plan-revision REV  Exact approved plan commit for new runnable work.
+  --dispatch-ready yes|no
+                       Runnable dispatch gate. Defaults to no for runnable work.
   --checkpoint ID      Deprecated alias for --subtask.
   --revision REV       Deprecated alias for --base-revision.
   --to-agent AGENT    Concrete target agent. Defaults to any.
@@ -178,9 +180,10 @@ set_thread_target() {
   local revision="$9"
   local generation="${10}"
   local plan_revision="${11}"
+  local dispatch_ready="${12}"
   local tmp line state saw_role saw_agent saw_model saw_kind saw_parent
   local saw_subtask saw_depends_on saw_revision saw_consensus saw_generation
-  local saw_plan_revision
+  local saw_plan_revision saw_dispatch_ready
 
   tmp="$(mktemp)"
   state="preamble"
@@ -195,6 +198,7 @@ set_thread_target() {
   saw_consensus=0
   saw_generation=0
   saw_plan_revision=0
+  saw_dispatch_ready=0
 
   while IFS= read -r line; do
     if [[ "$state" == "preamble" && "$line" != "- "* ]]; then
@@ -238,6 +242,9 @@ set_thread_target() {
     elif [[ "$state" == "meta" && "$line" == "- plan_revision:"* ]]; then
       [[ -n "$plan_revision" ]] && printf -- '- plan_revision: %s\n' "$plan_revision" >> "$tmp"
       saw_plan_revision=1
+    elif [[ "$state" == "meta" && "$line" == "- dispatch_ready:"* ]]; then
+      [[ -n "$dispatch_ready" ]] && printf -- '- dispatch_ready: %s\n' "$dispatch_ready" >> "$tmp"
+      saw_dispatch_ready=1
     elif [[ "$state" == "meta" && "$line" == "- consensus:"* ]]; then
       printf '%s\n' "$line" >> "$tmp"
       saw_consensus=1
@@ -255,6 +262,7 @@ set_thread_target() {
       if [[ "$kind" =~ ^(subtask|integration|regression)$ ]]; then
         [[ "$saw_generation" -eq 1 ]] || printf -- '- generation: %s\n' "$generation" >> "$tmp"
         [[ "$saw_plan_revision" -eq 1 ]] || printf -- '- plan_revision: %s\n' "$plan_revision" >> "$tmp"
+        [[ "$saw_dispatch_ready" -eq 1 ]] || printf -- '- dispatch_ready: %s\n' "$dispatch_ready" >> "$tmp"
       fi
       if [[ "$kind" == "consensus" && "$saw_consensus" -eq 0 ]]; then
         printf -- '- consensus: open\n' >> "$tmp"
@@ -280,6 +288,7 @@ DEPENDS_ON="none"
 REVISION="n/a"
 GENERATION=""
 PLAN_REVISION=""
+DISPATCH_READY=""
 FROM=""
 FROM_AGENT=""
 FROM_MODEL="unknown"
@@ -300,6 +309,7 @@ while [[ $# -gt 0 ]]; do
     --base-revision|--revision) REVISION="${2:-}"; shift 2 ;;
     --generation) GENERATION="${2:-}"; shift 2 ;;
     --plan-revision) PLAN_REVISION="${2:-}"; shift 2 ;;
+    --dispatch-ready) DISPATCH_READY="${2:-}"; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --to-agent) TO_AGENT="${2:-}"; shift 2 ;;
     --to-model) TO_MODEL="${2:-}"; shift 2 ;;
@@ -374,6 +384,10 @@ if [[ -n "$PLAN_REVISION" ]]; then
     exit 2
   }
 fi
+if [[ -n "$DISPATCH_READY" && ! "$DISPATCH_READY" =~ ^(yes|no)$ ]]; then
+  echo "invalid --dispatch-ready: $DISPATCH_READY" >&2
+  exit 2
+fi
 FROM_AGENT="${FROM_AGENT:-$CLI}"
 if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
       ( "$PARENT" == "n/a" || "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
@@ -384,6 +398,9 @@ if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
       ( -z "$GENERATION" || -z "$PLAN_REVISION" ) ]]; then
   echo "--kind $KIND requires --generation and --plan-revision" >&2
   exit 2
+fi
+if [[ "$KIND" =~ ^(subtask|integration|regression)$ && -z "$DISPATCH_READY" ]]; then
+  DISPATCH_READY="no"
 fi
 if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
       ( "$TO_AGENT" == "any" || "$TO_MODEL" == "any" ) ]]; then
@@ -499,6 +516,7 @@ if [[ ! -f "$THREAD_PATH" ]]; then
     if [[ "$KIND" =~ ^(subtask|integration|regression)$ ]]; then
       printf -- '- generation: %s\n' "$GENERATION"
       printf -- '- plan_revision: %s\n' "$PLAN_REVISION"
+      printf -- '- dispatch_ready: %s\n' "$DISPATCH_READY"
     fi
     if [[ "$KIND" == "consensus" ]]; then
       printf -- '- consensus: open\n'
@@ -508,7 +526,7 @@ if [[ ! -f "$THREAD_PATH" ]]; then
 fi
 set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL" \
   "$KIND" "$PARENT" "$SUBTASK" "$DEPENDS_ON" "$REVISION" \
-  "$GENERATION" "$PLAN_REVISION"
+  "$GENERATION" "$PLAN_REVISION" "$DISPATCH_READY"
 
 {
   printf '## Post -- %s/%s -- %s -- %s/%s\n\n' \

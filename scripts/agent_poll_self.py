@@ -67,6 +67,9 @@ def classify_row(row: dict[str, str], threads_dir: Path) -> tuple[str, str]:
         return "ready", "awaiting reply"
     if row["kind"] not in sched.RUNNABLE_KINDS:
         return "skip", f"unsupported kind {row['kind']}"
+    ready_for_dispatch, dispatch_reason = sched.reviewers_dispatch_ready(metadata)
+    if not ready_for_dispatch:
+        return "wait", dispatch_reason
     if sched.thread_claimed(thread_path):
         return "active", "already claimed"
     ready, reason = sched.dependencies_ready(row, threads_dir)

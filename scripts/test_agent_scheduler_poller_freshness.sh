@@ -101,6 +101,37 @@ run_ack() {
     python3 "$ROOT/scripts/agent_mailbox.py" stop-ack "$@"
 }
 
+# Draft runnable rows are visible but not claimable until reviewers mark ready.
+write_open "| Q-D | subtask | DRAFT | A | none | $REVISION | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | draft-a-g1.md | draft | 1 | $REVISION |"
+thread draft-a-g1.md open DRAFT A none 1
+printf '%s\n' '- dispatch_ready: no' > /tmp/dispatch-ready-line.txt
+tmp_thread="$(mktemp)"
+awk 'BEGIN{inserted=0} /^## / && !inserted {print "- dispatch_ready: no"; inserted=1} {print}' \
+  docs/agents/discuss/draft-a-g1.md > "$tmp_thread"
+mv "$tmp_thread" docs/agents/discuss/draft-a-g1.md
+python3 "$ROOT/scripts/agent_poll_self.py" --agent codex --model gpt-5 \
+  --cli codex --claim-next --json --queue-file /tmp/mpf2-poll-draft.json \
+  >/tmp/mpf2-poll-draft.out
+python3 - <<'PY'
+import json
+data = json.load(open("/tmp/mpf2-poll-draft.out", encoding="utf-8"))
+item = next(row for row in data["mine"] if row["thread"] == "draft-a-g1.md")
+assert item["action"] == "wait", item
+assert item["reason"] == "waiting for reviewers dispatch_ready", item
+assert "claimed" not in data, data
+PY
+! grep -q '^## Claim --' docs/agents/discuss/draft-a-g1.md
+python3 "$ROOT/scripts/agent_scheduler.py" --json \
+  --registry docs/agents/RUNTIME.md --leases-dir docs/agents/discuss/leases \
+  >/tmp/mpf2-scheduler-draft.json
+python3 - <<'PY'
+import json
+rows = json.load(open("/tmp/mpf2-scheduler-draft.json", encoding="utf-8"))
+item = next(row for row in rows if row["thread"] == "draft-a-g1.md")
+assert item["action"] == "wait", item
+assert item["reason"] == "waiting for reviewers dispatch_ready", item
+PY
+
 # Stop items appear before replacements and block auto-claim.
 write_open "| Q-1 | subtask | STOP | A | none | $REVISION | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | stop-a-g1.md | old | 1 | $REVISION |
 | Q-2 | subtask | STOP | A | none | $REVISION | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | stop-a-g2.md | new | 2 | $REVISION |"

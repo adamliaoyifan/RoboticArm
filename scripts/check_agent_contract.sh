@@ -32,6 +32,7 @@ check_required_files() {
   for file in \
     AGENTS.md \
     docs/agents/README.md \
+    docs/agents/FORMAT.md \
     docs/agents/RUNTIME.md \
     docs/agents/discuss/OPEN.md \
     docs/agents/reviews/README.md \

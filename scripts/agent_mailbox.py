@@ -356,6 +356,9 @@ def validate_thread_and_row(thread_path: Path, open_path: Path, role: str, agent
 def ensure_open_and_current(thread_path: Path, row: dict[str, str], meta: dict[str, str], threads_dir: Path) -> tuple[int, str]:
     if meta.get("status") != "open":
         raise SystemExit(f"thread is terminal: {meta.get('status', '')}")
+    dispatch_ready = meta.get("dispatch_ready", "")
+    if dispatch_ready and dispatch_ready != "yes":
+        raise SystemExit("thread is not dispatch_ready")
     has_new_meta = "generation" in meta or "plan_revision" in meta
     has_new_row = bool(row.get("generation") or row.get("plan_revision"))
     legacy_ok = not (has_new_meta or has_new_row)

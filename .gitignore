@@ -27,6 +27,7 @@ __pycache__/
 # Editor / local agent state
 .vscode/
 .codex/
+.claude/
 .agents/
 .cursor/*
 !.cursor/rules/

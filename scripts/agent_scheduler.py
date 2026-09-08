@@ -214,6 +214,15 @@ def row_stopped(row: dict[str, str], threads_dir: Path) -> bool:
     return metadata.get("status") in TERMINAL_STATES and thread_claimed(thread_path)
 
 
+def reviewers_dispatch_ready(metadata: dict[str, str]) -> tuple[bool, str]:
+    value = metadata.get("dispatch_ready", "")
+    if not value:
+        return True, "legacy dispatch gate absent"
+    if value == "yes":
+        return True, "dispatch_ready"
+    return False, "waiting for reviewers dispatch_ready"
+
+
 def capability_set(session: dict[str, str]) -> set[str]:
     return {
         item.strip()
@@ -504,6 +513,24 @@ def plan_dispatches(
                     "n/a",
                     "wait",
                     "waiting for owner stop acknowledgement",
+                )
+            )
+            continue
+        ready_for_dispatch, dispatch_reason = reviewers_dispatch_ready(metadata)
+        if not ready_for_dispatch:
+            dispatches.append(
+                Dispatch(
+                    row["id"],
+                    row["thread"],
+                    row["parent"],
+                    row["subtask"],
+                    row["kind"],
+                    f"{row['to_agent']}/{row['to_model']}",
+                    "n/a",
+                    "n/a",
+                    "n/a",
+                    "wait",
+                    dispatch_reason,
                 )
             )
             continue

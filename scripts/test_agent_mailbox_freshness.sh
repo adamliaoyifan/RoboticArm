@@ -100,6 +100,22 @@ grep -q '| request | generation | plan_revision |' docs/agents/discuss/OPEN.md
 grep -q "| 1 | $REVISION |" docs/agents/discuss/OPEN.md
 grep -q '^- generation: 1$' docs/agents/discuss/*notify-ok.md
 grep -q "^- plan_revision: $REVISION$" docs/agents/discuss/*notify-ok.md
+grep -q '^- dispatch_ready: no$' docs/agents/discuss/*notify-ok.md
+notify_thread="$(basename "$(ls docs/agents/discuss/*notify-ok.md)")"
+if run_start "$notify_thread" >/tmp/notify-draft-start.log 2>&1; then
+  echo "FAIL: draft runnable started before dispatch_ready" >&2
+  exit 1
+fi
+grep -q 'thread is not dispatch_ready' /tmp/notify-draft-start.log
+AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$TMP_ROOT" \
+  "$ROOT/scripts/agent_notify.sh" --kind subtask --parent NOTIFY \
+  --subtask A --depends-on none --base-revision "$REVISION" --to eng \
+  --to-agent codex --to-model gpt-5 --from reviews --from-agent codex \
+  --from-model gpt-5 --cli codex --thread "$notify_thread" \
+  --request "reviewers dispatch ready" --generation 1 \
+  --plan-revision "$REVISION" --dispatch-ready yes >/tmp/notify-ready.log
+grep -q '^- dispatch_ready: yes$' "docs/agents/discuss/$notify_thread"
+run_start "$notify_thread" >/tmp/notify-ready-start.log
 
 # Row/thread generation mismatch fails closed before claim.
 write_open "| Q-M | subtask | MISMATCH | A | none | $REVISION | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | mismatch-a-g1.md | mismatch | 2 | $REVISION |"
