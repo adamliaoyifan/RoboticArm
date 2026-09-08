@@ -47,3 +47,8 @@ image topic pair + `sensor_data_pipeline.md` amendment; (2) ownership
 PF-R10 may run on the current stride-2 state (its own bars are already
 met) while the amendment is decided, or must wait. The full measurement
 chain is in `docs/status/evidence/platform_free_height/2026-09-08_pfr9_throughput/`.
+
+## Pointers (added 2026-09-08 13:2x)
+
+- `docs/status/evidence/platform_free_height/2026-09-08_pf_chain_session_summary.md`
+  — PF-R6 gen3 → PF-R8 → PF-R9 全链会话总结（单一查阅入口）
