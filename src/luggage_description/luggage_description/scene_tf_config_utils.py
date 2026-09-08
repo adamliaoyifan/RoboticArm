@@ -676,8 +676,8 @@ def container_inner_box_in_base_link(config):
 def point_inside_container_inner_box(point, config, margin=0.0):
     """Return whether a base-link point is inside the usable inner hull.
 
-    Starts from the oriented inner AABB, then clips the +Y contour when
-    ``inner.chamfer`` is set. ``margin`` insets every face / the cut.
+    Transforms into ``container_link``, then delegates AABB and chamfer checks
+    to the canonical kernel. ``margin`` insets every face / the cut.
     """
     clearance = max(0.0, float(margin))
     base_xyz, base_rpy = container_in_base_link(config)
@@ -688,20 +688,6 @@ def point_inside_container_inner_box(point, config, margin=0.0):
         sum(rotation[row][axis] * delta[row] for row in range(3))
         for axis in range(3)
     ]
-    inner_l, inner_w, _legacy_height = container_inner_dimensions(config)
-    floor_z = container_inner_floor_z(config)
-    ceiling_z = container_inner_ceiling_z(config)
-    limits = (
-        (-inner_l * 0.5 + clearance, inner_l * 0.5 - clearance),
-        (-inner_w * 0.5 + clearance, inner_w * 0.5 - clearance),
-        (floor_z + clearance, ceiling_z - clearance),
-    )
-    for axis, (low, high) in enumerate(limits):
-        if (
-                low > high
-                or local[axis] < low - 1e-9
-                or local[axis] > high + 1e-9):
-            return False
     return point_inside_container_inner_hull_container(
         local, config, margin=clearance)
 

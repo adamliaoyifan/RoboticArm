@@ -79,14 +79,53 @@ class TestContainerGeometry(unittest.TestCase):
 
     def test_point_faces_and_chamfer_boundary(self):
         g = self.geometry
-        self.assertTrue(contains_point(g, [-g.half_x, -g.half_y, g.floor_z]))
-        self.assertTrue(contains_point(g, [g.half_x, y_max_at_z(g, g.floor_z), g.floor_z]))
-        self.assertTrue(contains_point(g, [g.half_x, g.half_y, g.ceiling_z]))
-        self.assertFalse(contains_point(g, [g.half_x + 1e-4, 0.0, 1.0]))
+        delta = 1e-4
+        interior_z = 1.20
+        faces = (
+            ((-g.half_x, 0.0, interior_z), (-1.0, 0.0, 0.0)),
+            ((g.half_x, 0.0, interior_z), (1.0, 0.0, 0.0)),
+            ((0.0, -g.half_y, interior_z), (0.0, -1.0, 0.0)),
+            ((0.0, g.half_y, interior_z), (0.0, 1.0, 0.0)),
+            ((0.0, 0.0, g.floor_z), (0.0, 0.0, -1.0)),
+            ((0.0, 0.0, g.ceiling_z), (0.0, 0.0, 1.0)),
+        )
+        for on_face, outward in faces:
+            just_in = [on_face[i] - outward[i] * delta for i in range(3)]
+            just_out = [on_face[i] + outward[i] * delta for i in range(3)]
+            self.assertTrue(contains_point(g, on_face))
+            self.assertTrue(contains_point(g, just_in))
+            self.assertFalse(contains_point(g, just_out))
+        y_s = y_max_at_z(g, 0.70)
+        self.assertTrue(contains_point(g, [0.0, y_s, 0.70]))
+        self.assertTrue(contains_point(g, [0.0, y_s - delta, 0.70]))
+        self.assertFalse(contains_point(g, [0.0, y_s + delta, 0.70]))
         self.assertFalse(contains_point(g, [0.0, 0.90, 0.55]))
         self.assertTrue(contains_point(g, [0.0, 0.90, 1.20]))
 
-    def test_margin_insets_slanted_face(self):
+    def test_boxes_on_each_face_just_inside_and_outside(self):
+        g = self.geometry
+        size = [0.08, 0.08, 0.08]
+        half = 0.04
+        delta = 1e-4
+        z = 1.20
+        self.assertTrue(contains_oriented_box(g, [g.half_x - half - delta, 0.0, z], size))
+        self.assertFalse(contains_oriented_box(g, [g.half_x - half + delta, 0.0, z], size))
+        self.assertTrue(contains_oriented_box(g, [-g.half_x + half + delta, 0.0, z], size))
+        self.assertFalse(contains_oriented_box(g, [-g.half_x + half - delta, 0.0, z], size))
+        self.assertTrue(contains_oriented_box(g, [0.0, g.half_y - half - delta, z], size))
+        self.assertFalse(contains_oriented_box(g, [0.0, g.half_y - half + delta, z], size))
+        self.assertTrue(contains_oriented_box(g, [0.0, -g.half_y + half + delta, z], size))
+        self.assertFalse(contains_oriented_box(g, [0.0, -g.half_y + half - delta, z], size))
+        self.assertTrue(contains_oriented_box(g, [0.0, 0.0, g.floor_z + half + delta], size))
+        self.assertFalse(contains_oriented_box(g, [0.0, 0.0, g.floor_z + half - delta], size))
+        self.assertTrue(contains_oriented_box(g, [0.0, 0.0, g.ceiling_z - half - delta], size))
+        self.assertFalse(contains_oriented_box(g, [0.0, 0.0, g.ceiling_z - half + delta], size))
+        z_s = 0.70
+        y_low = y_max_at_z(g, z_s - half)
+        self.assertTrue(contains_oriented_box(g, [0.0, y_low - half - delta, z_s], size))
+        self.assertFalse(contains_oriented_box(g, [0.0, y_low - half + delta, z_s], size))
+
+    def test_margin_insets_slanted_and_axis_aligned_faces(self):
         g = self.geometry
         z = 0.70
         without_margin = y_max_at_z(g, z, margin=0.0)
@@ -94,6 +133,69 @@ class TestContainerGeometry(unittest.TestCase):
         self.assertLess(with_margin, without_margin - 0.05)
         self.assertTrue(contains_point(g, [0.0, with_margin - 1e-5, z], margin=0.05))
         self.assertFalse(contains_point(g, [0.0, without_margin - 1e-5, z], margin=0.05))
+        m = 0.05
+        interior_z = 1.20
+        self.assertTrue(contains_point(g, [g.half_x - 0.01, 0.0, interior_z]))
+        self.assertFalse(contains_point(g, [g.half_x - 0.01, 0.0, interior_z], margin=m))
+        self.assertTrue(contains_point(g, [-g.half_x + 0.01, 0.0, interior_z]))
+        self.assertFalse(contains_point(g, [-g.half_x + 0.01, 0.0, interior_z], margin=m))
+        self.assertTrue(contains_point(g, [0.0, g.half_y - 0.01, interior_z]))
+        self.assertFalse(contains_point(g, [0.0, g.half_y - 0.01, interior_z], margin=m))
+        self.assertTrue(contains_point(g, [0.0, -g.half_y + 0.01, interior_z]))
+        self.assertFalse(contains_point(g, [0.0, -g.half_y + 0.01, interior_z], margin=m))
+        self.assertTrue(contains_point(g, [0.0, 0.0, g.floor_z + 0.01]))
+        self.assertFalse(contains_point(g, [0.0, 0.0, g.floor_z + 0.01], margin=m))
+        self.assertTrue(contains_point(g, [0.0, 0.0, g.ceiling_z - 0.01]))
+        self.assertFalse(contains_point(g, [0.0, 0.0, g.ceiling_z - 0.01], margin=m))
+        self.assertEqual(yz_polygon(g, margin=10.0), [])
+        self.assertFalse(contains_point(g, [0.0, 0.0, interior_z], margin=10.0))
+
+    def test_invalid_descriptors_fail_closed(self):
+        base = {
+            "frame_id": "container_link",
+            "length": 1.5,
+            "width": 2.0,
+            "floor_z": 0.4,
+            "ceiling_z": 1.9,
+        }
+        with self.assertRaises(ValueError):
+            normalize_descriptor(dict(base, length=float("nan")))
+        with self.assertRaises(ValueError):
+            normalize_descriptor(
+                dict(
+                    base,
+                    chamfer={
+                        "side": "negative_x",
+                        "floor_y": 0.0,
+                        "wall_y": 0.5,
+                        "wall_z": 0.9,
+                    },
+                )
+            )
+        with self.assertRaises(ValueError):
+            normalize_descriptor(
+                dict(
+                    base,
+                    chamfer={
+                        "side": "positive_y",
+                        "floor_y": 0.0,
+                        "wall_y": 0.5,
+                        "wall_z": 0.4,
+                    },
+                )
+            )
+        with self.assertRaises(ValueError):
+            normalize_descriptor(
+                dict(
+                    base,
+                    chamfer={
+                        "side": "positive_y",
+                        "floor_y": 1.5,
+                        "wall_y": 1.5,
+                        "wall_z": 0.9,
+                    },
+                )
+            )
 
     def test_oriented_box_checks_all_corners(self):
         g = self.geometry
