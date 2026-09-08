@@ -22,6 +22,7 @@ Stateful temporal filtering delegates to
 from __future__ import division
 
 import math
+import time
 from dataclasses import dataclass, field
 from typing import Optional, Sequence
 
@@ -259,6 +260,8 @@ class PlatformFreeDetector:
             top_valid=False, top_reason=DETECT_TOP_UNOBSERVABLE,
             support=None, height_valid=False,
             height_source=HEIGHT_SOURCE_UNAVAILABLE)
+        timing = result.timing
+        _t_total = time.monotonic()
 
         if not cargo_segmented:
             result.top_reason = DETECT_CARGO_SEGMENTATION_REQUIRED
@@ -275,8 +278,9 @@ class PlatformFreeDetector:
             self._stability.update(None)
             return result
 
-        top = estimate_top_surface(points, _workspace_pair(self.config),
-                                   self.config)
+        top = estimate_top_surface(
+            points, _workspace_pair(self.config), self.config,
+            timing=timing)
         if top is None:
             result.top_reason = DETECT_TOP_UNOBSERVABLE
             self._stability.update(None)
@@ -285,13 +289,18 @@ class PlatformFreeDetector:
         result.top_valid = True
         result.top_reason = "ok"
 
+        _t0 = time.monotonic()
         support, gate = self._fit_support(
             top, raw_points_world, source, geometry_ok, raw_same_stamp,
-            stamp_sec, geometry_gate_reason)
+            stamp_sec, geometry_gate_reason, timing=timing)
+        timing["support_gate_total_ms"] = (
+            time.monotonic() - _t0) * 1000.0
         result.support = support
         result.support_gate = gate
 
+        _t0 = time.monotonic()
         box = self._compose(top, support, platform_z)
+        timing["compose_ms"] = (time.monotonic() - _t0) * 1000.0
         if (support is None and not box.height_valid
                 and result.support_gate in GATE_SUPPORT_REASONS):
             # Surface the gate's own reason (status_missing/stale/...),
@@ -300,10 +309,13 @@ class PlatformFreeDetector:
         result.box = box
         result.height_valid = bool(box.height_valid)
         result.height_source = int(box.height_source)
+        timing["pipeline_total_ms"] = (
+            time.monotonic() - _t_total) * 1000.0
         return result
 
     def _fit_support(self, top, raw_points_world, source, geometry_ok,
-                     raw_same_stamp, stamp_sec, geometry_gate_reason=None):
+                     raw_same_stamp, stamp_sec, geometry_gate_reason=None,
+                     timing=None):
         """Gate + fit the local support plane. Returns (support, gate).
 
         Stability-window policy (PF-R5 field evidence): only *positive
@@ -345,7 +357,8 @@ class PlatformFreeDetector:
                 "raw_stamp_mismatch")
         support = estimate_local_support(
             np.asarray(raw_points_world, dtype=np.float64).reshape(-1, 3),
-            top, _workspace_pair(self.config), self.config)
+            top, _workspace_pair(self.config), self.config,
+            timing=timing)
         support.stamp = float(stamp_sec)
         if support.reason != "ok":
             # Per-frame rejection (coverage/sides) must not enter the Z

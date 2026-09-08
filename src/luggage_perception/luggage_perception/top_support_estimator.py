@@ -17,6 +17,7 @@ v1 is horizontal-only: top and support planes must be within
 from __future__ import division
 
 import math
+import time
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Sequence
@@ -147,7 +148,8 @@ def _crop_workspace(points, center_xy, half_extents):
     return points[mask]
 
 
-def estimate_top_surface(cargo_points_world, workspace, config=None):
+def estimate_top_surface(cargo_points_world, workspace, config=None,
+                         timing=None):
     """Fit the highest valid horizontal cargo plane + top rectangle.
 
     ``workspace`` is ``(center_xy, half_extents)`` in the world frame.
@@ -155,15 +157,27 @@ def estimate_top_surface(cargo_points_world, workspace, config=None):
     ``DETECT_TOP_UNOBSERVABLE`` semantics (caller logs).
     """
     config = config or TopSupportConfig()
+    _t_total = time.monotonic()
     points = np.asarray(cargo_points_world, dtype=np.float64).reshape(-1, 3)
     points = points[np.isfinite(points).all(axis=1)]
+    if timing is not None:
+        timing["top_input_points"] = int(len(points))
+    _t0 = time.monotonic()
     points = _crop_workspace(points, workspace[0], workspace[1])
+    if timing is not None:
+        timing["top_crop_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["top_cropped_points"] = int(len(points))
     if len(points) < int(config.min_top_points):
         return None
+    _t0 = time.monotonic()
     points = voxel_downsample(points, config.voxel_size)
+    if timing is not None:
+        timing["top_voxel_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["top_voxel_points"] = int(len(points))
     if len(points) < int(config.min_top_points):
         return None
 
+    _t0 = time.monotonic()
     inlier_mask, plane_z = _ransac_horizontal_plane(
         points,
         max_iter=config.ransac_max_iter,
@@ -171,16 +185,27 @@ def estimate_top_surface(cargo_points_world, workspace, config=None):
         min_inliers=max(3, config.min_top_points // 2),
         normal_thresh=math.radians(config.normal_tolerance_deg),
     )
+    if timing is not None:
+        timing["top_ransac_ms"] = (time.monotonic() - _t0) * 1000.0
     if inlier_mask is None or plane_z is None:
         return None
     inliers = points[inlier_mask]
+    if timing is not None:
+        timing["top_inlier_points"] = int(len(inliers))
+    _t0 = time.monotonic()
     yaw, extent_0, extent_1, _eigen_ratio = _pca_rectangle(inliers[:, :2])
+    if timing is not None:
+        timing["top_pca_ms"] = (time.monotonic() - _t0) * 1000.0
     yaw_valid = True
+    _t0 = time.monotonic()
     try:
         yaw, extent_0, extent_1, rectangle_center = _refine_rectangle(
             inliers[:, :2], yaw)
     except (ValueError, TypeError):
         rectangle_center = inliers[:, :2].mean(axis=0)
+    if timing is not None:
+        timing["top_refine_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["top_total_ms"] = (time.monotonic() - _t_total) * 1000.0
     ratio = max(extent_0, extent_1) / max(1e-9, min(extent_0, extent_1))
     if ratio < 1.15:
         yaw_valid = False
@@ -209,8 +234,62 @@ def _rotate_to_rect_axes(points_xy, center_xy, yaw):
     return u, v
 
 
+def _zmode_support_plane(points, dist_thresh=0.008, min_inliers=80):
+    """PF-R6 gen3: fail-closed dominant-z-cluster support plane.
+
+    Horizontal-prior replacement for the support-plane RANSAC, adopted
+    from the PF-R6-RANSAC-RESEARCH generation 2 evidence
+    (`zmode_median`, all eight promotion gates passed; see
+    docs/status/evidence/platform_free_height/pf-r6-ransac-research/).
+    Because the v1 contract fixes the support normal to +Z (tilt is
+    rejected, not modeled), the plane hypothesis reduces to a single z:
+    bin candidate z at the ``dist_thresh`` scale, take the *dominant*
+    cluster (the window with the most points, ties to the highest
+    center — the same count-first preference the old RANSAC expressed),
+    set ``support_z`` to the cluster median, and re-derive the inlier
+    set around it. Rng-free and deterministic.
+
+    Returns ``(inlier_mask, support_z)`` or ``(None, None)`` when no
+    cluster reaches ``min_inliers`` — the caller then fails closed.
+    """
+    if len(points) < 3:
+        return None, None
+    bw = max(float(dist_thresh), 0.008)
+    z = points[:, 2]
+    lo = float(np.floor(z.min() / bw) * bw)
+    hi = float(np.ceil(z.max() / bw) * bw)
+    n_bins = int(max(1, round((hi - lo) / bw)))
+    centers = lo + bw * (np.arange(n_bins) + 0.5)
+    # Dominant cluster = the dist_thresh window with the MOST points,
+    # where windows within 5% of the best count count as tied and the
+    # tie breaks to the HIGHEST center. This mirrors the old RANSAC's
+    # preference (a plane >1 cm higher displaces unless clearly less
+    # supported; near-equal heights go by inlier count): a thin noise or
+    # flyer tail above the true plane cannot win merely by being higher,
+    # and sampling-level count jitter (~2%) cannot flip a genuinely
+    # dominant plane.
+    counts = np.empty(n_bins, dtype=np.int64)
+    for i, c in enumerate(centers):
+        counts[i] = int((np.abs(z - c) < dist_thresh).sum())
+    min_needed = max(3, int(min_inliers))
+    eligible = np.nonzero(counts >= min_needed)[0]
+    if len(eligible) == 0:
+        return None, None
+    best_count = int(counts[eligible].max())
+    tied = eligible[counts[eligible] >= 0.95 * best_count]
+    best_i = int(tied[-1])  # highest center among the dominant windows
+    mask = np.abs(z - centers[best_i]) < dist_thresh
+    plane_z = float(np.median(z[mask]))
+    # Refine: re-window around the cluster median so the final inlier
+    # set is not anchored to a bin edge.
+    mask = np.abs(z - plane_z) < dist_thresh
+    if int(mask.sum()) < min_needed:
+        return None, None
+    return mask, plane_z
+
+
 def estimate_local_support(raw_points_world, top_estimate, workspace,
-                          config=None):
+                          config=None, timing=None):
     """Fit the horizontal support plane around the top rectangle.
 
     Candidates: raw points in the outer annulus (footprint + inner margin
@@ -220,23 +299,35 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     by trusting any configured platform height.
     """
     config = config or TopSupportConfig()
+    _t_total = time.monotonic()
     points = np.asarray(raw_points_world, dtype=np.float64).reshape(-1, 3)
     points = points[np.isfinite(points).all(axis=1)]
+    if timing is not None:
+        timing["support_input_points"] = int(len(points))
+    _t0 = time.monotonic()
     points = _crop_workspace(points, workspace[0], workspace[1])
+    if timing is not None:
+        timing["support_crop_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["support_cropped_points"] = int(len(points))
     # PF-R6 opt 3: the height band needs only top_z (already known), so
     # apply it BEFORE the rectangle rotation/annulus math — on the raw
     # depth cloud most points sit far outside the plausible support band
     # (floor below, box body above) and are rejected by two comparisons
     # instead of the full rotate + annulus pipeline.
+    _t0 = time.monotonic()
     band = (
         (top_estimate.top_z - points[:, 2] >= config.min_luggage_height)
         & (top_estimate.top_z - points[:, 2] <= config.max_luggage_height)
     )
     points = points[band]
+    if timing is not None:
+        timing["support_band_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["support_band_points"] = int(len(points))
     if len(points) < int(config.min_support_points):
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
 
+    _t0 = time.monotonic()
     u, v = _rotate_to_rect_axes(
         points[:, :2], top_estimate.center_xy, top_estimate.yaw)
     half_w = top_estimate.width * 0.5
@@ -251,23 +342,34 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
         (np.abs(u) < outer_w) & (np.abs(v) < outer_d)
     )
     candidates = points[in_annulus]
+    if timing is not None:
+        timing["support_annulus_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["support_candidate_points"] = int(len(candidates))
     if len(candidates) < int(config.min_support_points):
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
 
-    inlier_mask, support_z = _ransac_horizontal_plane(
+    _t0 = time.monotonic()
+    # PF-R6 gen3: the adopted zmode_median estimator replaces support
+    # RANSAC. Timing key keeps its historical name so probe/evidence
+    # series stay comparable; support_fit_method records the estimator.
+    inlier_mask, support_z = _zmode_support_plane(
         candidates,
-        max_iter=config.support_ransac_max_iter,
         dist_thresh=config.support_ransac_dist_thresh,
         min_inliers=int(config.min_support_points),
-        normal_thresh=math.radians(config.normal_tolerance_deg),
     )
+    if timing is not None:
+        timing["support_ransac_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["support_fit_method"] = "zmode_median"
     if inlier_mask is None or support_z is None:
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
     inliers = candidates[inlier_mask]
+    if timing is not None:
+        timing["support_inlier_points"] = int(len(inliers))
 
     # Side coverage: which rectangle edges have support inliers nearby.
+    _t0 = time.monotonic()
     u_i, v_i = _rotate_to_rect_axes(
         inliers[:, :2], top_estimate.center_xy, top_estimate.yaw)
     band_half = config.support_outer_margin * 0.5
@@ -281,6 +383,9 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
         1 for mask in sides.values()
         if int(mask.sum()) >= config.min_inliers_per_side)
     side_coverage = covered / 4.0
+    if timing is not None:
+        timing["support_side_ms"] = (time.monotonic() - _t0) * 1000.0
+        timing["support_total_ms"] = (time.monotonic() - _t_total) * 1000.0
     if covered < int(config.min_support_sides):
         return SupportPlaneEstimate(
             support_z=float(support_z),

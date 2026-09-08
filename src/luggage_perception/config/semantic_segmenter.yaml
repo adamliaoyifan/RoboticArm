@@ -107,6 +107,7 @@ semantic_point_filter:
     output.cargo_points: /luggage/semantic/cargo_points
     output.obstacle_points: /luggage/semantic/obstacle_points
     output.stats: ~/stats_json
+    output.cargo_voxel_size: 0.005
     # Label routing: cargo feeds the detector; obstacles are conservative.
     cargo_labels: [2]
     obstacle_labels: [2, 4]

@@ -243,6 +243,22 @@ class TestJoinStampTracker(unittest.TestCase):
         payload = tracker.as_dict()
         self.assertAlmostEqual(payload["last_join_stamp"], 2.0)
         self.assertEqual(payload["last_cargo_n_points"], 0)
+        self.assertEqual(payload["join_count"], 1)
+
+    def test_join_diagnostics_count_misses_and_stale_drops(self):
+        tracker = JoinStampTracker()
+        tracker.note_cloud(10.0)
+        tracker.note_cloud_waiting_for_mask()
+        tracker.note_mask(9.75)
+        tracker.note_mask_waiting_for_cloud()
+        tracker.note_stale_drop(3)
+        payload = tracker.as_dict()
+        self.assertEqual(payload["cloud_count"], 1)
+        self.assertEqual(payload["mask_count"], 1)
+        self.assertEqual(payload["cloud_waiting_for_mask"], 1)
+        self.assertEqual(payload["mask_waiting_for_cloud"], 1)
+        self.assertEqual(payload["stale_drop_count"], 3)
+        self.assertAlmostEqual(payload["latest_cloud_mask_gap_sec"], 0.25)
 
     def test_note_epoch_is_in_payload(self):
         tracker = JoinStampTracker()

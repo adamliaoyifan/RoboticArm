@@ -201,6 +201,7 @@ class LuggageDetector(Node):
             "yolo_topic", "/luggage/semantic/yolo_detections")
         self.declare_parameter(
             "detection_frame_topic", "/luggage/perception/detection_frame")
+        self.declare_parameter("stream_stats_topic", "~/stream_stats_json")
         self.declare_parameter("join_buffer_maxlen", 10)
 
         scene_cfg_path = self.get_parameter("scene_tf_config").value
@@ -296,6 +297,16 @@ class LuggageDetector(Node):
         self._raw_buffer_maxlen = max(
             4, int(self.get_parameter("join_buffer_maxlen").value))
         self._raw_lock = threading.Lock()
+        self._raw_counts = {
+            "raw_received": 0,
+            "raw_evicted": 0,
+            "raw_lookup_hit": 0,
+            "raw_lookup_miss": 0,
+            "raw_lookup_empty": 0,
+            "raw_lookup_decode_fail": 0,
+            "raw_lookup_tf_fail": 0,
+        }
+        self._last_raw_lookup = {}
         # PF-R3 rework: same-acquisition status join. Status evidence is
         # buffered by its exact (sec, nanosec) primary stamp; only the
         # entry for this cloud's acquisition can authorize support
@@ -325,6 +336,8 @@ class LuggageDetector(Node):
         )
         self._diag_pub = self.create_publisher(
             String, "~/diagnostics_json", transient)
+        self._stream_stats_pub = self.create_publisher(
+            String, self.get_parameter("stream_stats_topic").value, transient)
         self._latest_pub = self.create_publisher(
             String, "/luggage/perception/detection/latest", transient)
 
@@ -441,9 +454,11 @@ class LuggageDetector(Node):
         if key is None:
             return
         with self._raw_lock:
+            self._raw_counts["raw_received"] += 1
             self._raw_buffer[key] = msg
             while len(self._raw_buffer) > self._raw_buffer_maxlen:
                 self._raw_buffer.popitem(last=False)
+                self._raw_counts["raw_evicted"] += 1
 
     def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
         """Exact-stamp raw world points, transformed on demand (PF-R6).
@@ -456,28 +471,60 @@ class LuggageDetector(Node):
         ordering race and never accepts a different stamp — no fusion
         semantics change.
         """
+        start = time.monotonic()
         last = max(1, attempts)
+        lookup = {
+            "raw_lookup_key": list(key) if key is not None else None,
+            "raw_lookup_attempts": 0,
+            "raw_lookup_status": "miss",
+            "raw_lookup_wait_ms": 0.0,
+            "raw_buffer_len": 0,
+            "raw_buffer_maxlen": int(self._raw_buffer_maxlen),
+        }
         for attempt in range(last):
             msg = None
             with self._raw_lock:
+                lookup["raw_lookup_attempts"] = attempt + 1
+                lookup["raw_buffer_len"] = len(self._raw_buffer)
                 msg = self._raw_buffer.get(key)
             if msg is not None:
                 pts = adapters.cloud_points_from_msg(msg)
-                if pts is not None and len(pts):
-                    pts = pts[np.isfinite(pts).all(axis=1)]
-                    if len(pts):
-                        stamp_time = rclpy.time.Time.from_msg(
-                            msg.header.stamp)
-                        source_frame = (self._cloud_data_frame
-                                        or msg.header.frame_id)
-                        pts_world, _err = _transform_points_to_world(
-                            self._tf_buffer, pts, source_frame,
-                            self._world_frame, stamp_time)
-                        if pts_world is not None:
-                            return pts_world
-                return None  # undecodable same-stamp cloud
+                if pts is None:
+                    lookup["raw_lookup_status"] = "decode_fail"
+                    with self._raw_lock:
+                        self._raw_counts["raw_lookup_decode_fail"] += 1
+                    break
+                pts = pts[np.isfinite(pts).all(axis=1)]
+                if not len(pts):
+                    lookup["raw_lookup_status"] = "empty"
+                    with self._raw_lock:
+                        self._raw_counts["raw_lookup_empty"] += 1
+                    break
+                stamp_time = rclpy.time.Time.from_msg(msg.header.stamp)
+                source_frame = self._cloud_data_frame or msg.header.frame_id
+                pts_world, _err = _transform_points_to_world(
+                    self._tf_buffer, pts, source_frame,
+                    self._world_frame, stamp_time)
+                if pts_world is not None:
+                    lookup["raw_lookup_status"] = "hit"
+                    lookup["raw_lookup_wait_ms"] = (
+                        time.monotonic() - start) * 1000.0
+                    with self._raw_lock:
+                        self._raw_counts["raw_lookup_hit"] += 1
+                        self._last_raw_lookup = dict(lookup)
+                    return pts_world
+                lookup["raw_lookup_status"] = "tf_fail"
+                with self._raw_lock:
+                    self._raw_counts["raw_lookup_tf_fail"] += 1
+                break
             if attempt + 1 < last:
                 time.sleep(period_sec)
+        lookup["raw_lookup_wait_ms"] = (time.monotonic() - start) * 1000.0
+        if lookup["raw_lookup_status"] == "miss":
+            with self._raw_lock:
+                self._raw_counts["raw_lookup_miss"] += 1
+        with self._raw_lock:
+            self._last_raw_lookup = dict(lookup)
         return None
 
     def _empty_yolo_for_cloud(self, cloud_msg):
@@ -783,6 +830,7 @@ class LuggageDetector(Node):
         stamp = cloud_msg.header.stamp
         frame = cloud_msg.header.frame_id
         stamp_time = rclpy.time.Time.from_msg(stamp)
+        self._timing = {}
         _t0 = time.monotonic()
         pts_camera = adapters.cloud_points_from_msg(cloud_msg)
         if pts_camera is None:
@@ -831,6 +879,7 @@ class LuggageDetector(Node):
             stamp_sec=cloud_stamp_sec,
             cargo_segmented=self._use_semantic)
         self._timing["geometry_ms"] = (time.monotonic() - _t0) * 1000.0
+        self._timing["pipeline"] = dict(result.timing)
         support_fields = self._support_fields(result)
 
         if not result.top_valid:
@@ -922,6 +971,44 @@ class LuggageDetector(Node):
         self._frame_pub.publish(frame)
         self._frame_window.push(
             adapters.stamp_to_sec(cloud_msg.header.stamp), frame)
+        self._publish_stream_stats(frame, fields, support, yolo_msg, cloud_msg)
+
+    def _publish_stream_stats(self, frame, fields, support, yolo_msg, cloud_msg):
+        with self._raw_lock:
+            raw_counts = dict(self._raw_counts)
+            raw_lookup = dict(self._last_raw_lookup)
+            raw_buffer_len = len(self._raw_buffer)
+        record = {
+            "stamp": (
+                float(cloud_msg.header.stamp.sec)
+                + 1e-9 * float(cloud_msg.header.stamp.nanosec)),
+            "stamp_key": [
+                int(cloud_msg.header.stamp.sec),
+                int(cloud_msg.header.stamp.nanosec),
+            ],
+            "frame_seq": int(frame.frame_seq),
+            "generation": int(frame.generation),
+            "instance_id": str(frame.instance_id),
+            "yolo_count": int(len(yolo_msg.detections)),
+            "pca_valid": bool(fields["pca_valid"]),
+            "pca_reason": str(fields["pca_reason"]),
+            "pca_source": str(fields["pca_source"]),
+            "pca_confidence": float(fields["pca_confidence"]),
+            "n_cargo_points": int(fields["n_cargo_points"]),
+            "geometry_level": int(frame.geometry_level),
+            "support_valid": bool(support["support_valid"]),
+            "support_reason": str(support["support_reason"]),
+            "support_gate": str(support["support_gate"]),
+            "support_inliers": int(support["support_inliers"]),
+            "timing_ms": dict(self._timing),
+            "raw_buffer_len": int(raw_buffer_len),
+            "raw_buffer_maxlen": int(self._raw_buffer_maxlen),
+            "raw_counts": raw_counts,
+            "raw_lookup": raw_lookup,
+            "filter_stats": self._filter_stats or {},
+        }
+        self._stream_stats_pub.publish(
+            String(data=json.dumps(record, sort_keys=True)))
 
     def _wait_newer_frame(self, prev_stamp, timeout):
         if timeout <= 0.0:

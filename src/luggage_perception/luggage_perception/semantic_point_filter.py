@@ -250,18 +250,36 @@ class JoinStampTracker:
         self.last_mask_stamp = 0.0
         self.last_join_stamp = 0.0
         self.last_cargo_n_points = -1
+        self.cloud_count = 0
+        self.mask_count = 0
+        self.join_count = 0
+        self.cloud_waiting_for_mask = 0
+        self.mask_waiting_for_cloud = 0
+        self.stale_drop_count = 0
         self.generation = 0
         self.instance_id = ""
 
     def note_cloud(self, stamp_sec):
         self.last_cloud_stamp = float(stamp_sec)
+        self.cloud_count += 1
 
     def note_mask(self, stamp_sec):
         self.last_mask_stamp = float(stamp_sec)
+        self.mask_count += 1
 
     def note_join(self, stamp_sec, n_cargo):
         self.last_join_stamp = float(stamp_sec)
         self.last_cargo_n_points = int(n_cargo)
+        self.join_count += 1
+
+    def note_cloud_waiting_for_mask(self):
+        self.cloud_waiting_for_mask += 1
+
+    def note_mask_waiting_for_cloud(self):
+        self.mask_waiting_for_cloud += 1
+
+    def note_stale_drop(self, count):
+        self.stale_drop_count += int(count)
 
     def note_epoch(self, generation, instance_id=""):
         self.generation = int(generation or 0)
@@ -273,6 +291,14 @@ class JoinStampTracker:
             "last_mask_stamp": self.last_mask_stamp,
             "last_join_stamp": self.last_join_stamp,
             "last_cargo_n_points": self.last_cargo_n_points,
+            "cloud_count": int(self.cloud_count),
+            "mask_count": int(self.mask_count),
+            "join_count": int(self.join_count),
+            "cloud_waiting_for_mask": int(self.cloud_waiting_for_mask),
+            "mask_waiting_for_cloud": int(self.mask_waiting_for_cloud),
+            "stale_drop_count": int(self.stale_drop_count),
+            "latest_cloud_mask_gap_sec": (
+                float(self.last_cloud_stamp) - float(self.last_mask_stamp)),
             "generation": int(self.generation),
             "instance_id": str(self.instance_id),
         }

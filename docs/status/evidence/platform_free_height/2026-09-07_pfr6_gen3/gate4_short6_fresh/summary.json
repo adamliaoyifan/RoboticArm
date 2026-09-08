@@ -1,0 +1,144 @@
+{
+  "mode": "semantic",
+  "trials_requested": 6,
+  "spawn_failures": 0,
+  "stale_instance_frames": 0,
+  "warmup_frames_config": 5,
+  "gap_sec": 2.0,
+  "launch_params": "",
+  "revision": {
+    "git_commit": "f34d9171f8448d7bf92ce84897dc188a110216e2",
+    "git_dirty_files": 181
+  },
+  "active_output_hz": 3.5146046069817136,
+  "trial_cycle_hz": 0.14487331723540461,
+  "trial_cycle_sec_mean": 6.902582332501576,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.55,
+        0.4,
+        0.25
+      ],
+      [
+        0.7,
+        0.45,
+        0.28
+      ],
+      [
+        0.8,
+        0.5,
+        0.32
+      ]
+    ],
+    "n_sizes": 3,
+    "trials_per_size": {
+      "0.55x0.4x0.25": 2,
+      "0.7x0.45x0.28": 2,
+      "0.8x0.5x0.32": 2
+    },
+    "xy_offsets": [
+      [
+        -1.11,
+        0.05
+      ],
+      [
+        -1.07,
+        -0.06
+      ],
+      [
+        -1.05,
+        0.05
+      ],
+      [
+        -1.01,
+        -0.12
+      ],
+      [
+        -1.01,
+        -0.04
+      ],
+      [
+        -0.93,
+        0.11
+      ]
+    ],
+    "n_xy_offsets": 6,
+    "yaw_deg": [
+      -30.0,
+      -17.0,
+      -5.0,
+      -1.0,
+      12.0
+    ],
+    "n_yaws": 5,
+    "n_trials": 6
+  },
+  "n_settled": 50,
+  "categories": {
+    "warmup_frames": 30,
+    "settled_frames": 50,
+    "top_only": 0,
+    "full3d": 34,
+    "prior": 0,
+    "failed": 16
+  },
+  "top_surface_rate": 0.68,
+  "full3d_rate": 1.0,
+  "top_z_err_m": {
+    "count": 34,
+    "p50": 0.009342758422195008,
+    "p95": 0.010694565148741786,
+    "max": 0.010694565148741786
+  },
+  "support_z_err_m": {
+    "count": 34,
+    "p50": 1.4036818951623786e-07,
+    "p95": 5.217643599397803e-07,
+    "max": 5.217643599397803e-07
+  },
+  "height_err_m": {
+    "count": 34,
+    "p50": 0.009342236657835068,
+    "p95": 0.010694284381592256,
+    "max": 0.010694284381592256
+  },
+  "xy_err_m": {
+    "count": 34,
+    "p50": 0.006331012598284817,
+    "p95": 0.006507620534651531,
+    "max": 0.0065125088804728545
+  },
+  "width_err_m": {
+    "count": 34,
+    "p50": 0.020470441313833465,
+    "p95": 0.032125509580969935,
+    "max": 0.032125509580969935
+  },
+  "depth_err_m": {
+    "count": 34,
+    "p50": 0.033490430634287416,
+    "p95": 0.04027879473437035,
+    "max": 0.04027879473437035
+  },
+  "false_measured_height": 0,
+  "limits": {
+    "top_surface_rate": 0.95,
+    "full3d_rate": 0.95,
+    "top_z_p95_m": 0.015,
+    "top_z_max_m": 0.025,
+    "support_z_p95_m": 0.015,
+    "support_z_max_m": 0.025,
+    "height_p95_m": 0.025,
+    "height_max_m": 0.04,
+    "xy_p95_m": 0.03,
+    "width_depth_p95_m": 0.05,
+    "false_measured_height": 0
+  },
+  "require_full_geometry": true,
+  "gate4_failures": [
+    "top_surface_rate 0.680 < 0.950"
+  ],
+  "gate4_pass": false,
+  "coverage_failures": []
+}
