@@ -1,0 +1,225 @@
+{
+  "box_sizes": {
+    "carryon": [
+      0.36,
+      0.23,
+      0.5
+    ],
+    "large": [
+      0.6,
+      0.4,
+      0.55
+    ],
+    "standard": [
+      0.45,
+      0.32,
+      0.58
+    ]
+  },
+  "comparators": [
+    "baseline_ransac",
+    "grid_seed_robust_z",
+    "one_point_constrained_ransac",
+    "zmode_median"
+  ],
+  "config": {
+    "min_inliers_per_side": 15,
+    "min_support_points": 80,
+    "min_support_sides": 2,
+    "support_ransac_dist_thresh": 0.008,
+    "support_ransac_max_iter": 200
+  },
+  "fixtures": [
+    {
+      "candidate_count": 24000,
+      "candidates_sha256": "29a5d8c346dc6c9d2630e98a000898b349bdf5b5f11653c44db4efae6c9fbd56",
+      "expect": "valid",
+      "family": "flat_clean",
+      "gt_support_z": 0.0,
+      "id": "flat_clean_carryon",
+      "seed_digest": "d9e435343b00d01b",
+      "size": "carryon"
+    },
+    {
+      "candidate_count": 29000,
+      "candidates_sha256": "a2e2235f4e49cc00a8e477192cfbc537c2395cdfcdc7aac007585e4935b98c68",
+      "expect": "valid",
+      "family": "flat_clean",
+      "gt_support_z": 0.0,
+      "id": "flat_clean_standard",
+      "seed_digest": "79e4d7ddf623a553",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 33000,
+      "candidates_sha256": "a27cf24986c43ae9cb3f6f945ec2d1181a5b98226394b89b314a44c078a344e5",
+      "expect": "valid",
+      "family": "flat_clean",
+      "gt_support_z": 0.0,
+      "id": "flat_clean_large",
+      "seed_digest": "635131973764eb72",
+      "size": "large"
+    },
+    {
+      "candidate_count": 27000,
+      "candidates_sha256": "c2fb5201a350709ae8ef33177053be665f3be211b06a1c1e47601c5c6a1b5db7",
+      "expect": "valid",
+      "family": "quantized_noise",
+      "gt_support_z": 0.0,
+      "id": "flat_clean_noise",
+      "seed_digest": "e2ee04a6172785ba",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 26000,
+      "candidates_sha256": "8b50938f92288e20cf9968208478a8aeb1aa614316b123cbb953826ff20b1edf",
+      "expect": "valid",
+      "family": "asymmetric_sectors",
+      "gt_support_z": 0.0,
+      "id": "asym_carryon",
+      "seed_digest": "7afa3264a938ce51",
+      "size": "carryon"
+    },
+    {
+      "candidate_count": 26000,
+      "candidates_sha256": "72a948e0d03553e841c1f2328f9f4c2a799cd8345dd4ae19e24f4d44696ec7d4",
+      "expect": "valid",
+      "family": "asymmetric_sectors",
+      "gt_support_z": 0.0,
+      "id": "asym_standard",
+      "seed_digest": "8968afc6534dd459",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 26000,
+      "candidates_sha256": "8ebbdde751e5100bff91f723701fa4fbacd2a83dc4f2cd672c411f239a71cbf3",
+      "expect": "valid",
+      "family": "asymmetric_sectors",
+      "gt_support_z": 0.0,
+      "id": "asym_large",
+      "seed_digest": "dcedf5de39b932d4",
+      "size": "large"
+    },
+    {
+      "candidate_count": 22000,
+      "candidates_sha256": "2edf3bcfed33429daa9fc38f00378a5b668d8c7c86850ea909a5af3a5e219bcc",
+      "expect": "valid",
+      "family": "missing_side",
+      "gt_support_z": 0.0,
+      "id": "missing_side_carryon",
+      "seed_digest": "10c12fd930894920",
+      "size": "carryon"
+    },
+    {
+      "candidate_count": 22000,
+      "candidates_sha256": "91b44b20face19428c16fc39e870fde18e1d89d4f33e7f0596f3965b74232144",
+      "expect": "valid",
+      "family": "missing_side",
+      "gt_support_z": 0.0,
+      "id": "missing_side_large",
+      "seed_digest": "8a860d99886fe74b",
+      "size": "large"
+    },
+    {
+      "candidate_count": 26000,
+      "candidates_sha256": "d5038c550ccefba8fe870e28f974af5ab0578d394e8c3a54a7359f51d6dedb68",
+      "expect": "valid",
+      "family": "competing_lower_plane",
+      "gt_support_z": 0.0,
+      "id": "competing_lower",
+      "seed_digest": "af6e433c713ed1c5",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 31000,
+      "candidates_sha256": "f39b0746c1afaa4cd7d753ef1963d08de535cfd8ed4281bbf537369d9443d58c",
+      "expect": "valid",
+      "family": "wrong_height_clutter_partial",
+      "gt_support_z": 0.0,
+      "id": "clutter_partial",
+      "seed_digest": "1361937ed648c390",
+      "size": "carryon"
+    },
+    {
+      "candidate_count": 26265,
+      "candidates_sha256": "7e7e08782729dbdf78de1973e69f4467288b3ee1e6ca7153bd15ab698c74f8bd",
+      "expect": "valid",
+      "family": "isolated_outliers",
+      "gt_support_z": 0.0,
+      "id": "flyers_mild",
+      "seed_digest": "07ae26680530fa31",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 30000,
+      "candidates_sha256": "49cf0b33fdcbbd013e1e78e9a1a25b86fcc4696beaae8ae8ddee5df82f7981c0",
+      "expect": "valid",
+      "family": "lower_floor_excluded",
+      "gt_support_z": 0.0,
+      "id": "floor_below_band",
+      "seed_digest": "3bd5019b83894cda",
+      "size": "large"
+    },
+    {
+      "candidate_count": 45,
+      "candidates_sha256": "b3d9394ce4040fbbd4d30044dbe949c5798439788be7dc22f61ef19b56883362",
+      "expect": "reject",
+      "family": "insufficient_points",
+      "gt_support_z": 0.0,
+      "id": "insufficient",
+      "seed_digest": "8cd0afb35166df2f",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 26,
+      "candidates_sha256": "e79b75a3c5c252e3ec6ccdb723569ca46381bc1c0b89112c407fa342c4613ef3",
+      "expect": "reject",
+      "family": "nonfinite",
+      "gt_support_z": 0.0,
+      "id": "nonfinite_starved",
+      "seed_digest": "2d28c827e8104a2e",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 0,
+      "candidates_sha256": "",
+      "expect": "reject",
+      "family": "nonfinite",
+      "gt_support_z": 0.0,
+      "id": "all_nonfinite",
+      "seed_digest": "c90b47153bde225c",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 179,
+      "candidates_sha256": "acc3ba4f099466f64805d776bf724d24c1d7a6ef91aee4f23ea291e47d7d28a8",
+      "expect": "reject",
+      "family": "flyers_only",
+      "gt_support_z": 0.0,
+      "id": "flyers_only",
+      "seed_digest": "feef8e7d79656505",
+      "size": "standard"
+    },
+    {
+      "candidate_count": 9218,
+      "candidates_sha256": "b9fbbdb5d1052585b66fc0bb286a84eeb7ffa2caccf83acf551c61faf1527d03",
+      "expect": "reject",
+      "family": "clutter_single_side",
+      "gt_support_z": 0.0,
+      "id": "clutter_single_side",
+      "seed_digest": "737fddef2ed0c69f",
+      "size": "carryon"
+    }
+  ],
+  "master_seed": 20260905,
+  "workspace": {
+    "center": [
+      0.0,
+      0.0
+    ],
+    "half_extents": [
+      0.5,
+      0.5
+    ]
+  }
+}

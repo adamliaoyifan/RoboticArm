@@ -35,6 +35,24 @@ class TestLivoxUrdfFrames(unittest.TestCase):
             self.assertIn(name, text)
         self.assertIn("mid360_origin.xacro", text)
 
+    def test_sim_gpu_lidar_on_mount(self):
+        with open(MOUNT, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn('type="gpu_lidar"', text)
+        self.assertIn("<topic>livox/scan</topic>", text)
+        self.assertIn("<gz_frame_id>livox_frame</gz_frame_id>", text)
+        self.assertIn("${livox_optical_xyz}", text)
+        self.assertNotIn('type="imu"', text)
+
+    def test_sim_lidar_handbook_fov(self):
+        with open(ORIGIN, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn('name="livox_sim_v_min" value="-0.12217305"', text)
+        self.assertIn('name="livox_sim_v_max" value="0.90757121"', text)
+        self.assertIn('name="livox_sim_range_min" value="0.1"', text)
+        self.assertIn('name="livox_sim_range_max" value="40.0"', text)
+        self.assertIn('name="livox_sim_update_hz" value="10.0"', text)
+
 
 if __name__ == "__main__":
     unittest.main()

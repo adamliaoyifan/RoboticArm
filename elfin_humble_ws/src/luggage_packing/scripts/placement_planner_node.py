@@ -359,6 +359,16 @@ class PlacementPlannerNode(Node):
 
     def _handle(self, request, response):
         box = request.box
+        # E0/E4 contract: packing needs measured full geometry. A top-only
+        # detection (or a catalog prior with height_valid=false) must not
+        # become a collision box inside the container.
+        if not bool(getattr(box, "height_valid", False)):
+            response.success = False
+            response.message = (
+                "DETECT_FULL_GEOMETRY_REQUIRED: ComputePlacement needs "
+                "height_valid=true (measured support or configured mode); "
+                "got height_source=%d" % int(getattr(box, "height_source", 0)))
+            return response
         size = [max(0.0, float(box.width)),
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]

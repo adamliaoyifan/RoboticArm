@@ -3,7 +3,7 @@
     {
       "catalog_id": "carryon",
       "commit_index": 0,
-      "gz_model": "pickup_box_0008_carryon",
+      "gz_model": "pickup_box_0001_carryon",
       "mass_kg": 8.0,
       "pose_base_link": {
         "position": [
@@ -37,13 +37,13 @@
         0.4,
         0.25
       ],
-      "spawn_id": "pickup_box_0008_carryon",
+      "spawn_id": "pickup_box_0001_carryon",
       "volume_m3": 0.05500000000000001
     },
     {
       "catalog_id": "carryon",
       "commit_index": 1,
-      "gz_model": "pickup_box_0009_carryon",
+      "gz_model": "pickup_box_0002_carryon",
       "mass_kg": 8.0,
       "pose_base_link": {
         "position": [
@@ -77,7 +77,7 @@
         0.4,
         0.25
       ],
-      "spawn_id": "pickup_box_0009_carryon",
+      "spawn_id": "pickup_box_0002_carryon",
       "volume_m3": 0.05500000000000001
     }
   ],

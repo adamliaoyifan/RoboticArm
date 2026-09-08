@@ -17,6 +17,7 @@ from __future__ import division
 
 import json
 import math
+import os
 import random
 import threading
 import time
@@ -27,7 +28,7 @@ from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
-from geometry_msgs.msg import Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion
 from luggage_msgs.msg import DetectedLuggage
 from luggage_msgs.srv import (
     ClearCurrentBox,
@@ -55,9 +56,12 @@ from luggage_description.scene_tf_config_utils import (
 )
 
 from luggage_description.suitcase_visual import (
+    OBSERVABLE_REFERENCE_VERSION,
     VISUAL_IDS,
+    MeshReferenceError,
     pickup_box_pose,
     pickup_visual_sdf,
+    resolve_observable_reference,
     size_tier_name,
     sized_model_name,
     visual_id_for_entry,
@@ -101,7 +105,7 @@ class PickupBoxSpawner(Node):
         # Box visual: ogre2 can lag create. Mesh uses preloaded URIs (0).
         self.declare_parameter("visual_settle_sec", 2.0)
         # box: primitive AABB. mesh: pre-scaled model:// visual=collision.
-        self.declare_parameter("visual_kind", "box")
+        self.declare_parameter("visual_kind", "mesh")
         self.declare_parameter("models_root", "")
 
         scene_cfg = self.get_parameter("scene_tf_config").value
@@ -123,8 +127,27 @@ class PickupBoxSpawner(Node):
             if len(xy_jitter) >= 2 else (0.0, 0.0))
         self._size_mode = str(
             self.get_parameter("size_mode").value).strip().lower() or "catalog"
+        models_root = str(self.get_parameter("models_root").value or "")
+        if not models_root:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                models_root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+            except Exception:  # noqa: BLE001 - package share may be absent
+                models_root = ""
+        self._models_root_dir = models_root
+        self._observable_cache = {}
         self._visual_kind = str(
-            self.get_parameter("visual_kind").value).strip().lower() or "box"
+            self.get_parameter("visual_kind").value).strip().lower() or "mesh"
+        if self._visual_kind != "mesh":
+            # Untextured primitive boxes were removed: YOLO-World cannot
+            # reliably detect them, and the semantic chain is the
+            # accepted perception path.
+            self.get_logger().warning(
+                "visual_kind=%s is not supported; forcing 'mesh' "
+                "(thirdparty suitcase assets)" % self._visual_kind)
+            self._visual_kind = "mesh"
         if self._visual_kind == "mesh" and self._size_mode == "continuous":
             self.get_logger().warning(
                 "visual_kind=mesh ignores size_mode=continuous; using catalog")
@@ -133,6 +156,7 @@ class PickupBoxSpawner(Node):
         self._visual_settle_sec = max(0.0, settle_raw)
         self._current_box = None
         self._current_model = None
+        self._current_ref = None
         self._finalized_models = []
         self._sequence = 0
         self._generation = 0
@@ -235,7 +259,7 @@ class PickupBoxSpawner(Node):
     # ------------------------------------------------------------------
 
     def _box_to_record(self, box, yaw=0.0, mass_kg=0.0):
-        return {
+        record = {
             "id": box.id,
             "width": box.width,
             "depth": box.depth,
@@ -259,6 +283,19 @@ class PickupBoxSpawner(Node):
                 },
             },
         }
+        # PF-R5A: GT reference identity on the eval-side records only
+        # (never in DetectedLuggage / online paths).
+        ref = getattr(self, "_current_ref", None)
+        if ref is not None:
+            record["gt_reference"] = {
+                "version": ref["version"],
+                "stl_sha256": ref["stl_sha256"],
+                "stl_path": ref["stl_path"],
+                "visual_id": ref["visual_id"],
+                "tier": ref["tier"],
+                "lid_offset": float(ref["lid_offset"]),
+            }
+        return record
 
     def _publish_box_state(self):
         payload = {}
@@ -354,13 +391,40 @@ class PickupBoxSpawner(Node):
         )
 
     def _gt_size(self, size, visual_id):
-        """Size written to GetCurrentBox: catalog AABB for box and mesh.
+        """Size written to GetCurrentBox: the mesh's observable geometry.
 
-        Mesh lid-band (measure_size) stays on the sized-suitcase manifest for
-        diagnostics; it is not the spawn / planning / overlay GT.
+        The sized suitcase STLs have an AABB exactly equal to the catalog
+        size, but a top-down camera observes the *surface* (rounded lid,
+        tapered sides). The GT therefore reports the deterministic
+        STL-derived observable reference (see
+        ``mesh_observable_reference``): lid-plane width/depth and the
+        observable height from the lid plane down. Physics keeps the
+        catalog-sized collision; only the reported GT changes.
+
+        PF-R5A: fail closed - an unresolvable reference raises
+        MeshReferenceError and the spawn fails explicitly. Catalog
+        dimensions are never substituted.
         """
-        del visual_id
-        return [float(v) for v in size]
+        ref = self._observable_reference(size, visual_id)
+        return [ref["width"], ref["depth"], ref["height"]]
+
+    def _observable_reference(self, size, visual_id):
+        """Cached observable reference for one sized model.
+
+        Raises :class:`MeshReferenceError` when the reference cannot be
+        resolved (unknown visual, unknown tier, missing/corrupt/malformed
+        STL) — no fallback, ever. The cache key carries the resolved
+        tier: same visual across tiers must never reuse another tier's
+        dimensions or SHA-256.
+        """
+        tier = size_tier_name(size)
+        key = (str(visual_id), str(tier), OBSERVABLE_REFERENCE_VERSION)
+        if key in self._observable_cache:
+            return self._observable_cache[key]
+        ref = resolve_observable_reference(
+            self._models_root_dir, size, visual_id)
+        self._observable_cache[key] = ref
+        return ref
 
     # ------------------------------------------------------------------
     # Service handlers
@@ -370,6 +434,7 @@ class PickupBoxSpawner(Node):
         response = ClearCurrentBox.Response()
         if not self._current_model:
             self._current_box = None
+            self._current_ref = None
             self._publish_box_state()
             response.success = True
             response.message = "no current pickup box"
@@ -432,22 +497,40 @@ class PickupBoxSpawner(Node):
         return response
 
     def handle_spawn_next(self, _req, _response):
-        clear = self.handle_clear(None, None)
         response = SpawnNextBox.Response()
-        if not clear.success:
-            response.success = False
-            response.message = clear.message
-            return response
-
+        # PF-R5A-FIX2: sampling below advances the RNG; snapshot it so a
+        # mesh-reference failure rolls back to the exact pre-call state.
+        # A retry then selects the SAME candidate instead of silently
+        # walking past a missing/invalid asset.
+        rng_state = self._rng.getstate()
         entry, size, mass_kg, _generated, id_suffix = self._sample_box()
-        self._sequence += 1
-        model_name = "%s_%04d_%s" % (
-            self._model_prefix, self._sequence, id_suffix)
         pose, yaw = self._entry_pose(entry, size)
         visual_id = visual_id_for_entry(entry)
         if self._visual_kind == "mesh":
             visual_id = self._rng.choice(list(VISUAL_IDS))
-        gt_size = self._gt_size(size, visual_id)
+        # PF-R5A-FIX1 fail-closed: resolve and validate the prospective
+        # mesh reference BEFORE clearing the current instance or any
+        # delete/create/publication/state/sequence mutation. A bad
+        # reference must leave the existing model and state untouched.
+        try:
+            gt_size = self._gt_size(size, visual_id)
+        except MeshReferenceError as exc:
+            self._rng.setstate(rng_state)
+            self.get_logger().error(
+                "spawn rejected (mesh observable GT fail-closed): %s" % exc)
+            response.success = False
+            response.message = "MESH_REFERENCE_UNAVAILABLE: %s" % exc
+            return response
+
+        # Reference validated: now clear the previous instance.
+        clear = self.handle_clear(None, None)
+        if not clear.success:
+            response.success = False
+            response.message = clear.message
+            return response
+        self._sequence += 1
+        model_name = "%s_%04d_%s" % (
+            self._model_prefix, self._sequence, id_suffix)
         try:
             err = self._spawn_model(
                 model_name, pose,
@@ -464,9 +547,19 @@ class PickupBoxSpawner(Node):
         if self._visual_settle_sec > 0.0:
             time.sleep(self._visual_settle_sec)
 
+        # Observable reference: the lid plane sits lid_offset below the
+        # AABB top, so the observable top/center come from the lid plane
+        # and the observable height (lid plane down to the AABB bottom).
+        ref = self._observable_reference(size, visual_id)
+        observable_top_z = (
+            pose.position.z + float(size[2]) * 0.5 - ref["lid_offset"])
+
         box = DetectedLuggage()
         box.id = model_name
         box.pose = pose
+        # Report the observable box: its center keeps XY/yaw from the
+        # spawn; Z moves to the observable box's midpoint.
+        box.pose.position.z = observable_top_z - gt_size[2] * 0.5
         box.width = gt_size[0]
         box.depth = gt_size[1]
         box.height = gt_size[2]
@@ -475,7 +568,24 @@ class PickupBoxSpawner(Node):
         box.aspect_ratio = (
             max(abs(gt_size[0]), abs(gt_size[1])) / short
             if short > 1e-12 else 1.0)
+        # Platform-free contract (E0/E4): this is eval-side Gazebo truth,
+        # standing in for what a perfect sensor would measure, so it
+        # carries full validity. Online nodes never read it for geometry
+        # (E5); eval drivers compare it against the detector output.
+        box.header.frame_id = "world"
+        box.top_surface_pose = Pose(
+            position=Point(
+                x=pose.position.x, y=pose.position.y,
+                z=observable_top_z),
+            orientation=pose.orientation,
+        )
+        box.top_surface_valid = True
+        box.top_surface_confidence = 1.0
+        box.height_valid = True
+        box.height_confidence = 1.0
+        box.height_source = DetectedLuggage.HEIGHT_SOURCE_MEASURED_SUPPORT
         self._current_model = model_name
+        self._current_ref = self._observable_reference(size, visual_id)
         self._current_box = box
         self._current_yaw = yaw
         self._current_mass = mass_kg
@@ -496,6 +606,9 @@ class PickupBoxSpawner(Node):
             "height": box.height,
             "mass_kg": float(mass_kg),
             "yaw": float(yaw),
+            # PF-R5A: deterministic GT-reference identity.
+            "gt_reference_version": self._current_ref["version"],
+            "gt_reference_stl_sha256": self._current_ref["stl_sha256"],
         }, sort_keys=True)))
         self.get_logger().info(
             "Spawned %s visual=%s/%s size=%.3fx%.3fx%.3f gt=%.3fx%.3fx%.3f "

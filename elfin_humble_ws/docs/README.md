@@ -9,3 +9,5 @@ inside `elfin_humble_ws`.
 - `plans/`: migration designs and implementation plans
 - `research/`: ROS 2, MoveIt 2, Gazebo, and Huayan SDK research
 - `status/`: current migration state and validation records
+- `agents/`: per-role session notes and the cross-CLI mailbox
+  (`agents/discuss/OPEN.md`). See [agents/README.md](agents/README.md).

@@ -1,0 +1,44 @@
+{
+  "mode": "raw_negative_control",
+  "trials_requested": 3,
+  "spawn_failures": 0,
+  "stale_instance_frames": 0,
+  "warmup_frames_config": 5,
+  "gap_sec": 2.0,
+  "launch_params": "gui:=false use_rviz:=false use_semantic:=false use_motion:=false use_vacuum:=false visual_kind:=box size_mode:=catalog sequence_ids:=standard observe_pose_name:=pickup_observe",
+  "revision": {
+    "git_commit": "7af40220c9e86feb7f56908d9fcde389aa48dd9d",
+    "git_dirty_files": 71
+  },
+  "active_output_hz": 3.418645477224436,
+  "trial_cycle_hz": 0.15266805058424543,
+  "trial_cycle_sec_mean": 6.550158963667248,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.7,
+        0.45,
+        0.28
+      ]
+    ],
+    "n_sizes": 1,
+    "trials_per_size": {
+      "0.7x0.45x0.28": 3
+    },
+    "xy_offsets": [
+      [
+        -1.0,
+        0.0
+      ]
+    ],
+    "n_xy_offsets": 1,
+    "yaw_deg": [
+      0.0
+    ],
+    "n_yaws": 1,
+    "n_trials": 3
+  },
+  "negative_control_pass": true,
+  "negative_control_failures": [],
+  "gate4_pass": true
+}

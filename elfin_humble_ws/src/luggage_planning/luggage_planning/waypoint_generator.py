@@ -38,6 +38,28 @@ INSERT_CLEARANCE_MIN = 0.06
 # required suction height is surface_max + box_height + margin, not half.
 DEFAULT_CORRIDOR_MARGIN = 0.05
 
+# Pick waypoint generation needs a measured pickup contact Z (E0/E4,
+# docs/plans/platform_free_height_eng_todo.md): either the measured
+# top_surface_pose or a measured height to derive it from. A catalog prior
+# (height_valid=false) must never drive the arm down.
+FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
+
+
+def pick_contact_top_z(pick):
+    """Measured box-top Z from the platform-free detection contract.
+
+    ``top_surface_pose.position.z`` is the sole Z input when valid; the
+    legacy center+height/2 derivation is accepted only when the height is
+    a measurement (``height_valid``). Raises ValueError otherwise.
+    """
+    if getattr(pick, "top_surface_valid", False):
+        return float(pick.top_surface_pose.position.z)
+    if getattr(pick, "height_valid", False):
+        return float(pick.pose.position.z) + max(0.0, float(pick.height)) * 0.5
+    raise ValueError(
+        "%s: pick Z needs top_surface_pose or measured height"
+        % FULL_GEOMETRY_REQUIRED)
+
 
 def corridor_clearance(corridor_surface_max, box_height, contact_z,
                        place_clearance_z, margin=DEFAULT_CORRIDOR_MARGIN):
@@ -181,7 +203,7 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             _luggage_yaw_valid(pick),
             fallback_yaw,
         )
-        top_z = pick.pose.position.z + max(0.0, pick.height) * 0.5
+        top_z = pick_contact_top_z(pick)
         if perception_info is not None and "box_top_z" in perception_info:
             top_z = perception_info["box_top_z"]
 

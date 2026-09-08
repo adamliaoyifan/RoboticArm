@@ -1,0 +1,12 @@
+{
+  "tasks": ["PF-A1", "PF-A2"],
+  "parent": "PFH-REMEDIATION-20260904",
+  "base_revision": "a001be7855373473b52cd2115cb12954e6c38abf",
+  "role": "test",
+  "agent": "cursor",
+  "model": "grok-4.6",
+  "cli": "cursor",
+  "time": "2026-09-04T15:50:47+08:00",
+  "tests": "26 passed (test_pf_a1_static_audit + test_gate5_bag_readiness)",
+  "gate5_accuracy": "not_claimed"
+}

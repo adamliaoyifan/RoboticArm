@@ -1,0 +1,56 @@
+{
+  "run_id": "2026-09-04_1412_g0g6",
+  "revision": "0674f84 + working tree",
+  "gates": {
+    "G0": {
+      "result": "fail",
+      "reason": "colcon build+801 tests passed, but pick_from_detected drops E0 fields so live pick Z cannot use top_surface_pose",
+      "blockers": [
+        "pick_from_detected_forwards_e0"
+      ]
+    },
+    "G1": {
+      "result": "pass",
+      "gate1_pass": true,
+      "n_frames": 27,
+      "top_z_max_mm": 0.3238908291254283,
+      "height_max_mm": 0.2970240793203627
+    },
+    "G2": {
+      "result": "pass",
+      "reason": "pipeline hold_track/stamp/geometry_ok + ExactStampJoin 1ns + TF uses acquisition stamp"
+    },
+    "G3": {
+      "result": "pass",
+      "reason": "synthetic auto platform_z invariance, missing support TOP_ONLY, catalog prior invalid, configured source labeled"
+    },
+    "G4": {
+      "result": "fail",
+      "reason": "30-trial online eval with use_semantic:=false: 333 TOP_ONLY frames, 0 FULL_3D, top Z P95 320 mm (pickup platform plane at 0.86 m), XY P95 0.81 m. false_measured_height=0. Semantic path not executed this run.",
+      "trials": 30,
+      "n_frames": 333,
+      "top_surface_rate": 1.0,
+      "full3d_count": 0,
+      "hz": 1.9187885702432195,
+      "false_measured_height": 0
+    },
+    "G5": {
+      "result": "inconclusive",
+      "reason": "no rosbag/mcap dataset in workspace"
+    },
+    "G6": {
+      "result": "fail",
+      "reason": "detection_hz 1.92 < 4 Hz; no pre-change latency baseline; stop_sim residual processes=0"
+    }
+  },
+  "automatic_release_blockers": [
+    "pick_from_detected drops height_valid/top_surface_pose (live pick path)"
+  ],
+  "eng_design_decisions": {
+    "stability_window": "unit-tested: window unfilled returns DETECT_SUPPORT_UNSTABLE / TOP_ONLY",
+    "raw_path_own_cloud": "Gate 4 used this path; fitted platform top at 0.86 m as luggage top",
+    "absent_preprocessor_settled": "not isolated this run (preprocessor was running)",
+    "gt_box_validity": "eval-only GetCurrentBox used; detector has no GetCurrentBox client",
+    "catalog_prior": "unit-tested height_valid=false HEIGHT_SOURCE_CATALOG_PRIOR"
+  }
+}

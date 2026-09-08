@@ -34,10 +34,9 @@ from launch.actions import (
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
+from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch_ros.substitutions import FindPackageShare
 from moveit_configs_utils import MoveItConfigsBuilder
 
 from luggage_description.scene_tf_config_utils import (
@@ -52,6 +51,7 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
 
 WORLD_NAME = "airport_loading"
+_PROFILE_SENTINEL = "__profile__"
 
 # Same branches as luggage_description/config/robot_poses.yaml.example.
 # Used only if that YAML is missing; gz_ros2_control must not silently spawn
@@ -59,15 +59,120 @@ WORLD_NAME = "airport_loading"
 _FALLBACK_OBSERVE = [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
 
 
+def _default_launch_values():
+    return {
+        "scene_tf_config": os.path.join(
+            get_package_share_directory("luggage_description"),
+            "config",
+            "scene_tf.yaml.example",
+        ),
+        "use_moveit": "true",
+        "gui": "true",
+        "use_rviz": "true",
+        "use_cargo_map": "false",
+        "use_packing": "false",
+        "use_vacuum": "false",
+        "use_motion": "false",
+        "named_pose_duration": "4.0",
+        "named_pose_max_vel": "1.0",
+        "use_semantic": "false",
+        "semantic_require_backend": "",
+        "visual_kind": "mesh",
+        "size_mode": "catalog",
+        "yaw_mode": "",
+        "yaw_range": "0.0,0.0",
+        "xy_jitter_range": "0.0,0.0",
+        "sequence_ids": "",
+        "spawn_at_observe": "true",
+        "observe_pose_name": "observe",
+        "robot_poses_config": os.path.join(
+            get_package_share_directory("luggage_description"),
+            "config",
+            "robot_poses.yaml.example",
+        ),
+    }
+
+
+def _flatten_profile(data, out=None):
+    if out is None:
+        out = {}
+    if not isinstance(data, dict):
+        return out
+    for key, value in data.items():
+        key = str(key)
+        if isinstance(value, dict):
+            _flatten_profile(value, out)
+        else:
+            out[key] = value
+    return out
+
+
+def _load_profile_config(path):
+    path = str(path or "").strip()
+    if not path:
+        return {}
+    if not os.path.isfile(path):
+        raise RuntimeError("launch profile_config not found: %s" % path)
+    with open(path, "r", encoding="utf-8") as handle:
+        data = yaml.safe_load(handle) or {}
+    if not isinstance(data, dict):
+        raise RuntimeError("launch profile_config must be a YAML mapping: %s" % path)
+    return _flatten_profile(data)
+
+
+def _stringify_profile_value(value):
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (list, tuple)):
+        return ",".join(str(v) for v in value)
+    return str(value)
+
+
+def _resolved_launch_config(context):
+    defaults = _default_launch_values()
+    profile_path = LaunchConfiguration("profile_config").perform(context)
+    profile = _load_profile_config(profile_path)
+    unknown = sorted(set(profile) - set(defaults))
+    if unknown:
+        print(
+            "WARN: sim_world profile ignored unknown keys: %s"
+            % ", ".join(unknown)
+        )
+    cfg = {}
+    for name, default in defaults.items():
+        raw = LaunchConfiguration(name).perform(context)
+        if raw == _PROFILE_SENTINEL:
+            cfg[name] = _stringify_profile_value(profile.get(name, default))
+        else:
+            cfg[name] = raw
+    if profile_path:
+        print("sim_world launch profile: %s" % profile_path)
+    return cfg
+
+
+def _as_bool(value):
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _bool_text(value):
+    return "true" if _as_bool(value) else "false"
+
+
 def _csv_floats(text, default):
-    parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
+    if isinstance(text, (list, tuple)):
+        parts = list(text)
+    else:
+        parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
     if len(parts) < 2:
         return [float(default[0]), float(default[1])]
     return [float(parts[0]), float(parts[1])]
 
 
 def _csv_strings(text):
-    parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
+    if isinstance(text, (list, tuple)):
+        parts = [str(p).strip() for p in text if str(p).strip()]
+    else:
+        parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
     return parts if parts else [""]
 
 
@@ -113,13 +218,13 @@ def _load_named_pose_joints(poses_path: str, pose_name: str):
     return values
 
 
-def _initial_joint_xacro_args(context):
+def _initial_joint_xacro_args(cfg):
     """xacro mappings so gz_ros2_control starts at the named pose (or mock defaults)."""
-    spawn = LaunchConfiguration("spawn_at_observe").perform(context).lower() == "true"
+    spawn = _as_bool(cfg["spawn_at_observe"])
     if not spawn:
         return []
-    poses_path = LaunchConfiguration("robot_poses_config").perform(context)
-    pose_name = LaunchConfiguration("observe_pose_name").perform(context)
+    poses_path = cfg["robot_poses_config"]
+    pose_name = cfg["observe_pose_name"]
     try:
         values = _load_named_pose_joints(poses_path, pose_name)
     except Exception as exc:
@@ -210,7 +315,7 @@ def _gazebo_semantic_description():
     return {"robot_description_semantic": xml}
 
 
-def _move_group_node(robot_description):
+def _move_group_node(robot_description, use_moveit):
     """MoveIt 2 move_group with sim time and the gazebo robot_description."""
     moveit_config = (
         MoveItConfigsBuilder("S20", package_name="elfin_moveit_config")
@@ -236,7 +341,7 @@ def _move_group_node(robot_description):
                 "use_sim_time": True,
             },
         ],
-        condition=IfCondition(LaunchConfiguration("use_moveit")),
+        condition=IfCondition(_bool_text(use_moveit)),
     )
 
 
@@ -286,9 +391,8 @@ def _scene_model_actions(scene_tf_config: str):
     ]
 
 
-def _robot_create_node(context, initial_joint_args):
+def _robot_create_node(scene_tf_config, initial_joint_args):
     """Welded gz URDF: world_base carries the scene pose; spawn at the origin."""
-    scene_tf_config = LaunchConfiguration("scene_tf_config").perform(context)
     xacro_path = os.path.join(
         get_package_share_directory("luggage_description"),
         "urdf",
@@ -326,11 +430,10 @@ def _robot_create_node(context, initial_joint_args):
     )
 
 
-def _spawn_scene_and_robot(context, initial_joint_args):
+def _spawn_scene_and_robot(scene_tf_config, initial_joint_args):
     """Spawn pedestal/platform/container first, then the welded arm (Noetic order)."""
-    scene_tf_config = LaunchConfiguration("scene_tf_config").perform(context)
     scene_nodes = _scene_model_actions(scene_tf_config)
-    robot = _robot_create_node(context, initial_joint_args)
+    robot = _robot_create_node(scene_tf_config, initial_joint_args)
     if not scene_nodes:
         return [robot]
     return scene_nodes + [
@@ -342,9 +445,10 @@ def _spawn_scene_and_robot(context, initial_joint_args):
 
 def _launch_setup(context):
     _check_renderer()
-    scene_tf_config = LaunchConfiguration("scene_tf_config").perform(context)
-    gui = LaunchConfiguration("gui").perform(context).lower() == "true"
-    initial_joint_args = _initial_joint_xacro_args(context)
+    cfg = _resolved_launch_config(context)
+    scene_tf_config = cfg["scene_tf_config"]
+    gui = _as_bool(cfg["gui"])
+    initial_joint_args = _initial_joint_xacro_args(cfg)
 
     world_path = os.path.join(
         get_package_share_directory("luggage_gazebo"), "worlds", "airport_loading.sdf"
@@ -372,9 +476,12 @@ def _launch_setup(context):
         arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
     )
 
-    # D435 streams -> ROS names the noetic stack consumed. The gz sensor
-    # publishes /d435/{image,depth_image,camera_info,points}; rgbd_camera
-    # publishes the point cloud itself, so no depth_image_proc is needed.
+    # D435 + Mid-360S -> ROS names the rest of the stack consumes.
+    # Keep both in this one process: eval graph_error treats >3
+    # parameter_bridge PIDs as a leftover dual-sim.
+    # gpu_lidar publishes LaserScan on /livox/scan and the cloud on
+    # /livox/scan/points; remap the cloud to the real-driver topic
+    # /livox/lidar. Raster scan, no per-point times.
     camera_bridge = Node(
         package="ros_gz_bridge",
         executable="parameter_bridge",
@@ -385,12 +492,14 @@ def _launch_setup(context):
             "/d435/depth_image@sensor_msgs/msg/Image[gz.msgs.Image",
             "/d435/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             "/d435/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
+            "/livox/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
         ],
         remappings=[
             ("/d435/image", "/camera/color/image_raw"),
             ("/d435/depth_image", "/camera/depth/image_meters"),
             ("/d435/camera_info", "/camera/depth/camera_info"),
             ("/d435/points", "/camera/depth/points"),
+            ("/livox/scan/points", "/livox/lidar"),
         ],
         parameters=[{"use_sim_time": True}],
     )
@@ -449,22 +558,18 @@ def _launch_setup(context):
         # subscription burns CPU in every rclpy node that asks for it.
         parameters=[{
             "scene_tf_config": scene_tf_config,
-            "visual_kind": LaunchConfiguration("visual_kind").perform(context),
-            "size_mode": LaunchConfiguration("size_mode").perform(context),
+            "visual_kind": cfg["visual_kind"],
+            "size_mode": cfg["size_mode"],
             "visual_settle_sec": 2.0,
-            "yaw_mode": LaunchConfiguration("yaw_mode").perform(context),
-            "yaw_range": _csv_floats(
-                LaunchConfiguration("yaw_range").perform(context), (0.0, 0.0)),
+            "yaw_mode": cfg["yaw_mode"],
+            "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
             "xy_jitter_range": _csv_floats(
-                LaunchConfiguration("xy_jitter_range").perform(context),
-                (0.0, 0.0)),
-            "sequence_ids": _csv_strings(
-                LaunchConfiguration("sequence_ids").perform(context)),
+                cfg["xy_jitter_range"], (0.0, 0.0)),
+            "sequence_ids": _csv_strings(cfg["sequence_ids"]),
         }],
     )
 
-    use_semantic = (
-        LaunchConfiguration("use_semantic").perform(context).lower() == "true")
+    use_semantic = _as_bool(cfg["use_semantic"])
 
     detector = Node(
         package="luggage_perception",
@@ -481,10 +586,10 @@ def _launch_setup(context):
             "cloud_max_age_sec": 2.5,
             "estimate_retry_count": 4,
             "estimate_retry_period_sec": 0.25,
-            # No spawn GT on the real robot; keep sim on the same path so
-            # DetectLuggage reports real misses instead of GetCurrentBox.
-            "allow_gt_fallback": False,
-            "evaluation_compare_gt": False,
+            # Platform-free height (E3): measured support only; no
+            # configured platform Z (omitted is valid configuration).
+            "support_mode": "auto",
+            "platform_z": "",
             # SuitcaseViewWait kept but unused (0 = skip).
             "suitcase_update_timeout_sec": 0.0,
         }],
@@ -496,14 +601,13 @@ def _launch_setup(context):
     semantic_config = os.path.join(
         get_package_share_directory("luggage_perception"),
         "config", "semantic_segmenter.yaml")
-    require_backend = LaunchConfiguration(
-        "semantic_require_backend").perform(context)
+    require_backend = cfg["semantic_require_backend"]
     segmenter = Node(
         package="luggage_perception",
         executable="semantic_segmenter_node.py",
         name="semantic_segmenter",
         output="screen",
-        condition=IfCondition(LaunchConfiguration("use_semantic")),
+        condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {
             "use_sim_time": True,
             "require_backend": require_backend,
@@ -514,7 +618,7 @@ def _launch_setup(context):
         executable="semantic_point_filter_node.py",
         name="semantic_point_filter",
         output="screen",
-        condition=IfCondition(LaunchConfiguration("use_semantic")),
+        condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {"use_sim_time": True}],
     )
 
@@ -548,7 +652,7 @@ def _launch_setup(context):
     )
     # Pick/retreat shells (Todo 3). Default off so perception-only
     # debugging is unaffected; the closed-loop eval turns them on.
-    poses_path = LaunchConfiguration("robot_poses_config").perform(context)
+    poses_path = cfg["robot_poses_config"]
     motion_chain = [
         Node(
             package="luggage_planning",
@@ -561,7 +665,7 @@ def _launch_setup(context):
                 "world_frame": "world",
                 "pickup_object_id": "pickup_box",
             }],
-            condition=IfCondition(LaunchConfiguration("use_motion")),
+            condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
         Node(
             package="luggage_planning",
@@ -574,7 +678,7 @@ def _launch_setup(context):
                 "world_frame": "world",
                 "place_slot_frame": "elfin_base_link",
             }],
-            condition=IfCondition(LaunchConfiguration("use_motion")),
+            condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
         Node(
             package="luggage_planning",
@@ -584,14 +688,10 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "robot_poses_config": poses_path,
-                "named_pose_duration": float(
-                    LaunchConfiguration("named_pose_duration").perform(
-                        context)),
-                "named_pose_max_vel": float(
-                    LaunchConfiguration("named_pose_max_vel").perform(
-                        context)),
+                "named_pose_duration": float(cfg["named_pose_duration"]),
+                "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
             }],
-            condition=IfCondition(LaunchConfiguration("use_motion")),
+            condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
     ]
 
@@ -602,20 +702,15 @@ def _launch_setup(context):
         output="screen",
         parameters=[{
             "spawn_at_observe": (
-                LaunchConfiguration("spawn_at_observe").perform(context).lower()
-                == "true"
+                _as_bool(cfg["spawn_at_observe"])
             ),
-            "robot_poses_config": LaunchConfiguration("robot_poses_config").perform(
-                context
-            ),
-            "observe_pose_name": LaunchConfiguration("observe_pose_name").perform(
-                context
-            ),
+            "robot_poses_config": cfg["robot_poses_config"],
+            "observe_pose_name": cfg["observe_pose_name"],
         }],
     )
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
-    move_group = _move_group_node(robot_description)
+    move_group = _move_group_node(robot_description, cfg["use_moveit"])
 
     # Top-down orthographic RViz view (same viewpoint as the camera) plus
     # RobotModel/TF/point cloud/image panels for calibration checks.
@@ -626,7 +721,7 @@ def _launch_setup(context):
         output="screen",
         arguments=["-d", os.path.join(
             get_package_share_directory("luggage_gazebo"), "rviz", "sim_full.rviz")],
-        condition=IfCondition(LaunchConfiguration("use_rviz")),
+        condition=IfCondition(_bool_text(cfg["use_rviz"])),
     )
 
     return [
@@ -648,7 +743,7 @@ def _launch_setup(context):
             name="cargo_volume_mapper",
             output="screen",
             parameters=[{"use_sim_time": True}],
-            condition=IfCondition(LaunchConfiguration("use_cargo_map")),
+            condition=IfCondition(_bool_text(cfg["use_cargo_map"])),
         ),
         Node(
             package="luggage_packing",
@@ -656,7 +751,7 @@ def _launch_setup(context):
             name="placement_planner",
             output="screen",
             parameters=[{"use_sim_time": True}],
-            condition=IfCondition(LaunchConfiguration("use_packing")),
+            condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
         Node(
             package="luggage_planning",
@@ -664,10 +759,10 @@ def _launch_setup(context):
             name="vacuum_controller",
             output="screen",
             parameters=[{"use_sim_time": True}],
-            condition=IfCondition(LaunchConfiguration("use_vacuum")),
+            condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(scene_tf_config, robot_description),
-        *_spawn_scene_and_robot(context, initial_joint_args),
+        *_spawn_scene_and_robot(scene_tf_config, initial_joint_args),
         jsb_spawner,
         RegisterEventHandler(
             OnProcessExit(target_action=jsb_spawner, on_exit=[arm_spawner])
@@ -680,104 +775,101 @@ def _launch_setup(context):
 
 
 def generate_launch_description():
+    def profile_arg(name, description=""):
+        return DeclareLaunchArgument(
+            name,
+            default_value=_PROFILE_SENTINEL,
+            description=(
+                (description + " ") if description else ""
+            ) + "Default is taken from profile_config, then built-in fallback.",
+        )
+
     return LaunchDescription(
         [
             DeclareLaunchArgument(
+                "profile_config",
+                default_value="",
+                description="Optional grouped YAML profile. CLI launch args override profile values.",
+            ),
+            profile_arg(
                 "scene_tf_config",
-                default_value=PathJoinSubstitution(
-                    [
-                        FindPackageShare("luggage_description"),
-                        "config",
-                        "scene_tf.yaml.example",
-                    ]
-                ),
+                "Scene TF YAML path.",
             ),
-            DeclareLaunchArgument(
+            profile_arg(
                 "use_moveit",
-                default_value="true",
-                description="Start move_group after the arm controller (needed for IK / pose targets).",
+                "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
-            DeclareLaunchArgument("gui", default_value="true"),
-            DeclareLaunchArgument("use_rviz", default_value="true"),
-            DeclareLaunchArgument(
-                "use_cargo_map", default_value="false",
-                description="Start cargo_volume_mapper (geometry-commit "
-                            "occupancy grid + surface_2d)."),
-            DeclareLaunchArgument(
-                "use_packing", default_value="false",
-                description="Start placement_planner (ComputePlacement with "
-                            "aperture + corridor gates)."),
-            DeclareLaunchArgument(
-                "use_vacuum", default_value="false",
-                description="Start vacuum_controller (sim backend: gz "
-                            "kinematic follow + PlanningScene attach)."),
-            DeclareLaunchArgument(
-                "use_motion", default_value="false",
-                description="Start waypoint_generator + motion_planner "
-                            "(pick/retreat shells; move_group must also be "
-                            "on via use_moveit)."),
-            DeclareLaunchArgument(
+            profile_arg("gui", "Start Gazebo GUI."),
+            profile_arg("use_rviz", "Start RViz."),
+            profile_arg(
+                "use_cargo_map",
+                "Start cargo_volume_mapper (geometry-commit "
+                "occupancy grid + surface_2d)."),
+            profile_arg(
+                "use_packing",
+                "Start placement_planner (ComputePlacement with "
+                "aperture + corridor gates)."),
+            profile_arg(
+                "use_vacuum",
+                "Start vacuum_controller (sim backend: gz "
+                "kinematic follow + PlanningScene attach)."),
+            profile_arg(
+                "use_motion",
+                "Start waypoint_generator + motion_planner "
+                "(pick/retreat shells; move_group must also be "
+                "on via use_moveit)."),
+            profile_arg(
                 "named_pose_duration",
-                default_value="4.0",
-                description="Max GoToRobotPose FJT duration in seconds "
-                            "(was 8; actual time is min of this and "
-                            "max joint delta / named_pose_max_vel).",
+                "Max GoToRobotPose FJT duration in seconds "
+                "(was 8; actual time is min of this and "
+                "max joint delta / named_pose_max_vel).",
             ),
-            DeclareLaunchArgument(
+            profile_arg(
                 "named_pose_max_vel",
-                default_value="1.0",
-                description="GoToRobotPose nominal joint speed in rad/s "
-                            "(joint_limits max is 1.57).",
+                "GoToRobotPose nominal joint speed in rad/s "
+                "(joint_limits max is 1.57).",
             ),
-            DeclareLaunchArgument(
-                "use_semantic", default_value="false",
-                description="Start the YOLO semantic chain (segmenter + point "
-                            "filter) and feed the detector the cargo cloud."),
-            DeclareLaunchArgument(
-                "semantic_require_backend", default_value="",
-                description="If set, segmenter startup fails unless "
-                            "stats['backend'] starts with this prefix "
-                            "(e.g. bbox_fill). Empty disables the guard."),
-            DeclareLaunchArgument(
-                "visual_kind", default_value="box",
-                description="Pickup visual: box (primitive AABB) or mesh "
-                            "(pre-scaled suitcase STL, visual=collision)."),
-            DeclareLaunchArgument(
-                "size_mode", default_value="catalog",
-                description="Pickup size: catalog (small/medium/large) or "
-                            "continuous (box visual only)."),
-            DeclareLaunchArgument(
-                "yaw_mode", default_value="",
-                description="Override catalog yaw_mode (discrete/continuous)."),
-            DeclareLaunchArgument(
-                "yaw_range", default_value="0.0,0.0",
-                description="Yaw range used when yaw_mode is continuous."),
-            DeclareLaunchArgument(
-                "xy_jitter_range", default_value="0.0,0.0",
-                description="Pickup XY jitter half-widths in metres."),
-            DeclareLaunchArgument(
-                "sequence_ids", default_value="",
-                description="Comma-separated catalog ids for SpawnNextBox "
-                            "(e.g. carryon,standard). Empty = weighted random."),
-            DeclareLaunchArgument(
+            profile_arg(
+                "use_semantic",
+                "Start the YOLO semantic chain (segmenter + point "
+                "filter) and feed the detector the cargo cloud."),
+            profile_arg(
+                "semantic_require_backend",
+                "If set, segmenter startup fails unless "
+                "stats['backend'] starts with this prefix "
+                "(e.g. bbox_fill). Empty disables the guard."),
+            profile_arg(
+                "visual_kind",
+                "Pickup visual: box (primitive AABB) or mesh "
+                "(pre-scaled suitcase STL, visual=collision)."),
+            profile_arg(
+                "size_mode",
+                "Pickup size: catalog (small/medium/large) or "
+                "continuous (box visual only)."),
+            profile_arg(
+                "yaw_mode",
+                "Override catalog yaw_mode (discrete/continuous)."),
+            profile_arg(
+                "yaw_range",
+                "Yaw range used when yaw_mode is continuous."),
+            profile_arg(
+                "xy_jitter_range",
+                "Pickup XY jitter half-widths in metres."),
+            profile_arg(
+                "sequence_ids",
+                "Comma-separated catalog ids for SpawnNextBox "
+                "(e.g. carryon,standard). Empty = weighted random."),
+            profile_arg(
                 "spawn_at_observe",
-                default_value="true",
-                description="Spawn gz_ros2_control at the named observe pose.",
+                "Spawn gz_ros2_control at the named observe pose.",
             ),
-            DeclareLaunchArgument(
+            profile_arg(
                 "observe_pose_name",
-                default_value="observe",
-                description="Key in robot_poses YAML (observe or pickup_observe).",
+                "Key in robot_poses YAML (observe or pickup_observe).",
             ),
-            DeclareLaunchArgument(
+            profile_arg(
                 "robot_poses_config",
-                default_value=PathJoinSubstitution(
-                    [
-                        FindPackageShare("luggage_description"),
-                        "config",
-                        "robot_poses.yaml.example",
-                    ]
-                ),
+                "Robot named-pose YAML path.",
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),

@@ -140,7 +140,11 @@ flexibility all leave residuals that compensation cannot see.
 
 ## Simulation caveats
 
-- Gazebo publishes no Mid-360 today. Nothing may assume the lidar stream exists.
-- If a simulated lidar is added without per-point times, set `deskewed=false`
-  and only mark `lidar_ok` after settle. Do not pretend a compensated cloud was
-  produced.
+- Gazebo Fortress publishes a repeating `gpu_lidar` raster on `/livox/lidar`
+  (handbook FOV 360° × −7°…+52°, 10 Hz, range 0.1–40 m). It is not the
+  real non-repetitive scan and has **no per-point times**.
+- That stream must be treated as `deskewed=false`. Only mark `lidar_ok`
+  after settle. Do not pretend a compensated cloud was produced.
+- `/livox/imu` is not simulated. Real-driver accelerations stay in **g**.
+- The preprocessor still does not attach lidar to `SyncedObservation`
+  (`enable_lidar_output=false`) until per-point deskew exists.

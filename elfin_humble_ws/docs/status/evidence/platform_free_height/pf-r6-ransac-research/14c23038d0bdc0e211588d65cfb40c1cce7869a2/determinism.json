@@ -1,0 +1,604 @@
+{
+  "baseline_ransac": {
+    "all_nonfinite": {
+      "repeat_identical": true
+    },
+    "asym_carryon": {
+      "repeat_identical": true
+    },
+    "asym_large": {
+      "repeat_identical": true
+    },
+    "asym_standard": {
+      "repeat_identical": true
+    },
+    "clutter_partial": {
+      "repeat_identical": true
+    },
+    "clutter_single_side": {
+      "repeat_identical": true
+    },
+    "competing_lower": {
+      "repeat_identical": true
+    },
+    "flat_clean_carryon": {
+      "repeat_identical": true
+    },
+    "flat_clean_large": {
+      "repeat_identical": true
+    },
+    "flat_clean_noise": {
+      "repeat_identical": true
+    },
+    "flat_clean_standard": {
+      "repeat_identical": true
+    },
+    "floor_below_band": {
+      "repeat_identical": true
+    },
+    "flyers_mild": {
+      "repeat_identical": true
+    },
+    "flyers_only": {
+      "repeat_identical": true
+    },
+    "insufficient": {
+      "repeat_identical": true
+    },
+    "missing_side_carryon": {
+      "repeat_identical": true
+    },
+    "missing_side_large": {
+      "repeat_identical": true
+    },
+    "nonfinite_starved": {
+      "repeat_identical": true
+    }
+  },
+  "grid_seed_robust_z": {
+    "all_nonfinite": {
+      "repeat_identical": true
+    },
+    "asym_carryon": {
+      "repeat_identical": true
+    },
+    "asym_large": {
+      "repeat_identical": true
+    },
+    "asym_standard": {
+      "repeat_identical": true
+    },
+    "clutter_partial": {
+      "repeat_identical": true
+    },
+    "clutter_single_side": {
+      "repeat_identical": true
+    },
+    "competing_lower": {
+      "repeat_identical": true
+    },
+    "flat_clean_carryon": {
+      "repeat_identical": true
+    },
+    "flat_clean_large": {
+      "repeat_identical": true
+    },
+    "flat_clean_noise": {
+      "repeat_identical": true
+    },
+    "flat_clean_standard": {
+      "repeat_identical": true
+    },
+    "floor_below_band": {
+      "repeat_identical": true
+    },
+    "flyers_mild": {
+      "repeat_identical": true
+    },
+    "flyers_only": {
+      "repeat_identical": true
+    },
+    "insufficient": {
+      "repeat_identical": true
+    },
+    "missing_side_carryon": {
+      "repeat_identical": true
+    },
+    "missing_side_large": {
+      "repeat_identical": true
+    },
+    "nonfinite_starved": {
+      "repeat_identical": true
+    }
+  },
+  "one_point_constrained_ransac": {
+    "all_nonfinite": {
+      "cross_seed_identical": true,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          1,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          2,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ]
+      ]
+    },
+    "asym_carryon": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25994
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          25994
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25983
+        ]
+      ]
+    },
+    "asym_large": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25993
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          25934
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25934
+        ]
+      ]
+    },
+    "asym_standard": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25977
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          25995
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25990
+        ]
+      ]
+    },
+    "clutter_partial": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          21980
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          21998
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          21735
+        ]
+      ]
+    },
+    "clutter_single_side": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "DETECT_SUPPORT_UNSTABLE",
+          -0.08,
+          9007
+        ],
+        [
+          1,
+          "DETECT_SUPPORT_UNSTABLE",
+          -0.08,
+          8981
+        ],
+        [
+          2,
+          "DETECT_SUPPORT_UNSTABLE",
+          -0.08,
+          8900
+        ]
+      ]
+    },
+    "competing_lower": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25919
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          25992
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25992
+        ]
+      ]
+    },
+    "flat_clean_carryon": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          23985
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          23995
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          23988
+        ]
+      ]
+    },
+    "flat_clean_large": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          32970
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          32890
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          32991
+        ]
+      ]
+    },
+    "flat_clean_noise": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25330
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          25330
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25167
+        ]
+      ]
+    },
+    "flat_clean_standard": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          28983
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          28984
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          28919
+        ]
+      ]
+    },
+    "floor_below_band": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          29991
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          29988
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          29980
+        ]
+      ]
+    },
+    "flyers_mild": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          25926
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          26005
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          25999
+        ]
+      ]
+    },
+    "flyers_only": {
+      "cross_seed_identical": true,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          1,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          2,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ]
+      ]
+    },
+    "insufficient": {
+      "cross_seed_identical": true,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          1,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          2,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ]
+      ]
+    },
+    "missing_side_carryon": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          21990
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          21997
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          21927
+        ]
+      ]
+    },
+    "missing_side_large": {
+      "cross_seed_identical": false,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "ok",
+          0.0,
+          21994
+        ],
+        [
+          1,
+          "ok",
+          0.0,
+          21986
+        ],
+        [
+          2,
+          "ok",
+          0.0,
+          21984
+        ]
+      ]
+    },
+    "nonfinite_starved": {
+      "cross_seed_identical": true,
+      "fixed_seed_repeat_identical": true,
+      "per_seed": [
+        [
+          0,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          1,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ],
+        [
+          2,
+          "DETECT_SUPPORT_UNOBSERVABLE",
+          null,
+          0
+        ]
+      ]
+    }
+  },
+  "zmode_median": {
+    "all_nonfinite": {
+      "repeat_identical": true
+    },
+    "asym_carryon": {
+      "repeat_identical": true
+    },
+    "asym_large": {
+      "repeat_identical": true
+    },
+    "asym_standard": {
+      "repeat_identical": true
+    },
+    "clutter_partial": {
+      "repeat_identical": true
+    },
+    "clutter_single_side": {
+      "repeat_identical": true
+    },
+    "competing_lower": {
+      "repeat_identical": true
+    },
+    "flat_clean_carryon": {
+      "repeat_identical": true
+    },
+    "flat_clean_large": {
+      "repeat_identical": true
+    },
+    "flat_clean_noise": {
+      "repeat_identical": true
+    },
+    "flat_clean_standard": {
+      "repeat_identical": true
+    },
+    "floor_below_band": {
+      "repeat_identical": true
+    },
+    "flyers_mild": {
+      "repeat_identical": true
+    },
+    "flyers_only": {
+      "repeat_identical": true
+    },
+    "insufficient": {
+      "repeat_identical": true
+    },
+    "missing_side_carryon": {
+      "repeat_identical": true
+    },
+    "missing_side_large": {
+      "repeat_identical": true
+    },
+    "nonfinite_starved": {
+      "repeat_identical": true
+    }
+  }
+}

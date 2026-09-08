@@ -20,6 +20,7 @@ from luggage_description.suitcase_visual import (
     cuboid_inertia,
     file_uri,
     load_sized_suitcases_manifest,
+    mesh_observable_reference,
     mesh_top_footprint,
     mesh_uri,
     pickup_box_pose,
@@ -77,18 +78,13 @@ class TestSuitcaseSdf(unittest.TestCase):
         self.assertIsNone(root.find(".//collision/geometry/box"))
         self.assertIsNotNone(root.find(".//visual/material/diffuse"))
 
-    def test_box_visual_matches_collision(self):
-        size = [0.73, 0.48, 0.28]
-        xml = suitcase_sdf(
-            "pickup_box_1", size, 12.0, VISUAL_VINTAGE, visual_kind="box")
-        root = ET.fromstring(xml)
-        visual = [float(v) for v in root.find(
-            ".//visual/geometry/box/size").text.split()]
-        collision = [float(v) for v in root.find(
-            ".//collision/geometry/box/size").text.split()]
-        self.assertIsNone(root.find(".//visual/geometry/mesh"))
-        self.assertEqual(visual, size)
-        self.assertEqual(collision, size)
+    def test_box_visual_kind_is_rejected(self):
+        """Untextured primitive-box visuals were removed (YOLO-World
+        cannot detect them reliably); mesh is the only supported kind."""
+        with self.assertRaises(ValueError):
+            suitcase_sdf(
+                "pickup_box_1", [0.73, 0.48, 0.28], 12.0, VISUAL_VINTAGE,
+                visual_kind="box")
 
     def test_already_scaled_keeps_unit_mesh_scale_on_both(self):
         size = [0.77, 0.48, 0.25]
@@ -232,15 +228,11 @@ class TestWriteScaledStl(unittest.TestCase):
 
 
 class TestPickupVisualSdf(unittest.TestCase):
-    def test_box_kind_has_no_mesh(self):
-        xml = pickup_visual_sdf(
-            "pickup_box_1", [0.55, 0.40, 0.25], 8.0, VISUAL_LOAFBRR,
-            visual_kind="box")
-        root = ET.fromstring(xml)
-        self.assertIsNone(root.find(".//visual/geometry/mesh"))
-        visual = [float(v) for v in root.find(
-            ".//visual/geometry/box/size").text.split()]
-        self.assertEqual(visual, [0.55, 0.40, 0.25])
+    def test_box_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            pickup_visual_sdf(
+                "pickup_box_1", [0.55, 0.40, 0.25], 8.0, VISUAL_LOAFBRR,
+                visual_kind="box")
 
     def test_mesh_kind_uses_prebuilt_uri_and_writes_no_stl(self):
         dest_dir = tempfile.mkdtemp()
@@ -332,3 +324,35 @@ class TestSizedPickupAssets(unittest.TestCase):
         self.assertEqual(size_tier_name([0.80, 0.50, 0.32]), "large")
         self.assertIsNone(size_tier_name([0.61, 0.44, 0.27]))
 
+
+
+class TestMeshObservableReference(unittest.TestCase):
+    """GT option A (user decision 2026-09-04): observable mesh geometry.
+
+    The sized suitcase AABB equals the catalog size exactly, so the GT
+    reports the STL-derived observable surface instead: lid-plane XY
+    extent and the observable height below the lid plane.
+    """
+
+    def test_reference_is_inside_catalog_and_below_top(self):
+        for visual in (VISUAL_LOAFBRR, VISUAL_VINTAGE):
+            for tier, size in (("small", (0.55, 0.40, 0.25)),
+                               ("medium", (0.70, 0.45, 0.28)),
+                               ("large", (0.80, 0.50, 0.32))):
+                stl = sized_stl_path(visual, tier, GAZEBO_MODELS)
+                w, d, lid_off, h = mesh_observable_reference(stl)
+                # Observable extent never exceeds the catalog AABB...
+                self.assertLessEqual(w + 1e-6, size[0], (visual, tier))
+                self.assertLessEqual(d + 1e-6, size[1], (visual, tier))
+                self.assertLessEqual(h + 1e-6, size[2] + lid_off)
+                # ...the lid sits measurably below the AABB top...
+                self.assertGreater(lid_off, 0.005, (visual, tier))
+                self.assertLess(lid_off, 0.030, (visual, tier))
+                # ...and the observable height is positive and sane.
+                self.assertGreater(h - lid_off, 0.0)
+                self.assertLessEqual(h, size[2] + 1e-6)
+
+    def test_reference_is_deterministic(self):
+        stl = sized_stl_path(VISUAL_LOAFBRR, "medium", GAZEBO_MODELS)
+        self.assertEqual(mesh_observable_reference(stl),
+                         mesh_observable_reference(stl))

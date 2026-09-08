@@ -1,0 +1,899 @@
+{
+  "duration_s": 120.0,
+  "rates_hz": {
+    "raw_img": 20.676,
+    "pre_rgb": 4.403,
+    "depth_pts": 3.822,
+    "cargo": 3.677,
+    "yolo": 4.664,
+    "frame": 3.518,
+    "diag": null,
+    "filter_stats": 8.738,
+    "stream_stats": 3.518,
+    "current_box": null
+  },
+  "counts": {
+    "raw_img": 2482,
+    "pre_rgb": 527,
+    "depth_pts": 454,
+    "cargo": 442,
+    "yolo": 560,
+    "frame": 419,
+    "diag": 0,
+    "filter_stats": 1049,
+    "stream_stats": 419,
+    "current_box": 12
+  },
+  "stage_delta_ms": {
+    "raw_img->pre_rgb": {
+      "n": 392,
+      "p50": 267.1,
+      "p95": 446.966,
+      "max": 609.348
+    },
+    "pre_rgb->yolo": {
+      "n": 489,
+      "p50": 30.824,
+      "p95": 60.021,
+      "max": 83.735
+    },
+    "depth_pts->cargo": {
+      "n": 409,
+      "p50": 67.547,
+      "p95": 77.126,
+      "max": 280.703
+    },
+    "yolo->frame": {
+      "n": 419,
+      "p50": 426.164,
+      "p95": 481.133,
+      "max": 539.339
+    },
+    "raw_img->frame_e2e": {
+      "n": 320,
+      "p50": 703.645,
+      "p95": 930.026,
+      "max": 1018.995
+    }
+  },
+  "stamp_matches": {
+    "pre_rgb/yolo": {
+      "left": "pre_rgb",
+      "right": "yolo",
+      "left_count": 527,
+      "right_count": 560,
+      "matched": 489,
+      "left_only": 38,
+      "right_only": 71
+    },
+    "depth_pts/cargo": {
+      "left": "depth_pts",
+      "right": "cargo",
+      "left_count": 454,
+      "right_count": 431,
+      "matched": 409,
+      "left_only": 45,
+      "right_only": 22
+    },
+    "yolo/frame": {
+      "left": "yolo",
+      "right": "frame",
+      "left_count": 560,
+      "right_count": 419,
+      "matched": 419,
+      "left_only": 141,
+      "right_only": 0
+    }
+  },
+  "first_latency_after_box_ms": {
+    "1": {
+      "first_top_only_ms": 192.373,
+      "first_full_3d_ms": null
+    },
+    "2": {
+      "first_top_only_ms": 722.719,
+      "first_full_3d_ms": 1805.462
+    },
+    "3": {
+      "first_top_only_ms": 367.13,
+      "first_full_3d_ms": null
+    },
+    "4": {
+      "first_top_only_ms": 433.804,
+      "first_full_3d_ms": 2029.329
+    },
+    "5": {
+      "first_top_only_ms": 311.946,
+      "first_full_3d_ms": null
+    },
+    "6": {
+      "first_top_only_ms": 597.911,
+      "first_full_3d_ms": 2105.547
+    },
+    "7": {
+      "first_top_only_ms": 346.436,
+      "first_full_3d_ms": null
+    },
+    "8": {
+      "first_top_only_ms": 699.85,
+      "first_full_3d_ms": 1864.773
+    },
+    "9": {
+      "first_top_only_ms": 352.841,
+      "first_full_3d_ms": null
+    },
+    "10": {
+      "first_top_only_ms": 680.723,
+      "first_full_3d_ms": 1975.233
+    },
+    "11": {
+      "first_top_only_ms": 297.612,
+      "first_full_3d_ms": null
+    },
+    "12": {
+      "first_top_only_ms": 603.971,
+      "first_full_3d_ms": 1596.108
+    }
+  },
+  "latest_filter_stats": {
+    "associate_radius_m": 0.15,
+    "buffer_maxlen": 10,
+    "buffer_occupancy": {
+      "cloud": 0,
+      "exact_join_candidates": 0,
+      "instance": 0,
+      "mask": 1
+    },
+    "cargo_count": 116451,
+    "cargo_voxel_size": 0.005,
+    "centroid": [
+      -0.8859057749556428,
+      -0.0496137148567435,
+      1.0174519810023641
+    ],
+    "cloud": 1114,
+    "cloud_buffer_evicted": 0,
+    "cloud_count": 1114,
+    "cloud_decode_fail": 0,
+    "cloud_stamp": 276.606,
+    "cloud_waiting_for_mask": 79,
+    "epoch_reset": 12,
+    "excluded_count": 190136,
+    "executor_lag_sec": 0.6299999999999955,
+    "generation": 12,
+    "instance": 10,
+    "instance_buffer_evicted": 0,
+    "instance_id": "pickup_box_0006_large",
+    "join_count": 1047,
+    "joined": 1035,
+    "last_cargo_n_points": 35413,
+    "last_cloud_stamp": 276.606,
+    "last_join_stamp": 276.606,
+    "last_mask_stamp": 276.804,
+    "latest_cloud_mask_gap_sec": -0.19799999999997908,
+    "mask": 1352,
+    "mask_buffer_evicted": 0,
+    "mask_count": 1352,
+    "mask_decode_fail": 0,
+    "mask_waiting_for_cloud": 1352,
+    "motion_weight": 1.0,
+    "n_points": 116451,
+    "no_intrinsics": 0,
+    "obstacle_count": 116451,
+    "obstacle_publish_count": 0,
+    "obstacle_publish_skipped": 1030,
+    "out_of_frame_count": 613,
+    "processed": 1035,
+    "raw_count": 307200,
+    "source": "measure",
+    "stage_ms": {
+      "cargo_points": 116451,
+      "cloud_decode_ms": 1.7988620093092322,
+      "filter_ms": 29.270044004078954,
+      "input_points": 307200,
+      "mask_decode_ms": 0.21920498693361878,
+      "obstacle_points": 116451,
+      "process_total_ms": 65.19030599156395,
+      "publish_ms": 28.429985002730973,
+      "to_world_ms": 1.2754820054396987,
+      "tracker_ms": 4.183904005913064
+    },
+    "stale_cloud_dropped": 79,
+    "stale_drop_count": 393,
+    "stale_instance_dropped": 5,
+    "stale_mask_dropped": 309,
+    "tf_miss": 0
+  },
+  "latest_stream_stats": {
+    "filter_stats": {
+      "associate_radius_m": 0.15,
+      "buffer_maxlen": 10,
+      "buffer_occupancy": {
+        "cloud": 0,
+        "exact_join_candidates": 0,
+        "instance": 0,
+        "mask": 1
+      },
+      "cargo_count": 116451,
+      "cargo_voxel_size": 0.005,
+      "centroid": [
+        -0.8859057749556428,
+        -0.0496137148567435,
+        1.0174519810023641
+      ],
+      "cloud": 1114,
+      "cloud_buffer_evicted": 0,
+      "cloud_count": 1114,
+      "cloud_decode_fail": 0,
+      "cloud_stamp": 276.606,
+      "cloud_waiting_for_mask": 79,
+      "epoch_reset": 12,
+      "excluded_count": 190136,
+      "executor_lag_sec": 0.6299999999999955,
+      "generation": 12,
+      "instance": 10,
+      "instance_buffer_evicted": 0,
+      "instance_id": "pickup_box_0006_large",
+      "join_count": 1047,
+      "joined": 1035,
+      "last_cargo_n_points": 35413,
+      "last_cloud_stamp": 276.606,
+      "last_join_stamp": 276.606,
+      "last_mask_stamp": 276.804,
+      "latest_cloud_mask_gap_sec": -0.19799999999997908,
+      "mask": 1352,
+      "mask_buffer_evicted": 0,
+      "mask_count": 1352,
+      "mask_decode_fail": 0,
+      "mask_waiting_for_cloud": 1352,
+      "motion_weight": 1.0,
+      "n_points": 116451,
+      "no_intrinsics": 0,
+      "obstacle_count": 116451,
+      "obstacle_publish_count": 0,
+      "obstacle_publish_skipped": 1030,
+      "out_of_frame_count": 613,
+      "processed": 1035,
+      "raw_count": 307200,
+      "source": "measure",
+      "stage_ms": {
+        "cargo_points": 116451,
+        "cloud_decode_ms": 1.7988620093092322,
+        "filter_ms": 29.270044004078954,
+        "input_points": 307200,
+        "mask_decode_ms": 0.21920498693361878,
+        "obstacle_points": 116451,
+        "process_total_ms": 65.19030599156395,
+        "publish_ms": 28.429985002730973,
+        "to_world_ms": 1.2754820054396987,
+        "tracker_ms": 4.183904005913064
+      },
+      "stale_cloud_dropped": 79,
+      "stale_drop_count": 393,
+      "stale_instance_dropped": 5,
+      "stale_mask_dropped": 309,
+      "tf_miss": 0
+    },
+    "frame_seq": 1027,
+    "generation": 12,
+    "geometry_level": 1,
+    "instance_id": "pickup_box_0006_large",
+    "n_cargo_points": 35413,
+    "pca_confidence": 1.0,
+    "pca_reason": "ok",
+    "pca_source": "measure",
+    "pca_valid": true,
+    "raw_buffer_len": 10,
+    "raw_buffer_maxlen": 10,
+    "raw_counts": {
+      "raw_evicted": 987,
+      "raw_lookup_decode_fail": 0,
+      "raw_lookup_empty": 0,
+      "raw_lookup_hit": 321,
+      "raw_lookup_miss": 8,
+      "raw_lookup_tf_fail": 0,
+      "raw_received": 1107
+    },
+    "raw_lookup": {
+      "raw_buffer_len": 10,
+      "raw_buffer_maxlen": 10,
+      "raw_lookup_attempts": 1,
+      "raw_lookup_key": [
+        276,
+        541000000
+      ],
+      "raw_lookup_status": "hit",
+      "raw_lookup_wait_ms": 10.20416100800503
+    },
+    "stamp": 276.541,
+    "stamp_key": [
+      276,
+      541000000
+    ],
+    "support_gate": "",
+    "support_inliers": 21629,
+    "support_reason": "ok",
+    "support_valid": true,
+    "timing_ms": {
+      "geometry_ms": 210.1989049988333,
+      "pipeline": {
+        "compose_ms": 0.019397004507482052,
+        "pipeline_total_ms": 210.19037900259718,
+        "support_annulus_ms": 0.480909991892986,
+        "support_band_ms": 0.748145001125522,
+        "support_band_points": 50191,
+        "support_candidate_points": 21632,
+        "support_crop_ms": 2.1626500092679635,
+        "support_cropped_points": 126216,
+        "support_gate_total_ms": 138.55474200681783,
+        "support_inlier_points": 21629,
+        "support_input_points": 307200,
+        "support_ransac_ms": 127.60811700718477,
+        "support_side_ms": 0.1079640060197562,
+        "support_total_ms": 137.98385299742222,
+        "top_crop_ms": 0.34645601408556104,
+        "top_cropped_points": 26909,
+        "top_inlier_points": 3190,
+        "top_input_points": 35413,
+        "top_pca_ms": 0.45629299711436033,
+        "top_ransac_ms": 39.389133991790004,
+        "top_refine_ms": 27.507648992468603,
+        "top_total_ms": 71.58341800095513,
+        "top_voxel_ms": 2.7772030007326975,
+        "top_voxel_points": 7046
+      },
+      "read_ms": 1.3126129924785346,
+      "tf_ms": 0.47683199227321893
+    },
+    "yolo_count": 1
+  },
+  "latest_valid_stream_stats": {
+    "filter_stats": {
+      "associate_radius_m": 0.15,
+      "buffer_maxlen": 10,
+      "buffer_occupancy": {
+        "cloud": 0,
+        "exact_join_candidates": 0,
+        "instance": 0,
+        "mask": 1
+      },
+      "cargo_count": 116451,
+      "cargo_voxel_size": 0.005,
+      "centroid": [
+        -0.8859057749556428,
+        -0.0496137148567435,
+        1.0174519810023641
+      ],
+      "cloud": 1114,
+      "cloud_buffer_evicted": 0,
+      "cloud_count": 1114,
+      "cloud_decode_fail": 0,
+      "cloud_stamp": 276.606,
+      "cloud_waiting_for_mask": 79,
+      "epoch_reset": 12,
+      "excluded_count": 190136,
+      "executor_lag_sec": 0.6299999999999955,
+      "generation": 12,
+      "instance": 10,
+      "instance_buffer_evicted": 0,
+      "instance_id": "pickup_box_0006_large",
+      "join_count": 1047,
+      "joined": 1035,
+      "last_cargo_n_points": 35413,
+      "last_cloud_stamp": 276.606,
+      "last_join_stamp": 276.606,
+      "last_mask_stamp": 276.804,
+      "latest_cloud_mask_gap_sec": -0.19799999999997908,
+      "mask": 1352,
+      "mask_buffer_evicted": 0,
+      "mask_count": 1352,
+      "mask_decode_fail": 0,
+      "mask_waiting_for_cloud": 1352,
+      "motion_weight": 1.0,
+      "n_points": 116451,
+      "no_intrinsics": 0,
+      "obstacle_count": 116451,
+      "obstacle_publish_count": 0,
+      "obstacle_publish_skipped": 1030,
+      "out_of_frame_count": 613,
+      "processed": 1035,
+      "raw_count": 307200,
+      "source": "measure",
+      "stage_ms": {
+        "cargo_points": 116451,
+        "cloud_decode_ms": 1.7988620093092322,
+        "filter_ms": 29.270044004078954,
+        "input_points": 307200,
+        "mask_decode_ms": 0.21920498693361878,
+        "obstacle_points": 116451,
+        "process_total_ms": 65.19030599156395,
+        "publish_ms": 28.429985002730973,
+        "to_world_ms": 1.2754820054396987,
+        "tracker_ms": 4.183904005913064
+      },
+      "stale_cloud_dropped": 79,
+      "stale_drop_count": 393,
+      "stale_instance_dropped": 5,
+      "stale_mask_dropped": 309,
+      "tf_miss": 0
+    },
+    "frame_seq": 1027,
+    "generation": 12,
+    "geometry_level": 1,
+    "instance_id": "pickup_box_0006_large",
+    "n_cargo_points": 35413,
+    "pca_confidence": 1.0,
+    "pca_reason": "ok",
+    "pca_source": "measure",
+    "pca_valid": true,
+    "raw_buffer_len": 10,
+    "raw_buffer_maxlen": 10,
+    "raw_counts": {
+      "raw_evicted": 987,
+      "raw_lookup_decode_fail": 0,
+      "raw_lookup_empty": 0,
+      "raw_lookup_hit": 321,
+      "raw_lookup_miss": 8,
+      "raw_lookup_tf_fail": 0,
+      "raw_received": 1107
+    },
+    "raw_lookup": {
+      "raw_buffer_len": 10,
+      "raw_buffer_maxlen": 10,
+      "raw_lookup_attempts": 1,
+      "raw_lookup_key": [
+        276,
+        541000000
+      ],
+      "raw_lookup_status": "hit",
+      "raw_lookup_wait_ms": 10.20416100800503
+    },
+    "stamp": 276.541,
+    "stamp_key": [
+      276,
+      541000000
+    ],
+    "support_gate": "",
+    "support_inliers": 21629,
+    "support_reason": "ok",
+    "support_valid": true,
+    "timing_ms": {
+      "geometry_ms": 210.1989049988333,
+      "pipeline": {
+        "compose_ms": 0.019397004507482052,
+        "pipeline_total_ms": 210.19037900259718,
+        "support_annulus_ms": 0.480909991892986,
+        "support_band_ms": 0.748145001125522,
+        "support_band_points": 50191,
+        "support_candidate_points": 21632,
+        "support_crop_ms": 2.1626500092679635,
+        "support_cropped_points": 126216,
+        "support_gate_total_ms": 138.55474200681783,
+        "support_inlier_points": 21629,
+        "support_input_points": 307200,
+        "support_ransac_ms": 127.60811700718477,
+        "support_side_ms": 0.1079640060197562,
+        "support_total_ms": 137.98385299742222,
+        "top_crop_ms": 0.34645601408556104,
+        "top_cropped_points": 26909,
+        "top_inlier_points": 3190,
+        "top_input_points": 35413,
+        "top_pca_ms": 0.45629299711436033,
+        "top_ransac_ms": 39.389133991790004,
+        "top_refine_ms": 27.507648992468603,
+        "top_total_ms": 71.58341800095513,
+        "top_voxel_ms": 2.7772030007326975,
+        "top_voxel_points": 7046
+      },
+      "read_ms": 1.3126129924785346,
+      "tf_ms": 0.47683199227321893
+    },
+    "yolo_count": 1
+  },
+  "pca_reasons": {
+    "DETECT_NO_CLOUD": 90,
+    "ok": 329
+  },
+  "filter_stage_timing_ms": {
+    "cargo_points": {
+      "n": 1049,
+      "p50": 116451.0,
+      "p95": 117145.0,
+      "max": 117145.0
+    },
+    "cloud_decode_ms": {
+      "n": 1049,
+      "p50": 2.155,
+      "p95": 3.87,
+      "max": 6.283
+    },
+    "filter_ms": {
+      "n": 1049,
+      "p50": 24.647,
+      "p95": 31.305,
+      "max": 37.012
+    },
+    "input_points": {
+      "n": 1049,
+      "p50": 307200.0,
+      "p95": 307200.0,
+      "max": 307200.0
+    },
+    "mask_decode_ms": {
+      "n": 1049,
+      "p50": 0.294,
+      "p95": 1.113,
+      "max": 2.899
+    },
+    "obstacle_points": {
+      "n": 1049,
+      "p50": 116451.0,
+      "p95": 117145.0,
+      "max": 117145.0
+    },
+    "process_total_ms": {
+      "n": 1049,
+      "p50": 68.569,
+      "p95": 78.107,
+      "max": 106.476
+    },
+    "publish_ms": {
+      "n": 1049,
+      "p50": 35.826,
+      "p95": 41.39,
+      "max": 62.833
+    },
+    "to_world_ms": {
+      "n": 1049,
+      "p50": 1.075,
+      "p95": 1.977,
+      "max": 3.329
+    },
+    "tracker_ms": {
+      "n": 1049,
+      "p50": 3.867,
+      "p95": 5.553,
+      "max": 8.297
+    }
+  },
+  "stream_timing_ms": {
+    "geometry_ms": {
+      "n": 329,
+      "p50": 210.783,
+      "p95": 276.818,
+      "max": 342.598
+    },
+    "pipeline.compose_ms": {
+      "n": 329,
+      "p50": 0.018,
+      "p95": 0.026,
+      "max": 0.056
+    },
+    "pipeline.pipeline_total_ms": {
+      "n": 329,
+      "p50": 210.771,
+      "p95": 276.809,
+      "max": 342.586
+    },
+    "pipeline.support_annulus_ms": {
+      "n": 321,
+      "p50": 0.498,
+      "p95": 0.91,
+      "max": 1.673
+    },
+    "pipeline.support_band_ms": {
+      "n": 321,
+      "p50": 0.656,
+      "p95": 1.091,
+      "max": 2.317
+    },
+    "pipeline.support_band_points": {
+      "n": 321,
+      "p50": 50191.0,
+      "p95": 71220.0,
+      "max": 71282.0
+    },
+    "pipeline.support_candidate_points": {
+      "n": 321,
+      "p50": 21632.0,
+      "p95": 31533.0,
+      "max": 33807.0
+    },
+    "pipeline.support_crop_ms": {
+      "n": 321,
+      "p50": 1.766,
+      "p95": 2.573,
+      "max": 4.127
+    },
+    "pipeline.support_cropped_points": {
+      "n": 321,
+      "p50": 126216.0,
+      "p95": 126216.0,
+      "max": 126216.0
+    },
+    "pipeline.support_gate_total_ms": {
+      "n": 329,
+      "p50": 135.406,
+      "p95": 195.444,
+      "max": 248.923
+    },
+    "pipeline.support_inlier_points": {
+      "n": 321,
+      "p50": 21629.0,
+      "p95": 31533.0,
+      "max": 33807.0
+    },
+    "pipeline.support_input_points": {
+      "n": 321,
+      "p50": 307200.0,
+      "p95": 307200.0,
+      "max": 307200.0
+    },
+    "pipeline.support_ransac_ms": {
+      "n": 321,
+      "p50": 126.008,
+      "p95": 183.909,
+      "max": 238.775
+    },
+    "pipeline.support_side_ms": {
+      "n": 321,
+      "p50": 0.244,
+      "p95": 1.926,
+      "max": 4.368
+    },
+    "pipeline.support_total_ms": {
+      "n": 321,
+      "p50": 135.524,
+      "p95": 194.7,
+      "max": 248.599
+    },
+    "pipeline.top_crop_ms": {
+      "n": 329,
+      "p50": 0.465,
+      "p95": 1.346,
+      "max": 3.127
+    },
+    "pipeline.top_cropped_points": {
+      "n": 329,
+      "p50": 26909.0,
+      "p95": 26909.0,
+      "max": 26909.0
+    },
+    "pipeline.top_inlier_points": {
+      "n": 329,
+      "p50": 3190.0,
+      "p95": 3190.0,
+      "max": 3246.0
+    },
+    "pipeline.top_input_points": {
+      "n": 329,
+      "p50": 35413.0,
+      "p95": 41684.0,
+      "max": 42815.0
+    },
+    "pipeline.top_pca_ms": {
+      "n": 329,
+      "p50": 0.471,
+      "p95": 1.0,
+      "max": 1.88
+    },
+    "pipeline.top_ransac_ms": {
+      "n": 329,
+      "p50": 39.641,
+      "p95": 50.341,
+      "max": 69.543
+    },
+    "pipeline.top_refine_ms": {
+      "n": 329,
+      "p50": 29.819,
+      "p95": 35.724,
+      "max": 59.462
+    },
+    "pipeline.top_total_ms": {
+      "n": 329,
+      "p50": 74.056,
+      "p95": 89.604,
+      "max": 131.155
+    },
+    "pipeline.top_voxel_ms": {
+      "n": 329,
+      "p50": 2.418,
+      "p95": 3.703,
+      "max": 8.694
+    },
+    "pipeline.top_voxel_points": {
+      "n": 329,
+      "p50": 7046.0,
+      "p95": 7046.0,
+      "max": 7046.0
+    },
+    "read_ms": {
+      "n": 416,
+      "p50": 1.628,
+      "p95": 2.75,
+      "max": 4.283
+    },
+    "tf_ms": {
+      "n": 325,
+      "p50": 0.545,
+      "p95": 1.034,
+      "max": 1.466
+    }
+  },
+  "valid_stream_timing_ms": {
+    "geometry_ms": {
+      "n": 329,
+      "p50": 210.783,
+      "p95": 276.818,
+      "max": 342.598
+    },
+    "pipeline.compose_ms": {
+      "n": 329,
+      "p50": 0.018,
+      "p95": 0.026,
+      "max": 0.056
+    },
+    "pipeline.pipeline_total_ms": {
+      "n": 329,
+      "p50": 210.771,
+      "p95": 276.809,
+      "max": 342.586
+    },
+    "pipeline.support_annulus_ms": {
+      "n": 321,
+      "p50": 0.498,
+      "p95": 0.91,
+      "max": 1.673
+    },
+    "pipeline.support_band_ms": {
+      "n": 321,
+      "p50": 0.656,
+      "p95": 1.091,
+      "max": 2.317
+    },
+    "pipeline.support_band_points": {
+      "n": 321,
+      "p50": 50191.0,
+      "p95": 71220.0,
+      "max": 71282.0
+    },
+    "pipeline.support_candidate_points": {
+      "n": 321,
+      "p50": 21632.0,
+      "p95": 31533.0,
+      "max": 33807.0
+    },
+    "pipeline.support_crop_ms": {
+      "n": 321,
+      "p50": 1.766,
+      "p95": 2.573,
+      "max": 4.127
+    },
+    "pipeline.support_cropped_points": {
+      "n": 321,
+      "p50": 126216.0,
+      "p95": 126216.0,
+      "max": 126216.0
+    },
+    "pipeline.support_gate_total_ms": {
+      "n": 329,
+      "p50": 135.406,
+      "p95": 195.444,
+      "max": 248.923
+    },
+    "pipeline.support_inlier_points": {
+      "n": 321,
+      "p50": 21629.0,
+      "p95": 31533.0,
+      "max": 33807.0
+    },
+    "pipeline.support_input_points": {
+      "n": 321,
+      "p50": 307200.0,
+      "p95": 307200.0,
+      "max": 307200.0
+    },
+    "pipeline.support_ransac_ms": {
+      "n": 321,
+      "p50": 126.008,
+      "p95": 183.909,
+      "max": 238.775
+    },
+    "pipeline.support_side_ms": {
+      "n": 321,
+      "p50": 0.244,
+      "p95": 1.926,
+      "max": 4.368
+    },
+    "pipeline.support_total_ms": {
+      "n": 321,
+      "p50": 135.524,
+      "p95": 194.7,
+      "max": 248.599
+    },
+    "pipeline.top_crop_ms": {
+      "n": 329,
+      "p50": 0.465,
+      "p95": 1.346,
+      "max": 3.127
+    },
+    "pipeline.top_cropped_points": {
+      "n": 329,
+      "p50": 26909.0,
+      "p95": 26909.0,
+      "max": 26909.0
+    },
+    "pipeline.top_inlier_points": {
+      "n": 329,
+      "p50": 3190.0,
+      "p95": 3190.0,
+      "max": 3246.0
+    },
+    "pipeline.top_input_points": {
+      "n": 329,
+      "p50": 35413.0,
+      "p95": 41684.0,
+      "max": 42815.0
+    },
+    "pipeline.top_pca_ms": {
+      "n": 329,
+      "p50": 0.471,
+      "p95": 1.0,
+      "max": 1.88
+    },
+    "pipeline.top_ransac_ms": {
+      "n": 329,
+      "p50": 39.641,
+      "p95": 50.341,
+      "max": 69.543
+    },
+    "pipeline.top_refine_ms": {
+      "n": 329,
+      "p50": 29.819,
+      "p95": 35.724,
+      "max": 59.462
+    },
+    "pipeline.top_total_ms": {
+      "n": 329,
+      "p50": 74.056,
+      "p95": 89.604,
+      "max": 131.155
+    },
+    "pipeline.top_voxel_ms": {
+      "n": 329,
+      "p50": 2.418,
+      "p95": 3.703,
+      "max": 8.694
+    },
+    "pipeline.top_voxel_points": {
+      "n": 329,
+      "p50": 7046.0,
+      "p95": 7046.0,
+      "max": 7046.0
+    },
+    "read_ms": {
+      "n": 326,
+      "p50": 1.767,
+      "p95": 2.843,
+      "max": 4.283
+    },
+    "tf_ms": {
+      "n": 325,
+      "p50": 0.545,
+      "p95": 1.034,
+      "max": 1.466
+    }
+  },
+  "cargo_points": {
+    "n": 442,
+    "p50": 35413.0,
+    "p95": 41684.0,
+    "max": 42815.0
+  },
+  "detector_rss_kb": {
+    "first": 188068,
+    "last": 279240,
+    "samples": 1250
+  },
+  "pid": 527293
+}

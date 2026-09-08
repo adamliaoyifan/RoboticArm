@@ -20,6 +20,41 @@ sensor_preprocessor:
     enable_lidar_output: false
     enable_imu: false
     camera_slop_sec: 0.020
+    # PF-R9 B2 split (from the B1 measurement, 130 s window, box present,
+    # full semantic load; evidence 2026-09-08_pfr9_throughput/
+    # b1_period_probe_pre.json):
+    # - gz rgbd_camera co-stamps colour/depth/points, so the pairing
+    #   tolerance stays ~exact: 0.005 s (matched pairs arrive p50 2.8 ms
+    #   apart; tolerance bounds |stamp diff|, which is 0 for true pairs).
+    # - wait deadline 0.060 s > the measured matched-header receipt-lag
+    #   max 39.3 ms (p95 22.9 ms) with ~50% margin, and far below
+    #   camera_horizon_sec 0.35, so no clamping question arises. The
+    #   deadline runs on the RGB stream's own clock (newest buffered RGB
+    #   header stamp) and can no longer be advanced by 50 Hz
+    #   /joint_states.
+    # - after the deadline with no cloud the stamp is skipped
+    #   (cloud_wait_timeout, counted in diagnostics): B1 measured 15.2%
+    #   of RGB stamps have no same-stamp cloud at all; emitting them
+    #   RGB-only would pin cloud_ok near 85% < 95% (B4). The flagged
+    #   RGB-only path remains available via camera_emit_rgb_only: true.
+    camera_pair_tolerance_sec: 0.005
+    camera_wait_deadline_sec: 0.060
+    camera_emit_rgb_only: false
+    # B1 also measured the QoS alternative: BEST_EFFORT lost 31-37% of
+    # messages on both topics vs RELIABLE on this RMW, so inputs stay
+    # RELIABLE (the B5 BEST_EFFORT item is skipped with that evidence).
+    cloud_input_qos_reliability: reliable
+    # PF-R9 B5 optional lever (reviews recommendation E), selected with
+    # measured cause: publishing the full 3.7 MB 307k-point cloud blocked
+    # the preprocessor (publish p95 233 ms / max 486 ms in
+    # cloud_stage_ms), which capped emission at ~3 Hz. Stride 2 keeps all
+    # rows/columns at half density: ~77k points, 0.9 MB. Retained cargo
+    # density measured ~29.5k -> ~7.4k points (min_points 50,
+    # min_top_points 80 — large margin); geometry non-regression is
+    # enforced by PF-R10 C1 (top/support z limits, false_measured_height
+    # == 0). The filter's (u,v) reprojection still indexes the full-res
+    # mask. 1 disables.
+    cloud_decimation_stride: 2
     camera_info_max_age_sec: 1.0
     camera_maxlen: 10
     camera_horizon_sec: 0.35

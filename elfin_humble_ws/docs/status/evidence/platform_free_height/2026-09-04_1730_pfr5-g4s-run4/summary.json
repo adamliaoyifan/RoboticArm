@@ -1,0 +1,259 @@
+{
+  "mode": "semantic",
+  "trials_requested": 30,
+  "spawn_failures": 0,
+  "stale_instance_frames": 0,
+  "warmup_frames_config": 5,
+  "gap_sec": 2.0,
+  "launch_params": "gui:=false use_rviz:=false use_semantic:=true use_motion:=true use_vacuum:=true visual_kind:=box size_mode:=catalog sequence_ids:=carryon,standard,large xy_jitter_range:=0.12,0.12 yaw_range:=-0.6,0.6 observe_pose_name:=pickup_observe",
+  "revision": {
+    "git_commit": "7af40220c9e86feb7f56908d9fcde389aa48dd9d",
+    "git_dirty_files": 67
+  },
+  "active_output_hz": 3.579735252735049,
+  "trial_cycle_hz": 0.1529783766834209,
+  "trial_cycle_sec_mean": 6.536871561066679,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.55,
+        0.4,
+        0.25
+      ],
+      [
+        0.7,
+        0.45,
+        0.28
+      ],
+      [
+        0.8,
+        0.5,
+        0.32
+      ]
+    ],
+    "n_sizes": 3,
+    "trials_per_size": {
+      "0.55x0.4x0.25": 10,
+      "0.7x0.45x0.28": 10,
+      "0.8x0.5x0.32": 10
+    },
+    "xy_offsets": [
+      [
+        -1.08,
+        -0.08
+      ],
+      [
+        -1.08,
+        -0.02
+      ],
+      [
+        -1.08,
+        0.02
+      ],
+      [
+        -1.07,
+        -0.07
+      ],
+      [
+        -1.07,
+        0.02
+      ],
+      [
+        -1.07,
+        0.04
+      ],
+      [
+        -1.06,
+        -0.03
+      ],
+      [
+        -1.05,
+        -0.05
+      ],
+      [
+        -1.04,
+        0.07
+      ],
+      [
+        -1.03,
+        0.03
+      ],
+      [
+        -1.03,
+        0.12
+      ],
+      [
+        -1.02,
+        -0.09
+      ],
+      [
+        -1.02,
+        -0.05
+      ],
+      [
+        -1.02,
+        -0.03
+      ],
+      [
+        -1.02,
+        0.02
+      ],
+      [
+        -1.02,
+        0.08
+      ],
+      [
+        -1.02,
+        0.11
+      ],
+      [
+        -1.0,
+        -0.07
+      ],
+      [
+        -1.0,
+        0.02
+      ],
+      [
+        -0.99,
+        -0.12
+      ],
+      [
+        -0.99,
+        0.1
+      ],
+      [
+        -0.98,
+        -0.04
+      ],
+      [
+        -0.98,
+        0.09
+      ],
+      [
+        -0.97,
+        -0.07
+      ],
+      [
+        -0.95,
+        -0.12
+      ],
+      [
+        -0.95,
+        0.1
+      ],
+      [
+        -0.95,
+        0.11
+      ],
+      [
+        -0.94,
+        -0.01
+      ],
+      [
+        -0.91,
+        0.08
+      ],
+      [
+        -0.88,
+        0.03
+      ]
+    ],
+    "n_xy_offsets": 30,
+    "yaw_deg": [
+      -34.0,
+      -31.0,
+      -28.0,
+      -19.0,
+      -18.0,
+      -13.0,
+      -12.0,
+      -9.0,
+      -4.0,
+      -2.0,
+      -1.0,
+      2.0,
+      3.0,
+      4.0,
+      8.0,
+      11.0,
+      12.0,
+      18.0,
+      21.0,
+      23.0,
+      27.0,
+      29.0,
+      32.0
+    ],
+    "n_yaws": 23,
+    "n_trials": 30
+  },
+  "n_settled": 253,
+  "categories": {
+    "warmup_frames": 150,
+    "settled_frames": 253,
+    "top_only": 0,
+    "full3d": 147,
+    "prior": 8,
+    "failed": 98
+  },
+  "top_surface_rate": 0.6126482213438735,
+  "full3d_rate": 0.9483870967741935,
+  "top_z_err_m": {
+    "count": 155,
+    "p50": 5.133460476702822e-07,
+    "p95": 1.0906730412152399e-06,
+    "max": 1.1433786590853146e-06
+  },
+  "support_z_err_m": {
+    "count": 147,
+    "p50": 3.072509598966988e-07,
+    "p95": 9.867630340609779e-07,
+    "max": 1.081457648655082e-06
+  },
+  "height_err_m": {
+    "count": 147,
+    "p50": 5.315577080167166e-07,
+    "p95": 1.9561030854542416e-06,
+    "max": 2.0774360751651955e-06
+  },
+  "xy_err_m": {
+    "count": 155,
+    "p50": 0.0013136791912235423,
+    "p95": 0.0023224907512123215,
+    "max": 0.003246626762848887
+  },
+  "width_err_m": {
+    "count": 155,
+    "p50": 0.0032601085768881877,
+    "p95": 0.005227032176025381,
+    "max": 0.005227032176025381
+  },
+  "depth_err_m": {
+    "count": 155,
+    "p50": 0.0020881770513528353,
+    "p95": 0.00318785672054972,
+    "max": 0.0034090711446227995
+  },
+  "false_measured_height": 0,
+  "limits": {
+    "top_surface_rate": 0.95,
+    "full3d_rate": 0.95,
+    "top_z_p95_m": 0.015,
+    "top_z_max_m": 0.025,
+    "support_z_p95_m": 0.015,
+    "support_z_max_m": 0.025,
+    "height_p95_m": 0.025,
+    "height_max_m": 0.04,
+    "xy_p95_m": 0.03,
+    "width_depth_p95_m": 0.05,
+    "false_measured_height": 0
+  },
+  "require_full_geometry": true,
+  "gate4_failures": [
+    "top_surface_rate 0.613 < 0.950",
+    "full3d_rate 0.948 < 0.950"
+  ],
+  "gate4_pass": false,
+  "coverage_failures": []
+}

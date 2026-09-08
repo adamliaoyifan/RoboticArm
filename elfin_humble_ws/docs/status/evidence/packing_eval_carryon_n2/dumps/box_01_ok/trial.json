@@ -2,9 +2,9 @@
   "catalog_id": "carryon",
   "descend_fraction": 1.0,
   "drift": 0.0,
-  "err_xy": 0.007078809292529371,
+  "err_xy": 0.00792717232056919,
   "err_yaw": null,
-  "err_z": -0.002311000000000174,
+  "err_z": -0.002263000000000126,
   "extras": {
     "add_placed": "added placed_0_0_0",
     "build": "7 segments for phase=place",
@@ -12,13 +12,13 @@
     "place_debug": {
       "color_err": "",
       "gt_ply": "gt_interior_box.ply",
-      "gt_ply_points": 16753,
+      "gt_ply_points": 17480,
       "gt_stats": {
         "committed_box_count": 1,
         "n_box_points": 1300,
-        "n_gt_points": 16753,
-        "n_wall_points": 15453,
-        "occupancy_ratio": 0.01375,
+        "n_gt_points": 17480,
+        "n_wall_points": 16180,
+        "occupancy_ratio": 0.014473684210526316,
         "occupied_count": 495
       },
       "occupancy": {
@@ -30,53 +30,53 @@
         ],
         "nx": 30,
         "ny": 40,
-        "occupancy_ratio": 0.01375,
+        "occupancy_ratio": 0.014473684210526316,
         "occupied_count": 495,
         "resolution": 0.05
       }
     },
     "place_support_touch": "place support touch ALLOWED (acm verified)",
-    "release_settle": "{\"criterion\": \"displacement\", \"displacement_tol\": 0.01, \"excursion_joint\": \"elfin_joint4\", \"fraction_below_tol\": 0.75, \"p50\": 0.006481178226422356, \"p95\": 0.047978457878763224, \"peak_excursion\": 0.007270799150955298, \"peak_joint\": \"elfin_joint4\", \"peak_time\": 0.051000000000000004, \"peak_velocity\": 0.08125193970021484, \"quantile\": 1.0, \"sample_count\": 12, \"tail_ratio\": 0.5904900000637937, \"tail_velocity\": 0.047978457878763224, \"vel_tol\": 0.02}",
-    "return_observe": "exit=cartesian ok (fraction 1.000); goto=reached pickup_observe; rtf=0.990 (sim 5.65s / wall 5.70s)",
+    "release_settle": "{\"criterion\": \"displacement\", \"displacement_tol\": 0.01, \"excursion_joint\": \"elfin_joint4\", \"fraction_below_tol\": 0.6666666666666666, \"p50\": 0.008013836725783645, \"p95\": 0.06591591740890618, \"peak_excursion\": 0.009994848588976701, \"peak_joint\": \"elfin_joint4\", \"peak_time\": 0.051000000000000004, \"peak_velocity\": 0.11162918491895674, \"quantile\": 1.0, \"sample_count\": 12, \"tail_ratio\": 0.34867844016413435, \"tail_velocity\": 0.03892269007433555, \"vel_tol\": 0.02}",
+    "return_observe": "exit=cartesian ok (fraction 1.000); goto=reached pickup_observe; rtf=0.993 (sim 5.40s / wall 5.44s)",
     "scene_add": "applied",
-    "vac_attach": "attached pickup_box_0009_carryon (follow 30.0 Hz)",
-    "vac_detach": "detached pickup_box_0009_carryon",
+    "vac_attach": "attached pickup_box_0002_carryon (follow 30.0 Hz)",
+    "vac_detach": "detached pickup_box_0002_carryon",
     "verify": {
       "box_pose_after_drift_wait": [
-        1.02833,
-        -0.241879,
-        0.652689,
-        -0.009487,
-        -0.005378,
-        3.14088
+        1.02283,
+        -0.231619,
+        0.652737,
+        -0.000823,
+        0.005865,
+        3.12142
       ],
       "box_pose_after_release": [
-        1.02833,
-        -0.241879,
-        0.652689,
-        -0.009487,
-        -0.005378,
-        3.14088
+        1.02283,
+        -0.231619,
+        0.652737,
+        -0.000823,
+        0.005865,
+        3.12142
       ],
       "drift": 0.0,
-      "err_xy": 0.007078809292529371,
-      "err_z": -0.002311000000000174,
+      "err_xy": 0.00792717232056919,
+      "err_z": -0.002263000000000126,
       "inside_inner_box": true,
-      "pitch": -0.005378,
-      "roll": -0.009487
+      "pitch": 0.005865,
+      "roll": -0.000823
     }
   },
   "fail_code": "",
   "index": 1,
   "inside_inner_box": true,
   "lost_payload": false,
-  "pitch": -0.005378,
+  "pitch": 0.005865,
   "place_state": "HOME",
-  "roll": -0.009487,
+  "roll": -0.000823,
   "segments_planned": 7,
   "segments_succeeded": 7,
   "staging_degenerate": false,
   "used_ompl_fallback_descend": false,
   "vac_attach": true,
-  "wall_time_sec": 6.258126258850098
+  "wall_time_sec": 5.94711709022522
 }

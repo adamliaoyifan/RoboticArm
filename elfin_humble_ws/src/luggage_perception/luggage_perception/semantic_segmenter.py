@@ -77,6 +77,91 @@ def _resolve_class_mapping(prompts, class_mapping):
     return mapping
 
 
+@dataclass(frozen=True)
+class WorkspaceAcceptanceContext:
+    """Per-frame geometry for the accepted-detection predicate.
+
+    All fields are plain numbers so the context can be frozen per frame and
+    replayed offline in tests. ``optical_to_world`` is a row-major 3x4 (R|t)
+    transform of the camera optical frame in the world frame at the image
+    stamp; ``fx/fy/cx/cy`` are the live pinhole intrinsics of the same
+    stamp. ``plane_z``/``center_xy``/``half_xy``/``margin`` describe the
+    pickup workspace: a ground plane at the platform top and the workspace
+    XY region (measured static geometry, the same kind the detector already
+    crops its point cloud with).
+    """
+
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    plane_z: float
+    center_xy: tuple
+    half_xy: tuple
+    margin: float
+    optical_to_world: tuple = None  # row-major 3x4 (R|t), optical -> world
+
+    def available(self):
+        return self.optical_to_world is not None and self.fx > 0.0
+
+
+def bbox_center_on_plane(bbox, ctx):
+    """Intersect the bbox-center pixel ray with the workspace plane.
+
+    Returns (x, y) in the world frame, or None when the ray never descends
+    to the plane (optical axis parallel to it) or the context is missing.
+    """
+    if not ctx.available() or bbox is None or len(bbox) < 4:
+        return None
+    u = 0.5 * (float(bbox[0]) + float(bbox[2]))
+    v = 0.5 * (float(bbox[1]) + float(bbox[3]))
+    m = ctx.optical_to_world  # row-major 3x4 (R|t)
+    r11, r12, r13, tx = m[0]
+    r21, r22, r23, ty = m[1]
+    r31, r32, r33, tz = m[2]
+    d_opt = ((u - ctx.cx) / ctx.fx, (v - ctx.cy) / ctx.fy, 1.0)
+    dx = r11 * d_opt[0] + r12 * d_opt[1] + r13 * d_opt[2]
+    dy = r21 * d_opt[0] + r22 * d_opt[1] + r23 * d_opt[2]
+    dz = r31 * d_opt[0] + r32 * d_opt[1] + r33 * d_opt[2]
+    if dz > -1e-6:
+        # Ray does not descend toward the workspace plane (nadir-ish views
+        # only); no decision rather than an invented intersection.
+        return None
+    s = (ctx.plane_z - tz) / dz
+    return (tx + s * dx, ty + s * dy)
+
+
+def evaluate_detection_acceptance(bbox, ctx):
+    """Accepted-detection predicate for one bbox (PF-R8 A1).
+
+    A detection is accepted when its bbox-center ray lands on the workspace
+    ground plane within ``max(half_xy) + margin`` of the workspace centre.
+    The radial distance is measured in the world plane, so the rule needs
+    no camera-yaw knowledge: a nadir fixture geometry decides it exactly.
+    An edge-clipped suitcase whose visible centre still projects onto the
+    platform is accepted; static structures outside the platform (the robot
+    pedestal at the image border, the container wall) are rejected.
+
+    Returns ``(accepted, reason)``. ``predicate_unavailable`` fails open:
+    without camera_info or stamped TF the frame keeps today's behaviour and
+    the miss is flagged, not faked.
+    """
+    if ctx is None:
+        return True, "predicate_unavailable"
+    point = bbox_center_on_plane(bbox, ctx)
+    if point is None:
+        if not ctx.available():
+            return True, "predicate_unavailable"
+        return False, "ray_off_plane"
+    dx = point[0] - float(ctx.center_xy[0])
+    dy = point[1] - float(ctx.center_xy[1])
+    accept_radius = max(float(ctx.half_xy[0]), float(ctx.half_xy[1])) \
+        + float(ctx.margin)
+    if (dx * dx + dy * dy) <= accept_radius * accept_radius:
+        return True, "in_workspace"
+    return False, "outside_workspace"
+
+
 def _setup_clip_vendor():
     """Make the vendored CLIP package + deps importable offline.
 
@@ -218,6 +303,9 @@ def compact_detections(detections):
         bbox = det.get("bbox")
         if bbox is not None and len(bbox) >= 4:
             item["bbox"] = [int(round(float(v))) for v in bbox[:4]]
+        if "accepted" in det:
+            item["accepted"] = bool(det["accepted"])
+            item["accept_reason"] = str(det.get("accept_reason", ""))
         if "self_body_overlap" in det:
             try:
                 item["self_body_overlap"] = float(det["self_body_overlap"])
@@ -393,6 +481,9 @@ class SemanticSegmenter:
         self.self_body_row_start_frac = 0.0
         self.self_body_mask = None
         self.temporal_gate = None
+        # Per-frame WorkspaceAcceptanceContext set by the ROS node right
+        # before update(); None disables the accepted-detection predicate.
+        self.workspace_ctx = None
 
     @property
     def last_stats(self):
@@ -440,6 +531,26 @@ class SemanticSegmenter:
             detections_before, detections, body)
         stats["raw_cargo"] = bool(n_after > 0)
         stats["held"] = False
+        # Accepted-detection predicate (PF-R8 A1): annotate every cargo
+        # detection with the workspace-projection verdict before anything
+        # downstream (the temporal vote) treats it as a positive sample.
+        accepted_reasons = {}
+        n_accepted = 0
+        for det in detections:
+            if int(det.get("label", -1)) != LABEL_CARGO:
+                continue
+            accepted, reason = evaluate_detection_acceptance(
+                det.get("bbox"), self.workspace_ctx)
+            det["accepted"] = bool(accepted)
+            det["accept_reason"] = str(reason)
+            accepted_reasons[str(reason)] = (
+                accepted_reasons.get(str(reason), 0) + 1)
+            if accepted:
+                n_accepted += 1
+        stats["accepted_cargo_count"] = int(n_accepted)
+        stats["accept_reasons"] = accepted_reasons
+        stats["workspace_predicate"] = bool(
+            self.workspace_ctx is not None and self.workspace_ctx.available())
         # Self-body first, then the vote. A panel flank scored as cargo on
         # every frame made the window think it always saw cargo, so a real
         # miss never reached the majority test.

@@ -1,0 +1,1 @@
+PYTHONPATH=/opt/ros/humble/lib/python3.10/site-packages:$AUDIT_ROOT/src/luggage_description:$AUDIT_ROOT/src/luggage_perception

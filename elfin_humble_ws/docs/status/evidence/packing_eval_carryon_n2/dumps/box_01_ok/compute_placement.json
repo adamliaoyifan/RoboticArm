@@ -4,951 +4,6 @@
       "box_yaw": 0.0,
       "center_base": [
         -0.47,
-        -0.235,
-        0.655
-      ],
-      "center_base_link": [
-        -0.235,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        -0.235,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        -0.235,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        -0.185,
-        0.655
-      ],
-      "center_base_link": [
-        -0.185,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        -0.185,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        -0.185,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        -0.135,
-        0.655
-      ],
-      "center_base_link": [
-        -0.135,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        -0.135,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        -0.135,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        -0.085,
-        0.655
-      ],
-      "center_base_link": [
-        -0.085,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        -0.085,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        -0.085,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        -0.035,
-        0.655
-      ],
-      "center_base_link": [
-        -0.035,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        -0.035,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        -0.035,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.015,
-        0.655
-      ],
-      "center_base_link": [
-        0.015,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.015,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.015,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.065,
-        0.655
-      ],
-      "center_base_link": [
-        0.065,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.065,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.065,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.115,
-        0.655
-      ],
-      "center_base_link": [
-        0.115,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.115,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.115,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.165,
-        0.655
-      ],
-      "center_base_link": [
-        0.165,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.165,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.165,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.215,
-        0.655
-      ],
-      "center_base_link": [
-        0.215,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.215,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.215,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.265,
-        0.655
-      ],
-      "center_base_link": [
-        0.265,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.265,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.265,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.315,
-        0.655
-      ],
-      "center_base_link": [
-        0.315,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.315,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.315,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.365,
-        0.655
-      ],
-      "center_base_link": [
-        0.365,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.365,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.365,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.415,
-        0.655
-      ],
-      "center_base_link": [
-        0.415,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.415,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.415,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.465,
-        0.655
-      ],
-      "center_base_link": [
-        0.465,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.465,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.465,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.515,
-        0.655
-      ],
-      "center_base_link": [
-        0.515,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.515,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.515,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.565,
-        0.655
-      ],
-      "center_base_link": [
-        0.565,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.565,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.565,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.615,
-        0.655
-      ],
-      "center_base_link": [
-        0.615,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.615,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.615,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.665,
-        0.655
-      ],
-      "center_base_link": [
-        0.665,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.665,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.665,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.715,
-        0.655
-      ],
-      "center_base_link": [
-        0.715,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.715,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.715,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
-        0.765,
-        0.655
-      ],
-      "center_base_link": [
-        0.765,
-        -1.03,
-        -0.205
-      ],
-      "center_local": [
-        -0.47,
-        0.765,
-        -0.615
-      ],
-      "center_world": [
-        1.03,
-        0.765,
-        0.655
-      ],
-      "clearance_score": 1.0,
-      "clearance_top": 1.23,
-      "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": false,
-      "footprint": [
-        0.55,
-        0.4
-      ],
-      "reachability_score": -1.0,
-      "reason": "outside_aperture",
-      "score": 1.0,
-      "size": [
-        0.55,
-        0.4,
-        0.25
-      ],
-      "support_score": 1.0,
-      "support_source": "floor_prior",
-      "yaw": 0.0,
-      "yaw_base_link": -1.5708,
-      "yaw_world": 0.0
-    },
-    {
-      "box_yaw": 0.0,
-      "center_base": [
-        -0.47,
         0.815,
         0.655
       ],
@@ -970,7 +25,7 @@
       "clearance_score": 1.0,
       "clearance_top": 1.23,
       "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
+      "confidence_ratio": 0.125,
       "feasible": false,
       "footprint": [
         0.55,
@@ -978,7 +33,7 @@
       ],
       "reachability_score": -1.0,
       "reason": "outside_aperture",
-      "score": 1.0,
+      "score": 1.0188,
       "size": [
         0.55,
         0.4,
@@ -994,36 +49,36 @@
       "box_yaw": 0.0,
       "center_base": [
         -0.42,
-        -0.235,
+        0.815,
         0.655
       ],
       "center_base_link": [
-        -0.235,
+        0.815,
         -1.08,
         -0.205
       ],
       "center_local": [
         -0.42,
-        -0.235,
+        0.815,
         -0.615
       ],
       "center_world": [
         1.08,
-        -0.235,
+        0.815,
         0.655
       ],
       "clearance_score": 1.0,
       "clearance_top": 1.23,
       "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
+      "confidence_ratio": 0.125,
+      "feasible": false,
       "footprint": [
         0.55,
         0.4
       ],
       "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
       "size": [
         0.55,
         0.4,
@@ -1038,37 +93,37 @@
     {
       "box_yaw": 0.0,
       "center_base": [
-        -0.42,
-        -0.185,
+        -0.37,
+        0.815,
         0.655
       ],
       "center_base_link": [
-        -0.185,
-        -1.08,
+        0.815,
+        -1.13,
         -0.205
       ],
       "center_local": [
-        -0.42,
-        -0.185,
+        -0.37,
+        0.815,
         -0.615
       ],
       "center_world": [
-        1.08,
-        -0.185,
+        1.13,
+        0.815,
         0.655
       ],
       "clearance_score": 1.0,
       "clearance_top": 1.23,
       "collision_margin": 1.23,
-      "confidence_ratio": 0.0,
-      "feasible": true,
+      "confidence_ratio": 0.125,
+      "feasible": false,
       "footprint": [
         0.55,
         0.4
       ],
       "reachability_score": -1.0,
-      "reason": "ok",
-      "score": 1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
       "size": [
         0.55,
         0.4,
@@ -1079,14 +134,959 @@
       "yaw": 0.0,
       "yaw_base_link": -1.5708,
       "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.32,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.18,
+        -0.205
+      ],
+      "center_local": [
+        -0.32,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.18,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.27,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.23,
+        -0.205
+      ],
+      "center_local": [
+        -0.27,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.23,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.22,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.28,
+        -0.205
+      ],
+      "center_local": [
+        -0.22,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.28,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.17,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.33,
+        -0.205
+      ],
+      "center_local": [
+        -0.17,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.33,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.12,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.38,
+        -0.205
+      ],
+      "center_local": [
+        -0.12,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.38,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.07,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.43,
+        -0.205
+      ],
+      "center_local": [
+        -0.07,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.43,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        -0.02,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.48,
+        -0.205
+      ],
+      "center_local": [
+        -0.02,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.48,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.03,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.53,
+        -0.205
+      ],
+      "center_local": [
+        0.03,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.53,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.08,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.58,
+        -0.205
+      ],
+      "center_local": [
+        0.08,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.58,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.13,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.63,
+        -0.205
+      ],
+      "center_local": [
+        0.13,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.63,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.18,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.68,
+        -0.205
+      ],
+      "center_local": [
+        0.18,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.68,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.23,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.73,
+        -0.205
+      ],
+      "center_local": [
+        0.23,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.73,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.28,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.78,
+        -0.205
+      ],
+      "center_local": [
+        0.28,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.78,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.33,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.83,
+        -0.205
+      ],
+      "center_local": [
+        0.33,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.83,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.38,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.88,
+        -0.205
+      ],
+      "center_local": [
+        0.38,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.88,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.43,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.93,
+        -0.205
+      ],
+      "center_local": [
+        0.43,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.93,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 0.0,
+      "center_base": [
+        0.48,
+        0.815,
+        0.655
+      ],
+      "center_base_link": [
+        0.815,
+        -1.98,
+        -0.205
+      ],
+      "center_local": [
+        0.48,
+        0.815,
+        -0.615
+      ],
+      "center_world": [
+        1.98,
+        0.815,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.125,
+      "feasible": false,
+      "footprint": [
+        0.55,
+        0.4
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0188,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 0.0,
+      "yaw_base_link": -1.5708,
+      "yaw_world": 0.0
+    },
+    {
+      "box_yaw": 1.5708,
+      "center_base": [
+        -0.545,
+        0.74,
+        0.655
+      ],
+      "center_base_link": [
+        0.74,
+        -0.955,
+        -0.205
+      ],
+      "center_local": [
+        -0.545,
+        0.74,
+        -0.615
+      ],
+      "center_world": [
+        0.955,
+        0.74,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0909,
+      "feasible": false,
+      "footprint": [
+        0.4,
+        0.55
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0136,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 1.5708,
+      "yaw_base_link": -0.0,
+      "yaw_world": 1.5708
+    },
+    {
+      "box_yaw": 1.5708,
+      "center_base": [
+        -0.495,
+        0.74,
+        0.655
+      ],
+      "center_base_link": [
+        0.74,
+        -1.005,
+        -0.205
+      ],
+      "center_local": [
+        -0.495,
+        0.74,
+        -0.615
+      ],
+      "center_world": [
+        1.005,
+        0.74,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0909,
+      "feasible": false,
+      "footprint": [
+        0.4,
+        0.55
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0136,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 1.5708,
+      "yaw_base_link": -0.0,
+      "yaw_world": 1.5708
+    },
+    {
+      "box_yaw": 1.5708,
+      "center_base": [
+        -0.445,
+        0.74,
+        0.655
+      ],
+      "center_base_link": [
+        0.74,
+        -1.055,
+        -0.205
+      ],
+      "center_local": [
+        -0.445,
+        0.74,
+        -0.615
+      ],
+      "center_world": [
+        1.055,
+        0.74,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0909,
+      "feasible": false,
+      "footprint": [
+        0.4,
+        0.55
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0136,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 1.5708,
+      "yaw_base_link": -0.0,
+      "yaw_world": 1.5708
+    },
+    {
+      "box_yaw": 1.5708,
+      "center_base": [
+        -0.395,
+        0.74,
+        0.655
+      ],
+      "center_base_link": [
+        0.74,
+        -1.105,
+        -0.205
+      ],
+      "center_local": [
+        -0.395,
+        0.74,
+        -0.615
+      ],
+      "center_world": [
+        1.105,
+        0.74,
+        0.655
+      ],
+      "clearance_score": 1.0,
+      "clearance_top": 1.23,
+      "collision_margin": 1.23,
+      "confidence_ratio": 0.0909,
+      "feasible": false,
+      "footprint": [
+        0.4,
+        0.55
+      ],
+      "reachability_score": -1.0,
+      "reason": "outside_aperture",
+      "score": 1.0136,
+      "size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "support_score": 1.0,
+      "support_source": "floor_prior",
+      "yaw": 1.5708,
+      "yaw_base_link": -0.0,
+      "yaw_world": 1.5708
     }
   ],
   "candidates_truncated": true,
   "floor_prior": false,
-  "map_revision": 3,
-  "message": "slot score=1.000 feasible=489 rejected={\"outside_aperture\": 597, \"unknown_above_floor\": 200}",
+  "map_revision": 2,
+  "message": "slot score=1.000 feasible=456 rejected={\"outside_aperture\": 597, \"outside_hull\": 33, \"unknown_above_floor\": 200}",
   "n_candidates_total": 1286,
-  "n_feasible": 489,
+  "n_feasible": 456,
   "pose_base_link": [
     -0.23500378339967107,
     -1.029999136789852,
@@ -1099,6 +1099,7 @@
   ],
   "reject_histogram": {
     "outside_aperture": 597,
+    "outside_hull": 33,
     "unknown_above_floor": 200
   },
   "selected": {

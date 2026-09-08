@@ -66,9 +66,12 @@ Three traps encoded above:
    Convert by 9.80665 at ingestion. Static z reading near 1.0 instead of 9.8
    means the conversion is missing.
 
-Mid-360 URDF now publishes `livox_frame` and `livox_imu_frame` (handbook
+Mid-360 URDF publishes `livox_frame` and `livox_imu_frame` (handbook
 initial values in [mid360_origin.xacro](../../src/luggage_description/config/mid360_origin.xacro)).
-Simulation still has no lidar stream; code must tolerate `/livox/lidar` being absent.
+Simulation publishes a Fortress `gpu_lidar` raster on `/livox/lidar` (no
+per-point times, no `/livox/imu`). Real hardware still uses
+`mid360.launch.py`. The preprocessor must not attach lidar to a snapshot
+until deskew exists (`enable_lidar_output` stays false).
 
 ## Per-stream structures
 

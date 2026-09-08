@@ -1,0 +1,83 @@
+ M .cursor/rules/agent-logs.mdc
+ M AGENTS.md
+ M docs/agents/README.md
+ M docs/agents/discuss/2026-09-04_1601_true-container-geometry-cursor-review.md
+ M docs/agents/discuss/OPEN.md
+ M docs/agents/eng/README.md
+ M docs/agents/reviews/README.md
+ M docs/agents/test/README.md
+ M docs/plans/README.md
+ M scripts/agent_notify.sh
+ M scripts/check_agent_contract.sh
+ M src/luggage_description/luggage_description/scene_tf_config_utils.py
+ M src/luggage_description/test/test_container_geometry.py
+?? docs/agents/RUNTIME.md
+?? docs/agents/discuss/2026-09-04_1143_platform-free-height-eng.md
+?? docs/agents/discuss/2026-09-04_1144_platform-free-height-eval.md
+?? docs/agents/discuss/2026-09-04_1209_platform-height-checkpoint-table.md
+?? docs/agents/discuss/2026-09-04_1453_pfh-remediation-r2.md
+?? docs/agents/discuss/2026-09-04_1453_pfh-remediation-r3.md
+?? docs/agents/discuss/2026-09-04_1453_pfh-remediation-r4.md
+?? docs/agents/discuss/2026-09-04_1453_pfh-remediation-r5.md
+?? docs/agents/discuss/2026-09-04_1453_pfh-remediation-r6.md
+?? docs/agents/discuss/2026-09-04_1538_pfh-a1-privileged-input-audit.md
+?? docs/agents/discuss/2026-09-04_1538_pfh-a2-gate5-bag-readiness.md
+?? docs/agents/discuss/2026-09-04_1708_tcig-1-geometry-kernel.md
+?? docs/agents/discuss/2026-09-04_1809_sim-r1-1-contracts.md
+?? docs/agents/discuss/2026-09-04_2021_exp-a1-nbv-readiness-audit.md
+?? docs/agents/discuss/2026-09-04_2022_pf-a3-mesh-gt-stability-audit.md
+?? docs/agents/eng/2026-09-04_1506_owner-closed-routing.md
+?? docs/agents/eng/2026-09-04_1535_owner-lifecycle-claim.md
+?? docs/agents/eng/2026-09-04_1649_mailbox-self-poll.md
+?? docs/agents/eng/2026-09-04_1724_tcig-1-container-geometry.md
+?? docs/agents/eng/2026-09-04_1741_tcig-1-g1-closeout.md
+?? docs/agents/eng/2026-09-04_1755_pf-r5-online-accuracy.md
+?? docs/agents/eng/2026-09-04_1830_pfr1-r5-summary.md
+?? docs/agents/eng/2026-09-04_1930_pfr1-r5-summary.md
+?? docs/agents/reviews/2026-09-04_1111_platform-free-height-handoff.md
+?? docs/agents/reviews/2026-09-04_1151_agent-scheduler-session-routing.md
+?? docs/agents/reviews/2026-09-04_1204_incremental-checkpoint-testing.md
+?? docs/agents/reviews/2026-09-04_1445_platform-free-remediation.md
+?? docs/agents/reviews/2026-09-04_1452_owner-closed-subtask-flow.md
+?? docs/agents/reviews/2026-09-04_1525_pf-r1-r4-closure-review.md
+?? docs/agents/reviews/2026-09-04_1534_pf-a1-a2-dispatch.md
+?? docs/agents/reviews/2026-09-04_1546_pf-r1-r4-accepted.md
+?? docs/agents/reviews/2026-09-04_1810_sim-r1-dispatch.md
+?? docs/agents/reviews/2026-09-04_1943_pfr5-vintage-segmenter-decision.md
+?? docs/agents/reviews/2026-09-04_2000_sim-r1-1-closure-review.md
+?? docs/agents/test/2026-09-04_1154_platform-free-height-standby.md
+?? docs/agents/test/2026-09-04_1209_incremental-checkpoint-standby.md
+?? docs/agents/test/2026-09-04_1215_poll-e0-code-e0.md
+?? docs/agents/test/2026-09-04_1215_poll-e1-code-e1.md
+?? docs/agents/test/2026-09-04_1215_poll-e2-code-e2.md
+?? docs/agents/test/2026-09-04_1215_poll-git-git-init.md
+?? docs/agents/test/2026-09-04_1215_poll-wf1-agent-contract-hardening.md
+?? docs/agents/test/2026-09-04_1215_poll-wf1-agent-identity-schema.md
+?? docs/agents/test/2026-09-04_1215_poll-wf1-agent-model-schema.md
+?? docs/agents/test/2026-09-04_1215_poll-wf1-agent-notify-helper.md
+?? docs/agents/test/2026-09-04_1423_platform-free-height-g0g6.md
+?? docs/agents/test/2026-09-04_1425_g0g6-isolation-review.md
+?? docs/plans/agent_subtask_efficiency_experiment.md
+?? docs/status/evidence/eng_poll/
+?? docs/status/evidence/platform_free_height/2026-09-04_1412_g0g6/
+?? docs/status/evidence/platform_free_height/2026-09-04_1600_pfr5-g4s/
+?? docs/status/evidence/platform_free_height/2026-09-04_1650_pfr5-g4s-run2/
+?? docs/status/evidence/platform_free_height/2026-09-04_1710_pfr5-g4s-run3/
+?? docs/status/evidence/platform_free_height/2026-09-04_1730_pfr5-g4s-run4/
+?? docs/status/evidence/platform_free_height/2026-09-04_1745_pfr5-negctl/
+?? docs/status/evidence/platform_free_height/2026-09-04_1810_blocker_visuals/
+?? docs/status/evidence/platform_free_height/2026-09-04_1905_pfr5-g4s-run5-observable-gt/
+?? docs/status/evidence/platform_free_height/2026-09-04_1915_pfr5-g4s-run6/
+?? docs/status/evidence/platform_free_height/2026-09-04_2020_pfr5-g4s-run7-clean/
+?? docs/status/evidence/platform_free_height/2026-09-04_2024_pf-a3/
+?? docs/status/evidence/sim_r1/2026-09-04_202530_exp-a1/
+?? scripts/agent_complete.sh
+?? scripts/agent_flow_metrics.py
+?? scripts/agent_poll_self.py
+?? scripts/agent_register.sh
+?? scripts/agent_scheduler.py
+?? scripts/agent_start.sh
+?? scripts/eng_checkpoint_gates.json
+?? scripts/pf_blocker_dump.py
+?? scripts/poll_eng_completed.py
+?? scripts/test_agent_lifecycle_smoke.sh

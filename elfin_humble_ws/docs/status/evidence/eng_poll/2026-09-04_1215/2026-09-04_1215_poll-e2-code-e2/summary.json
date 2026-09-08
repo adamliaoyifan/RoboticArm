@@ -1,0 +1,17 @@
+{
+  "source": "code-scan:src/luggage_perception/luggage_perception/platform_free_pipeline.py",
+  "source_kind": "code",
+  "checkpoint": "E2",
+  "revision": "0674f84",
+  "fingerprint": "bad7b5057193e299565e",
+  "mailbox_id": null,
+  "passed": true,
+  "result": "pass",
+  "reason": "import ok",
+  "commands": [
+    "builtin:e2_pipeline_smoke"
+  ],
+  "test_note": "docs/agents/test/2026-09-04_1215_poll-e2-code-e2.md",
+  "evidence": "docs/status/evidence/eng_poll/2026-09-04_1215/2026-09-04_1215_poll-e2-code-e2",
+  "time": "2026-09-04 12:15"
+}

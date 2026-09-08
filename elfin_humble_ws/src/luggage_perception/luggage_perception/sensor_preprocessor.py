@@ -28,6 +28,23 @@ ALLOWED_DEPTH_ENCODINGS = ("16UC1", "mono16")
 ALLOWED_DEPTH_UNITS = ("millimetres", "mm")
 
 
+def _stamp_int_parts(seconds):
+    """Float seconds -> exact (sec, nanosec) for the status payload.
+
+    Round-trips ``stamp_to_sec`` exactly: the sub-second remainder times
+    1e9 rounds back to the original nanosecond (float64 error at ROS
+    epoch is well under 1 ns).
+    """
+    if seconds <= 0.0:
+        return 0, 0
+    whole = int(seconds)
+    nanosec = int(round((seconds - whole) * 1e9))
+    if nanosec >= 1000000000:
+        whole += 1
+        nanosec -= 1000000000
+    return whole, nanosec
+
+
 class SensorPreprocessor(object):
     """RGB-primary pairing of D435 streams with a joint-state motion gate.
 
@@ -40,6 +57,9 @@ class SensorPreprocessor(object):
         camera_maxlen=10,
         camera_horizon_sec=0.35,
         camera_slop_sec=0.020,
+        camera_pair_tolerance_sec=None,
+        camera_wait_deadline_sec=0.20,
+        camera_emit_rgb_only=False,
         camera_info_max_age_sec=1.0,
         joint_horizon_sec=1.0,
         joint_maxlen=50,
@@ -53,17 +73,38 @@ class SensorPreprocessor(object):
         joint_names=None,
         stale_sec=0.15,
         rollback_sec=0.25,
+        cloud_dtype=np.float32,
     ):
         if enable_lidar_output:
             raise ValueError(
                 "lidar output requires per-point deskew; leave "
                 "enable_lidar_output=False until that milestone"
             )
+        # PF-R9 B2: the old single camera_slop_sec conflated a pairing
+        # tolerance with a wait deadline. The tolerance bounds
+        # |cloud stamp - rgb stamp| for attachment (gz rgbd_camera
+        # co-stamps colour/depth/points, so it stays ~exact); the deadline
+        # bounds how long an unemitted RGB stamp waits, measured on the
+        # camera stream's own clock (newest RGB header stamp), never on
+        # unrelated streams such as 50 Hz /joint_states.
         self.camera_slop_sec = float(camera_slop_sec)
+        self.camera_pair_tolerance_sec = (
+            float(camera_pair_tolerance_sec)
+            if camera_pair_tolerance_sec is not None
+            else self.camera_slop_sec)
+        self.camera_wait_deadline_sec = float(camera_wait_deadline_sec)
+        # PF-R9 B2/B4: when the wait deadline expires with no cloud, the
+        # default policy skips the stamp (rejection "cloud_wait_timeout"):
+        # B1 measured 15.2% of RGB stamps have no same-stamp cloud at the
+        # topic boundary, and emitting them RGB-only would hold cloud_ok at
+        # ~85%, under the 95% bar. The flagged RGB-only emission path stays
+        # available (True) and is unit-tested; it must never fake a cloud.
+        self.camera_emit_rgb_only = bool(camera_emit_rgb_only)
         self.camera_info_max_age_sec = float(camera_info_max_age_sec)
         self.output_cloud_frame = str(output_cloud_frame)
         self.enable_lidar_output = False
         self.stale_sec = float(stale_sec)
+        self.cloud_dtype = np.dtype(cloud_dtype)
         self._rgb = StampRingBuffer(
             camera_maxlen, camera_horizon_sec, rollback_sec)
         self._depth = StampRingBuffer(
@@ -88,6 +129,7 @@ class SensorPreprocessor(object):
         self._last_rejection = ""
         self._last_dropped_nonfinite = 0
         self._last_geometry_ok_stamp = 0.0
+        self._cloud_timeout_skips = 0
 
     def copy_output(self):
         if self._output is None:
@@ -116,17 +158,27 @@ class SensorPreprocessor(object):
             if self._output is not None
             else ObservationFlags().as_dict()
         )
+        primary = (
+            self._output.primary_stamp if self._output is not None else 0.0)
+        primary_sec, primary_nanosec = _stamp_int_parts(primary)
         return {
             "schema": "luggage.preprocessed.status.v1",
+            "camera_pair_tolerance_sec": self.camera_pair_tolerance_sec,
+            "camera_wait_deadline_sec": self.camera_wait_deadline_sec,
+            "camera_emit_rgb_only": self.camera_emit_rgb_only,
+            "cloud_timeout_skips": self._cloud_timeout_skips,
             "buffers": occupancy,
             "flags": flags,
             "last_rejection": self._last_rejection,
             "dropped_nonfinite": self._last_dropped_nonfinite,
             "output_cloud_frame": self.output_cloud_frame,
             "motion_gate": self._gate.diagnostics(now=now),
-            "primary_stamp": (
-                self._output.primary_stamp if self._output is not None else 0.0
-            ),
+            "primary_stamp": primary,
+            # Exact integer stamp of the acquisition this payload
+            # describes (PF-R3 same-acquisition evidence join; a float
+            # alone cannot be compared exactly across producers).
+            "primary_stamp_sec": primary_sec,
+            "primary_stamp_nanosec": primary_nanosec,
             "last_geometry_ok_stamp": self._last_geometry_ok_stamp,
             "depth_dt": self._output.depth_dt if self._output is not None else -1.0,
             "cloud_dt": self._output.cloud_dt if self._output is not None else -1.0,
@@ -183,12 +235,18 @@ class SensorPreprocessor(object):
         if not isinstance(cloud, CameraCloud) or not _finite_positive(cloud.stamp):
             self._last_rejection = "invalid_cloud_stamp"
             return None
-        points = np.asarray(cloud.points, dtype=np.float64).reshape(-1, 3)
+        # PF-R9 B5: float32 cloud math. The wire format is float32 anyway;
+        # at 2 m the float32 z quantum is ~0.2 um, far below the sub-mm
+        # support-z margins. Halves the memory traffic of every pass.
+        points = np.asarray(cloud.points).reshape(-1, 3)
+        if points.dtype != self.cloud_dtype:
+            points = points.astype(self.cloud_dtype)
         finite = np.isfinite(points).all(axis=1)
         dropped = int((~finite).sum())
         filtered = points[finite]
         if point_transform is not None:
-            filtered = transform_points(filtered, point_transform)
+            filtered = transform_points(
+                filtered, point_transform, dtype=self.cloud_dtype)
         stored = CameraCloud(
             stamp=cloud.stamp,
             frame_id=self.output_cloud_frame,
@@ -239,8 +297,29 @@ class SensorPreprocessor(object):
         for stamp in list(self._rgb.stamps()):
             if stamp in self._emitted:
                 continue
+            # Cheap pre-check first: a stamp past its wait deadline with no
+            # cloud within the pairing tolerance is a skip. Building the
+            # full observation first (the original PF-R9 draft) cost a
+            # 0.9 MB rgb copy per dead stamp and dominated the callback.
+            if not self.camera_emit_rgb_only:
+                cloud_hit = self._cloud.nearest(
+                    stamp, self.camera_pair_tolerance_sec)
+                if (cloud_hit is None
+                        and self._past_deadline(stamp)):
+                    self._last_rejection = "cloud_wait_timeout"
+                    self._cloud_timeout_skips += 1
+                    self._emitted.add(stamp)
+                    continue
             observation = self._build_if_ready(stamp, now_hint)
             if observation is None:
+                continue
+            if (observation.camera_points is None
+                    and not self.camera_emit_rgb_only):
+                # Deadline expired with no cloud for this stamp: skip it
+                # (flagged in diagnostics), never re-evaluate, never fake.
+                self._last_rejection = "cloud_wait_timeout"
+                self._cloud_timeout_skips += 1
+                self._emitted.add(stamp)
                 continue
             self._emitted.add(stamp)
             self._output = observation
@@ -255,8 +334,13 @@ class SensorPreprocessor(object):
         if rgb_hit is None:
             return None
         rgb = rgb_hit[1]
-        depth_hit = self._depth.nearest(rgb_stamp, self.camera_slop_sec)
-        cloud_hit = self._cloud.nearest(rgb_stamp, self.camera_slop_sec)
+        # PF-R9 B2: attachment bounds |stamp diff| by the pairing
+        # tolerance (~exact for the gz co-stamped sensor), not by the wait
+        # deadline.
+        depth_hit = self._depth.nearest(
+            rgb_stamp, self.camera_pair_tolerance_sec)
+        cloud_hit = self._cloud.nearest(
+            rgb_stamp, self.camera_pair_tolerance_sec)
         if not self._window_ready(rgb_stamp, depth_hit, cloud_hit, now_hint):
             return None
 
@@ -285,7 +369,10 @@ class SensorPreprocessor(object):
         dropped = 0
         data_frame = ""
         if cloud is not None:
-            camera_points = np.array(cloud.points, copy=True)
+            # Alias the buffer's stored array: the buffer never mutates a
+            # stored record's points, and _try_emit hands out an isolated
+            # copy, so consumers cannot corrupt preprocessor state.
+            camera_points = cloud.points
             dropped = int(cloud.dropped_nonfinite)
             data_frame = cloud.data_frame
 
@@ -326,25 +413,39 @@ class SensorPreprocessor(object):
         )
 
     def _window_ready(self, rgb_stamp, depth_hit, cloud_hit, now_hint):
+        tolerance = self.camera_pair_tolerance_sec
         depth_ready = (
             depth_hit is not None
-            or self._past_slop(self._depth, rgb_stamp)
+            or self._past_slop(self._depth, rgb_stamp, tolerance)
             or (self._has_newer_rgb(rgb_stamp) and len(self._depth) == 0)
         )
+        # PF-R9 B2: the cloud wait deadline is measured on the camera
+        # stream's own clock — the newest buffered RGB header stamp — so a
+        # 50 Hz /joint_states message can no longer declare a co-stamped
+        # cloud dead while camera_horizon_sec still holds the data. A
+        # late-but-co-stamped cloud attaches any time within the deadline
+        # (B1 measured receipt lags up to 39 ms, so no newer-cloud early
+        # exit: the deadline alone bounds the wait).
         cloud_ready = (
             cloud_hit is not None
-            or self._past_slop(self._cloud, rgb_stamp)
-            or (now_hint - rgb_stamp) >= self.camera_slop_sec
+            or self._past_deadline(rgb_stamp)
         )
         return depth_ready and cloud_ready
+
+    def _past_deadline(self, rgb_stamp):
+        latest = self._rgb.latest()
+        return (latest is not None
+                and (latest[0] - rgb_stamp) >= self.camera_wait_deadline_sec)
 
     def _has_newer_rgb(self, rgb_stamp):
         latest = self._rgb.latest()
         return latest is not None and latest[0] > rgb_stamp
 
-    def _past_slop(self, buffer, rgb_stamp):
+    def _past_slop(self, buffer, rgb_stamp, tolerance=None):
+        if tolerance is None:
+            tolerance = self.camera_pair_tolerance_sec
         latest = buffer.latest()
-        return latest is not None and latest[0] > rgb_stamp + self.camera_slop_sec
+        return latest is not None and latest[0] > rgb_stamp + tolerance
 
     def _nearest_info(self, buffer, stamp):
         hit = buffer.nearest(stamp, self.camera_info_max_age_sec)
@@ -376,15 +477,34 @@ class SensorPreprocessor(object):
         self._emitted = {stamp for stamp in self._emitted if stamp >= cutoff}
 
 
-def transform_points(points, matrix):
-    """Apply a 4x4 transform to (N,3) row vectors: p' = R p + t."""
-    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+def transform_points(points, matrix, dtype=None):
+    """Apply a 4x4 transform to (N,3) row vectors: p' = R p + t.
+
+    ``dtype`` (default float64, the historical behaviour) keeps the whole
+    computation in one precision; float32 halves memory traffic on the
+    307k-point cloud path without touching accuracy floors that matter
+    (float32 z quantum at 2 m is ~0.2 um).
+
+    PF-R9 B5: computed with explicit column expressions, not ``pts @ R.T``.
+    The matmul form dispatches (307k, 3) x (3, 3) to BLAS, which fans out
+    one small gemm over every OpenBLAS worker thread; the workers
+    busy-spin, and at ~26 clouds/s that alone pinned the preprocessor at
+    >400% CPU and starved its executor until the cloud queue overflowed.
+    The ufunc form is single-threaded and equally fast at this shape.
+    """
+    dtype = np.dtype(dtype) if dtype is not None else np.float64
+    pts = np.asarray(points, dtype=dtype).reshape(-1, 3)
     if pts.size == 0:
         return pts
-    matrix = np.asarray(matrix, dtype=np.float64).reshape(4, 4)
-    rotation = matrix[:3, :3]
-    translation = matrix[:3, 3]
-    return pts.dot(rotation.T) + translation
+    matrix = np.asarray(matrix, dtype=dtype).reshape(4, 4)
+    r = matrix[:3, :3]
+    t = matrix[:3, 3]
+    x, y, z = pts[:, 0], pts[:, 1], pts[:, 2]
+    out = np.empty_like(pts)
+    out[:, 0] = x * r[0, 0] + y * r[0, 1] + z * r[0, 2] + t[0]
+    out[:, 1] = x * r[1, 0] + y * r[1, 1] + z * r[1, 2] + t[1]
+    out[:, 2] = x * r[2, 0] + y * r[2, 1] + z * r[2, 2] + t[2]
+    return out
 
 
 def replace_depth(frame, depth_array):

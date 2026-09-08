@@ -14,6 +14,7 @@ the catalog size (production default).
 from __future__ import division
 
 import json
+import math
 import os
 import struct
 
@@ -163,6 +164,134 @@ def mesh_top_footprint(path, z_band_frac=0.01, z_band_min=0.005):
     ]
 
 
+def mesh_observable_reference(path, top_band_frac=0.25, z_bin=0.001):
+    """Deterministic observable geometry of a sized suitcase STL.
+
+    The mesh AABB equals the catalog size exactly, but a top-down camera
+    observes the *surface*: a rounded lid and tapered sides. This returns
+    the estimator-independent observable reference a top-view RGB-D chain
+    can actually measure, derived purely from the STL vertices:
+
+    - ``lid_z_offset``: how far the lid's modal top plane sits below the
+      AABB top. The lid plateau is found by histogramming vertices in the
+      top band (densest 1 mm z-bin, median of its vertices).
+    - ``observable_width/depth``: XY span of the vertices at the lid
+      plateau (within one bin of the modal z) — the footprint a
+      horizontal-plane fit latches onto.
+
+    Returns ``(observable_w, observable_d, lid_z_offset, full_height)``.
+    """
+    xs, ys, zs = [], [], []
+    for x, y, z in iter_stl_vertices(path):
+        xs.append(x)
+        ys.append(y)
+        zs.append(z)
+    if not zs:
+        raise ValueError("empty STL: %s" % path)
+    zmax, zmin = max(zs), min(zs)
+    height = zmax - zmin
+    band = max(float(top_band_frac) * height, float(z_bin) * 2.0)
+    top = [(x, y, z) for x, y, z in zip(xs, ys, zs) if z >= zmax - band]
+    if not top:
+        return max(xs) - min(xs), max(ys) - min(ys), 0.0, height
+    # Densest 1 mm z-bin within the top band = the lid plateau.
+    bins = {}
+    for _x, _y, z in top:
+        key = int(z / z_bin)
+        bins.setdefault(key, []).append(z)
+    modal_key = max(bins, key=lambda k: len(bins[k]))
+    modal_z = sorted(bins[modal_key])[len(bins[modal_key]) // 2]
+    plateau = [(x, y) for x, y, z in zip(xs, ys, zs)
+               if abs(z - modal_z) <= z_bin]
+    if not plateau:
+        plateau = [(x, y) for x, y, _z in top]
+    return (
+        max(p[0] for p in plateau) - min(p[0] for p in plateau),
+        max(p[1] for p in plateau) - min(p[1] for p in plateau),
+        float(zmax - modal_z),
+        float(height),
+    )
+
+
+#: Identity of the observable-reference computation. Any change to
+#: ``mesh_observable_reference`` semantics (band, bin size, plateau rule)
+#: MUST bump this string so evidence and GT records show the change
+#: instead of silently producing different truth (PF-R5A).
+OBSERVABLE_REFERENCE_VERSION = (
+    "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,"
+    "lid=densest-bin-median,extent=plateau_band)")
+
+
+class MeshReferenceError(ValueError):
+    """Stable explicit failure when a mesh-observable GT reference cannot
+    be resolved (PF-R5A). Callers must fail closed: never substitute
+    catalog dimensions."""
+
+
+def stl_sha256(path):
+    """SHA-256 of an STL asset (deterministic asset identity)."""
+    import hashlib
+
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 16), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def resolve_observable_reference(models_root, size, visual_id):
+    """Resolve the mesh-observable GT reference or raise (fail-closed).
+
+    Returns a dict with width/depth/height (lid-plane observables),
+    lid_offset, the reference ``version`` string, the STL ``path`` and
+    its ``stl_sha256``. Raises :class:`MeshReferenceError` for an
+    unknown size tier, a missing asset, an unreadable/truncated file,
+    malformed/non-finite geometry, or a non-positive result. Catalog
+    dimensions are never substituted.
+    """
+    if str(visual_id) not in VISUAL_IDS:
+        # Reject BEFORE any path normalization: sized_model_name would
+        # silently resolve an unknown visual id to the loafbrr asset and
+        # record the requested id against the wrong STL.
+        raise MeshReferenceError(
+            "unknown visual id %r (known: %s)"
+            % (visual_id, ", ".join(VISUAL_IDS)))
+    tier = size_tier_name(size)
+    if tier is None:
+        raise MeshReferenceError(
+            "unknown size tier: no sized model for size %r (visual %r)"
+            % (list(size), visual_id))
+    stl = sized_stl_path(visual_id, tier, models_root)
+    if not os.path.isfile(stl):
+        raise MeshReferenceError("missing STL asset: %s" % stl)
+    try:
+        w, d, lid_off, full_h = mesh_observable_reference(stl)
+    except (IOError, OSError, ValueError, struct.error) as exc:
+        raise MeshReferenceError(
+            "unusable STL %s: %s: %s"
+            % (stl, type(exc).__name__, exc))
+    values = (w, d, lid_off, full_h)
+    if not all(math.isfinite(float(v)) for v in values):
+        raise MeshReferenceError(
+            "malformed STL %s: non-finite observable values %r"
+            % (stl, values))
+    if w <= 0.0 or d <= 0.0 or full_h - lid_off <= 0.0:
+        raise MeshReferenceError(
+            "degenerate STL %s: observable values %r" % (stl, values))
+    return {
+        "width": float(w),
+        "depth": float(d),
+        # observable height: lid plane down to the AABB bottom
+        "height": float(full_h - lid_off),
+        "lid_offset": float(lid_off),
+        "version": OBSERVABLE_REFERENCE_VERSION,
+        "stl_path": stl,
+        "stl_sha256": stl_sha256(stl),
+        "visual_id": str(visual_id),
+        "tier": str(tier),
+    }
+
+
 def write_scaled_stl(src_path, dest_path, scale):
     """Copy a binary STL with vertices multiplied by ``scale`` (W, D, H).
 
@@ -255,19 +384,23 @@ def _mesh_geometry_xml(uri, scale):
     )
 
 
-def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="box",
+def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR):
-    """SDF for a pickup spawn. Default visual is a primitive box.
+    """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
-    ``visual_kind=mesh`` references a pre-scaled ``model://`` URI. It does not
-    write a new STL. *models_root* and *scaled_dir* are unused for mesh spawn
-    (kept so callers do not break).
+    References a pre-scaled ``model://`` URI; it does not write a new STL.
+    *models_root* and *scaled_dir* are unused (kept so callers do not
+    break). The untextured primitive-box visual was removed: YOLO-World
+    cannot reliably detect a textureless box, and the semantic chain is
+    the accepted perception path.
     """
     del models_root, scaled_dir
-    kind = str(visual_kind or "box").strip().lower()
+    kind = str(visual_kind or "mesh").strip().lower()
     if kind != "mesh":
-        return suitcase_sdf(
-            model_name, size, mass_kg, visual_id, visual_kind="box")
+        raise ValueError(
+            "visual_kind must be 'mesh' (textureless primitive boxes were "
+            "removed: YOLO-World cannot detect them reliably), got %r"
+            % (visual_kind,))
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
@@ -285,9 +418,10 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh"):
     """SDF: visual and collision share one geometry at the link origin.
 
-    *visual_kind* ``box`` uses a primitive box for both. ``mesh`` uses the
-    suitcase STL for both (same URI and scale). *mesh_already_scaled* sets
-    mesh ``<scale>`` to 1 1 1.
+    Mesh only: visual and collision use the suitcase STL (same URI and
+    scale). *mesh_already_scaled* sets mesh ``<scale>`` to 1 1 1. The
+    primitive-box branch was removed (untextured boxes are undetectable
+    by the open-vocabulary perception chain).
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -295,19 +429,16 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     ambient, diffuse = VISUAL_DIFFUSE.get(
         visual_id, VISUAL_DIFFUSE[VISUAL_LOAFBRR])
     kind = str(visual_kind or "mesh").strip().lower()
-    if kind == "box":
-        geometry = (
-            "          <box><size>%.6f %.6f %.6f</size></box>"
-            % (length, width, height))
-        comment_kind = "box"
-        collision_geom = geometry
-    else:
-        uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
-        mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
-            length, width, height)
-        geometry = _mesh_geometry_xml(uri, mesh_scale)
-        comment_kind = visual_id
-        collision_geom = geometry
+    if kind != "mesh":
+        raise ValueError(
+            "visual_kind must be 'mesh' (primitive-box visuals were "
+            "removed), got %r" % (visual_kind,))
+    uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
+    mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
+        length, width, height)
+    geometry = _mesh_geometry_xml(uri, mesh_scale)
+    comment_kind = visual_id
+    collision_geom = geometry
     return """<?xml version="1.0"?>
 <sdf version="1.6">
   <!-- Suitcase %s visual+collision %.3f x %.3f x %.3f m, %.2f kg -->

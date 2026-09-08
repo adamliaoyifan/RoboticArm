@@ -32,7 +32,14 @@ semantic_segmenter:
     # (the panel scores 0.3+, the actual box only 0.04-0.07). A low threshold
     # admits both; the detector's RANSAC then selects the box-top plane by
     # point-count dominance (~60k box points vs ~12k panel points).
-    confidence_threshold: 0.04
+    # PF-R8 (2026-09-08): 0.04 -> 0.01. Measured whole-trial dropouts
+    # (2/15 trials, ~10 s each) have the suitcase at 0.01-0.03 in the
+    # documented diagonal-yaw/lighting states — below the old floor. The
+    # accepted-detection predicate (workspace projection) now rejects the
+    # static border false positive that a low threshold would otherwise
+    # admit, and the geometry gates (workspace crop, top/support, fail
+    # closed) keep false measured height at 0; A4-3 tracks it.
+    confidence_threshold: 0.01
     sam2.checkpoint: facebook/sam2-hiera-small
     sam2.model_type: sam2_hiera_s
 
@@ -41,13 +48,19 @@ semantic_segmenter:
     # the bare class names stay for conventional viewpoints (real hardware).
     prompts:
       - luggage on a platform viewed from directly above
+      # PF-R5 rework (2026-09-04): the vintage-mesh suitcase drops below
+      # the 0.04 threshold at diagonal-yaw poses in one lighting state
+      # (0.01-0.03 measured); this descriptive prompt lifts those frames
+      # to 0.17-0.23 offline across the full 16-pose sweep with no
+      # threshold change.
+      - vintage leather suitcase with handles viewed from directly above
       - suitcase
       - luggage
       - box
       - container
       - floor
       - robot arm
-    class_mapping_labels: [2, 2, 2, 2, 1, 0, 3]
+    class_mapping_labels: [2, 2, 2, 2, 2, 1, 0, 3]
 
     # Wrist D435 is bolted to the suction panel. Project the panel collision
     # meshes into the camera to get the real curved silhouette (not a full
@@ -85,6 +98,26 @@ semantic_segmenter:
     temporal_scene_change_mad: 10.0
     temporal_bbox_iou_reset: 0.3
 
+    # Accepted-detection predicate (PF-R8 A1). Backprojects each cargo
+    # bbox centre onto the pickup-platform ground plane and accepts the
+    # detection when it lands within max(half_extents)+margin of the
+    # workspace centre. Measured static geometry (scene_tf.yaml
+    # pickup_platform/pickup_source: platform top z=0.86 at world XY
+    # (-1.0, 0.0), 1.0 x 1.0 m) — the same kind of static workspace input
+    # the detector already uses for its point crop; per-trial spawner
+    # geometry stays forbidden. Rejects the static robot-pedestal false
+    # positive at the image border (centre ray lands ~0.95 m off the
+    # workspace centre) while a legitimately edge-clipped suitcase whose
+    # visible centre still projects onto the platform is accepted.
+    # Missing camera_info or stamped TF fails open with reason
+    # predicate_unavailable (flagged in stats, never faked).
+    workspace_accept_enabled: true
+    workspace_center_xy: [-1.0, 0.0]
+    workspace_half_extents: [0.5, 0.5]
+    workspace_plane_z: 0.86
+    workspace_margin_m: 0.15
+    workspace_world_frame: world
+
     input.color_image: /luggage/preprocessed/camera/color/image
     output.mask: /luggage/semantic/mask
     output.overlay: /luggage/semantic/overlay
@@ -101,6 +134,7 @@ semantic_point_filter:
     output.cargo_points: /luggage/semantic/cargo_points
     output.obstacle_points: /luggage/semantic/obstacle_points
     output.stats: ~/stats_json
+    output.cargo_voxel_size: 0.005
     # Label routing: cargo feeds the detector; obstacles are conservative.
     cargo_labels: [2]
     obstacle_labels: [2, 4]
@@ -110,6 +144,9 @@ semantic_point_filter:
     realsense_extrinsics_config: ""
     # Exact-stamp join buffer depth per side (clouds / masks).
     buffer_maxlen: 10
+    # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
+    # callback (~60-70 Hz json.dumps inside the join's callback group).
+    stats_publish_hz: 1.0
     # NOTE: no sync_slop and no fallback_to_raw. Pairing is an exact
     # (sec, nanosec) join on the preprocessor's primary stamp; slop-based
     # pairing lives only in the preprocessor. An unfiltered cloud is never

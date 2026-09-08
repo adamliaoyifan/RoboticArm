@@ -1,0 +1,20 @@
+{
+  "gate5_accuracy": "not_claimed",
+  "issues": [
+    {
+      "code": "BAG_REFERENCE_LEAK",
+      "detail": "offline labels published onto online algorithm topics",
+      "topic": ""
+    },
+    {
+      "code": "BAG_REFERENCE_LEAK",
+      "detail": "reference.publish_to_online is true",
+      "topic": ""
+    }
+  ],
+  "ready": false,
+  "reasons": [
+    "BAG_REFERENCE_LEAK"
+  ],
+  "schema": "gate5_bag_manifest/v1"
+}

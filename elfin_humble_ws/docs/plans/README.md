@@ -1,5 +1,9 @@
 # Plans
 
+- [Agent owner-closed subtask efficiency experiment](agent_subtask_efficiency_experiment.md)
+  (compares queue wait, lead time, handoffs, rework, and escaped defects
+  against the previous reviews-eng-test stage workflow)
+
 Implementation plans for migrating this workspace from ROS 1 Noetic to ROS 2
 Humble belong here.
 
@@ -31,3 +35,27 @@ Phase 1 Gates 1–5 acceptance is in [mvp_gates.md](../status/mvp_gates.md). Pha
 - [Todo 5 切片 B–D 验收指南](pack_eval_test_guide.md)
   （P1–P5 代码已交付未验收；B1 占据栅格 / B2 槽位求解 / B3 走廊高度 /
    B4 塞到满 / B5 零回归，含 dumps 保留验证与已知限制）
+- [仿真/实机一致性审查与 pickup support 改造计划](sim_real_parity_pickup_support.md)
+  （记录当前仿真特权信息风险，并规划将 pickup ROI/platform_z 从
+  `scene_tf.yaml` 真值改为显式测量/标定输入）
+- [无 platform_z 箱体高度估计研发 TODO](platform_free_height_eng_todo.md)
+  （同帧顶面/局部支撑面估计，支持 TOP_ONLY/FULL_3D，在线节点不读仿真真值）
+- [无 platform_z 箱体高度估计测试与验收](platform_free_height_test_plan.md)
+  （单元、stamp/TF、故障注入、Gazebo、rosbag 和性能门槛）
+- [无 platform_z 箱体高度估计修正方案](platform_free_height_remediation.md)
+  （修复 ROS adapter、raw-only 安全降级、时间一致性、评测口径和性能路径）
+- [Gate 5 rosbag 数据契约与就绪检查](platform_free_height_gate5_bag_contract.md)
+  （PF-A2：合成 manifest 校验；通过就绪检查不等于 Gate 5 精度验收）
+- [sim_world launch profile 参数说明](sim_world_launch_profile.md)
+  （用一个分组 YAML 配置 launch 参数，人工改 profile 后即可调整启动组合）
+- [sim_world launch profile 测试流程与验收标准](sim_world_launch_profile_test.md)
+  （验证 profile YAML 生效、CLI 覆盖、异常配置报错和可选 Gazebo smoke）
+- [真实 container 内部空间统一计算计划](true_container_inner_geometry.md)
+  （七面 hull 统一几何核、在线候选/走廊、EMS/replay、atlas 和评测口径；
+   AABB 仅保留为索引与 broad phase）
+- [SIM-R1 production orchestrator 与可插拔探索计划](sim_r1_production_orchestrator_exploration.md)
+  （显式 Start、人工上箱 request-ID 握手、stop-and-look NBV、策略插件硬门、
+   仿真/实机同算法与持久三箱闭环）
+- [D455 替换腕部 D435](d455_replace_d435/README.md)
+  （官网参数与 TF；口袋宽度与 `pickup_observe` 近距使 D455 不能即插即用；
+   未过几何门之前不改架构）

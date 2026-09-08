@@ -11,6 +11,7 @@
 
 ## B4 n=2 冒烟（含停机可视化）
 
+重跑：2026-09-02 16:18，干净单套 `sim_world`，`ROS_DOMAIN_ID=7`，`RTF=1.0`。
 `docs/status/evidence/packing_eval_carryon_n2/`
 
 | 字段 | 值 |
@@ -19,8 +20,11 @@
 | `capacity_claim_valid` | false |
 | `boxes_packed` | 2 |
 | `floor_coverage` | 0.15 |
-| `cycle_sec.mean` | 33.9 s |
+| `cycle_sec.mean` | 38.7 s |
+| `rtf_last` | 1.0 |
 
-停机目录 `final_layout/`：`boxes.json` 两只 carryon，`container_and_boxes.ply`（内壁+箱）、`interior_free.ply`（剩余空腔）、`layout.html`（浏览器打开）。
+两箱都 `committed=true`，地板槽 world z=0.655。`reject_histogram` 含 `outside_hull=33` / `outside_aperture`（645 / 597）。
 
-均质 `BIN_FULL`：`packing_eval_carryon_n50` 在重启 sim 后 RTF≈0，连续 3 次 pick 失败（`PLAN_approach` / `YOLO_NOT_READY`）`ABORT`，未形成容量结论。可视化仍写出了空箱 `final_layout/`。需要在 RTF≈1 的干净 `sim_world` 上重跑 `--max-boxes 50`。
+`final_layout/layout.html` 已是七面体内腔：hull **15** 边（地板 +Y 只到 `y=0.55`），黄线 aperture 4 边 `y∈[-0.928, 0.398]`、`z∈[0.597, 2.009]`。浏览器打开该 HTML。
+
+均质 `BIN_FULL`：上一轮 `packing_eval_carryon_n50` 因双 Gazebo / RTF≈0 在 pick 阶段 `ABORT`，不是容量结论。当前这套仿真仍在、RTF=1，可直接 `--max-boxes 50`。

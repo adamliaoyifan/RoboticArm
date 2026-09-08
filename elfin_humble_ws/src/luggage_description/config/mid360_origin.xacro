@@ -26,4 +26,16 @@
   <!-- livox_frame -> livox_imu_frame, metres. -->
   <xacro:property name="livox_imu_xyz" value="0.01100 0.02329 -0.04412"/>
   <xacro:property name="livox_imu_rpy" value="0 0 0"/>
+  <!-- Sim gpu_lidar (repeating raster, not the real non-repetitive scan).
+       Handbook FOV 360° × (−7° … +52°); typical range 40 m @ 10% reflectivity.
+       Min 0.1 m matches the close-range blind zone. -->
+  <xacro:property name="livox_sim_update_hz" value="10.0"/>
+  <xacro:property name="livox_sim_h_samples" value="360"/>
+  <xacro:property name="livox_sim_v_samples" value="32"/>
+  <xacro:property name="livox_sim_h_min" value="-3.14159265"/>
+  <xacro:property name="livox_sim_h_max" value="3.14159265"/>
+  <xacro:property name="livox_sim_v_min" value="-0.12217305"/>
+  <xacro:property name="livox_sim_v_max" value="0.90757121"/>
+  <xacro:property name="livox_sim_range_min" value="0.1"/>
+  <xacro:property name="livox_sim_range_max" value="40.0"/>
 </robot>

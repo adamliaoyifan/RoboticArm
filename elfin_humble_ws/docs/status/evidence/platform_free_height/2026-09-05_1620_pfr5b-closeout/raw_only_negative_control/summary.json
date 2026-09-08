@@ -1,0 +1,44 @@
+{
+  "mode": "raw_negative_control",
+  "trials_requested": 3,
+  "spawn_failures": 0,
+  "stale_instance_frames": 0,
+  "warmup_frames_config": 5,
+  "gap_sec": 2.0,
+  "launch_params": "ISOLATED WORKTREE /tmp/pfr5b_clean @ a3dba5e; raw-only: gui:=false use_rviz:=false use_semantic:=false use_motion:=false use_vacuum:=false visual_kind:=mesh sequence_ids:=standard",
+  "revision": {
+    "git_commit": "a3dba5e7e0c2fb219062cfb2a091267f6f2d606d",
+    "git_dirty_files": 0
+  },
+  "active_output_hz": 3.6702428006775816,
+  "trial_cycle_hz": 0.13751079283195086,
+  "trial_cycle_sec_mean": 7.272156456999558,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.7,
+        0.45,
+        0.28
+      ]
+    ],
+    "n_sizes": 1,
+    "trials_per_size": {
+      "0.7x0.45x0.28": 3
+    },
+    "xy_offsets": [
+      [
+        -1.0,
+        0.0
+      ]
+    ],
+    "n_xy_offsets": 1,
+    "yaw_deg": [
+      0.0
+    ],
+    "n_yaws": 1,
+    "n_trials": 3
+  },
+  "negative_control_pass": true,
+  "negative_control_failures": [],
+  "gate4_pass": true
+}

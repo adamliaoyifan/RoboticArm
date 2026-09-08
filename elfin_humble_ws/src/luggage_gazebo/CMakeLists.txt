@@ -26,6 +26,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)
   ament_add_pytest_test(place_metrics_pytest test/test_place_metrics.py)
   ament_add_pytest_test(place_gt_dump_pytest test/test_place_gt_dump.py)
+  ament_add_pytest_test(sim_livox_bridge_pytest test/test_sim_livox_bridge.py)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and

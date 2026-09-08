@@ -1,0 +1,38 @@
+# Grouped launch profile for luggage_gazebo sim_world.launch.py.
+# CLI launch args override values in this file.
+
+scene:
+  # scene_tf_config: /absolute/path/to/scene_tf.yaml
+  # robot_poses_config: /absolute/path/to/robot_poses.yaml
+  observe_pose_name: pickup_observe
+
+runtime:
+  gui: false
+  use_rviz: false
+  use_moveit: true
+  spawn_at_observe: true
+
+features:
+  use_semantic: true
+  use_motion: true
+  use_vacuum: true
+  use_cargo_map: true
+  use_packing: true
+
+perception:
+  semantic_require_backend: bbox_fill
+
+spawner:
+  visual_kind: mesh
+  size_mode: catalog
+  sequence_ids:
+    - carryon
+    - standard
+    - large
+  yaw_mode: ""
+  yaw_range: [0.0, 0.0]
+  xy_jitter_range: [0.0, 0.0]
+
+motion:
+  named_pose_duration: 4.0
+  named_pose_max_vel: 1.0

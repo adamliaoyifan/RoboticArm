@@ -112,11 +112,26 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertIsNone(second)
 
     def test_slop_rejection_emits_without_depth(self):
+        # PF-R9 B2: with no cloud the stamp waits for the deadline on the
+        # RGB-stream clock, then (default policy) is skipped; the flagged
+        # RGB-only emission only happens with camera_emit_rgb_only=True.
         pre = SensorPreprocessor(camera_slop_sec=0.020)
         self.assertIsNone(pre.update_rgb(_rgb(4.0)))
-        obs = pre.update_depth(_depth(4.05))
+        # Depth outside the pairing tolerance; no cloud at all.
+        self.assertIsNone(pre.update_depth(_depth(4.05)))
+        # A newer RGB beyond the wait deadline advances the RGB clock; the
+        # cloudless stamp 4.0 is then skipped with a recorded reason.
+        self.assertIsNone(pre.update_rgb(_rgb(4.21)))
+        self.assertEqual("cloud_wait_timeout", pre.last_rejection_reason())
+        open_rgb_only = SensorPreprocessor(
+            camera_slop_sec=0.020, camera_emit_rgb_only=True)
+        self.assertIsNone(open_rgb_only.update_rgb(_rgb(4.0)))
+        obs = open_rgb_only.update_depth(_depth(4.05))
+        self.assertIsNone(obs)  # deadline measured on the RGB clock
+        obs = open_rgb_only.update_rgb(_rgb(4.21))
         self.assertIsNotNone(obs)
         self.assertTrue(obs.flags.rgb_ok)
+        self.assertFalse(obs.flags.cloud_ok)
         self.assertFalse(obs.flags.depth_ok)
 
     def test_zero_stamp_rejected(self):

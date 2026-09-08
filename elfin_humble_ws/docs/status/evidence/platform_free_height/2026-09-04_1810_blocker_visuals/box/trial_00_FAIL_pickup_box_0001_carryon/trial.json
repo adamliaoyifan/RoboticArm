@@ -1,0 +1,206 @@
+{
+  "trial": 0,
+  "box_id": "pickup_box_0001_carryon",
+  "verdict": "FAIL",
+  "pca_reasons": [
+    "DETECT_TOP_UNOBSERVABLE"
+  ],
+  "n_cargo_points": [
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694,
+    8694
+  ],
+  "frames": [
+    {
+      "stamp": [
+        146,
+        884000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        147,
+        82000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        147,
+        510000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        147,
+        742000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        147,
+        973000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        148,
+        203000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        148,
+        401000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        148,
+        468000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        148,
+        897000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        148,
+        929000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        149,
+        127000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    },
+    {
+      "stamp": [
+        149,
+        557000000
+      ],
+      "pca_valid": false,
+      "pca_reason": "DETECT_TOP_UNOBSERVABLE",
+      "pca_source": "measure",
+      "n_cargo_points": 8694,
+      "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0001_carryon"
+    }
+  ],
+  "yolo_last": [
+    [
+      151,
+      273000000,
+      [
+        [
+          2,
+          0.222,
+          [
+            

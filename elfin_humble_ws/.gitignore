@@ -1,0 +1,41 @@
+# Colcon outputs (never commit)
+build/
+install/
+log/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+
+# Large / regenerable models
+*.pt
+*.onnx
+*.engine
+/assimp-utils_*.deb
+
+# Scan / archive artifacts (also listed under src/pointcloud/.gitignore)
+*.las
+*.laz
+*.bin
+*.tar
+
+# Editor / local agent state
+.vscode/
+.codex/
+.claude/
+.agents/
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
+
+# Misc
+*.swp
+*~
+.DS_Store
+.env
+.env.*

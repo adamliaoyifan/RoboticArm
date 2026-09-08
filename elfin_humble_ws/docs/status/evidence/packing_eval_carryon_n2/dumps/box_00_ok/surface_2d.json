@@ -1307,7 +1307,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1349,7 +1349,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1391,7 +1391,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1433,7 +1433,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1475,7 +1475,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1517,7 +1517,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1559,7 +1559,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1601,7 +1601,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1643,7 +1643,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1685,7 +1685,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1727,7 +1727,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1769,7 +1769,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1811,7 +1811,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1853,7 +1853,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1895,7 +1895,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1937,7 +1937,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -1979,7 +1979,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2021,7 +2021,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2063,7 +2063,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2105,7 +2105,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2147,7 +2147,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2189,7 +2189,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2231,7 +2231,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2273,7 +2273,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2315,7 +2315,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2357,7 +2357,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2399,7 +2399,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2441,7 +2441,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2483,7 +2483,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ],
     [
       "none",
@@ -2525,7 +2525,7 @@
       "none",
       "none",
       "none",
-      "none"
+      "sensor"
     ]
   ],
   "floor_z": 0.0,
@@ -5059,7 +5059,7 @@
       0.0
     ]
   ],
-  "map_revision": 3,
+  "map_revision": 2,
   "nx": 30,
   "ny": 40,
   "origin_local": [
@@ -6370,7 +6370,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6412,7 +6412,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6454,7 +6454,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6496,7 +6496,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6538,7 +6538,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6580,7 +6580,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6622,7 +6622,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6664,7 +6664,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6706,7 +6706,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6748,7 +6748,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6790,7 +6790,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6832,7 +6832,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6874,7 +6874,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6916,7 +6916,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -6958,7 +6958,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7000,7 +7000,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7042,7 +7042,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7084,7 +7084,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7126,7 +7126,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7168,7 +7168,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7210,7 +7210,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7252,7 +7252,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7294,7 +7294,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7336,7 +7336,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7378,7 +7378,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7420,7 +7420,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7462,7 +7462,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7504,7 +7504,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7546,7 +7546,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ],
     [
       "unknown",
@@ -7588,7 +7588,7 @@
       "unknown",
       "unknown",
       "unknown",
-      "unknown"
+      "free"
     ]
   ],
   "yaw": 0.0

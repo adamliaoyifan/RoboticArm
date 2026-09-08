@@ -1,0 +1,102 @@
+{
+  "verdict": "OK",
+  "gt": {
+    "id": "pickup_box_0006_large",
+    "size": [
+      0.8,
+      0.32,
+      0.5
+    ],
+    "xy": [
+      -1.064545574036125,
+      -0.042513542327452074
+    ],
+    "top_z": 1.18,
+    "yaw": -0.05746292661063069
+  },
+  "pca_reasons": [
+    "ok"
+  ],
+  "n_cargo_points": [
+    98916,
+    98916,
+    98916,
+    98916,
+    98916
+  ],
+  "frames": [
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 98916,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0006_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 98916,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0006_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 98916,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0006_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 98916,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0006_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 98916,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0006_large"
+    }
+  ],
+  "yolo_last3": [
+    [
+      [
+        2,
+        0.725,
+        [
+          98,
+          141,
+          476,
+          386
+        ]
+      ],
+      [
+        2,
+        0.227,
+        [
+          607,
+          114,
+          640,
+          302
+        ]
+      ]
+    ]
+  ],
+  "rgb_stamp": [
+    178,
+    629000000
+  ]
+}
