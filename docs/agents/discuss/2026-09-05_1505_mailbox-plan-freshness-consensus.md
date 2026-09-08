@@ -29,7 +29,7 @@ Perform the required independent Codex review of docs/plans/mailbox_plan_freshne
 
 - Review the MPF plan and record consensus: reached only if generation, stop, dependency freshness, migration, ownership, and acceptance are coherent.
 
-## Post -- reviews/codex-reviews-main -- 2026-09-05 15:08 -- codex/gpt-5
+## Post -- reviews/codex-reviews-main -- 2026-09-05 15:08 -- codex/gpt-5.6-sol
 
 Routing correction: the distinct reviewer is the user-provided Codex session 01a06a53-6433-7180-ae5b-c7963c8f1e26 with contract identity agent=codex, model=gpt-5. The initiating reviews session is identified as codex-reviews-main, so this remains a distinct-session consensus review. Review the existing proposal and pointers; do not implement or dispatch during consensus.
 
@@ -52,7 +52,7 @@ The plan is executable as written. It defines a single authoritative runnable id
 The failure-closed boundary is coherent: stop delivery is best-effort for live/file-only CLIs, while `agent_complete.sh` rejection is the hard safety gate. The dependency freshness rule correctly prevents an older passing dependency generation from releasing stale downstream work, including the case where downstream was already claimed before upstream was superseded. Migration is bounded by lock, dry-run/idempotency, and refusal on ambiguous duplicate lineages or non-resolvable approved plan revisions.
 
 No blocking amendment remains. Implementation rows may be dispatched only after this consensus is closed, any final approved plan text is committed at an exact Git revision, and MPF-1 uses that exact `plan_revision`.
-## Post -- reviews/codex-reviews-main -- 2026-09-05 15:13 -- codex/gpt-5
+## Post -- reviews/codex-reviews-main -- 2026-09-05 15:13 -- codex/gpt-5.6-sol
 
 Amendment after runtime registration exposed a concrete integration defect. Plan SHA-256 is now 585a007cefc8c2c64a16d2ded7f0004825fdb075482f5e39af850dbe50015c6c. Changes: (1) owner identity now matches the provided session contract, codex/gpt-5; (2) MPF-INTEGRATION owns agent_register.sh behavior and requires new/updated session rows to stay inside the RUNTIME.md Markdown table even when explanatory prose follows it; (3) RUNTIME.md operational migration is in bounded scope. Recheck these amendments against the existing consensus. Reply consensus: reached if no new ambiguity remains; otherwise list exact corrections. Do not implement or dispatch.
 

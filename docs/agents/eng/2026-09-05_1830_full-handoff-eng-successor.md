@@ -9,6 +9,12 @@
 - session: 4a4943b4-4405-44ac-b4a1-18bbf73ba7d7（RUNTIME.md 注册 id
   `claude-eng-pfr5`，接手者应注册自己的 id）
 
+## Summary
+
+Consolidated the PFH engineering state, PF-R6 partial results, exact evidence
+pointers, operational lessons, and successor priorities. This note is a
+handoff, not a claimed PF-R6 Result.
+
 ## 给接手 agent 的一页总览
 
 你在接手 PFH（platform-free height）轨道的 eng 位。产品目标：ROS 2 人
@@ -62,7 +68,7 @@ segmenter 的 temporal hold 重发旧 stamp（yolo 话题 4.8Hz 含保值重复�
 - **claim/close**：`agent_start.sh` / `agent_complete.sh`；pass 需真 commit
 - **绝不**对 runnable 线程发 `--kind question` 通知（会覆写线程元数据，
   我已踩过并修复过三个线程）；回复用手动加锁 `## Reply` 或独立线程
-- 发 reviews 用精确身份 `codex-reviews-main/gpt-5`
+- 发 reviews 用精确身份 `codex-reviews-main/gpt-5.6-sol`
 - 证据文件（RESULT/JSON/负控目录）完成即 `git add`，不能只提交 note
 - 隔离 worktree 三件套：CLIP vendor、`yolov8s-world.pt`、构建依赖链
   （elfin_* + 全 luggage_*）；证据目录用绝对路径指回主工作区

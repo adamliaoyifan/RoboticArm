@@ -1,0 +1,20 @@
+scripts/platform_free_height_gate4_eval.py:92:    top_z = (float(box.top_surface_pose.position.z)
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:60:    mesh_observable_reference,
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:378:    def _gt_size(self, size, visual_id):
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:385:        ``mesh_observable_reference``): lid-plane width/depth and the
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:389:        ref = self._observable_reference(size, visual_id)
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:392:    def _observable_reference(self, size, visual_id):
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:403:                w, d, lid_off, full_h = mesh_observable_reference(stl)
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:408:                    "lid_offset": float(lid_off),
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:417:                "height": float(size[2]), "lid_offset": 0.0,
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:507:        gt_size = self._gt_size(size, visual_id)
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:524:        # Observable reference: the lid plane sits lid_offset below the
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:527:        ref = self._observable_reference(size, visual_id)
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:529:            pose.position.z + float(size[2]) * 0.5 - ref["lid_offset"])
+src/luggage_gazebo/scripts/pickup_box_spawner_node.py:550:        box.top_surface_pose = Pose(
+src/luggage_gazebo/test/test_eval_metrics.py:206:    def test_plan_passed_when_gt_size_mismatch_but_usable(self):
+src/luggage_description/test/test_suitcase_visual.py:23:    mesh_observable_reference,
+src/luggage_description/test/test_suitcase_visual.py:343:                w, d, lid_off, h = mesh_observable_reference(stl)
+src/luggage_description/test/test_suitcase_visual.py:357:        self.assertEqual(mesh_observable_reference(stl),
+src/luggage_description/test/test_suitcase_visual.py:358:                         mesh_observable_reference(stl))
+src/luggage_description/luggage_description/suitcase_visual.py:166:def mesh_observable_reference(path, top_band_frac=0.25, z_bin=0.001):

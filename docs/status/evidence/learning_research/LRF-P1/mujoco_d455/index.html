@@ -1,0 +1,17 @@
+<!doctype html><meta charset='utf-8'><title>LRF-P1 MuJoCo D455</title>
+<style>body{font-family:sans-serif;max-width:1100px;margin:24px} img{max-width:32%;margin:4px} pre{background:#111;color:#eee;padding:12px}</style>
+<h1>LRF-P1 MuJoCo + D455 validation</h1>
+<pre>Simulator: MuJoCo 3 (Isaac Lab is not installed).
+Sensor: Intel RealSense D455 pinhole RGB-D, 848x480, VFOV 58 deg, IMU site unused.
+Input: ONE depth frame per case, back-projected to world XYZ. Not lidar, not a bag.
+Learned residual does not override a successful D455 baseline box (that was the red-box drift). Residual is only a fallback if the detector fails.
+Table pixels with z<2cm are dropped (stand-in for semantic table removal).
+D455 depth K uses official VFOV 58 deg at 848x480 (fx=fy=432.971). Resulting HFOV is 88.80 deg vs datasheet 87 deg.</pre>
+<h2>vintage_medium_clear</h2><p>vintage_medium_clear  n=53799  baseline_ok=True composite=0.182  learned_ok=True composite=0.182</p>
+<img src='vintage_medium_clear_rgb.png'><img src='vintage_medium_clear_depth.png'><img src='vintage_medium_clear_overlay.png'>
+<h2>vintage_medium_yaw07</h2><p>vintage_medium_yaw07  n=50879  baseline_ok=True composite=0.190  learned_ok=True composite=0.190</p>
+<img src='vintage_medium_yaw07_rgb.png'><img src='vintage_medium_yaw07_depth.png'><img src='vintage_medium_yaw07_overlay.png'>
+<h2>vintage_medium_occluded</h2><p>vintage_medium_occluded  n=60251  baseline_ok=True composite=0.192  learned_ok=True composite=0.192</p>
+<img src='vintage_medium_occluded_rgb.png'><img src='vintage_medium_occluded_depth.png'><img src='vintage_medium_occluded_overlay.png'>
+<h2>vintage_large_clear</h2><p>vintage_large_clear  n=72203  baseline_ok=True composite=0.241  learned_ok=True composite=0.241</p>
+<img src='vintage_large_clear_rgb.png'><img src='vintage_large_clear_depth.png'><img src='vintage_large_clear_overlay.png'>

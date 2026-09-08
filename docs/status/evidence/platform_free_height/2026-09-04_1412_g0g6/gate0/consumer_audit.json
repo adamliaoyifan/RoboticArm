@@ -1,0 +1,35 @@
+{
+  "findings": [
+    {
+      "check": "detector_GetCurrentBox_client",
+      "pass": true,
+      "note": "GetCurrentBox appears only in the module docstring"
+    },
+    {
+      "check": "detector_latest_tf_fallback",
+      "pass": true
+    },
+    {
+      "check": "pick_from_detected_forwards_e0",
+      "pass": false,
+      "blocker": true,
+      "note": "waypoint_generator_node uses pick_from_detected; E0 fields dropped"
+    },
+    {
+      "check": "compute_placement_requires_height_valid",
+      "pass": true
+    },
+    {
+      "check": "waypoint_module_uses_top_surface",
+      "pass": true
+    },
+    {
+      "check": "e0_msg_fields",
+      "pass": true
+    }
+  ],
+  "pass": false,
+  "release_blockers": [
+    "pick_from_detected_forwards_e0"
+  ]
+}

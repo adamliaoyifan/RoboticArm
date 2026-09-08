@@ -1,0 +1,27 @@
+{
+  "counts": {
+    "test": 108,
+    "train": 162,
+    "val": 54
+  },
+  "generation_seed": 7,
+  "leakage_forbidden_in_observation": [],
+  "mesh_identity_overlap_train_test": [],
+  "meshes": {
+    "test": [
+      "suitcase_vintage_large",
+      "suitcase_vintage_medium"
+    ],
+    "train": [
+      "suitcase_loafbrr_large",
+      "suitcase_loafbrr_medium",
+      "suitcase_loafbrr_small"
+    ],
+    "val": [
+      "suitcase_vintage_small"
+    ]
+  },
+  "notes": "visible_surface_ratio and mesh identity live only in eval records. Gate 5 bag fixtures exist under luggage_perception/test/eval/fixtures/gate5 with bag_path=null; no hardware bag was available for this spike.",
+  "schema": "lrf_p1_manifest/v1",
+  "split_rule": "train=loafbrr all sizes; val=vintage_small; test=vintage_medium+large"
+}

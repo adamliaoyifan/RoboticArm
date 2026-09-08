@@ -1,0 +1,1579 @@
+{
+  "algorithm_parameters": {
+    "band": "max(top_band_frac * full_height, 2 * z_bin)",
+    "modal_bin": "int(z / z_bin); production max(count) first-insert; oracle max(count) then max key",
+    "top_band_frac": 0.25,
+    "z_bin": 0.001
+  },
+  "assets": [
+    {
+      "aabb": {
+        "xmax": 0.27500000596,
+        "xmin": -0.27500000596,
+        "ymax": 0.20000000298,
+        "ymin": -0.20000000298,
+        "zmax": 0.125,
+        "zmin": -0.125
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.390038400888,
+        "full_height": 0.25,
+        "lid_offset": 0.012537203729,
+        "modal_key": 112,
+        "observable_height": 0.237462796271,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          112
+        ],
+        "width": 0.515886202455
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_loafbrr_small/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.118731398135,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.118731398135,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.118731398135,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.118731398135,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.118731398135,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.118731398135,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.118731398135,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.118731398135,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.390038400888,
+        "full_height": 0.25,
+        "lid_offset": 0.012537203729,
+        "observable_height": 0.237462796271,
+        "width": 0.515886202455
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.2,
+          "width": 0.515886202455,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.2,
+          "width": 0.515886202455,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.2,
+          "width": 0.515886202455,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.25,
+          "width": 0.515886202455,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.25,
+          "width": 0.515886202455,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.25,
+          "width": 0.515886202455,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.3,
+          "width": 0.515886202455,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.3,
+          "width": 0.515886202455,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.390038400888,
+          "lid_offset": 0.012537203729,
+          "top_band_frac": 0.3,
+          "width": 0.515886202455,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "9d352245b015628149366bb075510993fb58315b4641d0189a9f057ad7e4132d",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "small",
+      "translated_diff": {
+        "depth": 8.940696716308594e-08,
+        "full_height": 0.0,
+        "lid_offset": 3.725290298461914e-08,
+        "width": 1.4901161193847656e-08
+      },
+      "triangle_count": 1349,
+      "visual_id": "suitcase_loafbrr"
+    },
+    {
+      "aabb": {
+        "xmax": 0.34999999404,
+        "xmin": -0.34999999404,
+        "ymax": 0.22499999404,
+        "ymin": -0.22499999404,
+        "zmax": 0.140000000596,
+        "zmin": -0.140000000596
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.7,
+        0.45,
+        0.28
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.438793182373,
+        "full_height": 0.280000001192,
+        "lid_offset": 0.014041662216,
+        "modal_key": 125,
+        "observable_height": 0.265958338976,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          125
+        ],
+        "width": 0.656582444906
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_loafbrr_medium/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.132979169488,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.132979169488,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.132979169488,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.132979169488,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.132979169488,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.132979169488,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.132979169488,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.132979169488,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.438793182373,
+        "full_height": 0.280000001192,
+        "lid_offset": 0.014041662216,
+        "observable_height": 0.265958338976,
+        "width": 0.656582444906
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.2,
+          "width": 0.656582444906,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.2,
+          "width": 0.656582444906,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.2,
+          "width": 0.656582444906,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.25,
+          "width": 0.656582444906,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.25,
+          "width": 0.656582444906,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.25,
+          "width": 0.656582444906,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.3,
+          "width": 0.656582444906,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.3,
+          "width": 0.656582444906,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.438793182373,
+          "lid_offset": 0.014041662216,
+          "top_band_frac": 0.3,
+          "width": 0.656582444906,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "66ef99c33349f771ccaa5d619a9e1ded72c59119a94cddd4a1551ad1779bea5c",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "medium",
+      "translated_diff": {
+        "depth": 1.1920928955078125e-07,
+        "full_height": 2.086162567138672e-07,
+        "lid_offset": 0.0,
+        "width": 2.9802322387695312e-08
+      },
+      "triangle_count": 1349,
+      "visual_id": "suitcase_loafbrr"
+    },
+    {
+      "aabb": {
+        "xmax": 0.40000000596,
+        "xmin": -0.40000000596,
+        "ymax": 0.25,
+        "ymin": -0.25,
+        "zmax": 0.159999996424,
+        "zmin": -0.159999996424
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.8,
+        0.5,
+        0.32
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.48754799366,
+        "full_height": 0.319999992847,
+        "lid_offset": 0.016047611833,
+        "modal_key": 143,
+        "observable_height": 0.303952381015,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          143
+        ],
+        "width": 0.750379920006
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_loafbrr_large/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.151976190507,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.151976190507,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.151976190507,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.151976190507,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.151976190507,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.151976190507,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.151976190507,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.151976190507,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.48754799366,
+        "full_height": 0.319999992847,
+        "lid_offset": 0.016047611833,
+        "observable_height": 0.303952381015,
+        "width": 0.750379920006
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.2,
+          "width": 0.750379920006,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.2,
+          "width": 0.750379920006,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.2,
+          "width": 0.750379920006,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.25,
+          "width": 0.750379920006,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.25,
+          "width": 0.750379920006,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.25,
+          "width": 0.750379920006,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.3,
+          "width": 0.750379920006,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.3,
+          "width": 0.750379920006,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.48754799366,
+          "lid_offset": 0.016047611833,
+          "top_band_frac": 0.3,
+          "width": 0.750379920006,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "e4026bc7bcfb9d125a7621952c5a24a279e4c592f2368141109002c08659a141",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "large",
+      "translated_diff": {
+        "depth": 1.1920928955078125e-07,
+        "full_height": 1.7881393432617188e-07,
+        "lid_offset": 1.043081283569336e-07,
+        "width": 5.960464477539063e-08
+      },
+      "triangle_count": 1349,
+      "visual_id": "suitcase_loafbrr"
+    },
+    {
+      "aabb": {
+        "xmax": 0.27500000596,
+        "xmin": -0.27500000596,
+        "ymax": 0.20000000298,
+        "ymin": -0.20000000298,
+        "zmax": 0.125,
+        "zmin": -0.125
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.55,
+        0.4,
+        0.25
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.361780032516,
+        "full_height": 0.25,
+        "lid_offset": 0.015427939594,
+        "modal_key": 109,
+        "observable_height": 0.234572060406,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          109
+        ],
+        "width": 0.534302145243
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_vintage_small/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.117286030203,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.117286030203,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.117286030203,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.117286030203,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.117286030203,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.117286030203,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.117286030203,
+          "identity_ok": true,
+          "observable_bottom": 0.86,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.117286030203,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.361780032516,
+        "full_height": 0.25,
+        "lid_offset": 0.015427939594,
+        "observable_height": 0.234572060406,
+        "width": 0.534302145243
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": -5.5074692e-05,
+          "d_lid_vs_default": -0.000196032226,
+          "d_width_vs_default": 0.0,
+          "depth": 0.361724957824,
+          "lid_offset": 0.015231907368,
+          "top_band_frac": 0.2,
+          "width": 0.534302145243,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.361780032516,
+          "lid_offset": 0.015427939594,
+          "top_band_frac": 0.2,
+          "width": 0.534302145243,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.000367045403,
+          "d_lid_vs_default": 1.162291e-06,
+          "d_width_vs_default": 0.000727027655,
+          "depth": 0.362147077918,
+          "lid_offset": 0.015429101884,
+          "top_band_frac": 0.2,
+          "width": 0.535029172897,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": -5.5074692e-05,
+          "d_lid_vs_default": -0.000196032226,
+          "d_width_vs_default": 0.0,
+          "depth": 0.361724957824,
+          "lid_offset": 0.015231907368,
+          "top_band_frac": 0.25,
+          "width": 0.534302145243,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.361780032516,
+          "lid_offset": 0.015427939594,
+          "top_band_frac": 0.25,
+          "width": 0.534302145243,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.000367045403,
+          "d_lid_vs_default": 1.162291e-06,
+          "d_width_vs_default": 0.000727027655,
+          "depth": 0.362147077918,
+          "lid_offset": 0.015429101884,
+          "top_band_frac": 0.25,
+          "width": 0.535029172897,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.027125865221,
+          "d_lid_vs_default": 0.05682284385,
+          "d_width_vs_default": 0.007133871317,
+          "depth": 0.388905897737,
+          "lid_offset": 0.072250783443,
+          "top_band_frac": 0.3,
+          "width": 0.54143601656,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.027125865221,
+          "d_lid_vs_default": 0.056961696595,
+          "d_width_vs_default": 0.009399175644,
+          "depth": 0.388905897737,
+          "lid_offset": 0.072389636189,
+          "top_band_frac": 0.3,
+          "width": 0.543701320887,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.014004424214,
+          "d_lid_vs_default": 0.04920052737,
+          "d_width_vs_default": 0.014787137508,
+          "depth": 0.37578445673,
+          "lid_offset": 0.064628466964,
+          "top_band_frac": 0.3,
+          "width": 0.549089282751,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "bdb6da58e779e0215104c972c7ad529aa3f06cf95324f69de69e2e01f2a9ccc3",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "small",
+      "translated_diff": {
+        "depth": 1.4901161193847656e-08,
+        "full_height": 0.0,
+        "lid_offset": 1.1175870895385742e-07,
+        "width": 2.9802322387695312e-08
+      },
+      "triangle_count": 2204,
+      "visual_id": "suitcase_vintage"
+    },
+    {
+      "aabb": {
+        "xmax": 0.34999999404,
+        "xmin": -0.34999999404,
+        "ymax": 0.22499999404,
+        "ymin": -0.22499999404,
+        "zmax": 0.140000000596,
+        "zmin": -0.140000000596
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.7,
+        0.45,
+        0.28
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.409085974097,
+        "full_height": 0.280000001192,
+        "lid_offset": 0.016360491514,
+        "modal_key": 123,
+        "observable_height": 0.263639509678,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          123
+        ],
+        "width": 0.68192884326
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_vintage_medium/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.131819754839,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.131819754839,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.131819754839,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.131819754839,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.131819754839,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.131819754839,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.131819754839,
+          "identity_ok": true,
+          "observable_bottom": 0.859999998808,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.131819754839,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.409085974097,
+        "full_height": 0.280000001192,
+        "lid_offset": 0.016360491514,
+        "observable_height": 0.263639509678,
+        "width": 0.68192884326
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": -0.002145394683,
+          "d_lid_vs_default": 0.000920102,
+          "d_width_vs_default": -0.001907944679,
+          "depth": 0.406940579414,
+          "lid_offset": 0.017280593514,
+          "top_band_frac": 0.2,
+          "width": 0.680020898581,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.409085974097,
+          "lid_offset": 0.016360491514,
+          "top_band_frac": 0.2,
+          "width": 0.68192884326,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": -0.001670509577,
+          "d_lid_vs_default": 0.000599995255,
+          "d_width_vs_default": -0.000982612371,
+          "depth": 0.40741546452,
+          "lid_offset": 0.01696048677,
+          "top_band_frac": 0.2,
+          "width": 0.680946230888,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": -0.002145394683,
+          "d_lid_vs_default": 0.000920102,
+          "d_width_vs_default": -0.001907944679,
+          "depth": 0.406940579414,
+          "lid_offset": 0.017280593514,
+          "top_band_frac": 0.25,
+          "width": 0.680020898581,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.409085974097,
+          "lid_offset": 0.016360491514,
+          "top_band_frac": 0.25,
+          "width": 0.68192884326,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": -0.001670509577,
+          "d_lid_vs_default": 0.000599995255,
+          "d_width_vs_default": -0.000982612371,
+          "depth": 0.40741546452,
+          "lid_offset": 0.01696048677,
+          "top_band_frac": 0.25,
+          "width": 0.680946230888,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.028433158994,
+          "d_lid_vs_default": 0.064718522131,
+          "d_width_vs_default": 0.007171541452,
+          "depth": 0.437519133091,
+          "lid_offset": 0.081079013646,
+          "top_band_frac": 0.3,
+          "width": 0.689100384712,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.409085974097,
+          "lid_offset": 0.016360491514,
+          "top_band_frac": 0.3,
+          "width": 0.68192884326,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": -0.001670509577,
+          "d_lid_vs_default": 0.000599995255,
+          "d_width_vs_default": -0.000982612371,
+          "depth": 0.40741546452,
+          "lid_offset": 0.01696048677,
+          "top_band_frac": 0.3,
+          "width": 0.680946230888,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "bafe1316aa134bf675cd94039726919aa86931128b61ea3fcd5ab054e613fcc4",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "medium",
+      "translated_diff": {
+        "depth": 1.4901161193847656e-08,
+        "full_height": 2.086162567138672e-07,
+        "lid_offset": 2.9802322387695312e-08,
+        "width": 8.940696716308594e-08
+      },
+      "triangle_count": 2204,
+      "visual_id": "suitcase_vintage"
+    },
+    {
+      "aabb": {
+        "xmax": 0.40000000596,
+        "xmin": -0.40000000596,
+        "ymax": 0.25,
+        "ymin": -0.25,
+        "zmax": 0.159999996424,
+        "zmin": -0.159999996424
+      },
+      "algorithm_parameters": {
+        "top_band_frac": 0.25,
+        "top_band_min_m": 0.002,
+        "z_bin": 0.001
+      },
+      "catalog_size": [
+        0.8,
+        0.5,
+        0.32
+      ],
+      "copy_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "oracle": {
+        "depth": 0.452156201005,
+        "full_height": 0.319999992847,
+        "lid_offset": 0.019577160478,
+        "modal_key": 140,
+        "observable_height": 0.30042283237,
+        "tie_break": "max_count_then_max_bin_key",
+        "tied_bin_count": 1,
+        "tied_keys": [
+          140
+        ],
+        "width": 0.777166754007
+      },
+      "oracle_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "path": "src/luggage_gazebo/models/suitcase_vintage_large/meshes/suitcase.stl",
+      "poses": [
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.150211416185,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 0.1,
+          "top_minus_center": 0.150211416185,
+          "yaw_offset": 0.0
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.150211416185,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 0.4,
+          "top_minus_center": 0.150211416185,
+          "yaw_offset": 0.3
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.150211416185,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 1.6707963267900001,
+          "top_minus_center": 0.150211416185,
+          "yaw_offset": 1.57079632679
+        },
+        {
+          "aabb_bottom": 0.86,
+          "half_observable_height": 0.150211416185,
+          "identity_ok": true,
+          "observable_bottom": 0.860000007153,
+          "rpy_yaw": 3.24159265359,
+          "top_minus_center": 0.150211416185,
+          "yaw_offset": 3.14159265359
+        }
+      ],
+      "production": {
+        "depth": 0.452156201005,
+        "full_height": 0.319999992847,
+        "lid_offset": 0.019577160478,
+        "observable_height": 0.30042283237,
+        "width": 0.777166754007
+      },
+      "repeat_stable": true,
+      "reversed_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "sensitivity": [
+        {
+          "d_depth_vs_default": 0.000527650118,
+          "d_lid_vs_default": -0.000942736864,
+          "d_width_vs_default": -0.000394016504,
+          "depth": 0.452683851123,
+          "lid_offset": 0.018634423614,
+          "top_band_frac": 0.2,
+          "width": 0.776772737503,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.452156201005,
+          "lid_offset": 0.019577160478,
+          "top_band_frac": 0.2,
+          "width": 0.777166754007,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.000527650118,
+          "d_lid_vs_default": -4.9903989e-05,
+          "d_width_vs_default": 0.00105753541,
+          "depth": 0.452683851123,
+          "lid_offset": 0.019527256489,
+          "top_band_frac": 0.2,
+          "width": 0.778224289417,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.000527650118,
+          "d_lid_vs_default": -0.000942736864,
+          "d_width_vs_default": -0.000394016504,
+          "depth": 0.452683851123,
+          "lid_offset": 0.018634423614,
+          "top_band_frac": 0.25,
+          "width": 0.776772737503,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.0,
+          "d_lid_vs_default": 0.0,
+          "d_width_vs_default": 0.0,
+          "depth": 0.452156201005,
+          "lid_offset": 0.019577160478,
+          "top_band_frac": 0.25,
+          "width": 0.777166754007,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.000527650118,
+          "d_lid_vs_default": -4.9903989e-05,
+          "d_width_vs_default": 0.00105753541,
+          "depth": 0.452683851123,
+          "lid_offset": 0.019527256489,
+          "top_band_frac": 0.25,
+          "width": 0.778224289417,
+          "z_bin": 0.00125
+        },
+        {
+          "d_depth_vs_default": 0.03397616744,
+          "d_lid_vs_default": 0.073204487562,
+          "d_width_vs_default": 0.010376513004,
+          "depth": 0.486132368445,
+          "lid_offset": 0.09278164804,
+          "top_band_frac": 0.3,
+          "width": 0.787543267012,
+          "z_bin": 0.00075
+        },
+        {
+          "d_depth_vs_default": 0.03397616744,
+          "d_lid_vs_default": 0.073056027293,
+          "d_width_vs_default": 0.010376513004,
+          "depth": 0.486132368445,
+          "lid_offset": 0.092633187771,
+          "top_band_frac": 0.3,
+          "width": 0.787543267012,
+          "z_bin": 0.001
+        },
+        {
+          "d_depth_vs_default": 0.000527650118,
+          "d_lid_vs_default": -4.9903989e-05,
+          "d_width_vs_default": 0.00105753541,
+          "depth": 0.452683851123,
+          "lid_offset": 0.019527256489,
+          "top_band_frac": 0.3,
+          "width": 0.778224289417,
+          "z_bin": 0.00125
+        }
+      ],
+      "sha256": "c4e76b1b9757d1f64f467281ecbe10074790067e174529852538c699927dcca0",
+      "shuffled_diff": {
+        "depth": 0.0,
+        "full_height": 0.0,
+        "lid_offset": 0.0,
+        "width": 0.0
+      },
+      "tier": "large",
+      "translated_diff": {
+        "depth": 1.341104507446289e-07,
+        "full_height": 1.7881393432617188e-07,
+        "lid_offset": 1.043081283569336e-07,
+        "width": 2.9802322387695312e-08
+      },
+      "triangle_count": 2204,
+      "visual_id": "suitcase_vintage"
+    }
+  ],
+  "audit_complete": true,
+  "base_revision": "c5921d5f29ae5252747c7430ba2724214d1cbfc4",
+  "checks": {
+    "10_parameter_sensitivity": {
+      "evidence": "Diagnostic sweep of top_band_frac {0.20,0.25,0.30} and z_bin {0.00075,0.001,0.00125}; rows exceeding 1 mm lid or 5 mm width/depth are versioning risks, not a relaxed oracle.",
+      "status": "PASS",
+      "versioning_risks": [
+        {
+          "asset": "suitcase_vintage_small",
+          "d_depth": 0.027125865221,
+          "d_lid": 0.05682284385,
+          "d_width": 0.007133871317,
+          "top_band_frac": 0.3,
+          "z_bin": 0.00075
+        },
+        {
+          "asset": "suitcase_vintage_small",
+          "d_depth": 0.027125865221,
+          "d_lid": 0.056961696595,
+          "d_width": 0.009399175644,
+          "top_band_frac": 0.3,
+          "z_bin": 0.001
+        },
+        {
+          "asset": "suitcase_vintage_small",
+          "d_depth": 0.014004424214,
+          "d_lid": 0.04920052737,
+          "d_width": 0.014787137508,
+          "top_band_frac": 0.3,
+          "z_bin": 0.00125
+        },
+        {
+          "asset": "suitcase_vintage_medium",
+          "d_depth": 0.028433158994,
+          "d_lid": 0.064718522131,
+          "d_width": 0.007171541452,
+          "top_band_frac": 0.3,
+          "z_bin": 0.00075
+        },
+        {
+          "asset": "suitcase_vintage_large",
+          "d_depth": 0.03397616744,
+          "d_lid": 0.073204487562,
+          "d_width": 0.010376513004,
+          "top_band_frac": 0.3,
+          "z_bin": 0.00075
+        },
+        {
+          "asset": "suitcase_vintage_large",
+          "d_depth": 0.03397616744,
+          "d_lid": 0.073056027293,
+          "d_width": 0.010376513004,
+          "top_band_frac": 0.3,
+          "z_bin": 0.001
+        }
+      ]
+    },
+    "1_record": {
+      "evidence": "Recorded triangle count, AABB, SHA-256, visual ID, tier, algorithm parameters, and scalars for all six sized STLs.",
+      "status": "PASS"
+    },
+    "2_repeatability": {
+      "evidence": "Each production calculation repeated 10 times in this process; results were bit-stable.",
+      "status": "PASS"
+    },
+    "3_path_invariance": {
+      "diffs": {
+        "suitcase_loafbrr_large": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_loafbrr_medium": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_loafbrr_small": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_large": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_medium": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_small": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        }
+      },
+      "evidence": "Copied each STL to a new path; production scalars agreed within 1e-9 m.",
+      "status": "PASS"
+    },
+    "4_triangle_order": {
+      "diffs": {
+        "suitcase_loafbrr_large": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        },
+        "suitcase_loafbrr_medium": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        },
+        "suitcase_loafbrr_small": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        },
+        "suitcase_vintage_large": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        },
+        "suitcase_vintage_medium": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        },
+        "suitcase_vintage_small": {
+          "reversed": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "shuffled": {
+            "depth": 0.0,
+            "full_height": 0.0,
+            "lid_offset": 0.0,
+            "width": 0.0
+          },
+          "tied_bin_count": 1
+        }
+      },
+      "evidence": "Reversed and seeded-shuffled triangle records without changing vertices.",
+      "status": "PASS"
+    },
+    "5_translation": {
+      "diffs": {
+        "suitcase_loafbrr_large": {
+          "depth": 1.1920928955078125e-07,
+          "full_height": 1.7881393432617188e-07,
+          "lid_offset": 1.043081283569336e-07,
+          "width": 5.960464477539063e-08
+        },
+        "suitcase_loafbrr_medium": {
+          "depth": 1.1920928955078125e-07,
+          "full_height": 2.086162567138672e-07,
+          "lid_offset": 0.0,
+          "width": 2.9802322387695312e-08
+        },
+        "suitcase_loafbrr_small": {
+          "depth": 8.940696716308594e-08,
+          "full_height": 0.0,
+          "lid_offset": 3.725290298461914e-08,
+          "width": 1.4901161193847656e-08
+        },
+        "suitcase_vintage_large": {
+          "depth": 1.341104507446289e-07,
+          "full_height": 1.7881393432617188e-07,
+          "lid_offset": 1.043081283569336e-07,
+          "width": 2.9802322387695312e-08
+        },
+        "suitcase_vintage_medium": {
+          "depth": 1.4901161193847656e-08,
+          "full_height": 2.086162567138672e-07,
+          "lid_offset": 2.9802322387695312e-08,
+          "width": 8.940696716308594e-08
+        },
+        "suitcase_vintage_small": {
+          "depth": 1.4901161193847656e-08,
+          "full_height": 0.0,
+          "lid_offset": 1.1175870895385742e-07,
+          "width": 2.9802322387695312e-08
+        }
+      },
+      "evidence": "Translated every vertex by (1.0, 2.0, 3.0) m.",
+      "status": "PASS"
+    },
+    "6_independent_oracle": {
+      "diffs": {
+        "suitcase_loafbrr_large": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_loafbrr_medium": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_loafbrr_small": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_large": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_medium": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        },
+        "suitcase_vintage_small": {
+          "depth": 0.0,
+          "full_height": 0.0,
+          "lid_offset": 0.0,
+          "width": 0.0
+        }
+      },
+      "evidence": "Independent binary-STL oracle uses max-count then max bin key; median is sorted[len//2].",
+      "status": "PASS"
+    },
+    "7_pose_identity": {
+      "evidence": "top_z - center_z == observable_height/2 and observable bottom == spawn AABB bottom within 1e-6 m; yaw does not enter the STL scalar function.",
+      "status": "PASS"
+    },
+    "8_fail_closed": {
+      "cases": [
+        {
+          "case": "missing",
+          "kernel": "raised:FileNotFoundError",
+          "spawner_source": "catalog_fallback",
+          "spawner_warning": "mesh observable reference unavailable ([Errno 2] No such file or directory: '$PROBE_TMP/missing.stl'); using catalog size",
+          "substituted_catalog": true
+        },
+        {
+          "case": "truncated",
+          "kernel": "raised:OSError",
+          "spawner_source": "catalog_fallback",
+          "spawner_warning": "mesh observable reference unavailable (truncated STL triangles: $PROBE_TMP/truncated.stl); using catalog size",
+          "substituted_catalog": true
+        },
+        {
+          "case": "non_binary_ascii",
+          "kernel": "raised:OSError",
+          "spawner_source": "catalog_fallback",
+          "spawner_warning": "mesh observable reference unavailable (truncated STL header: $PROBE_TMP/ascii.stl); using catalog size",
+          "substituted_catalog": true
+        },
+        {
+          "case": "malformed",
+          "kernel": "raised:OSError",
+          "spawner_source": "catalog_fallback",
+          "spawner_warning": "mesh observable reference unavailable (truncated STL header: $PROBE_TMP/malformed.stl); using catalog size",
+          "substituted_catalog": true
+        }
+      ],
+      "evidence": "Kernel raises on missing/truncated/malformed/non-binary STL, but pickup_box_spawner._observable_reference catches that and silently substitutes catalog size into GetCurrentBox (warning only).",
+      "status": "BLOCKED"
+    },
+    "9_online_isolation": {
+      "evidence": "GetCurrentBox producer is pickup_box_spawner; Gate 4 eval is the Humble consumer. Humble online perception/planning algorithm modules have no GetCurrentBox client. ROS1 reference and eval-only paths are recorded separately.",
+      "online_algorithm_hits": [],
+      "scan_hit_count": 20,
+      "status": "PASS"
+    }
+  },
+  "gt_readiness": "blocked"
+}

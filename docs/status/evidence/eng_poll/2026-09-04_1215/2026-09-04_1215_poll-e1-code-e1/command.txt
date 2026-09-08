@@ -1,0 +1,1 @@
+python3 -m pytest -q --tb=short src/luggage_perception/test/test_top_support_estimator.py

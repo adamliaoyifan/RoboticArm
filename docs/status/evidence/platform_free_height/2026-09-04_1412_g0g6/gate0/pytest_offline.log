@@ -1,0 +1,7 @@
+
+==================================== ERRORS ====================================
+__________________ ERROR collecting src/luggage_planning/test __________________
+E   _pytest.pathlib.ImportPathMismatchError: ('test_ros_message_adapters', '/home/adamliao/work/elfin_humble_ws/src/luggage_perception/test/test_ros_message_adapters.py', PosixPath('/home/adamliao/work/elfin_humble_ws/src/luggage_planning/test/test_ros_message_adapters.py'))
+=========================== short test summary info ============================
+ERROR src/luggage_planning/test - _pytest.pathlib.ImportPathMismatchError: ('...
+1 error in 0.13s

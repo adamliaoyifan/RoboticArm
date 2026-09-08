@@ -1,5 +1,19 @@
+# 2026-09-04 17:55 -- PF-R5 online accuracy
 
-## Rework result (2026-09-04 21:1x — official PASS at c5921d5)
+- role: eng
+- agent: claude
+- model: glm-5.3
+- cli: claude-code
+- status: done
+
+## Summary
+
+PF-R5 initially exposed mesh-reference and semantic-detection blockers. The
+rework closed at `c5921d5` with all original Gate 4 limits passing in the clean
+run8 evidence; the remaining simulation and performance items are follow-up
+work outside this result.
+
+## Rework result (2026-09-04 21:1x -- official PASS at c5921d5)
 
 Per the reviews rework decision (2026-09-04_1943) and the user's gate
 revision (docs/plans/platform_free_height_gate4_revision.md):
@@ -29,3 +43,9 @@ Follow-ups outside PF-R5: SIM 3-box closed-loop gate (needs the
 GT-fallback-free closed-loop driver), representative detection gate
 (needs textured sim or Gate 5 bags), pedestal self-body masking,
 PF-R6 performance (active Hz 3.91 close to the 4 Hz bar).
+
+## Pointers
+
+- `docs/agents/discuss/2026-09-04_1453_pfh-remediation-r5.md`
+- `docs/status/evidence/platform_free_height/2026-09-04_2110_pfr5-g4s-run8-official/`
+- `docs/plans/platform_free_height_gate4_revision.md`

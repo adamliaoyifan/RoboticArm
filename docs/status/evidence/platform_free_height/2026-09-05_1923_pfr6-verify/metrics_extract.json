@@ -1,0 +1,58 @@
+{
+  "active_output_hz": 3.5568623731385682,
+  "top_surface_rate": 1.0,
+  "full3d_rate": 0.9607843137254902,
+  "gate4_pass": true,
+  "false_measured_height": 0,
+  "pca_reasons": {
+    "DETECT_NO_CLOUD": 90,
+    "ok": 329
+  },
+  "valid_geometry_ms": {
+    "n": 329,
+    "p50": 210.783,
+    "p95": 276.818,
+    "max": 342.598
+  },
+  "filter_process_total_ms": {
+    "n": 1049,
+    "p50": 68.569,
+    "p95": 78.107,
+    "max": 106.476
+  },
+  "filter_publish_ms": {
+    "n": 1049,
+    "p50": 35.826,
+    "p95": 41.39,
+    "max": 62.833
+  },
+  "detector_rss_kb": {
+    "first": 188068,
+    "last": 279240,
+    "samples": 1250
+  },
+  "probe_rates_hz": {
+    "raw_img": 20.676,
+    "pre_rgb": 4.403,
+    "depth_pts": 3.822,
+    "cargo": 3.677,
+    "yolo": 4.664,
+    "frame": 3.518,
+    "diag": null,
+    "filter_stats": 8.738,
+    "stream_stats": 3.518,
+    "current_box": null
+  },
+  "cargo_voxel_size": 0.005,
+  "buffer_maxlen": 10,
+  "buffer_occupancy": {
+    "cloud": 0,
+    "exact_join_candidates": 0,
+    "instance": 0,
+    "mask": 1
+  },
+  "raw_buffer": {
+    "len": 10,
+    "maxlen": 10
+  }
+}

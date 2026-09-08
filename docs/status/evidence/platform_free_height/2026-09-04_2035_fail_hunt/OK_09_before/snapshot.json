@@ -1,0 +1,146 @@
+{
+  "verdict": "OK",
+  "gt": {
+    "id": "pickup_box_0039_large",
+    "size": [
+      0.7503799200057983,
+      0.3039523810148239,
+      0.48754799365997314
+    ],
+    "xy": [
+      -1.0363419319248226,
+      0.11703447015431984
+    ],
+    "top_z": 1.1639523881673812,
+    "yaw": -0.25571177914445026
+  },
+  "pca_reasons": [
+    "ok"
+  ],
+  "n_cargo_points": [
+    141808,
+    141808,
+    141808,
+    141808,
+    141808
+  ],
+  "frames": [
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 141808,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0039_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 141808,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0039_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 141808,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0039_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 141808,
+      "support_reason": "ok",
+      "geometry_level": 1,
+      "instance_id": "pickup_box_0039_large"
+    },
+    {
+      "pca_valid": true,
+      "pca_reason": "ok",
+      "pca_source": "measure",
+      "n_cargo_points": 141808,
+      "support_reason": "DETECT_SUPPORT_STAMP_MISMATCH",
+      "geometry_level": 0,
+      "instance_id": "pickup_box_0039_large"
+    }
+  ],
+  "yolo_last3": [
+    [
+      [
+        2,
+        0.766,
+        [
+          95,
+          9,
+          484,
+          357
+        ]
+      ],
+      [
+        2,
+        0.173,
+        [
+          607,
+          115,
+          640,
+          300
+        ]
+      ]
+    ],
+    [
+      [
+        2,
+        0.766,
+        [
+          95,
+          9,
+          484,
+          357
+        ]
+      ],
+      [
+        2,
+        0.173,
+        [
+          607,
+          115,
+          640,
+          300
+        ]
+      ]
+    ],
+    [
+      [
+        2,
+        0.766,
+        [
+          95,
+          9,
+          484,
+          357
+        ]
+      ],
+      [
+        2,
+        0.173,
+        [
+          607,
+          115,
+          640,
+          300
+        ]
+      ]
+    ]
+  ],
+  "rgb_stamp": [
+    916,
+    14000000
+  ]
+}

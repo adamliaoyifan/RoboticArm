@@ -1,0 +1,15 @@
+git_commit=18ebc7c62d94a90f2293a78153fa7f5f5dbaa8b3
+captured_at=2026-09-05T19:24:53+08:00
+yaml_parse_fix=output.cargo_voxel_size indented under ros__parameters
+--- perception porcelain ---
+ M src/luggage_perception/config/semantic_segmenter.yaml
+ M src/luggage_perception/luggage_perception/platform_free_pipeline.py
+ M src/luggage_perception/luggage_perception/semantic_point_filter.py
+ M src/luggage_perception/luggage_perception/top_support_estimator.py
+ M src/luggage_perception/scripts/luggage_detector_node.py
+ M src/luggage_perception/scripts/semantic_point_filter_node.py
+ M src/luggage_perception/scripts/stage_perf_probe.py
+ M src/luggage_perception/test/test_semantic_point_filter.py
+?? src/luggage_perception/luggage_perception/pf_r6_metrics.py
+?? src/luggage_perception/test/test_pf_r6_detector_instrumentation.py
+?? src/luggage_perception/test/test_pf_r6_metrics.py

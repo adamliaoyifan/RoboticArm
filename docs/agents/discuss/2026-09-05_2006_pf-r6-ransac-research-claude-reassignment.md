@@ -1,6 +1,6 @@
 # 2026-09-05 -- PF-R6 RANSAC research Claude reassignment
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: claude
 - to_model: glm-5.3
@@ -70,4 +70,13 @@ capture_rows.json). Prototypes and tests: `research/pf_r6_ransac/`
 - claimed_generation: 2
 - claimed_plan_revision: 14c23038d0bdc0e211588d65cfb40c1cce7869a2
 - claimed_dependencies: none
+
+## Result -- eng/claude -- 2026-09-05 20:40 -- claude/glm-5.3
+
+- outcome: pass
+- completed_at: 2026-09-05T20:40:07+08:00
+- revision: f34d9171f8448d7bf92ce84897dc188a110216e2
+- tests: 31 prototype tests passed; check_agent_contract.sh pass; stop_sim residual 0
+- summary: PF-R6-RANSAC-RESEARCH generation 2 complete: recommendation implementation-candidate (zmode_median); all 8 gates pass; no production edits
+- evidence: docs/status/evidence/platform_free_height/pf-r6-ransac-research/14c23038d0bdc0e211588d65cfb40c1cce7869a2/RESULT.md
 

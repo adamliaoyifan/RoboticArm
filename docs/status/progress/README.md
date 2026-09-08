@@ -5,8 +5,12 @@ of repository commits, agent Results, review decisions, and the open mailbox.
 
 ## Daily
 
+- [2026-09-08](daily/2026-09-08.md)
+- [2026-09-07](daily/2026-09-07.md)
+- [2026-09-06](daily/2026-09-06.md)
+- [2026-09-05](daily/2026-09-05.md)
 - [2026-09-04](daily/2026-09-04.md)
 
 ## Weekly
 
-- None yet.
+- [2026-W36](weekly/2026-W36.md)

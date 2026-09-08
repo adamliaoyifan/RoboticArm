@@ -1,0 +1,463 @@
+{
+  "intro": "Simulator: MuJoCo 3 (Isaac Lab is not installed).\nSensor: Intel RealSense D455 pinhole RGB-D, 848x480, VFOV 58 deg, IMU site unused.\nInput: ONE depth frame per case, back-projected to world XYZ. Not lidar, not a bag.\nLearned residual does not override a successful D455 baseline box (that was the red-box drift). Residual is only a fallback if the detector fails.\nTable pixels with z<2cm are dropped (stand-in for semantic table removal).\nD455 depth K uses official VFOV 58 deg at 848x480 (fx=fy=432.971). Resulting HFOV is 88.80 deg vs datasheet 87 deg.",
+  "intrinsics": {
+    "fx": 432.97146126514167,
+    "fy": 432.97146126514167,
+    "cx": 423.5,
+    "cy": 239.5,
+    "width": 848,
+    "height": 480,
+    "vfov_deg": 58.0,
+    "hfov_deg": 88.80040791871994,
+    "distortion_model": "plumb_bob",
+    "distortion_coeffs": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ]
+  },
+  "sensor": "realsense_d455",
+  "cases": [
+    {
+      "case_id": "vintage_medium_clear",
+      "caption": "vintage_medium_clear  n=53799  baseline_ok=True composite=0.182  learned_ok=True composite=0.182",
+      "n_points": 53799,
+      "n_raw": 215312,
+      "gt": {
+        "width": 0.6819288432598114,
+        "depth": 0.4090859740972519,
+        "height": 0.26363950967788696,
+        "center_xyz": [
+          0.0,
+          0.0,
+          0.13181975483894348
+        ],
+        "yaw": 0.0
+      },
+      "baseline": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6696569538850445,
+          "depth": 0.4017654111271573,
+          "height": 0.24949882344708108,
+          "center_xyz": [
+            0.0002880136854761129,
+            -0.016574231497743584,
+            0.14484597855447107
+          ],
+          "yaw": 3.1378604866912534,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.012271889374766864,
+          "depth": 0.007320562970094591,
+          "height": 0.014140686230805888,
+          "xy": 0.016576733744131173,
+          "z": 0.013026223715527585,
+          "yaw": 0.003732166898539724,
+          "top_z": 0.005955880600124641,
+          "support_z": 0.02009656683093053
+        },
+        "composite": 0.1818389860743542
+      },
+      "learned": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6696569538850445,
+          "depth": 0.4017654111271573,
+          "height": 0.24949882344708108,
+          "center_xyz": [
+            0.0002880136854761129,
+            -0.016574231497743584,
+            0.14484597855447107
+          ],
+          "yaw": 3.1378604866912534,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.012271889374766864,
+          "depth": 0.007320562970094591,
+          "height": 0.014140686230805888,
+          "xy": 0.016576733744131173,
+          "z": 0.013026223715527585,
+          "yaw": 0.003732166898539724,
+          "top_z": 0.005955880600124641,
+          "support_z": 0.02009656683093053
+        },
+        "composite": 0.1818389860743542
+      },
+      "meta": {
+        "sensor": "realsense_d455",
+        "has_imu": true,
+        "cam_pos": [
+          5.970752410560611e-17,
+          -0.9750978673553358,
+          0.5294664934796782
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.14000000059604645
+        ],
+        "look": [
+          -5.686430867200582e-17,
+          0.9286646355765102,
+          -0.3709204694129826
+        ],
+        "suitcase_xy": [
+          0.0,
+          0.0
+        ],
+        "suitcase_yaw": 0.0,
+        "suitcase_z": 0.14000000059604645,
+        "occluder": null,
+        "input": "single-frame D455-like pinhole depth -> XYZ cloud; not lidar, not a ROS bag, not time-series"
+      },
+      "depth": "/tmp/lrf_p1_mujoco_d455/vintage_medium_clear_depth.png",
+      "overlay": "/tmp/lrf_p1_mujoco_d455/vintage_medium_clear_overlay.png",
+      "files": {
+        "rgb": "vintage_medium_clear_rgb.png",
+        "depth": "vintage_medium_clear_depth.png",
+        "overlay": "vintage_medium_clear_overlay.png"
+      }
+    },
+    {
+      "case_id": "vintage_medium_yaw07",
+      "caption": "vintage_medium_yaw07  n=50879  baseline_ok=True composite=0.190  learned_ok=True composite=0.190",
+      "n_points": 50879,
+      "n_raw": 215182,
+      "gt": {
+        "width": 0.6819288432598114,
+        "depth": 0.4090859740972519,
+        "height": 0.26363950967788696,
+        "center_xyz": [
+          0.0,
+          0.0,
+          0.13181975483894348
+        ],
+        "yaw": 0.7
+      },
+      "baseline": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6739915865546717,
+          "depth": 0.40321715227164706,
+          "height": 0.24849307453971675,
+          "center_xyz": [
+            0.00515086127408486,
+            -0.018419372862798124,
+            0.1452536721418665
+          ],
+          "yaw": -2.442390812484405,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.007937256705139673,
+          "depth": 0.005868821825604831,
+          "height": 0.015146435138170211,
+          "xy": 0.019126020718478035,
+          "z": 0.01343391730292301,
+          "yaw": 0.0007981588946113227,
+          "top_z": 0.005860699733837904,
+          "support_z": 0.021007134872008115
+        },
+        "composite": 0.19027399774077605
+      },
+      "learned": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6739915865546717,
+          "depth": 0.40321715227164706,
+          "height": 0.24849307453971675,
+          "center_xyz": [
+            0.00515086127408486,
+            -0.018419372862798124,
+            0.1452536721418665
+          ],
+          "yaw": -2.442390812484405,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.007937256705139673,
+          "depth": 0.005868821825604831,
+          "height": 0.015146435138170211,
+          "xy": 0.019126020718478035,
+          "z": 0.01343391730292301,
+          "yaw": 0.0007981588946113227,
+          "top_z": 0.005860699733837904,
+          "support_z": 0.021007134872008115
+        },
+        "composite": 0.19027399774077605
+      },
+      "meta": {
+        "sensor": "realsense_d455",
+        "has_imu": true,
+        "cam_pos": [
+          5.970752410560611e-17,
+          -0.9750978673553358,
+          0.5294664934796782
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.14000000059604645
+        ],
+        "look": [
+          -5.686430867200582e-17,
+          0.9286646355765102,
+          -0.3709204694129826
+        ],
+        "suitcase_xy": [
+          0.0,
+          0.0
+        ],
+        "suitcase_yaw": 0.7,
+        "suitcase_z": 0.14000000059604645,
+        "occluder": null,
+        "input": "single-frame D455-like pinhole depth -> XYZ cloud; not lidar, not a ROS bag, not time-series"
+      },
+      "depth": "/tmp/lrf_p1_mujoco_d455/vintage_medium_yaw07_depth.png",
+      "overlay": "/tmp/lrf_p1_mujoco_d455/vintage_medium_yaw07_overlay.png",
+      "files": {
+        "rgb": "vintage_medium_yaw07_rgb.png",
+        "depth": "vintage_medium_yaw07_depth.png",
+        "overlay": "vintage_medium_yaw07_overlay.png"
+      }
+    },
+    {
+      "case_id": "vintage_medium_occluded",
+      "caption": "vintage_medium_occluded  n=60251  baseline_ok=True composite=0.192  learned_ok=True composite=0.192",
+      "n_points": 60251,
+      "n_raw": 215376,
+      "gt": {
+        "width": 0.6819288432598114,
+        "depth": 0.4090859740972519,
+        "height": 0.26363950967788696,
+        "center_xyz": [
+          0.0,
+          0.0,
+          0.13181975483894348
+        ],
+        "yaw": 0.0
+      },
+      "baseline": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6702680019256142,
+          "depth": 0.40087246713259106,
+          "height": 0.24874834462719758,
+          "center_xyz": [
+            -0.000374259506601148,
+            -0.01680063666773849,
+            0.14513035494742252
+          ],
+          "yaw": -3.1299732860616807,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.011660841334197203,
+          "depth": 0.008213506964660833,
+          "height": 0.014891165050689381,
+          "xy": 0.016804804748036806,
+          "z": 0.013310600108479037,
+          "yaw": 0.011619367528112434,
+          "top_z": 0.0058650175831343465,
+          "support_z": 0.020756182633823728
+        },
+        "composite": 0.1922305815181143
+      },
+      "learned": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.6702680019256142,
+          "depth": 0.40087246713259106,
+          "height": 0.24874834462719758,
+          "center_xyz": [
+            -0.000374259506601148,
+            -0.01680063666773849,
+            0.14513035494742252
+          ],
+          "yaw": -3.1299732860616807,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.011660841334197203,
+          "depth": 0.008213506964660833,
+          "height": 0.014891165050689381,
+          "xy": 0.016804804748036806,
+          "z": 0.013310600108479037,
+          "yaw": 0.011619367528112434,
+          "top_z": 0.0058650175831343465,
+          "support_z": 0.020756182633823728
+        },
+        "composite": 0.1922305815181143
+      },
+      "meta": {
+        "sensor": "realsense_d455",
+        "has_imu": true,
+        "cam_pos": [
+          5.970752410560611e-17,
+          -0.9750978673553358,
+          0.5294664934796782
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.14000000059604645
+        ],
+        "look": [
+          -5.686430867200582e-17,
+          0.9286646355765102,
+          -0.3709204694129826
+        ],
+        "suitcase_xy": [
+          0.0,
+          0.0
+        ],
+        "suitcase_yaw": 0.0,
+        "suitcase_z": 0.14000000059604645,
+        "occluder": {
+          "pos": [
+            -0.18,
+            -0.28,
+            0.12
+          ],
+          "size": [
+            0.16,
+            0.02,
+            0.12
+          ]
+        },
+        "input": "single-frame D455-like pinhole depth -> XYZ cloud; not lidar, not a ROS bag, not time-series"
+      },
+      "depth": "/tmp/lrf_p1_mujoco_d455/vintage_medium_occluded_depth.png",
+      "overlay": "/tmp/lrf_p1_mujoco_d455/vintage_medium_occluded_overlay.png",
+      "files": {
+        "rgb": "vintage_medium_occluded_rgb.png",
+        "depth": "vintage_medium_occluded_depth.png",
+        "overlay": "vintage_medium_occluded_overlay.png"
+      }
+    },
+    {
+      "case_id": "vintage_large_clear",
+      "caption": "vintage_large_clear  n=72203  baseline_ok=True composite=0.241  learned_ok=True composite=0.241",
+      "n_points": 72203,
+      "n_raw": 215936,
+      "gt": {
+        "width": 0.7771667540073395,
+        "depth": 0.452156201004982,
+        "height": 0.3004228323698044,
+        "center_xyz": [
+          0.0,
+          0.0,
+          0.1502114161849022
+        ],
+        "yaw": 0.0
+      },
+      "baseline": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.7637056128768487,
+          "depth": 0.4458726678374018,
+          "height": 0.2825070476263736,
+          "center_xyz": [
+            -0.0013767556990582277,
+            -0.023429093988578245,
+            0.16771758581429608
+          ],
+          "yaw": 3.1390302319710455,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.013461141130490795,
+          "depth": 0.00628353316758018,
+          "height": 0.017915784743430807,
+          "xy": 0.023469510037078374,
+          "z": 0.017506169629393886,
+          "yaw": 0.0025624216187476456,
+          "top_z": 0.008548277257678483,
+          "support_z": 0.02646406200110929
+        },
+        "composite": 0.24139393812586088
+      },
+      "learned": {
+        "ok": true,
+        "reason": "ok",
+        "box": {
+          "width": 0.7637056128768487,
+          "depth": 0.4458726678374018,
+          "height": 0.2825070476263736,
+          "center_xyz": [
+            -0.0013767556990582277,
+            -0.023429093988578245,
+            0.16771758581429608
+          ],
+          "yaw": 3.1390302319710455,
+          "confidence": 1.0,
+          "yaw_valid": true
+        },
+        "errors": {
+          "width": 0.013461141130490795,
+          "depth": 0.00628353316758018,
+          "height": 0.017915784743430807,
+          "xy": 0.023469510037078374,
+          "z": 0.017506169629393886,
+          "yaw": 0.0025624216187476456,
+          "top_z": 0.008548277257678483,
+          "support_z": 0.02646406200110929
+        },
+        "composite": 0.24139393812586088
+      },
+      "meta": {
+        "sensor": "realsense_d455",
+        "has_imu": true,
+        "cam_pos": [
+          5.970752410560611e-17,
+          -0.9750978673553358,
+          0.5494664893073531
+        ],
+        "target": [
+          0.0,
+          0.0,
+          0.1599999964237213
+        ],
+        "look": [
+          -5.686430867200582e-17,
+          0.9286646355765102,
+          -0.3709204694129826
+        ],
+        "suitcase_xy": [
+          0.0,
+          0.0
+        ],
+        "suitcase_yaw": 0.0,
+        "suitcase_z": 0.1599999964237213,
+        "occluder": null,
+        "input": "single-frame D455-like pinhole depth -> XYZ cloud; not lidar, not a ROS bag, not time-series"
+      },
+      "depth": "/tmp/lrf_p1_mujoco_d455/vintage_large_clear_depth.png",
+      "overlay": "/tmp/lrf_p1_mujoco_d455/vintage_large_clear_overlay.png",
+      "files": {
+        "rgb": "vintage_large_clear_rgb.png",
+        "depth": "vintage_large_clear_depth.png",
+        "overlay": "vintage_large_clear_overlay.png"
+      }
+    }
+  ]
+}
