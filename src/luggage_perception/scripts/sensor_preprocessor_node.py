@@ -1,31 +1,33 @@
 #!/usr/bin/env python3
-"""Thin ROS 2 node around SensorPreprocessor.
+"""Thin ROS 2 node around SensorPreprocessor (depth-primary, PF-R9 g2).
 
-Subscribes to canonical D435 topics plus /joint_states, pairs them, and
-publishes a synchronised set of standard messages. SyncedObservation stays
-inside the algorithm class; message conversion lives in
-luggage_perception.ros_message_adapters.
+Subscribes the canonical colour-aligned RGBD set plus /joint_states, pairs
+them by exact payload stamp, and republishes **the original source
+payloads** under the accepted acquisition's primary stamp — no Python-owned
+full-frame materialisation anywhere on the receive->republish path. The
+camera point cloud is not subscribed, waited for, transformed, or
+published.
 """
 
 from __future__ import division
 
 # Cap BLAS/OpenMP worker threads BEFORE numpy (transitively) loads: any
 # residual gemm in this process would otherwise fan out over every core
-# and busy-spin (PF-R9 B5 root cause; the hot path itself now avoids BLAS
-# entirely — see sensor_preprocessor.transform_points).
+# and busy-spin (PF-R9 measured; the hot path avoids BLAS entirely — see
+# sensor_preprocessor.transform_points).
 import os as _os
 for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
              "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     _os.environ.setdefault(_var, "1")
 
+import collections as _collections
 import json
-
-import numpy as np
+import time as _time
 
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image, JointState, PointCloud2
+from sensor_msgs.msg import CameraInfo, Image, JointState
 from std_msgs.msg import String
 import tf2_ros
 
@@ -57,8 +59,6 @@ class SensorPreprocessorNode(Node):
                 self.get_parameter("camera_pair_tolerance_sec").value),
             camera_wait_deadline_sec=float(
                 self.get_parameter("camera_wait_deadline_sec").value),
-            camera_emit_rgb_only=bool(
-                self.get_parameter("camera_emit_rgb_only").value),
             camera_info_max_age_sec=float(
                 self.get_parameter("camera_info_max_age_sec").value),
             joint_horizon_sec=float(
@@ -79,50 +79,26 @@ class SensorPreprocessorNode(Node):
             ),
             joint_names=joint_names,
         )
-        self._input_cloud_data_frame = str(
-            self.get_parameter("input_cloud_data_frame").value).strip()
-        self._output_cloud_frame = str(
-            self.get_parameter("output_cloud_frame").value)
 
-        self._tf_buffer = tf2_ros.Buffer()
-        self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
-        self._tf_warn_stamp = 0.0
         self._cb_counts = {
-            "rgb": 0, "depth": 0, "cloud": 0, "info": 0, "joints": 0,
+            "rgb": 0, "depth": 0, "info": 0, "joints": 0,
         }
-        # PF-R9: per-stage cloud-callback wall timing (ms), last 32
-        # samples, surfaced on /luggage/preprocessed/status for B3/B4
-        # evidence and PF-R10 C2.
-        import collections as _collections
-        self._cloud_stage_ms = _collections.deque(maxlen=32)
-        # PF-R9 g2 D1: complete-path stage timing (receive->view, core,
-        # emit-queue wait, output construction, per-product publish).
+        # PF-R9 g2: complete-path stage timing (D1 instrument, retained as
+        # diagnostics): receive->view, core, emit-queue wait, output
+        # construction, per-product publish.
         self._d1 = _collections.defaultdict(
             lambda: _collections.deque(maxlen=256))
         self._d1_bytes = _collections.Counter()
-        self._cloud_decimation_stride = max(
-            1, int(self.get_parameter("cloud_decimation_stride").value))
-        self._last_cloud_points_in = 0
-        self._last_cloud_points_out = 0
+        # Bounded emit queue; the daemon publisher thread in main() drains
+        # it so a slow large-message publish never head-of-line-blocks the
+        # sensor callbacks.
+        self._emit_queue = _collections.deque(maxlen=4)
+        self._emit_drops = 0
+        self._seen_epoch = 0
 
-        # gz ros_gz_bridge currently offers RELIABLE on these topics.
-        # BEST_EFFORT subscriptions connect but barely deliver on this RMW
-        # (recorded behaviour; the B1 probe re-measures both). The
-        # reliability stays configurable so the measured choice lands in
-        # the config, not the code.
-        reliability = (
-            ReliabilityPolicy.BEST_EFFORT
-            if str(self.get_parameter("cloud_input_qos_reliability").value)
-            == "best_effort"
-            else ReliabilityPolicy.RELIABLE)
         input_qos = QoSProfile(
             depth=5,
             reliability=ReliabilityPolicy.RELIABLE,
-            history=HistoryPolicy.KEEP_LAST,
-        )
-        cloud_qos = QoSProfile(
-            depth=5,
-            reliability=reliability,
             history=HistoryPolicy.KEEP_LAST,
         )
         sensor_qos = QoSProfile(
@@ -149,16 +125,9 @@ class SensorPreprocessorNode(Node):
             Image, self.get_parameter("output.depth_image").value, sensor_qos)
         self._pub_depth_info = self.create_publisher(
             CameraInfo, self.get_parameter("output.depth_info").value, sensor_qos)
-        self._pub_cloud = self.create_publisher(
-            PointCloud2, self.get_parameter("output.camera_points").value, sensor_qos)
         self._pub_status = self.create_publisher(
             String, self.get_parameter("output.status").value, status_qos)
 
-        # PF-R9 B5 note: a MultiThreadedExecutor with per-entity groups
-        # was tried and abandoned on this stack — the 1 Hz status timer
-        # and the parameter services were never serviced and cloud
-        # dispatch latency stayed ~70 ms regardless of thread count (see
-        # main() for the publisher-thread design that replaced it).
         self.create_subscription(
             Image, self.get_parameter("input.color_image").value,
             self._on_color, input_qos)
@@ -174,32 +143,18 @@ class SensorPreprocessorNode(Node):
             self.create_subscription(
                 CameraInfo, color_info_topic, self._on_color_info, input_qos)
         self.create_subscription(
-            PointCloud2, self.get_parameter("input.camera_points").value,
-            self._on_cloud, cloud_qos)
-        self.create_subscription(
             JointState, self.get_parameter("input.joint_states").value,
             self._on_joints, joint_qos)
 
         self.get_logger().info(
-            "sensor_preprocessor ready: data_frame=%r output_frame=%s "
-            "pair_tolerance=%.3fs wait_deadline=%.3fs cloud_qos=%s "
-            "decimation=%d"
-            % (self._input_cloud_data_frame or "<header>",
-               self._output_cloud_frame,
+            "sensor_preprocessor ready (depth-primary): frame=%s "
+            "pair_tolerance=%.3fs wait_deadline=%.3fs maxlen=%d/%.1fs"
+            % (self.get_parameter("output_cloud_frame").value,
                self._core.camera_pair_tolerance_sec,
                self._core.camera_wait_deadline_sec,
-               self.get_parameter("cloud_input_qos_reliability").value,
-               self._cloud_decimation_stride)
+               int(self.get_parameter("camera_maxlen").value),
+               float(self.get_parameter("camera_horizon_sec").value))
         )
-        # PF-R9 B5: publishing (0.9-3.7 MB cloud messages) inside the
-        # sensor callbacks blocked them (measured publish p95 233 ms at
-        # full size); the blocked callback then dropped incoming messages
-        # and capped emission at a few Hz. Sensor callbacks hand
-        # observations to this bounded queue; the daemon publisher thread
-        # in main() drains it, so a slow publish never head-of-line-blocks
-        # the sensor path.
-        self._emit_queue = _collections.deque(maxlen=4)
-        self._emit_drops = 0
 
     def _declare_params(self):
         defaults = {
@@ -207,32 +162,25 @@ class SensorPreprocessorNode(Node):
             "input.depth_image": "/camera/depth/image_raw",
             "input.camera_info": "/camera/depth/camera_info",
             "input.color_camera_info": "",
-            "input.camera_points": "/camera/depth/points",
             "input.joint_states": "/joint_states",
-            "input.lidar": "/livox/lidar",
-            "input.imu": "/livox/imu",
             "output.color_image": "/luggage/preprocessed/camera/color/image",
             "output.color_info": "/luggage/preprocessed/camera/color/camera_info",
             "output.depth_image": "/luggage/preprocessed/camera/depth/image",
             "output.depth_info": "/luggage/preprocessed/camera/depth/camera_info",
-            "output.camera_points": "/luggage/preprocessed/camera/depth/points",
             "output.status": "/luggage/preprocessed/status",
-            "input_cloud_data_frame": "camera_link",
             "output_cloud_frame": "camera_depth_optical_frame",
             "enable_lidar_output": False,
             "enable_imu": False,
-            "camera_slop_sec": 0.020,
-            # PF-R9 B2 split: pairing tolerance (~exact; gz co-stamps) and
-            # wait deadline (RGB-stream clock, set from the B1 receipt-lag
-            # p95; never advanced by /joint_states).
+            # PF-R9 g2 split: pairing tolerance (~exact; aligned streams
+            # are co-stamped) and wait deadline (canonical camera clock,
+            # never advanced by /joint_states).
+            "camera_slop_sec": 0.005,
             "camera_pair_tolerance_sec": 0.005,
-            "camera_wait_deadline_sec": 0.20,
-            "camera_emit_rgb_only": False,
-            "cloud_input_qos_reliability": "reliable",
-            "cloud_decimation_stride": 2,
+            "camera_wait_deadline_sec": 0.060,
             "camera_info_max_age_sec": 1.0,
-            "camera_maxlen": 10,
-            "camera_horizon_sec": 0.35,
+            # PF-R9 g2 fixed camera cache contract.
+            "camera_maxlen": 15,
+            "camera_horizon_sec": 1.0,
             "joint_horizon_sec": 1.0,
             "stale_sec": 0.15,
             "motion_gate.joint_names": [
@@ -247,11 +195,14 @@ class SensorPreprocessorNode(Node):
         for name, value in defaults.items():
             self.declare_parameter(name, value)
 
+    # ------------------------------------------------------------------
+    # Sensor callbacks (payload-owning, no materialisation)
+    # ------------------------------------------------------------------
+
     def _d1_note(self, label, dt_sec):
         self._d1[label].append(dt_sec * 1000.0)
 
     def _on_color(self, msg):
-        import time as _time
         t0 = _time.monotonic()
         self._cb_counts["rgb"] += 1
         frame = adapters.rgb_frame_from_msg(msg)
@@ -259,7 +210,8 @@ class SensorPreprocessorNode(Node):
         self._d1_note("rgb_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
-                "dropping color image with encoding %s" % msg.encoding)
+                "dropping colour image with unsupported/truncated layout "
+                "(%s)" % msg.encoding)
             return
         observation = self._core.update_rgb(frame)
         t2 = _time.monotonic()
@@ -267,7 +219,6 @@ class SensorPreprocessorNode(Node):
         self._handle(observation)
 
     def _on_depth(self, msg):
-        import time as _time
         t0 = _time.monotonic()
         self._cb_counts["depth"] += 1
         frame = adapters.depth_frame_from_msg(msg)
@@ -275,7 +226,8 @@ class SensorPreprocessorNode(Node):
         self._d1_note("depth_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
-                "dropping depth image with encoding %s" % msg.encoding)
+                "dropping depth image with unsupported/truncated layout "
+                "(%s)" % msg.encoding)
             return
         observation = self._core.update_depth(frame)
         t2 = _time.monotonic()
@@ -285,131 +237,16 @@ class SensorPreprocessorNode(Node):
     def _on_camera_info(self, msg):
         self._cb_counts["info"] += 1
         frame = adapters.camera_info_frame_from_msg(msg)
-        self._handle(self._core.update_camera_info(frame, slots=("depth", "color")))
+        if frame is None:
+            return
+        self._handle(self._core.update_camera_info(
+            frame, slots=("depth", "color")))
 
     def _on_color_info(self, msg):
         frame = adapters.camera_info_frame_from_msg(msg)
+        if frame is None:
+            return
         self._handle(self._core.update_camera_info(frame, slots=("color",)))
-
-    def _on_cloud(self, msg):
-        import time as _time
-        t0 = _time.monotonic()
-        self._cb_counts["cloud"] += 1
-        stamp = rclpy.time.Time.from_msg(msg.header.stamp)
-        data_frame = self._input_cloud_data_frame or msg.header.frame_id
-        t1 = _time.monotonic()
-        matrix = self._lookup_cloud_transform(data_frame, stamp)
-        t2 = _time.monotonic()
-        if matrix is None:
-            self._note_cloud_stage(t0, t1, t2, None, None)
-            return
-        cloud = self._decode_cloud(msg, data_frame)
-        t3 = _time.monotonic()
-        if cloud is None:
-            self._warn_throttled("dropping cloud with unsupported point layout")
-            self._note_cloud_stage(t0, t1, t2, t3, None)
-            return
-        if self._cloud_decimation_stride > 1:
-            cloud = self._decimate_cloud(cloud, msg)
-        observation = self._core.update_camera_cloud(
-            cloud, point_transform=matrix)
-        t4 = _time.monotonic()
-        self._handle(observation)
-        t5 = _time.monotonic()
-        self._note_cloud_stage(t0, t1, t2, t3, t4, t5)
-
-    @staticmethod
-    def _decode_cloud(msg, data_frame):
-        """Fast path for the sensor's float32-XYZ-first cloud layout.
-
-        The general adapter path (per-field gather + float64 astype)
-        measured 21 ms per 307k cloud under load. When x/y/z are FLOAT32
-        at offsets 0/4/8 — true for the gz points layout (point_step 24
-        with rgb at 16) — a structured view plus one float32 stack is
-        ~2 ms. Anything else falls back to the adapter.
-        """
-        if not msg.is_bigendian and msg.point_step >= 12:
-            fields = {field.name: field for field in msg.fields}
-            if ({"x", "y", "z"} <= set(fields)
-                    and all(
-                        fields[n].datatype == 7  # PointField.FLOAT32
-                        and fields[n].count == 1
-                        and fields[n].offset == 4 * i
-                        for i, n in enumerate(("x", "y", "z")))):
-                from luggage_perception.sensor_types import CameraCloud as _CC
-                raw = np.frombuffer(msg.data, dtype=np.uint8)
-                n = min(int(msg.width) * int(msg.height),
-                        raw.size // int(msg.point_step))
-                if n <= 0:
-                    return adapters.camera_cloud_from_msg(msg, data_frame)
-                structured = np.ndarray(
-                    shape=(n,),
-                    dtype=np.dtype({
-                        "names": ["x", "y", "z"],
-                        "formats": ["<f4", "<f4", "<f4"],
-                        "offsets": [0, 4, 8],
-                        "itemsize": int(msg.point_step)}),
-                    buffer=raw[:n * int(msg.point_step)],
-                    order="C")
-                return _CC(
-                    stamp=adapters.stamp_to_sec(msg.header.stamp),
-                    frame_id=msg.header.frame_id,
-                    data_frame=data_frame,
-                    points=np.stack(
-                        (structured["x"], structured["y"], structured["z"]),
-                        axis=1),
-                )
-        return adapters.camera_cloud_from_msg(msg, data_frame)
-
-    def _decimate_cloud(self, cloud, msg):
-        """PF-R9 B5 (optional lever, reviews recommendation E).
-
-        Stride-subsample the organized cloud (rows and columns) before it
-        enters the pipeline: a 3.7 MB 307k-point publish was the measured
-        bottleneck (publish p95 233 ms); stride 2 gives a 0.9 MB 77k-point
-        cloud. The filter's (u,v) reprojection indexes the full-resolution
-        mask, so no downstream change. Density gates: cargo points drop
-        ~4x (measured ~29.5k -> ~7.4k, still far above min_points 50 /
-        min_top_points 80); geometry non-regression is carried by the
-        PF-R10 C1 bars. Unorganized clouds fall back to flat [::stride].
-        """
-        stride = int(self._cloud_decimation_stride)
-        pts = np.asarray(cloud.points)
-        if stride <= 1 or pts.ndim != 2 or pts.shape[0] < stride * stride:
-            return cloud
-        height, width = int(msg.height), int(msg.width)
-        if (height > 1 and width > 1
-                and height * width == pts.shape[0]):
-            organized = pts.reshape(height, width, 3)
-            decimated = organized[::stride, ::stride, :].reshape(-1, 3)
-        else:
-            decimated = pts[::stride]
-        self._last_cloud_points_in = int(pts.shape[0])
-        self._last_cloud_points_out = int(decimated.shape[0])
-        from luggage_perception.sensor_types import CameraCloud as _CC
-        return _CC(
-            stamp=cloud.stamp,
-            frame_id=cloud.frame_id,
-            data_frame=cloud.data_frame,
-            points=decimated,
-            dropped_nonfinite=cloud.dropped_nonfinite,
-        )
-
-    def _note_cloud_stage(self, t0, t1, t2, t3, t4, t5=None):
-        rec = {
-            "pre": (t1 - t0) * 1000.0,
-            "tf_lookup_ms": (t2 - t1) * 1000.0,
-        }
-        if t3 is not None:
-            rec["decode_ms"] = (t3 - t2) * 1000.0
-        if t4 is not None:
-            rec["core_ms"] = (t4 - t3) * 1000.0
-        if t5 is not None:
-            # handle = enqueue; the actual publish runs on the daemon
-            # publisher thread and is deliberately off this path.
-            rec["handle_ms"] = (t5 - t4) * 1000.0
-            rec["total_ms"] = (t5 - t0) * 1000.0
-        self._cloud_stage_ms.append(rec)
 
     def _on_joints(self, msg):
         self._cb_counts["joints"] += 1
@@ -419,126 +256,67 @@ class SensorPreprocessorNode(Node):
             return
         self._handle(self._core.update_joint_state(sample))
 
-    def _lookup_cloud_transform(self, data_frame, stamp):
-        if data_frame == self._output_cloud_frame:
-            return np.eye(4, dtype=np.float64)
-        timeout = rclpy.duration.Duration(seconds=0.0)
-        try:
-            if not self._tf_buffer.can_transform(
-                    self._output_cloud_frame, data_frame, stamp, timeout):
-                self._warn_throttled(
-                    "TF %s <- %s not available at stamp %s"
-                    % (self._output_cloud_frame, data_frame, stamp))
-                return None
-            tf_msg = self._tf_buffer.lookup_transform(
-                self._output_cloud_frame, data_frame, stamp, timeout,
-            )
-        except (
-            tf2_ros.LookupException,
-            tf2_ros.ConnectivityException,
-            tf2_ros.ExtrapolationException,
-        ) as exc:
-            self._warn_throttled(
-                "TF %s <- %s failed: %s" % (
-                    self._output_cloud_frame, data_frame, exc))
-            return None
-        return adapters.transform_matrix(tf_msg)
-
     def _warn_throttled(self, message, period_sec=2.0):
         now = self.get_clock().now().nanoseconds * 1e-9
-        if now - self._tf_warn_stamp <= period_sec:
+        last = getattr(self, "_warn_stamp", 0.0)
+        if now - last <= period_sec:
             return
-        self._tf_warn_stamp = now
+        self._warn_stamp = now
         self.get_logger().warning(message)
 
+    # ------------------------------------------------------------------
+    # Emit queue (publisher thread drains it; see main)
+    # ------------------------------------------------------------------
+
     def _handle(self, observation):
-        import time as _time
         if observation is None:
             return
+        if self._core.camera_epoch != self._seen_epoch:
+            # Rollback epoch: drop every pending pre-rollback output.
+            self._emit_queue.clear()
+            self._seen_epoch = self._core.camera_epoch
         if len(self._emit_queue) >= self._emit_queue.maxlen:
             self._emit_drops += 1
         self._emit_queue.append((_time.monotonic(), observation))
 
     def _publish_observation(self, obs):
-        """D1-instrumented canonical republish (per-product timing)."""
-        import time as _time
+        """Identity republish: headers/metadata rewritten, payloads shared."""
         stamp = adapters.sec_to_stamp(obs.primary_stamp)
+        b0 = _time.monotonic()
+        msgs = []
         if obs.rgb is not None and obs.flags.rgb_ok:
-            b0 = _time.monotonic()
             out = adapters.image_msg_from_frame(obs.rgb, stamp)
-            b1 = _time.monotonic()
-            self._d1_note("build_color_ms", b1 - b0)
             self._d1_bytes["color"] += len(out.data)
-            p0 = _time.monotonic()
-            self._pub_color.publish(out)
-            p1 = _time.monotonic()
-            self._d1_note("pub_color_ms", p1 - p0)
-        # PF-R9 B5: the 0.6 MB depth image has no consumer on the online
-        # path (the filter consumes the cloud; the segmenter the RGB).
-        # Serializing it per emission for zero readers cost a quarter of
-        # the publish cycle; publish it only when someone listens.
+            msgs.append((self._pub_color, out, "color"))
+        # Publish-on-demand stays as idle/debug hygiene only (no D3
+        # credit): in the accepted graph colour and depth both have
+        # subscribers.
         if (obs.depth is not None and obs.flags.depth_ok
                 and self._pub_depth.get_subscription_count() > 0):
-            b0 = _time.monotonic()
             out = adapters.depth_msg_from_frame(obs.depth, stamp)
-            b1 = _time.monotonic()
-            self._d1_note("build_depth_ms", b1 - b0)
             self._d1_bytes["depth"] += len(out.data)
-            p0 = _time.monotonic()
-            self._pub_depth.publish(out)
-            p1 = _time.monotonic()
-            self._d1_note("pub_depth_ms", p1 - p0)
-        b0 = _time.monotonic()
-        color_info_msg = (
-            adapters.camera_info_msg_from_frame(obs.color_info, stamp)
-            if obs.color_info is not None and obs.flags.color_info_ok
-            else None)
-        depth_info_msg = (
-            adapters.camera_info_msg_from_frame(obs.depth_info, stamp)
-            if obs.depth_info is not None and obs.flags.depth_info_ok
-            else None)
+            msgs.append((self._pub_depth, out, "depth"))
+        if obs.color_info is not None and obs.flags.color_info_ok:
+            msgs.append((self._pub_color_info,
+                         adapters.camera_info_msg_from_frame(
+                             obs.color_info, stamp), "info"))
+        if obs.depth_info is not None and obs.flags.depth_info_ok:
+            msgs.append((self._pub_depth_info,
+                         adapters.camera_info_msg_from_frame(
+                             obs.depth_info, stamp), "info"))
         b1 = _time.monotonic()
-        self._d1_note("build_info_ms", b1 - b0)
-        for pub, msg in ((self._pub_color_info, color_info_msg),
-                         (self._pub_depth_info, depth_info_msg)):
-            if msg is not None:
-                p0 = _time.monotonic()
-                pub.publish(msg)
-                p1 = _time.monotonic()
-                self._d1_note("pub_info_ms", p1 - p0)
-        if obs.camera_points is not None:
-            b0 = _time.monotonic()
-            out = adapters.cloud_msg_from_points(
-                obs.camera_points, stamp, obs.frame_id)
-            b1 = _time.monotonic()
-            self._d1_note("build_cloud_ms", b1 - b0)
-            self._d1_bytes["cloud"] += len(out.data)
+        self._d1_note("build_total_ms", b1 - b0)
+        for pub, msg, kind in msgs:
             p0 = _time.monotonic()
-            self._pub_cloud.publish(out)
+            pub.publish(msg)
             p1 = _time.monotonic()
-            self._d1_note("pub_cloud_ms", p1 - p0)
+            self._d1_note("pub_%s_ms" % kind, p1 - p0)
 
     def _on_status_timer(self):
         payload = self._core.diagnostics()
         payload["callbacks"] = dict(self._cb_counts)
-        payload["cloud_decimation_stride"] = self._cloud_decimation_stride
-        payload["last_cloud_points_in"] = self._last_cloud_points_in
-        payload["last_cloud_points_out"] = self._last_cloud_points_out
         payload["emit_queue_drops"] = self._emit_drops
-        if self._cloud_stage_ms:
-            import numpy as _np
-            stage = {}
-            for key in ("tf_lookup_ms", "decode_ms", "core_ms",
-                        "handle_ms", "total_ms"):
-                values = [rec[key] for rec in self._cloud_stage_ms
-                          if key in rec]
-                if values:
-                    stage[key] = {
-                        "p50": float(_np.percentile(values, 50)),
-                        "p95": float(_np.percentile(values, 95)),
-                        "max": float(max(values)),
-                    }
-            payload["cloud_stage_ms"] = stage
+        payload["emit_queue_depth"] = len(self._emit_queue)
         if self._d1:
             import numpy as _np
             d1 = {}
@@ -558,11 +336,8 @@ class SensorPreprocessorNode(Node):
         payload = self._core.diagnostics(now=obs.primary_stamp)
         payload["callbacks"] = dict(self._cb_counts)
         payload["flags"] = obs.flags.as_dict()
-        payload["data_frame"] = obs.data_frame
-        payload["frame_id"] = obs.frame_id
-        payload["dropped_nonfinite"] = obs.dropped_nonfinite
+        payload["emit_queue_depth"] = len(self._emit_queue)
         payload["depth_dt"] = obs.depth_dt
-        payload["cloud_dt"] = obs.cloud_dt
         self._publish_status_payload(payload)
 
     def _publish_status_payload(self, payload):
@@ -574,20 +349,12 @@ class SensorPreprocessorNode(Node):
 def main():
     rclpy.init()
     node = SensorPreprocessorNode()
-    # Single-threaded spin: the PF-R9 B5 experiments with a
-    # MultiThreadedExecutor (cloud/status/emit groups, 2-3 threads) showed
-    # pathological scheduling on this stack — the 1 Hz status timer and
-    # the parameter services were never serviced, and cloud-callback
-    # dispatch latency stayed ~70 ms regardless of thread count. The
-    # measured per-callback costs after the core fixes (float32, BLAS-free
-    # transform, decimation, no double copy) are a few ms, so one thread
-    # suffices; publishing stays on a plain daemon thread below so a slow
-    # large-message publish cannot head-of-line-block sensor callbacks.
+    # Single-threaded spin + daemon publisher thread (PF-R9 measured form:
+    # a MultiThreadedExecutor starved timers/services on this stack).
     import threading
     stop = threading.Event()
 
     def publisher_loop():
-        import time as _time
         last_status = 0.0
         while not stop.is_set():
             try:

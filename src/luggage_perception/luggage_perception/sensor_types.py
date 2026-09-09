@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Frozen per-stream frames and the internal SyncedObservation (no ROS)."""
+"""Frozen per-stream frames and the internal SyncedObservation (no ROS).
+
+PF-R9 g2 payload contract: ``RgbFrame``/``DepthFrame`` own an **opaque
+immutable payload reference** (the source ROS ``array.array('B')``).
+``copy()`` shares that reference — it never copies pixel bytes. Algorithm
+code reads pixels only through ``view()``, a read-only NumPy view built
+with ``np.frombuffer`` over a read-only memoryview; unwrapping or
+replacing the mutable ROS data array from algorithm code is impossible
+and ``view.setflags(write=True)`` raises. Only the ROS adapter/node layer
+may unwrap a payload (``ros_data()``) to republish it by identity.
+"""
 
 from __future__ import division
 
@@ -18,6 +28,56 @@ def _copy_info(info):
     if info is None:
         return None
     return info.copy()
+
+
+class OpaquePayload(object):
+    """Immutable-by-convention owner of a source message byte buffer.
+
+    ``obj`` is the received ``array.array('B')`` (or any bytes-like object).
+    The algorithm layer never touches ``obj`` directly: it gets read-only
+    NumPy views. The adapter layer may read ``ros_data()`` once more to
+    assign the same object into an output ``Image.data`` — payload
+    identity survives receive -> buffer -> pair -> copy-out -> queue ->
+    republish with zero Python-owned full-frame materialisations.
+    """
+
+    __slots__ = ("_obj", "_nbytes", "origin")
+
+    def __init__(self, obj, origin="ros"):
+        self._obj = obj
+        self._nbytes = len(obj)
+        self.origin = str(origin)
+
+    def nbytes(self):
+        return int(self._nbytes)
+
+    def ros_data(self):
+        """Adapter-layer unwrap for identity republish. Not for algorithms."""
+        return self._obj
+
+    def readonly_memory(self):
+        return memoryview(self._obj)
+
+    def __len__(self):
+        return self._nbytes
+
+
+def _readonly_view(payload, dtype, shape, strides):
+    """Read-only strided view over an OpaquePayload. Never copies."""
+    base = np.frombuffer(payload.readonly_memory(), dtype=dtype)
+    base.setflags(write=False)
+    view = np.lib.stride_tricks.as_strided(base, shape=shape, strides=strides)
+    view.setflags(write=False)
+    return view
+
+
+def _legacy_view(array):
+    arr = np.asarray(array)
+    try:
+        arr.setflags(write=False)
+    except ValueError:
+        pass
+    return arr
 
 
 @dataclass(frozen=True)
@@ -54,31 +114,138 @@ class CameraInfoFrame(object):
         )
 
 
-@dataclass(frozen=True)
-class RgbFrame(object):
-    stamp: float
-    frame_id: str
-    image: object
-    encoding: str = "rgb8"
+class _ImageViewMixin(object):
+    """Shared geometry + payload view logic for RgbFrame/DepthFrame."""
+
+    _COLOR_CHANNELS = {"rgb8": 3, "bgr8": 3, "rgba8": 4, "bgra8": 4,
+                       "mono8": 1, "8UC1": 1}
+
+    def _channels(self):
+        return self._COLOR_CHANNELS.get(str(self.encoding), 3)
+
+    def _declared_bytes(self):
+        raise NotImplementedError
+
+    def view(self):
+        """Read-only NumPy view of the pixels (no copy, no astype)."""
+        if self.payload is not None:
+            declared = self._declared_bytes()
+            if declared is None or self.payload.nbytes() < declared:
+                return None  # truncated buffer: caller counts it by name
+            return self._build_view()
+        return _legacy_view(self._raw)
+
+    def _build_view(self):
+        raise NotImplementedError
+
+
+class RgbFrame(_ImageViewMixin, object):
+    """One colour image. ``image`` is the legacy direct-array constructor."""
+
+    __slots__ = ("stamp", "frame_id", "encoding", "payload", "height",
+                 "width", "step", "is_bigendian", "stamp_key", "_raw")
+
+    def __init__(self, stamp, frame_id, image=None, encoding="rgb8",
+                 payload=None, height=0, width=0, step=0, is_bigendian=0,
+                 stamp_key=None):
+        self.stamp = float(stamp)
+        self.frame_id = str(frame_id)
+        self.encoding = str(encoding)
+        self.payload = payload
+        self.height = int(height or 0)
+        self.width = int(width or 0)
+        self.step = int(step or 0)
+        self.is_bigendian = int(is_bigendian)
+        self.stamp_key = stamp_key
+        self._raw = image
+
+    @property
+    def image(self):
+        return self.view()
+
+    def _declared_bytes(self):
+        if self.height <= 0 or self.width <= 0:
+            return None
+        channels = self._channels()
+        step = self.step or (self.width * channels)
+        return int(self.height) * int(step)
+
+    def _build_view(self):
+        channels = self._channels()
+        step = int(self.step or (self.width * channels))
+        shape = (int(self.height), int(self.width), channels) \
+            if channels > 1 else (int(self.height), int(self.width))
+        strides = (step, channels, 1) if channels > 1 else (step, 1)
+        return _readonly_view(self.payload, np.dtype("u1"), shape, strides)
 
     def copy(self):
-        return replace(self, image=_copy_array(self.image))
+        """Share the payload reference (PF-R9 g2): no pixel copy."""
+        return RgbFrame(
+            self.stamp, self.frame_id, image=self._raw,
+            encoding=self.encoding,
+            payload=self.payload, height=self.height, width=self.width,
+            step=self.step, is_bigendian=self.is_bigendian,
+            stamp_key=self.stamp_key)
 
 
-@dataclass(frozen=True)
-class DepthFrame(object):
-    stamp: float
-    frame_id: str
-    depth: object
-    units: str
-    encoding: str = "16UC1"
+class DepthFrame(_ImageViewMixin, object):
+    """One aligned depth image, ``16UC1`` millimetres by contract."""
+
+    __slots__ = ("stamp", "frame_id", "encoding", "units", "payload",
+                 "height", "width", "step", "is_bigendian", "stamp_key",
+                 "_raw")
+
+    _DEPTH_CHANNELS = {"16UC1": 1, "mono16": 1, "8UC1": 1}
+
+    def __init__(self, stamp, frame_id, depth=None, units="millimetres",
+                 encoding="16UC1", payload=None, height=0, width=0, step=0,
+                 is_bigendian=0, stamp_key=None):
+        self.stamp = float(stamp)
+        self.frame_id = str(frame_id)
+        self.encoding = str(encoding)
+        self.units = str(units)
+        self.payload = payload
+        self.height = int(height or 0)
+        self.width = int(width or 0)
+        self.step = int(step or 0)
+        self.is_bigendian = int(is_bigendian)
+        self.stamp_key = stamp_key
+        self._raw = depth
+
+    @property
+    def depth(self):
+        return self.view()
+
+    def _channels(self):
+        return self._DEPTH_CHANNELS.get(str(self.encoding), 1)
+
+    def _declared_bytes(self):
+        if self.height <= 0 or self.width <= 0:
+            return None
+        return int(self.height) * int(self.step or (self.width * 2))
+
+    def _build_view(self):
+        dtype = np.dtype(">u2" if self.is_bigendian else "<u2")
+        step = int(self.step or (self.width * 2))
+        return _readonly_view(
+            self.payload, dtype, (int(self.height), int(self.width)),
+            (step, 2))
 
     def copy(self):
-        return replace(self, depth=_copy_array(self.depth))
+        """Share the payload reference (PF-R9 g2): no pixel copy."""
+        return DepthFrame(
+            self.stamp, self.frame_id, depth=self._raw, units=self.units,
+            encoding=self.encoding, payload=self.payload,
+            height=self.height, width=self.width, step=self.step,
+            is_bigendian=self.is_bigendian, stamp_key=self.stamp_key)
 
 
 @dataclass(frozen=True)
 class CameraCloud(object):
+    """Sparse semantic output cloud (cargo/obstacle products). The
+    transported camera cloud is no longer a pipeline product (PF-R9 g2);
+    this struct remains for generated point products only."""
+
     stamp: float
     frame_id: str
     data_frame: str
@@ -175,30 +342,26 @@ class SyncedObservation(object):
     depth: object = None
     color_info: object = None
     depth_info: object = None
-    camera_points: object = None
     lidar_points: object = None
     frame_id: str = ""
-    data_frame: str = ""
     lidar_dt: float = -1.0
     depth_dt: float = -1.0
-    cloud_dt: float = -1.0
     rgb_stamp: float = 0.0
     depth_stamp: float = 0.0
-    cloud_stamp: float = 0.0
+    stamp_key: tuple = None
     motion_score: float = 0.0
-    dropped_nonfinite: int = 0
     units: str = "millimetres"
     flags: ObservationFlags = field(default_factory=ObservationFlags)
     rejection_reason: str = ""
 
     def copy(self):
+        """Copy-out boundary: frames share payloads, metadata is fresh."""
         return replace(
             self,
             rgb=None if self.rgb is None else self.rgb.copy(),
             depth=None if self.depth is None else self.depth.copy(),
             color_info=_copy_info(self.color_info),
             depth_info=_copy_info(self.depth_info),
-            camera_points=_copy_array(self.camera_points),
             lidar_points=_copy_array(self.lidar_points),
             flags=self.flags.copy(),
         )

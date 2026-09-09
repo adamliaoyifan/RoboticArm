@@ -1,68 +1,45 @@
 sensor_preprocessor:
   ros__parameters:
+    # Backend binding (PF-R9 g2 canonical colour-aligned RGBD set).
+    # Gazebo: colour + D435-like 16UC1 depth share the optical frame and
+    # are exactly co-stamped (measured 100%, evidence
+    # 2026-09-09_pfr9_g2_payload/depth_rgb_alignment.json). The camera
+    # point cloud is not subscribed, waited for, transformed, or
+    # published. For the D455 backend, remap to
+    # /camera/d555/color/image_raw +
+    # /camera/d555/aligned_depth_to_color/image_raw and the d555 colour
+    # optical frame.
     input.color_image: /camera/color/image_raw
     input.depth_image: /camera/depth/image_raw
     input.camera_info: /camera/depth/camera_info
     input.color_camera_info: ""
-    input.camera_points: /camera/depth/points
     input.joint_states: /joint_states
-    input.lidar: /livox/lidar
-    input.imu: /livox/imu
     output.color_image: /luggage/preprocessed/camera/color/image
     output.color_info: /luggage/preprocessed/camera/color/camera_info
     output.depth_image: /luggage/preprocessed/camera/depth/image
     output.depth_info: /luggage/preprocessed/camera/depth/camera_info
-    output.camera_points: /luggage/preprocessed/camera/depth/points
     output.status: /luggage/preprocessed/status
-    # Gazebo rgbd_camera points are in camera_link axes; the header says optical.
-    input_cloud_data_frame: camera_link
+    # Truthful colour optical frame of the canonical acquisition.
     output_cloud_frame: camera_depth_optical_frame
     enable_lidar_output: false
     enable_imu: false
-    camera_slop_sec: 0.020
-    # PF-R9 B2 split (from the B1 measurement, 130 s window, box present,
-    # full semantic load; evidence 2026-09-08_pfr9_throughput/
-    # b1_period_probe_pre.json):
-    # - gz rgbd_camera co-stamps colour/depth/points, so the pairing
-    #   tolerance stays ~exact: 0.005 s (matched pairs arrive p50 2.8 ms
-    #   apart; tolerance bounds |stamp diff|, which is 0 for true pairs).
-    # - wait deadline 0.060 s > the measured matched-header receipt-lag
-    #   max 39.3 ms (p95 22.9 ms) with ~50% margin, and far below
-    #   camera_horizon_sec 0.35, so no clamping question arises. The
-    #   deadline runs on the RGB stream's own clock (newest buffered RGB
-    #   header stamp) and can no longer be advanced by 50 Hz
-    #   /joint_states.
-    # - after the deadline with no cloud the stamp is skipped
-    #   (cloud_wait_timeout, counted in diagnostics): B1 measured 15.2%
-    #   of RGB stamps have no same-stamp cloud at all; emitting them
-    #   RGB-only would pin cloud_ok near 85% < 95% (B4). The flagged
-    #   RGB-only path remains available via camera_emit_rgb_only: true.
+    # PF-R9 g2 split: pairing tolerance (~exact) and wait deadline on the
+    # canonical camera clock. D1 measured the aligned streams exactly
+    # co-stamped; the deadline only bounds tail waits and is never
+    # advanced by /joint_states. After the deadline with no aligned depth
+    # the stamp is skipped (depth_wait_timeout, counted) — a partial
+    # acquisition is never emitted.
+    camera_slop_sec: 0.005
     camera_pair_tolerance_sec: 0.005
     camera_wait_deadline_sec: 0.060
-    camera_emit_rgb_only: false
-    # B1 also measured the QoS alternative: BEST_EFFORT lost 31-37% of
-    # messages on both topics vs RELIABLE on this RMW, so inputs stay
-    # RELIABLE (the B5 BEST_EFFORT item is skipped with that evidence).
-    cloud_input_qos_reliability: reliable
-    # PF-R9 B5 optional lever (reviews recommendation E), selected with
-    # measured cause: publishing the full 3.7 MB 307k-point cloud blocked
-    # the preprocessor (publish p95 233 ms / max 486 ms in
-    # cloud_stage_ms), which capped emission at ~3 Hz. Stride 2 keeps all
-    # rows/columns at half density: ~77k points, 0.9 MB. Retained cargo
-    # density measured ~29.5k -> ~7.4k points (min_points 50,
-    # min_top_points 80 — large margin); geometry non-regression is
-    # enforced by PF-R10 C1 (top/support z limits, false_measured_height
-    # == 0). The filter's (u,v) reprojection still indexes the full-res
-    # mask. 1 disables.
-    cloud_decimation_stride: 2
     camera_info_max_age_sec: 1.0
-    camera_maxlen: 10
-    camera_horizon_sec: 0.35
+    # PF-R9 g2 fixed camera cache contract: 15 entries / 1.0 second on
+    # the camera clock (23.0 MB payload ceiling at 640x480).
+    camera_maxlen: 15
+    camera_horizon_sec: 1.0
     joint_horizon_sec: 1.0
     stale_sec: 0.15
     # Annotates geometry_ok on /luggage/preprocessed/status only.
-    # Does not drop RGB/depth/points. DetectLuggage does not wait on this gate;
-    # the cargo tracker publishes the latest associated cloud instead.
     motion_gate.joint_names:
       - elfin_joint1
       - elfin_joint2
