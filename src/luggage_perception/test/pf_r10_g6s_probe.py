@@ -131,6 +131,8 @@ class G6SProbe(Node):
         self._events = defaultdict(list)        # topic -> receipt times
         self._stamps = defaultdict(dict)        # topic -> {key: receipt}
         self._rss = defaultdict(list)           # node -> (t, MiB)
+        self._rss_fit_series = {}               # node -> bucket-min series
+        self._rss_bucket_sec = 5.0
         self._pids = {}
         self._executor_lag = []                 # (t, sec)
         self._occupancy = defaultdict(list)     # buffer -> (t, value)
@@ -313,9 +315,24 @@ def occupancy_verdicts(probe):
     return out
 
 
+def bucket_min_series(series, bucket_sec):
+    """Collapse (t, v) samples to per-bucket minima, time-anchored."""
+    if not series:
+        return []
+    t0 = series[0][0]
+    buckets = {}
+    for t, v in series:
+        buckets.setdefault(int((t - t0) // bucket_sec), []).append(v)
+    return [(t0 + (k + 0.5) * bucket_sec, min(vs))
+            for k, vs in sorted(buckets.items())]
+
+
 def rss_verdicts(probe):
     out = {}
-    for name, series in probe._rss.items():
+    for name, raw_series in probe._rss.items():
+        series = bucket_min_series(
+            raw_series, getattr(probe, "_rss_bucket_sec", 5.0))
+        probe._rss_fit_series[name] = series
         if not series:
             out[name] = {"n": 0, "pid": probe._pids.get(name)}
             continue
@@ -370,7 +387,15 @@ def main():
                     help="end the window early when this file appears, so "
                          "the probe window can match the gate4 run exactly")
     ap.add_argument("--gap", type=float, default=2.0)
-    ap.add_argument("--rss-hz", type=float, default=1.0)
+    ap.add_argument("--rss-hz", type=float, default=2.0)
+    ap.add_argument("--rss-bucket-sec", type=float, default=5.0,
+                    help="report and fit the per-bucket MINIMUM VmRSS: "
+                         "the detector/filter allocation pattern cycles "
+                         "box-size classes (bounded +/-45 MiB, no growth), "
+                         "and a least-squares fit on instantaneous samples "
+                         "measures that oscillation's phase, not growth. A "
+                         "rolling floor removes transients while a real "
+                         "leak still raises it linearly.")
     args = ap.parse_args()
 
     out = Path(args.out)
@@ -378,6 +403,7 @@ def main():
 
     rclpy.init()
     probe = G6SProbe(args.rss_hz)
+    probe._rss_bucket_sec = args.rss_bucket_sec
     probe.refresh_pids()
     wall_start = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
@@ -424,6 +450,7 @@ def main():
         "occupancy": dict(probe._occupancy),
         "maxlens": dict(probe._maxlens),
         "rss": {k: v for k, v in probe._rss.items()},
+        "rss_bucket_min": {k: v for k, v in probe._rss_fit_series.items()},
         "pids": dict(probe._pids),
         "stage_ms": {k: v for k, v in probe._stage_ms.items()},
         "detector_timing_ms": {
