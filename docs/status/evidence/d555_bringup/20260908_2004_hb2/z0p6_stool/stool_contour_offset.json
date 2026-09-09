@@ -1,0 +1,24 @@
+{
+  "contour_pixels": 69,
+  "matched_with_color_edge": 69,
+  "signed_du_px_median": 5.0,
+  "signed_dv_px_median": 1.0,
+  "signed_du_px_mean": 2.9565217391304346,
+  "signed_dv_px_mean": 1.8405797101449275,
+  "signed_du_px_std": 7.049380243308257,
+  "signed_dv_px_std": 4.765890851243357,
+  "p10_p90_du": [
+    -8.0,
+    11.0
+  ],
+  "p10_p90_dv": [
+    -1.3999999999999986,
+    8.0
+  ],
+  "metres_at_0.35m": [
+    0.0054149805964226715,
+    0.001083928892901972
+  ],
+  "expected_u_px_59mm_at_0.35m": 54.47849622857143,
+  "expected_u_px_95mm_at_0.35m": 87.71961257142858
+}

@@ -1,0 +1,16 @@
+{
+  "parent": "D555-BRINGUP-20260908",
+  "subtask": "HB-3",
+  "revision": "40ab61ca0f6d5237f26091d946c05227bb6fc468",
+  "gui_mount_eef_adapter_to_camera_link": {
+    "xyz": [0.013, 0.097, -0.021],
+    "rpy": [0.03770, 1.36345, 1.57080]
+  },
+  "poses": [
+    {"pose_id": "pose1", "offset_mm": 10.10, "angle_deg": 1.91},
+    {"pose_id": "pose2", "offset_mm": 2.42, "angle_deg": 2.33},
+    {"pose_id": "pose3", "offset_mm": 1.03, "angle_deg": 2.19}
+  ],
+  "conclusion": "rotation",
+  "smear_verdict": "rviz_decay_time_nonrepetitive_scan"
+}

@@ -1,0 +1,82 @@
+{
+  "operator_labeled_range_m": 0.34,
+  "median_aligned_depth_m": 0.5830000042915344,
+  "aligned_depth_p10_p90_m": [
+    0.34700000286102295,
+    0.6740000247955322
+  ],
+  "color_frame": "d555_color_optical_frame",
+  "aligned_frame": "d555_color_optical_frame",
+  "native_frame": "d555_depth_optical_frame",
+  "color_k": {
+    "fx": 323.1775207519531,
+    "fy": 322.8994140625,
+    "cx": 317.7525939941406,
+    "cy": 178.02940368652344
+  },
+  "depth_k": {
+    "fx": 321.5054931640625,
+    "fy": 321.5054931640625,
+    "cx": 318.34478759765625,
+    "cy": 178.16726684570312
+  },
+  "aligned_k": {
+    "fx": 323.1775207519531,
+    "fy": 322.8994140625,
+    "cx": 317.7525939941406,
+    "cy": 178.02940368652344
+  },
+  "color_gradient_p90": 13.819934844970703,
+  "color_gradient_p99": 49.120487213134766,
+  "usable_high_contrast_target": true,
+  "signed_offset_px": {
+    "aligned_depth_on_color": {
+      "du": -4.0,
+      "dv": 0.0,
+      "peak_frac": 3.170657510054298e-05,
+      "metres": [
+        -0.007215848465388799,
+        0.0
+      ]
+    },
+    "native_warped_with_hb1_extrinsic": {
+      "du": 0.0,
+      "dv": 0.0,
+      "peak_frac": 0.00035983946872875094,
+      "metres": [
+        0.0,
+        0.0
+      ]
+    },
+    "native_warped_identity_extrinsic": {
+      "du": 0.0,
+      "dv": 0.0,
+      "peak_frac": 5.211303141550161e-05,
+      "metres": [
+        0.0,
+        0.0
+      ]
+    }
+  },
+  "expected_u_px_if_unaligned": {
+    "from_59mm_color_offset": 32.70578659349438,
+    "from_95mm_baseline": 52.661859769185874
+  },
+  "pointcloud_rgb": {
+    "has_rgb_field": true,
+    "n_sampled": 21737,
+    "rgb_mean": [
+      116.53181211758752,
+      119.71780834521783,
+      119.30017941758292
+    ],
+    "rgb_std": [
+      47.053359044928364,
+      43.082333458676636,
+      45.129310423542464
+    ],
+    "unique_approx": 1360,
+    "constant": false
+  },
+  "sign_convention": "+du = depth/warped edge is to the right of colour edge"
+}

@@ -4,6 +4,7 @@ Migration progress, validation results, and known blockers belong here.
 
 - [自动日报与周报](progress/README.md) — 汇总 Git、agent Result、评审决策、后续计划和当前卡点
 - [进度轮询使用说明](progress_polling.md) — 单次、持续轮询和 systemd user timer
+- [现场 ros2 bag 录制现状与问题](ros2_bag_site_recording.md)
 - [Gate 0 environment record](gate0_environment.md)
 - [GPU runtime hard gate](gpu_runtime.md)
 - [MVP Gates 1–5 acceptance](mvp_gates.md)
