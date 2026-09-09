@@ -120,6 +120,14 @@ still losing the tail.
   available win but changes the preprocessor's published contract and needs a
   `docs/architecture/sensor_data_pipeline.md` amendment. Recorded as the
   contingency if PF-R9 misses its bar; it is not authorised by this plan.
+
+  **Fired 2026-09-08.** PF-R9 generation 1 met B1, B2, B4, B5, and B6 and
+  missed B3 by measurement (0.462x against 0.8; p50 256 ms against 60 ms), so
+  this exclusion is now superseded by
+  [`pf_f3_depth_primary_contract.md`](pf_f3_depth_primary_contract.md), which
+  owns the depth-primary amendment, PF-R9 generation 2, and PF-R10
+  generation 2. This document remains authoritative for PF-R8 (closed,
+  passed) and for PF-R10's C1-C3, which the F3 plan carries over unchanged.
 - `pickup_observe` pose retuning and spawn-jitter constraints. Correction 1
   removes the motivation; do not spend time here.
 - Gate 4 bar renegotiation. `docs/plans/platform_free_height_gate4_revision.md`

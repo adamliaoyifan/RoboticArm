@@ -56,6 +56,18 @@ Phase 1 Gates 1–5 acceptance is in [mvp_gates.md](../status/mvp_gates.md). Pha
 - [SIM-R1 production orchestrator 与可插拔探索计划](sim_r1_production_orchestrator_exploration.md)
   （显式 Start、人工上箱 request-ID 握手、stop-and-look NBV、策略插件硬门、
    仿真/实机同算法与持久三箱闭环）
-- [D455 替换腕部 D435](d455_replace_d435/README.md)
-  （官网参数与 TF；口袋宽度与 `pickup_observe` 近距使 D455 不能即插即用；
-   未过几何门之前不改架构）
+- [D555 替换仿真 D435](d555_replace_d435/README.md)
+  （已装 D555 PoE 的 Datasheet / TF / 替换讨论；官方无 D555 URDF；
+   机内光学按 D450；未过 HB 与几何门之前不改架构）
+- [D555 真机 bring-up 核实](d555_hardware_bringup_verification.md)
+  （HB-1/2/3 只读：话题与 TF dump、RGB–深度对齐、相对 Mid-360 安装残差）
+- [D455 替换腕部 D435（参考，已误导向）](d455_replace_d435/README.md)
+  （按 D455 写的材料；对齐目标已改为 D555）
+- [D555 眼在手标定](d555_handeye_calibration.md)
+  （CAD 种子 + ChArUco 手眼；HB-3 测到约 2° 安装旋转误差；
+   HE-1 全离线，HE-2 需实体标定板）
+- [PF-R8 / PF-R9 感知验收](pf_r8_r9_perception_acceptance.md)
+  （PF-R8 已通过；PF-R9 generation 1 仅 B3 未达，像素空间掩膜预案已触发）
+- [PF-F3 depth-primary 传感契约](pf_f3_depth_primary_contract.md)
+  （取消整幅点云传输，彩色对齐深度为唯一栅格；含 PF-R9/PF-R10 generation 2；
+   共识第二轮未过前不可派发）
