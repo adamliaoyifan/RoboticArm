@@ -95,6 +95,11 @@ class SensorPreprocessorNode(Node):
         # evidence and PF-R10 C2.
         import collections as _collections
         self._cloud_stage_ms = _collections.deque(maxlen=32)
+        # PF-R9 g2 D1: complete-path stage timing (receive->view, core,
+        # emit-queue wait, output construction, per-product publish).
+        self._d1 = _collections.defaultdict(
+            lambda: _collections.deque(maxlen=256))
+        self._d1_bytes = _collections.Counter()
         self._cloud_decimation_stride = max(
             1, int(self.get_parameter("cloud_decimation_stride").value))
         self._last_cloud_points_in = 0
@@ -242,23 +247,40 @@ class SensorPreprocessorNode(Node):
         for name, value in defaults.items():
             self.declare_parameter(name, value)
 
+    def _d1_note(self, label, dt_sec):
+        self._d1[label].append(dt_sec * 1000.0)
+
     def _on_color(self, msg):
+        import time as _time
+        t0 = _time.monotonic()
         self._cb_counts["rgb"] += 1
         frame = adapters.rgb_frame_from_msg(msg)
+        t1 = _time.monotonic()
+        self._d1_note("rgb_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
                 "dropping color image with encoding %s" % msg.encoding)
             return
-        self._handle(self._core.update_rgb(frame))
+        observation = self._core.update_rgb(frame)
+        t2 = _time.monotonic()
+        self._d1_note("rgb_core_ms", t2 - t1)
+        self._handle(observation)
 
     def _on_depth(self, msg):
+        import time as _time
+        t0 = _time.monotonic()
         self._cb_counts["depth"] += 1
         frame = adapters.depth_frame_from_msg(msg)
+        t1 = _time.monotonic()
+        self._d1_note("depth_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
                 "dropping depth image with encoding %s" % msg.encoding)
             return
-        self._handle(self._core.update_depth(frame))
+        observation = self._core.update_depth(frame)
+        t2 = _time.monotonic()
+        self._d1_note("depth_core_ms", t2 - t1)
+        self._handle(observation)
 
     def _on_camera_info(self, msg):
         self._cb_counts["info"] += 1
@@ -430,34 +452,71 @@ class SensorPreprocessorNode(Node):
         self.get_logger().warning(message)
 
     def _handle(self, observation):
+        import time as _time
         if observation is None:
             return
         if len(self._emit_queue) >= self._emit_queue.maxlen:
             self._emit_drops += 1
-        self._emit_queue.append(observation)
+        self._emit_queue.append((_time.monotonic(), observation))
 
     def _publish_observation(self, obs):
+        """D1-instrumented canonical republish (per-product timing)."""
+        import time as _time
         stamp = adapters.sec_to_stamp(obs.primary_stamp)
         if obs.rgb is not None and obs.flags.rgb_ok:
-            self._pub_color.publish(
-                adapters.image_msg_from_frame(obs.rgb, stamp))
+            b0 = _time.monotonic()
+            out = adapters.image_msg_from_frame(obs.rgb, stamp)
+            b1 = _time.monotonic()
+            self._d1_note("build_color_ms", b1 - b0)
+            self._d1_bytes["color"] += len(out.data)
+            p0 = _time.monotonic()
+            self._pub_color.publish(out)
+            p1 = _time.monotonic()
+            self._d1_note("pub_color_ms", p1 - p0)
         # PF-R9 B5: the 0.6 MB depth image has no consumer on the online
         # path (the filter consumes the cloud; the segmenter the RGB).
         # Serializing it per emission for zero readers cost a quarter of
         # the publish cycle; publish it only when someone listens.
         if (obs.depth is not None and obs.flags.depth_ok
                 and self._pub_depth.get_subscription_count() > 0):
-            self._pub_depth.publish(
-                adapters.depth_msg_from_frame(obs.depth, stamp))
-        if obs.color_info is not None and obs.flags.color_info_ok:
-            self._pub_color_info.publish(
-                adapters.camera_info_msg_from_frame(obs.color_info, stamp))
-        if obs.depth_info is not None and obs.flags.depth_info_ok:
-            self._pub_depth_info.publish(
-                adapters.camera_info_msg_from_frame(obs.depth_info, stamp))
+            b0 = _time.monotonic()
+            out = adapters.depth_msg_from_frame(obs.depth, stamp)
+            b1 = _time.monotonic()
+            self._d1_note("build_depth_ms", b1 - b0)
+            self._d1_bytes["depth"] += len(out.data)
+            p0 = _time.monotonic()
+            self._pub_depth.publish(out)
+            p1 = _time.monotonic()
+            self._d1_note("pub_depth_ms", p1 - p0)
+        b0 = _time.monotonic()
+        color_info_msg = (
+            adapters.camera_info_msg_from_frame(obs.color_info, stamp)
+            if obs.color_info is not None and obs.flags.color_info_ok
+            else None)
+        depth_info_msg = (
+            adapters.camera_info_msg_from_frame(obs.depth_info, stamp)
+            if obs.depth_info is not None and obs.flags.depth_info_ok
+            else None)
+        b1 = _time.monotonic()
+        self._d1_note("build_info_ms", b1 - b0)
+        for pub, msg in ((self._pub_color_info, color_info_msg),
+                         (self._pub_depth_info, depth_info_msg)):
+            if msg is not None:
+                p0 = _time.monotonic()
+                pub.publish(msg)
+                p1 = _time.monotonic()
+                self._d1_note("pub_info_ms", p1 - p0)
         if obs.camera_points is not None:
-            self._pub_cloud.publish(adapters.cloud_msg_from_points(
-                obs.camera_points, stamp, obs.frame_id))
+            b0 = _time.monotonic()
+            out = adapters.cloud_msg_from_points(
+                obs.camera_points, stamp, obs.frame_id)
+            b1 = _time.monotonic()
+            self._d1_note("build_cloud_ms", b1 - b0)
+            self._d1_bytes["cloud"] += len(out.data)
+            p0 = _time.monotonic()
+            self._pub_cloud.publish(out)
+            p1 = _time.monotonic()
+            self._d1_note("pub_cloud_ms", p1 - p0)
 
     def _on_status_timer(self):
         payload = self._core.diagnostics()
@@ -480,6 +539,19 @@ class SensorPreprocessorNode(Node):
                         "max": float(max(values)),
                     }
             payload["cloud_stage_ms"] = stage
+        if self._d1:
+            import numpy as _np
+            d1 = {}
+            for label, values in sorted(self._d1.items()):
+                if values:
+                    d1[label] = {
+                        "n": len(values),
+                        "p50": float(_np.percentile(values, 50)),
+                        "p95": float(_np.percentile(values, 95)),
+                        "max": float(max(values)),
+                    }
+            payload["d1_stage_ms"] = d1
+            payload["d1_bytes_total"] = dict(self._d1_bytes)
         self._publish_status_payload(payload)
 
     def _publish_status(self, obs):
@@ -519,10 +591,11 @@ def main():
         last_status = 0.0
         while not stop.is_set():
             try:
-                observation = node._emit_queue.popleft()
+                enqueued_at, observation = node._emit_queue.popleft()
             except IndexError:
                 _time.sleep(0.002)
                 continue
+            node._d1_note("queue_wait_ms", _time.monotonic() - enqueued_at)
             node._publish_observation(observation)
             node._publish_status(observation)
             now = _time.monotonic()

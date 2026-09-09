@@ -1,0 +1,10 @@
+{
+ "window_sec": 30,
+ "rgb_unique": 756,
+ "depth_unique": 906,
+ "exact": 756,
+ "exact_fraction": 1.0,
+ "within_5ms": 756,
+ "within_20ms": 756,
+ "note": "raw /camera/color/image_raw vs /camera/depth/image_raw stamps, live accepted-profile stack, ROS_DOMAIN_ID=7"
+}
