@@ -1382,6 +1382,40 @@ def _maybe_tracemalloc(node):
         node.get_logger().info(
             "tracemalloc top (diff):\n%s" % buf.getvalue())
 
+    def _census():
+        import collections
+        import gc
+        import numpy as np
+        shapes = collections.defaultdict(lambda: [0, 0])
+        for o in gc.get_objects():
+            if type(o) is np.ndarray:
+                key = (tuple(o.shape), str(o.dtype))
+                shapes[key][0] += 1
+                shapes[key][1] += o.nbytes
+        rows = sorted(shapes.items(), key=lambda kv: -kv[1][1])[:6]
+        parts = []
+        for (shape, dtype), (count, nbytes) in rows:
+            parts.append("%s%s x%d = %.1f MiB" % (
+                shape, dtype, count, nbytes / 1048576.0))
+        referrers = ""
+        big = [
+            o for o in gc.get_objects()
+            if type(o) is np.ndarray and o.nbytes > 100000]
+        if big:
+            sample = sorted(big, key=lambda a: -a.nbytes)[0]
+            refs = gc.get_referrers(sample)[:6]
+            names = []
+            for r in refs:
+                names.append("%s:%s" % (
+                    type(r).__name__,
+                    getattr(r, "__name__", "") or (
+                        list(r)[:3] if isinstance(r, dict) else "")))
+            referrers = " | biggest-array referrers: %s" % names
+        node.get_logger().info(
+            "ndarray census: %s%s" % ("; ".join(parts), referrers))
+
+    return _dump, _census
+
     return _dump
 
 
@@ -1392,7 +1426,9 @@ def main(argv=None):
     executor = MultiThreadedExecutor()
     executor.add_node(node)
     if dump is not None:
-        node.create_timer(15.0, dump)
+        _tm_dump, _census = dump
+        node.create_timer(15.0, _tm_dump)
+        node.create_timer(30.0, _census)
     try:
         executor.spin()
     finally:
