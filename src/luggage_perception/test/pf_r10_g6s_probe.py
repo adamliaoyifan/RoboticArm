@@ -340,7 +340,11 @@ def executor_lag_verdict(probe):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
-    ap.add_argument("--duration", type=float, required=True)
+    ap.add_argument("--duration", type=float, required=True,
+                    help="hard cap; scoring window ends at this duration")
+    ap.add_argument("--stop-file", default="",
+                    help="end the window early when this file appears, so "
+                         "the probe window can match the gate4 run exactly")
     ap.add_argument("--gap", type=float, default=2.0)
     ap.add_argument("--rss-hz", type=float, default=1.0)
     args = ap.parse_args()
@@ -357,6 +361,8 @@ def main():
     next_pid_refresh = t0 + 30.0
     try:
         while time.monotonic() - t0 < args.duration:
+            if args.stop_file and os.path.exists(args.stop_file):
+                break
             rclpy.spin_once(probe, timeout_sec=0.1)
             now = time.monotonic()
             if now >= next_rss:
