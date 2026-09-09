@@ -137,6 +137,7 @@ class G6SProbe(Node):
         self._maxlens = {}
         self._stage_ms = defaultdict(list)      # stage -> (t, ms)
         self._detector_timing = defaultdict(list)
+        self._support_gates = defaultdict(list)  # gate label -> (t, level)
         self._prep_latency_series = []          # per-status extras
         self._last_filter_stats = {}
         self._last_detector_stats = {}
@@ -206,6 +207,8 @@ class G6SProbe(Node):
                 (t, int(payload.get("raw_buffer_len") or 0)))
             self._maxlens["detector.raw_buffer_maxlen"] = (
                 payload.get("raw_buffer_maxlen"))
+            self._support_gates[str(payload.get("support_gate") or "")].append(
+                (t, int(payload.get("geometry_level") or 0)))
             for key, value in (payload.get("timing_ms") or {}).items():
                 if isinstance(value, (int, float)):
                     self._detector_timing[key].append((t, float(value)))
@@ -407,6 +410,9 @@ def main():
         "stage_ms": {k: v for k, v in probe._stage_ms.items()},
         "detector_timing_ms": {
             k: v for k, v in probe._detector_timing.items()},
+        "support_gates": {
+            k: [(t, lvl) for t, lvl in v]
+            for k, v in probe._support_gates.items()},
         "last_filter_stats": probe._last_filter_stats,
         "last_detector_stats": probe._last_detector_stats,
         "last_prep_status": probe._last_prep_status,
