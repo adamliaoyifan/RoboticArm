@@ -42,6 +42,8 @@ install(PROGRAMS
   scripts/semantic_point_filter_node.py
   scripts/cargo_volume_mapper_node.py
   scripts/dump_camera_frames.py
+  scripts/handeye_capture.py
+  scripts/handeye_solve.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

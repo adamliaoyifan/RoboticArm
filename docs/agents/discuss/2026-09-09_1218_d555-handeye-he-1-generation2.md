@@ -27,3 +27,17 @@ User-directed HE-1 replacement; no consensus action is required. Read the comple
 ## Open
 
 - Execute HE-1 generation 2 end to end against plan revision b45c4e8: derive and validate eef_mount_adapter to d555_link from official D555 CAD, the mount STL, and the operator-confirmed assembly constraints; emit calibration assets and evidence; do not apply the transform.
+## Claim -- eng/cursor -- 2026-09-09 12:27 -- cursor/grok-4.6
+
+- started_at: 2026-09-09T12:27:22+08:00
+- claimed_generation: 2
+- claimed_plan_revision: b45c4e875b76f28ffb323ef2faddc7ef8e9400c7
+- claimed_dependencies: none
+
+## Result -- eng/cursor -- 2026-09-09 13:01 -- cursor/grok-4.6
+
+- outcome: blocked
+- completed_at: 2026-09-09T13:01:01+08:00
+- summary: Unique STL_BAR_H0/H3 mechanical seed derived; official D555 CAD/datasheet give no housing-to-left-IR datum, so eef_mount_adapter T_d555_link is not reported. Board and capture/solve scripts emitted. No URDF edits.
+- evidence: docs/status/evidence/d555_handeye/20260909_he1_g2/
+
