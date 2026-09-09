@@ -1,6 +1,6 @@
 # 2026-09-09 -- PF-R9 generation 2 payload-backed depth-primary implementation
 
-- status: open
+- status: done
 - to_role: eng
 - to_agent: claude
 - to_model: glm-5.3
@@ -53,3 +53,12 @@ Remaining before close: D8 (D455 colour+aligned depth 640x360@15 Hz,
 >=120 s, point-cloud pub/sub disabled) and the per-node RSS-trend
 sampling on that sustained run. The thread stays open; no bar was
 lowered and no scope widened.
+## Result -- eng/claude -- 2026-09-09 19:40 -- claude/glm-5.3
+
+- outcome: pass
+- completed_at: 2026-09-09T19:40:16+08:00
+- revision: bcb54c9770dd555ccd4e36da8bbda63e76215bca
+- tests: suite 543 passed + 44 subtests; colcon build luggage_perception+luggage_gazebo pass; production rg audit clean of the preprocessed cloud topic; D1 baseline recorded pre-refactor; D2 zero materialisations on the canonical path (identity fixtures both resolutions); D3 emission 1.248x / p50 18.6 ms / queue drops 0; D4 paired depth 1.000 (n=3892), filter join 0.983, stale 0.0419, detector support coverage 0.981; D5 fixture suite; D6 annulus retention stride 4/5 margins 0.03-0.18 (min 708 vs 80); D7 buffers 15/15/4 bounded
+- summary: PF-R9 g2 closed pass on the simulation side (D1-D7). Payload-identity architecture landed end to end: opaque immutable payloads with read-only stride-aware views, integer-stamp 15/1.0s camera caches with epoch rollback, depth-mandatory preprocessor with canonical-set validation, filter/detector local deprojection (shared depth_deprojection module), no transported camera cloud anywhere in production. Throughput went from the g1 ceiling 0.46x/256 ms to 1.248x/18.6 ms p50 with zero payload materialisations. Repair chain documented in RESULT.md (transport queue depths, segmenter stats throttle + overlay off, surgical join retirement, detector pending-join park with mutually-exclusive emitter timer replacing the impossible in-callback sleep retry, RELIABLE depth product). D8 (D455 hardware run + RSS trend) deferred by user decision 2026-09-10, parked as Q-20260909-11 with trigger = all depth-primary-related changes complete; cell-side procedure committed as D8_cell_procedure.md. Evidence: 2026-09-09_pfr9_g2_payload/RESULT.md.
+- evidence: docs/status/evidence/platform_free_height/2026-09-09_pfr9_g2_payload/
+
