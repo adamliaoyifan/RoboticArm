@@ -1,0 +1,42 @@
+header:
+  stamp:
+    sec: 1788868332
+    nanosec: 636526775
+  frame_id: d555_depth_optical_frame
+height: 1
+width: 205662
+fields:
+- name: x
+  offset: 0
+  datatype: 7
+  count: 1
+- name: y
+  offset: 4
+  datatype: 7
+  count: 1
+- name: z
+  offset: 8
+  datatype: 7
+  count: 1
+- name: rgb
+  offset: 16
+  datatype: 7
+  count: 1
+is_bigendian: false
+point_step: 20
+row_step: 4608000
+data:
+- 86
+- 184
+- 129
+- 191
+- 129
+- 203
+- 34
+- 191
+- 70
+- 182
+- 147
+- 63
+- 0
+- 0
