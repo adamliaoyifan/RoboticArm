@@ -179,7 +179,7 @@ class G6SProbe(Node):
                     and len(b) == 4 else 0
                 self._yolo_series.append((
                     t, float(det.confidence), area, bool(det.held),
-                    str(det.instance_id)))
+                    str(det.label)))
 
         self.create_subscription(
             YoloDetections, "/luggage/semantic/yolo_detections",
