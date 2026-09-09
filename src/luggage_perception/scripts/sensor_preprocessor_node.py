@@ -354,7 +354,7 @@ class SensorPreprocessorNode(Node):
 
 
 
-def _start_malloc_trim_timer(interval_sec=5.0):
+def _start_malloc_trim_timer(interval_sec=30.0):
     """PF-R10 C2: release freed arena tails to the OS on a low-rate timer."""
     import ctypes
     import threading

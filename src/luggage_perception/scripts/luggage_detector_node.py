@@ -1426,16 +1426,21 @@ def _maybe_gc_timer(node):
 
     def _collect():
         gc.collect()
-        # Return freed arena tails to the OS: after the cyclic garbage is
-        # reclaimed the memory sits in free lists and RSS never falls,
-        # which is what the C2 slope test measures.
+
+    def _collect_trim():
+        # Epoch-path collect: also return freed arena tails to the OS so
+        # each burst starts from a reclaimed heap. The idle-cadence
+        # collect deliberately does NOT trim: trimming mid-stream makes
+        # RSS sawtooth by tens of MiB as live pages refault, and the C2
+        # slope is measured on that series.
+        gc.collect()
         try:
             import ctypes
             ctypes.CDLL("libc.so.6").malloc_trim(0)
         except Exception:
             pass
 
-    return period, _collect
+    return period, _collect, _collect_trim
 
 
 def _maybe_tracemalloc(node):
@@ -1513,7 +1518,7 @@ def main(argv=None):
     rclpy.init(args=argv)
     node = LuggageDetector()
     gc_timer = _maybe_gc_timer(node)
-    node._gc_on_epoch = gc_timer[1] if gc_timer else None
+    node._gc_on_epoch = gc_timer[2] if gc_timer else None
     dump = _maybe_tracemalloc(node)
     executor = MultiThreadedExecutor()
     executor.add_node(node)

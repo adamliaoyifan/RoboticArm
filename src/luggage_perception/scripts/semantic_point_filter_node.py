@@ -615,7 +615,7 @@ class SemanticPointFilterNode(Node):
 
 
 
-def _start_malloc_trim_timer(node, interval_sec=5.0):
+def _start_malloc_trim_timer(node, interval_sec=30.0):
     """PF-R10 C2: return freed arena tails to the OS on a low-rate timer.
 
     The cargo-cloud publish path frees mid-size blocks whose sizes vary
