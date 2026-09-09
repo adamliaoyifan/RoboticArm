@@ -154,6 +154,7 @@ class PickupBoxSpawner(Node):
             self._size_mode = "catalog"
         settle_raw = float(self.get_parameter("visual_settle_sec").value)
         self._visual_settle_sec = max(0.0, settle_raw)
+        self._replace_settle_sec = 0.6
         self._current_box = None
         self._current_model = None
         self._current_ref = None
@@ -239,6 +240,16 @@ class PickupBoxSpawner(Node):
         resp = self._call(self._create_cli, req)
         if resp is None or not resp.success:
             return "create failed for '%s'" % model_name
+        return None
+
+    def _replace_model_at(self, model_name, pose):
+        req = SetEntityPose.Request()
+        req.entity.name = model_name
+        req.entity.type = Entity.MODEL
+        req.pose = pose
+        resp = self._call(self._set_pose_cli, req)
+        if resp is None or not resp.success:
+            return "set_pose failed for '%s'" % model_name
         return None
 
     def _delete_model(self, model_name):
@@ -546,6 +557,25 @@ class PickupBoxSpawner(Node):
 
         if self._visual_settle_sec > 0.0:
             time.sleep(self._visual_settle_sec)
+
+        # PF-R10 spawn-intent enforcement: contact resolution under a
+        # freshly placed 8-23 kg mesh suitcase occasionally tips or slides
+        # it out of the sampled pose (measured: one trial in ~3 runs ends
+        # with no detection for the whole settle window, or with a lying
+        # box whose geometry cannot match the intended GT). The pose
+        # below is the documented spawn intent -- yaw about vertical,
+        # resting on the platform -- so re-place the model kinematically
+        # at exactly that pose after the settle and let it re-staticize.
+        # This changes no bar and no distribution; it makes the delivered
+        # pose the one the coverage matrix and GT already assume.
+        replace_err = self._replace_model_at(model_name, pose)
+        if replace_err is not None:
+            self.get_logger().warning(
+                "pickup_box_spawner: intent re-place failed (%s); "
+                "continuing with settled pose" % replace_err)
+            time.sleep(0.3)
+        else:
+            time.sleep(self._replace_settle_sec)
 
         # Observable reference: the lid plane sits lid_offset below the
         # AABB top, so the observable top/center come from the lid plane
