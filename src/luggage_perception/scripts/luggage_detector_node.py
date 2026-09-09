@@ -1366,9 +1366,9 @@ def _maybe_tracemalloc(node):
     def _dump():
         import io
         snap = tracemalloc.take_snapshot()
-        top = snap.statistics("lineno", limit=12)
+        top = snap.statistics("lineno", limitation=12)
         if state["prev"] is not None:
-            top = snap.compare_to(state["prev"], "lineno", limit=12)
+            top = snap.compare_to(state["prev"], "lineno", limitation=12)
         state["prev"] = snap
         buf = io.StringIO()
         for stat in top:
