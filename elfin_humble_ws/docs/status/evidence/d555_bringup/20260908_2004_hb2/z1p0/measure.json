@@ -1,0 +1,82 @@
+{
+  "operator_labeled_range_m": 1.0,
+  "median_aligned_depth_m": 1.0269999504089355,
+  "aligned_depth_p10_p90_m": [
+    0.7279999852180481,
+    1.1390000581741333
+  ],
+  "color_frame": "d555_color_optical_frame",
+  "aligned_frame": "d555_color_optical_frame",
+  "native_frame": "d555_depth_optical_frame",
+  "color_k": {
+    "fx": 323.1775207519531,
+    "fy": 322.8994140625,
+    "cx": 317.7525939941406,
+    "cy": 178.02940368652344
+  },
+  "depth_k": {
+    "fx": 321.5054931640625,
+    "fy": 321.5054931640625,
+    "cx": 318.34478759765625,
+    "cy": 178.16726684570312
+  },
+  "aligned_k": {
+    "fx": 323.1775207519531,
+    "fy": 322.8994140625,
+    "cx": 317.7525939941406,
+    "cy": 178.02940368652344
+  },
+  "color_gradient_p90": 11.223366737365723,
+  "color_gradient_p99": 35.70391845703125,
+  "usable_high_contrast_target": true,
+  "signed_offset_px": {
+    "aligned_depth_on_color": {
+      "du": -5.0,
+      "dv": 1.0,
+      "peak_frac": 6.497289723483846e-05,
+      "metres": [
+        -0.015889099403005567,
+        0.003180556872147655
+      ]
+    },
+    "native_warped_with_hb1_extrinsic": {
+      "du": 0.0,
+      "dv": 0.0,
+      "peak_frac": 0.00030871733906678855,
+      "metres": [
+        0.0,
+        0.0
+      ]
+    },
+    "native_warped_identity_extrinsic": {
+      "du": -23.0,
+      "dv": 0.0,
+      "peak_frac": 6.84309852658771e-05,
+      "metres": [
+        -0.07308985725382561,
+        0.0
+      ]
+    }
+  },
+  "expected_u_px_if_unaligned": {
+    "from_59mm_color_offset": 18.56618758041114,
+    "from_95mm_baseline": 29.894708815916243
+  },
+  "pointcloud_rgb": {
+    "has_rgb_field": true,
+    "n_sampled": 20274,
+    "rgb_mean": [
+      118.63943967643287,
+      120.13011739173325,
+      120.8953832494821
+    ],
+    "rgb_std": [
+      44.313767481012356,
+      42.41928123222386,
+      43.94220956874136
+    ],
+    "unique_approx": 1072,
+    "constant": false
+  },
+  "sign_convention": "+du = depth/warped edge is to the right of colour edge"
+}
