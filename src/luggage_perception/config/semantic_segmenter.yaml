@@ -54,13 +54,19 @@ semantic_segmenter:
       # to 0.17-0.23 offline across the full 16-pose sweep with no
       # threshold change.
       - vintage leather suitcase with handles viewed from directly above
+      # PF-R10 (2026-09-09): spawn-physics excursions leave a suitcase
+      # lying on its side for a whole trial (measured: one trial in ~3
+      # runs, no top for the full 4.4 s window while the upright-view
+      # prompts are the only ones that fire). A lying suitcase presents
+      # its largest face to the top-down camera; this prompt targets it.
+      - suitcase lying on its side on a platform viewed from above
       - suitcase
       - luggage
       - box
       - container
       - floor
       - robot arm
-    class_mapping_labels: [2, 2, 2, 2, 2, 1, 0, 3]
+    class_mapping_labels: [2, 2, 2, 2, 2, 2, 1, 0, 3]
 
     # Wrist D435 is bolted to the suction panel. Project the panel collision
     # meshes into the camera to get the real curved silhouette (not a full

@@ -109,6 +109,14 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                 tf2_ros.ExtrapolationException) as exc:
             err = str(exc)
+            # A caught exception's traceback pins every frame it passed
+            # through -- including this one, whose locals hold the ~0.2-1
+            # MiB points arrays -- until a later gc.collect. During gz
+            # spawn stalls these fire tens of times per second and the
+            # pinned frames were the dominant RSS ratchet (PF-R10 C2
+            # measurement). Break the chain at catch time; the frames die
+            # by refcount immediately.
+            exc.__traceback__ = None
         if _time.monotonic() >= deadline:
             break
         _time.sleep(poll_sec)
