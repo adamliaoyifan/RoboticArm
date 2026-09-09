@@ -1348,11 +1348,48 @@ class LuggageDetector(Node):
         return response
 
 
+def _maybe_tracemalloc(node):
+    """PF-R10 diagnostic: env-gated allocation tracing.
+
+    LUGGAGE_DETECTOR_TRACEMALLOC=1 starts tracemalloc and logs the top
+    allocation sites (diffed against the previous dump) every 15 s, so a
+    retention regression can be attributed to a line, not guessed at.
+    Off by default; zero effect when unset.
+    """
+    import os
+    if os.environ.get("LUGGAGE_DETECTOR_TRACEMALLOC", "") != "1":
+        return None
+    import tracemalloc
+    tracemalloc.start(10)
+    state = {"prev": None}
+
+    def _dump():
+        import io
+        snap = tracemalloc.take_snapshot()
+        top = snap.statistics("lineno", limit=12)
+        if state["prev"] is not None:
+            top = snap.compare_to(state["prev"], "lineno", limit=12)
+        state["prev"] = snap
+        buf = io.StringIO()
+        for stat in top:
+            frame = stat.traceback[0]
+            buf.write("  %+10d B  %7d blks  %s:%d\n" % (
+                stat.size_diff if state["prev"] is not None else stat.size,
+                stat.count, frame.filename.split("/")[-1], frame.lineno))
+        node.get_logger().info(
+            "tracemalloc top (diff):\n%s" % buf.getvalue())
+
+    return _dump
+
+
 def main(argv=None):
     rclpy.init(args=argv)
     node = LuggageDetector()
+    dump = _maybe_tracemalloc(node)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
+    if dump is not None:
+        node.create_timer(15.0, dump)
     try:
         executor.spin()
     finally:
