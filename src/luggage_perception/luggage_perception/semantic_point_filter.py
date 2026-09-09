@@ -143,6 +143,7 @@ class SemanticPointFilter:
         self.cargo_labels = set(int(l) for l in cargo_labels)
         self.obstacle_labels = set(int(l) for l in obstacle_labels)
         self.exclude_labels = set(int(l) for l in (exclude_labels or []))
+        self._deproject_buffers = {}
         self._last_stats = {
             "raw_count": 0,
             "cargo_count": 0,
@@ -200,9 +201,22 @@ class SemanticPointFilter:
         excluded_px = int((excl | ~(cargo_sel | obstacle_sel)).sum())
 
         intr = self.color_intrinsics
+
+    def _deproject_scratch(self, shape):
+        """Fixed-capacity cargo/obstacle point buffers per resolution."""
+        pair = self._deproject_buffers.get(tuple(shape))
+        if pair is None:
+            capacity = int(shape[0]) * int(shape[1])
+            pair = {
+                "cargo": np.empty((capacity, 3), np.float32),
+                "obstacle": np.empty((capacity, 3), np.float32),
+            }
+            self._deproject_buffers[tuple(shape)] = pair
+        return pair
         cargo_pts = np.zeros((0, 3), dtype=np.float32)
         obstacle_pts = np.zeros((0, 3), dtype=np.float32)
         stride = max(1, int(pixel_stride))
+        scratch = self._deproject_scratch(depth.shape)
         for sel, holder in ((cargo_sel, "cargo"), (obstacle_sel, "obstacle")):
             vu, uu = np.nonzero(sel)
             if stride > 1 and uu.size:
@@ -213,7 +227,13 @@ class SemanticPointFilter:
                 uu = uu[::stride]
             if uu.size == 0:
                 continue
-            points, _ = deproject_selected(depth, uu, vu, intr)
+            # PF-R10 C2: fixed-capacity output buffers, one per product —
+            # the escaping (N,3) arrays otherwise vary with the mask every
+            # frame and their freed chunks cannot be reused, which
+            # ratchets RSS. The views are consumed synchronously into the
+            # published cloud messages and stats counts.
+            points, _ = deproject_selected(
+                depth, uu, vu, intr, out=scratch[holder])
             if holder == "cargo":
                 cargo_pts = points
             else:

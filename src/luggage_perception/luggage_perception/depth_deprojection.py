@@ -19,7 +19,7 @@ from __future__ import division
 import numpy as np
 
 
-def deproject_selected(depth_image, uu, vu, intrinsics):
+def deproject_selected(depth_image, uu, vu, intrinsics, out=None):
     """Deproject selected pixels of an aligned depth image.
 
     Args:
@@ -27,6 +27,11 @@ def deproject_selected(depth_image, uu, vu, intrinsics):
             views are valid — numpy converts per element on read).
         uu, vu: integer pixel coordinate arrays (column, row).
         intrinsics: object with fx, fy, cx, cy of the colour grid.
+        out: optional caller-owned (capacity, 3) float32 buffer; the
+            return is then a view into it, valid until the buffer's next
+            use (PF-R10 C2: the escaping output buffer is the one whose
+            size varies frame to frame and ratchets RSS; see
+            deproject_stride).
 
     Returns:
         (N, 3) float32 points in the colour optical frame, pixels whose
@@ -42,6 +47,18 @@ def deproject_selected(depth_image, uu, vu, intrinsics):
         / np.float32(intrinsics.fx)
     y = (vu.astype(np.float32) - np.float32(intrinsics.cy)) * z \
         / np.float32(intrinsics.fy)
+    if out is not None:
+        n = int(z.shape[0])
+        if (out.ndim != 2 or out.shape[1] != 3
+                or out.dtype != np.float32 or out.shape[0] < n):
+            raise ValueError(
+                "out must be a (capacity>=n, 3) float32 buffer; got %r"
+                % (out,))
+        view = out[:n]
+        view[:, 0] = x
+        view[:, 1] = y
+        view[:, 2] = z
+        return view, n
     points = np.stack((x, y, z), axis=1).astype(np.float32, copy=False)
     return points, int(points.shape[0])
 
