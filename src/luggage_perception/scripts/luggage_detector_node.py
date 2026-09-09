@@ -44,7 +44,7 @@ from geometry_msgs.msg import Point, Pose, Quaternion
 from luggage_msgs.msg import DetectedLuggage, DetectionFrame, YoloDetections
 from luggage_msgs.srv import DetectLuggage
 from luggage_perception import ros_message_adapters as adapters
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import Header
 from std_msgs.msg import String
 import tf2_ros
@@ -170,7 +170,12 @@ class LuggageDetector(Node):
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points")
         self.declare_parameter(
-            "depth_topic", "/luggage/preprocessed/camera/depth/points")
+            "depth_topic", "/luggage/preprocessed/camera/depth/image")
+        self.declare_parameter(
+            "support_camera_info_topic",
+            "/luggage/preprocessed/camera/depth/camera_info")
+        self.declare_parameter(
+            "support_depth_stride", 4)
         # Empty means use the cloud header frame_id. The preprocessor publishes
         # optical-frame points; override only if a consumer still sees raw gz
         # clouds labelled optical but stored in camera_link.
@@ -292,12 +297,18 @@ class LuggageDetector(Node):
             stability_max_z_spread=float(
                 self.get_parameter("stability_max_z_spread").value),
         )
-        # Bounded raw-depth world-point buffer keyed by exact stamp.
+        # Bounded aligned-depth buffer keyed by exact stamp (15 / 1.0 s).
         self._raw_buffer = OrderedDict()
         self._raw_buffer_maxlen = max(
             4, int(self.get_parameter("join_buffer_maxlen").value))
+        self._support_stride = max(
+            1, int(self.get_parameter("support_depth_stride").value))
+        self._support_intrinsics = None
+        self._support_info_lock = threading.Lock()
         self._raw_lock = threading.Lock()
         self._raw_counts = {
+            "raw_horizon_evicted": 0,
+            "raw_lookup_no_intrinsics": 0,
             "raw_received": 0,
             "raw_evicted": 0,
             "raw_lookup_hit": 0,
@@ -362,12 +373,15 @@ class LuggageDetector(Node):
         self.create_subscription(
             YoloDetections, self.get_parameter("yolo_topic").value,
             self._yolo_cb, stream_qos, callback_group=self._group)
-        # Raw depth cloud feeds the local support fit (exact-stamp keyed).
-        # On the raw (non-semantic) path it is the same topic as _cloud_cb;
-        # the buffer handles the duplicate insert idempotently.
+        # Aligned depth image feeds the local support fit (PF-R9 g2:
+        # exact-stamp keyed, 15 entries / 1.0 s, deprojected locally with
+        # a deterministic stride — the transported camera cloud is gone).
         self.create_subscription(
-            PointCloud2, self.get_parameter("depth_topic").value,
-            self._raw_cloud_cb, stream_qos, callback_group=self._group)
+            Image, self.get_parameter("depth_topic").value,
+            self._raw_depth_cb, stream_qos, callback_group=self._group)
+        self.create_subscription(
+            CameraInfo, self.get_parameter("support_camera_info_topic").value,
+            self._support_info_cb, stream_qos, callback_group=self._group)
         self._frame_pub = self.create_publisher(
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
@@ -440,15 +454,12 @@ class LuggageDetector(Node):
         if pair is not None:
             self._emit_joined(pair[0], pair[1])
 
-    def _raw_cloud_cb(self, msg):
-        """Buffer the raw depth cloud message by exact stamp (PF-R6 opt 1).
+    def _raw_depth_cb(self, msg):
+        """Buffer the aligned depth image by exact stamp (PF-R9 g2).
 
-        Decoding + TFing every raw cloud (~250k points at 4 Hz) competed
-        with the join/geometry callbacks on the same executor — the
-        dominant yolo->frame latency in the PF-R6 baseline. The message
-        is already in memory from the subscription, so buffering it is
-        free; the transform happens lazily, once, only for stamps whose
-        cargo cloud actually joins (see _pop_raw_world_with_retry).
+        15 entries / 1.0 second on the primary camera clock. Decoding and
+        deprojection happen lazily, once, only for stamps whose cargo
+        observation actually joined (see _pop_raw_world_with_retry).
         """
         key = stamp_key(msg.header.stamp)
         if key is None:
@@ -459,6 +470,24 @@ class LuggageDetector(Node):
             while len(self._raw_buffer) > self._raw_buffer_maxlen:
                 self._raw_buffer.popitem(last=False)
                 self._raw_counts["raw_evicted"] += 1
+            if len(self._raw_buffer) > 1:
+                newest = next(reversed(self._raw_buffer))
+                cutoff = (newest[0] - 1, newest[1])
+                stale = [k for k in self._raw_buffer if k < cutoff]
+                for k in stale:
+                    del self._raw_buffer[k]
+                    self._raw_counts["raw_horizon_evicted"] += 1
+
+    def _support_info_cb(self, msg):
+        """Latest aligned-depth camera info (colour-grid intrinsics)."""
+        k = msg.k
+        from luggage_perception.semantic_point_filter import CameraIntrinsics
+        intr = CameraIntrinsics(
+            fx=float(k[0]), fy=float(k[4]),
+            cx=float(k[2]), cy=float(k[5]),
+            width=int(msg.width), height=int(msg.height))
+        with self._support_info_lock:
+            self._support_intrinsics = intr
 
     def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
         """Exact-stamp raw world points, transformed on demand (PF-R6).
@@ -488,20 +517,30 @@ class LuggageDetector(Node):
                 lookup["raw_buffer_len"] = len(self._raw_buffer)
                 msg = self._raw_buffer.get(key)
             if msg is not None:
-                pts = adapters.cloud_points_from_msg(msg)
-                if pts is None:
+                depth = adapters.depth_array_from_msg(msg)
+                if depth is None:
                     lookup["raw_lookup_status"] = "decode_fail"
                     with self._raw_lock:
                         self._raw_counts["raw_lookup_decode_fail"] += 1
                     break
-                pts = pts[np.isfinite(pts).all(axis=1)]
+                with self._support_info_lock:
+                    intr = self._support_intrinsics
+                if intr is None:
+                    lookup["raw_lookup_status"] = "no_intrinsics"
+                    with self._raw_lock:
+                        self._raw_counts["raw_lookup_no_intrinsics"] += 1
+                    break
+                from luggage_perception.depth_deprojection import (
+                    deproject_stride)
+                pts, _n = deproject_stride(
+                    depth, intr, stride=self._support_stride)
                 if not len(pts):
                     lookup["raw_lookup_status"] = "empty"
                     with self._raw_lock:
                         self._raw_counts["raw_lookup_empty"] += 1
                     break
                 stamp_time = rclpy.time.Time.from_msg(msg.header.stamp)
-                source_frame = self._cloud_data_frame or msg.header.frame_id
+                source_frame = msg.header.frame_id
                 pts_world, _err = _transform_points_to_world(
                     self._tf_buffer, pts, source_frame,
                     self._world_frame, stamp_time)

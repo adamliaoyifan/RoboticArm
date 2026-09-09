@@ -579,7 +579,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
             "use_sim_time": True,
-            "depth_topic": "/luggage/preprocessed/camera/depth/points",
+            "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
             # adds ~0.3-1.0 s of latency on top of the raw path the 1.0 s
             # default was sized for; measured stale ages peaked ~1.9 s.

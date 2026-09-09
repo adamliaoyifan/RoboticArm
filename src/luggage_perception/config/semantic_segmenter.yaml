@@ -127,7 +127,8 @@ semantic_segmenter:
 
 semantic_point_filter:
   ros__parameters:
-    input.cloud: /luggage/preprocessed/camera/depth/points
+    # PF-R9 g2: aligned depth image replaces the preprocessed cloud.
+    input.depth_image: /luggage/preprocessed/camera/depth/image
     input.mask: /luggage/semantic/mask
     input.instance_mask: /luggage/semantic/instance_mask
     input.camera_info: /luggage/preprocessed/camera/color/camera_info
@@ -142,8 +143,9 @@ semantic_point_filter:
     # "config": real D435 depth_to_color from realsense_extrinsics_config.
     extrinsics_source: identity
     realsense_extrinsics_config: ""
-    # Exact-stamp join buffer depth per side (clouds / masks).
-    buffer_maxlen: 10
+    # Exact-stamp join buffers (aligned depth / masks), 15 entries /
+    # 1.0 second on the primary camera clock (PF-R9 g2 fixed contract).
+    buffer_maxlen: 15
     # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
     # callback (~60-70 Hz json.dumps inside the join's callback group).
     stats_publish_hz: 1.0
