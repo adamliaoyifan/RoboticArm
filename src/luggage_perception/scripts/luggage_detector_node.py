@@ -1366,16 +1366,19 @@ def _maybe_tracemalloc(node):
     def _dump():
         import io
         snap = tracemalloc.take_snapshot()
-        top = snap.statistics("lineno")[:12]
-        if state["prev"] is not None:
+        have_prev = state["prev"] is not None
+        if have_prev:
             top = snap.compare_to(state["prev"], "lineno")[:12]
+        else:
+            top = snap.statistics("lineno")[:12]
         state["prev"] = snap
         buf = io.StringIO()
         for stat in top:
             frame = stat.traceback[0]
+            size = stat.size_diff if have_prev else stat.size
+            count = stat.count_diff if have_prev else stat.count
             buf.write("  %+10d B  %7d blks  %s:%d\n" % (
-                stat.size_diff if state["prev"] is not None else stat.size,
-                stat.count, frame.filename.split("/")[-1], frame.lineno))
+                size, count, frame.filename.split("/")[-1], frame.lineno))
         node.get_logger().info(
             "tracemalloc top (diff):\n%s" % buf.getvalue())
 
