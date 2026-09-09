@@ -39,7 +39,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
-from luggage_msgs.msg import DetectionFrame
+from luggage_msgs.msg import DetectionFrame, YoloDetections
 from luggage_perception.pf_r6_metrics import (
     active_rate,
     stamp_delta_ms,
@@ -138,6 +138,7 @@ class G6SProbe(Node):
         self._stage_ms = defaultdict(list)      # stage -> (t, ms)
         self._detector_timing = defaultdict(list)
         self._support_gates = defaultdict(list)  # gate label -> (t, level)
+        self._yolo_series = []                    # (t, conf, area, held, id)
         self._prep_latency_series = []          # per-status extras
         self._last_filter_stats = {}
         self._last_detector_stats = {}
@@ -166,6 +167,23 @@ class G6SProbe(Node):
         self.create_subscription(
             DetectionFrame, "/luggage/perception/detection_frame",
             stage_cb("frame"), be20)
+
+        def yolo_cb(msg):
+            t = time.monotonic()
+            self._events["yolo"].append(t)
+            self._stamps["yolo"][(msg.header.stamp.sec,
+                                   msg.header.stamp.nanosec)] = t
+            for det in msg.detections:
+                b = det.bbox
+                area = int((b[2] - b[0]) * (b[3] - b[1])) if b is not None \
+                    and len(b) == 4 else 0
+                self._yolo_series.append((
+                    t, float(det.confidence), area, bool(det.held),
+                    str(det.instance_id)))
+
+        self.create_subscription(
+            YoloDetections, "/luggage/semantic/yolo_detections",
+            yolo_cb, be20)
 
         def filter_cb(msg):
             t = time.monotonic()
@@ -413,6 +431,7 @@ def main():
         "support_gates": {
             k: [(t, lvl) for t, lvl in v]
             for k, v in probe._support_gates.items()},
+        "yolo_series": list(probe._yolo_series),
         "last_filter_stats": probe._last_filter_stats,
         "last_detector_stats": probe._last_detector_stats,
         "last_prep_status": probe._last_prep_status,
