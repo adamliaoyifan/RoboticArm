@@ -717,8 +717,11 @@ class LuggageDetector(Node):
         self._frame_window.clear()
         with self._raw_lock:
             self._raw_buffer.clear()
-        # New luggage instance: support-Z history must not leak across boxes.
-        self._pipeline.reset()
+        # New luggage instance on the same platform: carry the support-Z
+        # window (PF-R10 epoch_carry) — the platform surface is static
+        # across spawns and the 0.015 m spread gate still validates every
+        # new sample against it.
+        self._pipeline.epoch_carry()
         with self._view_lock:
             rgb = self._latest_rgb
             changed = self._view_wait.note_box_id(box_id, rgb)

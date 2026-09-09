@@ -237,6 +237,20 @@ class PlatformFreeDetector:
         """Drop temporal state (new luggage instance spawned)."""
         self._stability.update(None)
 
+    def epoch_carry(self):
+        """New luggage instance on the SAME platform (PF-R10).
+
+        The support-Z window medians the static pickup platform's surface
+        in the annulus around the cargo footprint; a new box does not
+        move that surface. Carrying the window removes the post-spawn
+        refill tax (5 consecutive good fits) while every new sample is
+        still validated against the retained spread (max 0.015 m): a
+        genuinely different plane flips the window to UNSTABLE and it
+        refills exactly as before. ``reset`` remains for callers that
+        know the platform itself changed.
+        """
+        return None
+
     def update(self, cargo_points_world, raw_points_world, *,
                source="measure", geometry_ok=True,
                raw_same_stamp=True, platform_z=None, stamp_sec=0.0,
