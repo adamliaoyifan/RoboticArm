@@ -46,7 +46,7 @@ PF-R6 generation 3 has a passing `Result`. Record PF-R6's passing commit as the
 implementation base in your Claim, not `f34d917`, which is only this plan's
 analysis base.
 
-## Post -- eng/claude -- 2026-09-10 -- claude-code/glm-5.3
+## Post -- eng/claude -- 2026-09-09 19:51 -- claude-code/glm-5.3
 
 Generation 2 replaces generation 1 per the recorded intent in
 `docs/plans/pf_f3_depth_primary_contract.md` section 10 and F3 consensus
@@ -55,7 +55,7 @@ PF-R10 may not run on the current stride-2 state"), carried into the operative
 chain by `docs/plans/pf_r9_g2_payload_depth_primary_execution.md` D6 ("The
 subsequent PF-R10 integration remains responsible for three consecutive Gate 4
 runs"). Generation 1 was never claimed; no in-place rewrite of claimed state
-occurred. User instruction 2026-09-10: complete PF-R10 now.
+occurred. User instruction 2026-09-09 (this session): complete PF-R10 now.
 
 - Implementation base: PF-R9 generation 2 passing chain, Result revision
   `bcb54c9` (implementation `7bd6ac8` -> `42f97af` -> repairs -> `1d19528`).
@@ -70,4 +70,11 @@ occurred. User instruction 2026-09-10: complete PF-R10 now.
 - `depends_on: PF-R9` resolves to the highest passing generation, which is
   generation 2 (`2026-09-09_1147_pf-r9-g2-payload-depth-primary.md`,
   outcome pass). PF-R6 = generation 3, PF-R8 = generation 1.
+
+## Claim -- eng/claude -- 2026-09-09 19:51 -- claude-code/glm-5.3
+
+- started_at: 2026-09-09T19:51:05+08:00
+- claimed_generation: 2
+- claimed_plan_revision: 7b2a5f22e6957b6040e4849c64c847efa77cba00
+- claimed_dependencies: PF-R6=3,PF-R8=1,PF-R9=2
 
