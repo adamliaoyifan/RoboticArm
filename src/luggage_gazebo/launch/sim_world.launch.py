@@ -516,16 +516,7 @@ def _launch_setup(context):
     # allocations into unbounded RSS (measured +359 MiB/43 s on the
     # detector during cargo processing; offline 16-thread repro 76.6 vs
     # 50.1 MiB with the cap). One arena pair per node bounds it. The
-    # explicit mmap/trim thresholds also pin glibc's DYNAMIC mmap
-    # threshold, which otherwise ratchets up to the size of every freed
-    # large block (capped 32 MiB) and keeps later numpy buffers in
-    # arena free lists; with them pinned, blocks >= 128 KiB return to
-    # the OS on free.
-    _arena_env = {
-        "MALLOC_ARENA_MAX": "2",
-        "MALLOC_MMAP_THRESHOLD_": "131072",
-        "MALLOC_TRIM_THRESHOLD_": "262144",
-    }
+    _arena_env = {"MALLOC_ARENA_MAX": "2"}
 
     preprocessor = Node(
         package="luggage_perception",
