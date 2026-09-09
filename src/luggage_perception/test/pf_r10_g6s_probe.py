@@ -143,8 +143,8 @@ class G6SProbe(Node):
         self._last_prep_status = {}
 
         be10 = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        be20 = QoSProfile(depth=20, reliability=ReliabilityPolicy.BEST_EFFORT)
         rl10 = QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE)
-        rl20 = QoSProfile(depth=20, reliability=ReliabilityPolicy.RELIABLE)
 
         def stage_cb(topic):
             def cb(msg):
@@ -154,14 +154,17 @@ class G6SProbe(Node):
                 self._stamps[topic][(h.sec, h.nanosec)] = t
             return cb
 
+        # Sensor-surface and preprocessed products publish BEST_EFFORT on
+        # this stack; a RELIABLE subscriber against them gets zero
+        # delivery (the PF-R9 g2 probe notes record the same trap).
         self.create_subscription(
             Image, "/camera/color/image_raw", stage_cb("raw_img"), be10)
         self.create_subscription(
             Image, "/luggage/preprocessed/camera/color/image",
-            stage_cb("pre_rgb"), rl10)
+            stage_cb("pre_rgb"), be10)
         self.create_subscription(
             DetectionFrame, "/luggage/perception/detection_frame",
-            stage_cb("frame"), rl20)
+            stage_cb("frame"), be20)
 
         def filter_cb(msg):
             t = time.monotonic()
