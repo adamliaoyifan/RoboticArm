@@ -156,6 +156,18 @@ class SemanticPointFilter:
     def last_stats(self):
         return dict(self._last_stats)
 
+    def _deproject_scratch(self, shape):
+        """Fixed-capacity cargo/obstacle point buffers per resolution."""
+        pair = self._deproject_buffers.get(tuple(shape))
+        if pair is None:
+            capacity = int(shape[0]) * int(shape[1])
+            pair = {
+                "cargo": np.empty((capacity, 3), np.float32),
+                "obstacle": np.empty((capacity, 3), np.float32),
+            }
+            self._deproject_buffers[tuple(shape)] = pair
+        return pair
+
     def filter_depth(self, depth_image, label_map, instance_map=None,
                       pixel_stride=1):
         """PF-R9 g2 depth-primary filtering (aligned depth + label map).
@@ -201,18 +213,7 @@ class SemanticPointFilter:
         excluded_px = int((excl | ~(cargo_sel | obstacle_sel)).sum())
 
         intr = self.color_intrinsics
-
-    def _deproject_scratch(self, shape):
-        """Fixed-capacity cargo/obstacle point buffers per resolution."""
-        pair = self._deproject_buffers.get(tuple(shape))
-        if pair is None:
-            capacity = int(shape[0]) * int(shape[1])
-            pair = {
-                "cargo": np.empty((capacity, 3), np.float32),
-                "obstacle": np.empty((capacity, 3), np.float32),
-            }
-            self._deproject_buffers[tuple(shape)] = pair
-        return pair
+        scratch = self._deproject_scratch(depth.shape)
         cargo_pts = np.zeros((0, 3), dtype=np.float32)
         obstacle_pts = np.zeros((0, 3), dtype=np.float32)
         stride = max(1, int(pixel_stride))
