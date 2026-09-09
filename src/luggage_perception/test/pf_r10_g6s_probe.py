@@ -315,16 +315,29 @@ def occupancy_verdicts(probe):
     return out
 
 
-def bucket_min_series(series, bucket_sec):
-    """Collapse (t, v) samples to per-bucket minima, time-anchored."""
+def bucket_min_series(series, bucket_sec, t_end=None):
+    """Collapse (t, v) samples to per-bucket minima, time-anchored.
+
+    The final bucket is usually partial (the stop file arrives mid-bucket
+    right after the eval's last trial burst, before any reclamation) and
+    its minimum is the post-burst peak; fitting it measures the burst,
+    not growth. Partial tail buckets (< 80 % coverage) are dropped.
+    """
     if not series:
         return []
     t0 = series[0][0]
+    if t_end is None:
+        t_end = series[-1][0]
     buckets = {}
     for t, v in series:
         buckets.setdefault(int((t - t0) // bucket_sec), []).append(v)
-    return [(t0 + (k + 0.5) * bucket_sec, min(vs))
-            for k, vs in sorted(buckets.items())]
+    out = []
+    for k, vs in sorted(buckets.items()):
+        span = min(t_end, t0 + (k + 1) * bucket_sec) - (t0 + k * bucket_sec)
+        if span < 0.8 * bucket_sec:
+            continue
+        out.append((t0 + (k + 0.5) * bucket_sec, min(vs)))
+    return out
 
 
 def rss_verdicts(probe):
