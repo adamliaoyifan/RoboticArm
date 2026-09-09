@@ -28,6 +28,7 @@ setup(
         'console_scripts': [
             'trajectory_executor = elfin_trajectory_executor.trajectory_executor_node:main',
             'send_joint_trajectory = elfin_trajectory_executor.send_joint_trajectory:main',
+            'cps_telemetry = elfin_trajectory_executor.cps_telemetry_node:main',
         ],
     },
 )

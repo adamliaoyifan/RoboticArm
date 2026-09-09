@@ -11,13 +11,12 @@ blocking call.
 Connection lifecycle
 --------------------
 connect()
-    HRIF_Connect
-    → HRIF_Connect2Box
-    → HRIF_Electrify
-    → HRIF_Connect2Controller
-    → poll HRIF_IsControllerStarted (up to 30 s)
-    → HRIF_GrpReset
+    HRIF_Connect → HRIF_Connect2Box → HRIF_Electrify → …
     → HRIF_GrpEnable
+
+connect(monitor_only=True)
+    HRIF_Connect → HRIF_Connect2Box only. Used by cps_telemetry for bags.
+    Does not electrify or enable the servo.
 
 execute(trajectory, feedback_fn, cancel_flag)
     For each waypoint:
@@ -44,6 +43,8 @@ import threading
 import time
 from enum import Enum, auto
 from typing import Callable, List, Optional, Tuple
+
+from .cps_parse import as_float_list, finite_diff_deg_s, tcp_from_read_act_pos
 
 # ---------------------------------------------------------------------------
 # Result codes (mirrors control_msgs/action/FollowJointTrajectory constants)
@@ -129,7 +130,11 @@ class HuayanInterface:
         self._cps = None          # CPSClient instance (imported lazily)
         self._state = ConnectionState.DISCONNECTED
         self._state_lock = threading.Lock()
+        self._monitor_only = False
         self._current_positions_deg: List[float] = [0.0] * 6
+        self._current_velocities_deg: List[float] = [0.0] * 6
+        self._current_tcp_mm_deg: List[float] = [0.0] * 6
+        self._last_refresh_mono: float = 0.0
 
     # ------------------------------------------------------------------
     # State helpers
@@ -149,12 +154,15 @@ class HuayanInterface:
     # Connection lifecycle
     # ------------------------------------------------------------------
 
-    def connect(self) -> bool:
+    def connect(self, monitor_only: bool = False) -> bool:
         """
-        Establish connection and bring robot to enabled/ready state.
+        Establish connection.
 
-        Returns True on success, False otherwise.
+        monitor_only=True only opens the CPS TCP session and reads state.
+        It does not electrify, reset, or enable the servo — use that for
+        bag recording. Full connect() is required before FollowJointTrajectory.
         """
+        self._monitor_only = monitor_only
         self._set_state(ConnectionState.CONNECTING)
         try:
             self._cps = self._import_cps()
@@ -166,7 +174,8 @@ class HuayanInterface:
             self._set_state(ConnectionState.ERROR)
             return False
 
-        if not self._do_connect():
+        ok = self._do_connect_monitor() if monitor_only else self._do_connect()
+        if not ok:
             self._set_state(ConnectionState.ERROR)
             return False
 
@@ -174,15 +183,16 @@ class HuayanInterface:
         return True
 
     def disconnect(self) -> None:
-        """Graceful shutdown: disable servo, power off, disconnect."""
+        """Graceful shutdown. Monitor-only skips disable/blackout."""
         if self._cps is None:
             return
         try:
             self._node.get_logger().info('[huayan] Disconnecting...')
-            self._cps.HRIF_GrpDisable(BOX_ID, RBT_ID)
-            time.sleep(0.5)
-            self._cps.HRIF_BlackOut(BOX_ID)
-            time.sleep(0.3)
+            if not self._monitor_only:
+                self._cps.HRIF_GrpDisable(BOX_ID, RBT_ID)
+                time.sleep(0.5)
+                self._cps.HRIF_BlackOut(BOX_ID)
+                time.sleep(0.3)
             self._cps.HRIF_DisConnect(BOX_ID)
         except Exception as exc:
             self._node.get_logger().warn(f'[huayan] Disconnect error: {exc}')
@@ -197,6 +207,30 @@ class HuayanInterface:
     def current_positions(self) -> List[float]:
         """Current joint positions in radians (read from hardware)."""
         return [math.radians(d) for d in self._current_positions_deg]
+
+    @property
+    def current_velocities(self) -> List[float]:
+        """Current joint velocities in rad/s (Huayan reports deg/s)."""
+        return [math.radians(d) for d in self._current_velocities_deg]
+
+    @property
+    def current_positions_deg(self) -> List[float]:
+        return list(self._current_positions_deg)
+
+    @property
+    def current_velocities_deg(self) -> List[float]:
+        return list(self._current_velocities_deg)
+
+    @property
+    def current_tcp_mm_deg(self) -> List[float]:
+        """Actual TCP pose: x,y,z mm then Rx,Ry,Rz deg (Huayan Base)."""
+        return list(self._current_tcp_mm_deg)
+
+    def refresh(self) -> None:
+        """Pull latest ACS / joint vel / TCP from CPS into the cache."""
+        if self._cps is None:
+            return
+        self._refresh_positions()
 
     def validate_trajectory(self, trajectory) -> Optional[str]:
         """Return error string or None if trajectory is valid."""
@@ -237,6 +271,12 @@ class HuayanInterface:
         -------
         int  RESULT_SUCCESSFUL | RESULT_PREEMPTED | RESULT_ERROR | RESULT_INVALID_GOAL
         """
+        if self._monitor_only:
+            self._node.get_logger().error(
+                '[huayan] monitor_only is set; refusing FollowJointTrajectory'
+            )
+            return RESULT_ERROR
+
         error = self.validate_trajectory(trajectory)
         if error:
             self._node.get_logger().error(f'[huayan] {error}')
@@ -323,6 +363,30 @@ class HuayanInterface:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _do_connect_monitor(self) -> bool:
+        """TCP + box session only. Does not enable the servo."""
+        log = self._node.get_logger()
+        log.info(
+            f'[huayan] Monitor connect {self._ip}:{self._port} '
+            '(no electrify / enable)'
+        )
+        nRet = self._cps.HRIF_Connect(BOX_ID, self._ip, self._port)
+        if nRet != 0:
+            log.error(f'[huayan] HRIF_Connect failed: {self._get_error_str(nRet)}')
+            return False
+        nRet = self._cps.HRIF_Connect2Box(BOX_ID)
+        if nRet != 0:
+            log.warn(
+                f'[huayan] HRIF_Connect2Box failed: {self._get_error_str(nRet)}; '
+                'continuing with TCP session only'
+            )
+        self._refresh_positions()
+        log.info(
+            '[huayan] Monitor ready. q_deg=%s',
+            [round(v, 2) for v in self._current_positions_deg],
+        )
+        return True
 
     def _do_connect(self) -> bool:
         """Low-level connection sequence. Returns True on success."""
@@ -448,11 +512,34 @@ class HuayanInterface:
             time.sleep(POLL_INTERVAL_S)
 
     def _refresh_positions(self) -> None:
-        """Read actual joint positions from hardware and cache them."""
+        """Read actual joint positions, velocities, and TCP from hardware."""
+        now = time.monotonic()
+        dt = now - self._last_refresh_mono if self._last_refresh_mono else 0.0
+        prev = list(self._current_positions_deg)
+
         result = []
         nRet = self._cps.HRIF_ReadActJointPos(BOX_ID, RBT_ID, result)
-        if nRet == 0 and len(result) >= 6:
-            self._current_positions_deg = [float(r) for r in result[:6]]
+        parsed = as_float_list(result, 6) if nRet == 0 else None
+        if parsed is not None:
+            self._current_positions_deg = parsed
+
+        vel = []
+        nRet = self._cps.HRIF_ReadActJointVel(BOX_ID, RBT_ID, vel)
+        parsed_vel = as_float_list(vel, 6) if nRet == 0 else None
+        if parsed_vel is not None:
+            self._current_velocities_deg = parsed_vel
+        else:
+            fd = finite_diff_deg_s(prev, self._current_positions_deg, dt)
+            if fd is not None:
+                self._current_velocities_deg = fd
+
+        pose = []
+        nRet = self._cps.HRIF_ReadActPos(BOX_ID, RBT_ID, pose)
+        tcp = tcp_from_read_act_pos(pose) if nRet == 0 else None
+        if tcp is not None:
+            self._current_tcp_mm_deg = tcp
+
+        self._last_refresh_mono = now
 
     def _safe_stop(self) -> None:
         """Best-effort emergency stop."""

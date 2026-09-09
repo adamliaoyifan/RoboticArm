@@ -65,17 +65,27 @@ class SimInterface:
         self._node = node
         self._lock = threading.Lock()
         self._current_positions: List[float] = [0.0] * 6
+        self._current_velocities: List[float] = [0.0] * 6
         self._executing = False
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
+    def refresh(self) -> None:
+        """No hardware; cache is updated by execute()."""
+        return
+
     @property
     def current_positions(self) -> List[float]:
         """Thread-safe snapshot of the current simulated joint positions."""
         with self._lock:
             return list(self._current_positions)
+
+    @property
+    def current_velocities(self) -> List[float]:
+        with self._lock:
+            return list(self._current_velocities)
 
     def validate_trajectory(self, trajectory) -> Optional[str]:
         """
@@ -158,6 +168,7 @@ class SimInterface:
                 '[sim] Trajectory duration is zero; jumping to final pose.')
             with self._lock:
                 self._current_positions = list(positions_list[-1])
+                self._current_velocities = [0.0] * 6
             feedback_fn(self._current_positions)
             return RESULT_SUCCESSFUL
 
@@ -177,6 +188,7 @@ class SimInterface:
                     # Snap to the final waypoint exactly.
                     with self._lock:
                         self._current_positions = list(positions_list[-1])
+                        self._current_velocities = [0.0] * 6
                     feedback_fn(list(self._current_positions))
                     break
 
@@ -187,14 +199,20 @@ class SimInterface:
 
                 alpha = (elapsed - t0) / (t1 - t0) if (t1 - t0) > 1e-9 else 1.0
                 alpha = max(0.0, min(1.0, alpha))
+                dt_seg = t1 - t0
 
                 interpolated = [
                     p0[j] + alpha * (p1[j] - p0[j])
                     for j in range(6)
                 ]
+                velocities = [
+                    (p1[j] - p0[j]) / dt_seg if dt_seg > 1e-9 else 0.0
+                    for j in range(6)
+                ]
 
                 with self._lock:
                     self._current_positions = interpolated
+                    self._current_velocities = velocities
 
                 feedback_fn(list(interpolated))
 

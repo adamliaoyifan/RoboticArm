@@ -275,14 +275,17 @@ class TrajectoryExecutorNode(Node):
 
     def _publish_joint_states(self) -> None:
         """Publish current joint positions at 100 Hz for RViz."""
+        if callable(getattr(self._iface, "refresh", None)):
+            self._iface.refresh()
         positions = self._iface.current_positions  # always in radians
+        velocities = list(getattr(self._iface, "current_velocities", [0.0] * 6))
 
         msg = JointState()
         msg.header = Header()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = self._joint_names
         msg.position = list(positions)
-        msg.velocity = [0.0] * 6
+        msg.velocity = list(velocities)
         msg.effort = [0.0] * 6
         self._js_pub.publish(msg)
 

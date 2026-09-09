@@ -1,7 +1,7 @@
 """Start livox_ros_driver2 for Mid-360S. No Gazebo.
 
 Build first: deployment_ws/scripts/setup_livox_driver.sh
-then source deployment_ws/livox_ws/install/setup.bash.
+then source deployment_ws/livox_ws/env.sh (sets Livox SDK on LD_LIBRARY_PATH).
 
 Does not include the vendor launch files (they hard-code JSON and
 xfer_format=custom). This launch starts the driver node with PointCloud2
@@ -17,28 +17,54 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _sdk_lib_dir(driver_share):
+    """livox_ws/sdk_prefix/lib next to the driver overlay install."""
+    env_prefix = os.environ.get("LIVOX_SDK_PREFIX", "")
+    candidates = []
+    if env_prefix:
+        candidates.append(os.path.join(env_prefix, "lib"))
+    # share/livox_ros_driver2 -> install/livox_ros_driver2 -> install -> livox_ws
+    overlay_root = os.path.abspath(os.path.join(driver_share, "..", "..", "..", ".."))
+    candidates.append(os.path.join(overlay_root, "sdk_prefix", "lib"))
+    for lib_dir in candidates:
+        if os.path.isfile(os.path.join(lib_dir, "liblivox_lidar_sdk_shared.so")):
+            return lib_dir
+    raise RuntimeError(
+        "liblivox_lidar_sdk_shared.so not found. "
+        "Run deployment_ws/scripts/setup_livox_driver.sh, then "
+        "source deployment_ws/livox_ws/env.sh"
+    )
+
+
 def _driver_node(context, *args, **kwargs):
     try:
-        get_package_share_directory("livox_ros_driver2")
+        driver_share = get_package_share_directory("livox_ros_driver2")
     except Exception as exc:
         raise RuntimeError(
             "livox_ros_driver2 is not on AMENT_PREFIX_PATH. "
             "Run deployment_ws/scripts/setup_livox_driver.sh (%s)" % exc
         ) from exc
 
+    sdk_lib = _sdk_lib_dir(driver_share)
+    ld_path = sdk_lib + os.pathsep + os.environ.get("LD_LIBRARY_PATH", "")
     config = LaunchConfiguration("user_config_path").perform(context)
     frame_id = LaunchConfiguration("frame_id").perform(context)
     xfer = int(LaunchConfiguration("xfer_format").perform(context))
+    if not os.path.isfile(config):
+        raise RuntimeError(
+            "Livox JSON not found: %s (keep the path on one line)" % config
+        )
     return [
         LogInfo(
-            msg="[mid360] PointCloud2=%s frame=%s config=%s"
-            % (xfer == 0, frame_id, config)
+            msg="[mid360] PointCloud2=%s frame=%s config=%s sdk=%s"
+            % (xfer == 0, frame_id, config, sdk_lib)
         ),
         Node(
             package="livox_ros_driver2",
             executable="livox_ros_driver2_node",
             name="livox_lidar_publisher",
             output="screen",
+            additional_env={"LD_LIBRARY_PATH": ld_path},
             parameters=[
                 {
                     "xfer_format": xfer,
