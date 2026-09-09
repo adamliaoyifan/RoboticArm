@@ -133,6 +133,7 @@ class LuggageDetector(Node):
         super().__init__("luggage_detector")
         self._group = ReentrantCallbackGroup()
         self._gc_on_epoch = None
+        self._gc_post_epoch_deadline = 0.0
 
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
@@ -522,6 +523,11 @@ class LuggageDetector(Node):
                 self._raw_counts["support_ready_dropped"] += 1
 
     def _emit_ready_joins(self):
+        deadline = getattr(self, "_gc_post_epoch_deadline", 0.0)
+        if deadline and time.monotonic() >= deadline:
+            self._gc_post_epoch_deadline = 0.0
+            if self._gc_on_epoch:
+                self._gc_on_epoch()
         if not self._ready_joins:
             return
         yolo_msg, cloud_msg = self._ready_joins.popleft()
@@ -663,8 +669,11 @@ class LuggageDetector(Node):
         if epoch_changed and self._gc_on_epoch:
             # Spawn bursts pin arrays via traceback cycles (see
             # _maybe_gc_timer): collect here, at the START of the burst,
-            # so its high-water starts from a reclaimed heap.
+            # and again just after it, while the freed chunks are still
+            # hot for reuse by the next burst. The stall that raises the
+            # tf2 exceptions comes ~0.3-0.8 s after the epoch arrives.
             self._gc_on_epoch()
+            self._gc_post_epoch_deadline = time.monotonic() + 0.9
         self._box_generation = generation
         self._join.clear()
         self._frame_window.clear()
