@@ -46,26 +46,53 @@ def deproject_selected(depth_image, uu, vu, intrinsics):
     return points, int(points.shape[0])
 
 
-def deproject_stride(depth_image, intrinsics, stride=1):
+def deproject_stride(depth_image, intrinsics, stride=1, out=None):
     """Deproject a strided pixel grid of an aligned depth image.
 
     Deterministic stride subsampling over the full frame: rows and columns
     ``[::stride]`` of the (H, W) grid, pixel coordinates preserved (not
     re-indexed). Used for the detector's support annulus; the retained
     density scales as 1/stride^2.
+
+    ``out`` optionally supplies a caller-owned ``(capacity, 3)`` float32
+    buffer. The return value is then a VIEW into it holding the valid
+    rows; the caller must consume the view before the next call that
+    shares the buffer. When ``out`` is given, the function performs no
+    size-varying heap allocation of its own: the per-frame heap churn of
+    a varying-size ``np.stack`` is exactly what ratchets RSS in the
+    multithreaded executor (PF-R10 C2 measurement), because freed
+    chunks of one size cannot serve the next frame's slightly different
+    size. A fixed-capacity buffer is freed-and-reused at one address.
     """
     depth = np.asarray(depth_image)
     stride = max(1, int(stride))
-    grid = depth[::stride, ::stride]
     rows = np.arange(0, depth.shape[0], stride)
     cols = np.arange(0, depth.shape[1], stride)
     vu_grid, uu_grid = np.meshgrid(rows, cols, indexing="ij")
-    z = grid.reshape(-1).astype(np.float32) * np.float32(0.001)
+    z = depth[::stride, ::stride].reshape(-1).astype(
+        np.float32) * np.float32(0.001)
     valid = np.isfinite(z) & (z > 0.0)
+    n = int(np.count_nonzero(valid))
     uu = uu_grid.reshape(-1)[valid].astype(np.float32)
     vu = vu_grid.reshape(-1)[valid].astype(np.float32)
-    z = z[valid]
-    x = (uu - np.float32(intrinsics.cx)) * z / np.float32(intrinsics.fx)
-    y = (vu - np.float32(intrinsics.cy)) * z / np.float32(intrinsics.fy)
-    points = np.stack((x, y, z), axis=1).astype(np.float32, copy=False)
-    return points, int(points.shape[0])
+    zv = z[valid]
+    if out is None:
+        x = (uu - np.float32(intrinsics.cx)) * zv / np.float32(intrinsics.fx)
+        y = (vu - np.float32(intrinsics.cy)) * zv / np.float32(intrinsics.fy)
+        points = np.empty((n, 3), np.float32)
+        points[:, 0] = x
+        points[:, 1] = y
+        points[:, 2] = zv
+        return points, n
+    if out.ndim != 2 or out.shape[1] != 3 or out.dtype != np.float32 \
+            or out.shape[0] < n:
+        raise ValueError(
+            "out must be a (capacity>=n, 3) float32 buffer; got %r" % (
+                out,))
+    view = out[:n]
+    view[:, 0] = (uu - np.float32(intrinsics.cx)) * zv \
+        / np.float32(intrinsics.fx)
+    view[:, 1] = (vu - np.float32(intrinsics.cy)) * zv \
+        / np.float32(intrinsics.fy)
+    view[:, 2] = zv
+    return view, n

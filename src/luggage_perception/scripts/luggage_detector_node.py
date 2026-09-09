@@ -87,7 +87,7 @@ from luggage_perception.top_support_estimator import (
 
 def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
                                stamp, wall_timeout_sec=0.5,
-                               poll_sec=0.02):
+                               poll_sec=0.02, out_buffer=None):
     """Rigid-body transform an (N,3) array into the target frame.
 
     The lookup retries a zero-timeout query on a *wall-clock* deadline:
@@ -124,6 +124,17 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
         [2*(qx*qz - qy*qw), 2*(qy*qz + qx*qw), 1 - 2*(qx*qx + qy*qy)],
     ])
     trans = np.array([t.x, t.y, t.z])
+    if out_buffer is not None:
+        n = int(points.shape[0])
+        if (out_buffer.ndim != 2 or out_buffer.shape[1] != 3
+                or out_buffer.shape[0] < n
+                or out_buffer.dtype != np.result_type(points, rot)):
+            out_buffer = None
+    if out_buffer is not None:
+        out_view = out_buffer[:n]
+        np.dot(points, rot.T, out=out_view)
+        out_view += trans
+        return out_view, None
     return points.dot(rot.T) + trans, None
 
 
@@ -134,6 +145,8 @@ class LuggageDetector(Node):
         self._group = ReentrantCallbackGroup()
         self._gc_on_epoch = None
         self._gc_post_epoch_deadline = 0.0
+        self._scratch_lock = threading.Lock()
+        self._scratch_buffers = {}
 
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
@@ -569,6 +582,30 @@ class LuggageDetector(Node):
         with self._support_info_lock:
             self._support_intrinsics = intr
 
+    def _support_scratch(self, depth_image):
+        """Fixed-capacity buffers for the support deprojection (PF-R10).
+
+        One (capacity, 3) float32 points buffer and one float64 world
+        buffer per source resolution. The returned view's lifetime is
+        the synchronous support fit of one joined observation; the next
+        lookup overwrites it. Join emission is serialized by the
+        mutually-exclusive 5 ms timer, and the lock covers the reentrant
+        subscription path, so a single pair per resolution is safe.
+        """
+        shape = tuple(np.asarray(depth_image).shape)
+        with self._scratch_lock:
+            pair = self._scratch_buffers.get(shape)
+            if pair is None:
+                rows = -(-shape[0] // max(1, int(self._support_stride)))
+                cols = -(-shape[1] // max(1, int(self._support_stride)))
+                capacity = int(rows) * int(cols)
+                pair = (
+                    np.empty((capacity, 3), np.float32),
+                    np.empty((capacity, 3), np.float64),
+                )
+                self._scratch_buffers[shape] = pair
+            return pair
+
     def _pop_raw_world_with_retry(self, key, attempts=1, period_sec=0.0):
         """Exact-stamp raw world points, transformed on demand.
 
@@ -613,8 +650,9 @@ class LuggageDetector(Node):
                     break
                 from luggage_perception.depth_deprojection import (
                     deproject_stride)
+                pts_buf, world_buf = self._support_scratch(depth)
                 pts, _n = deproject_stride(
-                    depth, intr, stride=self._support_stride)
+                    depth, intr, stride=self._support_stride, out=pts_buf)
                 if not len(pts):
                     lookup["raw_lookup_status"] = "empty"
                     with self._raw_lock:
@@ -624,7 +662,7 @@ class LuggageDetector(Node):
                 source_frame = msg.header.frame_id
                 pts_world, _err = _transform_points_to_world(
                     self._tf_buffer, pts, source_frame,
-                    self._world_frame, stamp_time)
+                    self._world_frame, stamp_time, out_buffer=world_buf)
                 if pts_world is not None:
                     lookup["raw_lookup_status"] = "hit"
                     lookup["raw_lookup_wait_ms"] = (
