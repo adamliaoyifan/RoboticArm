@@ -289,7 +289,11 @@ class PlatformFreeDetector:
         n_points = int(len(points))
         if n_points < int(self.config.min_top_points):
             result.top_reason = "DETECT_TOO_FEW_POINTS"
-            self._stability.update(None)
+            # A failed TOP is not evidence about the platform: the
+            # support-Z window mediates the static platform surface and
+            # every future sample is still spread-validated (PF-R10).
+            # Clearing here turned every mid-trial YOLO flicker into a
+            # 5-frame UNSTABLE refill on top of its own miss.
             return result
 
         top = estimate_top_surface(
@@ -297,7 +301,6 @@ class PlatformFreeDetector:
             timing=timing)
         if top is None:
             result.top_reason = DETECT_TOP_UNOBSERVABLE
-            self._stability.update(None)
             return result
         top.stamp = float(stamp_sec)
         result.top_valid = True

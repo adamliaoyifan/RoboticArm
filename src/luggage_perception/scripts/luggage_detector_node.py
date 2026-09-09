@@ -1426,6 +1426,14 @@ def _maybe_gc_timer(node):
 
     def _collect():
         gc.collect()
+        # Return freed arena tails to the OS: after the cyclic garbage is
+        # reclaimed the memory sits in free lists and RSS never falls,
+        # which is what the C2 slope test measures.
+        try:
+            import ctypes
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
 
     return period, _collect
 

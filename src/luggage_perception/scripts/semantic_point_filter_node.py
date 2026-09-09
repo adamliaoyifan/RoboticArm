@@ -614,6 +614,35 @@ class SemanticPointFilterNode(Node):
             self._tf_node = None
 
 
+
+def _start_malloc_trim_timer(node, interval_sec=5.0):
+    """PF-R10 C2: return freed arena tails to the OS on a low-rate timer.
+
+    The cargo-cloud publish path frees mid-size blocks whose sizes vary
+    frame to frame; glibc keeps the peaks in arena free lists and RSS
+    creeps (measured 5-16 MiB/min against the 2 MiB/min C2 bar) even
+    though the live set is flat. malloc_trim(0) releases the arena tail.
+    """
+    import ctypes
+    import threading
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim.argtypes = [ctypes.c_size_t]
+        trim = libc.malloc_trim
+    except Exception:
+        return None
+    stop = threading.Event()
+
+    def _tick():
+        while not stop.wait(interval_sec):
+            try:
+                trim(0)
+            except Exception:
+                return
+
+    threading.Thread(target=_tick, daemon=True).start()
+    return stop
+
 def main(argv=None):
     rclpy.init(args=argv)
     node = SemanticPointFilterNode()
@@ -621,6 +650,7 @@ def main(argv=None):
     # to cpu_count, which previously exploded the join callback pileup.
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
+    node._trim_stop = _start_malloc_trim_timer(node)
     try:
         executor.spin()
     except (KeyboardInterrupt, ExternalShutdownException):

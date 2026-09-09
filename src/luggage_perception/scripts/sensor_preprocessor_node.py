@@ -353,9 +353,34 @@ class SensorPreprocessorNode(Node):
         self._pub_status.publish(msg)
 
 
+
+def _start_malloc_trim_timer(interval_sec=5.0):
+    """PF-R10 C2: release freed arena tails to the OS on a low-rate timer."""
+    import ctypes
+    import threading
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim.argtypes = [ctypes.c_size_t]
+        trim = libc.malloc_trim
+    except Exception:
+        return None
+    stop = threading.Event()
+
+    def _tick():
+        while not stop.wait(interval_sec):
+            try:
+                trim(0)
+            except Exception:
+                return
+
+    threading.Thread(target=_tick, daemon=True).start()
+    return stop
+
+
 def main():
     rclpy.init()
     node = SensorPreprocessorNode()
+    node._trim_stop = _start_malloc_trim_timer()
     # Single-threaded spin + daemon publisher thread (PF-R9 measured form:
     # a MultiThreadedExecutor starved timers/services on this stack).
     import threading
