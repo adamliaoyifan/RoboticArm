@@ -378,10 +378,13 @@ class PlatformFreeDetector:
             timing=timing)
         support.stamp = float(stamp_sec)
         if support.reason != "ok":
-            # Per-frame rejection (coverage/sides) must not enter the Z
-            # stability window: a filled window would otherwise flip it
-            # to "ok" and fake a measured height.
-            self._stability.update(None)
+            # Per-frame rejection (coverage/sides) must not ENTER the Z
+            # stability window. It also does not invalidate the retained
+            # window (PF-R10): a rejected fit is absence of evidence
+            # about a static platform, not evidence against it, and the
+            # 0.015 m spread gate still validates every later sample.
+            # Clearing here turned each mid-trial detection flicker into
+            # a five-frame UNSTABLE refill on top of its own miss.
             return support, ""
         filtered = self._stability.update(support)
         if filtered is not None:
