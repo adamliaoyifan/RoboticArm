@@ -132,6 +132,7 @@ class LuggageDetector(Node):
     def __init__(self):
         super().__init__("luggage_detector")
         self._group = ReentrantCallbackGroup()
+        self._gc_on_epoch = None
 
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
@@ -656,8 +657,14 @@ class LuggageDetector(Node):
 
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
+        epoch_changed = int(generation) != int(self._box_generation)
         self._box_epoch_seen = True
         self._box_id = box_id
+        if epoch_changed and self._gc_on_epoch:
+            # Spawn bursts pin arrays via traceback cycles (see
+            # _maybe_gc_timer): collect here, at the START of the burst,
+            # so its high-water starts from a reclaimed heap.
+            self._gc_on_epoch()
         self._box_generation = generation
         self._join.clear()
         self._frame_window.clear()
@@ -1363,7 +1370,7 @@ def _maybe_gc_timer(node):
     import gc
     import os
     period = float(os.environ.get(
-        "LUGGAGE_DETECTOR_GC_INTERVAL_SEC", "2") or 0)
+        "LUGGAGE_DETECTOR_GC_INTERVAL_SEC", "15") or 0)
     if period <= 0:
         return None
 
@@ -1448,6 +1455,7 @@ def main(argv=None):
     rclpy.init(args=argv)
     node = LuggageDetector()
     gc_timer = _maybe_gc_timer(node)
+    node._gc_on_epoch = gc_timer[1] if gc_timer else None
     dump = _maybe_tracemalloc(node)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
