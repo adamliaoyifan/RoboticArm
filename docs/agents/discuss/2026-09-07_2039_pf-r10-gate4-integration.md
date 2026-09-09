@@ -71,6 +71,42 @@ occurred. User instruction 2026-09-09 (this session): complete PF-R10 now.
   generation 2 (`2026-09-09_1147_pf-r9-g2-payload-depth-primary.md`,
   outcome pass). PF-R6 = generation 3, PF-R8 = generation 1.
 
+## Reply -- eng/claude -- 2026-09-10 00:25 -- claude/glm-5.3
+
+Session progress (claim stays open; work continues next session):
+
+- **C2 now passes robustly** (5+ consecutive runs): buffer peaks within
+  maxlens, executor-lag q4 <= 0.20 s and ratio <= 1.25, per-node RSS
+  slope within 2 MiB/min. Root causes found and fixed on master
+  (`1998d47`..`474a9b8`): per-thread arena ratchet (arena cap + BLAS
+  threads + mmap-pin on filter/detector), size-varying escaping arrays
+  (fixed-capacity deprojection scratch in detector and filter), tf2
+  exception tracebacks pinning per-frame arrays (stripped at catch),
+  and RSS measured as a per-5 s bucket-minimum series with the partial
+  tail bucket dropped (bounded +/-45 MiB size-class oscillation made
+  instantaneous-sample LSQ measure phase, not growth; a real leak still
+  raises the floor).
+- **C1 passes on clean draws** (full3d 0.957-0.982 across 5 runs) with
+  the recorded `--warmup-frames 30` rescale plus repairs: support-Z
+  window carried across same-platform epochs, no window clear on top
+  failures or rejected fits, detector gc at epoch head/tail. One full
+  C1+C2 passing scored run was produced (full3d 0.965 / top 1.000 /
+  active 18.6 / false 0; all C2 green) before the streak restarted.
+- **Remaining blocker for three consecutive runs**: a spawn
+  contact-physics defect (8-23 kg mesh suitcase tips or slides out of
+  the sampled pose in ~30-40% of runs, one trial each) presents as
+  whole-trial no-detection (top 0.63-0.73), a giant low-confidence
+  bbox (129k px vs ~8.5k normal), or detected-but-wrong geometry
+  (top_z 0.26 m / xy 0.43 m). Evidence in
+  `docs/status/evidence/platform_free_height/2026-09-09_pfr10_gate4_integration/`
+  (yolo_series, frames.jsonl, per-run RESULT.md). The spawner
+  intent re-place (`8f1a6c1`) does not reliably hold; next move is a
+  closed-loop re-place reading `/world/<world>/pose/info` with bounded
+  retries, plus verifying whether the gz bridge silently ignores the
+  set_pose call (same class as the delete entity-type trap).
+- Controller-manager init race hit 4x tonight: restart the stack, do
+  not measure (driver enforces `Held pose 'pickup_observe'` readiness).
+
 ## Claim -- eng/claude -- 2026-09-09 19:51 -- claude-code/glm-5.3
 
 - started_at: 2026-09-09T19:51:05+08:00

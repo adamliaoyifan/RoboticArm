@@ -1,0 +1,270 @@
+{
+  "wall_start_utc": "2026-09-09T14:19:08.721725+00:00",
+  "wall_end_utc": "2026-09-09T14:19:52.169425+00:00",
+  "duration_s": 43.447677754971664,
+  "active_rates_hz": {
+    "pre_rgb": 28.689,
+    "frame": 23.223,
+    "raw_img": 24.17,
+    "segmenter_stats": 0.81
+  },
+  "stage_delta_ms": {
+    "raw_img->pre_rgb": {
+      "n": 985,
+      "p50": 18.987,
+      "p95": 22.898,
+      "max": 48.52
+    },
+    "pre_rgb->frame": {
+      "n": 976,
+      "p50": 830.536,
+      "p95": 1754.263,
+      "max": 2603.735
+    },
+    "raw_img->frame_e2e": {
+      "n": 793,
+      "p50": 910.975,
+      "p95": 1783.433,
+      "max": 2623.519
+    }
+  },
+  "stage_percentiles": {
+    "filter.cargo_points_ms": {
+      "n": 54,
+      "p50": 52208.0,
+      "p95": 84175.0,
+      "max": 84175.0
+    },
+    "filter.depth_decode_ms_ms": {
+      "n": 54,
+      "p50": 0.01,
+      "p95": 0.013,
+      "max": 0.017
+    },
+    "filter.filter_ms_ms": {
+      "n": 54,
+      "p50": 3.945,
+      "p95": 7.205,
+      "max": 9.483
+    },
+    "filter.input_points_ms": {
+      "n": 54,
+      "p50": 480.0,
+      "p95": 480.0,
+      "max": 480.0
+    },
+    "filter.mask_decode_ms_ms": {
+      "n": 54,
+      "p50": 0.031,
+      "p95": 0.046,
+      "max": 0.066
+    },
+    "filter.obstacle_points_ms": {
+      "n": 54,
+      "p50": 52208.0,
+      "p95": 84175.0,
+      "max": 84175.0
+    },
+    "filter.process_total_ms_ms": {
+      "n": 54,
+      "p50": 17.03,
+      "p95": 44.932,
+      "max": 48.341
+    },
+    "filter.publish_ms_ms": {
+      "n": 54,
+      "p50": 11.042,
+      "p95": 34.198,
+      "max": 36.946
+    },
+    "filter.to_world_ms_ms": {
+      "n": 54,
+      "p50": 0.709,
+      "p95": 1.351,
+      "max": 2.799
+    },
+    "filter.tracker_ms_ms": {
+      "n": 54,
+      "p50": 1.716,
+      "p95": 3.445,
+      "max": 4.438
+    },
+    "detector.read_ms_ms": {
+      "n": 939,
+      "p50": 0.047,
+      "p95": 13.113,
+      "max": 23.441
+    },
+    "detector.geometry_ms_ms": {
+      "n": 572,
+      "p50": 1313.428,
+      "p95": 1651.875,
+      "max": 1777.098
+    },
+    "detector.tf_ms_ms": {
+      "n": 328,
+      "p50": 1.909,
+      "p95": 5.228,
+      "max": 10.483
+    }
+  },
+  "executor_lag_sec": {
+    "n": 54,
+    "p50": 0.069,
+    "p95": 0.11,
+    "max": 0.127,
+    "q1_mean": 0.05808333333333356,
+    "q4_mean": 0.06414285714285484,
+    "q4_mean_ok": true,
+    "ratio_ok": true
+  },
+  "occupancy": {
+    "detector.raw_buffer": {
+      "peak": 15,
+      "mean": 13.999008919722497,
+      "n": 1009,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 14.15695067264574,
+      "q4_mean_within_half": false
+    },
+    "prep.color_info": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 1349
+    },
+    "prep.depth": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 1349
+    },
+    "prep.depth_info": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 1349
+    },
+    "prep.imu": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 1349
+    },
+    "prep.joints": {
+      "peak": 50,
+      "mean": 50.0,
+      "n": 1349
+    },
+    "prep.lidar": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 1349
+    },
+    "prep.rgb": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 1349
+    },
+    "prep.emit_queue": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 1349
+    },
+    "filter.depth": {
+      "peak": 2,
+      "mean": 0.4444444444444444,
+      "n": 54,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.5714285714285714,
+      "q4_mean_within_half": true
+    },
+    "filter.mask": {
+      "peak": 1,
+      "mean": 0.05555555555555555,
+      "n": 54,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.instance": {
+      "peak": 1,
+      "mean": 0.018518518518518517,
+      "n": 54,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.exact_join_candidates": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 54,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    }
+  },
+  "rss": {
+    "sensor_preprocessor": {
+      "pid": 1091577,
+      "n": 44,
+      "rss_mib_first": 102.31640625,
+      "rss_mib_last": 103.94140625,
+      "rss_mib_min": 101.1640625,
+      "rss_mib_max": 103.94140625,
+      "q1_mean_mib": 102.32563920454545,
+      "q4_mean_mib": 102.52024147727273,
+      "slope_mib_per_min": 0.3938006139846327,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "semantic_segmenter": {
+      "pid": 1091587,
+      "n": 44,
+      "rss_mib_first": 1945.65625,
+      "rss_mib_last": 1945.953125,
+      "rss_mib_min": 1945.65625,
+      "rss_mib_max": 1946.00390625,
+      "q1_mean_mib": 1945.7542613636363,
+      "q4_mean_mib": 1945.9992897727273,
+      "slope_mib_per_min": 0.4760536300667497,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "semantic_point_filter": {
+      "pid": 1091589,
+      "n": 44,
+      "rss_mib_first": 74.734375,
+      "rss_mib_last": 88.51953125,
+      "rss_mib_min": 74.45703125,
+      "rss_mib_max": 98.36328125,
+      "q1_mean_mib": 76.9620028409091,
+      "q4_mean_mib": 86.7215909090909,
+      "slope_mib_per_min": 15.629410642970013,
+      "slope_ok": false,
+      "quartile_ok": true,
+      "pass": false
+    },
+    "luggage_detector": {
+      "pid": 1091585,
+      "n": 44,
+      "rss_mib_first": 91.1171875,
+      "rss_mib_last": 260.71484375,
+      "rss_mib_min": 90.12890625,
+      "rss_mib_max": 282.984375,
+      "q1_mean_mib": 117.24147727272727,
+      "q4_mean_mib": 260.7574573863636,
+      "slope_mib_per_min": 251.66307634319588,
+      "slope_ok": false,
+      "quartile_ok": false,
+      "pass": false
+    }
+  },
+  "maxlens": {
+    "detector.raw_buffer_maxlen": 15,
+    "filter.buffer_maxlen": 15
+  }
+}
