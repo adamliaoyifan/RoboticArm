@@ -88,6 +88,7 @@ class SemanticPointFilterNode(Node):
             "extrinsics_source": "identity",
             "realsense_extrinsics_config": "",
             "buffer_maxlen": 10,
+            "output_pixel_stride": 2,
             # PF-R9 B5: stats serialization moved off the per-callback path
             # onto a timer (0 keeps the legacy per-call behaviour for unit
             # tests).
@@ -106,6 +107,8 @@ class SemanticPointFilterNode(Node):
         self._cargo_voxel_size = max(
             0.0, float(self.get_parameter("output.cargo_voxel_size").value))
         self._buffer_maxlen = max(2, int(self.get_parameter("buffer_maxlen").value))
+        self._pixel_stride = max(
+            1, int(self.get_parameter("output_pixel_stride").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
         stats_hz = float(self.get_parameter("stats_publish_hz").value)
         self._stats_publish_interval_sec = (
@@ -161,6 +164,12 @@ class SemanticPointFilterNode(Node):
 
         sensor_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+        # Aligned-depth input rides its own deeper transport queue: with a
+        # depth-1 queue, frames arriving while a join callback runs (21 ms
+        # measured) were dropped before the app-level 15-entry buffer ever
+        # saw them (PF-R9 g2 D4 repair).
+        depth_qos = QoSProfile(
+            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         # camera_info from the preprocessor is also best-effort sensor data.
         stats_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.RELIABLE,
@@ -177,7 +186,7 @@ class SemanticPointFilterNode(Node):
 
         self.create_subscription(
             Image, self.get_parameter("input.depth_image").value,
-            self._on_depth, sensor_qos, callback_group=self._group)
+            self._on_depth, depth_qos, callback_group=self._group)
         self.create_subscription(
             Image, self.get_parameter("input.mask").value, self._on_mask,
             sensor_qos, callback_group=self._group)
@@ -299,7 +308,7 @@ class SemanticPointFilterNode(Node):
             if stamp is None:
                 stamp = self.get_clock().now().to_msg()
             self._publish_cargo(
-                [], stamp, self._last_cloud_frame, n_points=0)
+                [], stamp, self._last_depth_frame, n_points=0)
             # Epoch resets are rare; publish immediately, not on the timer.
             self._publish_stats_now()
 
@@ -374,7 +383,7 @@ class SemanticPointFilterNode(Node):
             xyz = voxel_downsample(xyz, self._cargo_voxel_size)
         n = int(xyz.shape[0] if n_points is None else n_points)
         self._cargo_pub.publish(adapters.cloud_msg_from_points(
-            xyz, stamp, frame_id or self._last_cloud_frame))
+            xyz, stamp, frame_id or self._last_depth_frame))
         with self._lock:
             self._join_stamps.note_join(
                 adapters.stamp_to_sec(stamp), n)
@@ -392,28 +401,35 @@ class SemanticPointFilterNode(Node):
         )
 
     def _take_newest_join(self):
-        """Process only the newest exact-stamp pair; drop older buffered frames.
+        """Process the newest exact-stamp pair; retire only older entries.
 
-        Exclusive-group callbacks queue FIFO. Processing every 307k-point
-        join in that queue stalled cargo for ~25 s (CARGO_NOT_READY with
-        frozen ``cloud`` counts).
+        Exclusive-group callbacks queue FIFO. Processing every join in
+        that queue stalled cargo (the g1-era clear-all mitigation), but
+        clearing the buffers also destroyed half-pairs of FUTURE stamps
+        (mask S+1 buffered while depth S joins), which capped the exact
+        join ratio ~0.88 (PF-R9 g2 D4). Entries strictly older than the
+        joined key are obsolete and retired by name; newer half-pairs
+        survive to complete on their partner's arrival.
         """
         keys = set(self._depths) & set(self._masks)
         if not keys:
             return None
         key = max(keys)
         joined = self._take_join(key)
-        stale_depth = len(self._depths)
-        stale_mask = len(self._masks)
-        stale_instance = len(self._instances)
-        self._counts["stale_depth_dropped"] += stale_depth
-        self._counts["stale_mask_dropped"] += stale_mask
-        self._counts["stale_instance_dropped"] += stale_instance
+        stale_depth = [k for k in self._depths if k < key]
+        stale_mask = [k for k in self._masks if k < key]
+        stale_instance = [k for k in self._instances if k < key]
+        for k in stale_depth:
+            del self._depths[k]
+        for k in stale_mask:
+            del self._masks[k]
+        for k in stale_instance:
+            del self._instances[k]
+        self._counts["stale_depth_dropped"] += len(stale_depth)
+        self._counts["stale_mask_dropped"] += len(stale_mask)
+        self._counts["stale_instance_dropped"] += len(stale_instance)
         self._join_stamps.note_stale_drop(
-            stale_depth + stale_mask + stale_instance)
-        self._depths.clear()
-        self._masks.clear()
-        self._instances.clear()
+            len(stale_depth) + len(stale_mask) + len(stale_instance))
         return joined
 
     def _process_joined(self, depth_msg, mask_msg, instance_msg, filt):
@@ -455,11 +471,12 @@ class SemanticPointFilterNode(Node):
         # Instance ids are not consumed downstream; the 5-tuple Python loop
         # over ~100k cargo points stalled the join callback for seconds.
         del instance_msg
-        cargo, obstacle = filt.filter_depth(depth, label_map, None)
+        cargo, obstacle = filt.filter_depth(
+            depth, label_map, None, pixel_stride=self._pixel_stride)
         after_filter = time.monotonic()
 
         stamp = depth_msg.header.stamp
-        frame_id = cloud_msg.header.frame_id or self._last_cloud_frame
+        frame_id = depth_msg.header.frame_id or self._last_depth_frame
         camera_pts = xyz_array(cargo)
         world_pts = None
         tf_miss = False

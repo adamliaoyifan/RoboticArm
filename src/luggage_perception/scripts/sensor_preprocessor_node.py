@@ -121,8 +121,15 @@ class SensorPreprocessorNode(Node):
             Image, self.get_parameter("output.color_image").value, sensor_qos)
         self._pub_color_info = self.create_publisher(
             CameraInfo, self.get_parameter("output.color_info").value, sensor_qos)
+        # Aligned depth is the mandatory geometry input: publish RELIABLE
+        # so exact-stamp consumers (detector) never lose a frame. BEST_
+        # EFFORT subscribers stay compatible.
+        depth_pub_qos = QoSProfile(
+            depth=15, reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         self._pub_depth = self.create_publisher(
-            Image, self.get_parameter("output.depth_image").value, sensor_qos)
+            Image, self.get_parameter("output.depth_image").value,
+            depth_pub_qos)
         self._pub_depth_info = self.create_publisher(
             CameraInfo, self.get_parameter("output.depth_info").value, sensor_qos)
         self._pub_status = self.create_publisher(

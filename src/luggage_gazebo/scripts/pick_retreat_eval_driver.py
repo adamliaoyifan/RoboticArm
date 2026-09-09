@@ -445,7 +445,7 @@ class PickRetreatEvalDriver(Node):
             lambda m: self._size_eval.__setitem__("payload", m.data),
             latch, callback_group=self._group)
         self.create_subscription(
-            PointCloud2, "/luggage/preprocessed/camera/depth/points",
+            PointCloud2, "/luggage/semantic/cargo_points",
             self._on_cloud, sensor, callback_group=self._group)
         self.create_subscription(
             PointCloud2, "/luggage/semantic/cargo_points",

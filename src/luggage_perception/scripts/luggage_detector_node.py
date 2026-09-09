@@ -26,7 +26,7 @@ import json
 import math
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 import numpy as np
 
@@ -176,6 +176,8 @@ class LuggageDetector(Node):
             "/luggage/preprocessed/camera/depth/camera_info")
         self.declare_parameter(
             "support_depth_stride", 4)
+        self.declare_parameter(
+            "support_wait_timeout_sec", 0.25)
         # Empty means use the cloud header frame_id. The preprocessor publishes
         # optical-frame points; override only if a consumer still sees raw gz
         # clouds labelled optical but stored in camera_link.
@@ -299,8 +301,14 @@ class LuggageDetector(Node):
         )
         # Bounded aligned-depth buffer keyed by exact stamp (15 / 1.0 s).
         self._raw_buffer = OrderedDict()
-        self._raw_buffer_maxlen = max(
-            4, int(self.get_parameter("join_buffer_maxlen").value))
+        # PF-R9 g2 fixed camera cache contract: the support-depth buffer
+        # holds 15 entries / 1.0 s (raw_evicted ~= raw_received with the
+        # old depth-4 window, starving lazy lookups).
+        self._raw_buffer_maxlen = 15
+        self._pending_joins = OrderedDict()
+        self._ready_joins = deque()
+        self._support_wait_timeout = float(
+            self.get_parameter("support_wait_timeout_sec").value)
         self._support_stride = max(
             1, int(self.get_parameter("support_depth_stride").value))
         self._support_intrinsics = None
@@ -309,6 +317,10 @@ class LuggageDetector(Node):
         self._raw_counts = {
             "raw_horizon_evicted": 0,
             "raw_lookup_no_intrinsics": 0,
+            "support_wait_parked": 0,
+            "support_wait_completed": 0,
+            "support_wait_expired": 0,
+            "support_ready_dropped": 0,
             "raw_received": 0,
             "raw_evicted": 0,
             "raw_lookup_hit": 0,
@@ -376,9 +388,15 @@ class LuggageDetector(Node):
         # Aligned depth image feeds the local support fit (PF-R9 g2:
         # exact-stamp keyed, 15 entries / 1.0 s, deprojected locally with
         # a deterministic stride — the transported camera cloud is gone).
+        # Support depth must not lose frames: BEST_EFFORT drops under load
+        # (the same phenomenon B1 measured on raw topics) leave ~17% of
+        # cargo joins without their exact-stamp depth (PF-R9 g2 D4).
+        support_qos = QoSProfile(
+            depth=30, reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(
             Image, self.get_parameter("depth_topic").value,
-            self._raw_depth_cb, stream_qos, callback_group=self._group)
+            self._raw_depth_cb, support_qos, callback_group=self._group)
         self.create_subscription(
             CameraInfo, self.get_parameter("support_camera_info_topic").value,
             self._support_info_cb, stream_qos, callback_group=self._group)
@@ -386,6 +404,12 @@ class LuggageDetector(Node):
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
+        # Ready-join emitter: parked pairs completed by the depth callback
+        # are emitted here between callbacks, one per tick. Default
+        # (mutually exclusive) group: a reentrant timer stacks concurrent
+        # ticks against the 65 ms estimates and thundering-herds the
+        # executor.
+        self.create_timer(0.005, self._emit_ready_joins)
         self.get_logger().info("luggage_detector subscribing to %s" % topic)
 
         image_qos = QoSProfile(
@@ -442,7 +466,7 @@ class LuggageDetector(Node):
         if self._use_semantic:
             pair = self._join.push_right(key, msg)
             if pair is not None:
-                self._emit_joined(pair[0], pair[1])
+                self._maybe_emit_joined(pair[0], pair[1])
             return
         self._emit_joined(self._empty_yolo_for_cloud(msg), msg)
 
@@ -452,7 +476,55 @@ class LuggageDetector(Node):
             return
         pair = self._join.push_left(key, msg)
         if pair is not None:
-            self._emit_joined(pair[0], pair[1])
+            self._maybe_emit_joined(pair[0], pair[1])
+
+    def _maybe_emit_joined(self, yolo_msg, cloud_msg):
+        """Emit now if the support depth for this stamp is buffered; else
+        park the pair (bounded) until the depth callback completes it.
+
+        A parked pair older than ``support_wait_timeout_sec`` is emitted
+        support-less (TOP_ONLY, named reason) so no pair is ever dropped
+        or double-published.
+        """
+        key = stamp_key(cloud_msg.header.stamp)
+        with self._raw_lock:
+            have_depth = key is not None and key in self._raw_buffer
+        if have_depth or key is None:
+            self._emit_joined(yolo_msg, cloud_msg)
+            return
+        self._pending_joins[key] = (yolo_msg, cloud_msg, time.monotonic())
+        self._raw_counts["support_wait_parked"] += 1
+        while len(self._pending_joins) > 8:
+            old_key, old = self._pending_joins.popitem(last=False)
+            self._raw_counts["support_wait_expired"] += 1
+            self._emit_joined(old[0], old[1])
+
+    def _drain_pending_joins(self, new_key=None):
+        """Move parked joins whose depth arrived (or expired) onto the
+        ready queue. The depth callback stays light; a timer emits the
+        ready pairs between callbacks so the executor never drowns.
+        """
+        now = time.monotonic()
+        ready = []
+        for key, entry in list(self._pending_joins.items()):
+            if key == new_key or now - entry[2] > self._support_wait_timeout:
+                ready.append(key)
+        for key in ready:
+            yolo_msg, cloud_msg, _ = self._pending_joins.pop(key)
+            if key == new_key:
+                self._raw_counts["support_wait_completed"] += 1
+            else:
+                self._raw_counts["support_wait_expired"] += 1
+            self._ready_joins.append((yolo_msg, cloud_msg))
+            while len(self._ready_joins) > 4:
+                self._ready_joins.popleft()
+                self._raw_counts["support_ready_dropped"] += 1
+
+    def _emit_ready_joins(self):
+        if not self._ready_joins:
+            return
+        yolo_msg, cloud_msg = self._ready_joins.popleft()
+        self._emit_joined(yolo_msg, cloud_msg)
 
     def _raw_depth_cb(self, msg):
         """Buffer the aligned depth image by exact stamp (PF-R9 g2).
@@ -477,6 +549,7 @@ class LuggageDetector(Node):
                 for k in stale:
                     del self._raw_buffer[k]
                     self._raw_counts["raw_horizon_evicted"] += 1
+        self._drain_pending_joins(new_key=key)
 
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
@@ -489,16 +562,17 @@ class LuggageDetector(Node):
         with self._support_info_lock:
             self._support_intrinsics = intr
 
-    def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
-        """Exact-stamp raw world points, transformed on demand (PF-R6).
+    def _pop_raw_world_with_retry(self, key, attempts=1, period_sec=0.0):
+        """Exact-stamp raw world points, transformed on demand.
 
-        The raw cloud is buffered lazily as a message by
-        ``_raw_cloud_cb``; it is decoded + transformed here once, only
-        for stamps whose cargo cloud joined (the dominant PF-R6 baseline
-        cost was transforming every raw cloud at 4 Hz on the shared
-        executor). The bounded same-stamp re-check covers the executor
-        ordering race and never accepts a different stamp — no fusion
-        semantics change.
+        PF-R9 g2: ``attempts`` defaults to 1. The old 3x20 ms in-callback
+        sleep could never observe a late depth arrival — this executor is
+        single-threaded, so the depth callback that would fill the buffer
+        is queued BEHIND the sleeping lookup (measured: 44% of lookups
+        missed on arrival order alone). Arrival-order races are now
+        handled upstream by the bounded pending-join park in
+        ``_maybe_emit_joined``; this lookup is exact-stamp only and never
+        accepts a different stamp.
         """
         start = time.monotonic()
         last = max(1, attempts)

@@ -155,7 +155,8 @@ class SemanticPointFilter:
     def last_stats(self):
         return dict(self._last_stats)
 
-    def filter_depth(self, depth_image, label_map, instance_map=None):
+    def filter_depth(self, depth_image, label_map, instance_map=None,
+                      pixel_stride=1):
         """PF-R9 g2 depth-primary filtering (aligned depth + label map).
 
         Selects the configured cargo/obstacle pixel union FIRST, then
@@ -201,8 +202,15 @@ class SemanticPointFilter:
         intr = self.color_intrinsics
         cargo_pts = np.zeros((0, 3), dtype=np.float32)
         obstacle_pts = np.zeros((0, 3), dtype=np.float32)
+        stride = max(1, int(pixel_stride))
         for sel, holder in ((cargo_sel, "cargo"), (obstacle_sel, "obstacle")):
             vu, uu = np.nonzero(sel)
+            if stride > 1 and uu.size:
+                # Decimation of a NEW product (the generated cloud), not of
+                # the received payload: deterministic [::stride] over the
+                # selected pixels. Density gates: PF-R9 g2 D6 / PF-R10.
+                vu = vu[::stride]
+                uu = uu[::stride]
             if uu.size == 0:
                 continue
             points, _ = deproject_selected(depth, uu, vu, intr)

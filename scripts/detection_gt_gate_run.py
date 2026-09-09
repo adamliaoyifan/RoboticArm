@@ -250,7 +250,7 @@ class GateRun(Node):
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(
-            PointCloud2, "/luggage/preprocessed/camera/depth/points",
+            PointCloud2, "/luggage/semantic/cargo_points",
             self._on_cloud, sensor_qos,
             callback_group=self._group)
         for name, topic in (
