@@ -1348,6 +1348,31 @@ class LuggageDetector(Node):
         return response
 
 
+def _maybe_gc_timer(node):
+    """PF-R10 repair: periodic full collection for cyclic garbage.
+
+    Spawn transitions raise bursts of tf2 extrapolation exceptions (gz
+    pauses stall the sim clock); each exception traceback pins its
+    frames' locals, including the ~0.5 MiB deprojected/transformed
+    support arrays, and traceback frames create reference cycles that
+    only generational collection can reclaim. At one spawn per ~7 s the
+    gen-2 cadence falls behind and RSS ratchets (measured 160-359
+    MiB/min during gate4 runs, flat on a static box). A 2 s full
+    collect bounds the retained tail; measured cost is ~1-3 ms.
+    """
+    import gc
+    import os
+    period = float(os.environ.get(
+        "LUGGAGE_DETECTOR_GC_INTERVAL_SEC", "2") or 0)
+    if period <= 0:
+        return None
+
+    def _collect():
+        gc.collect()
+
+    return period, _collect
+
+
 def _maybe_tracemalloc(node):
     """PF-R10 diagnostic: env-gated allocation tracing.
 
@@ -1422,9 +1447,12 @@ def _maybe_tracemalloc(node):
 def main(argv=None):
     rclpy.init(args=argv)
     node = LuggageDetector()
+    gc_timer = _maybe_gc_timer(node)
     dump = _maybe_tracemalloc(node)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
+    if gc_timer is not None:
+        node.create_timer(gc_timer[0], gc_timer[1])
     if dump is not None:
         _tm_dump, _census = dump
         node.create_timer(15.0, _tm_dump)
