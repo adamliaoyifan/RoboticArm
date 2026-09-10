@@ -8,9 +8,12 @@
   reliability: best_effort
   durability: volatile
 
+/livox/lidar_custom: *sensor
+
 /livox/imu: *sensor
 
 /camera/d555/color/image_raw: *sensor
+/camera/d555/color/image_raw/compressed: *sensor
 /camera/d555/color/camera_info: *sensor
 /camera/d555/color/metadata: *sensor
 /camera/d555/depth/image_rect_raw: *sensor
@@ -18,11 +21,13 @@
 /camera/d555/depth/metadata: *sensor
 /camera/d555/depth/color/points: *sensor
 /camera/d555/aligned_depth_to_color/image_raw: *sensor
+/camera/d555/aligned_depth_to_color/image_raw/compressed: *sensor
 /camera/d555/aligned_depth_to_color/camera_info: *sensor
 /camera/d555/rgbd: *sensor
 /camera/d555/imu: *sensor
 /camera/d555/gyro/sample: *sensor
 /camera/d555/accel/sample: *sensor
+/camera/d555/motion/sample: *sensor
 /camera/d555/color1/image_raw: *sensor
 /camera/d555/aligned_depth_to_color1/image_raw: *sensor
 
