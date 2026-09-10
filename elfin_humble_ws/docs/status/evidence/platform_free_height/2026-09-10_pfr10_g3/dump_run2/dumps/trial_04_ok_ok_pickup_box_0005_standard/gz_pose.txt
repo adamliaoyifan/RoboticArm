@@ -1,0 +1,697 @@
+header {
+  stamp {
+    sec: 79
+    nsec: 593000000
+  }
+}
+pose {
+  name: "ground_plane"
+  id: 4
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "loading_zone_marking"
+  id: 8
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_loafbrr_small"
+  id: 11
+  position {
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_loafbrr_medium"
+  id: 15
+  position {
+    x: 3
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_loafbrr_large"
+  id: 19
+  position {
+    x: 6
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_vintage_small"
+  id: 23
+  position {
+    x: 9
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_vintage_medium"
+  id: 27
+  position {
+    x: 12
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "_preload_suitcase_vintage_large"
+  id: 31
+  position {
+    x: 15
+    z: -100
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "pickup_platform"
+  id: 37
+  position {
+    x: -1
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "robot_pedestal"
+  id: 41
+  position {
+  }
+  orientation {
+    z: 0.70710807985947388
+    w: 0.70710548251123606
+  }
+}
+pose {
+  name: "airport_container_real"
+  id: 45
+  position {
+    x: 1.5
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "S20"
+  id: 49
+  position {
+    z: -1.1102230246251565e-16
+  }
+  orientation {
+    z: 2.7755575615628914e-16
+    w: 1
+  }
+}
+pose {
+  name: "pickup_box_0005_standard"
+  id: 112
+  position {
+    x: -0.94062128180156934
+    y: -0.080279965980587453
+    z: 1
+  }
+  orientation {
+    z: -0.11579536354388971
+    w: 0.99327309124013741
+  }
+}
+pose {
+  name: "link"
+  id: 5
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "link"
+  id: 9
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 12
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 16
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 20
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 24
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 28
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 32
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "platform_link"
+  id: 38
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "pedestal_link"
+  id: 42
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "container_link"
+  id: 46
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "elfin_base_link"
+  id: 50
+  position {
+    z: 0.86
+  }
+  orientation {
+    z: 0.70710807985947366
+    w: 0.70710548251123639
+  }
+}
+pose {
+  name: "elfin_link1"
+  id: 53
+  position {
+    z: 1.0310000000000001
+  }
+  orientation {
+    z: 0.98802639713057117
+    w: -0.15428492659097512
+  }
+}
+pose {
+  name: "elfin_link2"
+  id: 56
+  position {
+    x: -0.069968849289416962
+    y: 0.21857403809490905
+    z: 1.0310000000000006
+  }
+  orientation {
+    x: 0.61042194587273579
+    y: -0.35691299303821117
+    z: -0.5260217509070737
+    w: -0.4725455332241586
+  }
+}
+pose {
+  name: "elfin_link3"
+  id: 59
+  position {
+    x: -0.17555407762716405
+    y: -0.013144813350600346
+    z: 1.8635805567280803
+  }
+  orientation {
+    x: 0.0032147333360586288
+    y: 0.70710077223273449
+    z: 0.67245478454828933
+    w: -0.21863834552877814
+  }
+}
+pose {
+  name: "elfin_link4"
+  id: 62
+  position {
+    x: -0.81946827926728361
+    y: -0.21927060917423141
+    z: 2.0868083713530585
+  }
+  orientation {
+    x: -0.56046894131631553
+    y: 0.43113385673398219
+    z: 0.58147949770671292
+    w: 0.40234283533349663
+  }
+}
+pose {
+  name: "elfin_link5"
+  id: 65
+  position {
+    x: -0.86154105138874038
+    y: -0.08784046862131703
+    z: 2.0868078644507526
+  }
+  orientation {
+    x: 0.512943584072942
+    y: -0.46010221044824956
+    z: -0.36626109356035319
+    w: 0.62533802606511424
+  }
+}
+pose {
+  name: "elfin_link6"
+  id: 68
+  position {
+    x: -0.99280408075433435
+    y: -0.12986025135054138
+    z: 2.0937616390484872
+  }
+  orientation {
+    x: -0.01909557450872075
+    y: 0.99444261708352422
+    z: -0.10341177526633555
+    w: 0.0050244500711245626
+  }
+}
+pose {
+  name: "suitcase_link"
+  id: 113
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "visual"
+  id: 6
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "zone_visual"
+  id: 10
+  position {
+    x: 1.4
+    y: -0.7
+    z: 0.001
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_loafbrr_small_visual"
+  id: 13
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_loafbrr_medium_visual"
+  id: 17
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_loafbrr_large_visual"
+  id: 21
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_vintage_small_visual"
+  id: 25
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_vintage_medium_visual"
+  id: 29
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "suitcase_vintage_large_visual"
+  id: 33
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "sunVisual"
+  id: 36
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "visual"
+  id: 39
+  position {
+    z: 0.43
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "visual"
+  id: 43
+  position {
+    z: 0.43
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "visual"
+  id: 47
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "elfin_base_link_fixed_joint_lump__elfin_base_visual"
+  id: 51
+  position {
+    z: 1.1102230246251565e-16
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "elfin_link1_visual"
+  id: 54
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "elfin_link2_visual"
+  id: 57
+  position {
+    x: 8.3266726846886741e-17
+    y: 2.2204460492503131e-16
+    z: -3.8857805861880479e-16
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "elfin_link3_visual"
+  id: 60
+  position {
+    x: 3.3306690738754696e-16
+    y: -2.2204460492503131e-16
+    z: -4.4408920985006262e-16
+  }
+  orientation {
+    w: 0.99999999999999989
+  }
+}
+pose {
+  name: "elfin_link4_visual"
+  id: 63
+  position {
+    x: 4.4408920985006262e-16
+    y: 6.6613381477509392e-16
+    z: -6.6613381477509392e-16
+  }
+  orientation {
+    w: 0.99999999999999989
+  }
+}
+pose {
+  name: "elfin_link5_visual"
+  id: 66
+  position {
+    x: 4.4408920985006262e-16
+    y: 7.7715611723760958e-16
+    z: -1.3322676295501878e-15
+  }
+  orientation {
+    z: -5.9496386125806031e-18
+    w: 1
+  }
+}
+pose {
+  name: "elfin_link6_visual"
+  id: 69
+  position {
+    x: 1.7763568394002505e-15
+    y: 9.9920072216264089e-16
+    z: -1.1102230246251565e-15
+  }
+  orientation {
+    y: 2.7755575615628914e-17
+    w: 0.99999999999999989
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__suction_panel_visual_1"
+  id: 70
+  position {
+    x: -0.091499319361275672
+    y: -0.092694789043596432
+    z: 0.41095322003613677
+  }
+  orientation {
+    x: -0.70488185340997345
+    y: -2.587910431217552e-06
+    z: 2.60422205405436e-06
+    w: 0.70932473009182551
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__suction_panel_visual_2"
+  id: 71
+  position {
+    x: -0.091499319361275672
+    y: -0.092694789043596432
+    z: 0.41095322003613677
+  }
+  orientation {
+    x: -0.70488185340997345
+    y: -2.587910431217552e-06
+    z: 2.60422205405436e-06
+    w: 0.70932473009182551
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__suction_panel_visual_3"
+  id: 72
+  position {
+    x: -0.091499319361275672
+    y: -0.092694789043596432
+    z: 0.41095322003613677
+  }
+  orientation {
+    x: -0.70488185340997345
+    y: -2.587910431217552e-06
+    z: 2.60422205405436e-06
+    w: 0.70932473009182551
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__suction_panel_visual_4"
+  id: 73
+  position {
+    x: -0.091499319361275672
+    y: -0.092694789043596432
+    z: 0.41095322003613677
+  }
+  orientation {
+    x: -0.70488185340997345
+    y: -2.587910431217552e-06
+    z: 2.60422205405436e-06
+    w: 0.70932473009182551
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__suction_panel_visual_5"
+  id: 74
+  position {
+    x: -0.091499319361275672
+    y: -0.092694789043596432
+    z: 0.41095322003613677
+  }
+  orientation {
+    x: -0.70488185340997345
+    y: -2.587910431217552e-06
+    z: 2.60422205405436e-06
+    w: 0.70932473009182551
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__eef_mount_adapter_visual_6"
+  id: 75
+  position {
+    x: 0.016199485263468642
+    y: 0.070100716192021989
+    z: 0.14174076888002668
+  }
+  orientation {
+    x: -3.6703537563223439e-06
+    y: 0.99999506519148251
+    z: -1.1753204332999906e-08
+    w: -0.0031415886444564932
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__camera_link_visual_7"
+  id: 76
+  position {
+    x: -0.014155386812369155
+    y: 0.16645504283631679
+    z: 0.1630676919528741
+  }
+  orientation {
+    x: -0.54192534072012322
+    y: -0.55592684609943033
+    z: -0.43344182258291364
+    w: 0.45759201621894652
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__camera_lens_marker_visual_8"
+  id: 77
+  position {
+    x: -0.014075321402187554
+    y: 0.1691364039301585
+    z: 0.1758134566303865
+  }
+  orientation {
+    x: -0.54192534072012322
+    y: -0.55592684609943033
+    z: -0.43344182258291364
+    w: 0.45759201621894652
+  }
+}
+pose {
+  name: "elfin_link6_fixed_joint_lump__mid360_mount_frame_visual_9"
+  id: 78
+  position {
+    x: -0.0060398162555378616
+    y: 0.20310055292572013
+    z: 0.103879748222654
+  }
+  orientation {
+    x: -0.50156649762273
+    y: -0.49842857772445393
+    z: -0.49842489882258068
+    w: 0.50157015621321221
+  }
+}
+pose {
+  name: "pickup_box_0005_standard_visual"
+  id: 114
+  position {
+  }
+  orientation {
+    w: 1
+  }
+}
+pose {
+  name: "sun"
+  id: 35
+  position {
+    z: 10
+  }
+  orientation {
+    w: 1
+  }
+}
+

@@ -1,0 +1,23 @@
+{
+  "center_xy": null,
+  "depth": null,
+  "n_cropped": 0,
+  "n_inliers": 0,
+  "n_input": 0,
+  "n_voxel": 0,
+  "ok": false,
+  "plane_z": null,
+  "ransac_dist_thresh": 0.008,
+  "reason": "too_few_cropped",
+  "voxel_size": 0.01,
+  "width": null,
+  "workspace_center_xy": [
+    -1.0,
+    0.0
+  ],
+  "workspace_half_extents": [
+    0.5,
+    0.5
+  ],
+  "yaw": null
+}

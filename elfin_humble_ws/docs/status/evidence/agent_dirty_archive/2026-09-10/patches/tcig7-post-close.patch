@@ -1,0 +1,6 @@
+diff --git a/src/luggage_planning/scripts/migrate_reachability_atlas.py b/src/luggage_planning/scripts/migrate_reachability_atlas.py
+old mode 100644
+new mode 100755
+diff --git a/src/luggage_planning/scripts/reachability_atlas_builder_node.py b/src/luggage_planning/scripts/reachability_atlas_builder_node.py
+old mode 100644
+new mode 100755

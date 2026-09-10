@@ -1,0 +1,681 @@
+{
+  "box_id": "pickup_box_0002_standard",
+  "camera_info": {
+    "d": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "frame_id": "camera_depth_optical_frame",
+    "height": 480,
+    "k": [
+      337.22194822727283,
+      0.0,
+      320.0,
+      0.0,
+      337.22194822727283,
+      240.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "p": [
+      337.22194822727283,
+      0.0,
+      320.0,
+      0.0,
+      0.0,
+      337.22194822727283,
+      240.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    "stamp": 35.377,
+    "width": 640
+  },
+  "cargo_frame_id": "",
+  "cargo_matched": false,
+  "clouds": {
+    "cargo_camera": {
+      "frame_id": "",
+      "n": 0,
+      "n_dropped_nonfinite": 0,
+      "ply_vertices": 0
+    }
+  },
+  "color_frame_id": "camera_depth_optical_frame",
+  "current_box": {
+    "depth": 0.4090859740972519,
+    "generation": 4,
+    "gt_reference": {
+      "lid_offset": 0.016360491514205933,
+      "stl_path": "/home/adamliao/work/elfin_humble_ws/install/luggage_gazebo/share/luggage_gazebo/models/suitcase_vintage_medium/meshes/suitcase.stl",
+      "stl_sha256": "bafe1316aa134bf675cd94039726919aa86931128b61ea3fcd5ab054e613fcc4",
+      "tier": "medium",
+      "version": "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,lid=densest-bin-median,extent=plateau_band)",
+      "visual_id": "suitcase_vintage"
+    },
+    "height": 0.26363950967788696,
+    "id": "pickup_box_0002_standard",
+    "mass_kg": 15.0,
+    "model_name": "pickup_box_0002_standard",
+    "pose": {
+      "orientation": {
+        "w": 0.9976339002414876,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.06875028064639184
+      },
+      "position": {
+        "x": -0.9367454352310308,
+        "y": -0.10086863027716861,
+        "z": 0.9918197536468507
+      }
+    },
+    "size_mode": "catalog",
+    "visual_kind": "mesh",
+    "width": 0.6819288432598114,
+    "yaw": 0.1376091107168631
+  },
+  "diagnostics": null,
+  "failed": false,
+  "filter_stats": {
+    "associate_radius_m": 0.15,
+    "buffer_maxlen": 15,
+    "buffer_occupancy": {
+      "depth": 0,
+      "exact_join_candidates": 0,
+      "instance": 0,
+      "mask": 0
+    },
+    "cargo_count": 77540,
+    "cargo_voxel_size": 0.005,
+    "centroid": [
+      -0.7344675110312886,
+      0.019859361767713607,
+      0.9300043575464692
+    ],
+    "cloud_stamp": 34.914,
+    "depth": 924,
+    "depth_buffer_evicted": 2,
+    "depth_count": 924,
+    "depth_decode_fail": 0,
+    "depth_horizon_evicted": 0,
+    "depth_waiting_for_mask": 883,
+    "epoch_reset": 4,
+    "excluded_count": 152120,
+    "executor_lag_sec": 0.08599999999999852,
+    "generation": 4,
+    "instance": 2,
+    "instance_buffer_evicted": 0,
+    "instance_id": "pickup_box_0002_standard",
+    "join_count": 839,
+    "joined": 836,
+    "last_cargo_n_points": 49877,
+    "last_depth_stamp": 34.914,
+    "last_join_stamp": 34.849,
+    "last_mask_stamp": 34.914,
+    "latest_depth_mask_gap_sec": 0.0,
+    "mask": 949,
+    "mask_buffer_evicted": 0,
+    "mask_count": 949,
+    "mask_decode_fail": 0,
+    "mask_waiting_for_depth": 154,
+    "motion_weight": 1.0,
+    "n_points": 77540,
+    "no_intrinsics": 0,
+    "obstacle_count": 77540,
+    "obstacle_publish_count": 0,
+    "obstacle_publish_skipped": 835,
+    "out_of_frame_count": 0,
+    "processed": 836,
+    "raw_count": 155080,
+    "source": "measure",
+    "stage_ms": {
+      "cargo_points": 77540,
+      "depth_decode_ms": 0.011370982974767685,
+      "filter_ms": 8.369978982955217,
+      "input_points": 480,
+      "mask_decode_ms": 0.05050608888268471,
+      "obstacle_points": 77540,
+      "process_total_ms": 47.42542700842023,
+      "publish_ms": 33.91982591710985,
+      "to_world_ms": 1.4261070173233747,
+      "tracker_ms": 3.455574973486364
+    },
+    "stale_depth_dropped": 86,
+    "stale_drop_count": 201,
+    "stale_instance_dropped": 2,
+    "stale_mask_dropped": 113,
+    "tf_miss": 0
+  },
+  "join_stamp": 35.31,
+  "join_stamp_key": [
+    35,
+    310000000
+  ],
+  "mask_legend": {
+    "0": "background",
+    "1": "container_wall",
+    "2": "cargo",
+    "3": "robot_arm",
+    "4": "unknown_object"
+  },
+  "mask_meaning": "HxW uint8 class id used to route points: 0=background, 1=container_wall, 2=cargo, 3=robot_arm, 4=unknown_object. semantic_point_filter keeps cargo (2). mask.png is a colorized preview; raw ids 0-4 look black.",
+  "mask_viz_rgb": {
+    "0": [
+      40,
+      40,
+      40
+    ],
+    "1": [
+      180,
+      180,
+      180
+    ],
+    "2": [
+      220,
+      0,
+      0
+    ],
+    "3": [
+      0,
+      220,
+      220
+    ],
+    "4": [
+      255,
+      140,
+      0
+    ]
+  },
+  "overlay_box_legend": {
+    "gt": "green 3D OBB (visible top / depth blob)",
+    "measured": "cyan 3D OBB (DetectLuggage)",
+    "yolo_dropped": "magenta 2D bbox (dropped by self-body)"
+  },
+  "prep_status": {
+    "acquisition_mismatches": 0,
+    "buffers": {
+      "color_info": 15,
+      "depth": 15,
+      "depth_info": 15,
+      "imu": 0,
+      "joints": 50,
+      "lidar": 0,
+      "rgb": 15
+    },
+    "callbacks": {
+      "depth": 1073,
+      "info": 1074,
+      "joints": 3539,
+      "rgb": 1073
+    },
+    "camera_epoch": 0,
+    "camera_pair_tolerance_sec": 0.005,
+    "camera_wait_deadline_sec": 0.06,
+    "depth_dt": 0.0,
+    "depth_wait_skips": 0,
+    "emit_queue_depth": 0,
+    "evictions": {
+      "color_info": {
+        "capacity": 1059,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "depth": {
+        "capacity": 1058,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "depth_info": {
+        "capacity": 1059,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "imu": {
+        "capacity": 0,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "joints": {
+        "capacity": 3489,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "lidar": {
+        "capacity": 0,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "rgb": {
+        "capacity": 1058,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      }
+    },
+    "exact_lookup_misses": 3142,
+    "flags": {
+      "cloud_ok": false,
+      "color_info_ok": true,
+      "depth_info_ok": true,
+      "depth_ok": true,
+      "deskewed": false,
+      "geometry_ok": true,
+      "lidar_ok": false,
+      "motion_too_large": false,
+      "rgb_ok": true,
+      "stale": false
+    },
+    "info_wait_skips": 0,
+    "last_geometry_ok_stamp": 35.377,
+    "last_rejection": "",
+    "motion_gate": {
+      "criterion": "displacement",
+      "displacement_tolerance": 0.01,
+      "enabled": false,
+      "excursion_joint": "",
+      "max_velocity": -1.0,
+      "peak_excursion": 0.0,
+      "stable_since": 0.0,
+      "state": "disabled",
+      "velocity_threshold": 0.02
+    },
+    "output_cloud_frame": "camera_depth_optical_frame",
+    "payload_bytes_buffered": 23040000,
+    "payload_bytes_received": 1648128000,
+    "payload_materialisations": 0,
+    "primary_stamp": 35.377,
+    "primary_stamp_nanosec": 377000000,
+    "primary_stamp_sec": 35,
+    "rollback_events": 0,
+    "schema": "luggage.preprocessed.status.v2",
+    "units": "millimetres"
+  },
+  "recovery": {
+    "n_settled": 79,
+    "spawn_ok": true,
+    "t_first_full3d_sec": 0.2399446739582345,
+    "t_first_valid_sec": 0.2399446739582345,
+    "trial": 1
+  },
+  "scoring_tail": {
+    "box_id": "pickup_box_0002_standard",
+    "err_depth_m": 0.005549774409322639,
+    "err_height_m": null,
+    "err_support_m": null,
+    "err_top_m": 0.004338214981568722,
+    "err_width_m": 0.0011749713214043167,
+    "err_xy_m": 0.009164027214291352,
+    "est_depth": 0.40353619968792925,
+    "est_height": 0.28,
+    "est_top_z": 1.127977723467363,
+    "est_width": 0.6807538719384071,
+    "est_xy": [
+      -0.93729491033241,
+      -0.11001616939417909
+    ],
+    "false_measured_height": false,
+    "frame_id": "world",
+    "generation": 4,
+    "geometry_level": 0,
+    "gt_depth": 0.4090859740972519,
+    "gt_height": 0.26363950967788696,
+    "gt_support_z": 0.8599999988079072,
+    "gt_top_z": 1.1236395084857942,
+    "gt_width": 0.6819288432598114,
+    "gt_xy": [
+      -0.9367454352310308,
+      -0.10086863027716861
+    ],
+    "height_source": 3,
+    "height_valid": false,
+    "instance_id": "pickup_box_0002_standard",
+    "monotonic_sec": 543507.925855588,
+    "n_cargo_points": 49877,
+    "pca_reason": "ok",
+    "pca_source": "measure",
+    "pca_valid": true,
+    "stamp_sec": 33.661,
+    "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+    "support_valid": false,
+    "support_z": null,
+    "top_surface_valid": true,
+    "trial": 1
+  },
+  "seg_stats": {
+    "accept_reasons": {
+      "predicate_unavailable": 9
+    },
+    "accepted_cargo_count": 9,
+    "backend": "bbox_fill:yolov8s-world.pt",
+    "detection_count": 9,
+    "detections": [
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          192,
+          184,
+          506,
+          397
+        ],
+        "confidence": 0.6649237275123596,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          611,
+          111,
+          640,
+          296
+        ],
+        "confidence": 0.19660526514053345,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          606,
+          115,
+          640,
+          366
+        ],
+        "confidence": 0.07772830128669739,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          621,
+          119,
+          640,
+          292
+        ],
+        "confidence": 0.03889039531350136,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          171,
+          75,
+          512,
+          403
+        ],
+        "confidence": 0.03671328350901604,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          606,
+          202,
+          640,
+          280
+        ],
+        "confidence": 0.02936830371618271,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          484,
+          71,
+          640,
+          407
+        ],
+        "confidence": 0.01568932831287384,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          625,
+          109,
+          640,
+          272
+        ],
+        "confidence": 0.008414016105234623,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "predicate_unavailable",
+        "accepted": true,
+        "bbox": [
+          575,
+          101,
+          640,
+          307
+        ],
+        "confidence": 0.007111876737326384,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      }
+    ],
+    "detections_dropped_self_body": [],
+    "frame_id": "camera_depth_optical_frame",
+    "held": false,
+    "inference_ms": 8.085966110229492,
+    "label_counts": {
+      "0": 106040,
+      "1": 0,
+      "2": 155080,
+      "3": 46080,
+      "4": 0
+    },
+    "n_dropped_self_body": 0,
+    "n_yolo_cargo_before_self_body": 9,
+    "raw_cargo": true,
+    "self_body_pixels": 46080,
+    "stamp": 33.958,
+    "temporal": {
+      "accepted_cargo": true,
+      "held": false,
+      "positive_frames": 5,
+      "positive_ratio": 1.0,
+      "raw_cargo": true,
+      "scene_change": false,
+      "window": 5
+    },
+    "workspace_predicate": false
+  },
+  "stream_stats": {
+    "filter_stats": {
+      "associate_radius_m": 0.15,
+      "buffer_maxlen": 15,
+      "buffer_occupancy": {
+        "depth": 0,
+        "exact_join_candidates": 0,
+        "instance": 0,
+        "mask": 0
+      },
+      "cargo_count": 77540,
+      "cargo_voxel_size": 0.005,
+      "centroid": [
+        -0.7344675110312886,
+        0.019859361767713607,
+        0.9300043575464692
+      ],
+      "cloud_stamp": 34.914,
+      "depth": 924,
+      "depth_buffer_evicted": 2,
+      "depth_count": 924,
+      "depth_decode_fail": 0,
+      "depth_horizon_evicted": 0,
+      "depth_waiting_for_mask": 883,
+      "epoch_reset": 4,
+      "excluded_count": 152120,
+      "executor_lag_sec": 0.08599999999999852,
+      "generation": 4,
+      "instance": 2,
+      "instance_buffer_evicted": 0,
+      "instance_id": "pickup_box_0002_standard",
+      "join_count": 839,
+      "joined": 836,
+      "last_cargo_n_points": 49877,
+      "last_depth_stamp": 34.914,
+      "last_join_stamp": 34.849,
+      "last_mask_stamp": 34.914,
+      "latest_depth_mask_gap_sec": 0.0,
+      "mask": 949,
+      "mask_buffer_evicted": 0,
+      "mask_count": 949,
+      "mask_decode_fail": 0,
+      "mask_waiting_for_depth": 154,
+      "motion_weight": 1.0,
+      "n_points": 77540,
+      "no_intrinsics": 0,
+      "obstacle_count": 77540,
+      "obstacle_publish_count": 0,
+      "obstacle_publish_skipped": 835,
+      "out_of_frame_count": 0,
+      "processed": 836,
+      "raw_count": 155080,
+      "source": "measure",
+      "stage_ms": {
+        "cargo_points": 77540,
+        "depth_decode_ms": 0.011370982974767685,
+        "filter_ms": 8.369978982955217,
+        "input_points": 480,
+        "mask_decode_ms": 0.05050608888268471,
+        "obstacle_points": 77540,
+        "process_total_ms": 47.42542700842023,
+        "publish_ms": 33.91982591710985,
+        "to_world_ms": 1.4261070173233747,
+        "tracker_ms": 3.455574973486364
+      },
+      "stale_depth_dropped": 86,
+      "stale_drop_count": 201,
+      "stale_instance_dropped": 2,
+      "stale_mask_dropped": 113,
+      "tf_miss": 0
+    },
+    "frame_seq": 779,
+    "generation": 4,
+    "geometry_level": 1,
+    "instance_id": "pickup_box_0002_standard",
+    "n_cargo_points": 49877,
+    "pca_confidence": 1.0,
+    "pca_reason": "ok",
+    "pca_source": "measure",
+    "pca_valid": true,
+    "raw_buffer_len": 15,
+    "raw_buffer_maxlen": 15,
+    "raw_counts": {
+      "raw_evicted": 997,
+      "raw_horizon_evicted": 0,
+      "raw_lookup_decode_fail": 0,
+      "raw_lookup_empty": 0,
+      "raw_lookup_hit": 324,
+      "raw_lookup_miss": 8,
+      "raw_lookup_no_intrinsics": 0,
+      "raw_lookup_tf_fail": 0,
+      "raw_received": 1072,
+      "support_ready_dropped": 25,
+      "support_wait_completed": 40,
+      "support_wait_expired": 2,
+      "support_wait_parked": 42
+    },
+    "raw_lookup": {
+      "raw_buffer_len": 15,
+      "raw_buffer_maxlen": 15,
+      "raw_lookup_attempts": 1,
+      "raw_lookup_key": [
+        35,
+        245000000
+      ],
+      "raw_lookup_status": "hit",
+      "raw_lookup_wait_ms": 25.406948057934642
+    },
+    "stamp": 33.726,
+    "stamp_key": [
+      33,
+      726000000
+    ],
+    "support_gate": "",
+    "support_inliers": 1586,
+    "support_reason": "ok",
+    "support_valid": true,
+    "timing_ms": {
+      "geometry_ms": 1505.2429960342124,
+      "pipeline": {
+        "compose_ms": 0.014287070371210575,
+        "pipeline_total_ms": 1505.23679505568,
+        "support_annulus_ms": 6.523997988551855,
+        "support_band_ms": 2.8791649965569377,
+        "support_band_points": 3426,
+        "support_candidate_points": 1586,
+        "support_crop_ms": 7.019304903224111,
+        "support_cropped_points": 7341,
+        "support_fit_method": "zmode_median",
+        "support_gate_total_ms": 40.27630703058094,
+        "support_inlier_points": 1586,
+        "support_input_points": 19200,
+        "support_ransac_ms": 9.87675809301436,
+        "support_side_ms": 3.516711061820388,
+        "support_total_ms": 38.56147499755025,
+        "top_crop_ms": 7.702596019953489,
+        "top_cropped_points": 29511,
+        "top_inlier_points": 2923,
+        "top_input_points": 49877,
+        "top_pca_ms": 10.621275985613465,
+        "top_ransac_ms": 445.8973059663549,
+        "top_refine_ms": 979.3818090111017,
+        "top_total_ms": 1464.907497051172,
+        "top_voxel_ms": 16.469766036607325,
+        "top_voxel_points": 7992
+      },
+      "read_ms": 7.955836015753448,
+      "tf_ms": 2.9463220853358507
+    },
+    "yolo_count": 9
+  },
+  "tf_error": "tf unavailable",
+  "trial": 1,
+  "workspace_center_xy": [
+    -1.0,
+    0.0
+  ],
+  "workspace_half_extents": [
+    0.5,
+    0.5
+  ]
+}

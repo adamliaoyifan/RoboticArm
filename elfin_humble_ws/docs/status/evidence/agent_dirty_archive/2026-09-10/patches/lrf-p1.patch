@@ -1,0 +1,131 @@
+diff --git a/research/lrf_p1/REPORT.md b/research/lrf_p1/REPORT.md
+index 1c8554f..e925426 100644
+--- a/research/lrf_p1/REPORT.md
++++ b/research/lrf_p1/REPORT.md
+@@ -90,3 +90,9 @@ Six checked-in meshes. Train and test are different visual families, so this
+ is a harsh transfer test, not a same-mesh pose split. Synthetic viewpoint
+ dropout is not a wrist-camera ROS bag. Results must not be read as hardware
+ L2 evidence.
++
++## Stop
++
++Research on this spike stopped 2026-09-05T20:13:17+08:00 (5 h cap). See
++`research/lrf_p1/CLOSEOUT.md`. Do not extend residual training or start
++LRF-A1/PL1 from this session.
+diff --git a/research/lrf_p1/candidate.py b/research/lrf_p1/candidate.py
+index 6f3fa0d..baf82f2 100644
+--- a/research/lrf_p1/candidate.py
++++ b/research/lrf_p1/candidate.py
+@@ -75,11 +75,41 @@ def wrap_yaw(value):
+     return math.atan2(math.sin(value), math.cos(value))
+ 
+ 
+-def infer(observation, ensemble, min_points=40):
++def yaw_delta(pred, gt):
++    """Smallest signed yaw error, folding the 180-deg rectangle ambiguity."""
++    delta = math.atan2(math.sin(gt - pred), math.cos(gt - pred))
++    if abs(delta) > 0.5 * math.pi:
++        delta -= math.copysign(math.pi, delta)
++    return float(delta)
++
++
++def apply_residual(base_vec, mean, lock_pose=False):
++    """Add residual to a baseline box vector. lock_pose keeps XY/yaw; height grows up."""
++    mean = np.asarray(mean, dtype=np.float64).copy()
++    base_vec = np.asarray(base_vec, dtype=np.float64)
++    if lock_pose:
++        dh = float(mean[2])
++        mean[3] = 0.0
++        mean[4] = 0.0
++        mean[5] = 0.5 * dh
++        mean[6] = 0.0
++    vec = base_vec + mean
++    vec[6] = wrap_yaw(float(vec[6]))
++    vec[0] = max(0.05, float(vec[0]))
++    vec[1] = max(0.05, float(vec[1]))
++    vec[2] = max(0.05, float(vec[2]))
++    return vec
++
++
++# Max residual applied on top of a successful baseline (metres / radians).
++RESIDUAL_CLIP = np.array([0.06, 0.06, 0.04, 0.04, 0.04, 0.03, 0.20])
++
++
++def infer(observation, ensemble, min_points=40, residual_clip=None, lock_pose=False):
+     """Learned residual completion. Fail closed when the model is missing."""
+     t0 = time.perf_counter()
+     assert_inference_clean(observation)
+-    if ensemble is None or not getattr(ensemble, "available", False):
++    if (not lock_pose) and (ensemble is None or not getattr(ensemble, "available", False)):
+         return {
+             "ok": False,
+             "reason": REASON_UNAVAILABLE,
+@@ -91,6 +121,19 @@ def infer(observation, ensemble, min_points=40):
+             "latency_ms": (time.perf_counter() - t0) * 1000.0,
+         }
+     base = estimate_from_observation(observation, min_points=min_points)
++    if lock_pose and base.get("ok") and base.get("box") is not None:
++        box = base["box"]
++        return {
++            "ok": True,
++            "reason": REASON_OK,
++            "observed": box,
++            "inferred": box,
++            "unknown": [],
++            "box": box,
++            "std": [0.0] * len(TARGETS),
++            "latency_ms": (time.perf_counter() - t0) * 1000.0,
++            "source": "baseline_locked",
++        }
+     if not base["ok"] and base["reason"] in (
+             REASON_EMPTY, REASON_MALFORMED, REASON_NONFINITE, REASON_TOO_FEW):
+         return {
+@@ -128,17 +171,21 @@ def infer(observation, ensemble, min_points=40):
+             "std": None,
+             "latency_ms": latency,
+         }
++    if residual_clip is not None:
++        clip = np.asarray(residual_clip, dtype=np.float64)
++        if clip.shape == mean.shape:
++            mean = np.clip(mean, -clip, clip)
+     if base["ok"]:
+-        vec = _box_vector(base["box"]) + mean
++        vec = apply_residual(_box_vector(base["box"]), mean, lock_pose=False)
+     else:
+         roi = observation.get("roi_center_xy") or (0.0, 0.0)
+         vec = mean.copy()
+         vec[3] += float(roi[0])
+         vec[4] += float(roi[1])
+-    vec[0] = max(0.05, float(vec[0]))
+-    vec[1] = max(0.05, float(vec[1]))
+-    vec[2] = max(0.05, float(vec[2]))
+-    vec[6] = wrap_yaw(float(vec[6]))
++        vec[0] = max(0.05, float(vec[0]))
++        vec[1] = max(0.05, float(vec[1]))
++        vec[2] = max(0.05, float(vec[2]))
++        vec[6] = wrap_yaw(float(vec[6]))
+     inferred = {
+         "width": float(vec[0]),
+         "depth": float(vec[1]),
+diff --git a/research/lrf_p1/tests/test_ood.py b/research/lrf_p1/tests/test_ood.py
+index 98cf356..2894aad 100644
+--- a/research/lrf_p1/tests/test_ood.py
++++ b/research/lrf_p1/tests/test_ood.py
+@@ -77,6 +77,17 @@ class OodFailClosedTest(unittest.TestCase):
+         out = infer({"points": pts}, ens)
+         self.assertEqual(out["reason"], REASON_UNAVAILABLE)
+ 
++    def test_lock_pose_keeps_xy_yaw(self):
++        from research.lrf_p1.candidate import apply_residual
++        base = np.array([0.7, 0.4, 0.28, 0.01, -0.02, 0.14, 0.1])
++        mean = np.array([0.02, 0.01, 0.04, 0.20, 0.15, -0.10, 1.2])
++        locked = apply_residual(base, mean, lock_pose=True)
++        self.assertAlmostEqual(locked[3], 0.01)
++        self.assertAlmostEqual(locked[4], -0.02)
++        self.assertAlmostEqual(locked[6], 0.1)
++        self.assertAlmostEqual(locked[2], 0.32)
++        self.assertAlmostEqual(locked[5], 0.14 + 0.5 * 0.04)
++
+ 
+ if __name__ == "__main__":
+     unittest.main()

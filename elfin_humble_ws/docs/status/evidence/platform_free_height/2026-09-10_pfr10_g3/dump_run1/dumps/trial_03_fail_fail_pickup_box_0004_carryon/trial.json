@@ -1,0 +1,38 @@
+{
+  "trial": 3,
+  "box_id": "pickup_box_0004_carryon",
+  "failed": true,
+  "recovery": {
+    "trial": 3,
+    "spawn_ok": true,
+    "n_settled": 101,
+    "t_first_valid_sec": 0.34942518500611186,
+    "t_first_full3d_sec": 2.3769137100316584
+  },
+  "snapshots": [
+    "early",
+    "mid",
+    "late"
+  ],
+  "pca_reason": "ok",
+  "n_cargo_points": 32884,
+  "gz_pose": {
+    "position": {
+      "x": -0.9515116460574093,
+      "y": -0.014034108243322158,
+      "z": 0.985
+    },
+    "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": -0.21373009526971276,
+      "w": 0.976892750702962
+    },
+    "rpy_rad": [
+      0.0,
+      0.0,
+      -0.4307834034639109
+    ],
+    "tilt_rad": 0.0
+  }
+}

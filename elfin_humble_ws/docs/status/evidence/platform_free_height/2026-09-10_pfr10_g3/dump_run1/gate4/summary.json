@@ -1,0 +1,275 @@
+{
+  "mode": "semantic",
+  "trials_requested": 6,
+  "spawn_failures": 0,
+  "stale_instance_frames": 1,
+  "warmup_frames_config": 30,
+  "gap_sec": 2.0,
+  "launch_params": "gui:=false use_rviz:=false use_semantic:=true use_motion:=true use_vacuum:=true visual_kind:=mesh size_mode:=catalog sequence_ids:=carryon,standard,large xy_jitter_range:=0.12,0.12 yaw_range:=-0.6,0.6 observe_pose_name:=pickup_observe (dump_run1; eval harness dump-dir enabled)",
+  "revision": {
+    "git_commit": "7076891561f5e88c1b52a184e6678d156e15fc22",
+    "git_dirty_files": 50
+  },
+  "active_output_hz": 15.888730591843146,
+  "trial_cycle_hz": 0.08668601184304782,
+  "trial_cycle_sec_mean": 11.535886571994828,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.55,
+        0.4,
+        0.25
+      ],
+      [
+        0.7,
+        0.45,
+        0.28
+      ],
+      [
+        0.8,
+        0.5,
+        0.32
+      ]
+    ],
+    "n_sizes": 3,
+    "trials_per_size": {
+      "0.55x0.4x0.25": 2,
+      "0.7x0.45x0.28": 2,
+      "0.8x0.5x0.32": 2
+    },
+    "xy_offsets": [
+      [
+        -1.09,
+        0.09
+      ],
+      [
+        -1.04,
+        -0.02
+      ],
+      [
+        -0.99,
+        -0.09
+      ],
+      [
+        -0.95,
+        -0.01
+      ],
+      [
+        -0.94,
+        -0.1
+      ],
+      [
+        -0.92,
+        -0.07
+      ]
+    ],
+    "n_xy_offsets": 6,
+    "yaw_deg": [
+      -28.0,
+      -25.0,
+      -8.0,
+      3.0,
+      8.0,
+      32.0
+    ],
+    "n_yaws": 6,
+    "n_trials": 6
+  },
+  "trial_recoveries": [
+    {
+      "trial": 0,
+      "spawn_ok": true,
+      "n_settled": 123,
+      "t_first_valid_sec": 0.300707204034552,
+      "t_first_full3d_sec": 0.9699872230412439
+    },
+    {
+      "trial": 1,
+      "spawn_ok": true,
+      "n_settled": 79,
+      "t_first_valid_sec": 0.2399446739582345,
+      "t_first_full3d_sec": 0.2399446739582345
+    },
+    {
+      "trial": 2,
+      "spawn_ok": true,
+      "n_settled": 56,
+      "t_first_valid_sec": 0.3162624299293384,
+      "t_first_full3d_sec": 1.3757237399695441
+    },
+    {
+      "trial": 3,
+      "spawn_ok": true,
+      "n_settled": 101,
+      "t_first_valid_sec": 0.34942518500611186,
+      "t_first_full3d_sec": 2.3769137100316584
+    },
+    {
+      "trial": 4,
+      "spawn_ok": true,
+      "n_settled": 71,
+      "t_first_valid_sec": 0.4230665300274268,
+      "t_first_full3d_sec": 2.009159623994492
+    },
+    {
+      "trial": 5,
+      "spawn_ok": true,
+      "n_settled": 53,
+      "t_first_valid_sec": 0.3903804860310629,
+      "t_first_full3d_sec": 0.8271304630907252
+    }
+  ],
+  "n_settled": 483,
+  "categories": {
+    "warmup_frames": 180,
+    "settled_frames": 483,
+    "top_only": 0,
+    "full3d": 465,
+    "prior": 18,
+    "failed": 0
+  },
+  "top_surface_rate": 1.0,
+  "full3d_rate": 0.9627329192546584,
+  "top_z_err_m": {
+    "count": 483,
+    "p50": 0.004447988520439816,
+    "p95": 0.012055709899967182,
+    "max": 0.012055709899967182
+  },
+  "support_z_err_m": {
+    "count": 465,
+    "p50": 1.0434127089675727e-05,
+    "p95": 1.8251491453291635e-05,
+    "max": 1.8251491453291635e-05
+  },
+  "height_err_m": {
+    "count": 465,
+    "p50": 0.00443950459322473,
+    "p95": 0.01203745840851389,
+    "max": 0.01203745840851389
+  },
+  "xy_err_m": {
+    "count": 483,
+    "p50": 0.009496683942265343,
+    "p95": 0.010563800107947843,
+    "max": 0.010563800107947843
+  },
+  "width_err_m": {
+    "count": 483,
+    "p50": 0.0006665608873774875,
+    "p95": 0.0373270412162513,
+    "max": 0.03732704121625141
+  },
+  "depth_err_m": {
+    "count": 483,
+    "p50": 0.0035360503956505807,
+    "p95": 0.04533078591417716,
+    "max": 0.045330785914177274
+  },
+  "false_measured_height": 0,
+  "limits": {
+    "top_surface_rate": 0.95,
+    "full3d_rate": 0.95,
+    "top_z_p95_m": 0.015,
+    "top_z_max_m": 0.025,
+    "support_z_p95_m": 0.015,
+    "support_z_max_m": 0.025,
+    "height_p95_m": 0.025,
+    "height_max_m": 0.04,
+    "xy_p95_m": 0.03,
+    "width_depth_p95_m": 0.05,
+    "false_measured_height": 0
+  },
+  "require_full_geometry": true,
+  "gate4_failures": [
+    "trial 3 t_first_full3d 2.3769137100316584 > 1.4 s",
+    "trial 4 t_first_full3d 2.009159623994492 > 1.4 s"
+  ],
+  "gate4_pass": false,
+  "coverage_failures": [],
+  "dump_dir": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/dump_run1/dumps",
+  "dump_trials": [
+    {
+      "trial": 0,
+      "folder": "trial_00_ok_ok_pickup_box_0001_carryon",
+      "failed": false,
+      "box_id": "pickup_box_0001_carryon",
+      "pca_reason": "ok",
+      "n_cargo_points": 27646,
+      "t_first_valid_sec": 0.300707204034552,
+      "t_first_full3d_sec": 0.9699872230412439,
+      "snapshots": [
+        "late"
+      ]
+    },
+    {
+      "trial": 1,
+      "folder": "trial_01_ok_ok_pickup_box_0002_standard",
+      "failed": false,
+      "box_id": "pickup_box_0002_standard",
+      "pca_reason": "ok",
+      "n_cargo_points": 49877,
+      "t_first_valid_sec": 0.2399446739582345,
+      "t_first_full3d_sec": 0.2399446739582345,
+      "snapshots": [
+        "late"
+      ]
+    },
+    {
+      "trial": 2,
+      "folder": "trial_02_ok_ok_pickup_box_0003_large",
+      "failed": false,
+      "box_id": "pickup_box_0003_large",
+      "pca_reason": "ok",
+      "n_cargo_points": 86813,
+      "t_first_valid_sec": 0.3162624299293384,
+      "t_first_full3d_sec": 1.3757237399695441,
+      "snapshots": [
+        "late"
+      ]
+    },
+    {
+      "trial": 3,
+      "folder": "trial_03_fail_fail_pickup_box_0004_carryon",
+      "failed": true,
+      "box_id": "pickup_box_0004_carryon",
+      "pca_reason": "ok",
+      "n_cargo_points": 32884,
+      "t_first_valid_sec": 0.34942518500611186,
+      "t_first_full3d_sec": 2.3769137100316584,
+      "snapshots": [
+        "early",
+        "mid",
+        "late"
+      ]
+    },
+    {
+      "trial": 4,
+      "folder": "trial_04_fail_fail_pickup_box_0005_standard",
+      "failed": true,
+      "box_id": "pickup_box_0005_standard",
+      "pca_reason": "ok",
+      "n_cargo_points": 51675,
+      "t_first_valid_sec": 0.4230665300274268,
+      "t_first_full3d_sec": 2.009159623994492,
+      "snapshots": [
+        "early",
+        "mid",
+        "late"
+      ]
+    },
+    {
+      "trial": 5,
+      "folder": "trial_05_ok_ok_pickup_box_0006_large",
+      "failed": false,
+      "box_id": "pickup_box_0006_large",
+      "pca_reason": "ok",
+      "n_cargo_points": 92530,
+      "t_first_valid_sec": 0.3903804860310629,
+      "t_first_full3d_sec": 0.8271304630907252,
+      "snapshots": [
+        "late"
+      ]
+    }
+  ]
+}

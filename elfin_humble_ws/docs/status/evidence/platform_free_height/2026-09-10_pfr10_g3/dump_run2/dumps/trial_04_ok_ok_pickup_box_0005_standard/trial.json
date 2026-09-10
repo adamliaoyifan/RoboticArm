@@ -1,0 +1,36 @@
+{
+  "trial": 4,
+  "box_id": "pickup_box_0005_standard",
+  "failed": false,
+  "recovery": {
+    "trial": 4,
+    "spawn_ok": true,
+    "n_settled": 106,
+    "t_first_valid_sec": 0.3042159699834883,
+    "t_first_full3d_sec": 0.3042159699834883
+  },
+  "snapshots": [
+    "late"
+  ],
+  "pca_reason": "ok",
+  "n_cargo_points": 35659,
+  "gz_pose": {
+    "position": {
+      "x": -0.9406212818015693,
+      "y": -0.08027996598058745,
+      "z": 1.0
+    },
+    "orientation": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": -0.11579536354388971,
+      "w": 0.9932730912401374
+    },
+    "rpy_rad": [
+      0.0,
+      0.0,
+      -0.23211142499605786
+    ],
+    "tilt_rad": 0.0
+  }
+}

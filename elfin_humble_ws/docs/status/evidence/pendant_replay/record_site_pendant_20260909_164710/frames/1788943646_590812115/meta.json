@@ -1,0 +1,30 @@
+{
+  "backend": "bbox_fill:yolov8s-world.pt",
+  "cargo_points": {
+    "frame": "optical(d555_color_optical_frame)",
+    "n_points": 34771,
+    "ply_vertices": 34771
+  },
+  "cargo_selection": {
+    "kept_center_dist_px": 140.2,
+    "kept_confidence": 0.9643771052360535,
+    "n_cargo_raw": 2,
+    "n_dropped": 1,
+    "selection": "central"
+  },
+  "color_header_stamp_ns": 1788943646590812115,
+  "depth_header_stamp_ns": 1788943646590812115,
+  "depth_stats": {
+    "max_mm": 1543,
+    "min_mm_nonzero": 830,
+    "zero_px": 23565
+  },
+  "detection_count": 1,
+  "inference_ms": 5.584478378295898,
+  "join_dt_ns": 0,
+  "join_source": "exact",
+  "joint_dt_ms": -34.403658,
+  "lidar": null,
+  "stamp_sec": 1788943646.5908122,
+  "tcp_dt_ms": -34.403658
+}

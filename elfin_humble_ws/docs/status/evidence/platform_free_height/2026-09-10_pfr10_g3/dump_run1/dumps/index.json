@@ -1,0 +1,97 @@
+{
+  "extra": {
+    "out": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/dump_run1/gate4",
+    "workspace_center_xy": [
+      -1.0,
+      0.0
+    ],
+    "workspace_half_extents": [
+      0.5,
+      0.5
+    ]
+  },
+  "trials": [
+    {
+      "box_id": "pickup_box_0001_carryon",
+      "failed": false,
+      "folder": "trial_00_ok_ok_pickup_box_0001_carryon",
+      "n_cargo_points": 27646,
+      "pca_reason": "ok",
+      "snapshots": [
+        "late"
+      ],
+      "t_first_full3d_sec": 0.9699872230412439,
+      "t_first_valid_sec": 0.300707204034552,
+      "trial": 0
+    },
+    {
+      "box_id": "pickup_box_0002_standard",
+      "failed": false,
+      "folder": "trial_01_ok_ok_pickup_box_0002_standard",
+      "n_cargo_points": 49877,
+      "pca_reason": "ok",
+      "snapshots": [
+        "late"
+      ],
+      "t_first_full3d_sec": 0.2399446739582345,
+      "t_first_valid_sec": 0.2399446739582345,
+      "trial": 1
+    },
+    {
+      "box_id": "pickup_box_0003_large",
+      "failed": false,
+      "folder": "trial_02_ok_ok_pickup_box_0003_large",
+      "n_cargo_points": 86813,
+      "pca_reason": "ok",
+      "snapshots": [
+        "late"
+      ],
+      "t_first_full3d_sec": 1.3757237399695441,
+      "t_first_valid_sec": 0.3162624299293384,
+      "trial": 2
+    },
+    {
+      "box_id": "pickup_box_0004_carryon",
+      "failed": true,
+      "folder": "trial_03_fail_fail_pickup_box_0004_carryon",
+      "n_cargo_points": 32884,
+      "pca_reason": "ok",
+      "snapshots": [
+        "early",
+        "mid",
+        "late"
+      ],
+      "t_first_full3d_sec": 2.3769137100316584,
+      "t_first_valid_sec": 0.34942518500611186,
+      "trial": 3
+    },
+    {
+      "box_id": "pickup_box_0005_standard",
+      "failed": true,
+      "folder": "trial_04_fail_fail_pickup_box_0005_standard",
+      "n_cargo_points": 51675,
+      "pca_reason": "ok",
+      "snapshots": [
+        "early",
+        "mid",
+        "late"
+      ],
+      "t_first_full3d_sec": 2.009159623994492,
+      "t_first_valid_sec": 0.4230665300274268,
+      "trial": 4
+    },
+    {
+      "box_id": "pickup_box_0006_large",
+      "failed": false,
+      "folder": "trial_05_ok_ok_pickup_box_0006_large",
+      "n_cargo_points": 92530,
+      "pca_reason": "ok",
+      "snapshots": [
+        "late"
+      ],
+      "t_first_full3d_sec": 0.8271304630907252,
+      "t_first_valid_sec": 0.3903804860310629,
+      "trial": 5
+    }
+  ]
+}

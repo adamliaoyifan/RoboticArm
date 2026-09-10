@@ -1,0 +1,26 @@
+{
+  "center_xy": [
+    -1.1040821996083057,
+    -0.0760159884782689
+  ],
+  "depth": 0.439337821587622,
+  "n_cropped": 21316,
+  "n_inliers": 3054,
+  "n_input": 49644,
+  "n_voxel": 6070,
+  "ok": true,
+  "plane_z": 1.1760178101409733,
+  "ransac_dist_thresh": 0.008,
+  "reason": "ok",
+  "voxel_size": 0.01,
+  "width": 0.6887158949456502,
+  "workspace_center_xy": [
+    -1.0,
+    0.0
+  ],
+  "workspace_half_extents": [
+    0.5,
+    0.5
+  ],
+  "yaw": -2.6300051536442437
+}

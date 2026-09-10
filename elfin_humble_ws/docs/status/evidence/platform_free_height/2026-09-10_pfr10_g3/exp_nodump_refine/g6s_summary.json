@@ -1,0 +1,271 @@
+{
+  "wall_start_utc": "2026-09-10T10:32:14.889789+00:00",
+  "wall_end_utc": "2026-09-10T10:33:23.658491+00:00",
+  "duration_s": 68.76868790201843,
+  "active_rates_hz": {
+    "frame": 20.54,
+    "raw_img": 23.919,
+    "pre_rgb": 28.834,
+    "yolo": 29.348,
+    "segmenter_stats": 0.75
+  },
+  "stage_delta_ms": {
+    "raw_img->pre_rgb": {
+      "n": 1573,
+      "p50": 18.566,
+      "p95": 22.972,
+      "max": 39.821
+    },
+    "pre_rgb->frame": {
+      "n": 1378,
+      "p50": 163.305,
+      "p95": 557.243,
+      "max": 753.648
+    },
+    "raw_img->frame_e2e": {
+      "n": 1122,
+      "p50": 181.63,
+      "p95": 572.313,
+      "max": 770.197
+    }
+  },
+  "stage_percentiles": {
+    "filter.cargo_points_ms": {
+      "n": 79,
+      "p50": 80390.0,
+      "p95": 128565.0,
+      "max": 128565.0
+    },
+    "filter.depth_decode_ms_ms": {
+      "n": 79,
+      "p50": 0.011,
+      "p95": 0.014,
+      "max": 0.018
+    },
+    "filter.filter_ms_ms": {
+      "n": 79,
+      "p50": 8.841,
+      "p95": 13.497,
+      "max": 15.718
+    },
+    "filter.input_points_ms": {
+      "n": 79,
+      "p50": 480.0,
+      "p95": 480.0,
+      "max": 480.0
+    },
+    "filter.mask_decode_ms_ms": {
+      "n": 79,
+      "p50": 0.037,
+      "p95": 0.054,
+      "max": 0.073
+    },
+    "filter.obstacle_points_ms": {
+      "n": 79,
+      "p50": 80390.0,
+      "p95": 128565.0,
+      "max": 128565.0
+    },
+    "filter.process_total_ms_ms": {
+      "n": 79,
+      "p50": 45.595,
+      "p95": 81.244,
+      "max": 88.153
+    },
+    "filter.publish_ms_ms": {
+      "n": 79,
+      "p50": 31.094,
+      "p95": 63.309,
+      "max": 68.526
+    },
+    "filter.to_world_ms_ms": {
+      "n": 79,
+      "p50": 1.347,
+      "p95": 2.171,
+      "max": 2.654
+    },
+    "filter.tracker_ms_ms": {
+      "n": 79,
+      "p50": 3.21,
+      "p95": 4.997,
+      "max": 6.561
+    },
+    "detector.read_ms_ms": {
+      "n": 1343,
+      "p50": 2.518,
+      "p95": 7.016,
+      "max": 17.827
+    },
+    "detector.geometry_ms_ms": {
+      "n": 949,
+      "p50": 69.676,
+      "p95": 469.272,
+      "max": 628.253
+    },
+    "detector.tf_ms_ms": {
+      "n": 845,
+      "p50": 1.15,
+      "p95": 2.573,
+      "max": 13.427
+    }
+  },
+  "executor_lag_sec": {
+    "n": 79,
+    "p50": 0.084,
+    "p95": 0.144,
+    "max": 0.167,
+    "q1_mean": 0.07585000000000024,
+    "q4_mean": 0.09610526315789589,
+    "q4_mean_ok": true,
+    "ratio_ok": false
+  },
+  "occupancy": {
+    "detector.raw_buffer": {
+      "peak": 15,
+      "mean": 14.345364472753008,
+      "n": 1413,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 14.572881355932203,
+      "q4_mean_within_half": false
+    },
+    "prep.color_info": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 2132
+    },
+    "prep.depth": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 2132
+    },
+    "prep.depth_info": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 2132
+    },
+    "prep.imu": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 2132
+    },
+    "prep.joints": {
+      "peak": 50,
+      "mean": 50.0,
+      "n": 2132
+    },
+    "prep.lidar": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 2132
+    },
+    "prep.rgb": {
+      "peak": 15,
+      "mean": 15.0,
+      "n": 2132
+    },
+    "prep.emit_queue": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 2132
+    },
+    "filter.depth": {
+      "peak": 2,
+      "mean": 0.34177215189873417,
+      "n": 79,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.3157894736842105,
+      "q4_mean_within_half": true
+    },
+    "filter.mask": {
+      "peak": 2,
+      "mean": 0.11392405063291139,
+      "n": 79,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.10526315789473684,
+      "q4_mean_within_half": true
+    },
+    "filter.instance": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 79,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.exact_join_candidates": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 79,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    }
+  },
+  "rss": {
+    "sensor_preprocessor": {
+      "pid": 1392370,
+      "n": 13,
+      "rss_mib_first": 96.3203125,
+      "rss_mib_last": 99.88671875,
+      "rss_mib_min": 96.3203125,
+      "rss_mib_max": 100.24609375,
+      "q1_mean_mib": 97.359375,
+      "q4_mean_mib": 99.4462890625,
+      "slope_mib_per_min": 2.7916380494505493,
+      "slope_ok": false,
+      "quartile_ok": true,
+      "pass": false
+    },
+    "semantic_segmenter": {
+      "pid": 1392380,
+      "n": 13,
+      "rss_mib_first": 1943.41015625,
+      "rss_mib_last": 1944.06640625,
+      "rss_mib_min": 1943.41015625,
+      "rss_mib_max": 1944.06640625,
+      "q1_mean_mib": 1943.5625,
+      "q4_mean_mib": 1944.04296875,
+      "slope_mib_per_min": 0.6271462912087912,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "semantic_point_filter": {
+      "pid": 1392382,
+      "n": 13,
+      "rss_mib_first": 69.95703125,
+      "rss_mib_last": 80.42578125,
+      "rss_mib_min": 69.95703125,
+      "rss_mib_max": 81.71875,
+      "q1_mean_mib": 74.1875,
+      "q4_mean_mib": 78.9443359375,
+      "slope_mib_per_min": 6.637963598901098,
+      "slope_ok": false,
+      "quartile_ok": true,
+      "pass": false
+    },
+    "luggage_detector": {
+      "pid": 1392378,
+      "n": 13,
+      "rss_mib_first": 80.10546875,
+      "rss_mib_last": 102.25,
+      "rss_mib_min": 80.10546875,
+      "rss_mib_max": 102.25,
+      "q1_mean_mib": 91.46484375,
+      "q4_mean_mib": 97.7978515625,
+      "slope_mib_per_min": 11.424879807692305,
+      "slope_ok": false,
+      "quartile_ok": true,
+      "pass": false
+    }
+  },
+  "maxlens": {
+    "detector.raw_buffer_maxlen": 15,
+    "filter.buffer_maxlen": 15
+  }
+}

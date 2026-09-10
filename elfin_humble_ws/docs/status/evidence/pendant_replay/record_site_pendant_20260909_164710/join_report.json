@@ -1,0 +1,172 @@
+{
+  "aux_join": {
+    "aux_tolerance_ms": 50.0,
+    "lidar_tolerance_ms": 100.0,
+    "n_joint_states": 439,
+    "n_lidar": 0,
+    "n_tcp_pose": 440,
+    "tf_static_messages": 3
+  },
+  "bag_path": "/home/adamliao/work/robotarm_bags/record_site_pendant_20260909_164710",
+  "color_orphans": [
+    1788943642665998982,
+    1788943645298666862,
+    1788943646165564143,
+    1788943646823197255,
+    1788943647432158047,
+    1788943647456511752,
+    1788943647698792968,
+    1788943647723215866,
+    1788943647756363392,
+    1788943647865654669,
+    1788943648265472443,
+    1788943648356362939,
+    1788943648565314650,
+    1788943648665508300,
+    1788943649532429132,
+    1788943650156389554,
+    1788943650723177157,
+    1788943650789821069,
+    1788943651399078700,
+    1788943651732522868,
+    1788943651999206675,
+    1788943652232490994,
+    1788943652299156994,
+    1788943652966328930,
+    1788943653099114118,
+    1788943653366114627,
+    1788943653532527057,
+    1788943653534892454,
+    1788943653665916786,
+    1788943653765832853,
+    1788943653932596070,
+    1788943654132459852,
+    1788943655166452489
+  ],
+  "depth_orphans": [
+    1788943637523444061,
+    1788943637558523179,
+    1788943637724302929,
+    1788943639656666258,
+    1788943640090828331,
+    1788943644858922189,
+    1788943644891148746,
+    1788943646856599479,
+    1788943647023247662,
+    1788943647489880709,
+    1788943647989853047,
+    1788943648123059009,
+    1788943648156448363,
+    1788943648189876866,
+    1788943648323095493,
+    1788943648390155412,
+    1788943648789762105,
+    1788943648823137676,
+    1788943648889728374,
+    1788943648923146177,
+    1788943649289814327,
+    1788943649323103009,
+    1788943649389929290,
+    1788943649423130863,
+    1788943649456642192,
+    1788943650323250099,
+    1788943650356488369,
+    1788943650389943128,
+    1788943650423205276,
+    1788943650823484666,
+    1788943650856737495,
+    1788943650889802517,
+    1788943651023269524,
+    1788943651089858623,
+    1788943651156516753,
+    1788943651289698329,
+    1788943654989921133,
+    1788943655023120271,
+    1788943655290061056,
+    1788943655389945849,
+    1788943655490074419,
+    1788943655589960244,
+    1788943655756741906,
+    1788943655989921952,
+    1788943656023050201,
+    1788943656056481395,
+    1788943656089775611,
+    1788943656289828783,
+    1788943656489808922,
+    1788943656556639424,
+    1788943656989970984,
+    1788943657089890512,
+    1788943657256676847,
+    1788943657256754020,
+    1788943657289928602,
+    1788943657356518642
+  ],
+  "duplicates": {
+    "color": 0,
+    "depth": 0
+  },
+  "join": {
+    "n_color": 452,
+    "n_color_orphans": 33,
+    "n_depth": 475,
+    "n_depth_orphans": 56,
+    "n_exact": 416,
+    "n_pairs": 419,
+    "n_tolerance": 3
+  },
+  "known_limitations": [
+    "cargo points stay in the optical frame: d555_color_optical_frame is not reachable from the recorded TF tree (driver TFs were not recorded)"
+  ],
+  "skipped_topics": {
+    "/elfin/cps_telemetry": {
+      "message_count": 439,
+      "msg_type": "std_msgs/msg/String"
+    },
+    "/elfin/joint_kinematics": {
+      "message_count": 439,
+      "msg_type": "control_msgs/msg/JointTrajectoryControllerState"
+    },
+    "/livox/imu": {
+      "message_count": 3660,
+      "msg_type": "sensor_msgs/msg/Imu"
+    }
+  },
+  "topics": {
+    "/camera/d555/aligned_depth_to_color/camera_info": {
+      "message_count": 494,
+      "msg_type": "sensor_msgs/msg/CameraInfo"
+    },
+    "/camera/d555/aligned_depth_to_color/image_raw": {
+      "message_count": 475,
+      "msg_type": "sensor_msgs/msg/Image"
+    },
+    "/camera/d555/color/camera_info": {
+      "message_count": 524,
+      "msg_type": "sensor_msgs/msg/CameraInfo"
+    },
+    "/camera/d555/color/image_raw": {
+      "message_count": 452,
+      "msg_type": "sensor_msgs/msg/Image"
+    },
+    "/elfin/tcp_pose": {
+      "message_count": 440,
+      "msg_type": "geometry_msgs/msg/PoseStamped"
+    },
+    "/joint_states": {
+      "message_count": 439,
+      "msg_type": "sensor_msgs/msg/JointState"
+    },
+    "/livox/lidar": {
+      "message_count": 202,
+      "msg_type": "sensor_msgs/msg/PointCloud2"
+    },
+    "/tf": {
+      "message_count": 148,
+      "msg_type": "tf2_msgs/msg/TFMessage"
+    },
+    "/tf_static": {
+      "message_count": 3,
+      "msg_type": "tf2_msgs/msg/TFMessage"
+    }
+  }
+}

@@ -1,0 +1,647 @@
+{
+  "box_id": "pickup_box_0006_large",
+  "camera_info": {
+    "d": [
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "frame_id": "camera_depth_optical_frame",
+    "height": 480,
+    "k": [
+      337.22194822727283,
+      0.0,
+      320.0,
+      0.0,
+      337.22194822727283,
+      240.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "p": [
+      337.22194822727283,
+      0.0,
+      320.0,
+      0.0,
+      0.0,
+      337.22194822727283,
+      240.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0
+    ],
+    "stamp": 82.072,
+    "width": 640
+  },
+  "captured_monotonic": 543995.982508085,
+  "cargo_fallback_stamp": 82.005,
+  "cargo_frame_id": "camera_depth_optical_frame",
+  "cargo_matched": false,
+  "clouds": {
+    "cargo_camera": {
+      "frame_id": "camera_depth_optical_frame",
+      "n": 0,
+      "n_dropped_nonfinite": 0,
+      "ply_vertices": 0
+    },
+    "cargo_workspace": {
+      "frame_id": "world",
+      "n": 0,
+      "n_dropped_nonfinite": 0,
+      "ply_vertices": 0
+    },
+    "cargo_world": {
+      "frame_id": "world",
+      "n": 0,
+      "n_dropped_nonfinite": 0,
+      "ply_vertices": 0
+    }
+  },
+  "color_frame_id": "camera_depth_optical_frame",
+  "current_box": {
+    "depth": 0.48754799365997314,
+    "generation": 12,
+    "gt_reference": {
+      "lid_offset": 0.016047611832618713,
+      "stl_path": "/home/adamliao/work/elfin_humble_ws/install/luggage_gazebo/share/luggage_gazebo/models/suitcase_loafbrr_large/meshes/suitcase.stl",
+      "stl_sha256": "e4026bc7bcfb9d125a7621952c5a24a279e4c592f2368141109002c08659a141",
+      "tier": "large",
+      "version": "mesh_observable_reference/v1(top_band_frac=0.25,z_bin=0.001,lid=densest-bin-median,extent=plateau_band)",
+      "visual_id": "suitcase_loafbrr"
+    },
+    "height": 0.3039523810148239,
+    "id": "pickup_box_0006_large",
+    "mass_kg": 23.0,
+    "model_name": "pickup_box_0006_large",
+    "pose": {
+      "orientation": {
+        "w": 0.967335793399434,
+        "x": 0.0,
+        "y": 0.0,
+        "z": 0.25349844734886956
+      },
+      "position": {
+        "x": -1.1176448816755131,
+        "y": -0.0791204144235135,
+        "z": 1.0119761976599693
+      }
+    },
+    "size_mode": "catalog",
+    "visual_kind": "mesh",
+    "width": 0.7503799200057983,
+    "yaw": 0.5125902617658221
+  },
+  "diagnostics": null,
+  "failed": true,
+  "filter_stats": {
+    "associate_radius_m": 0.15,
+    "buffer_maxlen": 15,
+    "buffer_occupancy": {
+      "depth": 1,
+      "exact_join_candidates": 0,
+      "instance": 0,
+      "mask": 0
+    },
+    "cargo_count": 83330,
+    "cargo_voxel_size": 0.005,
+    "centroid": null,
+    "cloud_stamp": 81.906,
+    "depth": 2167,
+    "depth_buffer_evicted": 3,
+    "depth_count": 2167,
+    "depth_decode_fail": 0,
+    "depth_horizon_evicted": 0,
+    "depth_waiting_for_mask": 1962,
+    "epoch_reset": 11,
+    "excluded_count": 140540,
+    "executor_lag_sec": 0.09399999999999409,
+    "generation": 11,
+    "instance": 9,
+    "instance_buffer_evicted": 0,
+    "instance_id": "",
+    "join_count": 1886,
+    "joined": 1875,
+    "last_cargo_n_points": 0,
+    "last_depth_stamp": 81.94,
+    "last_join_stamp": 81.906,
+    "last_mask_stamp": 81.906,
+    "latest_depth_mask_gap_sec": 0.033999999999991815,
+    "mask": 2132,
+    "mask_buffer_evicted": 0,
+    "mask_count": 2132,
+    "mask_decode_fail": 0,
+    "mask_waiting_for_depth": 462,
+    "motion_weight": 1.0,
+    "n_points": 0,
+    "no_intrinsics": 0,
+    "obstacle_count": 83330,
+    "obstacle_publish_count": 0,
+    "obstacle_publish_skipped": 1875,
+    "out_of_frame_count": 0,
+    "processed": 1875,
+    "raw_count": 166660,
+    "source": "empty",
+    "stage_ms": {
+      "cargo_points": 83330,
+      "depth_decode_ms": 0.013054930604994297,
+      "filter_ms": 10.741183068603277,
+      "input_points": 480,
+      "mask_decode_ms": 0.03650900907814503,
+      "obstacle_points": 83330,
+      "process_total_ms": 14.99837392475456,
+      "publish_ms": 0.14853093307465315,
+      "to_world_ms": 1.22371397446841,
+      "tracker_ms": 2.50718102324754
+    },
+    "stale_depth_dropped": 288,
+    "stale_drop_count": 553,
+    "stale_instance_dropped": 9,
+    "stale_mask_dropped": 256,
+    "tf_miss": 149
+  },
+  "join_stamp": 82.039,
+  "join_stamp_key": [
+    82,
+    39000000
+  ],
+  "mask_legend": {
+    "0": "background",
+    "1": "container_wall",
+    "2": "cargo",
+    "3": "robot_arm",
+    "4": "unknown_object"
+  },
+  "mask_meaning": "HxW uint8 class id used to route points: 0=background, 1=container_wall, 2=cargo, 3=robot_arm, 4=unknown_object. semantic_point_filter keeps cargo (2). mask.png is a colorized preview; raw ids 0-4 look black.",
+  "mask_viz_rgb": {
+    "0": [
+      40,
+      40,
+      40
+    ],
+    "1": [
+      180,
+      180,
+      180
+    ],
+    "2": [
+      220,
+      0,
+      0
+    ],
+    "3": [
+      0,
+      220,
+      220
+    ],
+    "4": [
+      255,
+      140,
+      0
+    ]
+  },
+  "n_samples": 18,
+  "overlay_box_legend": {
+    "gt": "green 3D OBB (visible top / depth blob)",
+    "measured": "cyan 3D OBB (DetectLuggage)",
+    "yolo_dropped": "magenta 2D bbox (dropped by self-body)"
+  },
+  "prep_status": {
+    "acquisition_mismatches": 0,
+    "buffers": {
+      "color_info": 15,
+      "depth": 15,
+      "depth_info": 15,
+      "imu": 0,
+      "joints": 50,
+      "lidar": 0,
+      "rgb": 15
+    },
+    "callbacks": {
+      "depth": 2483,
+      "info": 2489,
+      "joints": 7263,
+      "rgb": 2488
+    },
+    "camera_epoch": 0,
+    "camera_pair_tolerance_sec": 0.005,
+    "camera_wait_deadline_sec": 0.06,
+    "depth_dt": 0.0,
+    "depth_wait_skips": 22,
+    "emit_queue_depth": 0,
+    "evictions": {
+      "color_info": {
+        "capacity": 2474,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "depth": {
+        "capacity": 2468,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "depth_info": {
+        "capacity": 2474,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "imu": {
+        "capacity": 0,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "joints": {
+        "capacity": 7213,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "lidar": {
+        "capacity": 0,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      },
+      "rgb": {
+        "capacity": 2473,
+        "horizon": 0,
+        "replaced": 0,
+        "rollback": 0
+      }
+    },
+    "exact_lookup_misses": 6727,
+    "flags": {
+      "cloud_ok": false,
+      "color_info_ok": true,
+      "depth_info_ok": true,
+      "depth_ok": true,
+      "deskewed": false,
+      "geometry_ok": true,
+      "lidar_ok": false,
+      "motion_too_large": false,
+      "rgb_ok": true,
+      "stale": false
+    },
+    "info_wait_skips": 0,
+    "last_geometry_ok_stamp": 82.072,
+    "last_rejection": "depth_wait_timeout",
+    "motion_gate": {
+      "criterion": "displacement",
+      "displacement_tolerance": 0.01,
+      "enabled": false,
+      "excursion_joint": "",
+      "max_velocity": -1.0,
+      "peak_excursion": 0.0,
+      "stable_since": 0.0,
+      "state": "disabled",
+      "velocity_threshold": 0.02
+    },
+    "output_cloud_frame": "camera_depth_optical_frame",
+    "payload_bytes_buffered": 23040000,
+    "payload_bytes_received": 3818496000,
+    "payload_materialisations": 0,
+    "primary_stamp": 82.072,
+    "primary_stamp_nanosec": 72000000,
+    "primary_stamp_sec": 82,
+    "rollback_events": 0,
+    "schema": "luggage.preprocessed.status.v2",
+    "units": "millimetres"
+  },
+  "recovery": {
+    "n_settled": 87,
+    "spawn_ok": true,
+    "t_first_full3d_sec": 1.6552630320657045,
+    "t_first_valid_sec": 0.4802751881070435,
+    "trial": 5
+  },
+  "sample_index": 0,
+  "scoring_tail": {
+    "box_id": "pickup_box_0006_large",
+    "err_depth_m": 0.04821017207235112,
+    "err_height_m": 0.01207127439540523,
+    "err_support_m": 5.8524218131683625e-06,
+    "err_top_m": 0.012065421973592061,
+    "err_width_m": 0.06166402506014812,
+    "err_xy_m": 0.013913439736659605,
+    "est_depth": 0.439337821587622,
+    "est_height": 0.31602365541022914,
+    "est_top_z": 1.1760178101409733,
+    "est_width": 0.6887158949456502,
+    "est_xy": [
+      -1.1040821996083057,
+      -0.0760159884782689
+    ],
+    "false_measured_height": false,
+    "frame_id": "world",
+    "generation": 12,
+    "geometry_level": 1,
+    "gt_depth": 0.48754799365997314,
+    "gt_height": 0.3039523810148239,
+    "gt_support_z": 0.8600000071525573,
+    "gt_top_z": 1.1639523881673812,
+    "gt_width": 0.7503799200057983,
+    "gt_xy": [
+      -1.1176448816755131,
+      -0.0791204144235135
+    ],
+    "height_source": 1,
+    "height_valid": true,
+    "instance_id": "pickup_box_0006_large",
+    "monotonic_sec": 544004.47635756,
+    "n_cargo_points": 49644,
+    "pca_reason": "ok",
+    "pca_source": "measure",
+    "pca_valid": true,
+    "stamp_sec": 88.87,
+    "support_reason": "ok",
+    "support_valid": true,
+    "support_z": 0.8599941547307441,
+    "top_surface_valid": true,
+    "trial": 5
+  },
+  "seg_stats": {
+    "accept_reasons": {
+      "in_workspace": 1,
+      "outside_workspace": 7
+    },
+    "accepted_cargo_count": 1,
+    "backend": "bbox_fill:yolov8s-world.pt",
+    "detection_count": 8,
+    "detections": [
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          611,
+          111,
+          640,
+          296
+        ],
+        "confidence": 0.21473436057567596,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "in_workspace",
+        "accepted": true,
+        "bbox": [
+          58,
+          115,
+          455,
+          407
+        ],
+        "confidence": 0.1701977252960205,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          606,
+          116,
+          640,
+          367
+        ],
+        "confidence": 0.07332798838615417,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          620,
+          119,
+          640,
+          291
+        ],
+        "confidence": 0.03625732660293579,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          606,
+          202,
+          640,
+          280
+        ],
+        "confidence": 0.02539229579269886,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          489,
+          71,
+          640,
+          407
+        ],
+        "confidence": 0.010062538087368011,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          625,
+          111,
+          640,
+          266
+        ],
+        "confidence": 0.007153641898185015,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      },
+      {
+        "accept_reason": "outside_workspace",
+        "accepted": false,
+        "bbox": [
+          575,
+          102,
+          640,
+          306
+        ],
+        "confidence": 0.006189744919538498,
+        "held": false,
+        "label": 2,
+        "prompt": "luggage on a platform viewed from directly above"
+      }
+    ],
+    "detections_dropped_self_body": [],
+    "frame_id": "camera_depth_optical_frame",
+    "held": false,
+    "inference_ms": 7.143974304199219,
+    "label_counts": {
+      "0": 94460,
+      "1": 0,
+      "2": 166660,
+      "3": 46080,
+      "4": 0
+    },
+    "n_dropped_self_body": 0,
+    "n_yolo_cargo_before_self_body": 8,
+    "raw_cargo": true,
+    "self_body_pixels": 46080,
+    "stamp": 81.478,
+    "temporal": {
+      "accepted_cargo": true,
+      "held": false,
+      "positive_frames": 5,
+      "positive_ratio": 1.0,
+      "raw_cargo": true,
+      "scene_change": false,
+      "window": 5
+    },
+    "workspace_predicate": true
+  },
+  "stream_stats": {
+    "filter_stats": {
+      "associate_radius_m": 0.15,
+      "buffer_maxlen": 15,
+      "buffer_occupancy": {
+        "depth": 1,
+        "exact_join_candidates": 0,
+        "instance": 0,
+        "mask": 0
+      },
+      "cargo_count": 83330,
+      "cargo_voxel_size": 0.005,
+      "centroid": null,
+      "cloud_stamp": 81.906,
+      "depth": 2167,
+      "depth_buffer_evicted": 3,
+      "depth_count": 2167,
+      "depth_decode_fail": 0,
+      "depth_horizon_evicted": 0,
+      "depth_waiting_for_mask": 1962,
+      "epoch_reset": 11,
+      "excluded_count": 140540,
+      "executor_lag_sec": 0.09399999999999409,
+      "generation": 11,
+      "instance": 9,
+      "instance_buffer_evicted": 0,
+      "instance_id": "",
+      "join_count": 1886,
+      "joined": 1875,
+      "last_cargo_n_points": 0,
+      "last_depth_stamp": 81.94,
+      "last_join_stamp": 81.906,
+      "last_mask_stamp": 81.906,
+      "latest_depth_mask_gap_sec": 0.033999999999991815,
+      "mask": 2132,
+      "mask_buffer_evicted": 0,
+      "mask_count": 2132,
+      "mask_decode_fail": 0,
+      "mask_waiting_for_depth": 462,
+      "motion_weight": 1.0,
+      "n_points": 0,
+      "no_intrinsics": 0,
+      "obstacle_count": 83330,
+      "obstacle_publish_count": 0,
+      "obstacle_publish_skipped": 1875,
+      "out_of_frame_count": 0,
+      "processed": 1875,
+      "raw_count": 166660,
+      "source": "empty",
+      "stage_ms": {
+        "cargo_points": 83330,
+        "depth_decode_ms": 0.013054930604994297,
+        "filter_ms": 10.741183068603277,
+        "input_points": 480,
+        "mask_decode_ms": 0.03650900907814503,
+        "obstacle_points": 83330,
+        "process_total_ms": 14.99837392475456,
+        "publish_ms": 0.14853093307465315,
+        "to_world_ms": 1.22371397446841,
+        "tracker_ms": 2.50718102324754
+      },
+      "stale_depth_dropped": 288,
+      "stale_drop_count": 553,
+      "stale_instance_dropped": 9,
+      "stale_mask_dropped": 256,
+      "tf_miss": 149
+    },
+    "frame_seq": 1769,
+    "generation": 11,
+    "geometry_level": 0,
+    "instance_id": "",
+    "n_cargo_points": 0,
+    "pca_confidence": 0.0,
+    "pca_reason": "DETECT_NO_CLOUD",
+    "pca_source": "empty",
+    "pca_valid": false,
+    "raw_buffer_len": 15,
+    "raw_buffer_maxlen": 15,
+    "raw_counts": {
+      "raw_evicted": 2270,
+      "raw_horizon_evicted": 14,
+      "raw_lookup_decode_fail": 0,
+      "raw_lookup_empty": 0,
+      "raw_lookup_hit": 835,
+      "raw_lookup_miss": 36,
+      "raw_lookup_no_intrinsics": 0,
+      "raw_lookup_tf_fail": 0,
+      "raw_received": 2464,
+      "support_ready_dropped": 98,
+      "support_wait_completed": 137,
+      "support_wait_expired": 10,
+      "support_wait_parked": 147
+    },
+    "raw_lookup": {
+      "raw_buffer_len": 15,
+      "raw_buffer_maxlen": 15,
+      "raw_lookup_attempts": 1,
+      "raw_lookup_key": [
+        79,
+        69000000
+      ],
+      "raw_lookup_status": "miss",
+      "raw_lookup_wait_ms": 0.00480900052934885
+    },
+    "stamp": 82.005,
+    "stamp_key": [
+      82,
+      5000000
+    ],
+    "support_gate": "no_top",
+    "support_inliers": 0,
+    "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
+    "support_valid": false,
+    "timing_ms": {
+      "read_ms": 0.04362303297966719
+    },
+    "yolo_count": 8
+  },
+  "tf_error": null,
+  "trial": 5,
+  "workspace_center_xy": [
+    -1.0,
+    0.0
+  ],
+  "workspace_half_extents": [
+    0.5,
+    0.5
+  ]
+}

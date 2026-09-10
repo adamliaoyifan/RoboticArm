@@ -1,0 +1,192 @@
+[INFO] [launch]: All log files can be found below /home/adamliao/.ros/log/2026-09-10-18-42-15-941158-adamliao-X870-EAGLE-WIFI7-1397969
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ign gazebo-1]: process started with pid [1397988]
+[INFO] [parameter_bridge-2]: process started with pid [1397990]
+[INFO] [parameter_bridge-3]: process started with pid [1397993]
+[INFO] [depth_image_republisher.py-4]: process started with pid [1397995]
+[INFO] [sensor_preprocessor_node.py-5]: process started with pid [1397997]
+[INFO] [parameter_bridge-6]: process started with pid [1397999]
+[INFO] [pickup_box_spawner_node.py-7]: process started with pid [1398001]
+[INFO] [scene_viz_node.py-8]: process started with pid [1398003]
+[INFO] [luggage_detector_node.py-9]: process started with pid [1398005]
+[INFO] [semantic_segmenter_node.py-10]: process started with pid [1398007]
+[INFO] [semantic_point_filter_node.py-11]: process started with pid [1398009]
+[INFO] [scene_manager_node.py-12]: process started with pid [1398011]
+[INFO] [waypoint_generator_node.py-13]: process started with pid [1398013]
+[INFO] [motion_planner_node.py-14]: process started with pid [1398015]
+[INFO] [vacuum_controller_node.py-15]: process started with pid [1398017]
+[INFO] [container_tf_publisher-16]: process started with pid [1398019]
+[INFO] [robot_state_publisher-17]: process started with pid [1398021]
+[INFO] [create-18]: process started with pid [1398023]
+[INFO] [create-19]: process started with pid [1398025]
+[INFO] [create-20]: process started with pid [1398027]
+[INFO] [spawner-21]: process started with pid [1398029]
+[robot_state_publisher-17] [INFO] [1789036936.819454723] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-17] [INFO] [1789036936.819524505] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-17] [INFO] [1789036936.819529023] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-17] [INFO] [1789036936.819532159] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-17] [INFO] [1789036936.819534995] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-17] [INFO] [1789036936.819537489] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-17] [INFO] [1789036936.819540174] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-17] [INFO] [1789036936.819542819] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-17] [INFO] [1789036936.819545194] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-17] [INFO] [1789036936.819547719] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-17] [INFO] [1789036936.819550043] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-17] [INFO] [1789036936.819552337] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-17] [INFO] [1789036936.819554822] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-17] [INFO] [1789036936.819557146] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-17] [INFO] [1789036936.819559741] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-17] [INFO] [1789036936.819562406] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-17] [INFO] [1789036936.819564671] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-17] [INFO] [1789036936.819567175] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-17] [INFO] [1789036936.819569430] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-17] [INFO] [1789036936.819571694] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-17] [INFO] [1789036936.819573998] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-17] [INFO] [1789036936.819576343] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-17] [INFO] [1789036936.819579008] [robot_state_publisher]: got segment world
+[parameter_bridge-2] [INFO] [1789036936.855516901] [clock_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1789036936.856731247] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/image (gz.msgs.Image) -> /d435/image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1789036936.858065731] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/depth_image (gz.msgs.Image) -> /d435/depth_image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1789036936.858450599] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/camera_info (gz.msgs.CameraInfo) -> /d435/camera_info (sensor_msgs/msg/CameraInfo)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1789036936.859799600] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/points (gz.msgs.PointCloudPacked) -> /d435/points (sensor_msgs/msg/PointCloud2)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1789036936.860105248] [camera_bridge]: Creating GZ->ROS Bridge: [/livox/scan/points (gz.msgs.PointCloudPacked) -> /livox/scan/points (sensor_msgs/msg/PointCloud2)] (Lazy 0)
+[semantic_point_filter_node.py-11] [WARN] [1789036937.113030420] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[semantic_point_filter_node.py-11] [INFO] [1789036937.129015169] [semantic_point_filter]: semantic_point_filter ready (extrinsics=identity, cargo_labels=[2])
+[container_tf_publisher-16] [INFO] [1789036937.150444494] [container_tf_publisher]: Static TF from /home/adamliao/work/elfin_humble_ws/install/luggage_description/share/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-16] [INFO] [1789036937.150731397] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412
+[scene_viz_node.py-8] [INFO] [1789036937.150830334] [scene_viz]: scene_viz ready (container=airport_container_real)
+[spawner-21] [INFO] [1789036937.164877098] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[waypoint_generator_node.py-13] [WARN] [1789036937.171176601] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[sensor_preprocessor_node.py-5] [INFO] [1789036937.174854386] [sensor_preprocessor]: sensor_preprocessor ready (depth-primary): frame=camera_depth_optical_frame pair_tolerance=0.005s wait_deadline=0.060s maxlen=15/1.0s
+[waypoint_generator_node.py-13] [INFO] [1789036937.188541871] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[scene_manager_node.py-12] [INFO] [1789036937.193330337] [scene_manager]: scene_manager ready
+[pickup_box_spawner_node.py-7] [INFO] [1789036937.195901469] [pickup_box_spawner]: pickup_box_spawner ready (visual_kind=mesh size_mode=catalog)
+[luggage_detector_node.py-9] [INFO] [1789036937.202279290] [luggage_detector]: luggage_detector subscribing to /luggage/semantic/cargo_points
+[luggage_detector_node.py-9] [INFO] [1789036937.204240930] [luggage_detector]: luggage_detector ready (platform-free, semantic=True, support_mode=auto, platform_z=omitted, retries=4 period=0.25s suitcase_wait=0.0s)
+[vacuum_controller_node.py-15] [WARN] [1789036937.251159228] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[motion_planner_node.py-14] [INFO] [1789036937.279150443] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[vacuum_controller_node.py-15] [INFO] [1789036937.283325298] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+[vacuum_controller_node.py-15] [INFO] [1789036937.284175386] [vacuum_controller]: current_box cleared
+[create-18] [INFO] [1789036937.388599003] [ros_gz_sim]: Requested creation of entity.
+[create-18] [INFO] [1789036937.388738307] [ros_gz_sim]: OK creation of entity.
+[create-19] [INFO] [1789036937.488746264] [ros_gz_sim]: Requested creation of entity.
+[create-19] [INFO] [1789036937.488835823] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-18]: process has finished cleanly [pid 1398023]
+[INFO] [create-22]: process started with pid [1398599]
+[create-20] [INFO] [1789036937.588876913] [ros_gz_sim]: Requested creation of entity.
+[create-20] [INFO] [1789036937.588987532] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-19]: process has finished cleanly [pid 1398025]
+[INFO] [create-20]: process has finished cleanly [pid 1398027]
+[create-22] [INFO] [1789036937.717808158] [ros_gz_sim]: Requested creation of entity.
+[create-22] [INFO] [1789036937.717936250] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-22]: process has finished cleanly [pid 1398599]
+[ign gazebo-1] [INFO] [1789036939.146611577] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_state_publisher
+[ign gazebo-1] [INFO] [1789036939.146636434] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_description
+[ign gazebo-1] [INFO] [1789036939.498339046] [gz_ros2_control]: connected to service!! robot_state_publisher asking for robot_description
+[robot_state_publisher-17] [WARN] [1789036939.598627855] [robot_state_publisher.rclcpp]: failed to send response to /robot_state_publisher/get_parameters (timeout): client will not receive response, at ./src/rmw_response.cpp:154, at ./src/rcl/service.c:314
+[semantic_segmenter_node.py-10] [INFO] [1789036939.789500047] [semantic_segmenter]: suction-panel mask 12517 px source=urdf_chain
+[semantic_segmenter_node.py-10] [INFO] [1789036939.789688233] [semantic_segmenter]: semantic_segmenter ready (backend=bbox_fill:yolov8s-world.pt, prompts=8, self_body=urdf_chain, temporal_window=5)
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mIgnition Gazebo Server v[0m[1;32m6.18.0[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading SDF world file[[0m[1;32m/home/adamliao/work/elfin_humble_ws/install/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf[0m[1;32m].[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing entity system service on [[0m[1;32m/[0m[1;32mentity/system/add[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mCreate service on [[0m[1;32m/world/airport_loading/create[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mRemove service on [[0m[1;32m/world/airport_loading/remove[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose_vector[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLight configuration service on [[0m[1;32m/world/airport_loading/light_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPhysics service on [[0m[1;32m/world/airport_loading/set_physics[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mSphericalCoordinates service on [[0m[1;32m/world/airport_loading/set_spherical_coordinates[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mEnable collision service on [[0m[1;32m/world/airport_loading/enable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mDisable collision service on [[0m[1;32m/world/airport_loading/disable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/visual_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/wheel_slip[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoaded level [[0m[1;32m3[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world controls on [[0m[1;32m/world/airport_loading[0m[1;32m/control], [[0m[1;32m/world/airport_loading[0m[1;32m/control/state] and [[0m[1;32m/world/airport_loading[0m[1;32m/playback/control][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing GUI information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgui/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mWorld [[0m[1;32mairport_loading[0m[1;32m] initialized with [[0m[1;32m1ms[0m[1;32m] physics profile.[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world SDF generation service on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgenerate_world_sdf[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world names on [[0m[1;32m/gazebo/worlds[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path add service on [[0m[1;32m/gazebo/resource_paths/add[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path get service on [[0m[1;32m/gazebo/resource_paths/get[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path resolve service on [[0m[1;32m/gazebo/resource_paths/resolve[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource paths published on [[0m[1;32m/gazebo/resource_paths[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServer control service on [[0m[1;32m/server_control[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /stats, adding root stats topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /clock, adding root clock topic[0m[1;32m[0m
+[spawner-21] [FATAL] [1789036997.243994459] [spawner_joint_state_broadcaster]: Could not contact service /controller_manager/list_controllers
+[ERROR] [spawner-21]: process has died [pid 1398029, exit code 1, cmd '/opt/ros/humble/lib/controller_manager/spawner joint_state_broadcaster --controller-manager /controller_manager --controller-manager-timeout 60 --switch-timeout 30 --ros-args'].
+[INFO] [spawner-23]: process started with pid [1399343]
+[spawner-23] [INFO] [1789036997.536791955] [spawner_elfin_arm_controller]: waiting for service /controller_manager/list_controllers to become available...
+[spawner-23] [FATAL] [1789037057.616674641] [spawner_elfin_arm_controller]: Could not contact service /controller_manager/list_controllers
+[ERROR] [spawner-23]: process has died [pid 1399343, exit code 1, cmd '/opt/ros/humble/lib/controller_manager/spawner elfin_arm_controller --controller-manager /controller_manager --controller-manager-timeout 60 --switch-timeout 30 --ros-args'].
+[INFO] [observe_pose_hold.py-24]: process started with pid [1399717]
+[INFO] [move_group-25]: process started with pid [1399719]
+[move_group-25] [INFO] [1789037057.794882353] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-25] [INFO] [1789037057.794938750] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-25] [INFO] [1789037057.794944210] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-25] [WARN] [1789037057.918821056] [moveit_robot_model.robot_model]: Link mid360_mount_frame has visual geometry but no collision geometry. Collision geometry will be left empty. Fix your URDF file by explicitly specifying collision geometry.
+[move_group-25] [INFO] [1789037058.227170232] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-25] [INFO] [1789037058.227288505] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-25] [INFO] [1789037058.227755358] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-25] [INFO] [1789037058.228009569] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-25] [INFO] [1789037058.228019207] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-25] [INFO] [1789037058.228170754] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-25] [INFO] [1789037058.228177807] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-25] [INFO] [1789037058.228334043] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-25] [INFO] [1789037058.228481041] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-25] [WARN] [1789037058.228702259] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-25] [ERROR] [1789037058.228710084] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[move_group-25] [INFO] [1789037058.951797650] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'ompl'
+[move_group-25] [INFO] [1789037058.956668341] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-25] [INFO] [1789037058.957529670] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.path_tolerance' was not set. Using default value: 0.100000
+[move_group-25] [INFO] [1789037058.957538947] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.resample_dt' was not set. Using default value: 0.100000
+[move_group-25] [INFO] [1789037058.957540801] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.min_angle_change' was not set. Using default value: 0.001000
+[move_group-25] [INFO] [1789037058.957549888] [moveit_ros.fix_workspace_bounds]: Param 'ompl.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-25] [INFO] [1789037058.957557522] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_bounds_error' was set to 0.100000
+[move_group-25] [INFO] [1789037058.957559767] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-25] [INFO] [1789037058.957564375] [moveit_ros.fix_start_state_collision]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-25] [INFO] [1789037058.957566449] [moveit_ros.fix_start_state_collision]: Param 'ompl.jiggle_fraction' was set to 0.050000
+[move_group-25] [INFO] [1789037058.957568513] [moveit_ros.fix_start_state_collision]: Param 'ompl.max_sampling_attempts' was not set. Using default value: 100
+[move_group-25] [INFO] [1789037058.957573002] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-25] [INFO] [1789037058.957574444] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Resolve constraint frames to robot links'
+[move_group-25] [INFO] [1789037058.957575566] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-25] [INFO] [1789037058.957576699] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-25] [INFO] [1789037058.957577700] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-25] [INFO] [1789037058.957578682] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-25] [WARN] [1789037058.959499465] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[move_group-25] [INFO] [1789037058.966550038] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for elfin_arm_controller
+[move_group-25] [INFO] [1789037058.966638816] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-25] [INFO] [1789037058.966648374] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-25] [INFO] [1789037058.966870885] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-25] [INFO] [1789037058.966881675] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-25] [INFO] [1789037058.974503479] [move_group.move_group]: 
+[move_group-25] 
+[move_group-25] ********************************************************
+[move_group-25] * MoveGroup using: 
+[move_group-25] *     - ApplyPlanningSceneService
+[move_group-25] *     - ClearOctomapService
+[move_group-25] *     - CartesianPathService
+[move_group-25] *     - ExecuteTrajectoryAction
+[move_group-25] *     - GetPlanningSceneService
+[move_group-25] *     - KinematicsService
+[move_group-25] *     - MoveAction
+[move_group-25] *     - MotionPlanService
+[move_group-25] *     - QueryPlannersService
+[move_group-25] *     - StateValidationService
+[move_group-25] ********************************************************
+[move_group-25] 
+[move_group-25] [INFO] [1789037058.974536391] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-25] [INFO] [1789037058.974541832] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-25] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-25] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-25] [0m[92m
+[move_group-25] You can start planning now!
+[move_group-25] 
