@@ -27,6 +27,7 @@ from builtin_interfaces.msg import Duration
 from control_msgs.action import FollowJointTrajectory
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Header, String
+from std_srvs.srv import SetBool
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from .execution_contract import (
@@ -50,6 +51,7 @@ from .sim_interface import (
     RESULT_SUCCESSFUL,
     SimInterface,
 )
+from .vacuum_io import VacuumIoPublisher, apply_vacuum_io_params, declare_vacuum_io_params
 
 _LATCHED = QoSProfile(
     depth=16,
@@ -81,14 +83,18 @@ class TrajectoryExecutorNode(Node):
         self.declare_parameter('robot_port', 10003)
         self.declare_parameter('default_velocity_deg', 30.0)
         self.declare_parameter('max_velocity_deg', 60.0)
+        self.declare_parameter('power_off_on_disconnect', False)
         self.declare_parameter('joint_names', self.JOINT_NAMES)
         self.declare_parameter('action_name', DEFAULT_ACTION_NAME)
+        declare_vacuum_io_params(self)
 
         mode = self.get_parameter('mode').get_parameter_value().string_value
         robot_ip = self.get_parameter('robot_ip').get_parameter_value().string_value
         robot_port = self.get_parameter('robot_port').get_parameter_value().integer_value
         default_vel = self.get_parameter('default_velocity_deg').get_parameter_value().double_value
         max_vel = self.get_parameter('max_velocity_deg').get_parameter_value().double_value
+        power_off = self.get_parameter(
+            'power_off_on_disconnect').get_parameter_value().bool_value
         self._joint_names: List[str] = (
             self.get_parameter('joint_names').get_parameter_value().string_array_value
             or self.JOINT_NAMES
@@ -106,6 +112,7 @@ class TrajectoryExecutorNode(Node):
         # ----------------------------------------------------------------
         # Backend
         # ----------------------------------------------------------------
+        self._vacuum_pub = None
         if mode == 'real':
             self._iface = HuayanInterface(
                 node=self,
@@ -113,7 +120,9 @@ class TrajectoryExecutorNode(Node):
                 robot_port=robot_port,
                 default_velocity_deg=default_vel,
                 max_velocity_deg=max_vel,
+                power_off_on_disconnect=power_off,
             )
+            apply_vacuum_io_params(self, self._iface)
             if not self._iface.connect():
                 self.get_logger().error(
                     '[executor] Failed to connect to robot. '
@@ -131,6 +140,8 @@ class TrajectoryExecutorNode(Node):
         self._js_pub = self.create_publisher(JointState, '/joint_states', 10)
         self._status_pub = self.create_publisher(String, STATUS_TOPIC, _LATCHED)
         self._events_pub = self.create_publisher(String, EVENTS_TOPIC, _LATCHED)
+        if mode == 'real':
+            self._vacuum_pub = VacuumIoPublisher(self)
 
         # 100 Hz joint-state publisher timer.
         self._js_timer = self.create_timer(
@@ -152,6 +163,15 @@ class TrajectoryExecutorNode(Node):
             execute_callback=self._execute_callback,
             callback_group=self._cb_group,
         )
+        if isinstance(self._iface, HuayanInterface):
+            self.create_service(
+                SetBool, "/elfin/vacuum/set_do0",
+                lambda req, res: self._handle_set_do(0, req, res),
+                callback_group=self._cb_group)
+            self.create_service(
+                SetBool, "/elfin/vacuum/set_do1",
+                lambda req, res: self._handle_set_do(1, req, res),
+                callback_group=self._cb_group)
 
         # Cancel flag shared between the action server and the backend.
         self._cancel_flag = threading.Event()
@@ -175,11 +195,13 @@ class TrajectoryExecutorNode(Node):
             self._publish_event(EVENT_REJECTED, error_string=error)
             return GoalResponse.REJECT
 
-        # Reject if real backend is in error state.
         if isinstance(self._iface, HuayanInterface) and not self._iface.is_ready:
-            self.get_logger().warn('[executor] Goal rejected: robot not ready.')
-            self._publish_event(EVENT_REJECTED, error_string='robot not ready')
-            return GoalResponse.REJECT
+            self.get_logger().warn(
+                '[executor] Robot not ready; retrying connect before reject')
+            if not self._iface.connect():
+                self.get_logger().warn('[executor] Goal rejected: robot not ready.')
+                self._publish_event(EVENT_REJECTED, error_string='robot not ready')
+                return GoalResponse.REJECT
 
         self.get_logger().info(
             f'[executor] Goal accepted: {len(traj.points)} waypoints.'
@@ -274,20 +296,45 @@ class TrajectoryExecutorNode(Node):
     # ------------------------------------------------------------------
 
     def _publish_joint_states(self) -> None:
-        """Publish current joint positions at 100 Hz for RViz."""
+        """Publish this tick's CPS actual joints. Skip if the ACS read failed."""
         if callable(getattr(self._iface, "refresh", None)):
             self._iface.refresh()
-        positions = self._iface.current_positions  # always in radians
-        velocities = list(getattr(self._iface, "current_velocities", [0.0] * 6))
+        if hasattr(self._iface, "last_acs_ok") and not self._iface.last_acs_ok:
+            return
+        positions = self._iface.current_positions
+        velocities = list(getattr(self._iface, "current_velocities", []))
+        effort = list(getattr(self._iface, "current_currents", []))
 
         msg = JointState()
         msg.header = Header()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = self._joint_names
         msg.position = list(positions)
-        msg.velocity = list(velocities)
-        msg.effort = [0.0] * 6
+        if len(velocities) == 6:
+            msg.velocity = list(velocities)
+        if len(effort) == 6:
+            msg.effort = list(effort)
         self._js_pub.publish(msg)
+        if self._vacuum_pub is not None:
+            self._vacuum_pub.publish(self._iface)
+
+    def _handle_set_do(self, which: int, request, response):
+        bit = (
+            self._iface.vacuum_do0_bit if which == 0
+            else self._iface.vacuum_do1_bit
+        )
+        ok, message = self._iface.set_do_bit(bit, 1 if request.data else 0)
+        response.success = bool(ok)
+        response.message = message or ""
+        if ok:
+            self.get_logger().info(
+                "[executor] set DO%s=%s" % (which, int(bool(request.data)))
+            )
+        else:
+            self.get_logger().error(
+                "[executor] set DO%s failed: %s" % (which, message)
+            )
+        return response
 
     # ------------------------------------------------------------------
     # Helpers
@@ -397,8 +444,15 @@ def main(args=None) -> None:
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except Exception:
+            pass
 
 
 def _uuid_hex(goal_id) -> str:

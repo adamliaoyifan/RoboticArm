@@ -11,8 +11,9 @@ blocking call.
 Connection lifecycle
 --------------------
 connect()
-    HRIF_Connect → HRIF_Connect2Box → HRIF_Electrify → …
-    → HRIF_GrpEnable
+    TCP + FSM-aware enable. StandBy (FSM 33) treats Connect2Box /
+    Electrify / Connect2Controller 20018 as already-done. Does not
+    GrpReset a standing arm.
 
 connect(monitor_only=True)
     HRIF_Connect → HRIF_Connect2Box only. Used by cps_telemetry for bags.
@@ -25,7 +26,8 @@ execute(trajectory, feedback_fn, cancel_flag)
         call feedback_fn with live joint positions
 
 disconnect()
-    HRIF_GrpDisable → HRIF_BlackOut → HRIF_DisConnect
+    HRIF_GrpDisable → HRIF_DisConnect. BlackOut only if
+    power_off_on_disconnect=True (Ctrl+C must not cut 48 V).
 
 Error / reconnect strategy
 --------------------------
@@ -44,7 +46,15 @@ import time
 from enum import Enum, auto
 from typing import Callable, List, Optional, Tuple
 
-from .cps_parse import as_float_list, finite_diff_deg_s, tcp_from_read_act_pos
+from .cps_parse import (
+    acs_from_read_act_pos,
+    as_bit,
+    as_float_list,
+    choose_joint_vel_deg,
+    finite_diff_deg_s,
+    joints_moved_deg,
+    tcp_from_read_act_pos,
+)
 
 # ---------------------------------------------------------------------------
 # Result codes (mirrors control_msgs/action/FollowJointTrajectory constants)
@@ -70,6 +80,77 @@ FINAL_BLEND_RADIUS_MM = 0.0     # exact stop at last waypoint
 DEFAULT_VELOCITY_DEG = 30.0
 DEFAULT_ACCEL_DEG = 60.0        # must be > velocity per HuayanRobot constraint
 MAX_VELOCITY_DEG = 60.0
+STATE_REFUSE = 20018  # command prohibited in current FSM
+FSM_BOX_DISCONNECT = 2
+FSM_BOX_CONNECTING = 3
+FSM_ESTOP = 5
+FSM_BLACKOUTING = 6
+FSM_BLACKOUT = 7
+FSM_ELECTRIFYING = 8
+FSM_ERROR = 22
+FSM_ENABLING = 23
+FSM_DISABLE = 24
+FSM_STANDBY = 33
+
+
+def cps_step_ok(n_ret: int, allow_refuse: bool) -> bool:
+    if int(n_ret) == 0:
+        return True
+    return bool(allow_refuse) and int(n_ret) == STATE_REFUSE
+
+
+def connect2box_allow_refuse(fsm_id: Optional[int]) -> bool:
+    return fsm_id is None or int(fsm_id) not in (
+        FSM_BOX_DISCONNECT, FSM_BOX_CONNECTING)
+
+
+def electrify_allow_refuse(fsm_id: Optional[int]) -> bool:
+    return fsm_id is not None and int(fsm_id) >= FSM_ENABLING
+
+
+def already_motion_ready(fsm_id: Optional[int]) -> bool:
+    """StandBy (33) or later: servos enabled. Skip GrpReset / GrpEnable."""
+    return fsm_id is not None and int(fsm_id) >= FSM_STANDBY
+
+
+def hrif_waypoint_joint(
+    cps,
+    joints_deg: List[float],
+    vel_deg: float,
+    accel_deg: float,
+    radius: float,
+    cmd_id: str,
+    box_id: int = BOX_ID,
+    rbt_id: int = RBT_ID,
+    tcp: str = TCP_NAME,
+    ucs: str = UCS_NAME,
+):
+    """Call Python ``CPSClient.HRIF_WayPoint`` for a joint-space MoveJ.
+
+    The C API takes 12 separate doubles. The Python SDK takes two length-6
+    lists: unused PCS, then ACS. Passing the C layout raises
+    ``TypeError: takes 16 positional arguments but 26 were given``.
+    """
+    joints = [float(v) for v in joints_deg]
+    if len(joints) != 6:
+        raise ValueError("HRIF_WayPoint ACS needs 6 joints, got %s" % len(joints))
+    return cps.HRIF_WayPoint(
+        box_id,
+        rbt_id,
+        0,
+        [0.0] * 6,
+        joints,
+        tcp,
+        ucs,
+        float(vel_deg),
+        float(accel_deg),
+        float(radius),
+        1,
+        0,
+        0,
+        0,
+        str(cmd_id),
+    )
 
 
 class ConnectionState(Enum):
@@ -96,6 +177,8 @@ class HuayanInterface:
         Fallback joint velocity in °/s when trajectory time hints are absent.
     max_velocity_deg : float
         Upper clamp on computed velocity.
+    power_off_on_disconnect : bool
+        If True, HRIF_BlackOut on teardown (cuts 48 V). Default False.
     """
 
     JOINT_NAMES: List[str] = [
@@ -120,12 +203,14 @@ class HuayanInterface:
         robot_port: int = 10003,
         default_velocity_deg: float = DEFAULT_VELOCITY_DEG,
         max_velocity_deg: float = MAX_VELOCITY_DEG,
+        power_off_on_disconnect: bool = False,
     ) -> None:
         self._node = node
         self._ip = robot_ip
         self._port = robot_port
         self._default_vel = default_velocity_deg
         self._max_vel = max_velocity_deg
+        self._power_off_on_disconnect = bool(power_off_on_disconnect)
 
         self._cps = None          # CPSClient instance (imported lazily)
         self._state = ConnectionState.DISCONNECTED
@@ -133,8 +218,30 @@ class HuayanInterface:
         self._monitor_only = False
         self._current_positions_deg: List[float] = [0.0] * 6
         self._current_velocities_deg: List[float] = [0.0] * 6
+        self._current_accelerations_deg: List[float] = [0.0] * 6
+        self._current_currents_a: List[float] = []
+        self._command_positions_deg: List[float] = []
+        self._cps_velocities_deg: Optional[List[float]] = None
         self._current_tcp_mm_deg: List[float] = [0.0] * 6
+        self._vel_source: str = "none"
+        self._acc_source: str = "none"
         self._last_refresh_mono: float = 0.0
+        self.last_refresh_dt_s: float = 0.0
+        self.last_sample_mono: float = 0.0
+        self.last_acs_ok: bool = False
+        self.last_tcp_ok: bool = False
+        self.last_vel_cps_ok: bool = False
+        self.last_cur_ok: bool = False
+        self.last_cmd_ok: bool = False
+        self.last_io_ok: bool = False
+        self.vacuum_io_kind: str = "box"
+        self.vacuum_di_bit: int = 0
+        self.vacuum_do0_bit: int = 0
+        self.vacuum_do1_bit: int = 1
+        self._vacuum_di0: Optional[int] = None
+        self._vacuum_do0: Optional[int] = None
+        self._vacuum_do1: Optional[int] = None
+        self._refresh_n: int = 0
 
     # ------------------------------------------------------------------
     # State helpers
@@ -164,15 +271,16 @@ class HuayanInterface:
         """
         self._monitor_only = monitor_only
         self._set_state(ConnectionState.CONNECTING)
-        try:
-            self._cps = self._import_cps()
-        except ImportError as exc:
-            self._node.get_logger().error(
-                f'[huayan] Cannot import CPS SDK: {exc}\n'
-                'Ensure CPS_python3_Linux.so is on PYTHONPATH.'
-            )
-            self._set_state(ConnectionState.ERROR)
-            return False
+        if self._cps is None:
+            try:
+                self._cps = self._import_cps()
+            except ImportError as exc:
+                self._node.get_logger().error(
+                    f'[huayan] Cannot import CPS SDK: {exc}\n'
+                    'Ensure CPS_python3_Linux.so is on PYTHONPATH.'
+                )
+                self._set_state(ConnectionState.ERROR)
+                return False
 
         ok = self._do_connect_monitor() if monitor_only else self._do_connect()
         if not ok:
@@ -183,16 +291,24 @@ class HuayanInterface:
         return True
 
     def disconnect(self) -> None:
-        """Graceful shutdown. Monitor-only skips disable/blackout."""
+        """Drop the TCP session. Default leaves 48 V on (no BlackOut)."""
         if self._cps is None:
             return
         try:
             self._node.get_logger().info('[huayan] Disconnecting...')
             if not self._monitor_only:
-                self._cps.HRIF_GrpDisable(BOX_ID, RBT_ID)
-                time.sleep(0.5)
-                self._cps.HRIF_BlackOut(BOX_ID)
-                time.sleep(0.3)
+                try:
+                    if self._is_enabled():
+                        self._cps.HRIF_GrpDisable(BOX_ID, RBT_ID)
+                        time.sleep(0.2)
+                except Exception as exc:
+                    self._node.get_logger().warn(
+                        '[huayan] GrpDisable on disconnect: %s' % exc)
+                if self._power_off_on_disconnect:
+                    self._node.get_logger().warn(
+                        '[huayan] power_off_on_disconnect: HRIF_BlackOut')
+                    self._cps.HRIF_BlackOut(BOX_ID)
+                    time.sleep(0.3)
             self._cps.HRIF_DisConnect(BOX_ID)
         except Exception as exc:
             self._node.get_logger().warn(f'[huayan] Disconnect error: {exc}')
@@ -222,15 +338,105 @@ class HuayanInterface:
         return list(self._current_velocities_deg)
 
     @property
+    def current_accelerations(self) -> List[float]:
+        """Joint acceleration in rad/s^2 (finite-diff of deg/s)."""
+        return [math.radians(d) for d in self._current_accelerations_deg]
+
+    @property
+    def current_accelerations_deg(self) -> List[float]:
+        return list(self._current_accelerations_deg)
+
+    @property
+    def current_currents(self) -> List[float]:
+        """This tick's ``HRIF_ReadActJointCur`` (ampere). Empty if that call failed."""
+        return list(self._current_currents_a)
+
+    @property
+    def command_positions(self) -> List[float]:
+        """This tick's ``HRIF_ReadCmdJointPos`` in radians. Empty if that call failed."""
+        return [math.radians(d) for d in self._command_positions_deg]
+
+    @property
+    def command_positions_deg(self) -> List[float]:
+        return list(self._command_positions_deg)
+
+    @property
+    def cps_velocities_deg(self) -> Optional[List[float]]:
+        """Raw ``HRIF_ReadActJointVel`` this tick, or None if the call failed."""
+        if self._cps_velocities_deg is None:
+            return None
+        return list(self._cps_velocities_deg)
+
+    @property
+    def vel_source(self) -> str:
+        """``cps``, ``finite_diff``, or ``none`` for the last velocity sample."""
+        return self._vel_source
+
+    @property
+    def acc_source(self) -> str:
+        """``finite_diff`` or ``none``. CPS has no joint-acceleration read."""
+        return self._acc_source
+
+    @property
     def current_tcp_mm_deg(self) -> List[float]:
         """Actual TCP pose: x,y,z mm then Rx,Ry,Rz deg (Huayan Base)."""
         return list(self._current_tcp_mm_deg)
 
+    @property
+    def vacuum_di0(self) -> Optional[int]:
+        """Box/end DI0 this tick: 1 = suction confirmed, 0 = not holding."""
+        return self._vacuum_di0
+
+    @property
+    def vacuum_do0(self) -> Optional[int]:
+        """DO0 this tick: 1 = vacuum pump on."""
+        return self._vacuum_do0
+
+    @property
+    def vacuum_do1(self) -> Optional[int]:
+        """DO1 this tick: 1 = de-vacuum / release."""
+        return self._vacuum_do1
+
+    def set_do_bit(self, bit: int, state: int) -> Tuple[bool, str]:
+        """Write one box/end DO bit. Refuses monitor-only sessions."""
+        if self._monitor_only:
+            return False, "monitor_only refuses SetDO"
+        if self._cps is None:
+            return False, "CPS not connected"
+        value = 1 if int(state) else 0
+        # Never command 11: measured 2026-09-09, both-on never seals.
+        if value == 1:
+            if (int(bit) == int(self.vacuum_do0_bit)
+                    and self._vacuum_do1 == 1):
+                return False, "refusing DO0=1 while DO1=1"
+            if (int(bit) == int(self.vacuum_do1_bit)
+                    and self._vacuum_do0 == 1):
+                return False, "refusing DO1=1 while DO0=1"
+        try:
+            if self.vacuum_io_kind == "end":
+                n_ret = self._cps.HRIF_SetEndDO(
+                    BOX_ID, RBT_ID, int(bit), value)
+            else:
+                n_ret = self._cps.HRIF_SetBoxDO(BOX_ID, int(bit), value)
+        except Exception as exc:
+            return False, "SetDO exception: %s" % exc
+        if n_ret != 0:
+            return False, self._get_error_str(n_ret)
+        if int(bit) == int(self.vacuum_do0_bit):
+            self._vacuum_do0 = value
+        if int(bit) == int(self.vacuum_do1_bit):
+            self._vacuum_do1 = value
+        return True, ""
+
     def refresh(self) -> None:
-        """Pull latest ACS / joint vel / TCP from CPS into the cache."""
+        """Pull a complete CPS snapshot (ACS+TCP, vel, current, cmd ACS)."""
         if self._cps is None:
             return
-        self._refresh_positions()
+        try:
+            self._refresh_positions()
+        except (OSError, ConnectionError):
+            self.last_acs_ok = False
+            return
 
     def validate_trajectory(self, trajectory) -> Optional[str]:
         """Return error string or None if trajectory is valid."""
@@ -318,19 +524,8 @@ class HuayanInterface:
                     f'vel={vel_deg:.1f}°/s  r={radius}mm'
                 )
 
-                nRet = self._cps.HRIF_WayPoint(
-                    BOX_ID, RBT_ID,
-                    0,                         # nMoveType=0: joint move
-                    0.0, 0.0, 0.0, 0.0, 0.0, 0.0,  # PCS target (unused)
-                    joints_deg[0], joints_deg[1], joints_deg[2],
-                    joints_deg[3], joints_deg[4], joints_deg[5],
-                    TCP_NAME, UCS_NAME,
-                    vel_deg,
-                    accel_deg,
-                    radius,
-                    1,                          # nIsUseJoint=1
-                    0, 0, 0,                    # nIsSeek, nIOBit, nIOState
-                    str(i),                     # strCmdID
+                nRet = hrif_waypoint_joint(
+                    self._cps, joints_deg, vel_deg, accel_deg, radius, str(i),
                 )
 
                 if nRet != 0:
@@ -383,72 +578,152 @@ class HuayanInterface:
             )
         self._refresh_positions()
         log.info(
-            '[huayan] Monitor ready. q_deg=%s',
-            [round(v, 2) for v in self._current_positions_deg],
+            '[huayan] Monitor ready. q_deg=%s'
+            % [round(v, 2) for v in self._current_positions_deg]
         )
         return True
 
     def _do_connect(self) -> bool:
-        """Low-level connection sequence. Returns True on success."""
+        """Low-level connection sequence. Returns True on success.
+
+        The cell is often already in StandBy (FSM 33): ConnectToBox /
+        Electrify then refuse with 20018. Treat those as already-done,
+        matching the Noetic executor. Do not GrpReset a standing arm.
+        """
         log = self._node.get_logger()
 
-        log.info(f'[huayan] Connecting to {self._ip}:{self._port}...')
-        nRet = self._cps.HRIF_Connect(BOX_ID, self._ip, self._port)
-        if nRet != 0:
-            log.error(f'[huayan] HRIF_Connect failed: {self._get_error_str(nRet)}')
-            return False
-
-        nRet = self._cps.HRIF_Connect2Box(BOX_ID)
-        if nRet != 0:
-            log.error(f'[huayan] HRIF_Connect2Box failed: {self._get_error_str(nRet)}')
-            return False
-
-        nRet = self._cps.HRIF_Electrify(BOX_ID)
-        if nRet != 0:
-            log.error(f'[huayan] HRIF_Electrify failed: {self._get_error_str(nRet)}')
-            return False
-
-        nRet = self._cps.HRIF_Connect2Controller(BOX_ID)
-        if nRet != 0:
-            log.error(
-                f'[huayan] HRIF_Connect2Controller failed: {self._get_error_str(nRet)}'
-            )
-            return False
-
-        # Poll until controller is fully started.
-        log.info('[huayan] Waiting for controller to start...')
-        deadline = time.monotonic() + CONTROLLER_START_TIMEOUT_S
-        while time.monotonic() < deadline:
-            result = []
-            nRet = self._cps.HRIF_IsControllerStarted(BOX_ID, result)
-            if nRet == 0 and result and result[0] == '1':
-                break
-            time.sleep(0.5)
+        if not self._cps.HRIF_IsConnected(BOX_ID):
+            log.info(f'[huayan] Connecting to {self._ip}:{self._port}...')
+            nRet = self._cps.HRIF_Connect(BOX_ID, self._ip, self._port)
+            if nRet != 0:
+                log.error(
+                    f'[huayan] HRIF_Connect failed: {self._get_error_str(nRet)}')
+                return False
         else:
-            log.error('[huayan] Controller did not start within timeout.')
+            log.info('[huayan] TCP already up; continuing enable sequence')
+
+        fsm_id, fsm_desc = self._read_fsm()
+        if fsm_id is not None:
+            log.info('[huayan] Current robot FSM: %s (%s)' % (fsm_id, fsm_desc))
+        if fsm_id in (FSM_ESTOP, FSM_ERROR):
+            log.error(
+                '[huayan] Robot is in fault/e-stop (%s). Clear it on the pendant.'
+                % fsm_id)
             return False
 
-        log.info('[huayan] Controller started. Resetting and enabling...')
-        nRet = self._cps.HRIF_GrpReset(BOX_ID, RBT_ID)
-        if nRet != 0:
-            log.error(f'[huayan] HRIF_GrpReset failed: {self._get_error_str(nRet)}')
+        if not self._cps_step(
+                'HRIF_Connect2Box',
+                lambda: self._cps.HRIF_Connect2Box(BOX_ID),
+                connect2box_allow_refuse(fsm_id)):
             return False
 
-        time.sleep(0.3)
-
-        nRet = self._cps.HRIF_GrpEnable(BOX_ID, RBT_ID)
-        if nRet != 0:
-            log.error(f'[huayan] HRIF_GrpEnable failed: {self._get_error_str(nRet)}')
+        if not self._cps_step(
+                'HRIF_Electrify',
+                lambda: self._cps.HRIF_Electrify(BOX_ID),
+                electrify_allow_refuse(fsm_id)):
             return False
 
-        # Give servo time to stabilise.
-        time.sleep(0.5)
+        if fsm_id in (FSM_BLACKOUTING, FSM_BLACKOUT, FSM_ELECTRIFYING):
+            log.info('[huayan] Waiting for controller to start...')
+            if not self._wait_controller_started():
+                return False
+            fsm_id, fsm_desc = self._read_fsm()
+            if fsm_id is not None:
+                log.info(
+                    '[huayan] Robot FSM after power-up: %s (%s)'
+                    % (fsm_id, fsm_desc))
 
-        # Read initial joint positions.
+        allow_controller = (
+            electrify_allow_refuse(fsm_id) or self._controller_started())
+        if not self._cps_step(
+                'HRIF_Connect2Controller',
+                lambda: self._cps.HRIF_Connect2Controller(BOX_ID),
+                allow_controller):
+            return False
+
+        if not already_motion_ready(fsm_id) and not self._controller_started():
+            log.info('[huayan] Waiting for controller to start...')
+            if not self._wait_controller_started():
+                return False
+
+        if already_motion_ready(fsm_id) or self._is_enabled():
+            log.info('[huayan] Servos already enabled (FSM=%s)' % fsm_id)
+        else:
+            if fsm_id == FSM_DISABLE:
+                self._cps_step(
+                    'HRIF_GrpReset',
+                    lambda: self._cps.HRIF_GrpReset(BOX_ID, RBT_ID),
+                    True)
+                time.sleep(0.3)
+            # 20018 is OK if enable raced with the FSM read (already StandBy).
+            if not self._cps_step(
+                    'HRIF_GrpEnable',
+                    lambda: self._cps.HRIF_GrpEnable(BOX_ID, RBT_ID),
+                    True):
+                return False
+            time.sleep(0.5)
+
         self._refresh_positions()
-
         log.info('[huayan] Robot ready.')
         return True
+
+    def _cps_step(self, name, fn, allow_refuse: bool) -> bool:
+        n_ret = fn()
+        if cps_step_ok(n_ret, allow_refuse):
+            if n_ret != 0:
+                self._node.get_logger().info(
+                    '[huayan] %s skipped: %s' % (name, self._get_error_str(n_ret)))
+            return True
+        self._node.get_logger().error(
+            '[huayan] %s failed: %s' % (name, self._get_error_str(n_ret)))
+        return False
+
+    def _read_fsm(self):
+        result = []
+        try:
+            n_ret = self._cps.HRIF_ReadCurFSM(BOX_ID, RBT_ID, result)
+        except Exception:
+            return None, None
+        if n_ret != 0 or not result:
+            return None, None
+        try:
+            fsm_id = int(result[0])
+        except (TypeError, ValueError):
+            return None, result[0]
+        desc = result[1] if len(result) > 1 else str(result[0])
+        return fsm_id, desc
+
+    def _controller_started(self) -> bool:
+        result = []
+        try:
+            n_ret = self._cps.HRIF_IsControllerStarted(BOX_ID, result)
+        except Exception:
+            return False
+        return n_ret == 0 and result and str(result[0]) == '1'
+
+    def _is_enabled(self) -> bool:
+        result = []
+        try:
+            n_ret = self._cps.HRIF_ReadRobotState(BOX_ID, RBT_ID, result)
+        except Exception:
+            return False
+        return n_ret == 0 and len(result) > 1 and str(result[1]) == '1'
+
+    def _wait_controller_started(self) -> bool:
+        deadline = time.monotonic() + CONTROLLER_START_TIMEOUT_S
+        while time.monotonic() < deadline:
+            if self._controller_started():
+                return True
+            fsm_id, _ = self._read_fsm()
+            if fsm_id in (FSM_ESTOP, FSM_ERROR):
+                self._node.get_logger().error(
+                    '[huayan] fault/e-stop while waiting for controller (%s)'
+                    % fsm_id)
+                return False
+            time.sleep(0.5)
+        self._node.get_logger().error(
+            '[huayan] Controller did not start within timeout.')
+        return False
 
     def _ensure_connected(self) -> bool:
         """
@@ -458,8 +733,21 @@ class HuayanInterface:
         if self._cps is None:
             return False
 
-        if self._cps.HRIF_IsConnected(BOX_ID):
+        tcp_up = False
+        try:
+            tcp_up = bool(self._cps.HRIF_IsConnected(BOX_ID))
+        except Exception:
+            tcp_up = False
+        if self.is_ready and tcp_up:
             return True
+        if tcp_up:
+            self._node.get_logger().warn(
+                '[huayan] TCP up but not READY; retrying enable sequence')
+            if self._do_connect():
+                self._set_state(ConnectionState.READY)
+                return True
+            self._set_state(ConnectionState.ERROR)
+            return False
 
         self._node.get_logger().warn('[huayan] Connection lost. Attempting reconnect...')
         for attempt in range(1, MAX_RECONNECT_RETRIES + 1):
@@ -512,34 +800,112 @@ class HuayanInterface:
             time.sleep(POLL_INTERVAL_S)
 
     def _refresh_positions(self) -> None:
-        """Read actual joint positions, velocities, and TCP from hardware."""
-        now = time.monotonic()
-        dt = now - self._last_refresh_mono if self._last_refresh_mono else 0.0
-        prev = list(self._current_positions_deg)
+        """One complete CPS snapshot. Never reuse a stale field under a new stamp.
 
-        result = []
-        nRet = self._cps.HRIF_ReadActJointPos(BOX_ID, RBT_ID, result)
-        parsed = as_float_list(result, 6) if nRet == 0 else None
-        if parsed is not None:
-            self._current_positions_deg = parsed
+        ``HRIF_ReadActPos`` is one packet (ACS + the pose slice SDK uses as TCP).
+        Vel / current / cmd ACS are extra RTTs on the same tick so the bag has
+        the controller's own values, not held-over samples from earlier ticks.
+        """
+        t0 = time.monotonic()
+        dt = t0 - self._last_refresh_mono if self._last_refresh_mono else 0.0
+        prev = list(self._current_positions_deg)
+        prev_vel = list(self._current_velocities_deg)
+        self._refresh_n += 1
+        self.last_acs_ok = False
+        self.last_tcp_ok = False
+        self.last_vel_cps_ok = False
+        self.last_cur_ok = False
+        self.last_cmd_ok = False
+        self.last_io_ok = False
+        self._cps_velocities_deg = None
+        self._current_currents_a = []
+        self._command_positions_deg = []
+        self._vacuum_di0 = None
+        self._vacuum_do0 = None
+        self._vacuum_do1 = None
+
+        pose = []
+        n_pose = self._cps.HRIF_ReadActPos(BOX_ID, RBT_ID, pose)
+        self.last_sample_mono = time.monotonic()
+        parsed = acs_from_read_act_pos(pose) if n_pose == 0 else None
+        tcp = tcp_from_read_act_pos(pose) if n_pose == 0 else None
+        if parsed is None:
+            result = []
+            n_acs = self._cps.HRIF_ReadActJointPos(BOX_ID, RBT_ID, result)
+            parsed = as_float_list(result, 6) if n_acs == 0 else None
+        if parsed is None:
+            self.last_refresh_dt_s = time.monotonic() - t0
+            return
+        self._current_positions_deg = parsed
+        self.last_acs_ok = True
+        if tcp is not None:
+            self._current_tcp_mm_deg = tcp
+            self.last_tcp_ok = True
 
         vel = []
         nRet = self._cps.HRIF_ReadActJointVel(BOX_ID, RBT_ID, vel)
         parsed_vel = as_float_list(vel, 6) if nRet == 0 else None
-        if parsed_vel is not None:
-            self._current_velocities_deg = parsed_vel
+        self._cps_velocities_deg = parsed_vel
+        self.last_vel_cps_ok = parsed_vel is not None
+        fd = finite_diff_deg_s(prev, self._current_positions_deg, dt)
+        moved = joints_moved_deg(prev, self._current_positions_deg)
+        chosen, src = choose_joint_vel_deg(parsed_vel, fd, moved)
+        if chosen is not None:
+            self._current_velocities_deg = chosen
+            self._vel_source = src
         else:
-            fd = finite_diff_deg_s(prev, self._current_positions_deg, dt)
-            if fd is not None:
-                self._current_velocities_deg = fd
+            self._current_velocities_deg = [0.0] * 6
+            self._vel_source = "none"
 
-        pose = []
-        nRet = self._cps.HRIF_ReadActPos(BOX_ID, RBT_ID, pose)
-        tcp = tcp_from_read_act_pos(pose) if nRet == 0 else None
-        if tcp is not None:
-            self._current_tcp_mm_deg = tcp
+        acc = finite_diff_deg_s(prev_vel, self._current_velocities_deg, dt)
+        if acc is not None:
+            self._current_accelerations_deg = acc
+            self._acc_source = "finite_diff"
+        else:
+            self._current_accelerations_deg = [0.0] * 6
+            self._acc_source = "none"
 
-        self._last_refresh_mono = now
+        cur = []
+        nRet = self._cps.HRIF_ReadActJointCur(BOX_ID, RBT_ID, cur)
+        parsed_cur = as_float_list(cur, 6) if nRet == 0 else None
+        if parsed_cur is not None:
+            self._current_currents_a = parsed_cur
+            self.last_cur_ok = True
+
+        cmd = []
+        n_cmd = self._cps.HRIF_ReadCmdJointPos(BOX_ID, RBT_ID, cmd)
+        parsed_cmd = as_float_list(cmd, 6) if n_cmd == 0 else None
+        if parsed_cmd is not None:
+            self._command_positions_deg = parsed_cmd
+            self.last_cmd_ok = True
+
+        self._vacuum_di0 = self._read_di_bit(self.vacuum_di_bit)
+        self._vacuum_do0 = self._read_do_bit(self.vacuum_do0_bit)
+        self._vacuum_do1 = self._read_do_bit(self.vacuum_do1_bit)
+        self.last_io_ok = (
+            self._vacuum_di0 is not None
+            and self._vacuum_do0 is not None
+            and self._vacuum_do1 is not None
+        )
+
+        self.last_refresh_dt_s = time.monotonic() - t0
+        self._last_refresh_mono = t0
+
+    def _read_di_bit(self, bit: int) -> Optional[int]:
+        result = []
+        if self.vacuum_io_kind == "end":
+            n_ret = self._cps.HRIF_ReadEndDI(BOX_ID, RBT_ID, int(bit), result)
+        else:
+            n_ret = self._cps.HRIF_ReadBoxDI(BOX_ID, int(bit), result)
+        return as_bit(result) if n_ret == 0 else None
+
+    def _read_do_bit(self, bit: int) -> Optional[int]:
+        result = []
+        if self.vacuum_io_kind == "end":
+            n_ret = self._cps.HRIF_ReadEndDO(BOX_ID, RBT_ID, int(bit), result)
+        else:
+            n_ret = self._cps.HRIF_ReadBoxDO(BOX_ID, int(bit), result)
+        return as_bit(result) if n_ret == 0 else None
 
     def _safe_stop(self) -> None:
         """Best-effort emergency stop."""

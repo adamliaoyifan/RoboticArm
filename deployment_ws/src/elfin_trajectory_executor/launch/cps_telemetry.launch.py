@@ -1,6 +1,8 @@
-"""CPS monitor only: joint angles, joint velocity, TCP. No servo enable.
+"""CPS monitor only: joint angles, velocity, acceleration, TCP. No servo enable.
 
-Do not combine with jazzy_real.launch.py (one TCP client to the box).
+Publishes CPS ReadActACS onto /joint_states (rad, rad/s, effort=ampere) and
+/elfin/joint_kinematics (includes rad/s^2). Do not combine with
+jazzy_real.launch.py (one TCP client to the box).
 
   ros2 launch elfin_trajectory_executor cps_telemetry.launch.py
 """

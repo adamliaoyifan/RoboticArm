@@ -34,6 +34,10 @@ trajectory_executor:
     default_velocity_deg: 30.0
     max_velocity_deg: 60.0
 
+    # Ctrl+C / launch teardown: disable servo + drop TCP. Do not BlackOut
+    # (that cuts 48 V). Opt in only for an explicit power-down.
+    power_off_on_disconnect: false
+
     # ---------------------------------------------------------------
     # Joint names — must match the planning node's URDF joint names
     # ---------------------------------------------------------------
