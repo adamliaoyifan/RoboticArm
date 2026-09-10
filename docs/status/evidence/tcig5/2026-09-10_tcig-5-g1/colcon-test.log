@@ -1,0 +1,16 @@
+colcon build --packages-select luggage_description luggage_packing luggage_gazebo --symlink-install
+Finished <<< luggage_description [0.19s]
+Finished <<< luggage_packing [0.26s]
+Finished <<< luggage_gazebo [0.10s]
+
+Summary: 3 packages finished [0.43s]
+
+colcon test --packages-select luggage_description luggage_packing luggage_gazebo
+Summary: 3 packages finished [1.91s]
+  1 package had stderr output: luggage_description
+
+colcon test-result --verbose
+build/luggage_description/pytest.xml: 150 tests, 0 errors, 0 failures, 0 skipped
+build/luggage_gazebo/pytest.xml: 53 tests, 0 errors, 0 failures, 0 skipped
+build/luggage_packing/pytest.xml: 85 tests, 0 errors, 0 failures, 0 skipped
+Summary: 288 tests, 0 errors, 0 failures, 0 skipped
