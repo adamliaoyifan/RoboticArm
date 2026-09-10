@@ -52,3 +52,12 @@ Owner and complexity allocation are coherent: TCIG-5 to
 `cursor-grok-b/grok-4.6`; TCIG-2, TCIG-7, and SIM-R1-5 to distinct
 `gpt-5.6-sol` Codex eng owners. The plan plus this consensus may be committed,
 then all four generation-1 runnable rows may bind to that same exact revision.
+
+## Reply -- reviews/codex-reviews-main -- 2026-09-10 15:34 -- codex/gpt-5
+
+Post-dispatch lifecycle audit found that the accepted TCIG-1 and SIM-R1-1
+threads predate mandatory `generation` metadata. They remain verified source
+inputs, but new-generation dependency parsing is not a valid way to represent
+them. Consensus scope and acceptance are unchanged: any replacement generation
+created solely to repair this metadata uses `depends_on: none`, while retaining
+the pinned accepted commits and exact task scope from this plan.

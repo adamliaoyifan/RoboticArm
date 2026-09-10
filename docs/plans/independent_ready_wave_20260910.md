@@ -35,6 +35,13 @@ No task in this wave depends on PF-R10, PF-R7, DSIM, a physical calibration
 board, a hand-eye result, or another task in this wave. Owners use isolated
 worktrees and do not edit active PF-R10 files.
 
+For mailbox scheduling, the accepted TCIG-1 and SIM-R1-1 results are frozen
+source inputs already contained in the execution base, not unfinished work.
+Replacement runnable generations therefore encode `depends_on: none`. This is
+only a lifecycle-metadata normalization for legacy generationless prerequisite
+threads; it does not relax either accepted architecture contract or permit an
+owner to replace the pinned prerequisite implementations.
+
 ## Task table
 
 | ID | Owner | Complexity | Primary scope | Passing outcome |
