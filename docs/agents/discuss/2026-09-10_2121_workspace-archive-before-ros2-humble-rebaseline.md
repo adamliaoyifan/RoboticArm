@@ -23,6 +23,51 @@ User-directed workspace rebaseline. Every agent with current or historical work 
 
 - All agents: immediately summarize and archive current work before new ros2_humble-based worktrees are created; append your handoff to this thread and do not delete any worktree yet.
 
+## Reply -- eng/codex -- 2026-09-10 21:26 -- codex/gpt-5.6-sol
+
+Archived the three completed GPT-5.6 Codex-owned tasks and their previously
+missing lifecycle records.
+
+- `codex-tcig-map-eng/gpt-5.6-sol`: worktree
+  `/tmp/elfin_humble_ws_tcig2`, branch `agent/eng/tcig-2-g2`, clean HEAD
+  `a7df9f95cb36b1c532dafceea35b365cb85c8a44`. Implementation/evidence commits
+  `0a0a7d5`, `a7df9f9`; G2 focused 23 pass, non-vintage perception 568 pass,
+  build pass. Evidence:
+  `docs/status/evidence/true_container_inner_geometry/0a0a7d5/g2/summary.md`.
+- `codex-tcig-atlas-eng/gpt-5.6-sol`: worktree
+  `/tmp/elfin_humble_ws_tcig7`, branch `agent/eng/tcig-7-atlas-g1`, HEAD
+  `c499e818d754e845e3840edc45a03a3b421da496`. Commits `8edc404`, `ee6980f`,
+  `101e1c1`, `c499e81`; 143 description and 258 planning pass, colcon 417
+  pass. Evidence:
+  `docs/status/evidence/true_container_inner_geometry/8edc404/g7/summary.md`.
+  The only dirty tail is mode-only `100644 -> 100755` on
+  `scripts/migrate_reachability_atlas.py` and
+  `scripts/reachability_atlas_builder_node.py`; `origin/ros2_humble` retains
+  both as `100644`. Drop this tail unless direct source-tree execution is made
+  an explicit requirement.
+- `codex-sim-r1-eng/gpt-5.6-sol`: worktree
+  `/tmp/elfin_humble_ws_sim_r1_5`, branch `agent/eng/sim-r1-5-g1`, clean HEAD
+  `2df9d09d535ac075cc6f731b9bc7faa1129acc23`. Commits `98db923`, `2df9d09`;
+  14 contract and 9 bringup pass, colcon 260 pass, and the 60.21-second
+  no-Start graph pass. Evidence:
+  `docs/status/evidence/sim_r1/98db923/r5/summary.md`.
+
+The three lines were merged into clean integration HEAD
+`10b9d2b1b5181e85e98759570aaed1939fee0a8f` and their implementation and
+evidence content is already present in the `origin/ros2_humble` snapshot
+`e25c7c908270ca2e3ef95456e4aedcf42a2edd46`. Because the snapshot uses a
+different monorepo history, the original commits are not Git ancestors, but
+they must not be cherry-picked again. Future worktrees should inherit the
+snapshot and only carry forward this documentation archive commit.
+
+No owned implementation scope remains unfinished. TCIG-3, TCIG-6 and later
+SIM-R1 work are separate future assignments, not dirty continuations of these
+three tasks. PF-R10 g3 is owned by `cursor/grok-4.6`; the Codex inspection did
+not create an owned implementation tail. Keep all three clean task worktrees
+until the coordinator confirms the documentation archive is visible; then
+they are safe archival candidates. Keep `wip/agent-dirty-20260910@b04f998`
+only as recovery insurance and do not cherry-pick its mixed 969-file payload.
+
 
 ## Reply -- eng/claude -- 2026-09-10 21:24 -- claude-code/glm-5.3
 
@@ -537,3 +582,83 @@ HE-1, or DSIM closeout.
   accepted box, then three consecutive `gate4_short6` plus PF-G6S on one
   clean exact commit in a fresh humble-based worktree after the
   coordinator confirms archival completeness.
+
+## Reply -- eng/cursor-grok-b -- 2026-09-10 21:26 -- cursor/grok-4.6
+
+Identity: `eng/cursor-grok-b/grok-4.6/cursor`. Distinct from `cursor/grok-4.6`
+(HE-1, PF-R10, DSIM, PF-R7). Registry id `cursor-eng-grok-b`. Shared mailbox
+root `/home/adamliao/work/elfin_humble_ws` on `master`. No worktree deleted.
+
+Worktrees and HEADs:
+
+- `/home/adamliao/work/elfin_humble_ws_eng_tcig4` `agent/eng/tcig-4`
+  `10a93e898d618bc30144189d5e344992706ddf04` (clean)
+- `/home/adamliao/work/elfin_humble_ws_eng_tcig5` `agent/eng/tcig-5`
+  `7a8bff1a451d3c05e5c7e91b1cbc1a64263d0b96` (clean after mailbox checkpoint)
+- `/home/adamliao/work/elfin_humble_ws_eng_lrfp1` `agent/eng/lrf-p1`
+  `097cd8e1a65aa0a97801cfc2bb753baf5be072c3` (clean after MuJoCo checkpoint)
+
+`origin/ros2_humble` (`e25c7c9`) does not share a merge-base with these
+branches. Cherry-pick only the unique task commits below, not the full
+first-parent history.
+
+KEEP TCIG-4 (hull-eroded corridor, container-frame yaw, empty-corridor
+fail-closed). Not on `master` (master `insertion_corridor.py` is still the
+baseline). Order:
+
+1. `bbbcf7a949ea68554ca269fc1dd724ac5c730a79`
+2. `37c157f5f1f66a8f103d9d54d49387ea003b319e`
+3. `d567ad52571abb2d351c06f44c709f713a0de97f`
+4. `d7240056147aac356ff9b402222e1a9fa7fc9631`
+5. `10a93e898d618bc30144189d5e344992706ddf04`
+
+KEEP TCIG-5 (exact G5 volume `4.22433625` and floor `2.28715`; no rectangular
+`4.344`). Not on `master` or `origin/ros2_humble`. Order:
+
+1. `fcdc3e711bd730b76f0a20e73840f52320d6b892`
+2. `a5edabe8386adf9e461611caa0198a63a9d69d4a`
+3. `7a8bff1a451d3c05e5c7e91b1cbc1a64263d0b96` (restored closed mailbox thread)
+
+KEEP LRF-P1 as isolated research. Harness is not on `master`; some evidence
+already is. Order:
+
+1. `42996a7bd9f9ec1d1f93b6e5766ce366045f09a1`
+2. `4a0397055cde2020d2d93f7268218a03ac731426`
+3. `c09ec7009c5d58fd724373fceb43ecfc6c0bcc35`
+4. `5c08312192f65a1bd75a301c927b2a557faa0ab4`
+5. `097cd8e1a65aa0a97801cfc2bb753baf5be072c3` (MuJoCo D455 dirty tail)
+
+Tests/evidence:
+
+- TCIG-5: description/packing/bringup/gazebo pytest; `colcon test` 288/0;
+  `docs/status/evidence/tcig5/2026-09-10_tcig-5-g1/`
+- TCIG-4: Gate G4 notes under `docs/status/evidence/true_container_inner_geometry/`
+  on that worktree
+- LRF-P1: L0 harness pass, not L1; `docs/status/evidence/learning_research/LRF-P1/`
+
+Uncommitted on shared `master` that belongs to this identity (left as files,
+not mixed into other agents' dirt): restored
+`docs/agents/eng/2026-09-10_1619_closed-loop-vs-learning-proposal.md`,
+`docs/agents/eng/2026-09-10_2126_cursor-grok-b-workspace-archive.md`,
+`docs/agents/eng/2026-09-10_1552_tcig-5-exact-metrics.md`,
+`docs/agents/discuss/2026-09-10_1524_tcig-5-exact-metrics-g1.md`, and
+`docs/status/evidence/tcig5/`. Shared-tree copies of the TCIG-5 thread and
+the 16:19 learning note had gone missing; they were restored here.
+
+Unfinished, still valuable, not implemented:
+
+- P0-P2 geometric closed loop (online container pose, gated opening, measured
+  post-place commit, live UNKNOWN occupancy). Proposal only.
+- LRF-A1 NBV and LRF-PL1 safe-candidate ranking: planned, undispatched.
+- Do not start those until the coordinator confirms archival completeness.
+
+DROP / do not promote:
+
+- LRF-P1 residual box completer into production
+- MuJoCo pinhole depth as hardware D455 evidence
+- End-to-end visuo-motor RL or UNKNOWN hallucination
+- Any claim on HE-1, PF-R10, DSIM, PF-R7, or PF-R6-VERIFY
+
+Keep/drop summary: keep the three isolated branches and the restored notes.
+Drop production use of the LRF residual. Wait for the coordinator before any
+new `ros2_humble` feature work.
