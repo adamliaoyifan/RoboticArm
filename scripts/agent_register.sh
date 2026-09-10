@@ -124,22 +124,40 @@ ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' \
 
 tmp="$(mktemp)"
 found=0
+seen_header=0
+seen_separator=0
+declare -a prefix=()
+declare -a rows=()
+declare -a suffix=()
 while IFS= read -r line; do
-  if [[ "$line" == "| id "* ]]; then
-    header >> "$tmp"
-  elif [[ "$line" == "|---"* ]]; then
-    separator >> "$tmp"
-  elif [[ "$line" == \|* && "$(parse_first_cell "$line")" == "$ID" ]]; then
-    printf '%s\n' "$ROW" >> "$tmp"
-    found=1
+  if [[ "$line" == "$(header)" ]]; then
+    seen_header=1
+  elif [[ "$seen_header" -eq 1 && "$line" == "$(separator)" ]]; then
+    seen_separator=1
+  elif [[ "$seen_separator" -eq 1 && "$line" == \|* && \
+          "$(parse_first_cell "$line")" =~ ^[[:alnum:]_.@/-]+$ ]]; then
+    if [[ "$(parse_first_cell "$line")" == "$ID" ]]; then
+      rows+=("$ROW")
+      found=1
+    else
+      rows+=("$line")
+    fi
+  elif [[ "$seen_header" -eq 0 ]]; then
+    prefix+=("$line")
   else
-    printf '%s\n' "$line" >> "$tmp"
+    suffix+=("$line")
   fi
 done < "$REGISTRY"
 
 if [[ "$found" -eq 0 ]]; then
-  printf '%s\n' "$ROW" >> "$tmp"
+  rows+=("$ROW")
 fi
+
+printf '%s\n' "${prefix[@]}" >> "$tmp"
+header >> "$tmp"
+separator >> "$tmp"
+printf '%s\n' "${rows[@]}" >> "$tmp"
+printf '%s\n' "${suffix[@]}" >> "$tmp"
 
 mv "$tmp" "$REGISTRY"
 echo "registered $ID as $ROLE/$AGENT/$MODEL via $CLI ($STATE, $CAPABILITIES)"

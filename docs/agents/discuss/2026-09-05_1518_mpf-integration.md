@@ -9,6 +9,9 @@
 - subtask: MPF-INTEGRATION
 - depends_on: MPF-1,MPF-2
 - revision: b52a4f0
+- generation: 1
+- plan_revision: b52a4f041af5efd1370f7c200a55f5cd87a757b7
+- dispatch_ready: yes
 
 ## Post -- reviews/codex-reviews-main -- 2026-09-05 15:18 -- codex/gpt-5.6-sol
 
@@ -22,3 +25,9 @@ Own MPF-INTEGRATION end to end after MPF-1 and MPF-2 pass. Migrate the current m
 
 - After MPF-1 and MPF-2 pass, migrate the live mailbox/registry and run the complete lifecycle regression.
 
+## Claim -- eng/codex -- 2026-09-10 15:28 -- codex/gpt-5
+
+- started_at: 2026-09-10T15:28:55+08:00
+- claimed_generation: 1
+- claimed_plan_revision: b52a4f0
+- claimed_dependencies: MPF-1=1,MPF-2=1

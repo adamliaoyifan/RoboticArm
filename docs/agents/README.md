@@ -304,6 +304,17 @@ be claimed by `agent_start.sh`, `--claim-next`, or live scheduler dispatch.
 Legacy rows without the field remain compatible only until mailbox migration
 is complete; never omit it on new work.
 
+The one-time migration command updates only runnable rows currently listed in
+`OPEN.md` and their matching threads. It leaves closed historical threads
+unchanged, stamps legacy dispatched work with `dispatch_ready: yes`, and
+preserves a pre-migration Claim whose short plan SHA resolves to the same exact
+commit. Always preview the bounded set before applying it:
+
+```bash
+python3 scripts/agent_mailbox.py migrate --plan-revision <approved-commit> --dry-run
+python3 scripts/agent_mailbox.py migrate --plan-revision <approved-commit>
+```
+
 ```bash
 scripts/agent_poll_self.py --agent cursor --model grok-4.6 --json
 scripts/agent_poll_self.py --agent cursor --model grok-4.6 \
