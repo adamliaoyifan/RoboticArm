@@ -20,6 +20,7 @@ Place support:
 
 from __future__ import division
 
+import struct
 import threading
 import time
 
@@ -105,22 +106,75 @@ def mesh_msg_from_arrays(vertices, faces):
     return msg
 
 
+def load_stl_arrays(path):
+    """Return (vertices, faces) from a binary or ASCII STL. No trimesh."""
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 84:
+        raise ValueError("STL %s is too small" % path)
+    n_tri = struct.unpack_from("<I", data, 80)[0]
+    if n_tri > 0 and (84 + 50 * n_tri) == len(data):
+        return _binary_stl_arrays(data, n_tri)
+    text = data.decode("utf-8", "replace")
+    if "facet" in text.lower():
+        return _ascii_stl_arrays(text)
+    raise ValueError("STL %s is neither binary nor ASCII" % path)
+
+
+def _binary_stl_arrays(data, n_tri):
+    vertices = []
+    faces = []
+    offset = 84
+    for _ in range(int(n_tri)):
+        _n0, _n1, _n2, x1, y1, z1, x2, y2, z2, x3, y3, z3 = struct.unpack_from(
+            "<12f", data, offset)
+        base = len(vertices)
+        vertices.extend(((x1, y1, z1), (x2, y2, z2), (x3, y3, z3)))
+        faces.append((base, base + 1, base + 2))
+        offset += 50
+    return vertices, faces
+
+
+def _ascii_stl_arrays(text):
+    vertices = []
+    faces = []
+    tri = []
+    for line in text.splitlines():
+        parts = line.strip().split()
+        if len(parts) >= 4 and parts[0].lower() == "vertex":
+            tri.append((float(parts[1]), float(parts[2]), float(parts[3])))
+            if len(tri) == 3:
+                base = len(vertices)
+                vertices.extend(tri)
+                faces.append((base, base + 1, base + 2))
+                tri = []
+    if not faces:
+        raise ValueError("ASCII STL had no facets")
+    return vertices, faces
+
+
 def load_stl_mesh_msg(path, max_faces=0):
     """Load an STL into shape_msgs/Mesh. Optional quadric decimation."""
-    import trimesh
-    mesh = trimesh.load(path, force="mesh")
-    if mesh is None:
-        raise FileNotFoundError("trimesh failed to load %s" % path)
-    if not hasattr(mesh, "faces"):
-        raise ValueError("STL %s did not produce a triangular mesh" % path)
-    n_faces = int(len(mesh.faces))
-    limit = int(max_faces)
-    if limit > 0 and n_faces > limit:
-        try:
-            mesh = mesh.simplify_quadric_decimation(limit)
-        except TypeError:
-            mesh = mesh.simplify_quadric_decimation(face_count=limit)
-    return mesh_msg_from_arrays(mesh.vertices, mesh.faces)
+    try:
+        import trimesh
+    except ImportError:
+        trimesh = None
+    if trimesh is not None:
+        mesh = trimesh.load(path, force="mesh")
+        if mesh is None:
+            raise FileNotFoundError("trimesh failed to load %s" % path)
+        if not hasattr(mesh, "faces"):
+            raise ValueError("STL %s did not produce a triangular mesh" % path)
+        n_faces = int(len(mesh.faces))
+        limit = int(max_faces)
+        if limit > 0 and n_faces > limit:
+            try:
+                mesh = mesh.simplify_quadric_decimation(limit)
+            except TypeError:
+                mesh = mesh.simplify_quadric_decimation(face_count=limit)
+        return mesh_msg_from_arrays(mesh.vertices, mesh.faces)
+    vertices, faces = load_stl_arrays(path)
+    return mesh_msg_from_arrays(vertices, faces)
 
 
 def build_mesh_collision_object(obj_id, xyz, quat, mesh_msg,

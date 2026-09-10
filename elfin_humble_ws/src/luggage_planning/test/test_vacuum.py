@@ -6,6 +6,7 @@ import unittest
 import pytest
 
 from luggage_planning.vacuum_backend import (
+    HardwareVacuumBackend,
     SimVacuumBackend,
     StubVacuumBackend,
     relative_offset,
@@ -189,6 +190,119 @@ class TestStubBackend(unittest.TestCase):
         self.assertFalse(backend.is_attached())
 
 
+class FakeVacuumIo(object):
+    def __init__(self, seal_delay=6.4):
+        self.do0 = 0
+        self.do1 = 0
+        self._di0 = 0
+        self.t = 0.0
+        self.seal_delay = float(seal_delay)
+        self.commands = []
+        self._pump_on_at = None
+
+    def now(self):
+        return self.t
+
+    def sleep(self, dt):
+        self.t += float(dt)
+        self._update_di0()
+
+    def di0(self):
+        self._update_di0()
+        return int(self._di0)
+
+    def set_do(self, bit, value):
+        value = 1 if int(value) else 0
+        if int(bit) == 0:
+            self.do0 = value
+        else:
+            self.do1 = value
+        self.commands.append((int(bit), value, self.t))
+        if self.do0 == 1 and self.do1 == 0:
+            if self._pump_on_at is None:
+                self._pump_on_at = self.t
+        else:
+            self._pump_on_at = None
+            if self.do1 == 1:
+                self._di0 = 0
+        self._update_di0()
+        return True, ""
+
+    def _update_di0(self):
+        if self.do0 == 1 and self.do1 == 1:
+            self._di0 = 0
+            return
+        if self.do1 == 1:
+            self._di0 = 0
+            return
+        if self.do0 == 1 and self.do1 == 0 and self._pump_on_at is not None:
+            if (self.t - self._pump_on_at) >= self.seal_delay:
+                self._di0 = 1
+
+
+class TestHardwareBackend(unittest.TestCase):
+
+    def test_attach_waits_for_di0(self):
+        io = FakeVacuumIo(seal_delay=6.4)
+        backend = HardwareVacuumBackend(
+            io, seal_timeout_sec=8.0, seal_poll_sec=0.2, blowoff_hold_sec=0.0)
+        ok, message = backend.attach({})
+        self.assertTrue(ok, message)
+        self.assertTrue(backend.is_attached())
+        self.assertGreaterEqual(io.t, 6.4)
+        self.assertLess(io.t, 8.0)
+        self.assertEqual((io.do0, io.do1, io.di0()), (1, 0, 1))
+        self.assertEqual(io.commands[0][0:2], (1, 0))
+        self.assertEqual(io.commands[1][0:2], (0, 1))
+
+    def test_never_commands_both_on(self):
+        io = FakeVacuumIo(seal_delay=0.0)
+        backend = HardwareVacuumBackend(
+            io, seal_timeout_sec=1.0, seal_poll_sec=0.1, blowoff_hold_sec=0.0)
+        backend.attach({})
+        backend.detach({})
+        do0 = 0
+        do1 = 0
+        for bit, value, _t in io.commands:
+            if bit == 0:
+                do0 = value
+            else:
+                do1 = value
+            self.assertFalse(do0 == 1 and do1 == 1, io.commands)
+
+    def test_attach_timeout_releases(self):
+        io = FakeVacuumIo(seal_delay=99.0)
+        backend = HardwareVacuumBackend(
+            io, seal_timeout_sec=0.5, seal_poll_sec=0.1, blowoff_hold_sec=0.0,
+            release_timeout_sec=0.2)
+        ok, message = backend.attach({})
+        self.assertFalse(ok)
+        self.assertIn("VACUUM_SEAL_TIMEOUT", message)
+        self.assertFalse(backend.is_attached())
+        self.assertEqual((io.do0, io.do1), (0, 0))
+        do0 = do1 = 0
+        for bit, value, _t in io.commands:
+            if bit == 0:
+                do0 = value
+            else:
+                do1 = value
+            self.assertFalse(do0 == 1 and do1 == 1, io.commands)
+
+    def test_release_blowoff_sequence(self):
+        io = FakeVacuumIo(seal_delay=0.0)
+        backend = HardwareVacuumBackend(
+            io, seal_timeout_sec=1.0, seal_poll_sec=0.05, blowoff_hold_sec=0.1)
+        self.assertTrue(backend.attach({})[0])
+        ok, _ = backend.detach({})
+        self.assertTrue(ok)
+        bits = [c[0:2] for c in io.commands]
+        self.assertIn((0, 0), bits)
+        self.assertIn((1, 1), bits)
+        self.assertEqual(bits[-1], (1, 0))
+        self.assertEqual(io.di0(), 0)
+        self.assertFalse(backend.is_attached())
+
+
 class TestPlanningSceneMessages(unittest.TestCase):
 
     def test_build_shapes(self):
@@ -236,6 +350,36 @@ class TestPlanningSceneMessages(unittest.TestCase):
         self.assertEqual(len(obj.meshes[0].triangles), 1)
         self.assertEqual(
             list(obj.meshes[0].triangles[0].vertex_indices), [0, 1, 2])
+
+    def test_load_stl_without_trimesh(self):
+        import os
+        import struct
+        import tempfile
+        pytest.importorskip("moveit_msgs")
+        from luggage_planning.planning_scene_client import (
+            load_stl_arrays,
+            load_stl_mesh_msg,
+        )
+        payload = bytearray(80)
+        payload += struct.pack("<I", 1)
+        payload += struct.pack(
+            "<12fH",
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "tri.stl")
+            with open(path, "wb") as handle:
+                handle.write(payload)
+            vertices, faces = load_stl_arrays(path)
+            self.assertEqual(len(faces), 1)
+            self.assertEqual(vertices[1], (1.0, 0.0, 0.0))
+            mesh = load_stl_mesh_msg(path)
+            self.assertEqual(len(mesh.triangles), 1)
+            self.assertEqual(len(mesh.vertices), 3)
 
     def test_acm_pair_roundtrip(self):
         pytest.importorskip("moveit_msgs")

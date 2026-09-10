@@ -103,9 +103,19 @@ class SceneManagerNode(Node):
             if self._sync_timer is not None:
                 self._sync_timer.cancel()
             self.get_logger().info("auto sync_static_scene: %s" % message)
-        else:
-            self.get_logger().warn(
-                "auto sync_static_scene waiting: %s" % message)
+            return
+        permanent = (
+            "No module named" in message
+            or message.startswith("stl load failed")
+        )
+        if permanent and self._sync_timer is not None:
+            self._sync_timer.cancel()
+            self._sync_timer = None
+            self.get_logger().error(
+                "auto sync_static_scene gave up: %s" % message)
+            return
+        self.get_logger().warn(
+            "auto sync_static_scene waiting: %s" % message)
 
     def _handle_sync_static(self, _request, response):
         ok, message = self._sync_static()

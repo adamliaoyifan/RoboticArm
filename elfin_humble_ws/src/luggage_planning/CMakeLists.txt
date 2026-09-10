@@ -6,7 +6,7 @@ find_package(ament_cmake_python REQUIRED)
 
 ament_python_install_package(${PROJECT_NAME})
 
-install(DIRECTORY data
+install(DIRECTORY data launch
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -15,6 +15,7 @@ install(PROGRAMS
   scripts/motion_planner_node.py
   scripts/vacuum_controller_node.py
   scripts/scene_manager_node.py
+  scripts/hardware_pick_driver.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

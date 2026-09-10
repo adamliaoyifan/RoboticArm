@@ -2,9 +2,8 @@
 """Vacuum backend abstraction (no ROS): attach state machine + sim follow.
 
 Three layers per the plan:
-- ``VacuumBackend`` ABC - the hardware/sim contract. ``HardwareBackend``
-  (real GPIO + pressure sensor) is intentionally left unimplemented here;
-  the interface is what guarantees the same VacuumCommand works on both.
+- ``VacuumBackend`` ABC - the hardware/sim contract.
+- ``HardwareVacuumBackend`` - box DO0/DO1 + DI0 (injected IO, no ROS).
 - ``SimVacuumBackend`` - kinematic follow via an injected ``GzPoseClient``
   (so the state machine is unit-testable with a mock) plus an injected
   planning-scene attacher.
@@ -62,6 +61,89 @@ class VacuumBackend(object):
         """Optional kinematic follow. Stub/hardware default is a no-op."""
         del panel_xyz, panel_quat
         return True, ""
+
+
+class HardwareVacuumBackend(VacuumBackend):
+    """Real suction cup: box DO0=pump, DO1=blow-off, DI0=sealed.
+
+    Measured 2026-09-09: only DO0=1/DO1=0 seals (DI0 rise ~6.3 s).
+    Both-on never seals. Release is DO0=0 then DO1 pulse; DI0 falls in
+    tens of milliseconds with blow-off.
+
+    ``io`` must provide ``set_do(bit, value) -> (ok, msg)``, ``di0()``,
+    ``sleep(dt)``, and ``now()``.
+    """
+
+    def __init__(
+            self, io, seal_timeout_sec=8.0, seal_poll_sec=0.1,
+            release_timeout_sec=1.0, blowoff_hold_sec=0.1):
+        self._io = io
+        self.seal_timeout_sec = float(seal_timeout_sec)
+        self.seal_poll_sec = float(seal_poll_sec)
+        self.release_timeout_sec = float(release_timeout_sec)
+        self.blowoff_hold_sec = float(blowoff_hold_sec)
+        self._attached = False
+        self.last_error = ""
+
+    def is_attached(self):
+        return self._attached
+
+    def follow_step(self, panel_xyz, panel_quat):
+        del panel_xyz, panel_quat
+        di0 = self._io.di0()
+        if di0 is not None:
+            self._attached = bool(di0)
+        return True, ""
+
+    def attach(self, context):
+        del context
+        ok, message = self._set_grasp()
+        if not ok:
+            self.last_error = message
+            self._release()
+            return False, "VACUUM_BACKEND_ERROR: %s" % message
+        t0 = self._io.now()
+        while (self._io.now() - t0) < self.seal_timeout_sec:
+            if self._io.di0() == 1:
+                self._attached = True
+                elapsed = self._io.now() - t0
+                return True, "sealed in %.2fs" % elapsed
+            self._io.sleep(self.seal_poll_sec)
+        self.last_error = "VACUUM_SEAL_TIMEOUT"
+        self._release()
+        self._attached = False
+        return False, "VACUUM_SEAL_TIMEOUT after %.1fs" % self.seal_timeout_sec
+
+    def detach(self, context):
+        del context
+        ok, message = self._release()
+        self._attached = False
+        if not ok:
+            self.last_error = message
+            return False, "VACUUM_BACKEND_ERROR: %s" % message
+        return True, message or "released"
+
+    def _set_grasp(self):
+        # Never 11: blow-off off first, then hold pump.
+        ok, message = self._io.set_do(1, 0)
+        if not ok:
+            return False, message
+        return self._io.set_do(0, 1)
+
+    def _release(self):
+        ok, message = self._io.set_do(0, 0)
+        if not ok:
+            return False, message
+        ok, message = self._io.set_do(1, 1)
+        if not ok:
+            return False, message
+        t0 = self._io.now()
+        while (self._io.now() - t0) < self.release_timeout_sec:
+            if self._io.di0() == 0:
+                break
+            self._io.sleep(min(self.seal_poll_sec, 0.05))
+        self._io.sleep(self.blowoff_hold_sec)
+        return self._io.set_do(1, 0)
 
 
 class StubVacuumBackend(VacuumBackend):

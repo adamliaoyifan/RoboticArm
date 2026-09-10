@@ -35,12 +35,27 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from luggage_msgs.action import GoToRobotPose, PlanMotion
 
-from luggage_planning.motion_executor import MotionExecutor, _wrap_near
 from luggage_planning.ros_clock_wait import ClockTimeout, wait_event
 from luggage_planning.settle_criterion import SettleTracker
 
 JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
           "elfin_joint4", "elfin_joint5", "elfin_joint6"]
+_JOINT_LIMIT = 6.28
+
+
+def _wrap_near(current, target, lower=-_JOINT_LIMIT, upper=_JOINT_LIMIT):
+    """Choose target + k·2π inside limits that is closest to current."""
+    import math
+    best = target
+    best_err = abs(target - current)
+    for k in range(-3, 4):
+        cand = target + k * 2.0 * math.pi
+        if cand < lower - 1e-6 or cand > upper + 1e-6:
+            continue
+        err = abs(cand - current)
+        if err < best_err:
+            best, best_err = cand, err
+    return best
 
 
 class MotionPlannerNode(Node):
@@ -74,18 +89,7 @@ class MotionPlannerNode(Node):
             JointState, "/joint_states", self._on_joint_state, 10,
             callback_group=self._group)
 
-        self._executor_client = MotionExecutor(
-            self,
-            allowed_planning_time=float(
-                self.get_parameter("planning_time").value),
-            num_planning_attempts=int(
-                self.get_parameter("num_planning_attempts").value),
-            planner_id=str(self.get_parameter("planner_id").value),
-            cartesian_max_step=float(
-                self.get_parameter("cartesian_max_step").value),
-            cartesian_min_fraction=float(
-                self.get_parameter("cartesian_min_fraction").value),
-        )
+        self._executor_client = None
         self._fjt = rclpy.action.ActionClient(
             self, FollowJointTrajectory,
             str(self.get_parameter("fjt_action").value),
@@ -110,6 +114,31 @@ class MotionPlannerNode(Node):
         # already calls wait_ready(15s) per goal.
         self.get_logger().info(
             "motion_planner up (move_group probed on first PlanMotion)")
+
+    def _moveit_executor(self):
+        if self._executor_client is not None:
+            return self._executor_client
+        try:
+            from luggage_planning.motion_executor import MotionExecutor
+        except ImportError as exc:
+            raise RuntimeError(
+                "MoveIt Python deps missing (%s). sudo apt install "
+                "ros-jazzy-moveit-msgs ros-jazzy-moveit-ros-move-group "
+                "ros-jazzy-moveit-configs-utils ros-jazzy-moveit-planners-ompl"
+                % exc)
+        self._executor_client = MotionExecutor(
+            self,
+            allowed_planning_time=float(
+                self.get_parameter("planning_time").value),
+            num_planning_attempts=int(
+                self.get_parameter("num_planning_attempts").value),
+            planner_id=str(self.get_parameter("planner_id").value),
+            cartesian_max_step=float(
+                self.get_parameter("cartesian_max_step").value),
+            cartesian_min_fraction=float(
+                self.get_parameter("cartesian_min_fraction").value),
+        )
+        return self._executor_client
 
     # ------------------------------------------------------------------
     # shared plumbing
@@ -176,14 +205,21 @@ class MotionPlannerNode(Node):
 
         # Generous: first graph discovery inside this process can take
         # seconds even when move_group has been up the whole time.
-        if not self._executor_client.wait_ready(timeout_sec=15.0):
+        try:
+            executor = self._moveit_executor()
+        except Exception as exc:  # noqa: BLE001
+            goal_handle.abort()
+            result.success = False
+            result.message = str(exc)
+            return result
+        if not executor.wait_ready(timeout_sec=15.0):
             goal_handle.abort()
             result.success = False
             result.message = "move_group unavailable"
             return result
 
         try:
-            exec_result = self._executor_client.execute_segment(
+            exec_result = executor.execute_segment(
                 segment, feedback_cb=feedback,
                 execute_timeout=float(
                     self.get_parameter("execute_timeout").value),
@@ -350,10 +386,17 @@ class MotionPlannerNode(Node):
             self.get_logger().warn(
                 "FJT named pose failed (%s %s); MoveIt joint fallback"
                 % (wrapped.status, wrapped.result.error_code))
-            moveit = self._executor_client.execute_joints(
-                target, execute_timeout=float(
-                    self.get_parameter("execute_timeout").value),
-                current_joints=positions)
+            try:
+                moveit = self._moveit_executor().execute_joints(
+                    target, execute_timeout=float(
+                        self.get_parameter("execute_timeout").value),
+                    current_joints=positions)
+            except Exception as exc:  # noqa: BLE001
+                goal_handle.abort()
+                result.success = False
+                result.message = "FJT status=%s error_code=%s; %s" % (
+                    wrapped.status, wrapped.result.error_code, exc)
+                return result
             if not moveit.success:
                 goal_handle.abort()
                 result.success = False

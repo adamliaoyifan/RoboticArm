@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
 """Vacuum controller node: the one VacuumCommand contract for sim + hardware.
 
-/vacuum/command (luggage_msgs/VacuumCommand) is the same signal the real
-robot will use - the backend decides what it means:
-  sim     -> kinematic follow in gz + PlanningScene attach
-  stub    -> state only
-  hardware-> (future) GPIO + pressure sensor; node code unchanged.
+/vacuum/command (luggage_msgs/VacuumCommand) is the same signal:
+  sim      -> kinematic follow in gz + PlanningScene attach
+  stub     -> state only
+  hardware -> box DO0/DO1 via the CPS executor; DI0 is sealed
 
-Publishes /vacuum/state (luggage_msgs/VacuumState, transient-local) at the
-follow rate; ``attached`` is the flag the user asked for (sim: box bound to
-panel; hardware: suction sensed).
-
-Subscribes /luggage/current_box (spawner JSON: model_name/size/mass/pose)
-and reads panel pose from TF (suction_contact_frame in world).
+Publishes /vacuum/state (luggage_msgs/VacuumState, transient-local).
+Hardware attach does not use Gazebo current_box or VacuumGate; DI0 is
+the hold signal (measured ~6.3 s to rise).
 """
 
 from __future__ import division
@@ -20,6 +16,7 @@ from __future__ import division
 import json
 import math
 import threading
+import time
 
 import rclpy
 import tf2_ros
@@ -27,16 +24,18 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from ros_gz_interfaces.msg import Entity
-from ros_gz_interfaces.srv import SetEntityPose
-from std_msgs.msg import String
+from std_msgs.msg import Bool, String
+from std_srvs.srv import SetBool
 
 from luggage_msgs.msg import VacuumState
 from luggage_msgs.srv import VacuumCommand
 
 from luggage_planning.current_box_payload import box_from_current_box_payload
-from luggage_planning.planning_scene_client import PlanningSceneClient
-from luggage_planning.vacuum_backend import SimVacuumBackend, StubVacuumBackend
+from luggage_planning.vacuum_backend import (
+    HardwareVacuumBackend,
+    SimVacuumBackend,
+    StubVacuumBackend,
+)
 from luggage_planning.vacuum_gate import VacuumGate
 
 WORLD = "world"
@@ -53,6 +52,10 @@ class GzSetPoseClient(object):
     minimal gz_client interface."""
 
     def __init__(self, node, group, world):
+        from ros_gz_interfaces.msg import Entity
+        from ros_gz_interfaces.srv import SetEntityPose
+        self._Entity = Entity
+        self._SetEntityPose = SetEntityPose
         self._client = node.create_client(
             SetEntityPose, "/world/%s/set_pose" % world,
             callback_group=group)
@@ -66,9 +69,9 @@ class GzSetPoseClient(object):
         elif not self._client.service_is_ready():
             return False, "set_pose service unavailable"
         event = threading.Event()
-        request = SetEntityPose.Request()
+        request = self._SetEntityPose.Request()
         request.entity.name = model_name
-        request.entity.type = Entity.MODEL
+        request.entity.type = self._Entity.MODEL
         request.pose.position.x = float(xyz[0])
         request.pose.position.y = float(xyz[1])
         request.pose.position.z = float(xyz[2])
@@ -86,16 +89,65 @@ class GzSetPoseClient(object):
         return True, ""
 
 
+class ExecutorVacuumIo(object):
+    """Box DO writes through the CPS-owning executor; DI0 from /vacuum/di0."""
+
+    def __init__(self, node, group, do0_service, do1_service, di0_topic):
+        self._node = node
+        self._di0 = 0
+        self._do0 = node.create_client(
+            SetBool, do0_service, callback_group=group)
+        self._do1 = node.create_client(
+            SetBool, do1_service, callback_group=group)
+        node.create_subscription(
+            Bool, di0_topic, self._on_di0, 10, callback_group=group)
+
+    def _on_di0(self, msg):
+        self._di0 = 1 if msg.data else 0
+
+    def di0(self):
+        return int(self._di0)
+
+    def now(self):
+        return time.monotonic()
+
+    def sleep(self, dt):
+        time.sleep(max(0.0, float(dt)))
+
+    def set_do(self, bit, value):
+        client = self._do0 if int(bit) == 0 else self._do1
+        if not client.wait_for_service(timeout_sec=2.0):
+            return False, "vacuum DO service unavailable"
+        request = SetBool.Request()
+        request.data = bool(int(value))
+        event = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(2.0):
+            return False, "vacuum DO call timeout"
+        response = future.result()
+        if response is None or not response.success:
+            return False, (response.message if response else "no response")
+        return True, ""
+
+
 class VacuumControllerNode(Node):
 
     def __init__(self):
         super().__init__("vacuum_controller")
         group = ReentrantCallbackGroup()
 
-        self.declare_parameter("backend", "sim")  # sim | stub
+        self.declare_parameter("backend", "sim")  # sim | stub | hardware
         self.declare_parameter("world", "airport_loading")
         self.declare_parameter("panel_frame", "suction_contact_frame")
         self.declare_parameter("follow_rate_hz", 30.0)
+        self.declare_parameter("do0_service", "/elfin/vacuum/set_do0")
+        self.declare_parameter("do1_service", "/elfin/vacuum/set_do1")
+        self.declare_parameter("di0_topic", "/vacuum/di0")
+        self.declare_parameter("seal_timeout_sec", 8.0)
+        self.declare_parameter("seal_poll_sec", 0.1)
+        self.declare_parameter("release_timeout_sec", 1.0)
+        self.declare_parameter("blowoff_hold_sec", 0.1)
         # Gate parameters (defaults mirror the ROS 1 simulator).
         self.declare_parameter("pressure_kpa", 70.0)
         self.declare_parameter("effective_area_m2", 0.012)
@@ -154,11 +206,28 @@ class VacuumControllerNode(Node):
         self._diag_pub = self.create_publisher(
             String, "/vacuum/events_json", state_qos)
 
-        scene = PlanningSceneClient(self, callback_group=group)
         backend_name = str(self.get_parameter("backend").value)
         if backend_name == "stub":
             self._backend = StubVacuumBackend()
+        elif backend_name == "hardware":
+            io = ExecutorVacuumIo(
+                self, group,
+                str(self.get_parameter("do0_service").value),
+                str(self.get_parameter("do1_service").value),
+                str(self.get_parameter("di0_topic").value))
+            self._backend = HardwareVacuumBackend(
+                io,
+                seal_timeout_sec=float(
+                    self.get_parameter("seal_timeout_sec").value),
+                seal_poll_sec=float(
+                    self.get_parameter("seal_poll_sec").value),
+                release_timeout_sec=float(
+                    self.get_parameter("release_timeout_sec").value),
+                blowoff_hold_sec=float(
+                    self.get_parameter("blowoff_hold_sec").value))
         else:
+            from luggage_planning.planning_scene_client import PlanningSceneClient
+            scene = PlanningSceneClient(self, callback_group=group)
             gz_client = GzSetPoseClient(
                 self, group, str(self.get_parameter("world").value))
             self._backend = SimVacuumBackend(
@@ -232,6 +301,16 @@ class VacuumControllerNode(Node):
             response.message = message
             return response
 
+        if isinstance(self._backend, HardwareVacuumBackend):
+            ok, message = self._backend.attach({})
+            self._vacuum_on = ok
+            self._last_fail_reason = "" if ok else message
+            self._publish_state()
+            self._publish_event("attach", ok, message)
+            response.success = ok
+            response.message = message
+            return response
+
         panel = self._panel_pose()
         box_xyz, box_quat = self._box_pose_lists()
         if panel is None:
@@ -278,6 +357,15 @@ class VacuumControllerNode(Node):
     # ------------------------------------------------------------------
 
     def _follow_tick(self):
+        if isinstance(self._backend, HardwareVacuumBackend):
+            ok, message = self._backend.follow_step(
+                (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+            if not ok:
+                self._last_fail_reason = message
+            elif self._vacuum_on and not self._backend.is_attached():
+                self._last_fail_reason = "VACUUM_SEAL_LOST"
+            self._publish_state()
+            return
         if not self._backend.is_attached():
             self._publish_state()
             return
