@@ -1,0 +1,24 @@
+# Live D555: compressed JPEG/PNG + unproject aligned depth in-process.
+# Do not subscribe /camera/depth/points (no raw Image, no extra PointCloud2).
+sensor_preprocessor:
+  ros__parameters:
+    input.color_image: /camera/d555/color/image_raw/compressed
+    input.depth_image: /camera/d555/aligned_depth_to_color/image_raw/compressed
+    input.camera_info: /camera/d555/aligned_depth_to_color/camera_info
+    input.color_camera_info: /camera/d555/color/camera_info
+    input.camera_points: ""
+    input.use_compressed: true
+    unproject_aligned_depth: true
+    input.joint_states: /joint_states
+    input_cloud_data_frame: ""
+    output_cloud_frame: d555_color_optical_frame
+    use_sim_time: false
+    camera_pair_tolerance_sec: 0.050
+    camera_wait_deadline_sec: 0.150
+    camera_emit_rgb_only: false
+    camera_input_qos_reliability: best_effort
+    cloud_input_qos_reliability: reliable
+    cloud_decimation_stride: 2
+    enable_lidar_output: false
+    enable_imu: false
+    motion_gate.enabled: false

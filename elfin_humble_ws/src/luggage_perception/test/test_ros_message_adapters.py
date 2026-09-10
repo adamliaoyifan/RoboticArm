@@ -11,6 +11,7 @@ pytest.importorskip("sensor_msgs")
 from geometry_msgs.msg import TransformStamped  # noqa: E402
 from sensor_msgs.msg import (  # noqa: E402
     CameraInfo,
+    CompressedImage,
     Image,
     JointState,
     PointCloud2,
@@ -206,6 +207,53 @@ class TestDepthAdapters(unittest.TestCase):
         depth = np.ones((2, 3), dtype=np.uint16)
         self.assertIsNone(
             adapters.depth_array_from_msg(_make_image(depth, "16UC1", truncate=2)))
+
+
+class TestCompressedImageAdapters(unittest.TestCase):
+    def test_jpeg_color_round_trip_shape(self):
+        cv2 = pytest.importorskip("cv2")
+        rgb = np.zeros((24, 32, 3), dtype=np.uint8)
+        rgb[0:8, 0:8] = (255, 0, 0)
+        bgr = rgb[:, :, ::-1]
+        ok, enc = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
+        self.assertTrue(ok)
+        msg = CompressedImage()
+        msg.header.stamp.sec = 4
+        msg.header.frame_id = "optical"
+        msg.format = "rgb8; jpeg compressed"
+        msg.data = enc.tobytes()
+        frame = adapters.rgb_frame_from_compressed_msg(msg)
+        self.assertIsNotNone(frame)
+        self.assertEqual(frame.encoding, "rgb8")
+        self.assertEqual(frame.image.shape, (24, 32, 3))
+        self.assertEqual(frame.stamp, 4.0)
+        self.assertGreater(int(frame.image[2, 2, 0]), 200)
+        self.assertLess(int(frame.image[2, 2, 2]), 40)
+
+    def test_png_depth_lossless(self):
+        cv2 = pytest.importorskip("cv2")
+        depth = np.arange(16, dtype=np.uint16).reshape(4, 4) * 17
+        ok, enc = cv2.imencode(".png", depth)
+        self.assertTrue(ok)
+        msg = CompressedImage()
+        msg.header.stamp.sec = 5
+        msg.header.frame_id = "optical"
+        msg.format = "16UC1; png compressed"
+        msg.data = enc.tobytes()
+        frame = adapters.depth_frame_from_compressed_msg(msg)
+        self.assertIsNotNone(frame)
+        np.testing.assert_array_equal(frame.depth, depth)
+        self.assertEqual(frame.encoding, "16UC1")
+
+    def test_jpeg_depth_rejected(self):
+        cv2 = pytest.importorskip("cv2")
+        rgb = np.zeros((8, 8, 3), dtype=np.uint8)
+        ok, enc = cv2.imencode(".jpg", rgb)
+        self.assertTrue(ok)
+        msg = CompressedImage()
+        msg.format = "jpeg"
+        msg.data = enc.tobytes()
+        self.assertIsNone(adapters.depth_frame_from_compressed_msg(msg))
 
 
 class TestCameraInfoAdapters(unittest.TestCase):

@@ -1,0 +1,19 @@
+# Remap D555 site topics onto the preprocessor. Compressed JPEG/PNG from
+# the bag; unproject aligned depth in-process (no /camera/depth/points).
+sensor_preprocessor:
+  ros__parameters:
+    input.color_image: /camera/d555/color/image_raw/compressed
+    input.depth_image: /camera/d555/aligned_depth_to_color/image_raw/compressed
+    input.camera_info: /camera/d555/aligned_depth_to_color/camera_info
+    input.color_camera_info: /camera/d555/color/camera_info
+    input.camera_points: ""
+    input.use_compressed: true
+    unproject_aligned_depth: true
+    input.joint_states: /joint_states
+    input.lidar: /livox/lidar
+    input.imu: /livox/imu
+    input_cloud_data_frame: ""
+    output_cloud_frame: d555_color_optical_frame
+    camera_input_qos_reliability: best_effort
+    cloud_input_qos_reliability: reliable
+    use_sim_time: true

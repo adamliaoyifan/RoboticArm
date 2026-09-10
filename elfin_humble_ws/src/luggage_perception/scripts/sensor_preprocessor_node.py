@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Thin ROS 2 node around SensorPreprocessor.
 
-Subscribes to canonical D435 topics plus /joint_states, pairs them, and
-publishes a synchronised set of standard messages. SyncedObservation stays
-inside the algorithm class; message conversion lives in
-luggage_perception.ros_message_adapters.
+Subscribes to colour/depth (raw Image or CompressedImage) plus
+/joint_states, pairs them, and publishes a synchronised set of standard
+messages. D555 live/replay decode JPEG/PNG here and unproject aligned
+depth in-process so /camera/d555/*/image_raw and /camera/depth/points
+stay off the ROS graph. SyncedObservation stays inside the algorithm
+class; message conversion lives in luggage_perception.ros_message_adapters.
 """
 
 from __future__ import division
@@ -25,13 +27,15 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image, JointState, PointCloud2
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image, JointState, PointCloud2
 from std_msgs.msg import String
 import tf2_ros
 
 from luggage_perception import ros_message_adapters as adapters
+from luggage_perception.depth_unproject import unproject_z16
 from luggage_perception.motion_stability_filter import MotionStabilityGate
 from luggage_perception.sensor_preprocessor import SensorPreprocessor
+from luggage_perception.sensor_types import CameraCloud
 
 
 class SensorPreprocessorNode(Node):
@@ -83,12 +87,18 @@ class SensorPreprocessorNode(Node):
             self.get_parameter("input_cloud_data_frame").value).strip()
         self._output_cloud_frame = str(
             self.get_parameter("output_cloud_frame").value)
+        self._use_compressed = bool(
+            self.get_parameter("input.use_compressed").value)
+        self._unproject_aligned_depth = bool(
+            self.get_parameter("unproject_aligned_depth").value)
+        self._depth_intrinsics = None
 
         self._tf_buffer = tf2_ros.Buffer()
         self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
-        self._tf_warn_stamp = 0.0
+        self._warn_times = {}
         self._cb_counts = {
             "rgb": 0, "depth": 0, "cloud": 0, "info": 0, "joints": 0,
+            "unproject": 0,
         }
         # PF-R9: per-stage cloud-callback wall timing (ms), last 32
         # samples, surfaced on /luggage/preprocessed/status for B3/B4
@@ -110,9 +120,18 @@ class SensorPreprocessorNode(Node):
             if str(self.get_parameter("cloud_input_qos_reliability").value)
             == "best_effort"
             else ReliabilityPolicy.RELIABLE)
+        # Gazebo RGBD is RELIABLE. D555 live is BEST_EFFORT; a RELIABLE
+        # subscriber never sees those images (DDS incompatible). Dual
+        # RELIABLE+BEST_EFFORT would double-count Gazebo (BEST_EFFORT
+        # readers accept RELIABLE writers).
+        camera_reliability = (
+            ReliabilityPolicy.BEST_EFFORT
+            if str(self.get_parameter("camera_input_qos_reliability").value)
+            == "best_effort"
+            else ReliabilityPolicy.RELIABLE)
         input_qos = QoSProfile(
             depth=5,
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=camera_reliability,
             history=HistoryPolicy.KEEP_LAST,
         )
         cloud_qos = QoSProfile(
@@ -123,6 +142,20 @@ class SensorPreprocessorNode(Node):
         sensor_qos = QoSProfile(
             depth=5,
             reliability=ReliabilityPolicy.BEST_EFFORT,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        # Decoded RGB is a product stream (RViz/rqt + perception), not the
+        # D555 driver. RViz Image defaults to RELIABLE and will not connect
+        # to BEST_EFFORT; BEST_EFFORT readers still match this writer.
+        color_out_qos = QoSProfile(
+            depth=5,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST,
+        )
+        info_qos = QoSProfile(
+            depth=1,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
             history=HistoryPolicy.KEEP_LAST,
         )
         joint_qos = QoSProfile(
@@ -137,13 +170,13 @@ class SensorPreprocessorNode(Node):
         )
 
         self._pub_color = self.create_publisher(
-            Image, self.get_parameter("output.color_image").value, sensor_qos)
+            Image, self.get_parameter("output.color_image").value, color_out_qos)
         self._pub_color_info = self.create_publisher(
-            CameraInfo, self.get_parameter("output.color_info").value, sensor_qos)
+            CameraInfo, self.get_parameter("output.color_info").value, info_qos)
         self._pub_depth = self.create_publisher(
             Image, self.get_parameter("output.depth_image").value, sensor_qos)
         self._pub_depth_info = self.create_publisher(
-            CameraInfo, self.get_parameter("output.depth_info").value, sensor_qos)
+            CameraInfo, self.get_parameter("output.depth_info").value, info_qos)
         self._pub_cloud = self.create_publisher(
             PointCloud2, self.get_parameter("output.camera_points").value, sensor_qos)
         self._pub_status = self.create_publisher(
@@ -154,12 +187,14 @@ class SensorPreprocessorNode(Node):
         # and the parameter services were never serviced and cloud
         # dispatch latency stayed ~70 ms regardless of thread count (see
         # main() for the publisher-thread design that replaced it).
+        color_topic = str(self.get_parameter("input.color_image").value)
+        depth_topic = str(self.get_parameter("input.depth_image").value)
+        color_type = CompressedImage if self._use_compressed else Image
+        depth_type = CompressedImage if self._use_compressed else Image
         self.create_subscription(
-            Image, self.get_parameter("input.color_image").value,
-            self._on_color, input_qos)
+            color_type, color_topic, self._on_color, input_qos)
         self.create_subscription(
-            Image, self.get_parameter("input.depth_image").value,
-            self._on_depth, input_qos)
+            depth_type, depth_topic, self._on_depth, input_qos)
         self.create_subscription(
             CameraInfo, self.get_parameter("input.camera_info").value,
             self._on_camera_info, input_qos)
@@ -168,23 +203,31 @@ class SensorPreprocessorNode(Node):
         if color_info_topic:
             self.create_subscription(
                 CameraInfo, color_info_topic, self._on_color_info, input_qos)
-        self.create_subscription(
-            PointCloud2, self.get_parameter("input.camera_points").value,
-            self._on_cloud, cloud_qos)
+        points_topic = str(
+            self.get_parameter("input.camera_points").value).strip()
+        if points_topic and not self._unproject_aligned_depth:
+            self.create_subscription(
+                PointCloud2, points_topic, self._on_cloud, cloud_qos)
         self.create_subscription(
             JointState, self.get_parameter("input.joint_states").value,
             self._on_joints, joint_qos)
 
         self.get_logger().info(
             "sensor_preprocessor ready: data_frame=%r output_frame=%s "
-            "pair_tolerance=%.3fs wait_deadline=%.3fs cloud_qos=%s "
-            "decimation=%d"
+            "pair_tolerance=%.3fs wait_deadline=%.3fs camera_qos=%s "
+            "cloud_qos=%s decimation=%d compressed=%s unproject=%s "
+            "color=%s depth=%s"
             % (self._input_cloud_data_frame or "<header>",
                self._output_cloud_frame,
                self._core.camera_pair_tolerance_sec,
                self._core.camera_wait_deadline_sec,
+               self.get_parameter("camera_input_qos_reliability").value,
                self.get_parameter("cloud_input_qos_reliability").value,
-               self._cloud_decimation_stride)
+               self._cloud_decimation_stride,
+               self._use_compressed,
+               self._unproject_aligned_depth,
+               color_topic,
+               depth_topic)
         )
         # PF-R9 B5: publishing (0.9-3.7 MB cloud messages) inside the
         # sensor callbacks blocked them (measured publish p95 233 ms at
@@ -206,6 +249,8 @@ class SensorPreprocessorNode(Node):
             "input.joint_states": "/joint_states",
             "input.lidar": "/livox/lidar",
             "input.imu": "/livox/imu",
+            "input.use_compressed": False,
+            "unproject_aligned_depth": False,
             "output.color_image": "/luggage/preprocessed/camera/color/image",
             "output.color_info": "/luggage/preprocessed/camera/color/camera_info",
             "output.depth_image": "/luggage/preprocessed/camera/depth/image",
@@ -224,6 +269,7 @@ class SensorPreprocessorNode(Node):
             "camera_wait_deadline_sec": 0.20,
             "camera_emit_rgb_only": False,
             "cloud_input_qos_reliability": "reliable",
+            "camera_input_qos_reliability": "reliable",
             "cloud_decimation_stride": 2,
             "camera_info_max_age_sec": 1.0,
             "camera_maxlen": 10,
@@ -244,25 +290,70 @@ class SensorPreprocessorNode(Node):
 
     def _on_color(self, msg):
         self._cb_counts["rgb"] += 1
-        frame = adapters.rgb_frame_from_msg(msg)
+        if self._use_compressed:
+            frame = adapters.rgb_frame_from_compressed_msg(msg)
+            hint = "format %s" % getattr(msg, "format", "")
+        else:
+            frame = adapters.rgb_frame_from_msg(msg)
+            hint = "encoding %s" % getattr(msg, "encoding", "")
         if frame is None:
-            self._warn_throttled(
-                "dropping color image with encoding %s" % msg.encoding)
+            self._warn_throttled("dropping color image with %s" % hint)
             return
         self._handle(self._core.update_rgb(frame))
 
     def _on_depth(self, msg):
         self._cb_counts["depth"] += 1
-        frame = adapters.depth_frame_from_msg(msg)
+        if self._use_compressed:
+            frame = adapters.depth_frame_from_compressed_msg(msg)
+            hint = "format %s" % getattr(msg, "format", "")
+        else:
+            frame = adapters.depth_frame_from_msg(msg)
+            hint = "encoding %s" % getattr(msg, "encoding", "")
         if frame is None:
-            self._warn_throttled(
-                "dropping depth image with encoding %s" % msg.encoding)
+            self._warn_throttled("dropping depth image with %s" % hint)
             return
         self._handle(self._core.update_depth(frame))
+        if self._unproject_aligned_depth:
+            self._handle(self._push_unprojected_cloud(frame))
+
+    def _push_unprojected_cloud(self, frame):
+        info = self._depth_intrinsics
+        if info is None:
+            self._warn_throttled(
+                "unproject_aligned_depth waiting for camera_info")
+            return None
+        self._cb_counts["unproject"] += 1
+        stride = self._cloud_decimation_stride
+        depth = np.asarray(frame.depth)
+        self._last_cloud_points_in = int(np.count_nonzero(depth > 0))
+        points = unproject_z16(
+            depth, info.fx, info.fy, info.cx, info.cy,
+            scale=0.001, stride=stride)
+        self._last_cloud_points_out = int(points.shape[0])
+        data_frame = (
+            self._input_cloud_data_frame
+            or frame.frame_id
+            or self._output_cloud_frame
+        )
+        cloud = CameraCloud(
+            stamp=frame.stamp,
+            frame_id=frame.frame_id,
+            data_frame=data_frame,
+            points=points,
+        )
+        matrix = None
+        if data_frame != self._output_cloud_frame:
+            stamp = adapters.sec_to_stamp(frame.stamp)
+            matrix = self._lookup_cloud_transform(
+                data_frame, rclpy.time.Time.from_msg(stamp))
+            if matrix is None:
+                return None
+        return self._core.update_camera_cloud(cloud, point_transform=matrix)
 
     def _on_camera_info(self, msg):
         self._cb_counts["info"] += 1
         frame = adapters.camera_info_frame_from_msg(msg)
+        self._depth_intrinsics = frame
         self._handle(self._core.update_camera_info(frame, slots=("depth", "color")))
 
     def _on_color_info(self, msg):
@@ -424,9 +515,10 @@ class SensorPreprocessorNode(Node):
 
     def _warn_throttled(self, message, period_sec=2.0):
         now = self.get_clock().now().nanoseconds * 1e-9
-        if now - self._tf_warn_stamp <= period_sec:
+        last = self._warn_times.get(message, 0.0)
+        if now - last <= period_sec:
             return
-        self._tf_warn_stamp = now
+        self._warn_times[message] = now
         self.get_logger().warning(message)
 
     def _handle(self, observation):
