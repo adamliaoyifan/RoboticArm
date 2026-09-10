@@ -11,6 +11,7 @@ from make_tiny_replay_bag import BASE_NS, build_fixture  # noqa: E402
 
 from luggage_perception.eval.bag_mcap_source import (  # noqa: E402
     BagScan,
+    decode_cloud_xyz_intensity,
     decode_color_rgb,
     decode_depth_mm,
     find_mcap_file,
@@ -46,9 +47,20 @@ class TestBagMcapSource(unittest.TestCase):
         self.assertEqual(scan.topics[COLOR]["message_count"], 4)
         self.assertEqual(scan.topics[DEPTH]["message_count"], 4)
         self.assertEqual(scan.topics["/joint_states"]["message_count"], 1)
+        self.assertEqual(scan.topics["/livox/lidar"]["message_count"], 3)
         self.assertEqual(
             scan.topics[DEPTH_INFO]["msg_type"], "sensor_msgs/msg/CameraInfo")
         self.assertIn("/livox/imu", scan.skipped_topics)
+
+    def test_decode_cloud_xyz_intensity(self):
+        lidar = [m.message for m in
+                 iter_bag_messages(self.bag, topics=["/livox/lidar"])]
+        arr = decode_cloud_xyz_intensity(lidar[0])
+        self.assertEqual(arr.shape, (4, 4))
+        self.assertEqual(str(arr.dtype), "float32")
+        self.assertAlmostEqual(float(arr[0, 0]), 0.0, places=5)
+        self.assertAlmostEqual(float(arr[1, 2]), 1.2, places=5)
+        self.assertAlmostEqual(float(arr[3, 3]), 10.0, places=4)
 
     def test_iter_decodes_registered_topics_only(self):
         topics = [m.topic for m in iter_bag_messages(self.bag)]

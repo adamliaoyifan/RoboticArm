@@ -1,0 +1,192 @@
+{
+  "mode": "semantic",
+  "trials_requested": 6,
+  "spawn_failures": 0,
+  "stale_instance_frames": 0,
+  "warmup_frames_config": 30,
+  "gap_sec": 2.0,
+  "launch_params": "gui:=false use_rviz:=false use_semantic:=true use_motion:=true use_vacuum:=true visual_kind:=mesh size_mode:=catalog sequence_ids:=carryon,standard,large xy_jitter_range:=0.12,0.12 yaw_range:=-0.6,0.6 observe_pose_name:=pickup_observe (worktree /tmp/pfr10_g3 @ df9c7a2, dirty=0)",
+  "revision": {
+    "git_commit": "df9c7a27f8ad81102b6f5462b08b724910b042cd",
+    "git_dirty_files": 0
+  },
+  "active_output_hz": 25.10097485673201,
+  "trial_cycle_hz": 0.08617095405495043,
+  "trial_cycle_sec_mean": 11.604838439670857,
+  "matrix_coverage": {
+    "sizes": [
+      [
+        0.55,
+        0.4,
+        0.25
+      ],
+      [
+        0.7,
+        0.45,
+        0.28
+      ],
+      [
+        0.8,
+        0.5,
+        0.32
+      ]
+    ],
+    "n_sizes": 3,
+    "trials_per_size": {
+      "0.55x0.4x0.25": 2,
+      "0.7x0.45x0.28": 2,
+      "0.8x0.5x0.32": 2
+    },
+    "xy_offsets": [
+      [
+        -1.09,
+        0.07
+      ],
+      [
+        -1.04,
+        -0.03
+      ],
+      [
+        -1.02,
+        0.11
+      ],
+      [
+        -0.93,
+        -0.05
+      ],
+      [
+        -0.9,
+        0.03
+      ],
+      [
+        -0.88,
+        -0.02
+      ]
+    ],
+    "n_xy_offsets": 6,
+    "yaw_deg": [
+      -32.0,
+      -28.0,
+      -17.0,
+      -11.0,
+      -8.0,
+      22.0
+    ],
+    "n_yaws": 6,
+    "n_trials": 6
+  },
+  "trial_recoveries": [
+    {
+      "trial": 0,
+      "spawn_ok": true,
+      "n_settled": 183,
+      "t_first_valid_sec": 0.20119565504137427,
+      "t_first_full3d_sec": 0.8091339800739661
+    },
+    {
+      "trial": 1,
+      "spawn_ok": true,
+      "n_settled": 159,
+      "t_first_valid_sec": 0.17069216910749674,
+      "t_first_full3d_sec": 0.5915616140700877
+    },
+    {
+      "trial": 2,
+      "spawn_ok": true,
+      "n_settled": 184,
+      "t_first_valid_sec": null,
+      "t_first_full3d_sec": null
+    },
+    {
+      "trial": 3,
+      "spawn_ok": true,
+      "n_settled": 198,
+      "t_first_valid_sec": 0.1368171670474112,
+      "t_first_full3d_sec": 0.6599775070790201
+    },
+    {
+      "trial": 4,
+      "spawn_ok": true,
+      "n_settled": 190,
+      "t_first_valid_sec": 0.15662988601252437,
+      "t_first_full3d_sec": 0.7895823760190979
+    },
+    {
+      "trial": 5,
+      "spawn_ok": true,
+      "n_settled": 99,
+      "t_first_valid_sec": 0.18732411204837263,
+      "t_first_full3d_sec": 0.6554573790635914
+    }
+  ],
+  "n_settled": 1013,
+  "categories": {
+    "warmup_frames": 180,
+    "settled_frames": 1013,
+    "top_only": 0,
+    "full3d": 820,
+    "prior": 9,
+    "failed": 184
+  },
+  "top_surface_rate": 0.8183613030602171,
+  "full3d_rate": 0.9891435464414958,
+  "top_z_err_m": {
+    "count": 829,
+    "p50": 0.004433662831273555,
+    "p95": 0.009532797256443182,
+    "max": 0.009532797256443182
+  },
+  "support_z_err_m": {
+    "count": 820,
+    "p50": 1.0353348362857062e-05,
+    "p95": 1.671223102550634e-05,
+    "max": 1.671223102550634e-05
+  },
+  "height_err_m": {
+    "count": 820,
+    "p50": 0.004422906033281104,
+    "p95": 0.009522443908080325,
+    "max": 0.009522443908080325
+  },
+  "xy_err_m": {
+    "count": 829,
+    "p50": 0.011878395495101984,
+    "p95": 0.014498824046467842,
+    "max": 0.014503882010598596
+  },
+  "width_err_m": {
+    "count": 829,
+    "p50": 0.0015053630664230155,
+    "p95": 0.007690962900725129,
+    "max": 0.007690962900725129
+  },
+  "depth_err_m": {
+    "count": 829,
+    "p50": 0.004242305303303384,
+    "p95": 0.0268859545429726,
+    "max": 0.02688972756737401
+  },
+  "false_measured_height": 0,
+  "limits": {
+    "top_surface_rate": 0.95,
+    "full3d_rate": 0.95,
+    "top_z_p95_m": 0.015,
+    "top_z_max_m": 0.025,
+    "support_z_p95_m": 0.015,
+    "support_z_max_m": 0.025,
+    "height_p95_m": 0.025,
+    "height_max_m": 0.04,
+    "xy_p95_m": 0.03,
+    "width_depth_p95_m": 0.05,
+    "false_measured_height": 0
+  },
+  "require_full_geometry": true,
+  "gate4_failures": [
+    "top_surface_rate 0.818 < 0.950",
+    "failed 184 > 0",
+    "trial 2 t_first_valid None > 1.4 s",
+    "trial 2 t_first_full3d None > 1.4 s"
+  ],
+  "gate4_pass": false,
+  "coverage_failures": []
+}

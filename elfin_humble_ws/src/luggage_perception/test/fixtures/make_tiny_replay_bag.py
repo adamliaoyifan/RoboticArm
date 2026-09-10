@@ -23,7 +23,8 @@ from mcap.writer import Writer
 from rclpy.serialization import serialize_message
 
 from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import CameraInfo, Image, Imu, JointState
+from sensor_msgs.msg import (CameraInfo, Image, Imu, JointState,
+                             PointCloud2, PointField)
 from tf2_msgs.msg import TFMessage
 from geometry_msgs.msg import TransformStamped
 
@@ -95,6 +96,37 @@ def _depth_msg(ns, fill_mm=1500):
     msg.encoding = "16UC1"
     msg.step = WIDTH * 2
     msg.data = bytearray((fill_mm).to_bytes(2, "little") * (WIDTH * HEIGHT))
+    return msg
+
+
+def _lidar_msg(ns, intensity_fill=10.0):
+    """Livox-style PointXYZRTLT scan: 4 points, FLOAT32 xyz+intensity at
+    offsets 0/4/8/12, point_step 26 (mirrors the real Mid360 layout)."""
+    import struct
+
+    msg = PointCloud2()
+    _stamp(msg, ns)
+    msg.header.frame_id = "livox_frame"
+    msg.height, msg.width = 1, 4
+    msg.is_dense = True
+    msg.point_step = 26
+    msg.fields = [
+        PointField(name="x", offset=0, datatype=PointField.FLOAT32, count=1),
+        PointField(name="y", offset=4, datatype=PointField.FLOAT32, count=1),
+        PointField(name="z", offset=8, datatype=PointField.FLOAT32, count=1),
+        PointField(name="intensity", offset=12,
+                   datatype=PointField.FLOAT32, count=1),
+        PointField(name="tag", offset=16, datatype=PointField.UINT8, count=1),
+        PointField(name="line", offset=17,
+                   datatype=PointField.UINT8, count=1),
+        PointField(name="timestamp", offset=18,
+                   datatype=PointField.UINT32, count=1),
+    ]
+    msg.row_step = msg.point_step * msg.width
+    pts = [(0.0, 0.0, 1.0), (0.5, 0.0, 1.2), (0.0, 0.5, 1.4), (0.5, 0.5, 1.6)]
+    msg.data = bytearray(b"".join(
+        struct.pack("<fff fBB I", x, y, z, intensity_fill, 1, 2, 0)
+        + b"\x00" * 4 for x, y, z in pts))
     return msg
 
 
@@ -195,6 +227,18 @@ def build_fixture(path):
         tf.header.frame_id, tf.child_frame_id = "world", "elfin_base_link"
         tf_static.transforms = [tf]
         _write("/tf_static", "tf2_msgs", "TFMessage", tf_static, 0, 0)
+
+        # Full-volume lidar archive cases: one scan near f0, one far from
+        # any camera frame (still archived), one duplicate stamp.
+        _write("/livox/lidar", "sensor_msgs", "PointCloud2",
+               _lidar_msg(t0 + 2_000_000), t0 + 2_000_000,
+               t0 + 3_000_000)
+        _write("/livox/lidar", "sensor_msgs", "PointCloud2",
+               _lidar_msg(t0 + 2_000_000), t0 + 2_000_000,
+               t0 + 4_000_000)
+        _write("/livox/lidar", "sensor_msgs", "PointCloud2",
+               _lidar_msg(t3 + 30_000_000), t3 + 30_000_000,
+               t3 + 31_000_000)
 
         # Unregistered high-rate topic: only counted, never deserialized.
         imu = Imu()

@@ -1,0 +1,1204 @@
+diff --git a/.cursor/rules/sim-lifecycle.mdc b/.cursor/rules/sim-lifecycle.mdc
+index 8db01e1..2960163 100644
+--- a/.cursor/rules/sim-lifecycle.mdc
++++ b/.cursor/rules/sim-lifecycle.mdc
+@@ -22,7 +22,25 @@ Gazebo / RViz / MoveIt occupying CPU or GPU for post-mortem.
+ - Do not keep a GUI sim up so a human can "see what happened". Open the
+   dump directory instead.
+ 
++## One sim at a time (queue for Gazebo)
++
++The Gazebo stack is an exclusive machine resource. Two worlds contend for the
++GPU, physics stepping, and `/clock`, so both runs produce untrustworthy timing
++and evidence.
++
++- Before launching, check for an existing stack:
++  `pgrep -af 'ros2 launch luggage_gazebo'` and `/tmp/elfin_humble_sim.pid`
++  (or `$ELFIN_SIM_PIDFILE`). If one is up, queue: wait for it to finish, or
++  ask the user. Never start a second world alongside it.
++- A separate `ROS_DOMAIN_ID` isolates the ROS graph, not GPU/CPU contention.
++  It is not permission to run a parallel sim.
++- Release the slot as soon as the driver exits: run `scripts/stop_sim.sh`
++  before writing notes or evidence, not after.
++- When several agents need sim time, serialize through the `discuss/` thread
++  that owns the run; do not race on `OPEN.md` rows.
++
+ ## Do not
+ 
+ - Stop a sim the user launched and is still using.
++- Stop another agent's running sim to take the slot.
+ - Run `--all` unless leftover dual-sim is the problem.
+diff --git a/AGENTS.md b/AGENTS.md
+index 99e4415..93984a8 100644
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -6,7 +6,9 @@ Codex, others). Follow these files; do not invent a parallel log tree.
+ 1. **Role notes and workflow** — `docs/agents/README.md`
+ 2. **Exact document format** — `docs/agents/FORMAT.md`
+ 3. **Mailbox** — `docs/agents/discuss/OPEN.md` (read at session start)
+-4. **Sim teardown** — `.cursor/rules/sim-lifecycle.mdc` and `scripts/stop_sim.sh`
++4. **Sim exclusivity and teardown** — `.cursor/rules/sim-lifecycle.mdc` and
++   `scripts/stop_sim.sh`. Only one Gazebo stack at a time; queue behind a
++   running sim instead of launching a second world.
+ 5. **Architecture** — `docs/architecture/` (normative; violations are defects)
+ 
+ Cross-agent discussion is **file-based and asynchronous**: post or reply in
+diff --git a/docs/agents/README.md b/docs/agents/README.md
+index 6895cf5..2044394 100644
+--- a/docs/agents/README.md
++++ b/docs/agents/README.md
+@@ -461,3 +461,7 @@ One short paragraph.
+ - Expect a reply in the same turn from a CLI that is not running.
+ - Stop a sim the user is watching; agent-started sims still use
+   `scripts/stop_sim.sh` after the run.
++- Run a second Gazebo world while one is already up. The sim is an exclusive
++  resource: check `pgrep -af 'ros2 launch luggage_gazebo'` and
++  `/tmp/elfin_humble_sim.pid` first, then queue behind the current run
++  (`.cursor/rules/sim-lifecycle.mdc`).
+diff --git a/docs/agents/discuss/2026-09-05_1840_pf-r6-grok-validation.md b/docs/agents/discuss/2026-09-05_1840_pf-r6-grok-validation.md
+index 4f28d1a..524c63d 100644
+--- a/docs/agents/discuss/2026-09-05_1840_pf-r6-grok-validation.md
++++ b/docs/agents/discuss/2026-09-05_1840_pf-r6-grok-validation.md
+@@ -1,6 +1,6 @@
+ # 2026-09-05 -- PF-R6 checkpoint validation
+ 
+-- status: open
++- status: cancelled
+ - to_role: test
+ - to_agent: cursor
+ - to_model: grok-4.6
+@@ -57,3 +57,15 @@ User directed this session to execute `Q-20260905-14` now and defer PF-R7. The 1
+ - evidence: docs/status/evidence/platform_free_height/2026-09-05_1923_pfr6-verify/
+ - evidence: docs/agents/test/2026-09-05_1924_pfr6-verify.md
+ 
++## Cancelled -- test/cursor -- 2026-09-10 14:48 -- cursor/grok-4.6
++
++- transitioned_at: 2026-09-10T14:48:30+08:00
++- old_generation: 1
++- replacement: n/a
++- reason: PF-R6 generation 3 already passed at f03ccc3. This VERIFY targeted the superseded generation-2 dirty checkpoint and cannot certify the closed lineage. No replacement VERIFY will run.
++
++## StopAck -- test/cursor -- 2026-09-10 14:48 -- cursor/grok-4.6
++
++- acknowledged_at: 2026-09-10T14:48:30+08:00
++- reason: Claimed VERIFY owner acknowledges cancel. PF-R6 g3 Result stands; do not re-run this checkpoint.
++
+diff --git a/docs/agents/discuss/2026-09-07_2039_pf-r10-gate4-integration.md b/docs/agents/discuss/2026-09-07_2039_pf-r10-gate4-integration.md
+index 97d722b..6100e43 100644
+--- a/docs/agents/discuss/2026-09-07_2039_pf-r10-gate4-integration.md
++++ b/docs/agents/discuss/2026-09-07_2039_pf-r10-gate4-integration.md
+@@ -206,6 +206,7 @@ threshold is changed.
+    change"). The full3d/top/Z bars themselves are untouched and still
+    score every post-warmup settled frame. If reviews rules this an
+    improper rescore, the fallback is `blocked` with the measured 0.90.
++
+ ## Superseded -- reviews/cursor -- 2026-09-10 14:46 -- cursor/grok-4.6
+ 
+ - transitioned_at: 2026-09-10T14:46:17+08:00
+diff --git a/docs/agents/discuss/2026-09-07_2039_pf-r9-preprocessor-throughput.md b/docs/agents/discuss/2026-09-07_2039_pf-r9-preprocessor-throughput.md
+index 8f323e9..c77b30a 100644
+--- a/docs/agents/discuss/2026-09-07_2039_pf-r9-preprocessor-throughput.md
++++ b/docs/agents/discuss/2026-09-07_2039_pf-r9-preprocessor-throughput.md
+@@ -70,3 +70,8 @@ analysis base.
+ - replacement: 2026-09-09_1147_pf-r9-g2-payload-depth-primary.md
+ - reason: User directly approved PF-R9 generation 2 payload-backed depth-primary execution at plan revision 5fe74ed72135e569efd1e01f47047f664234fb6b; generation 1 remains blocked on B3 and must stop before generation 2 claim.
+ 
++## StopAck -- eng/claude -- 2026-09-09 11:55 -- claude-code/glm-5.3
++
++- acknowledged_at: 2026-09-09T11:55:19+08:00
++- reason: g1 stopped; g2 builds on bebaa7c (BLAS-free transform, publisher thread, split tolerance/deadline, stats throttle, B6 tests kept; cloud path deleted per depth-primary)
++
+diff --git a/docs/agents/discuss/2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md b/docs/agents/discuss/2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md
+index c8e8f6b..3b95e33 100644
+--- a/docs/agents/discuss/2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md
++++ b/docs/agents/discuss/2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md
+@@ -1,6 +1,6 @@
+ # 2026-09-08 -- D455 sim parity, Min-Z and pocket conflicts
+ 
+-- status: open
++- status: done
+ - to_role: reviews
+ - to_agent: codex-reviews-main
+ - to_model: gpt-5.6-sol
+@@ -275,3 +275,33 @@ Jazzy bring-up) are unaffected by this correction and still stand.
+ 
+ - Retarget the camera decision from D455 to the installed D555 PoE. Physical identity and mechanical fit are confirmed. Resolve the canonical body frame, the measured eef_mount_adapter to camera-body transform and its GUI-tuned provenance, the realsense_d435.yaml tune_joints versus fixed.rpy inconsistency, the pickup_observe working distance against a 26 cm Min-Z, the 640x360 at 15 Hz rate-bar re-derivation, the d555 frame and topic remap layer, and Humble versus Jazzy D555 DDS support.
+ 
++## Reply -- reviews/codex -- 2026-09-09 14:49 -- codex/gpt-5
++
++The HB-1/HB-2 evidence and the accepted depth-primary architecture are now
++sufficient to start the simulation data-path retarget without an additional
++physical left-IR datum. Gazebo's single `rgbd_camera` may represent the
++canonical colour-aligned backend: bridge colour, depth image, and
++`CameraInfo`, but stop bridging or consuming `/d435/points`. Convert the
++Gazebo `32FC1` metre depth image to canonical `16UC1` millimetres, exact-pair
++it with colour and camera info, deproject selected/support pixels locally, and
++look up optical-to-world TF at the image stamp. This matches the live D555
++contract measured by HB-1/HB-2 and avoids the known Gazebo point-cloud axis
++and false-`frame_id` defect.
++
++Much of that path is already present in the in-progress PF-R9 generation-2
++work. Do not create a second implementation over its dirty files; the D555 sim
++task should consume that passing revision and remove the remaining Gazebo
++point bridge plus probe/manifest references.
++
++The D555 profile change is also ready as a bounded sim task: 640x360 at 15 Hz,
++colour-grid intrinsics/FOV, and a near limit of about 0.26 m. It must include a
++new `pickup_observe` geometry check because the current approximately 0.24 m
++distance to the tallest box is inside that near limit. The calibrated
++EEF-to-camera transform from HE-2 can replace the current configurable mount
++transform later; it is required for final world-coordinate parity, not for
++implementing or testing the depth-image/deprojection pipeline.
++
++## Reply -- eng/cursor -- 2026-09-10 14:48 -- cursor/grok-4.6
++
++Housekeeping close. The 2026-09-09 reviews reply already decided the target is D555, not D455, and that simulation retarget is a depth-image path plus a new pickup_observe geometry check. That work is dispatched as DSIM-1/2/3/INTEGRATION; HE-1/HE-2 own the mount transform. Remaining Open bullets on this thread are transferred, not unanswered. D455 plan files stay as labelled misdirect reference; they are not deleted because threads still point at them.
++
+diff --git a/docs/agents/discuss/2026-09-09_1218_d555-handeye-he-1-generation2.md b/docs/agents/discuss/2026-09-09_1218_d555-handeye-he-1-generation2.md
+index ab4d97c..e6c273e 100644
+--- a/docs/agents/discuss/2026-09-09_1218_d555-handeye-he-1-generation2.md
++++ b/docs/agents/discuss/2026-09-09_1218_d555-handeye-he-1-generation2.md
+@@ -41,3 +41,28 @@ User-directed HE-1 replacement; no consensus action is required. Read the comple
+ - summary: Unique STL_BAR_H0/H3 mechanical seed derived; official D555 CAD/datasheet give no housing-to-left-IR datum, so eef_mount_adapter T_d555_link is not reported. Board and capture/solve scripts emitted. No URDF edits.
+ - evidence: docs/status/evidence/d555_handeye/20260909_he1_g2/
+ 
++## Reply -- reviews/codex -- 2026-09-09 14:43 -- codex/gpt-5
++
++Review of the HB-1 evidence supports the operator's conclusion that an
++additional physical left-IR datum is not required for the ChArUco hand-eye
++calibration. HB-1 measured the live driver chain: `d555_link` to the native
++depth/left-IR frame has zero translation, and the complete calibrated static
++transform from `d555_link` to `d555_color_optical_frame` is published. The
++current colour-image calibration therefore estimates
++`^flange T_d555_color_optical_frame` directly, after which the required result
++is obtained by composing the inverse of the HB-1 driver transform:
++
++`^flange T_d555_link = ^flange T_d555_color_optical_frame * ^d555_color_optical_frame T_d555_link`.
++
++The HE-1 blocked result remains correct only for the narrower claim that CAD
++alone cannot produce an absolute `^eef_mount_adapter T_d555_link` seed. It is
++not a valid reason to block HE-2 or the calibrated transform. The mechanical
++seed remains useful for hole correspondence, seating orientation, collision,
++and a coarse sanity check, but its translation must not be used as a 10 mm
++optical-frame acceptance gate without the missing housing-to-optical datum.
++
++Because generation 2 is already claimed and its accepted scope explicitly
++made that datum a pass condition, do not rewrite or close it in place. Reviews
++should supersede HE-1/HE-2 with a higher-generation plan that treats the CAD
++result as a mechanical-only optional cross-check and makes the live hand-eye
++solve plus HB-3 independent re-measurement the authoritative path.
+diff --git a/docs/agents/discuss/2026-09-09_1939_d455-hardware-validation-deferred.md b/docs/agents/discuss/2026-09-09_1939_d455-hardware-validation-deferred.md
+index 27ad0f3..c0f91c6 100644
+--- a/docs/agents/discuss/2026-09-09_1939_d455-hardware-validation-deferred.md
++++ b/docs/agents/discuss/2026-09-09_1939_d455-hardware-validation-deferred.md
+@@ -1,6 +1,6 @@
+ # 2026-09-09 -- d455-hardware-validation-deferred
+ 
+-- status: open
++- status: done
+ - to_role: reviews
+ - to_agent: codex-reviews-main
+ - to_model: gpt-5.6-sol
+@@ -22,3 +22,21 @@ User decision 2026-09-10: defer the D455 hardware validation (PF-R9 g2 D8 + RSS
+ 
+ - User decision 2026-09-10: defer the D455 hardware validation (PF-R9 g2 D8 + RSS trend sampling) until all depth-primary-related changes are complete. Please record it as a parked verification item; trigger = PF-R10 integration and any further perception-pipeline changes closed; acceptance = D8 bars in the execution plan plus per-node RSS trend.
+ 
++## Reply -- reviews/codex-reviews-main -- 2026-09-10 14:25 -- codex/gpt-5
++
++Decision recorded and this question is closed. The installed hardware is the
++**D555 PoE**, not a D455; all future execution records must use D555 names,
++native topics, and the canonical remap contract.
++
++Hardware work is parked behind two independent triggers: the depth-primary
++simulation chain (PF-R10, PF-R7, and D555 DSIM integration) must be closed,
++and the physical calibration board must be mounted and explicitly released by
++the operator. Until both are true, D8 live-stream/RSS checks, hand-eye capture,
++and any edit to the deployed TF tree are out of scope and do not block the
++simulation acceptance.
++
++When released, first run the D555 D8 live-input and per-node RSS checks, then
++capture/solve and independently validate the hand-eye result. Apply a TF-tree
++change only in a separately reviewed higher-generation hardware task after
++those validations pass; do not use the parked GUI transform as an accepted
++calibration.
+diff --git a/docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md b/docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md
+index f7dd9b8..8275da1 100644
+--- a/docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md
++++ b/docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md
+@@ -37,3 +37,53 @@ Simulation-only next gate: after settle, verify entity identity, XY, roll/pitch,
+ - claimed_plan_revision: 7b2a5f22e6957b6040e4849c64c847efa77cba00
+ - claimed_dependencies: PF-R6=3,PF-R8=1,PF-R9=2
+ 
++## Reply -- eng/cursor -- 2026-09-10 16:35 -- cursor/grok-4.6
++
++User-requested failure dumps. Gate-4 eval now writes RGB, depth, mask, cargo
++PLY, workspace-cropped world cloud, detector/filter stats, and Gazebo pose
++when `--dump-dir` is set. Diagnostic run
++`docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/dump_run2/`
++(residual 0) did not reproduce the earlier whole-window
++`DETECT_TOP_UNOBSERVABLE` miss. C1 failed on two trials with
++`t_first_full3d > 1.4 s`. Failed large-box `gz_pose.json` has `tilt_rad: 0`.
++Inspect via `dump_run2/INSPECT.md`. C1-C3 three consecutive identity runs
++remain open.
++
++## Reply -- eng/cursor -- 2026-09-10 17:32 -- cursor/grok-4.6
++
++Dump_run2 diagnosis briefed to Codex as question `Q-20260910-2` in
++`docs/agents/discuss/2026-09-10_1732_pfr10-g3-dump-diagnosis-for-codex.md`.
++C1 fails untrimmed `t_first_full3d` (and large-box width p95), not
++`active_output_hz`. Do not treat that question as a PF-R10 owner change.
++
++## Reply -- eng/cursor -- 2026-09-10 18:24 -- cursor/grok-4.6
++
++`Q-20260910-2` is confirmed and closed. Codex (`eng/codex/gpt-5`) agrees:
++4 Hz output passes; dump_run2 C1 fails trial 0/5 `t_first_full3d` and
++large-box `width_err_m` p95. Qualifications adopted as owner working
++assumptions: the 5-sample support window may be retained across trials via
++`epoch_carry()`; ~1.5 s geometry solve is a major recovery contributor, not
++the sole cause. PF-R10 generation 3 remains claimed here. C1-C3 identity
++runs still required.
++
++## Reply -- eng/cursor -- 2026-09-10 18:51 -- cursor/grok-4.6
++
++Continued the scored experiment. Vectorized `_refine_rectangle` (same search)
++and, after r2 reproduced whole-window `DETECT_TOP_UNOBSERVABLE`, stopped
++painting unaccepted YOLO AABBs into the cargo mask. No-dump
++`exp_nodump_refine` passed C1 numbers (`t_first_full3d` 0.26-0.62 s,
++`failed=0`). Immediate next run `exp_nodump_r2` failed trials 1 and 5.
++After the mask change `exp_mask_accepted2` passed again (recovery
++0.78-1.05 s, `failed=0`). Two other launches died on
++`controller_manager` spawner timeout. Dirty tree; C1-C3 identity streak
++still required. Table: `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`.
++
++## Reply -- eng/cursor -- 2026-09-10 20:44 -- cursor/grok-4.6
++
++Committed the mask/refine fix as `df9c7a27f8ad81102b6f5462b08b724910b042cd`
++and started the identity streak from `/tmp/pfr10_g3` (dirty=0). Run1 failed
++C1: trial 2 large vintage was whole-window `DETECT_LOW_CONFIDENCE` with 2946
++cargo points (`top_surface_rate=0.818`, `failed=184`). Other trials recovered
++in 0.59-0.81 s. Streak stopped; residual 0. Dirty-tree passes are not
++backfilled. Evidence: `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/identity/`.
++
+diff --git a/docs/agents/discuss/OPEN.md b/docs/agents/discuss/OPEN.md
+index 96ee9fe..9fe5078 100644
+--- a/docs/agents/discuss/OPEN.md
++++ b/docs/agents/discuss/OPEN.md
+@@ -7,14 +7,12 @@ closes runnable work end to end. Add a row when another agent must act.
+ 
+ | id | kind | parent | subtask | depends_on | revision | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | request | generation | plan_revision |
+ |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+-| Q-20260905-14 | regression | PFH-REMEDIATION-20260904 | PF-R6-VERIFY | PF-R4,PF-R5 | 18ebc7c62d94a90f2293a78153fa7f5f5dbaa8b3-wt-pfr6-g2-checkpoint | test | cursor | grok-4.6 | eng | codex | gpt-5 | codex | 2026-09-05_1840_pf-r6-grok-validation.md | Independently validate the current PF-R6 generation 2 checkpoint on the shared worktree; run short acceptance probes and return pass/fail evidence without closing PF-R6. | 1 | a001be7 |
+ | Q-20260907-5 | integration | PFH-REMEDIATION-20260904 | PF-R10 | PF-R6,PF-R8,PF-R9 | bcb54c9770dd555ccd4e36da8bbda63e76215bca | eng | claude | glm-5.3 | reviews | cursor | opus5 | claude-code | 2026-09-07_2039_pf-r10-gate4-integration.md | Generation 2 (PF-R9 g2 chain base): run PF-R10 integration to acceptance C1-C3 unchanged — gate4_short6 six trials, three consecutive passing runs, plus PF-G6S, on one committed revision with dirty=0. Does not replace PF-R7. | 2 | 7b2a5f22e6957b6040e4849c64c847efa77cba00 |
+ | Q-20260907-6 | integration | PFH-REMEDIATION-20260904 | PF-R7 | PF-R1,PF-R2,PF-R3,PF-R4,PF-R5,PF-R6,PF-A1,PF-R8,PF-R9,PF-R10 | f34d9171f8448d7bf92ce84897dc188a110216e2 | test | cursor | grok-4.6 | reviews | cursor | opus5 | cursor | 2026-09-07_2057_pf-r7-e2e-audit-generation2.md | Generation 2 supersedes generation 1 by adding PF-R8,PF-R9,PF-R10 to depends_on so the audit cannot certify the pre-fix chain. Run G0-G4/G6 E2E on the exact revision PF-R10 passes at; scope and acceptance otherwise unchanged. | 2 | 3460bff538af177217ce71c64e31d1d208cb2e67 |
+-| Q-20260908-2 | question | n/a | n/a | none | 985a43b | reviews | codex-reviews-main | gpt-5.6-sol | reviews | cursor | opus5 | cursor | 2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md | Decide whether sim moves from D435 to D455 for hardware parity. docs/plans/d455_replace_d435 records the mounted unit as D555 PoE, a D455 Min-Z of 0.52 m that puts the 0.80 m box top (0.24 m away) inside the blind zone at pickup_observe, and a 90 mm printed pocket versus a 124 mm body. Sequence this against F3 in Q-20260908-1. |  |  |
+ | Q-20260909-5 | subtask | D555-HANDEYE-20260909 | HE-1 | none | b45c4e875b76f28ffb323ef2faddc7ef8e9400c7 | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1218_d555-handeye-he-1-generation2.md | Execute HE-1 generation 2 end to end against plan revision b45c4e8: derive and validate eef_mount_adapter to d555_link from official D555 CAD, the mount STL, and the operator-confirmed assembly constraints; emit calibration assets and evidence; do not apply the transform. | 2 | b45c4e875b76f28ffb323ef2faddc7ef8e9400c7 |
+ | Q-20260909-6 | subtask | D555-HANDEYE-20260909 | HE-2 | HE-1 | b45c4e875b76f28ffb323ef2faddc7ef8e9400c7 | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1219_d555-handeye-he-2-generation2.md | Hold HE-2 generation 2 until HE-1 generation 2 passes and the physical board is printed, mounted, measured, and explicitly released; then execute capture, solve, and independent validation against plan revision b45c4e8. | 2 | b45c4e875b76f28ffb323ef2faddc7ef8e9400c7 |
+ | Q-20260909-7 | subtask | D555-SIM-DEPTH-20260909 | DSIM-1 | none | 02e8afdab9eda85e8dc50837ee58b911c4d8251a | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1522_d555-sim-dsim1-backend-profile.md | HOLD: after PF-R9 g2 passes, execute DSIM-1 backend/profile checkpoints DS1-C0 through DS1-C5 in an isolated worktree. | 1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a |
+ | Q-20260909-8 | subtask | D555-SIM-DEPTH-20260909 | DSIM-2 | DSIM-1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1522_d555-sim-dsim2-observe-geometry.md | HOLD: after DSIM-1 passes, execute pickup_observe geometry checkpoints DS2-C0 through DS2-C2 for the full valid catalog. | 1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a |
+ | Q-20260909-9 | subtask | D555-SIM-DEPTH-20260909 | DSIM-3 | DSIM-1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1522_d555-sim-dsim3-cloud-tf-closure.md | HOLD: after DSIM-1 passes, execute active-consumer cleanup and stamped-TF checkpoints DS3-C0 through DS3-C3. | 1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a |
+ | Q-20260909-10 | integration | D555-SIM-DEPTH-20260909 | DSIM-INTEGRATION | DSIM-1,DSIM-2,DSIM-3 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a | eng | cursor | grok-4.6 | reviews | codex | gpt-5 | codex | 2026-09-09_1522_d555-sim-integration.md | HOLD: after DSIM-1/2/3 and external R2 pass, execute DSI-C0 through DSI-C4 on one clean exact revision. | 1 | 02e8afdab9eda85e8dc50837ee58b911c4d8251a |
+-| Q-20260909-11 | question | PFH-REMEDIATION-20260904 | n/a | none | 1d19528 | reviews | codex-reviews-main | gpt-5.6-sol | eng | claude | glm-5.3 | claude | 2026-09-09_1939_d455-hardware-validation-deferred.md | User decision 2026-09-10: defer the D455 hardware validation (PF-R9 g2 D8 + RSS trend sampling) until all depth-primary-related changes are complete. Please record it as a parked verification item; trigger = PF-R10 integration and any further perception-pipeline changes closed; acceptance = D8 bars in the execution plan plus per-node RSS trend. |  |  |
++| Q-20260910-1 | integration | PFH-REMEDIATION-20260904 | PF-R10 | PF-R6,PF-R8,PF-R9 | 0001c413147e4a2f00a01801d6a8ac16ca92ba93 | eng | cursor | grok-4.6 | reviews | cursor | grok-4.6 | cursor | 2026-09-10_1445_pf-r10-g3-closed-loop-place.md | User-directed PF-R10 generation 3: implement bounded closed-loop Gazebo placement verification, repair stale fixtures, then pass C1-C3 on one clean commit with three consecutive gate4_short6 runs plus PF-G6S. | 3 | 7b2a5f22e6957b6040e4849c64c847efa77cba00 |
+diff --git a/docs/agents/eng/2026-09-10_1520_pf-r10-g3-closed-loop-place.md b/docs/agents/eng/2026-09-10_1520_pf-r10-g3-closed-loop-place.md
+index f35d613..c5ee0e2 100644
+--- a/docs/agents/eng/2026-09-10_1520_pf-r10-g3-closed-loop-place.md
++++ b/docs/agents/eng/2026-09-10_1520_pf-r10-g3-closed-loop-place.md
+@@ -18,8 +18,15 @@ entity identity, XY, roll/pitch, yaw, and persistence against
+ `/world/airport_loading/pose/info` on the existing world service bridge,
+ retries a bounded number of times, and fail-closes unplaceable trials.
+ Stale spawner/detector fixtures are repaired. Scoring no longer lets a
+-failed placement drop out of the Gate-4 decision. Three consecutive
+-`gate4_short6` runs plus PF-G6S are not yet recorded.
++failed placement drop out of the Gate-4 decision. Gate-4 eval can dump
++RGB/depth/mask/cargo PLY per trial. Dump_run2 C1 diagnosis is confirmed
++(`Q-20260910-2` closed): 4 Hz output passes; dump failures were trial 0/5
++`t_first_full3d` and large-box width p95. Follow-up experiment: vectorized
++`_refine_rectangle` and accepted-only cargo mask, committed as `df9c7a2`.
++No-dump scored C1 passed once, then failed two trials on whole-window
++`DETECT_TOP_UNOBSERVABLE`; after the mask change one scored C1 passed
++again. Identity attempt on `df9c7a2` (`dirty=0`) failed run1; three
++consecutive C1 runs plus PF-G6S are not yet recorded.
+ 
+ ## Requirement
+ 
+@@ -44,19 +51,34 @@ failed placement drop out of the Gate-4 decision. Three consecutive
+ - `src/luggage_perception/test/test_pf_r6_detector_instrumentation.py`
+ - `src/luggage_perception/test/test_pf_g4h_evaluator.py`
+ - `src/luggage_perception/luggage_perception/eval/gate4_scoring.py`
++- `src/luggage_perception/luggage_perception/eval/gate4_dump.py`
++- `src/luggage_perception/test/eval/test_gate4_dump.py`
+ - `scripts/platform_free_height_gate4_eval.py`
++- `src/luggage_perception/luggage_perception/luggage_box_estimator.py`
++- `src/luggage_perception/test/test_luggage_box_estimator.py`
++- `src/luggage_perception/luggage_perception/semantic_segmenter.py`
++- `src/luggage_perception/test/test_semantic_segmenter.py`
+ 
+ ## Verification
+ 
+-- not run: focused pytest in progress.
++- `python3 -m pytest src/luggage_gazebo/test/test_pf_r5a_fix1_spawn_fail_closed.py src/luggage_gazebo/test/test_pf_r10_place_verify.py src/luggage_perception/test/test_sensor_preprocessor.py src/luggage_perception/test/test_semantic_point_filter.py src/luggage_perception/test/test_pf_r6_detector_instrumentation.py src/luggage_perception/test/test_pf_g4h_evaluator.py -q`: 94 passed.
++- `python3 -m pytest src/luggage_perception/test/eval/test_gate4_dump.py -q`: 10 passed.
++- Diagnostic dump (not a C1 identity run): `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/dump_run2/` residual 0. C1 still fails on `t_first_full3d > 1.4 s` and `width_err_m` p95. Human inspect: `dump_run2/INSPECT.md`. Diagnosis confirmed and closed: `docs/agents/discuss/2026-09-10_1732_pfr10-g3-dump-diagnosis-for-codex.md` (`Q-20260910-2`).
++- Refine/mask experiment: `python3 -m pytest src/luggage_perception/test/test_semantic_segmenter.py src/luggage_perception/test/test_pf_r8_acceptance.py src/luggage_perception/test/test_luggage_box_estimator.py -q`: 70 passed. Scored table: `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`.
+ 
+ ## Result
+ 
+-- open: implementation in progress; C1-C3 not yet recorded.
++- open: placement closed-loop is in; C1-C3 three consecutive passing runs not yet recorded.
+ 
+ ## Pointers
+ 
++- `docs/agents/eng/2026-09-10_1737_pfr10-dump-diagnosis-confirmation.md`
++- `docs/agents/discuss/2026-09-10_1732_pfr10-g3-dump-diagnosis-for-codex.md`
+ - `docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md`
+ - `docs/agents/discuss/2026-09-07_2039_pf-r10-gate4-integration.md`
+ - `docs/agents/reviews/2026-09-10_1425_claude-pfr9-pfr10-sim-review.md`
+ - `docs/plans/pf_r8_r9_perception_acceptance.md`
++- `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/dump_run2/INSPECT.md`
++- `docs/agents/eng/2026-09-10_1851_pfr10-g3-refine-mask-experiment.md`
++- `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`
++- `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/identity/RESULT.md`
+diff --git a/docs/plans/README.md b/docs/plans/README.md
+index 2ee9034..b358cea 100644
+--- a/docs/plans/README.md
++++ b/docs/plans/README.md
+@@ -1,5 +1,36 @@
+ # Plans
+ 
++Read the **status line** on a plan before treating it as work to implement.
++Superseded and discussion-only files stay on disk because discuss threads
++and evidence point at them. Do not delete those files to “clean up”; close
++stale mailbox rows instead.
++
++**Live / executable now**
++
++- [D555 Gazebo depth-image pipeline](d555_sim_depth_pipeline_execution.md)
++  (DSIM-1…INTEGRATION; held until reviews bind the PF-R9 passing commit)
++- [D555 eye-in-hand calibration](d555_handeye_calibration.md)
++  (HE-1 blocked on CAD datum; HE-2 waits for the physical board)
++- [PF-R8 / PF-R9 perception acceptance](pf_r8_r9_perception_acceptance.md)
++  (PF-R8 and PF-R9 g2 simulation passed; PF-R10 C1–C3 still open)
++- [PF-R9 g2 payload depth-primary execution](pf_r9_g2_payload_depth_primary_execution.md)
++  (closed on simulation D1–D7; D8 parked)
++- [SIM-R1 production orchestrator](sim_r1_production_orchestrator_exploration.md)
++  (SIM-R1-1 done; later checkpoints not dispatched)
++- [True container inner geometry](true_container_inner_geometry.md)
++  (TCIG-1 and TCIG-4 done; 2/3/5/6/7 and integration not dispatched)
++
++**Historical / do not dispatch**
++
++- [PF-F3 depth-primary contract](pf_f3_depth_primary_contract.md)
++  (requirement draft; superseded as a dispatch gate by the PF-R9 g2 plan)
++- [D455 replace D435](d455_replace_d435/README.md)
++  (misdirect; keep as why D455 was rejected)
++- [Platform-free height eng TODO](platform_free_height_eng_todo.md)
++  (superseded by the remediation plan)
++- [Gate 4 detection-split proposal](platform_free_height_gate4_revision.md)
++  (unconfirmed; do not implement)
++
+ - [Agent owner-closed subtask efficiency experiment](agent_subtask_efficiency_experiment.md)
+   (compares queue wait, lead time, handoffs, rework, and escaped defects
+   against the previous reviews-eng-test stage workflow)
+@@ -39,7 +70,7 @@ Phase 1 Gates 1–5 acceptance is in [mvp_gates.md](../status/mvp_gates.md). Pha
+   （记录当前仿真特权信息风险，并规划将 pickup ROI/platform_z 从
+   `scene_tf.yaml` 真值改为显式测量/标定输入）
+ - [无 platform_z 箱体高度估计研发 TODO](platform_free_height_eng_todo.md)
+-  （同帧顶面/局部支撑面估计，支持 TOP_ONLY/FULL_3D，在线节点不读仿真真值）
++  （**已被 remediation 取代**；原始 TODO 快照，不要按它实施）
+ - [无 platform_z 箱体高度估计测试与验收](platform_free_height_test_plan.md)
+   （单元、stamp/TF、故障注入、Gazebo、rosbag 和性能门槛）
+ - [无 platform_z 箱体高度估计修正方案](platform_free_height_remediation.md)
+@@ -57,17 +88,18 @@ Phase 1 Gates 1–5 acceptance is in [mvp_gates.md](../status/mvp_gates.md). Pha
+   （显式 Start、人工上箱 request-ID 握手、stop-and-look NBV、策略插件硬门、
+    仿真/实机同算法与持久三箱闭环）
+ - [D555 替换仿真 D435](d555_replace_d435/README.md)
+-  （已装 D555 PoE 的 Datasheet / TF / 替换讨论；官方无 D555 URDF；
+-   机内光学按 D450；未过 HB 与几何门之前不改架构）
++  （Datasheet / TF 讨论；**可执行计划是** `d555_sim_depth_pipeline_execution.md`）
++- [D555 Gazebo 深度图路径执行](d555_sim_depth_pipeline_execution.md)
++  （DSIM-1…INTEGRATION；拆点云桥、640×360@15、重验 `pickup_observe`）
+ - [D555 真机 bring-up 核实](d555_hardware_bringup_verification.md)
+-  （HB-1/2/3 只读：话题与 TF dump、RGB–深度对齐、相对 Mid-360 安装残差）
++  （HB-1/2/3 **已完成**；D8 与手眼应用仍停着）
+ - [D455 替换腕部 D435（参考，已误导向）](d455_replace_d435/README.md)
+-  （按 D455 写的材料；对齐目标已改为 D555）
++  （按 D455 写的材料；**不要实现**；机身问题已关）
+ - [D555 眼在手标定](d555_handeye_calibration.md)
+-  （CAD 种子 + ChArUco 手眼；HB-3 测到约 2° 安装旋转误差；
+-   HE-1 全离线，HE-2 需实体标定板）
++  （CAD 种子 + ChArUco 手眼；HE-1 blocked；HE-2 等实体标定板）
+ - [PF-R8 / PF-R9 感知验收](pf_r8_r9_perception_acceptance.md)
+-  （PF-R8 已通过；PF-R9 generation 1 仅 B3 未达，像素空间掩膜预案已触发）
++  （PF-R8 与 PF-R9 g2 仿真已过；PF-R10 C1–C3 仍开）
++- [PF-R9 g2 执行计划](pf_r9_g2_payload_depth_primary_execution.md)
++  （仿真 D1–D7 已过；D8 按决定延期）
+ - [PF-F3 depth-primary 传感契约](pf_f3_depth_primary_contract.md)
+-  （取消整幅点云传输，彩色对齐深度为唯一栅格；含 PF-R9/PF-R10 generation 2；
+-   共识第二轮未过前不可派发）
++  （**历史需求文本**；不要从这份文件派发）
+diff --git a/docs/plans/d455_replace_d435/README.md b/docs/plans/d455_replace_d435/README.md
+index a2de8e6..a151610 100644
+--- a/docs/plans/d455_replace_d435/README.md
++++ b/docs/plans/d455_replace_d435/README.md
+@@ -4,10 +4,10 @@ Status: discussion only. Not architecture. Not dispatched.
+ 
+ ## 目标已改为 D555 PoE（2026-09-08）
+ 
+-**不要按本目录去实现 D455。** 实机装的是 **D555 PoE**（SN `419222302385`），
+-用户已确认对齐目标是 D555，不是 D455。本目录的 D455 参数、官方 TF 和选项
+-A/B/C 降级为**参考资料**；其「选项 A：不上 D455」的结论已无意义，因为 D455
+-从来不是装在机上的机身。
++**不要按本目录去实现 D455。** 实机装的是 **D555 PoE**（SN `419222302385`）。
++D555 的官网参数、TF 与替换讨论在
++[`docs/plans/d555_replace_d435/`](../d555_replace_d435/README.md)。
++本目录的 D455 参数、官方 TF 和选项 A/B/C 降级为**参考资料**。
+ 
+ D555 实测规格与本目录若干前提冲突（数据来自 D555 Datasheet v1.1 与
+ `20260902_183500_eef_livox_d555/NOTES.md`）：
+@@ -28,8 +28,9 @@ D555 实测规格与本目录若干前提冲突（数据来自 D555 Datasheet v1
+ 所以该外参需要重新标定，`camera_link` → `d555_link` 的单位阵也应改为**定义**
+ 而非调出来的关节。
+ 
+-待决问题在 `docs/agents/discuss/2026-09-08_1643_d455-sim-parity-and-min-z-conflict.md`
+-（`Q-20260908-2`）。相机机身决策排在 F3（`Q-20260908-3`）之后。
++机身决策已关闭（`Q-20260908-2`，`status: done`）：目标是 D555，不是 D455。
++后续仿真工作在 `docs/plans/d555_sim_depth_pipeline_execution.md`。
++本目录只留作「为何否掉 D455」的对照，**不要按它改 URDF 或 launch**。
+ 
+ ## 以下为 D455 参考资料（不再是目标）
+ 
+diff --git a/docs/plans/d555_hardware_bringup_verification.md b/docs/plans/d555_hardware_bringup_verification.md
+index 42e78a3..a6da8ab 100644
+--- a/docs/plans/d555_hardware_bringup_verification.md
++++ b/docs/plans/d555_hardware_bringup_verification.md
+@@ -1,6 +1,11 @@
+ # D555 PoE hardware bring-up verification
+ 
+-Status: plan for read-only hardware fact-finding. Not an architecture change.
++> **HB-1/HB-2/HB-3 are done.** Evidence lives under
++> `docs/status/evidence/d555_bringup/`. Do not re-run as if undispatched.
++> Remaining hardware items are parked D8 (after PF-R10/PF-R7/DSIM) and
++> HE-2 (after the calibration board).
++
++Status: completed fact-finding. Not an architecture change.
+ No URDF, no message contract, and no acceptance-bar edits are authorised here.
+ 
+ Parent task: `D555-BRINGUP-20260908`.
+@@ -167,4 +172,6 @@ belong there, never under `docs/agents/`.
+ - `src/luggage_description/config/camera_mount_origin.xacro`
+ - `src/luggage_description/config/realsense_d435.yaml`
+ - `docs/architecture/sensor_data_pipeline.md`
++- `docs/plans/d555_replace_d435/README.md`
++- `docs/plans/d555_replace_d435/official_params.md`
+ - `docs/plans/d455_replace_d435/README.md`
+diff --git a/docs/plans/pf_f3_depth_primary_contract.md b/docs/plans/pf_f3_depth_primary_contract.md
+index e960f1f..d89b8b2 100644
+--- a/docs/plans/pf_f3_depth_primary_contract.md
++++ b/docs/plans/pf_f3_depth_primary_contract.md
+@@ -1,13 +1,17 @@
+ # PF-F3 — depth-primary sensor contract
+ 
++> **Historical requirement text. Do not dispatch from this file.**
++> Round-2 consensus was cancelled. The executable successor is
++> `pf_r9_g2_payload_depth_primary_execution.md` (user-directed, PF-R9 g2
++> simulation D1–D7 passed at `bcb54c9`). Keep this document for the
++> F3-1…F3-7 wording that generation 2 incorporated.
++
+ Date: 2026-09-09 (reviews revision after consensus round 1, `cursor/opus5`)
+ Parent: `PFH-REMEDIATION-20260904`
+ Base revision: `271267cc86be5da04a499ea4f64cadc54d72bc05`
+-Consensus thread: `docs/agents/discuss/2026-09-08_1651_f3-depth-primary-contract-consensus.md`
++Consensus thread: `docs/agents/discuss/2026-09-08_1651_f3-depth-primary-contract-consensus.md` (`status: cancelled`)
+ 
+-Status: **not dispatchable**. This revision exists to be audited in consensus
+-round 2. `dispatch_ready` stays `no` on every row until
+-`consensus: reached` is recorded on the thread above.
++Status: **historical**. Not a live dispatch gate.
+ 
+ ## 1. Why this plan exists
+ 
+diff --git a/docs/plans/platform_free_height_eng_todo.md b/docs/plans/platform_free_height_eng_todo.md
+index e851173..c3ea3d7 100644
+--- a/docs/plans/platform_free_height_eng_todo.md
++++ b/docs/plans/platform_free_height_eng_todo.md
+@@ -1,5 +1,10 @@
+ # Platform-free Height Estimation - Engineering TODO
+ 
++> **Superseded snapshot. Do not implement from this file.**
++> Live work is `platform_free_height_remediation.md` and the later PF-R*
++> execution/acceptance plans. PF-R1–R6/R8/R9 g2 simulation are closed;
++> remaining PFH work is PF-R10 then PF-R7.
++
+ Date: 2026-09-04
+ 
+ Source decision:
+diff --git a/docs/status/progress/README.md b/docs/status/progress/README.md
+index e3b6bd3..6c8d371 100644
+--- a/docs/status/progress/README.md
++++ b/docs/status/progress/README.md
+@@ -5,6 +5,8 @@ of repository commits, agent Results, review decisions, and the open mailbox.
+ 
+ ## Daily
+ 
++- [2026-09-10](daily/2026-09-10.md)
++- [2026-09-09](daily/2026-09-09.md)
+ - [2026-09-08](daily/2026-09-08.md)
+ - [2026-09-07](daily/2026-09-07.md)
+ - [2026-09-06](daily/2026-09-06.md)
+diff --git a/docs/status/progress/daily/2026-09-08.md b/docs/status/progress/daily/2026-09-08.md
+index 85dfe1c..daf4738 100644
+--- a/docs/status/progress/daily/2026-09-08.md
++++ b/docs/status/progress/daily/2026-09-08.md
+@@ -1,13 +1,13 @@
+ # 2026-09-08 Daily Progress
+ 
+ - Window: `2026-09-08T00:00:00+08:00` to `2026-09-09T00:00:00+08:00`
+-- Snapshot revision: `0f392ef6b06ba1bde6328609edf3c99a11160a42`
+-- Source digest: `1c52797febf2d548`
++- Snapshot revision: `a47b2f8d4331157a85e6f33f4a970d2444a8d5ab`
++- Source digest: `d1ad9d4aa199ade6`
+ - Generated by: `scripts/progress_poll.py`
+ 
+ ## Summary
+ 
+-- Commits: 10
++- Commits: 14
+ - Passing result events: 2
+ - Failed/blocked result events: 1
+ - Review decisions: 4
+@@ -26,6 +26,10 @@
+ 
+ ## Commits
+ 
++- `a47b2f8d` Record remaining agent mailbox notes, evidence, and daily progress. (2026-09-08T17:35:33+08:00)
++- `456f33bd` Add TCIG-4 RViz explain markers and a ROS-free atlas HTML viewer. (2026-09-08T17:35:17+08:00)
++- `437aa061` Add the agent format contract and dispatch_ready mailbox gate. (2026-09-08T17:35:11+08:00)
++- `696463d9` Route container point checks through the hull kernel. (2026-09-08T17:35:00+08:00)
+ - `0f392ef6` docs: retarget camera work to installed D555 PoE, add bring-up verification plan (2026-09-08T17:13:00+08:00)
+ - `985a43ba` Add PF chain session summary (single lookup entry for PF-R6/R8/R9) (2026-09-08T14:14:33+08:00)
+ - `59a2eba3` Add PF-R9 blocked-on-B3 eng note (2026-09-08T13:10:37+08:00)
+@@ -74,6 +78,6 @@
+ 
+ ## Workspace
+ 
+-- Tracked modified files outside progress output: 24
+-- Untracked files outside progress output: 324
++- Tracked modified files outside progress output: 3
++- Untracked files outside progress output: 5
+ - Dirty files are reported as context only; they are not counted as completed work without a Result or commit.
+diff --git a/scripts/platform_free_height_gate4_eval.py b/scripts/platform_free_height_gate4_eval.py
+index 099b4ec..1cbe89c 100755
+--- a/scripts/platform_free_height_gate4_eval.py
++++ b/scripts/platform_free_height_gate4_eval.py
+@@ -22,13 +22,43 @@ import subprocess
+ import time
+ from pathlib import Path
+ 
++import numpy as np
+ import rclpy
++from rclpy.duration import Duration
+ from rclpy.node import Node
+-from rclpy.qos import QoSProfile, ReliabilityPolicy
++from rclpy.parameter import Parameter
++from rclpy.qos import (
++    DurabilityPolicy,
++    HistoryPolicy,
++    QoSProfile,
++    ReliabilityPolicy,
++)
++from rclpy.time import Time
++from sensor_msgs.msg import CameraInfo, Image, PointCloud2
++from std_msgs.msg import String
++import tf2_ros
+ 
+ from luggage_msgs.msg import DetectionFrame
+ from luggage_msgs.srv import GetCurrentBox, SpawnNextBox
++from luggage_perception import ros_message_adapters as adapters
+ from luggage_perception.eval import gate4_scoring as scoring
++from luggage_perception.eval.detection_gate_sampling import (
++    build_aligned_dump,
++    pick_joined_stamp,
++    stamp_sec_from_key,
++)
++from luggage_perception.eval.gate4_dump import (
++    StampBuffer,
++    crop_workspace_xy,
++    model_pose_from_gz,
++    parse_gz_pose_info,
++    select_dump_stamps,
++    trial_folder_name,
++    trial_is_failure,
++    write_index,
++    write_snapshot_dir,
++)
++from luggage_perception.sensor_preprocessor import transform_points
+ 
+ WARMUP_FRAMES = 5  # support-stability window after an instance change
+ GAP_SEC = 2.0      # orchestration gap threshold for active-window Hz
+@@ -44,11 +74,85 @@ def _yaw_from_quat(quat):
+         1.0 - 2.0 * (quat.y * quat.y + quat.z * quat.z))
+ 
+ 
++def _stamp_key(msg):
++    return (int(msg.header.stamp.sec), int(msg.header.stamp.nanosec))
++
++
++def _decode_dump_image(msg):
++    if msg is None:
++        return None
++    arr = adapters.image_array_from_msg(msg)
++    if arr is None:
++        return None
++    if arr.ndim == 3 and (msg.encoding or "").lower() == "bgr8":
++        return arr[:, :, ::-1].copy()
++    return np.asarray(arr).copy()
++
++
++def _decode_depth_m(msg):
++    if msg is None:
++        return None
++    encoding = (msg.encoding or "").lower()
++    if encoding in ("32fc1", "32fc"):
++        arr = np.frombuffer(msg.data, dtype=np.float32).reshape(
++            msg.height, msg.width)
++        return np.asarray(arr, dtype=np.float32).copy()
++    millimetres = adapters.depth_array_from_msg(msg)
++    if millimetres is None:
++        return None
++    return np.asarray(millimetres, dtype=np.float32) * 0.001
++
++
++def _json_payload(msg):
++    if msg is None or not getattr(msg, "data", None):
++        return None
++    try:
++        data = json.loads(msg.data)
++    except (TypeError, ValueError):
++        return None
++    return data if isinstance(data, dict) else None
++
++
++def _camera_info_dict(msg):
++    if msg is None:
++        return None
++    return {
++        "frame_id": msg.header.frame_id,
++        "stamp": float(msg.header.stamp.sec) + 1e-9 * float(msg.header.stamp.nanosec),
++        "width": int(msg.width),
++        "height": int(msg.height),
++        "k": [float(v) for v in msg.k],
++        "d": [float(v) for v in msg.d],
++        "p": [float(v) for v in msg.p],
++    }
++
++
++def _quat_matrix(tx, ty, tz, qx, qy, qz, qw):
++    n = math.sqrt(qx * qx + qy * qy + qz * qz + qw * qw) or 1.0
++    x, y, z, w = qx / n, qy / n, qz / n, qw / n
++    xx, yy, zz = x * x, y * y, z * z
++    xy, xz, yz = x * y, x * z, y * z
++    wx, wy, wz = w * x, w * y, w * z
++    return np.array([
++        [1.0 - 2.0 * (yy + zz), 2.0 * (xy - wz), 2.0 * (xz + wy), tx],
++        [2.0 * (xy + wz), 1.0 - 2.0 * (xx + zz), 2.0 * (yz - wx), ty],
++        [2.0 * (xz - wy), 2.0 * (yz + wx), 1.0 - 2.0 * (xx + yy), tz],
++        [0.0, 0.0, 0.0, 1.0],
++    ], dtype=np.float64)
++
++
+ class Gate4Eval(Node):
+-    def __init__(self):
+-        super().__init__("platform_free_height_gate4_eval")
++    def __init__(self, dump_enabled=False):
++        overrides = []
++        if dump_enabled:
++            overrides.append(
++                Parameter("use_sim_time", Parameter.Type.BOOL, True))
++        super().__init__(
++            "platform_free_height_gate4_eval",
++            parameter_overrides=overrides)
+         qos = QoSProfile(depth=20, reliability=ReliabilityPolicy.BEST_EFFORT)
+         self._frames = []
++        self._dump_enabled = bool(dump_enabled)
+         self.create_subscription(
+             DetectionFrame, "/luggage/perception/detection_frame",
+             self._on_frame, qos)
+@@ -56,10 +160,71 @@ class Gate4Eval(Node):
+             GetCurrentBox, "/pickup_box_spawner/get_current_box")
+         self._spawn = self.create_client(
+             SpawnNextBox, "/pickup_box_spawner/spawn_next_box")
++        self._buffers = {}
++        self._json_latest = {}
++        self._camera_info = None
++        self._tf_buffer = None
++        self._trial_samples = []
++        if self._dump_enabled:
++            self._enable_dump_subs()
+ 
+     def _on_frame(self, msg):
+         self._frames.append((time.monotonic(), msg))
+ 
++    def _enable_dump_subs(self):
++        image_qos = QoSProfile(
++            depth=5,
++            reliability=ReliabilityPolicy.BEST_EFFORT,
++            durability=DurabilityPolicy.VOLATILE,
++            history=HistoryPolicy.KEEP_LAST)
++        latch_qos = QoSProfile(
++            depth=10,
++            reliability=ReliabilityPolicy.RELIABLE,
++            durability=DurabilityPolicy.TRANSIENT_LOCAL)
++        self._buffers = {
++            "color": StampBuffer(maxlen=80),
++            "depth": StampBuffer(maxlen=80),
++            "overlay": StampBuffer(maxlen=80),
++            "mask": StampBuffer(maxlen=80),
++            "instance_mask": StampBuffer(maxlen=40),
++            "cargo": StampBuffer(maxlen=40),
++        }
++        self._trial_samples = []
++        for name, topic in (
++                ("color", "/luggage/preprocessed/camera/color/image"),
++                ("depth", "/luggage/preprocessed/camera/depth/image"),
++                ("overlay", "/luggage/semantic/overlay"),
++                ("mask", "/luggage/semantic/mask"),
++                ("instance_mask", "/luggage/semantic/instance_mask")):
++            self.create_subscription(
++                Image, topic,
++                lambda m, stream=name: self._buffers[stream].push(m),
++                image_qos)
++        self.create_subscription(
++            PointCloud2, "/luggage/semantic/cargo_points",
++            lambda m: self._buffers["cargo"].push(m),
++            image_qos)
++        self.create_subscription(
++            CameraInfo, "/luggage/preprocessed/camera/color/camera_info",
++            self._on_camera_info, image_qos)
++        for key, topic in (
++                ("stream_stats", "/luggage_detector/stream_stats_json"),
++                ("diagnostics", "/luggage_detector/diagnostics_json"),
++                ("seg_stats", "/semantic_segmenter/stats_json"),
++                ("filter_stats", "/semantic_point_filter/stats_json"),
++                ("prep_status", "/luggage/preprocessed/status"),
++                ("current_box", "/luggage/current_box")):
++            self.create_subscription(
++                String, topic,
++                lambda m, name=key: self._json_latest.__setitem__(
++                    name, _json_payload(m)),
++                latch_qos)
++        self._tf_buffer = tf2_ros.Buffer()
++        self._tf_listener = tf2_ros.TransformListener(self._tf_buffer, self)
++
++    def _on_camera_info(self, msg):
++        self._camera_info = msg
++
+     def _call(self, client, req, timeout=20.0):
+         if not client.wait_for_service(timeout_sec=timeout):
+             return None
+@@ -77,13 +242,273 @@ class Gate4Eval(Node):
+     def get_gt(self):
+         return self._call(self._get, GetCurrentBox.Request())
+ 
+-    def collect(self, duration_sec):
++    def collect(self, duration_sec, record_dump_samples=False,
++                reset_samples=True):
+         t_end = time.monotonic() + duration_sec
+         start_n = len(self._frames)
++        if record_dump_samples and reset_samples:
++            self._trial_samples = []
++            next_sample = time.monotonic()
++        elif record_dump_samples:
++            next_sample = time.monotonic()
+         while rclpy.ok() and time.monotonic() < t_end:
+             rclpy.spin_once(self, timeout_sec=0.05)
++            if record_dump_samples and time.monotonic() >= next_sample:
++                captured = self._capture_decoded_sample()
++                if captured is not None:
++                    self._trial_samples.append(captured)
++                next_sample += 0.5
+         return list(self._frames[start_n:])
+ 
++    def capture_gz_pose(self, world_name, model_name):
++        topic = "/world/%s/pose/info" % world_name
++        try:
++            proc = subprocess.run(
++                ["ign", "topic", "-e", "-t", topic, "--num", "1"],
++                capture_output=True, text=True, timeout=3.0, check=False)
++        except (OSError, subprocess.TimeoutExpired) as exc:
++            return "", {"error": str(exc), "model": None}
++        raw = proc.stdout or ""
++        parsed = parse_gz_pose_info(raw)
++        return raw, {
++            "model_name": model_name,
++            "model": model_pose_from_gz(parsed, model_name),
++            "n_entities": len(parsed),
++        }
++
++    def _tf_to_world(self, points, frame_id):
++        if self._tf_buffer is None or points is None or not frame_id:
++            return None, "tf unavailable"
++        pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
++        try:
++            tf_msg = self._tf_buffer.lookup_transform(
++                "world", str(frame_id), Time(),
++                timeout=Duration(seconds=0.25))
++        except Exception as exc:  # noqa: BLE001 - dump must not crash scoring
++            return None, str(exc)
++        t = tf_msg.transform.translation
++        r = tf_msg.transform.rotation
++        matrix = _quat_matrix(
++            float(t.x), float(t.y), float(t.z),
++            float(r.x), float(r.y), float(r.z), float(r.w))
++        return transform_points(pts, matrix), None
++
++    def _nearest_msg(self, snaps, name, key):
++        items = snaps.get(name) or {}
++        if not items:
++            return None
++        if key in items:
++            return items[key]
++        return items[max(items)]
++
++    def _snapshot_from_key(self, key):
++        snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
++        color = _decode_dump_image((snaps.get("color") or {}).get(key))
++        overlay = _decode_dump_image(self._nearest_msg(snaps, "overlay", key))
++        depth_m = _decode_depth_m((snaps.get("depth") or {}).get(key))
++        mask_msg = self._nearest_msg(snaps, "mask", key)
++        mask_labels = None
++        if mask_msg is not None:
++            labels = adapters.image_array_from_msg(mask_msg)
++            if labels is not None:
++                mask_labels = labels[:, :, 0] if labels.ndim == 3 else labels
++                mask_labels = np.asarray(mask_labels).copy()
++        images, arrays, extras = build_aligned_dump(
++            color, depth_m, overlay, mask_labels)
++        inst_msg = self._nearest_msg(snaps, "instance_mask", key)
++        if inst_msg is not None:
++            inst = adapters.image_array_from_msg(inst_msg)
++            if inst is not None:
++                inst = inst[:, :, 0] if inst.ndim == 3 else inst
++                images["instance_mask"] = np.asarray(inst).copy()
++                arrays["instance_mask"] = np.asarray(inst).copy()
++        cargo_msg = (snaps.get("cargo") or {}).get(key)
++        cargo_matched = cargo_msg is not None
++        if cargo_msg is None:
++            cargo_msg = self._nearest_msg(snaps, "cargo", key)
++        cargo_pts = (
++            adapters.cloud_points_from_msg(cargo_msg)
++            if cargo_msg is not None else None)
++        cargo_frame = (
++            cargo_msg.header.frame_id if cargo_msg is not None else "")
++        extras["join_stamp"] = stamp_sec_from_key(key)
++        extras["join_stamp_key"] = list(key)
++        extras["camera_info"] = _camera_info_dict(self._camera_info)
++        extras["stream_stats"] = self._json_latest.get("stream_stats")
++        extras["diagnostics"] = self._json_latest.get("diagnostics")
++        extras["seg_stats"] = self._json_latest.get("seg_stats")
++        extras["filter_stats"] = self._json_latest.get("filter_stats")
++        extras["prep_status"] = self._json_latest.get("prep_status")
++        extras["current_box"] = self._json_latest.get("current_box")
++        extras["color_frame_id"] = (
++            (snaps.get("color") or {}).get(key).header.frame_id
++            if (snaps.get("color") or {}).get(key) is not None else None)
++        extras["cargo_frame_id"] = cargo_frame
++        extras["cargo_matched"] = cargo_matched
++        if cargo_msg is not None and not cargo_matched:
++            extras["cargo_fallback_stamp"] = (
++                float(cargo_msg.header.stamp.sec)
++                + 1e-9 * float(cargo_msg.header.stamp.nanosec))
++        return images, arrays, extras, cargo_pts, cargo_frame
++
++    def _capture_decoded_sample(self):
++        if not self._buffers:
++            return None
++        snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
++        key = pick_joined_stamp(snaps, required=("color", "depth", "overlay"))
++        if key is None:
++            key = pick_joined_stamp(snaps, required=("color", "depth"))
++        if key is None:
++            color_keys = snaps.get("color") or {}
++            if not color_keys:
++                return None
++            key = max(color_keys)
++        images, arrays, extras, cargo_pts, cargo_frame = (
++            self._snapshot_from_key(key))
++        world_pts, tf_err = self._tf_to_world(cargo_pts, cargo_frame)
++        extras["tf_error"] = tf_err
++        extras["captured_monotonic"] = time.monotonic()
++        cropped = None
++        if world_pts is not None:
++            cropped = crop_workspace_xy(
++                world_pts, getattr(self, "_workspace", ([-1.0, 0.0], [0.5, 0.5]))[0],
++                getattr(self, "_workspace", ([-1.0, 0.0], [0.5, 0.5]))[1])
++        clouds = {"cargo_camera": {"points": cargo_pts, "frame_id": cargo_frame}}
++        if world_pts is not None:
++            clouds["cargo_world"] = {"points": world_pts, "frame_id": "world"}
++        if cropped is not None:
++            clouds["cargo_workspace"] = {"points": cropped, "frame_id": "world"}
++        return {
++            "images": images, "arrays": arrays, "extras": extras,
++            "clouds": clouds, "stamp_key": key,
++        }
++
++    def write_trial_dump(self, dump_root, trial, recovery, box_id, rows,
++                         min_stamp_sec, workspace, world_name,
++                         dump_pass_trials=True):
++        if not self._dump_enabled or not dump_root:
++            return None
++        failed = trial_is_failure(recovery, rows)
++        if not failed and not dump_pass_trials:
++            return None
++        folder = trial_folder_name(trial, recovery, box_id, rows)
++        dest = Path(dump_root) / folder
++        dest.mkdir(parents=True, exist_ok=True)
++        samples = list(self._trial_samples or [])
++        snapshot_dirs = []
++        last_reason = ""
++        last_n_cargo = None
++        if samples:
++            idxs = select_dump_stamps(
++                list(range(len(samples))), count=(3 if failed else 1))
++            labels = (
++                ("early", "mid", "late") if len(idxs) >= 3
++                else (("late",) if len(idxs) == 1
++                      else ("early", "late")[:len(idxs)]))
++            for label, idx in zip(labels, idxs):
++                sample = samples[idx]
++                extras = dict(sample.get("extras") or {})
++                extras["trial"] = trial
++                extras["box_id"] = box_id
++                extras["failed"] = failed
++                extras["recovery"] = recovery
++                extras["workspace_center_xy"] = list(workspace[0])
++                extras["workspace_half_extents"] = list(workspace[1])
++                extras["scoring_tail"] = (rows or [])[-1] if rows else None
++                extras["sample_index"] = idx
++                extras["n_samples"] = len(samples)
++                if extras.get("scoring_tail"):
++                    last_reason = extras["scoring_tail"].get("pca_reason") or last_reason
++                    last_n_cargo = extras["scoring_tail"].get("n_cargo_points")
++                stats = extras.get("stream_stats") or {}
++                if last_n_cargo is None:
++                    last_n_cargo = stats.get("n_cargo_points")
++                    last_reason = stats.get("pca_reason") or last_reason
++                write_snapshot_dir(
++                    str(dest / label),
++                    images=sample.get("images"),
++                    arrays=sample.get("arrays"),
++                    extras=extras,
++                    clouds=sample.get("clouds"))
++                snapshot_dirs.append(label)
++        else:
++            snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
++            key = pick_joined_stamp(
++                snaps, required=("color", "depth", "overlay"),
++                min_stamp_sec=min_stamp_sec)
++            if key is None:
++                key = pick_joined_stamp(
++                    snaps, required=("color", "depth"),
++                    min_stamp_sec=min_stamp_sec)
++            keys = [key] if key is not None else []
++            labels = (
++                ("early", "mid", "late") if len(keys) >= 3
++                else (("late",) if len(keys) == 1
++                      else ("early", "late")[:len(keys)]))
++            for label, stamp_key in zip(labels, keys):
++                images, arrays, extras, cargo_pts, cargo_frame = (
++                    self._snapshot_from_key(stamp_key))
++                world_pts, tf_err = self._tf_to_world(cargo_pts, cargo_frame)
++                cropped = None
++                if world_pts is not None:
++                    cropped = crop_workspace_xy(
++                        world_pts, workspace[0], workspace[1])
++                extras["trial"] = trial
++                extras["box_id"] = box_id
++                extras["failed"] = failed
++                extras["recovery"] = recovery
++                extras["workspace_center_xy"] = list(workspace[0])
++                extras["workspace_half_extents"] = list(workspace[1])
++                extras["tf_error"] = tf_err
++                extras["scoring_tail"] = (rows or [])[-1] if rows else None
++                if extras.get("scoring_tail"):
++                    last_reason = extras["scoring_tail"].get("pca_reason") or ""
++                    last_n_cargo = extras["scoring_tail"].get("n_cargo_points")
++                clouds = {
++                    "cargo_camera": {
++                        "points": cargo_pts, "frame_id": cargo_frame},
++                }
++                if world_pts is not None:
++                    clouds["cargo_world"] = {
++                        "points": world_pts, "frame_id": "world"}
++                if cropped is not None:
++                    clouds["cargo_workspace"] = {
++                        "points": cropped, "frame_id": "world"}
++                write_snapshot_dir(
++                    str(dest / label), images=images, arrays=arrays,
++                    extras=extras, clouds=clouds)
++                snapshot_dirs.append(label)
++        gz_raw, gz_json = self.capture_gz_pose(world_name, box_id)
++        (dest / "gz_pose.txt").write_text(gz_raw or "")
++        (dest / "gz_pose.json").write_text(
++            json.dumps(gz_json, indent=2, default=str) + "\n")
++        trial_rec = {
++            "trial": trial,
++            "box_id": box_id,
++            "failed": failed,
++            "recovery": recovery,
++            "snapshots": snapshot_dirs,
++            "pca_reason": last_reason,
++            "n_cargo_points": last_n_cargo,
++            "gz_pose": gz_json.get("model"),
++        }
++        (dest / "trial.json").write_text(
++            json.dumps(trial_rec, indent=2, default=str) + "\n")
++        with (dest / "scores.jsonl").open("w") as handle:
++            for row in rows or []:
++                handle.write(json.dumps(row) + "\n")
++        return {
++            "trial": trial,
++            "folder": folder,
++            "failed": failed,
++            "box_id": box_id,
++            "pca_reason": last_reason,
++            "n_cargo_points": last_n_cargo,
++            "t_first_valid_sec": recovery.get("t_first_valid_sec"),
++            "t_first_full3d_sec": recovery.get("t_first_full3d_sec"),
++            "snapshots": snapshot_dirs,
++        }
++
+ 
+ def _row(frame, gt, trial, box_id, monotonic_sec=None):
+     """One DetectionFrame -> scoring row (estimate + reference + errors)."""
+@@ -241,12 +666,27 @@ def main():
+     parser.add_argument("--min-trials-per-size", type=int, default=10)
+     parser.add_argument("--launch-params", default="",
+                         help="exact launch argument string, recorded as-is")
++    parser.add_argument(
++        "--dump-dir", default="",
++        help="eval-only: write RGB/depth/mask/cloud dumps per trial")
++    parser.add_argument("--world-name", default="airport_loading")
++    parser.add_argument(
++        "--workspace-center", nargs=2, type=float, default=[-1.0, 0.0],
++        metavar=("X", "Y"))
++    parser.add_argument(
++        "--workspace-half", nargs=2, type=float, default=[0.5, 0.5],
++        metavar=("HX", "HY"))
+     args = parser.parse_args()
+     out = Path(args.out)
+     out.mkdir(parents=True, exist_ok=True)
++    dump_root = Path(args.dump_dir) if args.dump_dir else None
++    if dump_root is not None:
++        dump_root.mkdir(parents=True, exist_ok=True)
++    workspace = (list(args.workspace_center), list(args.workspace_half))
+ 
+     rclpy.init()
+-    node = Gate4Eval()
++    node = Gate4Eval(dump_enabled=dump_root is not None)
++    node._workspace = workspace
+     all_rows = []
+     all_stamps = []
+     trials = []
+@@ -255,6 +695,7 @@ def main():
+     t_run_start = time.monotonic()
+     spawn_failures = 0
+     trial_recoveries = []
++    dump_records = []
+     try:
+         # Let the stream settle before trial 0 (arm/observe/camera
+         # warmup after launch): a first trial started mid-warmup fails
+@@ -275,14 +716,26 @@ def main():
+                     "trial": trial, "spawn_ok": False,
+                     "message": None if spawn is None else spawn.message,
+                 })
+-                trial_recoveries.append({
++                rec = {
+                     "trial": trial, "spawn_ok": False,
+                     "n_settled": 0,
+                     "t_first_valid_sec": None,
+                     "t_first_full3d_sec": None,
+-                })
++                }
++                trial_recoveries.append(rec)
++                try:
++                    dumped = node.write_trial_dump(
++                        dump_root, trial, rec,
++                        None if spawn is None else spawn.message,
++                        [], None, workspace, args.world_name)
++                except Exception as exc:  # noqa: BLE001 - dump must not fail scoring
++                    node.get_logger().error("trial dump failed: %s" % exc)
++                    dumped = None
++                if dumped:
++                    dump_records.append(dumped)
+                 continue
+-            node.collect(0.5)
++            node.collect(0.5, record_dump_samples=node._dump_enabled,
++                         reset_samples=True)
+             gt = node.get_gt()
+             # Expected identity comes from the eval-side spawn response
+             # (GT), never from the detector output being tested: if only
+@@ -291,7 +744,10 @@ def main():
+             expected_instance = (
+                 spawn.box.id or
+                 (gt.box.id if gt and gt.success else None))
+-            samples = node.collect(args.settle_sec)
++            samples = node.collect(
++                args.settle_sec,
++                record_dump_samples=node._dump_enabled,
++                reset_samples=False)
+             stamps = [_stamp_sec(fr.header) for _t, fr in samples]
+             all_stamps.extend(stamps)
+             rows = [
+@@ -318,12 +774,23 @@ def main():
+                 recovery_rows, expected_instance)
+             t_valid, t_full = scoring.recovery_times(
+                 recovery_owned, t_placed)
+-            trial_recoveries.append({
++            recovery = {
+                 "trial": trial, "spawn_ok": True,
+                 "n_settled": len(settled),
+                 "t_first_valid_sec": t_valid,
+                 "t_first_full3d_sec": t_full,
+-            })
++            }
++            trial_recoveries.append(recovery)
++            try:
++                dumped = node.write_trial_dump(
++                    dump_root, trial, recovery, expected_instance,
++                    owned, min(stamps) if stamps else None,
++                    workspace, args.world_name)
++            except Exception as exc:  # noqa: BLE001 - dump must not fail scoring
++                node.get_logger().error("trial dump failed: %s" % exc)
++                dumped = None
++            if dumped:
++                dump_records.append(dumped)
+             trials.append({
+                 "trial": trial, "box_id": expected_instance,
+                 "instance_id": expected_instance,
+@@ -408,6 +875,14 @@ def main():
+             summary["gate4_pass"] = False
+             summary["gate4_failures"] = (
+                 list(summary.get("gate4_failures", [])) + extra)
++    if dump_root is not None:
++        summary["dump_dir"] = str(dump_root)
++        summary["dump_trials"] = dump_records
++        write_index(str(dump_root), dump_records, extra={
++            "out": str(out),
++            "workspace_center_xy": workspace[0],
++            "workspace_half_extents": workspace[1],
++        })
+     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+     print(json.dumps(summary, indent=2))
+     return 0 if summary["gate4_pass"] else 1
+diff --git a/src/luggage_perception/CMakeLists.txt b/src/luggage_perception/CMakeLists.txt
+index ae12044..71f76a7 100644
+--- a/src/luggage_perception/CMakeLists.txt
++++ b/src/luggage_perception/CMakeLists.txt
+@@ -44,6 +44,7 @@ install(PROGRAMS
+   scripts/dump_camera_frames.py
+   scripts/handeye_capture.py
+   scripts/handeye_solve.py
++  scripts/pendant_bag_replay_eval.py
+   DESTINATION lib/${PROJECT_NAME}
+ )
+ 

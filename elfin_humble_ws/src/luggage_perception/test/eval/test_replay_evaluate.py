@@ -6,6 +6,8 @@ import sys
 import tempfile
 import unittest
 
+import numpy as np
+
 sys.path.insert(0, os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "fixtures"))
 from make_tiny_replay_bag import (  # noqa: E402
@@ -152,6 +154,39 @@ class TestEvaluateBagStub(unittest.TestCase):
             self.frames, frame_dir_name(T0), "meta.json")))
         self.assertEqual(meta["detection_count"], 0)
         self.assertEqual(meta["cargo_points"]["n_points"], 0)
+
+    def test_lidar_full_archive(self):
+        # Every /livox/lidar message is archived under lidar/<stamp>/,
+        # including the duplicate stamp and the scan far from any frame.
+        index_path = os.path.join(self.bag_out, "lidar_index.jsonl")
+        rows = [json.loads(line) for line in open(index_path)]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual(
+            sum(1 for row in rows if row["dir"] is not None), 3)
+        scan_dir = os.path.join(self.bag_out, rows[0]["dir"])
+        self.assertTrue(os.path.isfile(
+            os.path.join(scan_dir, "points.npy")))
+        self.assertTrue(os.path.isfile(
+            os.path.join(scan_dir, "lidar.ply")))
+        points = np.load(os.path.join(scan_dir, "points.npy"))
+        self.assertEqual(points.shape, (4, 4))
+        report = json.load(open(os.path.join(
+            self.bag_out, "join_report.json")))
+        self.assertEqual(report["aux_join"]["lidar_archive"]["n_scans"], 3)
+        self.assertEqual(
+            report["aux_join"]["lidar_archive"]["n_points_total"], 12)
+        # The far scan (t3+30ms, no camera frame nearby) is archived too.
+        far = frame_dir_name(T3 + 30_000_000)
+        self.assertTrue(os.path.isdir(
+            os.path.join(self.bag_out, "lidar", far)))
+
+    def test_frame_meta_points_at_nearest_archived_scan(self):
+        meta = json.load(open(os.path.join(
+            self.frames, frame_dir_name(T0), "meta.json")))
+        self.assertIn("lidar", meta)
+        self.assertEqual(meta["lidar"]["nearest_stamp_ns"],
+                         T0 + 2_000_000)
+        self.assertTrue(meta["lidar"]["nearest_dir"].startswith("lidar/"))
 
     def test_index_written(self):
         with open(os.path.join(self.bag_out, "INDEX.md")) as handle:

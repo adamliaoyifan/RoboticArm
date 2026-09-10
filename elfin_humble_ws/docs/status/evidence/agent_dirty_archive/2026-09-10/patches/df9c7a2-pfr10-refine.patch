@@ -1,0 +1,309 @@
+From df9c7a27f8ad81102b6f5462b08b724910b042cd Mon Sep 17 00:00:00 2001
+From: adamliaoyifan <adamliaoyifan@yahoo.com>
+Date: Thu, 10 Sep 2026 20:40:46 +0800
+Subject: [PATCH] Keep cargo masks on accepted YOLO boxes and vectorize
+ rectangle refine.
+
+Unaccepted platform/pedestal AABBs were still painted as cargo, which
+starved the top-plane fit on whole trials. The refine search is unchanged.
+
+Co-authored-by: Cursor <cursoragent@cursor.com>
+---
+ .../luggage_box_estimator.py                  | 45 ++++++-----
+ .../luggage_perception/semantic_segmenter.py  | 50 ++++++++++++
+ .../test/test_luggage_box_estimator.py        | 46 +++++++++++
+ .../test/test_semantic_segmenter.py           | 81 +++++++++++++++++++
+ 4 files changed, 201 insertions(+), 21 deletions(-)
+
+diff --git a/src/luggage_perception/luggage_perception/luggage_box_estimator.py b/src/luggage_perception/luggage_perception/luggage_box_estimator.py
+index 845cd59..ebc9ad5 100644
+--- a/src/luggage_perception/luggage_perception/luggage_box_estimator.py
++++ b/src/luggage_perception/luggage_perception/luggage_box_estimator.py
+@@ -172,29 +172,32 @@ def _refine_rectangle(points_2d, initial_yaw, search_deg=20.0, step_deg=0.25):
+     PCA orientation and arithmetic-mean center are biased by perspective point
+     density. Scanning a narrow angle band and using geometric projection bounds
+     recovers the physical rectangle axes and center.
++
++    Search width, step, trim percentiles, compensation, and first-min-on-ties
++    match the previous per-yaw Python loop. The batched form is the same
++    arithmetic without 322 per-yaw ``np.percentile`` calls.
+     """
+-    best = None
++    pts = np.asarray(points_2d, dtype=np.float64)
+     steps = int(round(2.0 * search_deg / step_deg)) + 1
+-    for delta_deg in np.linspace(-search_deg, search_deg, steps):
+-        yaw = initial_yaw + math.radians(float(delta_deg))
+-        axis = np.array([math.cos(yaw), math.sin(yaw)])
+-        side = np.array([-math.sin(yaw), math.cos(yaw)])
+-        p0 = points_2d.dot(axis)
+-        p1 = points_2d.dot(side)
+-        lo0, hi0 = np.percentile(
+-            p0, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
+-        lo1, hi1 = np.percentile(
+-            p1, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
+-        extent0 = float(hi0 - lo0) * _RECT_TRIM_COMPENSATION
+-        extent1 = float(hi1 - lo1) * _RECT_TRIM_COMPENSATION
+-        score = extent0 * extent1
+-        if best is None or score < best[0]:
+-            # The center is the midpoint of the trimmed bounds; trimming is
+-            # symmetric so it does not bias the center, only the extents.
+-            center = axis * ((lo0 + hi0) * 0.5) + side * (
+-                (lo1 + hi1) * 0.5)
+-            best = (score, yaw, extent0, extent1, center)
+-    return best[1], best[2], best[3], best[4]
++    deltas_deg = np.linspace(-search_deg, search_deg, steps)
++    yaws = float(initial_yaw) + np.deg2rad(deltas_deg)
++    cos_y = np.cos(yaws)
++    sin_y = np.sin(yaws)
++    axes = np.column_stack((cos_y, sin_y))
++    sides = np.column_stack((-sin_y, cos_y))
++    p0 = axes @ pts.T
++    p1 = sides @ pts.T
++    q = [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT]
++    lo0, hi0 = np.percentile(p0, q, axis=1)
++    lo1, hi1 = np.percentile(p1, q, axis=1)
++    extent0 = (hi0 - lo0) * _RECT_TRIM_COMPENSATION
++    extent1 = (hi1 - lo1) * _RECT_TRIM_COMPENSATION
++    idx = int(np.argmin(extent0 * extent1))
++    # Center is the midpoint of the trimmed bounds; trimming is symmetric
++    # so it does not bias the center, only the extents.
++    center = axes[idx] * ((lo0[idx] + hi0[idx]) * 0.5) + sides[idx] * (
++        (lo1[idx] + hi1[idx]) * 0.5)
++    return float(yaws[idx]), float(extent0[idx]), float(extent1[idx]), center
+ 
+ 
+ # ---------------------------------------------------------------------------
+diff --git a/src/luggage_perception/luggage_perception/semantic_segmenter.py b/src/luggage_perception/luggage_perception/semantic_segmenter.py
+index 974a442..b1532ee 100644
+--- a/src/luggage_perception/luggage_perception/semantic_segmenter.py
++++ b/src/luggage_perception/luggage_perception/semantic_segmenter.py
+@@ -162,6 +162,53 @@ def evaluate_detection_acceptance(bbox, ctx):
+     return False, "outside_workspace"
+ 
+ 
++def restrict_cargo_mask_to_accepted(label_map, detections, instance_map=None,
++                                    cargo_label=LABEL_CARGO):
++    """Drop cargo pixels that are not covered by an accepted cargo bbox.
++
++    ``bbox_fill`` paints every YOLO AABB, including outside-workspace false
++    positives. The accepted-detection predicate already annotates those
++    boxes; this makes the published mask match that verdict so the
++    detector does not RANSAC a pedestal/platform cloud.
++
++    Detections with no ``accepted`` key keep historic accept-all behaviour.
++    """
++    labels = np.array(label_map, copy=True)
++    inst_out = (None if instance_map is None
++                else np.array(instance_map, copy=True))
++    cargo = labels == int(cargo_label)
++    if not cargo.any():
++        return labels, inst_out, 0
++    keep = np.zeros(labels.shape, dtype=bool)
++    saw_verdict = False
++    h, w = labels.shape[:2]
++    for det in detections or ():
++        if int(det.get("label", -1)) != int(cargo_label):
++            continue
++        if "accepted" not in det:
++            continue
++        saw_verdict = True
++        if not det.get("accepted"):
++            continue
++        bbox = det.get("bbox") or ()
++        if len(bbox) < 4:
++            continue
++        x1 = max(0, min(w, int(bbox[0])))
++        y1 = max(0, min(h, int(bbox[1])))
++        x2 = max(0, min(w, int(bbox[2])))
++        y2 = max(0, min(h, int(bbox[3])))
++        if x2 > x1 and y2 > y1:
++            keep[y1:y2, x1:x2] = True
++    if not saw_verdict:
++        return labels, inst_out, 0
++    drop = cargo & ~keep
++    n_drop = int(drop.sum())
++    labels[drop] = LABEL_BACKGROUND
++    if inst_out is not None and n_drop:
++        inst_out[drop] = 0
++    return labels, inst_out, n_drop
++
++
+ def _setup_clip_vendor():
+     """Make the vendored CLIP package + deps importable offline.
+ 
+@@ -551,6 +598,9 @@ class SemanticSegmenter:
+         stats["accept_reasons"] = accepted_reasons
+         stats["workspace_predicate"] = bool(
+             self.workspace_ctx is not None and self.workspace_ctx.available())
++        label_map, instance_map, n_cleared = restrict_cargo_mask_to_accepted(
++            label_map, detections, instance_map=instance_map)
++        stats["unaccepted_cargo_pixels_cleared"] = int(n_cleared)
+         # Self-body first, then the vote. A panel flank scored as cargo on
+         # every frame made the window think it always saw cargo, so a real
+         # miss never reached the majority test.
+diff --git a/src/luggage_perception/test/test_luggage_box_estimator.py b/src/luggage_perception/test/test_luggage_box_estimator.py
+index 46bddd8..b9c73b8 100644
+--- a/src/luggage_perception/test/test_luggage_box_estimator.py
++++ b/src/luggage_perception/test/test_luggage_box_estimator.py
+@@ -12,6 +12,8 @@ import numpy as np
+ 
+ from luggage_perception.luggage_box_estimator import (  # noqa: E402
+     BoxEstimate,
++    _RECT_TRIM_COMPENSATION,
++    _RECT_TRIM_PERCENT,
+     _pca_rectangle,
+     _refine_rectangle,
+     estimate_box,
+@@ -20,6 +22,31 @@ from luggage_perception.luggage_box_estimator import (  # noqa: E402
+ )
+ 
+ 
++def _refine_rectangle_loop(points_2d, initial_yaw, search_deg=20.0,
++                           step_deg=0.25):
++    """Pre-vectorization per-yaw loop; used only as an equivalence oracle."""
++    best = None
++    steps = int(round(2.0 * search_deg / step_deg)) + 1
++    for delta_deg in np.linspace(-search_deg, search_deg, steps):
++        yaw = initial_yaw + math.radians(float(delta_deg))
++        axis = np.array([math.cos(yaw), math.sin(yaw)])
++        side = np.array([-math.sin(yaw), math.cos(yaw)])
++        p0 = points_2d.dot(axis)
++        p1 = points_2d.dot(side)
++        lo0, hi0 = np.percentile(
++            p0, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
++        lo1, hi1 = np.percentile(
++            p1, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
++        extent0 = float(hi0 - lo0) * _RECT_TRIM_COMPENSATION
++        extent1 = float(hi1 - lo1) * _RECT_TRIM_COMPENSATION
++        score = extent0 * extent1
++        if best is None or score < best[0]:
++            center = axis * ((lo0 + hi0) * 0.5) + side * (
++                (lo1 + hi1) * 0.5)
++            best = (score, yaw, extent0, extent1, center)
++    return best[1], best[2], best[3], best[4]
++
++
+ def _synthetic_box_cloud(cx, cy, platform_z, width, depth, height, yaw,
+                          n_top=500, noise_std=0.002, rng=None):
+     """Generate a point cloud of the top surface of a box."""
+@@ -102,6 +129,25 @@ class TestEstimateBoxBasic(unittest.TestCase):
+         self.assertAlmostEqual(center[0], -1.0, delta=0.02)
+         self.assertAlmostEqual(center[1], 0.1, delta=0.02)
+ 
++    def test_vectorized_refine_matches_loop(self):
++        rng = np.random.RandomState(21)
++        for seed_yaw in (0.0, 0.31, -0.47, 1.2):
++            points = np.column_stack((
++                rng.uniform(-0.4, 0.4, 2500),
++                rng.uniform(-0.25, 0.25, 2500),
++            ))
++            dense = np.column_stack((
++                rng.normal(0.28, 0.03, 400),
++                rng.normal(0.16, 0.03, 400),
++            ))
++            points = np.vstack((points, dense))
++            loop = _refine_rectangle_loop(points, seed_yaw)
++            batched = _refine_rectangle(points, seed_yaw)
++            self.assertAlmostEqual(loop[0], batched[0], places=12)
++            self.assertAlmostEqual(loop[1], batched[1], places=12)
++            self.assertAlmostEqual(loop[2], batched[2], places=12)
++            np.testing.assert_allclose(loop[3], batched[3], rtol=0, atol=1e-12)
++
+     """Basic estimation on a clean synthetic top surface."""
+ 
+     def test_axis_aligned_standard(self):
+diff --git a/src/luggage_perception/test/test_semantic_segmenter.py b/src/luggage_perception/test/test_semantic_segmenter.py
+index d91bed8..8eb11a6 100644
+--- a/src/luggage_perception/test/test_semantic_segmenter.py
++++ b/src/luggage_perception/test/test_semantic_segmenter.py
+@@ -456,6 +456,87 @@ class TestCombinedSelfBody(unittest.TestCase):
+         self.assertNotIn("panel", prompts)
+         self.assertTrue(np.all(out.label_map[85:] != LABEL_CARGO))
+ 
++    def test_update_clears_unaccepted_cargo_bbox_from_mask(self):
++        import json
++        from luggage_perception.semantic_segmenter import (
++            SemanticSegmenter, WorkspaceAcceptanceContext)
++
++        fixture_path = os.path.join(
++            os.path.dirname(__file__), "fixtures", "pf_r8",
++            "acceptance_fixture.json")
++        with open(fixture_path, encoding="utf-8") as handle:
++            fixture = json.load(handle)
++        cam, ws = fixture["camera"], fixture["workspace"]
++        ctx = WorkspaceAcceptanceContext(
++            fx=float(cam["fx"]), fy=float(cam["fy"]),
++            cx=float(cam["cx"]), cy=float(cam["cy"]),
++            plane_z=float(ws["plane_z"]),
++            center_xy=tuple(float(v) for v in ws["center_xy"]),
++            half_xy=tuple(float(v) for v in ws["half_xy"]),
++            margin=float(ws["margin"]),
++            optical_to_world=tuple(
++                tuple(float(v) for v in row)
++                for row in cam["optical_to_world"]),
++        )
++        suitcase = [178, 144, 405, 297]
++        pedestal = [611, 112, 640, 295]
++
++        class _Both(SemanticSegmenter):
++            def segment(self, rgb_image):
++                labels = np.zeros(rgb_image.shape[:2], dtype=np.uint8)
++                x1, y1, x2, y2 = suitcase
++                labels[y1:y2, x1:x2] = LABEL_CARGO
++                x1, y1, x2, y2 = pedestal
++                labels[y1:y2, x1:x2] = LABEL_CARGO
++                return labels, [
++                    {"label": LABEL_CARGO, "prompt": "suitcase",
++                     "confidence": 0.4, "bbox": suitcase},
++                    {"label": LABEL_CARGO, "prompt": "pedestal",
++                     "confidence": 0.2, "bbox": pedestal},
++                ]
++
++        seg = _Both(["suitcase"], {"suitcase": LABEL_CARGO})
++        seg.workspace_ctx = ctx
++        rgb = np.full((480, 640, 3), 40, dtype=np.uint8)
++        seg.update(rgb, stamp=1.0, frame_id="f")
++        out = seg.copy_output()
++        sx1, sy1, sx2, sy2 = suitcase
++        px1, py1, px2, py2 = pedestal
++        self.assertTrue(np.all(out.label_map[sy1:sy2, sx1:sx2] == LABEL_CARGO))
++        self.assertTrue(np.all(out.label_map[py1:py2, px1:px2] == LABEL_BACKGROUND))
++        self.assertGreater(int(out.stats["unaccepted_cargo_pixels_cleared"]), 0)
++        accepted = [d["accepted"] for d in out.detections]
++        self.assertEqual(accepted, [True, False])
++
++
++class TestRestrictCargoMask(unittest.TestCase):
++    def test_missing_accepted_key_leaves_mask(self):
++        from luggage_perception.semantic_segmenter import (
++            restrict_cargo_mask_to_accepted)
++        labels = np.zeros((10, 10), dtype=np.uint8)
++        labels[2:8, 2:8] = LABEL_CARGO
++        out, _, n = restrict_cargo_mask_to_accepted(
++            labels, [{"label": LABEL_CARGO, "bbox": [2, 2, 8, 8]}])
++        self.assertEqual(n, 0)
++        self.assertTrue(np.array_equal(out, labels))
++
++    def test_unaccepted_bbox_is_cleared(self):
++        from luggage_perception.semantic_segmenter import (
++            restrict_cargo_mask_to_accepted)
++        labels = np.zeros((10, 12), dtype=np.uint8)
++        labels[1:4, 1:4] = LABEL_CARGO
++        labels[1:4, 8:11] = LABEL_CARGO
++        labels[6:9, 1:4] = LABEL_ROBOT_ARM
++        dets = [
++            {"label": LABEL_CARGO, "accepted": True, "bbox": [1, 1, 4, 4]},
++            {"label": LABEL_CARGO, "accepted": False, "bbox": [8, 1, 11, 4]},
++        ]
++        out, _, n = restrict_cargo_mask_to_accepted(labels, dets)
++        self.assertEqual(n, 9)
++        self.assertTrue(np.all(out[1:4, 1:4] == LABEL_CARGO))
++        self.assertTrue(np.all(out[1:4, 8:11] == LABEL_BACKGROUND))
++        self.assertTrue(np.all(out[6:9, 1:4] == LABEL_ROBOT_ARM))
++
+ 
+ class TestUpdateTemporalHold(unittest.TestCase):
+     def test_update_holds_bbox_on_flicker_miss(self):
+-- 
+2.34.1
+

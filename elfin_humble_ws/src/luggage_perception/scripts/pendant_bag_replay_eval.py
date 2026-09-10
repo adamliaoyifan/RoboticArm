@@ -100,7 +100,14 @@ def _parse_args(argv):
     parser.add_argument("--pixel-stride", type=int, default=2,
                         help="deproject pixel decimation")
     parser.add_argument("--with-lidar", action="store_true",
-                        help="also dump the nearest livox scan per frame")
+                        help="additionally copy the nearest livox scan "
+                             "into each frame dir (the full archive is "
+                             "always written unless --no-lidar-archive)")
+    parser.add_argument("--no-lidar-archive", dest="archive_lidar",
+                        action="store_false", default=True,
+                        help="skip the full /livox/lidar archive "
+                             "(lidar/<stamp>/points.npy [x,y,z,intensity]"
+                             " + lidar.ply + lidar_index.jsonl)")
     parser.add_argument("--save-depth-npy", dest="save_depth_npy",
                         action="store_true", default=True)
     parser.add_argument("--no-depth-npy", dest="save_depth_npy",
@@ -142,6 +149,7 @@ def main(argv=None):
         pixel_stride=args.pixel_stride,
         cargo_select=args.cargo_select,
         center_radius_frac=args.center_radius_frac,
+        archive_lidar=args.archive_lidar,
         with_lidar=args.with_lidar,
         save_depth_npy=args.save_depth_npy,
         depth_vis=args.depth_vis,

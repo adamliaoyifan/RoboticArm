@@ -186,3 +186,39 @@ def decode_depth_mm(msg):
 def decode_cloud_xyz(msg):
     """(N, 3) float64 XYZ from a PointCloud2, or None."""
     return cloud_points_from_msg(msg)
+
+
+def decode_cloud_xyz_intensity(msg):
+    """(N, 4) float32 [x, y, z, intensity] from a PointCloud2, or None.
+
+    Livox Mid360 scans (PointCloud2, xfer_format 0) carry FLOAT32
+    x/y/z/intensity at offsets 0/4/8/12 plus tag/line/timestamp; anything
+    without FLOAT32 xyz+intensity is rejected rather than misread.
+    """
+    import numpy as _np
+    from sensor_msgs.msg import PointField
+
+    if msg.width <= 0 or msg.height <= 0 or msg.point_step <= 0:
+        return None
+    fields = {field.name: field for field in msg.fields}
+    if not {"x", "y", "z", "intensity"} <= set(fields):
+        return None
+    for name in ("x", "y", "z", "intensity"):
+        field = fields[name]
+        if field.datatype != PointField.FLOAT32 or field.count != 1:
+            return None
+    base = _np.frombuffer(msg.data, dtype=_np.uint8)
+    step = int(msg.point_step)
+    n = int(msg.width) * int(msg.height)
+    if base.size < n * step:
+        return None
+    dtype = _np.dtype({
+        "names": ["x", "y", "z", "intensity"],
+        "formats": [_np.float32] * 4,
+        "offsets": [int(fields[name].offset)
+                    for name in ("x", "y", "z", "intensity")],
+        "itemsize": step,
+    })
+    arr = _np.frombuffer(msg.data, dtype=dtype, count=n)
+    return _np.stack([arr["x"], arr["y"], arr["z"], arr["intensity"]],
+                     axis=1).astype(_np.float32, copy=False)

@@ -33,6 +33,7 @@ from luggage_perception.eval.bag_mcap_source import (
     decode_color_rgb,
     decode_depth_mm,
     decode_cloud_xyz,
+    decode_cloud_xyz_intensity,
     find_mcap_file,
     iter_bag_messages,
     scan_bag,
@@ -174,6 +175,7 @@ class ReplayEvalConfig(object):
     with_lidar: bool = False
     cargo_select: str = "center_conf"   # "center_conf" | "none"
     center_radius_frac: float = 0.35
+    archive_lidar: bool = True           # full /livox/lidar archive (lidar/)
     save_depth_npy: bool = True
     depth_vis: bool = True
     make_video: bool = False
@@ -409,15 +411,24 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     index_topics = [COLOR_TOPIC, DEPTH_TOPIC, COLOR_INFO_TOPIC,
                     DEPTH_INFO_TOPIC, JOINT_TOPIC, TCP_TOPIC,
                     TF_STATIC_TOPIC]
-    if cfg.with_lidar:
+    if cfg.with_lidar or cfg.archive_lidar:
         index_topics.append(LIDAR_TOPIC)
 
-    # ---- Pass A: stamps + tiny aux payloads -----------------------------
+    # ---- Pass A: stamps + tiny aux payloads (+ full lidar archive) ------
     color_entries, depth_entries = [], []
     joint_by_stamp, tcp_by_stamp = {}, {}
     lidar_by_stamp = {}
+    lidar_stamps_seen = []
     info_first, info_k_seen = {}, {}
     tf_static_msgs = 0
+    lidar_index_jsonl = None
+    lidar_archive_stats = {"n_scans": 0, "n_points_total": 0,
+                           "n_decode_failures": 0}
+    if cfg.archive_lidar:
+        os.makedirs(os.path.join(bag_out, "lidar"), exist_ok=True)
+        lidar_index_jsonl = open(
+            os.path.join(bag_out, "lidar_index.jsonl"), "w",
+            encoding="utf-8")
     for rec in stream(index_topics):
         topic = rec.topic
         stamp = rec.header_stamp_ns
@@ -442,7 +453,38 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
         elif topic == TF_STATIC_TOPIC:
             tf_static_msgs += 1
         elif topic == LIDAR_TOPIC:
-            lidar_by_stamp[stamp] = rec.message
+            lidar_stamps_seen.append(stamp)
+            if cfg.with_lidar:
+                lidar_by_stamp[stamp] = rec.message
+            if lidar_index_jsonl is not None:
+                # Full-volume archive: EVERY scan keyed by its own header
+                # stamp, independent of camera-frame coupling.
+                scan_dir = os.path.join(bag_out, "lidar",
+                                        frame_dir_name(stamp))
+                os.makedirs(scan_dir, exist_ok=True)
+                points = decode_cloud_xyz_intensity(rec.message)
+                if points is None:
+                    lidar_archive_stats["n_decode_failures"] += 1
+                    lidar_index_jsonl.write(json.dumps({
+                        "stamp_ns": int(stamp),
+                        "log_time_ns": int(rec.log_time_ns),
+                        "n_points": 0, "dir": None,
+                        "reason": "decode_failed"}) + "\n")
+                else:
+                    np.save(os.path.join(scan_dir, "points.npy"), points)
+                    write_ply_xyz(os.path.join(scan_dir, "lidar.ply"),
+                                  points[:, :3].astype(np.float64))
+                    lidar_archive_stats["n_scans"] += 1
+                    lidar_archive_stats["n_points_total"] += int(
+                        len(points))
+                    lidar_index_jsonl.write(json.dumps({
+                        "stamp_ns": int(stamp),
+                        "log_time_ns": int(rec.log_time_ns),
+                        "n_points": int(len(points)),
+                        "frame_id": str(rec.message.header.frame_id),
+                        "fields": "[x, y, z, intensity]",
+                        "dir": os.path.relpath(scan_dir, bag_out),
+                        "files": ["points.npy", "lidar.ply"]}) + "\n")
 
     color_sorted, color_dup = dedupe_stamped_entries(color_entries)
     depth_sorted, depth_dup = dedupe_stamped_entries(depth_entries)
@@ -457,11 +499,16 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
 
     joint_stamps = sorted(joint_by_stamp)
     tcp_stamps = sorted(tcp_by_stamp)
-    lidar_stamps = sorted(lidar_by_stamp)
+    lidar_stamps = sorted(set(lidar_stamps_seen))
+    if lidar_index_jsonl is not None:
+        lidar_index_jsonl.close()
+        lidar_archive_stats["n_lidar_msgs"] = len(lidar_stamps) or None
     aux_stats = {
         "n_joint_states": len(joint_stamps),
         "n_tcp_pose": len(tcp_stamps),
         "n_lidar": len(lidar_stamps),
+        "lidar_archive": (dict(lidar_archive_stats)
+                          if cfg.archive_lidar else None),
         "aux_tolerance_ms": float(cfg.aux_tolerance_ms),
         "lidar_tolerance_ms": float(cfg.lidar_tolerance_ms),
         "tf_static_messages": tf_static_msgs,
@@ -724,19 +771,26 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
                       "frame": "optical(d555_color_optical_frame)"}
 
     lidar_meta = None
-    if cfg.with_lidar:
+    if lidar_stamps:
+        # Always record the nearest archived scan (pointer only); the
+        # payload copy below remains opt-in via --with-lidar.
         hit = nearest_stamp(lidar_stamps, stamp_ns,
                             int(cfg.lidar_tolerance_ms * NS_PER_MS))
         if hit is not None:
             idx, dt = hit
-            points = decode_cloud_xyz(lidar_by_stamp[lidar_stamps[idx]])
-            if points is not None and len(points):
-                np.save(os.path.join(frame_dir, "lidar.npy"),
-                        np.asarray(points, dtype=np.float32))
-                write_ply_xyz(os.path.join(frame_dir, "lidar.ply"),
-                              np.asarray(points, dtype=np.float64))
-                lidar_meta = {"n_points": int(len(points)),
-                              "dt_sec": dt / 1e9}
+            lidar_meta = {"nearest_stamp_ns": int(lidar_stamps[idx]),
+                          "nearest_dir": "lidar/%s" % frame_dir_name(
+                              lidar_stamps[idx]),
+                          "dt_sec": dt / 1e9}
+            if cfg.with_lidar:
+                points = decode_cloud_xyz(
+                    lidar_by_stamp[lidar_stamps[idx]])
+                if points is not None and len(points):
+                    np.save(os.path.join(frame_dir, "lidar.npy"),
+                            np.asarray(points, dtype=np.float32))
+                    write_ply_xyz(os.path.join(frame_dir, "lidar.ply"),
+                                  np.asarray(points, dtype=np.float64))
+                    lidar_meta["n_points"] = int(len(points))
 
     depth_stats = {"zero_px": None, "min_mm_nonzero": None, "max_mm": None}
     if depth is not None:

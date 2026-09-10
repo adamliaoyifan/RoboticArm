@@ -20,6 +20,10 @@ CLI executable-mode corrections. Runtime leases and the 10.6 GB raw MCAP were
 excluded from Git. The MCAP identity and cleanup warning are recorded in the
 archive README.
 
+During preservation the PF-R10 owner committed `df9c7a2` on local `master`.
+That commit is retained as a format-patch, and its subsequent dirty tail is
+retained separately, so the first point-in-time patch remains immutable.
+
 All three patches pass reverse-apply checks in their source worktrees. The
 focused primary PF-R10/pendant suite passed 110 tests with one skip, and the
 LRF-P1 OOD suite passed 9 tests. No simulator or robot was started.
@@ -30,3 +34,5 @@ LRF-P1 OOD suite passed 9 tests. No simulator or robot was started.
 - `docs/status/evidence/agent_dirty_archive/2026-09-10/patches/primary-master.patch`
 - `docs/status/evidence/agent_dirty_archive/2026-09-10/patches/lrf-p1.patch`
 - `docs/status/evidence/agent_dirty_archive/2026-09-10/patches/tcig7-post-close.patch`
+- `docs/status/evidence/agent_dirty_archive/2026-09-10/patches/df9c7a2-pfr10-refine.patch`
+- `docs/status/evidence/agent_dirty_archive/2026-09-10/patches/primary-after-df9c7a2.patch`

@@ -6,11 +6,9 @@ run. Tree is dirty (not a C1 identity revision).
 
 ## Code (uncommitted)
 
-- Vectorized `_refine_rectangle` (same 161-step search / trim / first-min).
-  Tests: `test_luggage_box_estimator.py` 25 passed.
-- Published cargo mask keeps only accepted YOLO bboxes
-  (`restrict_cargo_mask_to_accepted`). Tests: segmenter + PF-R8 70 passed
-  with the estimator suite.
+Identity code is now `df9c7a27f8ad81102b6f5462b08b724910b042cd`
+(vectorized refine + accepted-only cargo mask). Dirty-tree experiment
+folders below are not C1 identity evidence.
 
 ## Runs
 
@@ -21,6 +19,7 @@ run. Tree is dirty (not a C1 identity revision).
 | `exp_mask_accepted/` | + accepted-only mask | boot fail | `controller_manager` not up before spawner 60 s timeout |
 | `exp_mask_accepted2/` | + accepted-only mask | pass | all 6 `pca_reason=ok`; `t_first_full3d` 0.78–1.05 s; width p95 0.041 m; `failed=0` |
 | `exp_mask_r3/` | same | boot fail | same controller_manager timeout after a tight relaunch |
+| `identity/run1/` | `df9c7a2` dirty=0 | fail | trial 2 `DETECT_LOW_CONFIDENCE` (2946 cargo pts); streak stopped |
 
 ## Reading
 
@@ -31,7 +30,8 @@ run. Tree is dirty (not a C1 identity revision).
   reviews-allowed recall lever; one scored pass followed, not three
   consecutive.
 - PF-G6S RSS slopes on ~69 s eval windows are not a C2 identity measurement.
-- C1–C3 still need one clean commit and three consecutive stored runs.
+- C1–C3 still need three consecutive stored runs on one clean commit.
+  Identity attempt `identity/run1/` at `df9c7a2` (`dirty=0`) failed C1.
 
 ## Pointers
 

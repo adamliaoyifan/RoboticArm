@@ -22,6 +22,10 @@ excluded.
   test, and research stop note.
 - `patches/tcig7-post-close.patch`: executable-bit corrections for the two
   ROS 2 atlas command wrappers.
+- `patches/df9c7a2-pfr10-refine.patch`: format-patch for the PF-R10 commit
+  created on local `master` while this archive was being assembled.
+- `patches/primary-after-df9c7a2.patch`: the remaining primary-workspace diff
+  after `df9c7a2`, captured after the first WIP snapshot was pushed.
 
 Apply a patch only after checking its recorded base and intended destination;
 the primary patch overlaps files subsequently changed in `ros2_humble` and
@@ -44,6 +48,9 @@ LFS/object storage before any command that removes untracked files.
 
 - All three patches pass `git apply --reverse --check` in their source
   worktrees.
+- `df9c7a2-pfr10-refine.patch` passes `git apply --reverse --check` at
+  `master@df9c7a2`; `primary-after-df9c7a2.patch` passes the same check
+  against the post-commit dirty workspace.
 - Primary PF-R10/pendant focused suite: 110 passed, 1 skipped.
 - LRF-P1 OOD suite: 9 passed.
 - No Gazebo stack and no robot motion were started.
