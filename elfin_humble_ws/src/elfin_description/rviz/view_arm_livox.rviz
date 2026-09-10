@@ -73,9 +73,37 @@ Visualization Manager:
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Best Effort
-        Value: /camera/d555/depth/color/points
+        Value: /luggage/preprocessed/camera/depth/points
       Use Fixed Frame: true
       Use rainbow: false
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: Decoded RGB
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /luggage/preprocessed/camera/color/image
+      Value: true
+    - Class: rviz_default_plugins/Image
+      Enabled: true
+      Max Value: 1
+      Median window: 5
+      Min Value: 0
+      Name: YOLO Overlay
+      Normalize Range: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /luggage/semantic/overlay
       Value: true
   Global Options:
     Background Color: 48; 48; 48
@@ -97,5 +125,13 @@ Visualization Manager:
       Pitch: 0.5
       Yaw: 0.8
 Window Geometry:
-  Height: 800
-  Width: 1200
+  Decoded RGB:
+    collapsed: false
+  Displays:
+    collapsed: false
+  Height: 1000
+  Hide Left Dock: false
+  Hide Right Dock: false
+  Width: 1600
+  YOLO Overlay:
+    collapsed: false

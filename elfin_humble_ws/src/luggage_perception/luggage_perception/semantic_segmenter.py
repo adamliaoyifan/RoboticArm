@@ -869,6 +869,34 @@ _BACKENDS = {
     "yolo_world_sam2": YoloWorldSam2Segmenter,
 }
 
+# Launch/eval still pass require_backend:=yolo_world. The working
+# implementation is BboxFillSegmenter, which reports bbox_fill:<weights>.
+_BACKEND_ALIASES = {
+    "bbox_fill": "bbox_fill",
+    "yolo_world": "bbox_fill",
+}
+
+
+def backend_kind(backend):
+    """Prefix of stats['backend'], e.g. bbox_fill:weights -> bbox_fill."""
+    return str(backend or "").split(":")[0].split("(")[0].strip()
+
+
+def backend_matches_require(backend, require):
+    """Whether a live backend string satisfies require_backend.
+
+    Empty require disables the guard. Stub fallbacks never match. yolo_world
+    and bbox_fill are the same YOLO-World box-fill backend; yolo_world_sam2
+    is a different backend and does not satisfy yolo_world.
+    """
+    want = str(require or "").strip()
+    if not want:
+        return True
+    kind = backend_kind(backend)
+    if not kind or kind.startswith("stub"):
+        return False
+    return _BACKEND_ALIASES.get(kind, kind) == _BACKEND_ALIASES.get(want, want)
+
 
 def build_segmenter(config):
     """Construct a segmenter from a config dict.
@@ -953,7 +981,61 @@ def colorize_label_map(label_map):
     return out
 
 
-def draw_detections_overlay(rgb_image, detections, label_names=None):
+def detections_for_overlay(detections, min_confidence=0.0, labels=None,
+                           iou_nms=0.0):
+    """Keep overlay boxes at/above ``min_confidence``.
+
+    ``labels`` if set is an allow-list of integer label ids. ``iou_nms`` > 0
+    keeps the highest-confidence box among overlaps so duplicate cargo
+    prompts (suitcase/luggage/box) do not all draw on the same object.
+    Mask/YOLO topics are unchanged; this is viz-only.
+    """
+    allow = None if labels is None else set(int(v) for v in labels)
+    floor = float(min_confidence)
+    kept = []
+    for det in detections or []:
+        if float(det.get("confidence", 0.0) or 0.0) < floor:
+            continue
+        if allow is not None and int(det.get("label", -1)) not in allow:
+            continue
+        bbox = det.get("bbox")
+        if bbox is None or len(bbox) < 4:
+            continue
+        kept.append(det)
+    nms = float(iou_nms or 0.0)
+    if nms <= 0.0 or len(kept) < 2:
+        return kept
+    ranked = sorted(
+        kept,
+        key=lambda d: float(d.get("confidence", 0.0) or 0.0),
+        reverse=True)
+    out = []
+    for det in ranked:
+        box = det["bbox"]
+        if any(_bbox_iou(box, other["bbox"]) >= nms for other in out):
+            continue
+        out.append(det)
+    return out
+
+
+def _bbox_iou(a, b):
+    ax1, ay1, ax2, ay2 = (float(v) for v in a[:4])
+    bx1, by1, bx2, by2 = (float(v) for v in b[:4])
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    denom = area_a + area_b - inter
+    if denom <= 0.0:
+        return 0.0
+    return inter / denom
+
+
+def draw_detections_overlay(rgb_image, detections, label_names=None,
+                            min_confidence=0.0, labels=None, iou_nms=0.0):
     """Draw detection bboxes/masks/labels on an RGB image for RViz / debug.
 
     Returns an HxWx3 uint8 BGR image (suitable for ``cv2_to_imgmsg(bgr8)``).
@@ -969,6 +1051,9 @@ def draw_detections_overlay(rgb_image, detections, label_names=None):
     if label_names is None:
         label_names = DEFAULT_LABEL_NAMES
     bgr = cv2.cvtColor(rgb_image, cv2.COLOR_RGB2BGR)
+    detections = detections_for_overlay(
+        detections, min_confidence=min_confidence, labels=labels,
+        iou_nms=iou_nms)
     if not detections:
         return bgr
 

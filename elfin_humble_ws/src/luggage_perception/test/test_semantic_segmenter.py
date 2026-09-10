@@ -18,11 +18,13 @@ from luggage_perception.semantic_segmenter import (  # noqa: E402
     StubSegmenter,
     apply_self_body_mask,
     apply_wrist_self_body,
+    backend_matches_require,
     bbox_mask_overlap,
     build_segmenter,
     colorize_label_map,
     compact_detections,
     detections_dropped_by_self_body,
+    detections_for_overlay,
 )
 
 
@@ -86,6 +88,18 @@ class TestBuildSegmenter(unittest.TestCase):
     def test_build_unknown_backend_raises(self):
         with self.assertRaises(ValueError):
             build_segmenter({"backend": "nonsense", "prompts": []})
+
+    def test_require_backend_aliases_bbox_fill_and_yolo_world(self):
+        live = "bbox_fill:/share/luggage_perception/models/yolov8s-world.pt"
+        self.assertTrue(backend_matches_require(live, "yolo_world"))
+        self.assertTrue(backend_matches_require(live, "bbox_fill"))
+        self.assertTrue(backend_matches_require(live, ""))
+        self.assertFalse(backend_matches_require(live, "yolo_world_sam2"))
+        self.assertFalse(
+            backend_matches_require("stub(fallback:yolo_world:ultralytics)",
+                                    "yolo_world"))
+        self.assertFalse(
+            backend_matches_require("yolo_world_sam2:weights", "yolo_world"))
 
     def test_build_yolo_world_falls_back_when_deps_missing(self):
         # Simulate ultralytics being unavailable so the bbox_fill backend
@@ -180,6 +194,29 @@ class TestDrawOverlay(unittest.TestCase):
         # Empty-detections path returns the plain BGR-converted image.
         plain = draw_detections_overlay(rgb, [])
         self.assertTrue((plain == cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)).all())
+
+        skipped = draw_detections_overlay(
+            rgb, detections, min_confidence=0.90, labels=(LABEL_CARGO,))
+        self.assertTrue((skipped[10, 10] == cv2.cvtColor(
+            rgb, cv2.COLOR_RGB2BGR)[10, 10]).all())
+
+
+class TestDetectionsForOverlay(unittest.TestCase):
+    def test_keeps_cargo_at_or_above_threshold_and_nms(self):
+        dets = [
+            {"label": LABEL_CARGO, "prompt": "suitcase", "confidence": 0.40,
+             "bbox": [10, 10, 50, 50]},
+            {"label": LABEL_CARGO, "prompt": "box", "confidence": 0.20,
+             "bbox": [12, 12, 48, 48]},
+            {"label": LABEL_CARGO, "prompt": "weak", "confidence": 0.05,
+             "bbox": [80, 80, 100, 100]},
+            {"label": LABEL_ROBOT_ARM, "prompt": "robot arm", "confidence": 0.90,
+             "bbox": [0, 0, 20, 20]},
+        ]
+        kept = detections_for_overlay(
+            dets, min_confidence=0.10, labels=(LABEL_CARGO,), iou_nms=0.5)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["prompt"], "suitcase")
 
 
 if __name__ == "__main__":

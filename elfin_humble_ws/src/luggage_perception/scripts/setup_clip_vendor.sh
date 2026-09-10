@@ -19,9 +19,9 @@ echo "[1/3] Cloning ultralytics/CLIP -> $VENDOR/clip_pkg"
 rm -rf "$VENDOR/clip_pkg"
 git clone --depth 1 https://github.com/ultralytics/CLIP.git "$VENDOR/clip_pkg"
 
-echo "[2/3] Installing ftfy + regex (+ wcwidth) -> $VENDOR/deps"
+echo "[2/3] Installing ftfy + regex + tqdm (+ wcwidth) -> $VENDOR/deps"
 rm -rf "$VENDOR/deps"
-"$PY" -m pip install --target="$VENDOR/deps" ftfy regex
+"$PY" -m pip install --target="$VENDOR/deps" ftfy regex tqdm
 
 echo "[3/3] Downloading CLIP ViT-B/32 weights -> $VENDOR/clip_models"
 URL=https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt
@@ -35,5 +35,5 @@ fi
 
 echo "OK: CLIP vendor populated at $VENDOR"
 echo "  clip_pkg/   - ultralytics/CLIP python package (import clip)"
-echo "  deps/       - ftfy, regex, wcwidth (CLIP runtime deps)"
+echo "  deps/       - ftfy, regex, tqdm, wcwidth (CLIP runtime deps)"
 echo "  clip_models/ViT-B-32.pt  - $(du -h "$VENDOR/clip_models/ViT-B-32.pt" | cut -f1) weights"

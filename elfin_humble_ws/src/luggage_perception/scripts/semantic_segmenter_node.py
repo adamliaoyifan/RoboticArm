@@ -14,10 +14,11 @@ Subscribes the *preprocessed* color image so the mask inherits the RGB
 ``primary_stamp`` and the downstream point filter can join on exact stamps
 with the preprocessed cloud.
 
-The mask/instance-mask/overlay outputs are BEST_EFFORT (sensor-stream
-contract); ``/luggage/semantic/yolo_detections`` is the structured per-frame
-box list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
-late consumer sees the last record.
+The mask/instance-mask outputs are BEST_EFFORT (sensor-stream contract).
+Overlay is RELIABLE so RViz Image (default Reliable) can show it; mask
+consumers stay BEST_EFFORT. ``/luggage/semantic/yolo_detections`` is the
+structured per-frame box list (BEST_EFFORT, depth 10). ``~/stats_json``
+is transient-local so a late consumer sees the last record.
 """
 
 from __future__ import division
@@ -47,7 +48,9 @@ from luggage_perception.detect_overlay import (
     timestamp_banner_lines,
 )
 from luggage_perception.semantic_segmenter import (
+    LABEL_CARGO,
     WorkspaceAcceptanceContext,
+    backend_matches_require,
     build_segmenter,
     draw_detections_overlay,
 )
@@ -71,8 +74,9 @@ class SemanticSegmenterNode(Node):
             "sam2.model_type": "sam2_hiera_s",
             "prompts": [""],
             "class_mapping_labels": [-1],
-            # Non-empty and not a prefix of stats["backend"] -> RuntimeError
-            # at startup, so an eval never silently runs the stub fallback.
+            # Non-empty: startup fails unless live backend satisfies it.
+            # yolo_world and bbox_fill are aliases of the same YOLO-World
+            # box-fill backend; stub fallbacks never match.
             "require_backend": "",
             # 0 = unlimited. YOLO on CPU is slower than the 4-6 Hz input;
             # unlimited processing would pile callbacks up.
@@ -166,7 +170,7 @@ class SemanticSegmenterNode(Node):
             self.get_parameter("workspace_world_frame").value)
         backend = self._segmenter.last_stats["backend"]
         require = str(self.get_parameter("require_backend").value)
-        if require and not backend.startswith(require):
+        if not backend_matches_require(backend, require):
             raise RuntimeError(
                 "semantic backend %r does not match require_backend %r"
                 % (backend, require))
@@ -192,6 +196,8 @@ class SemanticSegmenterNode(Node):
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         mask_qos = QoSProfile(
             depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        overlay_qos = QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE)
         stream_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         stats_qos = QoSProfile(
@@ -201,7 +207,7 @@ class SemanticSegmenterNode(Node):
         self._mask_pub = self.create_publisher(
             Image, self.get_parameter("output.mask").value, mask_qos)
         self._overlay_pub = self.create_publisher(
-            Image, self.get_parameter("output.overlay").value, mask_qos)
+            Image, self.get_parameter("output.overlay").value, overlay_qos)
         self._instance_pub = self.create_publisher(
             Image, self.get_parameter("output.instance_mask").value, mask_qos)
         self._yolo_pub = self.create_publisher(
@@ -456,7 +462,11 @@ class SemanticSegmenterNode(Node):
         if not self._overlay_ok:
             return
         try:
-            bgr = draw_detections_overlay(rgb_image, list(out.detections))
+            bgr = draw_detections_overlay(
+                rgb_image, list(out.detections),
+                min_confidence=float(self._segmenter.confidence_threshold),
+                labels=(LABEL_CARGO,),
+                iou_nms=0.5)
             now_sec = self.get_clock().now().nanoseconds / 1e9
             infer_ms = (out.stats or {}).get("inference_ms")
             lines, meta = timestamp_banner_lines(

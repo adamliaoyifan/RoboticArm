@@ -10,7 +10,7 @@ auto-install.
 ```
 vendor/
   clip_pkg/                  ultralytics/CLIP python package  (import clip)
-  deps/                      ftfy, regex, wcwidth             (CLIP runtime deps)
+  deps/                      ftfy, regex, tqdm, wcwidth        (CLIP runtime deps)
   clip_models/ViT-B-32.pt    ~338 MB CLIP ViT-B/32 checkpoint (clip.load target)
 ```
 
