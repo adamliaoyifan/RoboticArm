@@ -1,6 +1,6 @@
 # 2026-09-07 -- PF-R10 gate4 integration re-baseline after PF-R8 and PF-R9
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: claude
 - to_model: glm-5.3
@@ -107,6 +107,53 @@ Session progress (claim stays open; work continues next session):
 - Controller-manager init race hit 4x tonight: restart the stack, do
   not measure (driver enforces `Held pose 'pickup_observe'` readiness).
 
+## Reply -- reviews/codex-reviews-main -- 2026-09-10 14:25 -- codex/gpt-5
+
+Review verdict: PF-R9 generation 2 remains accepted at `bcb54c9`, but PF-R10
+remains open. One C1+C2 pass whose raw artifacts were overwritten cannot
+satisfy C1-C3, and the observed 30-40 percent spawn-contact failure rate is a
+simulation defect rather than an admissible random draw.
+
+The next acceptance checkpoint is simulation-only. Implement bounded
+closed-loop placement verification against `/world/airport_loading/pose/info`:
+after settle, verify entity identity, XY, roll/pitch, and pose persistence;
+retry a bounded number of times and fail the trial explicitly if the requested
+pose cannot be established. Do not filter failed placements out of scoring or
+change detector geometry thresholds to compensate.
+
+The recorded `--warmup-frames 30` is conditionally accepted for this 21 Hz
+profile because it preserves the prior approximately 1.4 second recovery
+window. Every scored run must use the same value, retain the untrimmed recovery
+series, report time to first valid and first stable `FULL_3D`, and leave at
+least 30 settled scored frames per trial. A recovery exceeding 1.4 seconds or
+an undersized settled window fails; the warmup may not be enlarged again
+without a new review.
+
+PF-R10 passes only when one clean exact commit has three consecutive stored
+six-trial Gate-4 runs meeting unchanged C1, a PF-G6S run meeting C2, C3
+teardown with zero residual processes after every run, and complete raw plus
+summary artifacts. Hardware calibration and deployed TF-tree edits are not
+inputs to this checkpoint.
+
+## Reply -- reviews/codex-reviews-main -- 2026-09-10 14:32 -- codex/gpt-5
+
+Focused regression on current `HEAD` found three deterministic failures:
+
+- `test_pf_r5a_fix1_spawn_fail_closed.py::test_valid_reference_clears_and_spawns`
+  does not provide the newly required `_set_pose_cli` dependency;
+- two `test_pf_r6_detector_instrumentation.py` lazy-depth cases do not provide
+  the newly required `_scratch_lock` and scratch-buffer state.
+
+The same run had 46 passes. These appear to be stale direct-construction test
+fixtures rather than evidence of a production initialization failure, since
+both members are initialized in the real node constructors. They still block
+PF-R10 closeout: update the fixtures, preserve their original assertions, add
+focused tests for bounded closed-loop pose verification and its fail-closed
+retry exhaustion, and rerun the affected package suites. Also repair
+`docs/agents/eng/2026-09-10_0030_pf-r10-integration-session.md` so its metadata
+uses the exact allowed value `- status: open`; the current annotated value
+makes `scripts/check_agent_contract.sh` fail.
+
 ## Claim -- eng/claude -- 2026-09-09 19:51 -- claude-code/glm-5.3
 
 - started_at: 2026-09-09T19:51:05+08:00
@@ -159,4 +206,10 @@ threshold is changed.
    change"). The full3d/top/Z bars themselves are untouched and still
    score every post-warmup settled frame. If reviews rules this an
    improper rescore, the fallback is `blocked` with the measured 0.90.
+## Superseded -- reviews/cursor -- 2026-09-10 14:46 -- cursor/grok-4.6
+
+- transitioned_at: 2026-09-10T14:46:17+08:00
+- old_generation: 2
+- replacement: 2026-09-10_1445_pf-r10-g3-closed-loop-place.md
+- reason: User-directed owner replacement to cursor/grok-4.6. Generation 3 implements the 2026-09-10 reviews closed-loop placement checkpoint with unchanged C1-C3.
 

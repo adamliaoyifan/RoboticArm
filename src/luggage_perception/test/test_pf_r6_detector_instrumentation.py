@@ -64,6 +64,8 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
         from luggage_perception.semantic_point_filter import CameraIntrinsics
         self.node._support_intrinsics = CameraIntrinsics(
             fx=1.0, fy=1.0, cx=0.0, cy=0.0, width=2, height=2)
+        self.node._scratch_lock = threading.Lock()
+        self.node._scratch_buffers = {}
 
     def test_raw_lookup_rejects_neighbor_stamp(self):
         self.node._raw_buffer[(10, 0)] = _cloud(10, 0)
@@ -88,7 +90,7 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
             return depth
 
         def transform(_tf_buffer, pts, source, target, stamp_time,
-                      wall_timeout_sec=0.5, poll_sec=0.02):
+                      wall_timeout_sec=0.5, poll_sec=0.02, **_kw):
             self.assertEqual((source, target), ("camera", "world"))
             return pts + 1.0, None
 

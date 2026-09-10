@@ -317,3 +317,66 @@ def gate_pass(summary):
     summary["gate4_failures"] = failures
     summary["gate4_pass"] = not failures
     return summary
+
+
+RECOVERY_LIMIT_SEC = 1.4
+MIN_SETTLED_PER_TRIAL = 30
+
+
+def recovery_times(owned_rows, t0_monotonic):
+    """Untrimmed time to first valid top and first FULL_3D.
+
+    ``owned_rows`` are chronological detector rows for the expected
+    instance, including warmup. ``t0_monotonic`` is the spawn-return
+    clock. Negative deltas (frames that arrived during spawn) count as
+    0.0. Missing timestamps are skipped.
+    """
+    t_valid = None
+    t_full = None
+    t0 = float(t0_monotonic)
+    for row in owned_rows:
+        stamp = row.get("monotonic_sec")
+        if stamp is None:
+            continue
+        dt = max(0.0, float(stamp) - t0)
+        if t_valid is None and row.get("top_surface_valid"):
+            t_valid = dt
+        if t_full is None and _category(row) == "full3d":
+            t_full = dt
+        if t_valid is not None and t_full is not None:
+            break
+    return t_valid, t_full
+
+
+def placement_recovery_gate(spawn_failures, trial_recoveries,
+                            failed_count=0,
+                            recovery_limit_sec=RECOVERY_LIMIT_SEC,
+                            min_settled=MIN_SETTLED_PER_TRIAL):
+    """PF-R10 closeout extras on top of Gate 4 limits.
+
+    Failed placements must fail the run (they are not dropped from
+    scoring). Recovery uses the untrimmed owned series. C1 also requires
+    zero settled ``failed`` frames.
+    """
+    failures = []
+    if int(spawn_failures) > 0:
+        failures.append("spawn_failures %d > 0" % int(spawn_failures))
+    if int(failed_count) > 0:
+        failures.append("failed %d > 0" % int(failed_count))
+    for rec in trial_recoveries:
+        trial = rec.get("trial")
+        n_settled = int(rec.get("n_settled") or 0)
+        t_valid = rec.get("t_first_valid_sec")
+        t_full = rec.get("t_first_full3d_sec")
+        if n_settled < int(min_settled):
+            failures.append("trial %s settled %d < %d" % (
+                trial, n_settled, int(min_settled)))
+        if t_valid is None or float(t_valid) > float(recovery_limit_sec):
+            failures.append(
+                "trial %s t_first_valid %s > %.1f s" % (
+                    trial, t_valid, float(recovery_limit_sec)))
+        if t_full is None or float(t_full) > float(recovery_limit_sec):
+            failures.append(
+                "trial %s t_first_full3d %s > %.1f s" % (
+                    trial, t_full, float(recovery_limit_sec)))
+    return failures

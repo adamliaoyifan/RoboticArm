@@ -4,7 +4,7 @@
 - agent: claude
 - model: glm-5.3
 - cli: claude
-- status: open（claim 保持，下一会话续 streak）
+- status: open
 
 ## Summary
 

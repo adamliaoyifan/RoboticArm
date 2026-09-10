@@ -320,5 +320,64 @@ class TestActiveWindowHz(unittest.TestCase):
         self.assertIsNone(s.active_window_hz([], gap_sec=2.0))
 
 
+class TestPlacementRecoveryGate(unittest.TestCase):
+
+    def _rec(self, trial, settled=30, t_valid=0.2, t_full=0.4, spawn_ok=True):
+        return {
+            "trial": trial, "spawn_ok": spawn_ok, "n_settled": settled,
+            "t_first_valid_sec": t_valid, "t_first_full3d_sec": t_full,
+        }
+
+    def test_spawn_failure_fails_the_run(self):
+        failures = s.placement_recovery_gate(
+            1, [self._rec(0, spawn_ok=False, settled=0,
+                          t_valid=None, t_full=None)])
+        self.assertTrue(any("spawn_failures" in f for f in failures))
+
+    def test_five_good_trials_cannot_hide_one_failed_place(self):
+        recs = [self._rec(i) for i in range(5)]
+        recs.append(self._rec(5, spawn_ok=False, settled=0,
+                              t_valid=None, t_full=None))
+        failures = s.placement_recovery_gate(1, recs, failed_count=0)
+        self.assertTrue(any("spawn_failures 1 > 0" in f for f in failures))
+
+    def test_slow_recovery_fails(self):
+        failures = s.placement_recovery_gate(
+            0, [self._rec(0, t_valid=1.6, t_full=1.7)])
+        self.assertTrue(any("t_first_valid" in f for f in failures))
+        self.assertTrue(any("t_first_full3d" in f for f in failures))
+
+    def test_undersized_settled_window_fails(self):
+        failures = s.placement_recovery_gate(
+            0, [self._rec(0, settled=29)])
+        self.assertTrue(any("settled 29 < 30" in f for f in failures))
+
+    def test_failed_frames_fail_c1(self):
+        failures = s.placement_recovery_gate(
+            0, [self._rec(0)], failed_count=1)
+        self.assertTrue(any("failed 1 > 0" in f for f in failures))
+
+    def test_clean_recoveries_pass(self):
+        recs = [self._rec(i) for i in range(6)]
+        self.assertEqual(
+            [], s.placement_recovery_gate(0, recs, failed_count=0))
+
+    def test_recovery_times_use_untrimmed_series(self):
+        rows = [
+            _row(top_surface_valid=False, height_valid=False,
+                 geometry_level=0, monotonic_sec=10.2),
+            _row(monotonic_sec=10.4),
+        ]
+        t_valid, t_full = s.recovery_times(rows, 10.0)
+        self.assertAlmostEqual(t_valid, 0.4, places=6)
+        self.assertAlmostEqual(t_full, 0.4, places=6)
+
+    def test_recovery_times_clamp_pre_place_frames(self):
+        rows = [_row(monotonic_sec=9.5)]
+        t_valid, t_full = s.recovery_times(rows, 10.0)
+        self.assertEqual(t_valid, 0.0)
+        self.assertEqual(t_full, 0.0)
+
+
 if __name__ == "__main__":
     unittest.main()

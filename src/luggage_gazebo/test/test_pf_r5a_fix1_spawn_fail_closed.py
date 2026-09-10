@@ -63,6 +63,9 @@ def _make_spawner(models_root):
     node._current_model = "pickup_box_0041_prior"
     node._current_ref = {"version": "v", "stl_sha256": "prior"}
     node._visual_settle_sec = 0.0
+    node._replace_settle_sec = 0.0
+    node._place_persist_sec = 0.0
+    node._place_read_timeout_sec = 0.0
     node._box_pub = _Pub()
     node._size_eval_pub = _Pub()
     node._finalized_pub = _Pub()
@@ -91,11 +94,15 @@ def _make_spawner(models_root):
         calls["delete"] += 1
         return None
 
+    def _enforce_intended_pose(*_a, **_k):
+        return None
+
     node._sample_box = _sample_box
     node._entry_pose = _entry_pose
     node.handle_clear = _clear
     node._spawn_model = _spawn_model
     node._delete_model = _delete_model
+    node._enforce_intended_pose = _enforce_intended_pose
     node.get_logger = lambda: _Logger()
     return node, calls
 
