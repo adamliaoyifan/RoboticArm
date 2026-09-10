@@ -44,5 +44,6 @@ Unchanged C1-C3 on one clean exact commit.
 ## Pointers
 
 - `docs/agents/discuss/2026-09-10_1445_pf-r10-g3-closed-loop-place.md`
+- `docs/agents/discuss/2026-09-10_2119_pfr10-g3-status-for-reviews.md`
 - `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`
 - `docs/plans/pf_r8_r9_perception_acceptance.md`

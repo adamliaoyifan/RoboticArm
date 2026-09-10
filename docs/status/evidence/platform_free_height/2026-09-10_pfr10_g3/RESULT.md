@@ -12,6 +12,8 @@ the original dump/identity directories are not in this tree.
   `git status --porcelain` empty.
 - Placement closed-loop and static-hold already on master
   (`0d24f18`, `60ad37e`, `a5c5e29`).
+- Eval-only Gate-4 dump harness: `7918a78` (off unless `--dump-dir`).
+- This status record: `66aa423`.
 
 ## What C1 requires
 

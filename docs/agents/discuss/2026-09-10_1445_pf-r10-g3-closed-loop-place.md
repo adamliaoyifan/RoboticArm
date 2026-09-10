@@ -52,5 +52,6 @@ Streak stopped. Teardown residual 0.
 
 C1 still requires three consecutive `gate4_short6` plus PF-G6S on one clean
 exact commit. Table: `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`.
-The generation-3 mailbox row is missing from `OPEN.md` while this thread
-stays claimed; that is a projection defect, not a closeout.
+The generation-3 mailbox row is restored as `Q-20260910-1`. Status for
+reviews is `Q-20260910-3`
+(`docs/agents/discuss/2026-09-10_2119_pfr10-g3-status-for-reviews.md`).
