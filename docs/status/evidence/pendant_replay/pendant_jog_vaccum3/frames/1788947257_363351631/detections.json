@@ -1,0 +1,16 @@
+{
+  "detections": [
+    {
+      "bbox": [
+        225,
+        264,
+        647,
+        504
+      ],
+      "confidence": 0.9940457344055176,
+      "label": 2,
+      "prompt": "luggage on a platform viewed from directly above"
+    }
+  ],
+  "stamp_sec": 1788947257.3633516
+}

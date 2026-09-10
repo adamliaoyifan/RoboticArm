@@ -1,0 +1,66 @@
+{
+  "backend": "bbox_fill:yolov8s-world.pt",
+  "bag": "pendant_jog_vaccum3",
+  "bag_path": "~/work/robotarm_bags/2026-09-09/pendant_jog_vaccum3",
+  "cargo_selection": {
+    "center_radius_frac": 0.35,
+    "frames_central": 13,
+    "frames_no_cargo": 0,
+    "frames_off_center": 0,
+    "min_conf": 0.3,
+    "mode": "center_conf"
+  },
+  "detection_conf": {
+    "max": 0.9946373105049133,
+    "n": 13,
+    "p50": 0.9216073155403137,
+    "p90": 0.9940457344055176
+  },
+  "device": "cuda",
+  "frames_planned": 13,
+  "frames_processed": 13,
+  "frames_with_cargo": 13,
+  "inference_ms": {
+    "max": 530.9975147247314,
+    "mean": 46.03448280921349,
+    "p95": 6.111860275268555
+  },
+  "join": {
+    "n_color": 2849,
+    "n_color_orphans": 303,
+    "n_depth": 2856,
+    "n_depth_orphans": 310,
+    "n_exact": 2527,
+    "n_pairs": 2546,
+    "n_tolerance": 19
+  },
+  "per_prompt_counts": {
+    "luggage on a platform viewed from directly above": 13
+  },
+  "segmenter_config": {
+    "backend": "yolo_world",
+    "class_mapping": {
+      "luggage": 2,
+      "luggage on a platform viewed from directly above": 2,
+      "suitcase": 2
+    },
+    "confidence_threshold": 0.3,
+    "device": "cuda",
+    "prompts": [
+      "luggage on a platform viewed from directly above",
+      "suitcase",
+      "luggage"
+    ]
+  },
+  "skipped_topics": [
+    "/elfin/cps_rate",
+    "/elfin/cps_telemetry",
+    "/elfin/joint_kinematics",
+    "/livox/imu",
+    "/vacuum/di0",
+    "/vacuum/do0",
+    "/vacuum/do1",
+    "/vacuum/io"
+  ],
+  "wall_sec": 2.81
+}

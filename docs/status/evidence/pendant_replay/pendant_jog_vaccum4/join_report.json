@@ -1,0 +1,161 @@
+{
+  "aux_join": {
+    "aux_tolerance_ms": 50.0,
+    "lidar_archive": null,
+    "lidar_tolerance_ms": 100.0,
+    "n_joint_states": 1315,
+    "n_lidar": 0,
+    "n_tcp_pose": 1315,
+    "tf_static_messages": 3
+  },
+  "bag_path": "~/work/robotarm_bags/2026-09-09/pendant_jog_vaccum4",
+  "color_orphans": [
+    1788947915391085797,
+    1788947923191016389,
+    1788947923857731502,
+    1788947926124450541,
+    1788947927857631241,
+    1788947930657703761,
+    1788947931524615097,
+    1788947936057914020,
+    1788947938391139413,
+    1788947941324577596,
+    1788947942657609957,
+    1788947943590998253,
+    1788947945324671390,
+    1788947948257699506,
+    1788947950124260533,
+    1788947951324706957,
+    1788947954124729664,
+    1788947955591201846,
+    1788947960925143418,
+    1788947961392028370,
+    1788947962991635537,
+    1788947966524793994,
+    1788947967924802024,
+    1788947979791527853,
+    1788947982191511931,
+    1788947992325215249,
+    1788948005125269506,
+    1788948009725355691,
+    1788948017125194997,
+    1788948019592129603,
+    1788948021925252947
+  ],
+  "depth_orphans": [
+    1788947912490711025,
+    1788947922556777812,
+    1788947922623484305,
+    1788947928556675640,
+    1788947938090610657,
+    1788947964290794494,
+    1788947972491109940,
+    1788947986690663894,
+    1788947998624971090,
+    1788948019224807529
+  ],
+  "duplicates": {
+    "color": 0,
+    "depth": 0
+  },
+  "join": {
+    "n_color": 1562,
+    "n_color_orphans": 31,
+    "n_depth": 1541,
+    "n_depth_orphans": 10,
+    "n_exact": 1531,
+    "n_pairs": 1531,
+    "n_tolerance": 0
+  },
+  "known_limitations": [
+    "cargo points stay in the optical frame: d555_color_optical_frame is not reachable from the recorded TF tree (driver TFs were not recorded)"
+  ],
+  "skipped_topics": {
+    "/camera/d555/accel/sample": {
+      "message_count": 0,
+      "msg_type": "sensor_msgs/msg/Imu"
+    },
+    "/camera/d555/gyro/sample": {
+      "message_count": 0,
+      "msg_type": "sensor_msgs/msg/Imu"
+    },
+    "/camera/d555/imu": {
+      "message_count": 0,
+      "msg_type": "sensor_msgs/msg/Imu"
+    },
+    "/clock_sync/master": {
+      "message_count": 109,
+      "msg_type": "std_msgs/msg/String"
+    },
+    "/elfin/cps_rate": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/Float64MultiArray"
+    },
+    "/elfin/cps_telemetry": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/String"
+    },
+    "/elfin/joint_kinematics": {
+      "message_count": 1315,
+      "msg_type": "control_msgs/msg/JointTrajectoryControllerState"
+    },
+    "/livox/imu": {
+      "message_count": 21352,
+      "msg_type": "sensor_msgs/msg/Imu"
+    },
+    "/vacuum/di0": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/Bool"
+    },
+    "/vacuum/do0": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/Bool"
+    },
+    "/vacuum/do1": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/Bool"
+    },
+    "/vacuum/io": {
+      "message_count": 1315,
+      "msg_type": "std_msgs/msg/String"
+    }
+  },
+  "topics": {
+    "/camera/d555/aligned_depth_to_color/camera_info": {
+      "message_count": 1540,
+      "msg_type": "sensor_msgs/msg/CameraInfo"
+    },
+    "/camera/d555/aligned_depth_to_color/image_raw": {
+      "message_count": 1541,
+      "msg_type": "sensor_msgs/msg/Image"
+    },
+    "/camera/d555/color/camera_info": {
+      "message_count": 1575,
+      "msg_type": "sensor_msgs/msg/CameraInfo"
+    },
+    "/camera/d555/color/image_raw": {
+      "message_count": 1562,
+      "msg_type": "sensor_msgs/msg/Image"
+    },
+    "/elfin/tcp_pose": {
+      "message_count": 1315,
+      "msg_type": "geometry_msgs/msg/PoseStamped"
+    },
+    "/joint_states": {
+      "message_count": 1315,
+      "msg_type": "sensor_msgs/msg/JointState"
+    },
+    "/livox/lidar": {
+      "message_count": 1094,
+      "msg_type": "sensor_msgs/msg/PointCloud2"
+    },
+    "/tf": {
+      "message_count": 533,
+      "msg_type": "tf2_msgs/msg/TFMessage"
+    },
+    "/tf_static": {
+      "message_count": 3,
+      "msg_type": "tf2_msgs/msg/TFMessage"
+    }
+  }
+}
