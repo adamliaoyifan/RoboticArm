@@ -80,8 +80,8 @@ def main():
     n.create_subscription(
         Image, "/luggage/preprocessed/camera/color/image", mk("pre_rgb"), be)
     n.create_subscription(
-        PointCloud2, "/luggage/preprocessed/camera/depth/points",
-        mk("depth_pts"), be)
+        Image, "/luggage/preprocessed/camera/depth/image",
+        mk("depth_img"), be)
     n.create_subscription(
         PointCloud2, "/luggage/semantic/cargo_points", mk("cargo"), be)
     n.create_subscription(

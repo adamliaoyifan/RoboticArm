@@ -64,6 +64,47 @@ class TestPoseRoundTrip(unittest.TestCase):
         # build_sequence accesses these by attribute
         self.assertTrue(hasattr(pick, "pose") and hasattr(pick, "height"))
 
+    def test_container_geometry_round_trip_includes_chamfer_identity(self):
+        from luggage_msgs.msg import ContainerOpeningEstimate
+
+        descriptor = {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": 1.49,
+            "width": 1.97,
+            "floor_z": 0.53,
+            "ceiling_z": 2.01,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.55,
+                "wall_y": 0.985,
+                "wall_z": 0.90,
+            },
+        }
+        msg = adapters.geometry_to_opening_estimate(
+            ContainerOpeningEstimate(), descriptor, geometry_version=9)
+        envelope = adapters.geometry_from_opening_estimate(msg)
+        self.assertEqual(envelope.geometry_version, 9)
+        self.assertIn("chamfer", envelope.descriptor)
+        self.assertEqual(envelope.geometry_hash, msg.geometry_hash)
+
+    def test_container_geometry_adapter_rejects_inner_size_mismatch(self):
+        from luggage_msgs.msg import ContainerOpeningEstimate
+
+        descriptor = {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": 1.0,
+            "width": 1.0,
+            "floor_z": 0.0,
+            "ceiling_z": 1.0,
+        }
+        msg = adapters.geometry_to_opening_estimate(
+            ContainerOpeningEstimate(), descriptor, geometry_version=1)
+        msg.inner_size[0] = 2.0
+        with self.assertRaisesRegex(ValueError, "geometry_identity_mismatch"):
+            adapters.geometry_from_opening_estimate(msg)
+
 
 if __name__ == "__main__":
     unittest.main()

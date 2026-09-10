@@ -97,6 +97,30 @@ class TestContainerFloor(unittest.TestCase):
         self.assertAlmostEqual(center[0], 0.15)
         self.assertAlmostEqual(center[1], -0.15)
 
+    def test_seven_face_floor_excludes_removed_wedge(self):
+        descriptor = {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": 1.0,
+            "width": 1.0,
+            "floor_z": 0.0,
+            "ceiling_z": 1.0,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.0,
+                "wall_y": 0.5,
+                "wall_z": 0.5,
+            },
+        }
+        floor = ContainerFloor(
+            center_base=(0.0, 0.0, 0.5), yaw=0.0,
+            inner_size=(1.0, 1.0, 1.0), resolution=0.25,
+            geometry_descriptor=descriptor)
+        self.assertEqual(floor.cell_count, 8)
+        self.assertAlmostEqual(floor.total_area, 0.5)
+        self.assertIsNone(floor.world_to_cell((0.0, 0.2, 0.0)))
+        self.assertIsNotNone(floor.world_to_cell((0.0, -0.2, 0.0)))
+
 
 class TestFloorCoverage(unittest.TestCase):
     def test_overhead_view_covers_the_entire_floor(self):

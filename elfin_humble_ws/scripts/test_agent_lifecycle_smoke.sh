@@ -28,6 +28,20 @@ git commit -q -m baseline
 REVISION="$(git rev-parse HEAD)"
 HEARTBEAT="$(date --iso-8601=seconds)"
 
+cat > docs/agents/RUNTIME.md <<'EOF'
+# Agent runtime registry
+
+Introductory text before the registry.
+
+| id | role | agent | model | cli | session | worktree | state | capabilities | heartbeat |
+|---|---|---|---|---|---|---|---|---|---|
+| existing | test | cursor | grok-4.6 | cursor | old-session | /tmp | idle | file | 2026-09-05T00:00:00+08:00 |
+
+Capability notes:
+
+- Registry rows must remain above this prose.
+EOF
+
 cat > docs/agents/discuss/OPEN.md <<EOF
 # Open cross-agent work
 
@@ -84,6 +98,25 @@ AGENT_RUNTIME_LOCK="$TMP_ROOT/runtime.lock" \
   --id smoke-cursor --role eng --agent cursor --model opus5 \
   --cli cursor --session smoke-session-2 --worktree "$TMP_ROOT" \
   --capabilities file --heartbeat "$HEARTBEAT" >/tmp/register-cursor.log
+
+# Refreshing an existing row is idempotent, and all rows remain inside the
+# table even when explanatory prose follows it.
+AGENT_RUNTIME_LOCK="$TMP_ROOT/runtime.lock" \
+  "$TMP_ROOT/scripts.agent_register.sh" \
+  --id smoke-cursor --role eng --agent cursor --model opus5 \
+  --cli cursor --session smoke-session-2 --worktree "$TMP_ROOT" \
+  --capabilities file --heartbeat "$HEARTBEAT" >/tmp/register-cursor-refresh.log
+python3 - <<'PY'
+from pathlib import Path
+
+lines = Path("docs/agents/RUNTIME.md").read_text(encoding="utf-8").splitlines()
+prose = lines.index("Capability notes:")
+rows = [index for index, line in enumerate(lines) if line.startswith("| ")]
+assert all(index < prose for index in rows), (rows, prose)
+assert sum("| smoke-cursor |" in line for line in lines) == 1, lines
+assert sum("| smoke-claude |" in line for line in lines) == 1, lines
+assert sum("| existing |" in line for line in lines) == 1, lines
+PY
 
 python3 "$TMP_ROOT/scripts.agent_scheduler.py" --json >/tmp/scheduler-before.json
 grep -q '"thread": "2026-09-04_0001_smoke-st1.md"' /tmp/scheduler-before.json

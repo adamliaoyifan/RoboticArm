@@ -512,11 +512,29 @@ def _launch_setup(context):
         parameters=[{"use_sim_time": True}],
     )
 
+    # PF-R10: per-thread glibc arenas ratcheted transient geometry
+    # allocations into unbounded RSS (measured +359 MiB/43 s on the
+    # detector during cargo processing; offline 16-thread repro 76.6 vs
+    # 50.1 MiB with the cap). One arena pair per node bounds it. The
+    _arena_env = {"MALLOC_ARENA_MAX": "2"}
+    # Filter/detector variant: their per-frame geometry buffers are large
+    # and transient, so pinning glibc's mmap threshold (which otherwise
+    # ratchets toward the size of every freed block, up to 32 MiB) routes
+    # them through mmap/munmap and returns pages on free. The segmenter
+    # must NOT get this: its CLIP buffers would churn through page
+    # faults per frame (measured no_top growth, reverted 2026-09-09).
+    _arena_env_mmap = {
+        "MALLOC_ARENA_MAX": "2",
+        "MALLOC_MMAP_THRESHOLD_": "131072",
+        "MALLOC_TRIM_THRESHOLD_": "262144",
+    }
+
     preprocessor = Node(
         package="luggage_perception",
         executable="sensor_preprocessor_node.py",
         name="sensor_preprocessor",
         output="screen",
+        additional_env=_arena_env,
         parameters=[
             os.path.join(
                 get_package_share_directory("luggage_perception"),
@@ -575,11 +593,15 @@ def _launch_setup(context):
         package="luggage_perception",
         executable="luggage_detector_node.py",
         output="screen",
+        # OPENBLAS 1: the support transform is a small-matrix matmul; the
+        # full-core BLAS spin both burns CPU and fans allocations across
+        # the OpenBLAS pool's threads.
+        additional_env={**_arena_env_mmap, "OPENBLAS_NUM_THREADS": "1"},
         parameters=[{
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
             "use_sim_time": True,
-            "depth_topic": "/luggage/preprocessed/camera/depth/points",
+            "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
             # adds ~0.3-1.0 s of latency on top of the raw path the 1.0 s
             # default was sized for; measured stale ages peaked ~1.9 s.
@@ -607,6 +629,7 @@ def _launch_setup(context):
         executable="semantic_segmenter_node.py",
         name="semantic_segmenter",
         output="screen",
+        additional_env=_arena_env,
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {
             "use_sim_time": True,
@@ -618,6 +641,7 @@ def _launch_setup(context):
         executable="semantic_point_filter_node.py",
         name="semantic_point_filter",
         output="screen",
+        additional_env={**_arena_env_mmap, "OPENBLAS_NUM_THREADS": "1"},
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {"use_sim_time": True}],
     )

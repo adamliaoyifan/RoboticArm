@@ -26,7 +26,7 @@ import json
 import math
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 
 import numpy as np
 
@@ -44,7 +44,7 @@ from geometry_msgs.msg import Point, Pose, Quaternion
 from luggage_msgs.msg import DetectedLuggage, DetectionFrame, YoloDetections
 from luggage_msgs.srv import DetectLuggage
 from luggage_perception import ros_message_adapters as adapters
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import Header
 from std_msgs.msg import String
 import tf2_ros
@@ -87,7 +87,7 @@ from luggage_perception.top_support_estimator import (
 
 def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
                                stamp, wall_timeout_sec=0.5,
-                               poll_sec=0.02):
+                               poll_sec=0.02, out_buffer=None):
     """Rigid-body transform an (N,3) array into the target frame.
 
     The lookup retries a zero-timeout query on a *wall-clock* deadline:
@@ -109,6 +109,14 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
         except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
                 tf2_ros.ExtrapolationException) as exc:
             err = str(exc)
+            # A caught exception's traceback pins every frame it passed
+            # through -- including this one, whose locals hold the ~0.2-1
+            # MiB points arrays -- until a later gc.collect. During gz
+            # spawn stalls these fire tens of times per second and the
+            # pinned frames were the dominant RSS ratchet (PF-R10 C2
+            # measurement). Break the chain at catch time; the frames die
+            # by refcount immediately.
+            exc.__traceback__ = None
         if _time.monotonic() >= deadline:
             break
         _time.sleep(poll_sec)
@@ -124,6 +132,17 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
         [2*(qx*qz - qy*qw), 2*(qy*qz + qx*qw), 1 - 2*(qx*qx + qy*qy)],
     ])
     trans = np.array([t.x, t.y, t.z])
+    if out_buffer is not None:
+        n = int(points.shape[0])
+        if (out_buffer.ndim != 2 or out_buffer.shape[1] != 3
+                or out_buffer.shape[0] < n
+                or out_buffer.dtype != np.result_type(points, rot)):
+            out_buffer = None
+    if out_buffer is not None:
+        out_view = out_buffer[:n]
+        np.dot(points, rot.T, out=out_view)
+        out_view += trans
+        return out_view, None
     return points.dot(rot.T) + trans, None
 
 
@@ -132,6 +151,10 @@ class LuggageDetector(Node):
     def __init__(self):
         super().__init__("luggage_detector")
         self._group = ReentrantCallbackGroup()
+        self._gc_on_epoch = None
+        self._gc_post_epoch_deadline = 0.0
+        self._scratch_lock = threading.Lock()
+        self._scratch_buffers = {}
 
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
@@ -170,7 +193,14 @@ class LuggageDetector(Node):
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points")
         self.declare_parameter(
-            "depth_topic", "/luggage/preprocessed/camera/depth/points")
+            "depth_topic", "/luggage/preprocessed/camera/depth/image")
+        self.declare_parameter(
+            "support_camera_info_topic",
+            "/luggage/preprocessed/camera/depth/camera_info")
+        self.declare_parameter(
+            "support_depth_stride", 4)
+        self.declare_parameter(
+            "support_wait_timeout_sec", 0.25)
         # Empty means use the cloud header frame_id. The preprocessor publishes
         # optical-frame points; override only if a consumer still sees raw gz
         # clouds labelled optical but stored in camera_link.
@@ -292,12 +322,28 @@ class LuggageDetector(Node):
             stability_max_z_spread=float(
                 self.get_parameter("stability_max_z_spread").value),
         )
-        # Bounded raw-depth world-point buffer keyed by exact stamp.
+        # Bounded aligned-depth buffer keyed by exact stamp (15 / 1.0 s).
         self._raw_buffer = OrderedDict()
-        self._raw_buffer_maxlen = max(
-            4, int(self.get_parameter("join_buffer_maxlen").value))
+        # PF-R9 g2 fixed camera cache contract: the support-depth buffer
+        # holds 15 entries / 1.0 s (raw_evicted ~= raw_received with the
+        # old depth-4 window, starving lazy lookups).
+        self._raw_buffer_maxlen = 15
+        self._pending_joins = OrderedDict()
+        self._ready_joins = deque()
+        self._support_wait_timeout = float(
+            self.get_parameter("support_wait_timeout_sec").value)
+        self._support_stride = max(
+            1, int(self.get_parameter("support_depth_stride").value))
+        self._support_intrinsics = None
+        self._support_info_lock = threading.Lock()
         self._raw_lock = threading.Lock()
         self._raw_counts = {
+            "raw_horizon_evicted": 0,
+            "raw_lookup_no_intrinsics": 0,
+            "support_wait_parked": 0,
+            "support_wait_completed": 0,
+            "support_wait_expired": 0,
+            "support_ready_dropped": 0,
             "raw_received": 0,
             "raw_evicted": 0,
             "raw_lookup_hit": 0,
@@ -362,16 +408,31 @@ class LuggageDetector(Node):
         self.create_subscription(
             YoloDetections, self.get_parameter("yolo_topic").value,
             self._yolo_cb, stream_qos, callback_group=self._group)
-        # Raw depth cloud feeds the local support fit (exact-stamp keyed).
-        # On the raw (non-semantic) path it is the same topic as _cloud_cb;
-        # the buffer handles the duplicate insert idempotently.
+        # Aligned depth image feeds the local support fit (PF-R9 g2:
+        # exact-stamp keyed, 15 entries / 1.0 s, deprojected locally with
+        # a deterministic stride — the transported camera cloud is gone).
+        # Support depth must not lose frames: BEST_EFFORT drops under load
+        # (the same phenomenon B1 measured on raw topics) leave ~17% of
+        # cargo joins without their exact-stamp depth (PF-R9 g2 D4).
+        support_qos = QoSProfile(
+            depth=30, reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         self.create_subscription(
-            PointCloud2, self.get_parameter("depth_topic").value,
-            self._raw_cloud_cb, stream_qos, callback_group=self._group)
+            Image, self.get_parameter("depth_topic").value,
+            self._raw_depth_cb, support_qos, callback_group=self._group)
+        self.create_subscription(
+            CameraInfo, self.get_parameter("support_camera_info_topic").value,
+            self._support_info_cb, stream_qos, callback_group=self._group)
         self._frame_pub = self.create_publisher(
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
+        # Ready-join emitter: parked pairs completed by the depth callback
+        # are emitted here between callbacks, one per tick. Default
+        # (mutually exclusive) group: a reentrant timer stacks concurrent
+        # ticks against the 65 ms estimates and thundering-herds the
+        # executor.
+        self.create_timer(0.005, self._emit_ready_joins)
         self.get_logger().info("luggage_detector subscribing to %s" % topic)
 
         image_qos = QoSProfile(
@@ -428,7 +489,7 @@ class LuggageDetector(Node):
         if self._use_semantic:
             pair = self._join.push_right(key, msg)
             if pair is not None:
-                self._emit_joined(pair[0], pair[1])
+                self._maybe_emit_joined(pair[0], pair[1])
             return
         self._emit_joined(self._empty_yolo_for_cloud(msg), msg)
 
@@ -438,17 +499,67 @@ class LuggageDetector(Node):
             return
         pair = self._join.push_left(key, msg)
         if pair is not None:
-            self._emit_joined(pair[0], pair[1])
+            self._maybe_emit_joined(pair[0], pair[1])
 
-    def _raw_cloud_cb(self, msg):
-        """Buffer the raw depth cloud message by exact stamp (PF-R6 opt 1).
+    def _maybe_emit_joined(self, yolo_msg, cloud_msg):
+        """Emit now if the support depth for this stamp is buffered; else
+        park the pair (bounded) until the depth callback completes it.
 
-        Decoding + TFing every raw cloud (~250k points at 4 Hz) competed
-        with the join/geometry callbacks on the same executor — the
-        dominant yolo->frame latency in the PF-R6 baseline. The message
-        is already in memory from the subscription, so buffering it is
-        free; the transform happens lazily, once, only for stamps whose
-        cargo cloud actually joins (see _pop_raw_world_with_retry).
+        A parked pair older than ``support_wait_timeout_sec`` is emitted
+        support-less (TOP_ONLY, named reason) so no pair is ever dropped
+        or double-published.
+        """
+        key = stamp_key(cloud_msg.header.stamp)
+        with self._raw_lock:
+            have_depth = key is not None and key in self._raw_buffer
+        if have_depth or key is None:
+            self._emit_joined(yolo_msg, cloud_msg)
+            return
+        self._pending_joins[key] = (yolo_msg, cloud_msg, time.monotonic())
+        self._raw_counts["support_wait_parked"] += 1
+        while len(self._pending_joins) > 8:
+            old_key, old = self._pending_joins.popitem(last=False)
+            self._raw_counts["support_wait_expired"] += 1
+            self._emit_joined(old[0], old[1])
+
+    def _drain_pending_joins(self, new_key=None):
+        """Move parked joins whose depth arrived (or expired) onto the
+        ready queue. The depth callback stays light; a timer emits the
+        ready pairs between callbacks so the executor never drowns.
+        """
+        now = time.monotonic()
+        ready = []
+        for key, entry in list(self._pending_joins.items()):
+            if key == new_key or now - entry[2] > self._support_wait_timeout:
+                ready.append(key)
+        for key in ready:
+            yolo_msg, cloud_msg, _ = self._pending_joins.pop(key)
+            if key == new_key:
+                self._raw_counts["support_wait_completed"] += 1
+            else:
+                self._raw_counts["support_wait_expired"] += 1
+            self._ready_joins.append((yolo_msg, cloud_msg))
+            while len(self._ready_joins) > 4:
+                self._ready_joins.popleft()
+                self._raw_counts["support_ready_dropped"] += 1
+
+    def _emit_ready_joins(self):
+        deadline = getattr(self, "_gc_post_epoch_deadline", 0.0)
+        if deadline and time.monotonic() >= deadline:
+            self._gc_post_epoch_deadline = 0.0
+            if self._gc_on_epoch:
+                self._gc_on_epoch()
+        if not self._ready_joins:
+            return
+        yolo_msg, cloud_msg = self._ready_joins.popleft()
+        self._emit_joined(yolo_msg, cloud_msg)
+
+    def _raw_depth_cb(self, msg):
+        """Buffer the aligned depth image by exact stamp (PF-R9 g2).
+
+        15 entries / 1.0 second on the primary camera clock. Decoding and
+        deprojection happen lazily, once, only for stamps whose cargo
+        observation actually joined (see _pop_raw_world_with_retry).
         """
         key = stamp_key(msg.header.stamp)
         if key is None:
@@ -459,17 +570,61 @@ class LuggageDetector(Node):
             while len(self._raw_buffer) > self._raw_buffer_maxlen:
                 self._raw_buffer.popitem(last=False)
                 self._raw_counts["raw_evicted"] += 1
+            if len(self._raw_buffer) > 1:
+                newest = next(reversed(self._raw_buffer))
+                cutoff = (newest[0] - 1, newest[1])
+                stale = [k for k in self._raw_buffer if k < cutoff]
+                for k in stale:
+                    del self._raw_buffer[k]
+                    self._raw_counts["raw_horizon_evicted"] += 1
+        self._drain_pending_joins(new_key=key)
 
-    def _pop_raw_world_with_retry(self, key, attempts=3, period_sec=0.02):
-        """Exact-stamp raw world points, transformed on demand (PF-R6).
+    def _support_info_cb(self, msg):
+        """Latest aligned-depth camera info (colour-grid intrinsics)."""
+        k = msg.k
+        from luggage_perception.semantic_point_filter import CameraIntrinsics
+        intr = CameraIntrinsics(
+            fx=float(k[0]), fy=float(k[4]),
+            cx=float(k[2]), cy=float(k[5]),
+            width=int(msg.width), height=int(msg.height))
+        with self._support_info_lock:
+            self._support_intrinsics = intr
 
-        The raw cloud is buffered lazily as a message by
-        ``_raw_cloud_cb``; it is decoded + transformed here once, only
-        for stamps whose cargo cloud joined (the dominant PF-R6 baseline
-        cost was transforming every raw cloud at 4 Hz on the shared
-        executor). The bounded same-stamp re-check covers the executor
-        ordering race and never accepts a different stamp — no fusion
-        semantics change.
+    def _support_scratch(self, depth_image):
+        """Fixed-capacity buffers for the support deprojection (PF-R10).
+
+        One (capacity, 3) float32 points buffer and one float64 world
+        buffer per source resolution. The returned view's lifetime is
+        the synchronous support fit of one joined observation; the next
+        lookup overwrites it. Join emission is serialized by the
+        mutually-exclusive 5 ms timer, and the lock covers the reentrant
+        subscription path, so a single pair per resolution is safe.
+        """
+        shape = tuple(np.asarray(depth_image).shape)
+        with self._scratch_lock:
+            pair = self._scratch_buffers.get(shape)
+            if pair is None:
+                rows = -(-shape[0] // max(1, int(self._support_stride)))
+                cols = -(-shape[1] // max(1, int(self._support_stride)))
+                capacity = int(rows) * int(cols)
+                pair = (
+                    np.empty((capacity, 3), np.float32),
+                    np.empty((capacity, 3), np.float64),
+                )
+                self._scratch_buffers[shape] = pair
+            return pair
+
+    def _pop_raw_world_with_retry(self, key, attempts=1, period_sec=0.0):
+        """Exact-stamp raw world points, transformed on demand.
+
+        PF-R9 g2: ``attempts`` defaults to 1. The old 3x20 ms in-callback
+        sleep could never observe a late depth arrival — this executor is
+        single-threaded, so the depth callback that would fill the buffer
+        is queued BEHIND the sleeping lookup (measured: 44% of lookups
+        missed on arrival order alone). Arrival-order races are now
+        handled upstream by the bounded pending-join park in
+        ``_maybe_emit_joined``; this lookup is exact-stamp only and never
+        accepts a different stamp.
         """
         start = time.monotonic()
         last = max(1, attempts)
@@ -488,23 +643,34 @@ class LuggageDetector(Node):
                 lookup["raw_buffer_len"] = len(self._raw_buffer)
                 msg = self._raw_buffer.get(key)
             if msg is not None:
-                pts = adapters.cloud_points_from_msg(msg)
-                if pts is None:
+                depth = adapters.depth_array_from_msg(msg)
+                if depth is None:
                     lookup["raw_lookup_status"] = "decode_fail"
                     with self._raw_lock:
                         self._raw_counts["raw_lookup_decode_fail"] += 1
                     break
-                pts = pts[np.isfinite(pts).all(axis=1)]
+                with self._support_info_lock:
+                    intr = self._support_intrinsics
+                if intr is None:
+                    lookup["raw_lookup_status"] = "no_intrinsics"
+                    with self._raw_lock:
+                        self._raw_counts["raw_lookup_no_intrinsics"] += 1
+                    break
+                from luggage_perception.depth_deprojection import (
+                    deproject_stride)
+                pts_buf, world_buf = self._support_scratch(depth)
+                pts, _n = deproject_stride(
+                    depth, intr, stride=self._support_stride, out=pts_buf)
                 if not len(pts):
                     lookup["raw_lookup_status"] = "empty"
                     with self._raw_lock:
                         self._raw_counts["raw_lookup_empty"] += 1
                     break
                 stamp_time = rclpy.time.Time.from_msg(msg.header.stamp)
-                source_frame = self._cloud_data_frame or msg.header.frame_id
+                source_frame = msg.header.frame_id
                 pts_world, _err = _transform_points_to_world(
                     self._tf_buffer, pts, source_frame,
-                    self._world_frame, stamp_time)
+                    self._world_frame, stamp_time, out_buffer=world_buf)
                 if pts_world is not None:
                     lookup["raw_lookup_status"] = "hit"
                     lookup["raw_lookup_wait_ms"] = (
@@ -543,15 +709,27 @@ class LuggageDetector(Node):
 
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
+        epoch_changed = int(generation) != int(self._box_generation)
         self._box_epoch_seen = True
         self._box_id = box_id
+        if epoch_changed and self._gc_on_epoch:
+            # Spawn bursts pin arrays via traceback cycles (see
+            # _maybe_gc_timer): collect here, at the START of the burst,
+            # and again just after it, while the freed chunks are still
+            # hot for reuse by the next burst. The stall that raises the
+            # tf2 exceptions comes ~0.3-0.8 s after the epoch arrives.
+            self._gc_on_epoch()
+            self._gc_post_epoch_deadline = time.monotonic() + 0.9
         self._box_generation = generation
         self._join.clear()
         self._frame_window.clear()
         with self._raw_lock:
             self._raw_buffer.clear()
-        # New luggage instance: support-Z history must not leak across boxes.
-        self._pipeline.reset()
+        # New luggage instance on the same platform: carry the support-Z
+        # window (PF-R10 epoch_carry) — the platform surface is static
+        # across spawns and the 0.015 m spread gate still validates every
+        # new sample against it.
+        self._pipeline.epoch_carry()
         with self._view_lock:
             rgb = self._latest_rgb
             changed = self._view_wait.note_box_id(box_id, rgb)
@@ -1235,11 +1413,129 @@ class LuggageDetector(Node):
         return response
 
 
+def _maybe_gc_timer(node):
+    """PF-R10 repair: periodic full collection for cyclic garbage.
+
+    Spawn transitions raise bursts of tf2 extrapolation exceptions (gz
+    pauses stall the sim clock); each exception traceback pins its
+    frames' locals, including the ~0.5 MiB deprojected/transformed
+    support arrays, and traceback frames create reference cycles that
+    only generational collection can reclaim. At one spawn per ~7 s the
+    gen-2 cadence falls behind and RSS ratchets (measured 160-359
+    MiB/min during gate4 runs, flat on a static box). A 2 s full
+    collect bounds the retained tail; measured cost is ~1-3 ms.
+    """
+    import gc
+    import os
+    period = float(os.environ.get(
+        "LUGGAGE_DETECTOR_GC_INTERVAL_SEC", "15") or 0)
+    if period <= 0:
+        return None
+
+    def _collect():
+        gc.collect()
+
+    def _collect_trim():
+        # Epoch-path collect: also return freed arena tails to the OS so
+        # each burst starts from a reclaimed heap. The idle-cadence
+        # collect deliberately does NOT trim: trimming mid-stream makes
+        # RSS sawtooth by tens of MiB as live pages refault, and the C2
+        # slope is measured on that series.
+        gc.collect()
+        try:
+            import ctypes
+            ctypes.CDLL("libc.so.6").malloc_trim(0)
+        except Exception:
+            pass
+
+    return period, _collect, _collect_trim
+
+
+def _maybe_tracemalloc(node):
+    """PF-R10 diagnostic: env-gated allocation tracing.
+
+    LUGGAGE_DETECTOR_TRACEMALLOC=1 starts tracemalloc and logs the top
+    allocation sites (diffed against the previous dump) every 15 s, so a
+    retention regression can be attributed to a line, not guessed at.
+    Off by default; zero effect when unset.
+    """
+    import os
+    if os.environ.get("LUGGAGE_DETECTOR_TRACEMALLOC", "") != "1":
+        return None
+    import tracemalloc
+    tracemalloc.start(10)
+    state = {"prev": None}
+
+    def _dump():
+        import io
+        snap = tracemalloc.take_snapshot()
+        have_prev = state["prev"] is not None
+        if have_prev:
+            top = snap.compare_to(state["prev"], "lineno")[:12]
+        else:
+            top = snap.statistics("lineno")[:12]
+        state["prev"] = snap
+        buf = io.StringIO()
+        for stat in top:
+            frame = stat.traceback[0]
+            size = stat.size_diff if have_prev else stat.size
+            count = stat.count_diff if have_prev else stat.count
+            buf.write("  %+10d B  %7d blks  %s:%d\n" % (
+                size, count, frame.filename.split("/")[-1], frame.lineno))
+        node.get_logger().info(
+            "tracemalloc top (diff):\n%s" % buf.getvalue())
+
+    def _census():
+        import collections
+        import gc
+        import numpy as np
+        shapes = collections.defaultdict(lambda: [0, 0])
+        for o in gc.get_objects():
+            if type(o) is np.ndarray:
+                key = (tuple(o.shape), str(o.dtype))
+                shapes[key][0] += 1
+                shapes[key][1] += o.nbytes
+        rows = sorted(shapes.items(), key=lambda kv: -kv[1][1])[:6]
+        parts = []
+        for (shape, dtype), (count, nbytes) in rows:
+            parts.append("%s%s x%d = %.1f MiB" % (
+                shape, dtype, count, nbytes / 1048576.0))
+        referrers = ""
+        big = [
+            o for o in gc.get_objects()
+            if type(o) is np.ndarray and o.nbytes > 100000]
+        if big:
+            sample = sorted(big, key=lambda a: -a.nbytes)[0]
+            refs = gc.get_referrers(sample)[:6]
+            names = []
+            for r in refs:
+                names.append("%s:%s" % (
+                    type(r).__name__,
+                    getattr(r, "__name__", "") or (
+                        list(r)[:3] if isinstance(r, dict) else "")))
+            referrers = " | biggest-array referrers: %s" % names
+        node.get_logger().info(
+            "ndarray census: %s%s" % ("; ".join(parts), referrers))
+
+    return _dump, _census
+
+    return _dump
+
+
 def main(argv=None):
     rclpy.init(args=argv)
     node = LuggageDetector()
+    gc_timer = _maybe_gc_timer(node)
+    node._gc_on_epoch = gc_timer[2] if gc_timer else None
+    dump = _maybe_tracemalloc(node)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
+    if gc_timer is not None:
+        node.create_timer(gc_timer[0], gc_timer[1])
+    if dump is not None:
+        _tm_dump, _census = dump
+        node.create_timer(15.0, _tm_dump)
+        node.create_timer(30.0, _census)
     try:
         executor.spin()
     finally:

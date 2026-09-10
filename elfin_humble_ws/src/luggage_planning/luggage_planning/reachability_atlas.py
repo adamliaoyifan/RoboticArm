@@ -19,6 +19,16 @@ from collections import namedtuple
 import numpy as np
 import yaml
 
+from luggage_description.container_geometry import (
+    contains_oriented_box,
+    contains_point,
+    normalize_descriptor,
+    volume,
+)
+
+from .atlas_builder import PayloadProfile, payload_center
+from .atlas_io import save_npz_deterministic
+
 
 UNKNOWN = 0
 UNREACHABLE = 1
@@ -31,6 +41,16 @@ STATUS_NAMES = {
     MARGINAL: "marginal",
     REACHABLE: "reachable",
 }
+
+GEOMETRY_IDENTITY_REQUIRED = "geometry_identity_required"
+GEOMETRY_IDENTITY_MISMATCH = "geometry_identity_mismatch"
+GEOMETRY_IDENTITY_CHANGED = "geometry_identity_changed"
+HULL_INVALID_PAYLOAD = "hull_invalid_payload"
+INACTIVE_HULL_CELL = "inactive_hull_cell"
+
+
+class AtlasIdentityError(ValueError):
+    """Atlas metadata cannot be bound to the requested runtime geometry."""
 
 QueryResult = namedtuple(
     "QueryResult",
@@ -60,7 +80,7 @@ class ReachabilityAtlas:
     MARGINAL = MARGINAL
     REACHABLE = REACHABLE
 
-    def __init__(self, data, meta):
+    def __init__(self, data, meta, expected_geometry=None, allow_legacy=False):
         """Initialize from loaded data dict and metadata dict.
 
         Args:
@@ -68,6 +88,8 @@ class ReachabilityAtlas:
             meta: dict with grid definition and metadata.
         """
         self._meta = dict(meta)
+        default_schema = int(float(meta.get("atlas_version", "1.0")))
+        self._schema_version = int(meta.get("schema_version", default_schema))
         grid = meta["grid"]
         self._resolution = float(grid["resolution_xyz"])
         self._origin = [float(v) for v in grid["origin"]]
@@ -77,6 +99,10 @@ class ReachabilityAtlas:
         self._nx, self._ny, self._nz = self._size
         self._nyaw = len(self._yaw_bins)
         self._shape = (self._nx, self._ny, self._nz, self._nyaw)
+
+        self._geometry = None
+        self._geometry_invalid_reason = None
+        self._load_geometry_identity(expected_geometry, allow_legacy)
 
         query_meta = meta.get("query", {})
         self._yaw_tolerance = float(
@@ -89,6 +115,37 @@ class ReachabilityAtlas:
             query_meta.get("hard_reject_interior_fraction", 0.10))
 
         self._load_arrays(data)
+
+    def _load_geometry_identity(self, expected_geometry, allow_legacy):
+        identity = self._meta.get("geometry")
+        if self._schema_version < 3:
+            if expected_geometry is not None and not allow_legacy:
+                raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+            return
+        if not isinstance(identity, dict):
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+        descriptor = identity.get("descriptor")
+        if not isinstance(descriptor, dict):
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+        try:
+            geometry = normalize_descriptor(descriptor)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AtlasIdentityError(
+                "%s: %s" % (GEOMETRY_IDENTITY_REQUIRED, exc))
+        if int(identity.get("schema_version", -1)) != geometry.schema_version:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_MISMATCH)
+        if str(identity.get("geometry_hash", "")) != geometry.geometry_hash:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_MISMATCH)
+        if not str(self._meta.get("builder_revision", "")).strip():
+            raise AtlasIdentityError("builder_revision_required")
+        if expected_geometry is None:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+        expected = normalize_descriptor(dict(expected_geometry))
+        if expected.geometry_hash != geometry.geometry_hash:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_MISMATCH)
+        if self._meta["grid"].get("frame", geometry.frame_id) != geometry.frame_id:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_MISMATCH)
+        self._geometry = geometry
 
     def _grid_array(self, value, name, dtype, default):
         if value is None:
@@ -176,43 +233,122 @@ class ReachabilityAtlas:
             data.get("neighbor_confidence"),
             "neighbor_confidence", np.float32, 0.0)
 
+        if self._schema_version >= 3:
+            if "active_mask" not in data or "cell_volumes" not in data:
+                raise AtlasIdentityError("atlas_geometry_arrays_required")
+            self._active_mask = self._grid_array(
+                data.get("active_mask"), "active_mask", np.bool_, False)
+            self._cell_volumes = np.asarray(
+                data["cell_volumes"], dtype=np.float64)
+            expected = (self._nx, self._ny, self._nz)
+            if self._cell_volumes.shape != expected:
+                raise ValueError("cell_volumes has shape %r, expected %r" % (
+                    self._cell_volumes.shape, expected))
+            if (not np.isfinite(self._cell_volumes).all()
+                    or np.any(self._cell_volumes < 0.0)):
+                raise ValueError(
+                    "cell_volumes must be finite and non-negative")
+            zero_volume = self._cell_volumes <= 0.0
+            if np.any(np.logical_and(
+                    self._active_mask,
+                    np.broadcast_to(zero_volume[..., None], self._shape))):
+                raise ValueError(
+                    "active_mask includes zero-volume hull cells")
+            self._status[~self._active_mask] = UNKNOWN
+            self._reachable[~self._active_mask] = False
+            self._payload = self._payload_from_meta(
+                self._meta.get("payload"))
+        else:
+            self._active_mask = np.ones(self._shape, dtype=np.bool_)
+            self._cell_volumes = np.full(
+                (self._nx, self._ny, self._nz), self._resolution ** 3,
+                dtype=np.float64)
+            self._payload = PayloadProfile()
+
         # Kept for callers that used the v1 private member.
         self._seeds = (
             self._contact_seeds[..., 0, :]
             if self._nseed else np.zeros(self._shape + (6,), dtype=np.float64))
 
+    @staticmethod
+    def _payload_from_meta(raw):
+        if not isinstance(raw, dict):
+            raise AtlasIdentityError("payload_profile_required")
+        required = {
+            "enabled", "shape", "size", "center_offset",
+            "yaw_convention", "center_convention",
+        }
+        if not required.issubset(raw):
+            raise AtlasIdentityError("payload_profile_required")
+        if (str(raw["yaw_convention"]) !=
+                PayloadProfile().yaw_convention
+                or str(raw["center_convention"]) !=
+                PayloadProfile().center_convention):
+            raise AtlasIdentityError("invalid_payload_profile")
+        if not bool(raw.get("enabled", False)):
+            if (raw["shape"] is not None or raw["size"] is not None
+                    or raw["center_offset"] is not None):
+                raise AtlasIdentityError("invalid_payload_profile")
+            return PayloadProfile()
+        if raw.get("shape") != "box":
+            raise AtlasIdentityError("invalid_payload_profile")
+        try:
+            return PayloadProfile(
+                enabled=True,
+                size=tuple(raw["size"]),
+                center_offset=tuple(raw["center_offset"]),
+                yaw_convention=str(raw["yaw_convention"]),
+                center_convention=str(raw["center_convention"]),
+            ).validated()
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AtlasIdentityError("invalid_payload_profile: %s" % exc)
+
     # ── Loading / Saving ─────────────────────────────────────────────
 
     @classmethod
-    def load(cls, npz_path, meta_path):
-        """Load atlas from .npz + .yaml files."""
+    def load(cls, npz_path, meta_path, geometry_descriptor=None,
+             allow_legacy=False):
+        """Load an atlas and bind it to the current geometry identity.
+
+        Schema-v1/v2 files have no authoritative hull identity and are rejected
+        by default.  ``allow_legacy`` exists only for explicit offline
+        inspection and migration tests; maintained runtime paths do not use it.
+        """
         data = dict(np.load(npz_path, allow_pickle=False))
         with open(meta_path, "r", encoding="utf-8") as f:
             meta = yaml.safe_load(f)
-        return cls(data, meta)
+        if int(meta.get("schema_version", 1)) < 3 and not allow_legacy:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+        return cls(
+            data, meta, expected_geometry=geometry_descriptor,
+            allow_legacy=allow_legacy)
 
     def save(self, npz_path, meta_path):
-        """Save schema v2 plus v1 compatibility arrays."""
+        """Save the in-memory schema plus v1 compatibility arrays."""
         os.makedirs(os.path.dirname(npz_path) or ".", exist_ok=True)
-        np.savez_compressed(
-            npz_path,
-            status=self._status,
-            opening_connected=self._opening_connected,
-            reachable=self._reachable,
-            contact_ik=self._contact_ik,
-            transit_ik=self._transit_ik,
-            contact_seeds=self._contact_seeds,
-            transit_seeds=self._transit_seeds,
-            solution_count=self._solution_count,
-            neighbor_confidence=self._neighbor_confidence,
-            seed_joints=self._seeds,
-            joint_margin=self._joint_margin,
-            manipulability=self._manipulability,
-        )
+        arrays = {
+            "status": self._status,
+            "opening_connected": self._opening_connected,
+            "reachable": self._reachable,
+            "contact_ik": self._contact_ik,
+            "transit_ik": self._transit_ik,
+            "contact_seeds": self._contact_seeds,
+            "transit_seeds": self._transit_seeds,
+            "solution_count": self._solution_count,
+            "neighbor_confidence": self._neighbor_confidence,
+            "seed_joints": self._seeds,
+            "joint_margin": self._joint_margin,
+            "manipulability": self._manipulability,
+        }
+        if self._schema_version >= 3:
+            arrays["active_mask"] = self._active_mask
+            arrays["cell_volumes"] = self._cell_volumes
+        save_npz_deterministic(npz_path, arrays)
         os.makedirs(os.path.dirname(meta_path) or ".", exist_ok=True)
         saved_meta = dict(self._meta)
-        saved_meta["atlas_version"] = "2.0"
-        saved_meta["schema_version"] = 2
+        saved_meta["atlas_version"] = (
+            "3.0" if self._schema_version >= 3 else "2.0")
+        saved_meta["schema_version"] = self._schema_version
         with open(meta_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(
                 saved_meta, f, default_flow_style=False, sort_keys=False)
@@ -265,7 +401,14 @@ class ReachabilityAtlas:
         if "status" not in values and "reachable" not in values:
             raise TypeError("from_builder requires status or reachable")
         data = values
-        return cls(data, meta)
+        schema_version = int(meta.get("schema_version", 1))
+        expected_geometry = None
+        if schema_version >= 3:
+            identity = meta.get("geometry", {})
+            expected_geometry = identity.get("descriptor")
+        return cls(
+            data, meta, expected_geometry=expected_geometry,
+            allow_legacy=schema_version < 3)
 
     # ── Version Verification ─────────────────────────────────────────
 
@@ -336,13 +479,46 @@ class ReachabilityAtlas:
         used = min(max(int(count), 1), self._nseed)
         return [list(seed) for seed in array[idx][:used]]
 
-    def query(self, x, y, z, yaw=0.0, yaw_tolerance=None):
-        """Query one contact pose and return a schema-v2 ``QueryResult``.
+    def invalidate_geometry(self, reason=GEOMETRY_IDENTITY_CHANGED):
+        """Fail all later queries after a sensed geometry identity change."""
+        self._geometry_invalid_reason = str(reason)
+
+    def bind_identity_validator(self, validator, name="reachability_atlas"):
+        """Register the atlas query cache with a runtime identity tracker."""
+        validator.register_invalidator(
+            "atlas_queries", str(name), self.invalidate_geometry)
+
+    def _runtime_geometry_reason(self, x, y, z, yaw, current_geometry_hash):
+        if self._schema_version < 3:
+            return None
+        if self._geometry_invalid_reason:
+            return self._geometry_invalid_reason
+        if (current_geometry_hash is not None
+                and str(current_geometry_hash) != self._geometry.geometry_hash):
+            return GEOMETRY_IDENTITY_MISMATCH
+        contact = (float(x), float(y), float(z))
+        if not contains_point(self._geometry, contact):
+            return HULL_INVALID_PAYLOAD
+        if self._payload.enabled:
+            center = payload_center(contact, yaw, self._payload)
+            if not contains_oriented_box(
+                    self._geometry, center, self._payload.size,
+                    yaw=float(yaw)):
+                return HULL_INVALID_PAYLOAD
+        return None
+
+    def query(self, x, y, z, yaw=0.0, yaw_tolerance=None,
+              current_geometry_hash=None):
+        """Query one contact pose and return a reachability result.
 
         Out-of-bounds positions and yaw misses are UNKNOWN.  Hard rejection is
         deliberately limited to high-confidence UNREACHABLE samples strictly
         inside both the atlas grid and their cell.
         """
+        geometry_reason = self._runtime_geometry_reason(
+            x, y, z, yaw, current_geometry_hash)
+        if geometry_reason is not None:
+            return self._empty_result(geometry_reason)
         idx3 = self._cell_indices(x, y, z)
         if idx3 is None:
             return self._empty_result("out_of_bounds")
@@ -356,6 +532,8 @@ class ReachabilityAtlas:
 
         ix, iy, iz = idx3
         idx = (ix, iy, iz, iyaw)
+        if not self._active_mask[idx]:
+            return self._empty_result(INACTIVE_HULL_CELL, yaw_error)
         status = int(self._status[idx])
         count = int(self._solution_count[idx])
         confidence = float(self._neighbor_confidence[idx])
@@ -506,15 +684,38 @@ class ReachabilityAtlas:
     def grid_size(self):
         return (self._nx, self._ny, self._nz, self._nyaw)
 
+    @property
+    def geometry_hash(self):
+        return self._geometry.geometry_hash if self._geometry is not None else None
+
+    def reachable_volume(self):
+        """Clipped union volume of cells reachable in at least one yaw bin."""
+        reachable_any_yaw = np.any(np.logical_and(
+            self._active_mask,
+            np.logical_or(self._status == MARGINAL, self._status == REACHABLE)),
+            axis=3)
+        return float(np.sum(self._cell_volumes[reachable_any_yaw]))
+
+    def reachable_volume_ratio(self):
+        if self._geometry is None:
+            raise AtlasIdentityError(GEOMETRY_IDENTITY_REQUIRED)
+        return self.reachable_volume() / volume(self._geometry)
+
     def stats(self):
         """Return atlas statistics."""
-        total = self._status.size
-        reachable = int(np.count_nonzero(self._status == REACHABLE))
-        marginal = int(np.count_nonzero(self._status == MARGINAL))
-        unknown = int(np.count_nonzero(self._status == UNKNOWN))
-        unreachable = int(np.count_nonzero(self._status == UNREACHABLE))
-        return {
+        total = int(np.count_nonzero(self._active_mask))
+        reachable = int(np.count_nonzero(np.logical_and(
+            self._active_mask, self._status == REACHABLE)))
+        marginal = int(np.count_nonzero(np.logical_and(
+            self._active_mask, self._status == MARGINAL)))
+        unknown = int(np.count_nonzero(np.logical_and(
+            self._active_mask, self._status == UNKNOWN)))
+        unreachable = int(np.count_nonzero(np.logical_and(
+            self._active_mask, self._status == UNREACHABLE)))
+        result = {
             "total_cells": total,
+            "allocated_cells": int(self._status.size),
+            "inactive_cells": int(self._status.size - total),
             "reachable_cells": reachable,
             "marginal_cells": marginal,
             "unknown_cells": unknown,
@@ -525,3 +726,12 @@ class ReachabilityAtlas:
             "yaw_bins": self._yaw_bins,
             "nseed": self._nseed,
         }
+        if self._geometry is not None:
+            result.update({
+                "geometry_schema_version": self._geometry.schema_version,
+                "geometry_hash": self._geometry.geometry_hash,
+                "usable_hull_volume": volume(self._geometry),
+                "reachable_volume": self.reachable_volume(),
+                "reachable_volume_ratio": self.reachable_volume_ratio(),
+            })
+        return result

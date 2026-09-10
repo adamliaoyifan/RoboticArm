@@ -33,6 +33,7 @@ install(PROGRAMS
   scripts/xacro_robot_with_scene_base
   scripts/zero_joint_state_publisher
   scripts/generate_sized_suitcases.py
+  scripts/he1_d555_cad_seed.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

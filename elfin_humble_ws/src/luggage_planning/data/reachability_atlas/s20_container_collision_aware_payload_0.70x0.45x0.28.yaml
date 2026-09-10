@@ -1,5 +1,5 @@
-atlas_version: '2.0'
-schema_version: 2
+atlas_version: '3.0'
+schema_version: 3
 generated_at: '2026-08-11T07:10:43'
 computation_time_sec: 140.61
 mode: collision_aware
@@ -32,13 +32,12 @@ payload:
   - 0.7
   - 0.45
   - 0.28
-  attach_link: suction_contact_frame
-  offset:
+  center_offset:
   - 0.0
-  - 0.0
-  - 0.14
-  touch_links:
-  - suction_panel
+  - -0.0
+  - -0.14
+  yaw_convention: container_z_ccw_radians
+  center_convention: contact_plus_container_offset
 grid:
   frame: container_link
   resolution_xyz: 0.15
@@ -72,9 +71,36 @@ container:
   - -1.5708
   opening_side: negative_x
 stats:
-  total_cells: 2800
-  reachable_cells: 331
-  marginal_cells: 127
-  unreachable_cells: 481
-  unknown_cells: 1861
-  reachability_rate: 0.1182
+  total_cells: 974
+  allocated_cells: 2800
+  active_cells: 974
+  inactive_cells: 1826
+  reachable_cells: 108
+  marginal_cells: 74
+  unreachable_cells: 116
+  unknown_cells: 676
+  reachability_rate: 0.1868583162217659
+builder_revision: migrated:opening_connected_wavefront_v2:aa51a6de106fa000033b304731a5a56f48a55dbfe95e84fe52f854ff7ea174e8
+geometry:
+  schema_version: 1
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  descriptor:
+    schema_version: 1
+    frame_id: container_link
+    length: 1.49
+    width: 1.97
+    floor_z: 0.53
+    ceiling_z: 2.01
+    chamfer:
+      side: positive_y
+      floor_y: 0.55
+      wall_y: 0.985
+      wall_z: 0.9
+    geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+migration:
+  tool_revision: tcig7-hull-aware-atlas-v3
+  source_schema_version: 2
+  source_npz_sha256: d4c22b58c9e1ba1d3e08892def4ef4f7d37f3fb3eebd8a765446b8114ada0e28
+  source_metadata_sha256: 3fc3c780b4a72ca90a700097943a12c189e47e5ce9a0d72545960406fbb02c69
+  active_mask_rule: contact_and_complete_payload_inside_tcig1_hull
+  payload_offset_transform: tool_down_attach_xyz_to_container_offset_(x,-y,-z)

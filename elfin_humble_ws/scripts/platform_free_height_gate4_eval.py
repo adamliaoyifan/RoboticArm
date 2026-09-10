@@ -72,7 +72,7 @@ class Gate4Eval(Node):
         return fut.result()
 
     def spawn_next(self):
-        return self._call(self._spawn, SpawnNextBox.Request())
+        return self._call(self._spawn, SpawnNextBox.Request(), timeout=60.0)
 
     def get_gt(self):
         return self._call(self._get, GetCurrentBox.Request())
@@ -82,10 +82,10 @@ class Gate4Eval(Node):
         start_n = len(self._frames)
         while rclpy.ok() and time.monotonic() < t_end:
             rclpy.spin_once(self, timeout_sec=0.05)
-        return [m for _, m in self._frames[start_n:]]
+        return list(self._frames[start_n:])
 
 
-def _row(frame, gt, trial, box_id):
+def _row(frame, gt, trial, box_id, monotonic_sec=None):
     """One DetectionFrame -> scoring row (estimate + reference + errors)."""
     box = frame.box
     gt_box = gt.box if gt is not None and gt.success else None
@@ -151,6 +151,7 @@ def _row(frame, gt, trial, box_id):
         "false_measured_height": bool(
             box.height_valid and int(frame.geometry_level) == 1
             and not frame.support_valid),
+        "monotonic_sec": monotonic_sec,
     }
 
 
@@ -253,6 +254,7 @@ def main():
     stale_frames_total = 0
     t_run_start = time.monotonic()
     spawn_failures = 0
+    trial_recoveries = []
     try:
         # Let the stream settle before trial 0 (arm/observe/camera
         # warmup after launch): a first trial started mid-warmup fails
@@ -264,15 +266,23 @@ def main():
             if before > 0 and len(node._frames) - before >= 2:
                 break
         for trial in range(args.trials):
+            n0 = len(node._frames)
             spawn = node.spawn_next()
+            t_placed = time.monotonic()
             if spawn is None or not spawn.success:
                 spawn_failures += 1
                 all_rows.append({
                     "trial": trial, "spawn_ok": False,
                     "message": None if spawn is None else spawn.message,
                 })
+                trial_recoveries.append({
+                    "trial": trial, "spawn_ok": False,
+                    "n_settled": 0,
+                    "t_first_valid_sec": None,
+                    "t_first_full3d_sec": None,
+                })
                 continue
-            time.sleep(0.5)
+            node.collect(0.5)
             gt = node.get_gt()
             # Expected identity comes from the eval-side spawn response
             # (GT), never from the detector output being tested: if only
@@ -281,17 +291,39 @@ def main():
             expected_instance = (
                 spawn.box.id or
                 (gt.box.id if gt and gt.success else None))
-            frames = node.collect(args.settle_sec)
-            stamps = [_stamp_sec(fr.header) for fr in frames]
+            samples = node.collect(args.settle_sec)
+            stamps = [_stamp_sec(fr.header) for _t, fr in samples]
             all_stamps.extend(stamps)
-            rows = [_row(fr, gt, trial, expected_instance or "unknown")
-                    for fr in frames]
+            rows = [
+                _row(fr, gt, trial, expected_instance or "unknown",
+                     monotonic_sec=t)
+                for t, fr in samples]
             all_rows.extend(rows)
             owned, stale_n = scoring.filter_expected_instance(
                 rows, expected_instance)
             stale_frames_total += stale_n
             warmup, settled = scoring.split_warmup(
                 owned, warmup_frames=args.warmup_frames)
+            recovery_rows = []
+            for t, fr in node._frames[n0:]:
+                recovery_rows.append({
+                    "instance_id": str(fr.instance_id),
+                    "top_surface_valid": bool(fr.box.top_surface_valid),
+                    "height_valid": bool(fr.box.height_valid),
+                    "geometry_level": int(fr.geometry_level),
+                    "height_source": int(fr.box.height_source),
+                    "monotonic_sec": t,
+                })
+            recovery_owned, _stale = scoring.filter_expected_instance(
+                recovery_rows, expected_instance)
+            t_valid, t_full = scoring.recovery_times(
+                recovery_owned, t_placed)
+            trial_recoveries.append({
+                "trial": trial, "spawn_ok": True,
+                "n_settled": len(settled),
+                "t_first_valid_sec": t_valid,
+                "t_first_full3d_sec": t_full,
+            })
             trials.append({
                 "trial": trial, "box_id": expected_instance,
                 "instance_id": expected_instance,
@@ -310,7 +342,7 @@ def main():
                 "gt_yaw": (_yaw_from_quat(gt.box.pose.orientation)
                            if gt and gt.success else None),
             })
-            if not frames:
+            if not samples:
                 all_rows.append({
                     "trial": trial, "box_id": expected_instance,
                     "spawn_ok": True,
@@ -345,6 +377,7 @@ def main():
         "trial_cycle_sec_mean": (
             run_sec / args.trials if args.trials else None),
         "matrix_coverage": _matrix_coverage(trials_gt),
+        "trial_recoveries": trial_recoveries,
     }
     if args.negative_control_raw_only:
         settled_rows = [r for t in trials for r in t["settled"]]
@@ -367,6 +400,14 @@ def main():
             summary["gate4_failures"] = (
                 list(summary.get("gate4_failures", []))
                 + summary["coverage_failures"])
+        extra = scoring.placement_recovery_gate(
+            spawn_failures,
+            trial_recoveries,
+            failed_count=summary["categories"]["failed"])
+        if extra:
+            summary["gate4_pass"] = False
+            summary["gate4_failures"] = (
+                list(summary.get("gate4_failures", [])) + extra)
     (out / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     return 0 if summary["gate4_pass"] else 1

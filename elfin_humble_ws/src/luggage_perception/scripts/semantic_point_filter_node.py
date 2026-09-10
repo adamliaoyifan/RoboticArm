@@ -73,7 +73,7 @@ class SemanticPointFilterNode(Node):
     def __init__(self):
         super().__init__("semantic_point_filter")
         defaults = {
-            "input.cloud": "/luggage/preprocessed/camera/depth/points",
+            "input.depth_image": "/luggage/preprocessed/camera/depth/image",
             "input.mask": "/luggage/semantic/mask",
             "input.instance_mask": "/luggage/semantic/instance_mask",
             "input.camera_info": "/luggage/preprocessed/camera/color/camera_info",
@@ -88,6 +88,7 @@ class SemanticPointFilterNode(Node):
             "extrinsics_source": "identity",
             "realsense_extrinsics_config": "",
             "buffer_maxlen": 10,
+            "output_pixel_stride": 2,
             # PF-R9 B5: stats serialization moved off the per-callback path
             # onto a timer (0 keeps the legacy per-call behaviour for unit
             # tests).
@@ -106,6 +107,8 @@ class SemanticPointFilterNode(Node):
         self._cargo_voxel_size = max(
             0.0, float(self.get_parameter("output.cargo_voxel_size").value))
         self._buffer_maxlen = max(2, int(self.get_parameter("buffer_maxlen").value))
+        self._pixel_stride = max(
+            1, int(self.get_parameter("output_pixel_stride").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
         stats_hz = float(self.get_parameter("stats_publish_hz").value)
         self._stats_publish_interval_sec = (
@@ -135,31 +138,38 @@ class SemanticPointFilterNode(Node):
         self._tf_node = Node("semantic_point_filter_tf")
         self._tf_listener = TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
-        self._last_cloud_stamp = None
-        self._last_cloud_frame = "camera_depth_optical_frame"
+        self._last_depth_stamp = None
+        self._last_depth_frame = "camera_depth_optical_frame"
 
         # Exact-stamp join buffers (bounded, oldest evicted first).
-        self._clouds = {}
+        self._depths = {}
         self._masks = {}
         self._instances = {}
-        self._counts = {"cloud": 0, "mask": 0, "instance": 0,
+        self._counts = {"depth": 0, "mask": 0, "instance": 0,
                         "joined": 0, "processed": 0, "no_intrinsics": 0,
-                        "mask_decode_fail": 0, "cloud_decode_fail": 0,
+                        "mask_decode_fail": 0, "depth_decode_fail": 0,
                         "epoch_reset": 0, "tf_miss": 0,
-                        "cloud_waiting_for_mask": 0,
-                        "mask_waiting_for_cloud": 0,
-                        "cloud_buffer_evicted": 0,
+                        "depth_waiting_for_mask": 0,
+                        "mask_waiting_for_depth": 0,
+                        "depth_buffer_evicted": 0,
                         "mask_buffer_evicted": 0,
                         "instance_buffer_evicted": 0,
-                        "stale_cloud_dropped": 0,
+                        "stale_depth_dropped": 0,
                         "stale_mask_dropped": 0,
                         "stale_instance_dropped": 0,
+                        "depth_horizon_evicted": 0,
                         "obstacle_publish_count": 0,
                         "obstacle_publish_skipped": 0}
         self._last_stage_ms = {}
 
         sensor_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+        # Aligned-depth input rides its own deeper transport queue: with a
+        # depth-1 queue, frames arriving while a join callback runs (21 ms
+        # measured) were dropped before the app-level 15-entry buffer ever
+        # saw them (PF-R9 g2 D4 repair).
+        depth_qos = QoSProfile(
+            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         # camera_info from the preprocessor is also best-effort sensor data.
         stats_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.RELIABLE,
@@ -175,8 +185,8 @@ class SemanticPointFilterNode(Node):
             String, self.get_parameter("output.stats").value, stats_qos)
 
         self.create_subscription(
-            PointCloud2, self.get_parameter("input.cloud").value,
-            self._on_cloud, sensor_qos, callback_group=self._group)
+            Image, self.get_parameter("input.depth_image").value,
+            self._on_depth, depth_qos, callback_group=self._group)
         self.create_subscription(
             Image, self.get_parameter("input.mask").value, self._on_mask,
             sensor_qos, callback_group=self._group)
@@ -248,19 +258,19 @@ class SemanticPointFilterNode(Node):
                     self._cargo_labels, self._obstacle_labels)
             self._intrinsics = intr
 
-    def _on_cloud(self, msg):
+    def _on_depth(self, msg):
         key = _stamp_key(msg)
         with self._lock:
-            self._counts["cloud"] += 1
-            self._last_cloud_stamp = msg.header.stamp
-            self._last_cloud_frame = msg.header.frame_id or self._last_cloud_frame
-            self._join_stamps.note_cloud(adapters.stamp_to_sec(msg.header.stamp))
-            self._store(self._clouds, key, msg, "cloud_buffer_evicted")
+            self._counts["depth"] += 1
+            self._last_depth_stamp = msg.header.stamp
+            self._last_depth_frame = msg.header.frame_id or self._last_depth_frame
+            self._join_stamps.note_depth(adapters.stamp_to_sec(msg.header.stamp))
+            self._store(self._depths, key, msg, "depth_buffer_evicted")
             joined = self._take_newest_join()
             if joined is None:
                 if key not in self._masks:
-                    self._counts["cloud_waiting_for_mask"] += 1
-                    self._join_stamps.note_cloud_waiting_for_mask()
+                    self._counts["depth_waiting_for_mask"] += 1
+                    self._join_stamps.note_depth_waiting_for_mask()
                 self._publish_stats()
                 return
         self._process_joined(*joined)
@@ -273,9 +283,9 @@ class SemanticPointFilterNode(Node):
             self._store(self._masks, key, msg, "mask_buffer_evicted")
             joined = self._take_newest_join()
             if joined is None:
-                if key not in self._clouds:
-                    self._counts["mask_waiting_for_cloud"] += 1
-                    self._join_stamps.note_mask_waiting_for_cloud()
+                if key not in self._depths:
+                    self._counts["mask_waiting_for_depth"] += 1
+                    self._join_stamps.note_mask_waiting_for_depth()
                 self._publish_stats()
                 return
         self._process_joined(*joined)
@@ -294,16 +304,29 @@ class SemanticPointFilterNode(Node):
                 return
             self._counts["epoch_reset"] += 1
             self._join_stamps.note_epoch(generation, box_id)
-            stamp = self._last_cloud_stamp
+            stamp = self._last_depth_stamp
             if stamp is None:
                 stamp = self.get_clock().now().to_msg()
             self._publish_cargo(
-                [], stamp, self._last_cloud_frame, n_points=0)
+                [], stamp, self._last_depth_frame, n_points=0)
             # Epoch resets are rare; publish immediately, not on the timer.
             self._publish_stats_now()
 
     def _store(self, buffer_, key, msg, evict_counter):
+        """Insert by exact (sec, nanosec) key at 15 entries / 1.0 second.
+
+        Same-stamp replacement keeps occupancy flat; capacity evicts the
+        oldest first; a one-second horizon on the newest primary camera
+        stamp evicts stale entries by name.
+        """
         buffer_[key] = msg
+        if len(buffer_) > 1:
+            newest = max(buffer_)
+            cutoff = (newest[0] - 1, newest[1])
+            stale = [k for k in buffer_ if k < cutoff]
+            for k in stale:
+                del buffer_[k]
+                self._counts["depth_horizon_evicted"] += 1
         while len(buffer_) > self._buffer_maxlen:
             oldest = min(buffer_)
             del buffer_[oldest]
@@ -360,49 +383,56 @@ class SemanticPointFilterNode(Node):
             xyz = voxel_downsample(xyz, self._cargo_voxel_size)
         n = int(xyz.shape[0] if n_points is None else n_points)
         self._cargo_pub.publish(adapters.cloud_msg_from_points(
-            xyz, stamp, frame_id or self._last_cloud_frame))
+            xyz, stamp, frame_id or self._last_depth_frame))
         with self._lock:
             self._join_stamps.note_join(
                 adapters.stamp_to_sec(stamp), n)
 
     def _take_join(self, key):
         """Pop a stamp-matched pair. Caller holds ``_lock``. None if incomplete."""
-        if key not in self._clouds or key not in self._masks:
+        if key not in self._depths or key not in self._masks:
             return None
         self._counts["joined"] += 1
         return (
-            self._clouds.pop(key),
+            self._depths.pop(key),
             self._masks.pop(key),
             self._instances.pop(key, None),
             self._filter,
         )
 
     def _take_newest_join(self):
-        """Process only the newest exact-stamp pair; drop older buffered frames.
+        """Process the newest exact-stamp pair; retire only older entries.
 
-        Exclusive-group callbacks queue FIFO. Processing every 307k-point
-        join in that queue stalled cargo for ~25 s (CARGO_NOT_READY with
-        frozen ``cloud`` counts).
+        Exclusive-group callbacks queue FIFO. Processing every join in
+        that queue stalled cargo (the g1-era clear-all mitigation), but
+        clearing the buffers also destroyed half-pairs of FUTURE stamps
+        (mask S+1 buffered while depth S joins), which capped the exact
+        join ratio ~0.88 (PF-R9 g2 D4). Entries strictly older than the
+        joined key are obsolete and retired by name; newer half-pairs
+        survive to complete on their partner's arrival.
         """
-        keys = set(self._clouds) & set(self._masks)
+        keys = set(self._depths) & set(self._masks)
         if not keys:
             return None
         key = max(keys)
         joined = self._take_join(key)
-        stale_cloud = len(self._clouds)
-        stale_mask = len(self._masks)
-        stale_instance = len(self._instances)
-        self._counts["stale_cloud_dropped"] += stale_cloud
-        self._counts["stale_mask_dropped"] += stale_mask
-        self._counts["stale_instance_dropped"] += stale_instance
+        stale_depth = [k for k in self._depths if k < key]
+        stale_mask = [k for k in self._masks if k < key]
+        stale_instance = [k for k in self._instances if k < key]
+        for k in stale_depth:
+            del self._depths[k]
+        for k in stale_mask:
+            del self._masks[k]
+        for k in stale_instance:
+            del self._instances[k]
+        self._counts["stale_depth_dropped"] += len(stale_depth)
+        self._counts["stale_mask_dropped"] += len(stale_mask)
+        self._counts["stale_instance_dropped"] += len(stale_instance)
         self._join_stamps.note_stale_drop(
-            stale_cloud + stale_mask + stale_instance)
-        self._clouds.clear()
-        self._masks.clear()
-        self._instances.clear()
+            len(stale_depth) + len(stale_mask) + len(stale_instance))
         return joined
 
-    def _process_joined(self, cloud_msg, mask_msg, instance_msg, filt):
+    def _process_joined(self, depth_msg, mask_msg, instance_msg, filt):
         """Decode + numpy off the lock so current_box can reset the epoch."""
         start = time.monotonic()
         label_map = adapters.image_array_from_msg(mask_msg)
@@ -418,17 +448,17 @@ class SemanticPointFilterNode(Node):
                     "dropping mask with encoding %s" % mask_msg.encoding)
                 self._publish_stats()
             return
-        points = adapters.cloud_points_from_msg(cloud_msg)
+        depth = adapters.depth_array_from_msg(depth_msg)
         after_cloud = time.monotonic()
-        if points is None:
+        if depth is None:
             with self._lock:
                 self._last_stage_ms = {
                     "mask_decode_ms": (after_mask - start) * 1000.0,
-                    "cloud_decode_ms": (after_cloud - after_mask) * 1000.0,
+                    "depth_decode_ms": (after_cloud - after_mask) * 1000.0,
                     "process_total_ms": (after_cloud - start) * 1000.0,
                 }
-                self._counts["cloud_decode_fail"] += 1
-                self._warn_throttled("dropping cloud with unsupported layout")
+                self._counts["depth_decode_fail"] += 1
+                self._warn_throttled("dropping depth with unsupported layout")
                 self._publish_stats()
             return
         if filt is None:
@@ -441,11 +471,12 @@ class SemanticPointFilterNode(Node):
         # Instance ids are not consumed downstream; the 5-tuple Python loop
         # over ~100k cargo points stalled the join callback for seconds.
         del instance_msg
-        cargo, obstacle = filt.filter_points(points, label_map, None)
+        cargo, obstacle = filt.filter_depth(
+            depth, label_map, None, pixel_stride=self._pixel_stride)
         after_filter = time.monotonic()
 
-        stamp = cloud_msg.header.stamp
-        frame_id = cloud_msg.header.frame_id or self._last_cloud_frame
+        stamp = depth_msg.header.stamp
+        frame_id = depth_msg.header.frame_id or self._last_depth_frame
         camera_pts = xyz_array(cargo)
         world_pts = None
         tf_miss = False
@@ -457,8 +488,8 @@ class SemanticPointFilterNode(Node):
 
         with self._lock:
             self._counts["processed"] += 1
-            self._last_cloud_stamp = stamp
-            self._last_cloud_frame = frame_id
+            self._last_depth_stamp = stamp
+            self._last_depth_frame = frame_id
             if camera_pts.shape[0] and tf_miss:
                 self._counts["tf_miss"] += 1
                 source = self._tracker.note_tf_miss(
@@ -507,13 +538,13 @@ class SemanticPointFilterNode(Node):
         with self._lock:
             self._last_stage_ms = {
                 "mask_decode_ms": (after_mask - start) * 1000.0,
-                "cloud_decode_ms": (after_cloud - after_mask) * 1000.0,
+                "depth_decode_ms": (after_cloud - after_mask) * 1000.0,
                 "filter_ms": (after_filter - after_cloud) * 1000.0,
                 "to_world_ms": (after_tf - before_tf) * 1000.0,
                 "tracker_ms": (after_track - after_tf) * 1000.0,
                 "publish_ms": (after_publish - before_publish) * 1000.0,
                 "process_total_ms": (after_publish - start) * 1000.0,
-                "input_points": int(len(points)),
+                "input_points": int(depth.shape[0]),
                 "cargo_points": int(camera_pts.shape[0]),
                 "obstacle_points": int(len(obstacle) if obstacle is not None else 0),
             }
@@ -541,15 +572,15 @@ class SemanticPointFilterNode(Node):
         record["buffer_maxlen"] = int(self._buffer_maxlen)
         record["cargo_voxel_size"] = float(self._cargo_voxel_size)
         record["buffer_occupancy"] = {
-            "cloud": len(self._clouds),
+            "depth": len(self._depths),
             "mask": len(self._masks),
             "instance": len(self._instances),
-            "exact_join_candidates": len(set(self._clouds) & set(self._masks)),
+            "exact_join_candidates": len(set(self._depths) & set(self._masks)),
         }
         record["stage_ms"] = dict(self._last_stage_ms)
         now_sec = adapters.stamp_to_sec(self.get_clock().now().to_msg())
-        if self._last_cloud_stamp is not None:
-            last = adapters.stamp_to_sec(self._last_cloud_stamp)
+        if self._last_depth_stamp is not None:
+            last = adapters.stamp_to_sec(self._last_depth_stamp)
             record["executor_lag_sec"] = float(now_sec) - float(last)
         else:
             record["executor_lag_sec"] = None
@@ -583,6 +614,35 @@ class SemanticPointFilterNode(Node):
             self._tf_node = None
 
 
+
+def _start_malloc_trim_timer(node, interval_sec=10.0):
+    """PF-R10 C2: return freed arena tails to the OS on a low-rate timer.
+
+    The cargo-cloud publish path frees mid-size blocks whose sizes vary
+    frame to frame; glibc keeps the peaks in arena free lists and RSS
+    creeps (measured 5-16 MiB/min against the 2 MiB/min C2 bar) even
+    though the live set is flat. malloc_trim(0) releases the arena tail.
+    """
+    import ctypes
+    import threading
+    try:
+        libc = ctypes.CDLL("libc.so.6")
+        libc.malloc_trim.argtypes = [ctypes.c_size_t]
+        trim = libc.malloc_trim
+    except Exception:
+        return None
+    stop = threading.Event()
+
+    def _tick():
+        while not stop.wait(interval_sec):
+            try:
+                trim(0)
+            except Exception:
+                return
+
+    threading.Thread(target=_tick, daemon=True).start()
+    return stop
+
 def main(argv=None):
     rclpy.init(args=argv)
     node = SemanticPointFilterNode()
@@ -590,6 +650,7 @@ def main(argv=None):
     # to cpu_count, which previously exploded the join callback pileup.
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(node)
+    node._trim_stop = _start_malloc_trim_timer(node)
     try:
         executor.spin()
     except (KeyboardInterrupt, ExternalShutdownException):

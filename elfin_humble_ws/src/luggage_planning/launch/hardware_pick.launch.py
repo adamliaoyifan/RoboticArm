@@ -242,7 +242,7 @@ def generate_launch_description():
                     "scene_tf_config": LaunchConfiguration("scene_tf_config"),
                     "use_semantic": True,
                     "use_sim_time": False,
-                    "depth_topic": "/luggage/preprocessed/camera/depth/points",
+                    "depth_topic": "/luggage/preprocessed/camera/depth/image",
                     "cloud_max_age_sec": 8.0,
                     "estimate_retry_count": 4,
                     "estimate_retry_period_sec": 0.25,

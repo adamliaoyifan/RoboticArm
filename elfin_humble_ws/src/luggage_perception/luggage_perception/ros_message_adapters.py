@@ -24,6 +24,7 @@ from luggage_perception.sensor_types import (
     CameraInfoFrame,
     DepthFrame,
     JointSample,
+    OpaquePayload,
     RgbFrame,
 )
 
@@ -93,6 +94,15 @@ def stamp_to_sec(stamp):
     return float(stamp.sec) + 1e-9 * float(stamp.nanosec)
 
 
+def stamp_key(stamp):
+    """Exact integer payload identity: the (sec, nanosec) header pair."""
+    return (int(stamp.sec), int(stamp.nanosec))
+
+
+def stamp_key_ns(stamp):
+    return int(stamp.sec) * 1000000000 + int(stamp.nanosec)
+
+
 def sec_to_stamp(seconds):
     stamp = Time()
     if seconds <= 0.0:
@@ -127,7 +137,11 @@ def transform_matrix(tf_msg):
 # --------------------------------------------------------------------------
 
 def image_array_from_msg(msg):
-    """(H,W,3) or (H,W) uint8 array, or None for an unsupported layout."""
+    """(H,W,3) or (H,W) uint8 READ-ONLY view, or None for a bad layout.
+
+    PF-R9 g2: no eager copy. Contiguous and row-padded (step > width*ch)
+    layouts are both valid when the declared buffer is long enough.
+    """
     if msg.width <= 0 or msg.height <= 0:
         return None
     if msg.encoding in COLOR_ENCODINGS:
@@ -136,52 +150,81 @@ def image_array_from_msg(msg):
         channels = 1
     else:
         return None
-    need = int(msg.height) * int(msg.width) * channels
-    arr = np.frombuffer(msg.data, dtype=np.uint8)
-    if arr.size < need:
-        return None
-    arr = arr[:need]
-    if channels == 1:
-        return arr.reshape(msg.height, msg.width).copy()
-    return arr.reshape(msg.height, msg.width, channels).copy()
+    step = int(msg.step or (msg.width * channels))
+    declared = int(msg.height) * step
+    base = np.frombuffer(msg.data, dtype=np.uint8)
+    base.setflags(write=False)
+    if base.size * base.itemsize < declared:
+        return None  # truncated buffer: caller counts it by name
+    shape = ((msg.height, msg.width, channels) if channels > 1
+             else (msg.height, msg.width))
+    strides = ((step, channels, 1) if channels > 1 else (step, 1))
+    view = np.lib.stride_tricks.as_strided(
+        base[:declared], shape=shape, strides=strides)
+    view.setflags(write=False)
+    return view
 
 
 def rgb_frame_from_msg(msg):
-    image = image_array_from_msg(msg)
-    if image is None:
+    """Payload-owning frame: shares the source array.array, copies nothing."""
+    if msg.width <= 0 or msg.height <= 0:
+        return None
+    if msg.encoding not in COLOR_ENCODINGS + MONO_ENCODINGS:
         return None
     return RgbFrame(
         stamp=stamp_to_sec(msg.header.stamp),
         frame_id=msg.header.frame_id,
-        image=image,
         encoding=msg.encoding,
+        payload=OpaquePayload(msg.data, origin="ros"),
+        height=int(msg.height),
+        width=int(msg.width),
+        step=int(msg.step or 0),
+        is_bigendian=int(bool(msg.is_bigendian)),
+        stamp_key=stamp_key(msg.header.stamp),
     )
 
 
 def depth_array_from_msg(msg):
-    """(H,W) uint16 millimetre array, or None for an unsupported layout."""
+    """(H,W) uint16-family READ-ONLY view (endian-preserving), or None.
+
+    PF-R9 g2: no astype to native byte order — a big-endian depth stays a
+    big-endian view; conversion by copying is forbidden on this path.
+    """
     if msg.width <= 0 or msg.height <= 0:
         return None
     if msg.encoding not in DEPTH_ENCODINGS:
         return None
     dtype = np.dtype(">u2" if msg.is_bigendian else "<u2")
-    need = int(msg.height) * int(msg.width)
-    arr = np.frombuffer(msg.data, dtype=dtype)
-    if arr.size < need:
+    step = int(msg.step or (msg.width * 2))
+    declared = int(msg.height) * step
+    base = np.frombuffer(msg.data, dtype=dtype)
+    base.setflags(write=False)
+    if base.size * base.itemsize < declared:
         return None
-    return arr[:need].reshape(msg.height, msg.width).astype(np.uint16)
+    view = np.lib.stride_tricks.as_strided(
+        base[:declared // dtype.itemsize],
+        shape=(msg.height, msg.width), strides=(step, 2))
+    view.setflags(write=False)
+    return view
 
 
 def depth_frame_from_msg(msg):
-    depth = depth_array_from_msg(msg)
-    if depth is None:
+    """Payload-owning frame: shares the source array.array, copies nothing."""
+    if msg.width <= 0 or msg.height <= 0:
+        return None
+    if msg.encoding not in DEPTH_ENCODINGS:
         return None
     return DepthFrame(
         stamp=stamp_to_sec(msg.header.stamp),
         frame_id=msg.header.frame_id,
-        depth=depth,
         units="millimetres",
-        encoding="16UC1",
+        encoding=msg.encoding,
+        payload=OpaquePayload(msg.data, origin="ros"),
+        height=int(msg.height),
+        width=int(msg.width),
+        step=int(msg.step or 0),
+        is_bigendian=int(bool(msg.is_bigendian)),
+        stamp_key=stamp_key(msg.header.stamp),
     )
 
 
@@ -290,12 +333,30 @@ def joint_sample_from_msg(msg, fallback_stamp_sec=None):
 # --------------------------------------------------------------------------
 
 def image_msg_from_frame(frame, stamp):
+    """Republish by payload identity when the frame owns one (PF-R9 g2).
+
+    The output Image rewrites only the paired header and metadata and
+    assigns the ORIGINAL source ``array.array('B')`` to ``out.data`` — no
+    copy, astype, ascontiguousarray, or tobytes. Legacy frames constructed
+    directly from NumPy arrays (tests) fall back to a materialising path.
+    CDR serialisation below the publisher still copies; that is stated and
+    is not zero-copy end-to-end.
+    """
     out = Image()
     out.header = Header(stamp=stamp, frame_id=frame.frame_id)
-    image = np.asarray(frame.image)
+    out.encoding = frame.encoding or "rgb8"
+    payload = getattr(frame, "payload", None)
+    if payload is not None and payload.origin == "ros":
+        out.height = int(frame.height)
+        out.width = int(frame.width)
+        out.is_bigendian = int(frame.is_bigendian)
+        out.step = int(frame.step or (frame.width * (
+            3 if out.encoding in COLOR_ENCODINGS else 1)))
+        out.data = payload.ros_data()
+        return out
+    image = np.asarray(frame.view() if hasattr(frame, "view") else frame.image)
     out.height = int(image.shape[0])
     out.width = int(image.shape[1])
-    out.encoding = frame.encoding or "rgb8"
     out.is_bigendian = 0
     out.step = out.width if image.ndim == 2 else out.width * int(image.shape[2])
     out.data = np.ascontiguousarray(image, dtype=np.uint8).tobytes()
@@ -303,9 +364,19 @@ def image_msg_from_frame(frame, stamp):
 
 
 def depth_msg_from_frame(frame, stamp):
+    """Republish by payload identity (see image_msg_from_frame)."""
     out = Image()
     out.header = Header(stamp=stamp, frame_id=frame.frame_id)
-    depth = np.asarray(frame.depth)
+    payload = getattr(frame, "payload", None)
+    if payload is not None and payload.origin == "ros":
+        out.height = int(frame.height)
+        out.width = int(frame.width)
+        out.encoding = frame.encoding or "16UC1"
+        out.is_bigendian = int(frame.is_bigendian)
+        out.step = int(frame.step or (frame.width * 2))
+        out.data = payload.ros_data()
+        return out
+    depth = np.asarray(frame.view() if hasattr(frame, "view") else frame.depth)
     out.height = int(depth.shape[0])
     out.width = int(depth.shape[1])
     out.encoding = "16UC1"

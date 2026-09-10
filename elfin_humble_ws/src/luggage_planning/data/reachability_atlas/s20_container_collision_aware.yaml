@@ -1,5 +1,5 @@
-atlas_version: '2.0'
-schema_version: 2
+atlas_version: '3.0'
+schema_version: 3
 generated_at: '2026-08-11T07:06:04'
 computation_time_sec: 128.71
 mode: collision_aware
@@ -29,9 +29,9 @@ payload:
   enabled: false
   shape: null
   size: null
-  attach_link: suction_contact_frame
-  offset: null
-  touch_links: null
+  center_offset: null
+  yaw_convention: container_z_ccw_radians
+  center_convention: contact_plus_container_offset
 grid:
   frame: container_link
   resolution_xyz: 0.15
@@ -65,9 +65,36 @@ container:
   - -1.5708
   opening_side: negative_x
 stats:
-  total_cells: 2800
+  total_cells: 2680
+  allocated_cells: 2800
+  active_cells: 2680
+  inactive_cells: 120
   reachable_cells: 345
   marginal_cells: 119
-  unreachable_cells: 480
-  unknown_cells: 1856
-  reachability_rate: 0.1232
+  unreachable_cells: 468
+  unknown_cells: 1748
+  reachability_rate: 0.17313432835820897
+builder_revision: migrated:opening_connected_wavefront_v2:53a3c3687ee6f3164e0dceef27ffd528af388202885c463260ca183f6a18cf20
+geometry:
+  schema_version: 1
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  descriptor:
+    schema_version: 1
+    frame_id: container_link
+    length: 1.49
+    width: 1.97
+    floor_z: 0.53
+    ceiling_z: 2.01
+    chamfer:
+      side: positive_y
+      floor_y: 0.55
+      wall_y: 0.985
+      wall_z: 0.9
+    geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+migration:
+  tool_revision: tcig7-hull-aware-atlas-v3
+  source_schema_version: 2
+  source_npz_sha256: 4d8eec9efb97238c1ff10690410fd30679f29d189e60c14de104ba0c98389556
+  source_metadata_sha256: 5b7451f34f068e3865463caa937795a2b2dfbb0c68f11821f11c1eaad8a70e11
+  active_mask_rule: contact_and_complete_payload_inside_tcig1_hull
+  payload_offset_transform: contact_only

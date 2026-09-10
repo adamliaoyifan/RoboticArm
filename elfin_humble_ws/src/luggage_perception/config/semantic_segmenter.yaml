@@ -39,7 +39,7 @@ semantic_segmenter:
     # static border false positive that a low threshold would otherwise
     # admit, and the geometry gates (workspace crop, top/support, fail
     # closed) keep false measured height at 0; A4-3 tracks it.
-    confidence_threshold: 0.01
+    confidence_threshold: 0.005
     sam2.checkpoint: facebook/sam2-hiera-small
     sam2.model_type: sam2_hiera_s
 
@@ -87,7 +87,10 @@ semantic_segmenter:
     # 0 = unlimited. YOLO on CPU is slower than the 4-6 Hz preprocessed
     # input; unlimited processing would pile callbacks up.
     max_rate_hz: 0.0
-    publish_overlay: true
+    # PF-R9 g2: the overlay is a debug viz product; per-frame cv2 drawing
+    # cost is not paid by the online graph (resource hygiene only, no D3
+    # credit claimed).
+    publish_overlay: false
 
     # YOLO is per-frame; a miss used to publish an empty mask and drop cargo.
     # Keep 5 frames and hold the consensus cargo bbox when >=50% of the
@@ -127,7 +130,8 @@ semantic_segmenter:
 
 semantic_point_filter:
   ros__parameters:
-    input.cloud: /luggage/preprocessed/camera/depth/points
+    # PF-R9 g2: aligned depth image replaces the preprocessed cloud.
+    input.depth_image: /luggage/preprocessed/camera/depth/image
     input.mask: /luggage/semantic/mask
     input.instance_mask: /luggage/semantic/instance_mask
     input.camera_info: /luggage/preprocessed/camera/color/camera_info
@@ -142,8 +146,14 @@ semantic_point_filter:
     # "config": real D435 depth_to_color from realsense_extrinsics_config.
     extrinsics_source: identity
     realsense_extrinsics_config: ""
-    # Exact-stamp join buffer depth per side (clouds / masks).
-    buffer_maxlen: 10
+    # Exact-stamp join buffers (aligned depth / masks), 15 entries /
+    # 1.0 second on the primary camera clock (PF-R9 g2 fixed contract).
+    buffer_maxlen: 15
+    # PF-R9 g2: deterministic [::2] decimation of the deprojected cargo /
+    # obstacle pixels (a new product — outside the payload identity
+    # contract). Retained density ~15k pre-voxel vs min_points 50 /
+    # min_top_points 80; geometry non-regression carries in D6/PF-R10.
+    output_pixel_stride: 2
     # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
     # callback (~60-70 Hz json.dumps inside the join's callback group).
     stats_publish_hz: 1.0

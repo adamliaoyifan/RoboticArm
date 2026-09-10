@@ -221,7 +221,7 @@ class TestReachabilityAtlas(unittest.TestCase):
             npz = os.path.join(tmp, "atlas.npz")
             meta = os.path.join(tmp, "atlas.yaml")
             self.atlas.save(npz, meta)
-            loaded = ReachabilityAtlas.load(npz, meta)
+            loaded = ReachabilityAtlas.load(npz, meta, allow_legacy=True)
             ok, seed = loaded.is_reachable(-0.1, -0.1, 0.0, yaw=0.0)
             self.assertTrue(ok)
             self.assertIsNotNone(seed)
@@ -345,7 +345,8 @@ class TestReachabilityAtlasV2(unittest.TestCase):
                 self.assertIn("reachable", saved.files)
                 self.assertIn("seed_joints", saved.files)
 
-            loaded = ReachabilityAtlas.load(npz_path, meta_path)
+            loaded = ReachabilityAtlas.load(
+                npz_path, meta_path, allow_legacy=True)
             result = loaded.query(0.35, 0.25, 0.25, 0.0)
             self.assertEqual(result.status, REACHABLE)
             self.assertEqual(len(result.contact_seeds), 2)
@@ -384,7 +385,8 @@ class TestReachabilityAtlasV2(unittest.TestCase):
             with open(meta_path, "w", encoding="utf-8") as stream:
                 yaml.safe_dump(meta, stream)
 
-            loaded = ReachabilityAtlas.load(npz_path, meta_path)
+            loaded = ReachabilityAtlas.load(
+                npz_path, meta_path, allow_legacy=True)
             reachable_result = loaded.query(0.15, 0.15, 0.15, 0.0)
             unreachable_result = loaded.query(0.05, 0.05, 0.05, 0.0)
             self.assertEqual(reachable_result.status, REACHABLE)

@@ -220,12 +220,13 @@ touch docs/agents/README.md src/luggage_gazebo/.keep approved-plan.md
 git add docs/agents/README.md src/luggage_gazebo/.keep approved-plan.md
 git commit -q -m baseline
 MIG_REV="$(git rev-parse HEAD)"
+MIG_SHORT="${MIG_REV:0:7}"
 cat > docs/agents/discuss/OPEN.md <<EOF
 # Open cross-agent work
 
 | id | kind | parent | subtask | depends_on | revision | to_role | to_agent | to_model | from_role | from_agent | from_model | cli | thread | request |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Q-MIG | subtask | MIG | A | none | $MIG_REV | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | mig-a.md | migrate |
+| Q-MIG | subtask | MIG | A | none | $MIG_SHORT | eng | codex | gpt-5 | reviews | codex | gpt-5 | codex | mig-a.md | migrate |
 EOF
 cat > docs/agents/discuss/mig-a.md <<EOF
 # migrate
@@ -238,26 +239,67 @@ cat > docs/agents/discuss/mig-a.md <<EOF
 - parent: MIG
 - subtask: A
 - depends_on: none
-- revision: $MIG_REV
+- revision: $MIG_SHORT
 
 ## Post -- reviews/codex -- 2026-09-05 00:00 -- codex/gpt-5
 
 migrate
 EOF
+cat > docs/agents/discuss/historical-done.md <<EOF
+# historical runnable outside the live mailbox
+
+- status: done
+- to_role: eng
+- to_agent: codex
+- to_model: gpt-5
+- kind: subtask
+- parent: HISTORY
+- subtask: OLD
+- depends_on: none
+- revision: $MIG_REV
+
+## Post -- reviews/codex -- 2026-09-04 00:00 -- codex/gpt-5
+
+historical
+
+## Result -- eng/codex -- 2026-09-04 01:00 -- codex/gpt-5
+
+- outcome: pass
+- revision: $MIG_REV
+EOF
+AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$MIG_ROOT" \
+  "$ROOT/scripts/agent_start.sh" --thread mig-a.md --role eng \
+  --agent codex --model gpt-5 --cli codex >/tmp/migrate-legacy-start.log
+grep -q "^- claimed_plan_revision: $MIG_SHORT$" docs/agents/discuss/mig-a.md
 AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$MIG_ROOT" \
   python3 "$ROOT/scripts/agent_mailbox.py" migrate --plan-revision "$MIG_REV" \
   --dry-run >/tmp/migrate-dry-run.log
 ! grep -q '^- generation:' docs/agents/discuss/mig-a.md
+! grep -q '^- generation:' docs/agents/discuss/historical-done.md
 AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$MIG_ROOT" \
   python3 "$ROOT/scripts/agent_mailbox.py" migrate --plan-revision "$MIG_REV" \
   >/tmp/migrate-run.log
 grep -q '| request | generation | plan_revision |' docs/agents/discuss/OPEN.md
 grep -q '^- generation: 1$' docs/agents/discuss/mig-a.md
 grep -q "^- plan_revision: $MIG_REV$" docs/agents/discuss/mig-a.md
+grep -q '^- dispatch_ready: yes$' docs/agents/discuss/mig-a.md
+! grep -q '^- generation:' docs/agents/discuss/historical-done.md
+python3 - <<'PY'
+from pathlib import Path
+
+text = Path("docs/agents/discuss/mig-a.md").read_text(encoding="utf-8")
+assert "- dispatch_ready: yes\n\n## Post" in text, text
+PY
 AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$MIG_ROOT" \
   python3 "$ROOT/scripts/agent_mailbox.py" migrate --plan-revision "$MIG_REV" \
   >/tmp/migrate-idempotent.log
 grep -q 'migrated 0 runnable thread' /tmp/migrate-idempotent.log
+AGENT_MAILBOX_ALLOW_ANY_ROOT=1 AGENT_COORD_ROOT="$MIG_ROOT" \
+  "$ROOT/scripts/agent_complete.sh" --thread mig-a.md --role eng \
+  --agent codex --model gpt-5 --cli codex --outcome pass \
+  --revision "$MIG_REV" --tests "legacy migration completion pass" \
+  --summary "legacy claim remained fresh" >/tmp/migrate-legacy-complete.log
+grep -q '^- status: done$' docs/agents/discuss/mig-a.md
 rm -rf "$MIG_ROOT"
 
 # Migration refuses ambiguous duplicate legacy lineages.

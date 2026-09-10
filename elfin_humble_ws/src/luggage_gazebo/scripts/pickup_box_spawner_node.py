@@ -19,6 +19,8 @@ import json
 import math
 import os
 import random
+import re
+import subprocess
 import threading
 import time
 
@@ -80,6 +82,56 @@ def _quaternion_from_rpy(roll, pitch, yaw):
         y=cr * sp * cy + sr * cp * sy,
         z=cr * cp * sy - sr * sp * sy,
     )
+
+
+def _rpy_from_quaternion(q):
+    sinr = 2.0 * (q.w * q.x + q.y * q.z)
+    cosr = 1.0 - 2.0 * (q.x * q.x + q.y * q.y)
+    roll = math.atan2(sinr, cosr)
+    sinp = 2.0 * (q.w * q.y - q.z * q.x)
+    pitch = (
+        math.copysign(math.pi * 0.5, sinp)
+        if abs(sinp) >= 1.0 else math.asin(sinp))
+    siny = 2.0 * (q.w * q.z + q.x * q.y)
+    cosy = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
+    return roll, pitch, math.atan2(siny, cosy)
+
+
+def _angle_err(actual, expected):
+    delta = (
+        (float(actual) - float(expected) + math.pi) % (2.0 * math.pi)
+        - math.pi)
+    return abs(delta)
+
+
+_GZ_POSE_BLOCK = re.compile(
+    r"pose\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", re.MULTILINE)
+_GZ_NAME = re.compile(r'name:\s*"([^"]+)"')
+_GZ_FIELD = re.compile(
+    r"(x|y|z|w):\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)")
+
+
+def _parse_gz_pose_v(text):
+    """Parse ``ign topic -e`` Pose_V text into {name: geometry_msgs/Pose}."""
+    poses = {}
+    for body in _GZ_POSE_BLOCK.findall(text or ""):
+        named = _GZ_NAME.search(body)
+        if named is None:
+            continue
+        pos_m = re.search(r"position\s*\{([^}]*)\}", body)
+        ori_m = re.search(r"orientation\s*\{([^}]*)\}", body)
+        pos = dict(_GZ_FIELD.findall(pos_m.group(1))) if pos_m else {}
+        ori = dict(_GZ_FIELD.findall(ori_m.group(1))) if ori_m else {}
+        pose = Pose()
+        pose.position.x = float(pos.get("x", 0.0))
+        pose.position.y = float(pos.get("y", 0.0))
+        pose.position.z = float(pos.get("z", 0.0))
+        pose.orientation.x = float(ori.get("x", 0.0))
+        pose.orientation.y = float(ori.get("y", 0.0))
+        pose.orientation.z = float(ori.get("z", 0.0))
+        pose.orientation.w = float(ori.get("w", 1.0))
+        poses[named.group(1)] = pose
+    return poses
 
 
 class PickupBoxSpawner(Node):
@@ -154,6 +206,19 @@ class PickupBoxSpawner(Node):
             self._size_mode = "catalog"
         settle_raw = float(self.get_parameter("visual_settle_sec").value)
         self._visual_settle_sec = max(0.0, settle_raw)
+        self._replace_settle_sec = 0.6
+        self._place_persist_sec = 0.4
+        self._place_read_timeout_sec = 0.5
+        self._place_max_attempts = 4
+        self._place_xy_tol_m = 0.02
+        self._place_z_tol_m = 0.03
+        self._place_tilt_tol_rad = 0.087  # 5 deg vs requested roll/pitch
+        self._place_yaw_tol_rad = 0.12
+        self._latest_world_poses = {}
+        self._pose_lock = threading.Lock()
+        self._query_gz_poses = True
+        self._world_name = str(
+            self.get_parameter("world").value) or WORLD_NAME
         self._current_box = None
         self._current_model = None
         self._current_ref = None
@@ -240,6 +305,140 @@ class PickupBoxSpawner(Node):
         if resp is None or not resp.success:
             return "create failed for '%s'" % model_name
         return None
+
+    def _replace_model_at(self, model_name, pose):
+        req = SetEntityPose.Request()
+        req.entity.name = model_name
+        req.entity.type = Entity.MODEL
+        req.pose = pose
+        resp = self._call(self._set_pose_cli, req, timeout=5.0)
+        if resp is None or not resp.success:
+            return "set_pose failed for '%s'" % model_name
+        return None
+
+    def _on_pose_info(self, msg):
+        with self._pose_lock:
+            for stamped in msg.transforms:
+                pose = Pose()
+                pose.position.x = float(stamped.transform.translation.x)
+                pose.position.y = float(stamped.transform.translation.y)
+                pose.position.z = float(stamped.transform.translation.z)
+                pose.orientation.x = float(stamped.transform.rotation.x)
+                pose.orientation.y = float(stamped.transform.rotation.y)
+                pose.orientation.z = float(stamped.transform.rotation.z)
+                pose.orientation.w = float(stamped.transform.rotation.w)
+                self._latest_world_poses[str(stamped.child_frame_id)] = pose
+
+    def _refresh_world_poses(self):
+        """One-shot /world/<w>/pose/info via gz; no ROS bridge flood."""
+        world = getattr(self, "_world_name", WORLD_NAME)
+        topic = "/world/%s/pose/info" % world
+        try:
+            proc = subprocess.run(
+                ["ign", "topic", "-e", "-t", topic, "--num", "1"],
+                capture_output=True, text=True, timeout=2.0,
+                check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return
+        parsed = _parse_gz_pose_v(proc.stdout or "")
+        if not parsed:
+            return
+        with self._pose_lock:
+            self._latest_world_poses.update(parsed)
+
+    def _lookup_model_pose(self, model_name):
+        name = str(model_name)
+        with self._pose_lock:
+            if name in self._latest_world_poses:
+                return self._latest_world_poses[name]
+            keys = [
+                key for key in self._latest_world_poses
+                if key == name or key.startswith(name + "::")
+            ]
+            if not keys:
+                return None
+            key = min(keys, key=len)
+            return self._latest_world_poses[key]
+
+    def _read_model_pose(self, model_name, timeout=None):
+        if getattr(self, "_query_gz_poses", False):
+            self._refresh_world_poses()
+            return self._lookup_model_pose(model_name)
+        if timeout is None:
+            timeout = self._place_read_timeout_sec
+        deadline = time.monotonic() + max(0.0, float(timeout))
+        while True:
+            pose = self._lookup_model_pose(model_name)
+            if pose is not None:
+                return pose
+            if time.monotonic() >= deadline:
+                return None
+            time.sleep(0.02)
+
+    def _pose_mismatch(self, actual, requested):
+        dx = float(actual.position.x) - float(requested.position.x)
+        dy = float(actual.position.y) - float(requested.position.y)
+        dz = float(actual.position.z) - float(requested.position.z)
+        xy = math.hypot(dx, dy)
+        ar, ap, ay = _rpy_from_quaternion(actual.orientation)
+        rr, rp, ry = _rpy_from_quaternion(requested.orientation)
+        tilt = max(_angle_err(ar, rr), _angle_err(ap, rp))
+        yaw = _angle_err(ay, ry)
+        reasons = []
+        if xy > self._place_xy_tol_m:
+            reasons.append("xy=%.3f" % xy)
+        if abs(dz) > self._place_z_tol_m:
+            reasons.append("z=%.3f" % dz)
+        if tilt > self._place_tilt_tol_rad:
+            reasons.append("tilt=%.3f" % tilt)
+        if yaw > self._place_yaw_tol_rad:
+            reasons.append("yaw=%.3f" % yaw)
+        if not reasons:
+            return None
+        return ",".join(reasons)
+
+    def _enforce_intended_pose(self, model_name, pose):
+        """Closed-loop placement vs /world/<w>/pose/info. Fail closed.
+
+        Reviews 2026-09-10: verify entity identity, XY, roll/pitch, and
+        persistence; retry a bounded number of times; do not continue
+        with an unplaceable trial.
+        """
+        last_err = "PLACE_VERIFY_FAILED: no attempt"
+        attempts = max(1, int(self._place_max_attempts))
+        for attempt in range(attempts):
+            actual = self._read_model_pose(model_name)
+            if actual is None:
+                last_err = (
+                    "PLACE_VERIFY_FAILED: entity '%s' absent from pose/info"
+                    % model_name)
+            else:
+                mismatch = self._pose_mismatch(actual, pose)
+                if mismatch is None:
+                    if self._place_persist_sec > 0.0:
+                        time.sleep(self._place_persist_sec)
+                    held = self._read_model_pose(model_name)
+                    if held is None:
+                        last_err = (
+                            "PLACE_VERIFY_FAILED: entity '%s' disappeared"
+                            % model_name)
+                    else:
+                        persist = self._pose_mismatch(held, pose)
+                        if persist is None:
+                            return None
+                        last_err = (
+                            "PLACE_VERIFY_FAILED: pose not persistent (%s)"
+                            % persist)
+                else:
+                    last_err = "PLACE_VERIFY_FAILED: %s" % mismatch
+            if attempt + 1 >= attempts:
+                break
+            replace_err = self._replace_model_at(model_name, pose)
+            if replace_err is not None:
+                last_err = "PLACE_VERIFY_FAILED: %s" % replace_err
+            if self._replace_settle_sec > 0.0:
+                time.sleep(self._replace_settle_sec)
+        return last_err
 
     def _delete_model(self, model_name):
         req = DeleteEntity.Request()
@@ -546,6 +745,23 @@ class PickupBoxSpawner(Node):
 
         if self._visual_settle_sec > 0.0:
             time.sleep(self._visual_settle_sec)
+
+        # PF-R10 g3: closed-loop placement vs /world/<w>/pose/info.
+        # One-shot set_pose after settle did not hold under contact
+        # physics. Verify identity/XY/tilt/yaw and persistence; retry a
+        # bounded number of times; fail the trial if the requested pose
+        # cannot be established. Do not publish an unplaceable box.
+        place_err = self._enforce_intended_pose(model_name, pose)
+        if place_err is not None:
+            self.get_logger().error("pickup_box_spawner: %s" % place_err)
+            del_err = self._delete_model(model_name)
+            if del_err is not None:
+                self.get_logger().warning(
+                    "pickup_box_spawner: cleanup after place verify: %s"
+                    % del_err)
+            response.success = False
+            response.message = place_err
+            return response
 
         # Observable reference: the lid plane sits lid_offset below the
         # AABB top, so the observable top/center come from the lid plane

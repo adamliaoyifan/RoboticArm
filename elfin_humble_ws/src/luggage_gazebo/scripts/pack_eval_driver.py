@@ -22,8 +22,12 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+_ROOT = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "..")
+_SRC = os.path.join(_ROOT, "src")
+for _path in (_ROOT, _SRC):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from place_smoke_driver import (  # noqa: E402
     PlaceSmokeDriver,
@@ -36,6 +40,11 @@ from luggage_gazebo.place_gt_dump import write_pack_layout_dump  # noqa: E402
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     xyz_base_link_to_world,
     yaw_base_link_to_world,
+)
+from luggage_packing.geometry_metrics import (  # noqa: E402
+    GeometryMetricsError,
+    capacity_report,
+    denominators_from_scene_config,
 )
 from luggage_msgs.msg import SlotSpec
 from luggage_msgs.srv import (
@@ -51,8 +60,6 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 MAX_CONSECUTIVE_FAILURES = 3
-INNER_FLOOR_XY = 1.49 * 1.97
-INNER_VOLUME = 1.49 * 1.97 * (2.01 - 0.53)
 
 
 class PackEvalDriver(PlaceSmokeDriver):
@@ -385,6 +392,9 @@ class PackEvalDriver(PlaceSmokeDriver):
                         "size_wdh": size,
                         "mass_kg": self._mass(spawn),
                         "volume_m3": volume,
+                        "center_container_link": list(center_local),
+                        "yaw_container_link": float(
+                            slot_meta["pose_base_link"]["yaw"]),
                         "pose_world": {
                             "position": slot_meta["pose_world"]["position"],
                             "yaw": slot_meta["pose_world"]["yaw"],
@@ -520,10 +530,6 @@ class PackEvalDriver(PlaceSmokeDriver):
         committed = [entry for entry in self._ledger
                      if entry.get("committed")]
         volume_sum = sum(entry.get("volume_m3", 0.0) for entry in committed)
-        footprint = 0.0
-        for entry in committed:
-            size = entry.get("size_wdh") or [0.0, 0.0, 0.0]
-            footprint += float(size[0]) * float(size[1])
         catalog_counts = {}
         for entry in committed:
             catalog = entry.get("catalog_id", "unknown")
@@ -544,6 +550,32 @@ class PackEvalDriver(PlaceSmokeDriver):
         cycles = [entry.get("cycle_wall_sec") for entry in committed
                   if entry.get("cycle_wall_sec") is not None]
         import statistics
+        boxes = []
+        for record in self._placed_records:
+            center = record.get("center_container_link")
+            size = record.get("size_wdh")
+            if not center or not size:
+                continue
+            boxes.append({
+                "center": center,
+                "size": size,
+                "yaw": record.get("yaw_container_link", 0.0),
+            })
+        try:
+            hull = denominators_from_scene_config(self._scene_config)
+            metrics = capacity_report(volume_sum, boxes, hull["geometry"])
+        except GeometryMetricsError as exc:
+            metrics = {
+                "volume_fraction": None,
+                "floor_coverage": None,
+                "usable_volume_m3": None,
+                "floor_area_m2": None,
+                "packed_volume_m3": volume_sum,
+                "packed_floor_area_m2": None,
+                "schema_version": None,
+                "geometry_hash": None,
+                "geometry_metrics_reason": exc.reason,
+            }
         suite = {
             "termination_reason": termination,
             "capacity_claim_valid": (
@@ -552,10 +584,20 @@ class PackEvalDriver(PlaceSmokeDriver):
                 and len(set(ids)) == 1),
             "boxes_packed": len(committed),
             "boxes_attempted": attempted,
-            "volume_fraction": round(volume_sum / INNER_VOLUME, 4),
-            "floor_coverage": round(footprint / INNER_FLOOR_XY, 4),
-            "inner_volume_m3": round(INNER_VOLUME, 3),
+            "volume_fraction": (
+                None if metrics.get("volume_fraction") is None
+                else round(metrics["volume_fraction"], 4)),
+            "floor_coverage": (
+                None if metrics.get("floor_coverage") is None
+                else round(metrics["floor_coverage"], 4)),
+            "inner_volume_m3": metrics.get("usable_volume_m3"),
             "packed_volume_m3": round(volume_sum, 4),
+            "usable_volume_m3": metrics.get("usable_volume_m3"),
+            "floor_area_m2": metrics.get("floor_area_m2"),
+            "packed_floor_area_m2": metrics.get("packed_floor_area_m2"),
+            "schema_version": metrics.get("schema_version"),
+            "geometry_hash": metrics.get("geometry_hash"),
+            "geometry_metrics_reason": metrics.get("geometry_metrics_reason"),
             "catalog_counts": catalog_counts,
             "cycle_sec": {
                 "n": len(cycles),

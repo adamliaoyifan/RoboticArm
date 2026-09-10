@@ -411,11 +411,13 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         mesh_uri_override=sized_mesh_uri(visual_id, tier),
         mesh_already_scaled=True,
         visual_kind="mesh",
+        static=True,
     )
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
-                 mesh_already_scaled=False, visual_kind="mesh"):
+                 mesh_already_scaled=False, visual_kind="mesh",
+                 static=False):
     """SDF: visual and collision share one geometry at the link origin.
 
     Mesh only: visual and collision use the suitcase STL (same URI and
@@ -439,11 +441,12 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     geometry = _mesh_geometry_xml(uri, mesh_scale)
     comment_kind = visual_id
     collision_geom = geometry
+    static_xml = "    <static>true</static>\n" if static else ""
     return """<?xml version="1.0"?>
 <sdf version="1.6">
   <!-- Suitcase %s visual+collision %.3f x %.3f x %.3f m, %.2f kg -->
   <model name="%s">
-    <link name="suitcase_link">
+%s    <link name="suitcase_link">
       <inertial>
         <mass>%.4f</mass>
         <inertia>
@@ -473,7 +476,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
   </model>
 </sdf>
 """ % (
-        comment_kind, length, width, height, mass, model_name,
+        comment_kind, length, width, height, mass, model_name, static_xml,
         mass, ixx, iyy, izz,
         model_name,
         geometry,

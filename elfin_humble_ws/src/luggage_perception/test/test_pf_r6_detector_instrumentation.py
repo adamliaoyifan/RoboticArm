@@ -58,6 +58,14 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
         self.node._cloud_data_frame = ""
         self.node._world_frame = "world"
         self.node._tf_buffer = object()
+        # PF-R9 g2: the lazy lookup deprojects aligned depth locally.
+        self.node._support_stride = 1
+        self.node._support_info_lock = threading.Lock()
+        from luggage_perception.semantic_point_filter import CameraIntrinsics
+        self.node._support_intrinsics = CameraIntrinsics(
+            fx=1.0, fy=1.0, cx=0.0, cy=0.0, width=2, height=2)
+        self.node._scratch_lock = threading.Lock()
+        self.node._scratch_buffers = {}
 
     def test_raw_lookup_rejects_neighbor_stamp(self):
         self.node._raw_buffer[(10, 0)] = _cloud(10, 0)
@@ -74,20 +82,22 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
 
     def test_raw_lookup_retries_same_stamp_before_miss(self):
         key = (11, 123)
-        points = np.array([[1.0, 2.0, 3.0]], dtype=np.float64)
+        depth = np.array([[1000, 1000], [1000, 1000]], dtype=np.uint16)
+        # stride 1, fx=fy=1, c=0: deprojection of z=1 m pixels (0,0)/(1,1)
+        # -> (0,0,1) and (1,1,1).
 
         def decode(_msg):
-            return points
+            return depth
 
         def transform(_tf_buffer, pts, source, target, stamp_time,
-                      wall_timeout_sec=0.5, poll_sec=0.02):
+                      wall_timeout_sec=0.5, poll_sec=0.02, **_kw):
             self.assertEqual((source, target), ("camera", "world"))
             return pts + 1.0, None
 
         def sleep(_period):
             self.node._raw_buffer[key] = _cloud(*key)
 
-        with mock.patch.object(self.mod.adapters, "cloud_points_from_msg",
+        with mock.patch.object(self.mod.adapters, "depth_array_from_msg",
                                side_effect=decode):
             with mock.patch.object(self.mod, "_transform_points_to_world",
                                    side_effect=transform):
@@ -96,7 +106,11 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
                     result = self.node._pop_raw_world_with_retry(
                         key, attempts=2, period_sec=0.0)
 
-        self.assertTrue(np.array_equal(result, points + 1.0))
+        expected = np.array(
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0],
+             [0.0, 1.0, 1.0], [1.0, 1.0, 1.0]],
+            dtype=np.float32) + 1.0
+        self.assertTrue(np.allclose(result, expected))
         self.assertEqual(self.node._raw_counts["raw_lookup_hit"], 1)
         self.assertEqual(
             self.node._last_raw_lookup["raw_lookup_attempts"], 2)
@@ -107,8 +121,9 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
         key = (12, 0)
         self.node._raw_buffer[key] = _cloud(*key)
         with mock.patch.object(
-                self.mod.adapters, "cloud_points_from_msg",
-                return_value=np.array([[1.0, 2.0, 3.0]], dtype=np.float64)):
+                self.mod.adapters, "depth_array_from_msg",
+                return_value=np.array(
+                    [[1000, 1000], [1000, 1000]], dtype=np.uint16)):
             with mock.patch.object(self.mod, "_transform_points_to_world",
                                    return_value=(None, "missing tf")):
                 result = self.node._pop_raw_world_with_retry(

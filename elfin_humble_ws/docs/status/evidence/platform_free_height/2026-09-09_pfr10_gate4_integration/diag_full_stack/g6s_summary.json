@@ -1,0 +1,129 @@
+{
+  "wall_start_utc": "2026-09-09T14:44:19.457132+00:00",
+  "wall_end_utc": "2026-09-09T14:45:21.151416+00:00",
+  "duration_s": 61.69426968396874,
+  "active_rates_hz": {},
+  "stage_delta_ms": {
+    "raw_img->pre_rgb": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "pre_rgb->frame": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    },
+    "raw_img->frame_e2e": {
+      "n": 0,
+      "p50": null,
+      "p95": null,
+      "max": null
+    }
+  },
+  "stage_percentiles": {},
+  "executor_lag_sec": {
+    "n": 0
+  },
+  "occupancy": {
+    "filter.depth": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 12,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.mask": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 12,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.instance": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 12,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    },
+    "filter.exact_join_candidates": {
+      "peak": 0,
+      "mean": 0.0,
+      "n": 12,
+      "configured_maxlen": 15,
+      "peak_within_maxlen": true,
+      "q4_mean": 0.0,
+      "q4_mean_within_half": true
+    }
+  },
+  "rss": {
+    "sensor_preprocessor": {
+      "pid": 1099608,
+      "n": 62,
+      "rss_mib_first": 61.8203125,
+      "rss_mib_last": 62.078125,
+      "rss_mib_min": 61.8203125,
+      "rss_mib_max": 62.19140625,
+      "q1_mean_mib": 62.140869140625,
+      "q4_mean_mib": 62.078125,
+      "slope_mib_per_min": -0.08557567331189009,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "semantic_segmenter": {
+      "pid": 1099618,
+      "n": 62,
+      "rss_mib_first": 1467.53515625,
+      "rss_mib_last": 1467.8203125,
+      "rss_mib_min": 1467.53515625,
+      "rss_mib_max": 1467.9296875,
+      "q1_mean_mib": 1467.880615234375,
+      "q4_mean_mib": 1467.8203125,
+      "slope_mib_per_min": -0.07979785260850804,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "semantic_point_filter": {
+      "pid": 1099620,
+      "n": 62,
+      "rss_mib_first": 64.22265625,
+      "rss_mib_last": 64.578125,
+      "rss_mib_min": 64.22265625,
+      "rss_mib_max": 64.62890625,
+      "q1_mean_mib": 64.5712890625,
+      "q4_mean_mib": 64.570068359375,
+      "slope_mib_per_min": -0.00028208845152437957,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    },
+    "luggage_detector": {
+      "pid": 1099616,
+      "n": 62,
+      "rss_mib_first": 69.421875,
+      "rss_mib_last": 69.796875,
+      "rss_mib_min": 69.421875,
+      "rss_mib_max": 69.828125,
+      "q1_mean_mib": 69.775634765625,
+      "q4_mean_mib": 69.789306640625,
+      "slope_mib_per_min": 0.02328768663329766,
+      "slope_ok": true,
+      "quartile_ok": true,
+      "pass": true
+    }
+  },
+  "maxlens": {
+    "filter.buffer_maxlen": 15
+  }
+}

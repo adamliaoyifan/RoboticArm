@@ -150,31 +150,27 @@ def read_metadata(path: Path) -> dict[str, str]:
 
 def update_metadata(path: Path, updates: dict[str, str]) -> None:
     lines = path.read_text(encoding="utf-8").splitlines()
-    out: list[str] = []
+    first_section = next(
+        (index for index, line in enumerate(lines) if line.startswith("## ")),
+        len(lines),
+    )
     seen: set[str] = set()
-    in_meta = False
-    inserted = False
-    for line in lines:
-        if line.startswith("## ") and not inserted:
-            for key, value in updates.items():
-                if key not in seen:
-                    out.append(f"- {key}: {value}")
-            inserted = True
-            out.append(line)
-            continue
-        if not inserted and (line.startswith("- ") or in_meta):
-            in_meta = True
-            if line.startswith("- ") and ": " in line:
-                key = line[2:].split(": ", 1)[0].strip()
-                if key in updates:
-                    out.append(f"- {key}: {updates[key]}")
-                    seen.add(key)
-                    continue
-        out.append(line)
-    if not inserted:
-        for key, value in updates.items():
-            if key not in seen:
-                out.append(f"- {key}: {value}")
+    out = list(lines)
+    for index in range(first_section):
+        line = out[index]
+        if line.startswith("- ") and ": " in line:
+            key = line[2:].split(": ", 1)[0].strip()
+            if key in updates:
+                out[index] = f"- {key}: {updates[key]}"
+                seen.add(key)
+    insertion = first_section
+    while insertion > 0 and out[insertion - 1] == "":
+        insertion -= 1
+    missing = [
+        f"- {key}: {value}" for key, value in updates.items() if key not in seen
+    ]
+    if missing:
+        out[insertion:insertion] = missing
     path.write_text("\n".join(out) + "\n", encoding="utf-8")
 
 
@@ -436,7 +432,18 @@ def validate_completion_freshness(thread_path: Path, row: dict[str, str], meta: 
     if claim.get("claimed_generation") and claim["claimed_generation"] != str(generation):
         raise SystemExit("claim generation is stale")
     if claim.get("claimed_plan_revision") and claim["claimed_plan_revision"] != plan_rev:
-        raise SystemExit("claim plan_revision is stale")
+        # A legacy claim can contain the short base revision.  Migration
+        # expands plan_revision to the exact commit without rewriting the
+        # immutable Claim event, so compare the resolved commit identities.
+        try:
+            same_commit = (
+                resolve_commit(claim["claimed_plan_revision"])
+                == resolve_commit(plan_rev)
+            )
+        except SystemExit:
+            same_commit = False
+        if not same_commit:
+            raise SystemExit("claim plan_revision is stale")
     for subtask, claimed_generation in parse_dependency_snapshot(
         claim.get("claimed_dependencies", "none")
     ).items():
@@ -585,6 +592,11 @@ def migrate_thread(path: Path, generation: str, plan_rev: str, dry_run: bool) ->
         updates["generation"] = generation
     if not meta.get("plan_revision"):
         updates["plan_revision"] = plan_rev
+    if not meta.get("dispatch_ready"):
+        # Legacy rows predate the review dispatch gate.  Being present in the
+        # live mailbox means reviews had already dispatched them, so preserve
+        # that state explicitly during the one-time migration.
+        updates["dispatch_ready"] = "yes"
     if updates and not dry_run:
         update_metadata(path, updates)
     return bool(updates)
@@ -612,9 +624,21 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 raise SystemExit(f"ambiguous duplicate lineage: {key[0]}/{key[1]}/{key[2]}")
             lineages[key] = path.name
         changed = 0
-        for path in threads_dir.glob("*.md"):
-            if path.name in {"OPEN.md", "README.md"}:
+        for row in rows:
+            if row.get("kind") not in RUNNABLE_KINDS:
                 continue
+            thread_name = row.get("thread", "")
+            if not thread_name or "/" in thread_name:
+                raise SystemExit(f"invalid runnable thread path in mailbox: {thread_name}")
+            path = threads_dir / thread_name
+            if not path.is_file():
+                raise SystemExit(f"runnable mailbox thread is missing: {thread_name}")
+            meta = read_metadata(path)
+            for key in ("kind", "parent", "subtask"):
+                if meta.get(key) != row.get(key):
+                    raise SystemExit(
+                        f"row/thread {key} mismatch during migration: {thread_name}"
+                    )
             if migrate_thread(path, "1", plan_rev, args.dry_run):
                 changed += 1
         new_columns = columns

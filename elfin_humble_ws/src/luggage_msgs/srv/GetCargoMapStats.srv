@@ -2,9 +2,14 @@
 ---
 bool success
 string message
+int32 geometry_schema_version
+string geometry_hash
+float64 usable_volume
+float64 unknown_volume
 float64 unknown_ratio
 float64 occupancy_ratio
 float64 free_volume
+float64 occupied_volume
 int32 unknown_count
 int32 free_count
 int32 occupied_count

@@ -1,0 +1,91 @@
+{
+ "duration_sec": 125.0,
+ "raw_rgb_unique": 2864,
+ "pre_rgb_unique": 3551,
+ "pre_depth_unique": 3534,
+ "d3_emission_over_rgb": 1.2398743016759777,
+ "d3_raw_to_pre_rgb_sec": {
+  "n": 2698,
+  "p50": 0.018860226962715387,
+  "p95": 0.02244020701618865,
+  "max": 0.04186756699346006
+ },
+ "d4_paired_depth_over_emitted": 0.9445226696705153,
+ "prep_counters": {
+  "depth_wait_skips": 0,
+  "info_wait_skips": 0,
+  "acquisition_mismatches": 0,
+  "exact_lookup_misses": 10908,
+  "payload_materialisations": 0,
+  "rollback_events": 0,
+  "emit_queue_drops": 0
+ },
+ "prep_last": {
+  "payload_bytes_buffered": 23040000,
+  "emit_queue_depth": 0,
+  "camera_epoch": 0,
+  "d1_stage_ms": null
+ },
+ "prep_buffers_last": {
+  "color_info": 15,
+  "depth": 15,
+  "depth_info": 15,
+  "imu": 0,
+  "joints": 50,
+  "lidar": 0,
+  "rgb": 15
+ },
+ "prep_evictions_last": {
+  "color_info": {
+   "capacity": 7820,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "depth": {
+   "capacity": 7820,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "depth_info": {
+   "capacity": 7820,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "imu": {
+   "capacity": 0,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "joints": {
+   "capacity": 25804,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "lidar": {
+   "capacity": 0,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  },
+  "rgb": {
+   "capacity": 7820,
+   "horizon": 0,
+   "replaced": 0,
+   "rollback": 0
+  }
+ },
+ "d4_filter": {
+  "depth_delta": 4219,
+  "mask_delta": 4223,
+  "joined_delta": 4118,
+  "stale_depth_dropped_delta": 101,
+  "stale_mask_dropped_delta": 105,
+  "exact_join_joined_over_depth": 0.9760606778857549,
+  "stale_drop_ratio": 0.024401800521203505
+ }
+}

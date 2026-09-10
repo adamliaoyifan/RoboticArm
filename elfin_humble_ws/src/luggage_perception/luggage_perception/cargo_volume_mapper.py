@@ -5,6 +5,13 @@ from __future__ import division
 
 import math
 
+from luggage_description.container_geometry import (
+    aabb_intersection_volume,
+    contains_point,
+    floor_support_area,
+    normalize_descriptor,
+    volume as geometry_volume,
+)
 from luggage_perception.voxel_log_odds import LogOddsGrid
 
 try:
@@ -32,9 +39,16 @@ class CargoVolumeMapper:
     def __init__(
         self, inner_size, center_base, yaw, resolution, occupancy_params=None,
         max_raycast_points=None, hull_local_inside=None,
+        geometry_descriptor=None,
     ):
         self.resolution = float(resolution)
+        if not math.isfinite(self.resolution) or self.resolution <= 0.0:
+            raise ValueError("resolution must be finite and positive")
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
+        if any(
+                not math.isfinite(value) or value <= 0.0
+                for value in (self.inner_l, self.inner_w, self.inner_h)):
+            raise ValueError("inner_size values must be finite and positive")
         self.center = [float(v) for v in center_base]
         self.yaw = float(yaw)
         self.nx = max(1, int(math.ceil(self.inner_l / self.resolution)))
@@ -46,8 +60,36 @@ class CargoVolumeMapper:
         self.max_raycast_points = (
             None if max_raycast_points is None else max(1, int(max_raycast_points))
         )
-        self._hull_local_inside = hull_local_inside
+        # ``inner_size`` remains a supported, explicit cuboid descriptor for
+        # ROS-free legacy callers. A non-box hull must supply its normalized
+        # TCIG-1 descriptor; a center-only predicate cannot define fractional
+        # boundary volume and therefore fails closed.
+        if geometry_descriptor is None:
+            if hull_local_inside is not None:
+                raise ValueError(
+                    "geometry_descriptor is required with hull_local_inside")
+            geometry_descriptor = {
+                "schema_version": 1,
+                "frame_id": "container_local",
+                "length": self.inner_l,
+                "width": self.inner_w,
+                "floor_z": 0.0,
+                "ceiling_z": self.inner_h,
+            }
+        self.geometry = normalize_descriptor(dict(geometry_descriptor))
+        for name, supplied, resolved in (
+                ("length", self.inner_l, self.geometry.length),
+                ("width", self.inner_w, self.geometry.width),
+                ("height", self.inner_h, self.geometry.height)):
+            if not math.isclose(supplied, resolved, rel_tol=0.0, abs_tol=1e-9):
+                raise ValueError(
+                    "inner_size %s does not match geometry descriptor" % name)
+        self.geometry_descriptor = self.geometry.descriptor()
+        self.geometry_hash = self.geometry.geometry_hash
+        self.geometry_schema_version = self.geometry.schema_version
         self._active = None
+        self._cell_volumes = None
+        self._weights = None
         self._grid = None
         self._occupancy = None
         self._revision = 0
@@ -72,16 +114,63 @@ class CargoVolumeMapper:
 
     def _build_active_mask(self):
         total = self.nx * self.ny * self.nz
-        if self._hull_local_inside is None:
-            self._active = None
-            return
-        self._active = [True] * total
+        self._active = [False] * total
+        self._cell_volumes = [0.0] * total
+        self._weights = [0.0] * total
         for iz in range(self.nz):
             for iy in range(self.ny):
                 for ix in range(self.nx):
-                    if not self._hull_local_inside(
-                            *self._voxel_center_local(ix, iy, iz)):
-                        self._active[self._index(ix, iy, iz)] = False
+                    index = self._index(ix, iy, iz)
+                    lower, upper = self._voxel_bounds_geometry(ix, iy, iz)
+                    physical_volume = aabb_intersection_volume(
+                        self.geometry, lower, upper)
+                    # Exact clipping can leave roundoff-sized crumbs on a
+                    # shared face. Those are not physical cells.
+                    if physical_volume <= 1e-15:
+                        continue
+                    allocation_volume = (
+                        (upper[0] - lower[0])
+                        * (upper[1] - lower[1])
+                        * (upper[2] - lower[2]))
+                    self._cell_volumes[index] = physical_volume
+                    self._weights[index] = physical_volume / allocation_volume
+                    self._active[index] = True
+
+        weighted_volume = math.fsum(self._cell_volumes)
+        exact_volume = geometry_volume(self.geometry)
+        if not math.isclose(
+                weighted_volume, exact_volume, rel_tol=0.0, abs_tol=1e-10):
+            raise ValueError(
+                "voxel hull weights do not cover usable geometry: %.12g != %.12g"
+                % (weighted_volume, exact_volume))
+
+    def _voxel_bounds_geometry(self, ix, iy, iz):
+        """Clipped cell AABB in the normalized TCIG-1 geometry frame."""
+        x0 = -self.geometry.half_x + ix * self.resolution
+        y0 = -self.geometry.half_y + iy * self.resolution
+        z0 = self.geometry.floor_z + iz * self.resolution
+        return (
+            (x0, y0, z0),
+            (
+                min(x0 + self.resolution, self.geometry.half_x),
+                min(y0 + self.resolution, self.geometry.half_y),
+                min(z0 + self.resolution, self.geometry.ceiling_z),
+            ),
+        )
+
+    def cell_physical_volume(self, ix, iy, iz):
+        """Return the exact hull intersection volume for one allocation cell."""
+        if not (
+                0 <= ix < self.nx and 0 <= iy < self.ny and 0 <= iz < self.nz):
+            raise IndexError("voxel index outside allocation")
+        return self._cell_volumes[self._index(ix, iy, iz)]
+
+    def cell_intersection_weight(self, ix, iy, iz):
+        """Return the dimensionless hull fraction of a clipped allocation cell."""
+        if not (
+                0 <= ix < self.nx and 0 <= iy < self.ny and 0 <= iz < self.nz):
+            raise IndexError("voxel index outside allocation")
+        return self._weights[self._index(ix, iy, iz)]
 
     def _index(self, ix, iy, iz):
         return ix + self.nx * (iy + self.ny * iz)
@@ -105,6 +194,11 @@ class CargoVolumeMapper:
             or abs(local_z) > half_h
         ):
             return None
+        geometry_z = local_z + 0.5 * (
+            self.geometry.floor_z + self.geometry.ceiling_z)
+        if not contains_point(
+                self.geometry, (local_x, local_y, geometry_z)):
+            return None
         ix = int((local_x + half_l) / self.resolution)
         iy = int((local_y + half_w) / self.resolution)
         iz = int((local_z + half_h) / self.resolution)
@@ -116,13 +210,13 @@ class CargoVolumeMapper:
         return ix, iy, iz
 
     def _voxel_center_local(self, ix, iy, iz):
-        half_l = self.inner_l * 0.5
-        half_w = self.inner_w * 0.5
-        half_h = self.inner_h * 0.5
+        lower, upper = self._voxel_bounds_geometry(ix, iy, iz)
+        geometry_mid_z = 0.5 * (
+            self.geometry.floor_z + self.geometry.ceiling_z)
         return (
-            -half_l + (ix + 0.5) * self.resolution,
-            -half_w + (iy + 0.5) * self.resolution,
-            -half_h + (iz + 0.5) * self.resolution,
+            0.5 * (lower[0] + upper[0]),
+            0.5 * (lower[1] + upper[1]),
+            0.5 * (lower[2] + upper[2]) - geometry_mid_z,
         )
 
     def _local_to_world(self, local_x, local_y, local_z):
@@ -320,6 +414,8 @@ class CargoVolumeMapper:
             for iy in range(self.ny):
                 for ix in range(self.nx):
                     idx = self._index(ix, iy, iz)
+                    if not self._active[idx]:
+                        continue
                     local = self._voxel_center_local(ix, iy, iz)
                     records.append((
                         self._local_to_world(*local),
@@ -449,11 +545,13 @@ class CargoVolumeMapper:
         total = 0
         inactive = 0
         label_dist = {}
+        state_volumes = {UNKNOWN: [], FREE: [], OCCUPIED: []}
         for i, cell in enumerate(self._grid):
-            if self._active is not None and not self._active[i]:
+            if not self._active[i]:
                 inactive += 1
                 continue
             total += 1
+            state_volumes[cell].append(self._cell_volumes[i])
             if cell == UNKNOWN:
                 unknown += 1
             elif cell == FREE:
@@ -463,16 +561,24 @@ class CargoVolumeMapper:
                 if self._labels[i] > 0:
                     lbl = self._labels[i]
                     label_dist[lbl] = label_dist.get(lbl, 0) + 1
-        voxel_vol = self.resolution ** 3
+        unknown_volume = math.fsum(state_volumes[UNKNOWN])
+        free_volume = math.fsum(state_volumes[FREE])
+        occupied_volume = math.fsum(state_volumes[OCCUPIED])
+        usable_volume = unknown_volume + free_volume + occupied_volume
         return {
+            "geometry_schema_version": self.geometry_schema_version,
+            "geometry_hash": self.geometry_hash,
+            "usable_volume": usable_volume,
+            "unknown_volume": unknown_volume,
+            "free_volume": free_volume,
+            "occupied_volume": occupied_volume,
             "total_voxels": total,
             "inactive_count": inactive,
             "unknown_count": unknown,
             "free_count": free,
             "occupied_count": occupied,
-            "unknown_ratio": float(unknown) / total if total else 0.0,
-            "occupancy_ratio": float(occupied) / total if total else 0.0,
-            "free_volume": float(free) * voxel_vol,
+            "unknown_ratio": unknown_volume / usable_volume if usable_volume else 0.0,
+            "occupancy_ratio": occupied_volume / usable_volume if usable_volume else 0.0,
             "frontier_count": len(self._frontier_indices()),
             "label_distribution": {str(k): v for k, v in label_dist.items()},
             "map_revision": self._revision,
@@ -540,25 +646,33 @@ class CargoVolumeMapper:
         known_ratio = [[0.0] * self.ny for _ in range(self.nx)]
         confidence = [["none"] * self.ny for _ in range(self.nx)]
         semantic_label = [[0] * self.ny for _ in range(self.nx)]
+        floor_support = [[0.0] * self.ny for _ in range(self.nx)]
+        floor_supported = [[False] * self.ny for _ in range(self.nx)]
+        floor_support_fraction = [[0.0] * self.ny for _ in range(self.nx)]
+        column_usable_volume = [[0.0] * self.ny for _ in range(self.nx)]
 
         for ix in range(self.nx):
             for iy in range(self.ny):
                 top_occ = None
                 top_source = SOURCE_NONE
                 observed = 0
+                observed_volume = 0.0
                 has_unknown = False
                 label_counts = {}
                 active_in_col = 0
+                active_volume = 0.0
                 for iz in range(self.nz):
                     idx = self._index(ix, iy, iz)
-                    if self._active is not None and not self._active[idx]:
+                    if not self._active[idx]:
                         continue
                     active_in_col += 1
+                    active_volume += self._cell_volumes[idx]
                     cell = self._grid[idx]
                     if cell == UNKNOWN:
                         has_unknown = True
                         continue
                     observed += 1
+                    observed_volume += self._cell_volumes[idx]
                     if cell == OCCUPIED:
                         top_occ = iz
                         top_source = self._source[idx]
@@ -587,9 +701,26 @@ class CargoVolumeMapper:
                     state[ix][iy] = "unknown"
                     confidence[ix][iy] = "none"
                 known_ratio[ix][iy] = (
-                    float(observed) / float(active_in_col) if active_in_col else 0.0)
+                    observed_volume / active_volume if active_volume else 0.0)
+                column_usable_volume[ix][iy] = active_volume
+
+                lower, upper = self._voxel_bounds_geometry(ix, iy, 0)
+                support = floor_support_area(
+                    self.geometry, lower[:2], upper[:2])
+                footprint_area = max(0.0, upper[0] - lower[0]) * max(
+                    0.0, upper[1] - lower[1])
+                floor_support[ix][iy] = support
+                floor_supported[ix][iy] = support > 1e-15
+                floor_support_fraction[ix][iy] = (
+                    support / footprint_area if footprint_area else 0.0)
 
         return {
+            "surface_schema_version": 1,
+            "schema_version": self.geometry_schema_version,
+            "geometry_schema_version": self.geometry_schema_version,
+            "geometry_hash": self.geometry_hash,
+            "geometry_descriptor": dict(self.geometry_descriptor),
+            "frame_id": self.geometry.frame_id,
             "frame": "container_local",
             "map_revision": self._revision,
             "resolution": self.resolution,
@@ -598,6 +729,9 @@ class CargoVolumeMapper:
             "inner_size": [self.inner_l, self.inner_w, self.inner_h],
             # Height values are relative to this mapper's usable inner floor.
             "floor_z": 0.0,
+            "geometry_floor_z": self.geometry.floor_z,
+            "height_semantics": "meters_above_geometry_floor",
+            "floor_semantics": "horizontal_hull_floor_intersection",
             "origin_local": [-half_l, -half_w],
             "center_base": list(self.center),
             "yaw": self.yaw,
@@ -607,6 +741,10 @@ class CargoVolumeMapper:
             "known_ratio": known_ratio,
             "confidence": confidence,
             "semantic_label": semantic_label,
+            "floor_support_area": floor_support,
+            "floor_support": floor_supported,
+            "floor_support_fraction": floor_support_fraction,
+            "column_usable_volume": column_usable_volume,
         }
 
     def surface_cell_center_base(self, ix, iy, local_z=None):

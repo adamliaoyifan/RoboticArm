@@ -15,6 +15,11 @@ from luggage_msgs.msg import DetectedLuggage as DetectedLuggageMsg
 from shape_msgs.msg import SolidPrimitive
 
 from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
+from luggage_planning.container_geometry_runtime import (
+    decode_runtime_geometry,
+    encode_runtime_geometry,
+)
+from luggage_description.container_geometry import normalize_descriptor
 
 
 def pose_to_msg(pose):
@@ -113,7 +118,40 @@ def pick_from_detected(msg):
     )
 
 
+def geometry_to_opening_estimate(msg, descriptor, geometry_version):
+    """Populate the authoritative geometry fields of an opening estimate."""
+    geometry = normalize_descriptor(dict(descriptor))
+    fields = encode_runtime_geometry(geometry.descriptor(), geometry_version)
+    msg.inner_size = [geometry.length, geometry.width, geometry.height]
+    msg.geometry_schema_version = fields["geometry_schema_version"]
+    msg.geometry_encoding = fields["geometry_encoding"]
+    msg.geometry_descriptor_json = fields["geometry_descriptor_json"]
+    msg.geometry_hash = fields["geometry_hash"]
+    msg.geometry_version = fields["geometry_version"]
+    return msg
+
+
+def geometry_from_opening_estimate(msg):
+    """Decode and fail closed on incomplete or inconsistent geometry fields."""
+    envelope = decode_runtime_geometry({
+        "geometry_schema_version": msg.geometry_schema_version,
+        "geometry_encoding": msg.geometry_encoding,
+        "geometry_descriptor_json": msg.geometry_descriptor_json,
+        "geometry_hash": msg.geometry_hash,
+        "geometry_version": msg.geometry_version,
+    })
+    geometry = normalize_descriptor(envelope.descriptor)
+    dimensions = tuple(float(value) for value in msg.inner_size)
+    expected = (geometry.length, geometry.width, geometry.height)
+    if len(dimensions) != 3 or any(
+            abs(left - right) > 1e-9
+            for left, right in zip(dimensions, expected)):
+        raise ValueError("geometry_identity_mismatch")
+    return envelope
+
+
 __all__ = [
     "pose_to_msg", "pose_from_msg", "segment_to_msg", "segment_from_msg",
-    "pick_from_detected", "SolidPrimitive",
+    "pick_from_detected", "geometry_to_opening_estimate",
+    "geometry_from_opening_estimate", "SolidPrimitive",
 ]

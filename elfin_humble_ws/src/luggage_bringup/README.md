@@ -1,3 +1,31 @@
+# Luggage Bringup
+
+The maintained package is ROS 2/ament. Its production surface consists only
+of `orchestrator_node.py`, `operator_control.py`, and
+`production_orchestrator.launch.py`. Launching the orchestrator leaves it in
+`WAIT_START`; it cannot move the robot until an operator deliberately runs:
+
+```bash
+ros2 run luggage_bringup operator_control.py start
+```
+
+The terminal shows the current state and requires the operator to type
+`START`. For a supervised non-interactive console, pass `--confirm START`.
+Pickup prompts appear on `/luggage/operator/prompt`; acknowledge the exact
+displayed request with:
+
+```bash
+ros2 run luggage_bringup operator_control.py pickup-ready \
+  --request-id '<displayed-request-id>' --operator-id '<operator>'
+```
+
+The historical ROS 1 orchestrator is preserved unchanged at
+`scripts/ros1_reference/orchestrator_node.py` and is not installed. All other
+ROS 1 scripts and XML launch files below remain source references and are also
+not installed by the ament package.
+
+## Historical ROS 1 reference
+
 # Airport Luggage Loading Simulation — Phase 0 Skeleton
 
 Modular ROS Noetic stack for Elfin S20 airport luggage loading into a side-open container.

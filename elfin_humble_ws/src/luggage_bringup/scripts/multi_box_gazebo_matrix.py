@@ -24,14 +24,18 @@ import time
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 if SCRIPT_DIR not in sys.path:
     sys.path.insert(0, SCRIPT_DIR)
+_SRC = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
 from active_loading_bag_harness import (  # noqa: E402
     evaluate_records,
     load_jsonl,
 )
-
-# Usable cargo volume / floor from scene_tf (1.49 x 1.97 x 1.48 m).
-USABLE_VOLUME_M3 = 1.49 * 1.97 * 1.48
-USABLE_FLOOR_M2 = 1.49 * 1.97
+from luggage_packing.geometry_metrics import (  # noqa: E402
+    GeometryMetricsError,
+    capacity_report,
+    denominators_from_scene_config,
+)
 
 
 def _cleanup_ros():
@@ -114,6 +118,37 @@ def _parse_placements(text):
     return placements
 
 
+def _capacity_from_placements(placements, scene_config=None):
+    packed_volume = sum(
+        p["size"][0] * p["size"][1] * p["size"][2] for p in placements
+        if p.get("size") and len(p["size"]) >= 3)
+    boxes = []
+    for placement in placements:
+        size = placement.get("size")
+        if not size or len(size) < 3:
+            continue
+        box = {
+            "size": size,
+            "peak": placement.get("peak"),
+            "yaw": placement.get("yaw", 0.0),
+        }
+        if placement.get("container_x") is not None and placement.get(
+                "container_y") is not None:
+            box["container_x"] = placement["container_x"]
+            box["container_y"] = placement["container_y"]
+        boxes.append(box)
+    if scene_config is None:
+        from luggage_description.scene_tf_config_utils import (
+            load_scene_tf_config,
+            resolve_scene_tf_config_path,
+        )
+        scene_config = load_scene_tf_config(resolve_scene_tf_config_path())
+    hull = denominators_from_scene_config(scene_config)
+    report = capacity_report(packed_volume, boxes, hull["geometry"])
+    report["packed_volume_m3"] = packed_volume
+    return report
+
+
 def _events_summary(events_path, expected_boxes):
     """Bag-harness verdict for this run, or why it could not be produced."""
     if not events_path or not os.path.isfile(events_path):
@@ -130,8 +165,9 @@ def _events_summary(events_path, expected_boxes):
         "final_placed_count": result["metrics"]["final_placed_count"],
         "floor_items": result["metrics"]["floor_items"],
         "premature_stack_count": result["metrics"]["premature_stack_count"],
-        "volume_utilization": round(
-            result["metrics"]["volume_utilization"], 4),
+        "volume_utilization": (
+            None if result["metrics"]["volume_utilization"] is None
+            else round(result["metrics"]["volume_utilization"], 4)),
         "failure_classes": result["metrics"]["failure_classes"],
         "path": events_path,
     }
@@ -149,18 +185,34 @@ def _summarize_run(seed, boxes, log_path, started, timed_out, return_code,
     failures = re.findall(
         r"\[Idle\]\s+([^\r\n]+?)\s+\(placed=\d+\)", text)
     placements = _parse_placements(text)
-    placed_volume = sum(
-        p["size"][0] * p["size"][1] * p["size"][2] for p in placements)
     floor_items = 0
-    floor_area = 0.0
     premature_stacks = 0
     for placement in placements:
-        footprint = placement.get("footprint") or placement["size"][:2]
         if float(placement.get("peak", 0.0)) <= 1e-3:
             floor_items += 1
-            floor_area += float(footprint[0]) * float(footprint[1])
         elif int(placement.get("floor_candidates_available", 0)) > 0:
             premature_stacks += 1
+    try:
+        capacity = _capacity_from_placements(placements)
+        volume_utilization = round(capacity["volume_fraction"], 4)
+        floor_coverage_ratio = round(capacity["floor_coverage"], 4)
+        placed_volume = capacity["packed_volume_m3"]
+        geometry_hash = capacity["geometry_hash"]
+        schema_version = capacity["schema_version"]
+        usable_volume_m3 = capacity["usable_volume_m3"]
+        floor_area_m2 = capacity["floor_area_m2"]
+        geometry_reason = None
+    except GeometryMetricsError as exc:
+        volume_utilization = None
+        floor_coverage_ratio = None
+        placed_volume = sum(
+            p["size"][0] * p["size"][1] * p["size"][2]
+            for p in placements if p.get("size") and len(p["size"]) >= 3)
+        geometry_hash = None
+        schema_version = None
+        usable_volume_m3 = None
+        floor_area_m2 = None
+        geometry_reason = exc.reason
     # A run that stops on NO_CANDIDATE has filled what it could reach; that is
     # a valid terminal state, not a failure.
     exhausted = "NO_CANDIDATE" in text
@@ -198,9 +250,15 @@ def _summarize_run(seed, boxes, log_path, started, timed_out, return_code,
         "commit_count": len(placements),
         "floor_items": floor_items,
         "premature_stack_count": premature_stacks,
-        "floor_coverage_ratio": round(floor_area / USABLE_FLOOR_M2, 4),
-        "volume_utilization": round(placed_volume / USABLE_VOLUME_M3, 4),
-        "placed_volume_m3": round(placed_volume, 4),
+        "floor_coverage_ratio": floor_coverage_ratio,
+        "volume_utilization": volume_utilization,
+        "placed_volume_m3": (
+            None if placed_volume is None else round(placed_volume, 4)),
+        "usable_volume_m3": usable_volume_m3,
+        "floor_area_m2": floor_area_m2,
+        "schema_version": schema_version,
+        "geometry_hash": geometry_hash,
+        "geometry_metrics_reason": geometry_reason,
         "failure_messages": failures[-5:],
         "log_path": log_path,
         "events": events,
@@ -235,10 +293,14 @@ def main():
         print(json.dumps(row, sort_keys=True), flush=True)
     run_count = max(1, len(rows))
     mean_floor_items = sum(row["floor_items"] for row in rows) / run_count
-    mean_utilization = sum(
-        row["volume_utilization"] for row in rows) / run_count
-    mean_floor_coverage = sum(
-        row["floor_coverage_ratio"] for row in rows) / run_count
+    util_rows = [row["volume_utilization"] for row in rows
+                 if row["volume_utilization"] is not None]
+    cov_rows = [row["floor_coverage_ratio"] for row in rows
+                if row["floor_coverage_ratio"] is not None]
+    mean_utilization = (
+        sum(util_rows) / len(util_rows) if util_rows else None)
+    mean_floor_coverage = (
+        sum(cov_rows) / len(cov_rows) if cov_rows else None)
     result = {
         "schema_version": 2,
         "box_budget": args.boxes,
@@ -268,6 +330,7 @@ def main():
         and result["gt_fallback_count"] == 0
         and result["premature_stack_count"] == 0
         and mean_floor_items >= float(args.min_floor_items)
+        and mean_utilization is not None
         and mean_utilization >= float(args.min_volume_utilization)
     )
     output = os.path.join(args.output_dir, "summary.json")

@@ -44,10 +44,7 @@ from luggage_msgs.srv import (
 from ament_index_python.packages import get_package_share_directory
 
 from luggage_description.scene_tf_config_utils import (
-    container_hull_local_inside_fn,
-    container_inner_ceiling_z,
-    container_inner_dimensions,
-    container_inner_floor_z,
+    container_inner_geometry,
     load_scene_tf_config,
     resolve_scene_tf_config_path,
     static_transforms,
@@ -69,13 +66,12 @@ class CargoVolumeMapperNode(Node):
         if not config_path:
             config_path = resolve_scene_tf_config_path()
         scene = load_scene_tf_config(config_path)
-        inner = container_inner_dimensions(scene)
-        # inner = (length_x, width_y, ceiling_z_legacy)
-        inner_l = float(inner[0])
-        inner_w = float(inner[1])
-        floor_z = container_inner_floor_z(scene)
-        ceiling_z = container_inner_ceiling_z(scene)
-        inner_h = ceiling_z - floor_z
+        geometry = container_inner_geometry(scene)
+        descriptor = geometry.descriptor()
+        inner_l = geometry.length
+        inner_w = geometry.width
+        floor_z = geometry.floor_z
+        inner_h = geometry.height
         # CargoVolumeMapper.center is the usable-volume center in
         # container_link (same convention as generate_candidates
         # center_base). Floor origin would shift every slot by -inner_h/2.
@@ -86,7 +82,7 @@ class CargoVolumeMapperNode(Node):
             (0.0, 0.0, volume_center_z),
             0.0,
             resolution=float(self.get_parameter("resolution").value),
-            hull_local_inside=container_hull_local_inside_fn(scene),
+            geometry_descriptor=descriptor,
         )
         self._frame = "container_link"
         self._world_from_container = self._load_container_pose(scene)
@@ -115,7 +111,7 @@ class CargoVolumeMapperNode(Node):
         self._publish_all()
         self.get_logger().info(
             "cargo_volume_mapper ready (inner %.2fx%.2fx%.2f m, res %.2f)"
-            % (inner_l, inner_w, ceiling_z - floor_z,
+            % (inner_l, inner_w, inner_h,
                float(self.get_parameter("resolution").value)))
 
     # ------------------------------------------------------------------
@@ -200,9 +196,15 @@ class CargoVolumeMapperNode(Node):
     def _on_stats(self, _request, response):
         stats = self._mapper.stats()
         response.success = True
+        response.geometry_schema_version = int(
+            stats["geometry_schema_version"])
+        response.geometry_hash = str(stats["geometry_hash"])
+        response.usable_volume = float(stats["usable_volume"])
+        response.unknown_volume = float(stats["unknown_volume"])
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])
         response.free_volume = float(stats["free_volume"])
+        response.occupied_volume = float(stats["occupied_volume"])
         response.unknown_count = int(stats["unknown_count"])
         response.free_count = int(stats["free_count"])
         response.occupied_count = int(stats["occupied_count"])
@@ -228,6 +230,8 @@ class CargoVolumeMapperNode(Node):
             surface, sort_keys=True)))
         self._ledger_pub.publish(String(data=json.dumps({
             "frame": self._frame,
+            "geometry_schema_version": self._mapper.geometry_schema_version,
+            "geometry_hash": self._mapper.geometry_hash,
             "container_in_world": self._world_from_container,
             "boxes": self._mapper._placed_boxes,
             "map_revision": self._mapper._revision,

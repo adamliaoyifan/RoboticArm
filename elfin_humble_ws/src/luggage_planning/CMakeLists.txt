@@ -11,6 +11,8 @@ install(DIRECTORY data launch
 )
 
 install(PROGRAMS
+  scripts/reachability_atlas_builder_node.py
+  scripts/migrate_reachability_atlas.py
   scripts/waypoint_generator_node.py
   scripts/motion_planner_node.py
   scripts/vacuum_controller_node.py

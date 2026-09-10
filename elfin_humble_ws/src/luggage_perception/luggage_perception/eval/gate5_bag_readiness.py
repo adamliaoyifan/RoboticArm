@@ -54,8 +54,6 @@ REQUIRED_ONLINE_TOPICS = (
     ("/luggage/preprocessed/camera/depth/image", "sensor_msgs/msg/Image"),
     ("/luggage/preprocessed/camera/depth/camera_info",
      "sensor_msgs/msg/CameraInfo"),
-    ("/luggage/preprocessed/camera/depth/points",
-     "sensor_msgs/msg/PointCloud2"),
     ("/luggage/preprocessed/status", "std_msgs/msg/String"),
     ("/joint_states", "sensor_msgs/msg/JointState"),
     ("/tf", "tf2_msgs/msg/TFMessage"),
@@ -73,14 +71,15 @@ DETECTOR_OUTPUT_TOPIC = (
     "luggage_msgs/msg/DetectionFrame",
 )
 
-REQUIRED_FRAMES = (
-    "world",
-    "camera_depth_optical_frame",
-)
+# PF-R9 g2 (plan 5.6): the optical frame is manifest-declared, not a
+# hard-coded constant. `optical_frame` names the truthful colour optical
+# frame of the canonical acquisition (camera_depth_optical_frame in the
+# gz backend, d555_color_optical_frame on the D455 backend).
+DEFAULT_OPTICAL_FRAME = "camera_depth_optical_frame"
 
-REQUIRED_TF_PAIRS = (
-    ("world", "camera_depth_optical_frame"),
-)
+
+def _declared_optical_frame(manifest):
+    return str(manifest.get("optical_frame") or DEFAULT_OPTICAL_FRAME)
 
 # Topics that are eval/spawner geometry truth. They may be recorded under
 # role=reference. They must never be listed as online algorithm inputs.
@@ -252,7 +251,8 @@ def check_frames_and_tf(manifest):
         frame = entry.get("frame_id")
         if frame:
             frames.add(str(frame))
-    for required in REQUIRED_FRAMES:
+    optical = _declared_optical_frame(manifest)
+    for required in ("world", optical):
         if required not in frames:
             issues.append(_issue(BAG_MISSING_FRAME, detail=required))
 
@@ -267,7 +267,7 @@ def check_frames_and_tf(manifest):
         child = str(row.get("child") or "")
         present = bool(row.get("present", row.get("ok", False)))
         by_pair.setdefault((parent, child), []).append(present)
-    for parent, child in REQUIRED_TF_PAIRS:
+    for parent, child in (("world", optical),):
         flags = by_pair.get((parent, child))
         if not flags or not all(flags):
             issues.append(_issue(

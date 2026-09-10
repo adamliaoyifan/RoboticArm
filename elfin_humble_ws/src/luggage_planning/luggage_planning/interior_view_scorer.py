@@ -13,6 +13,12 @@ from __future__ import division
 import json
 import math
 
+from luggage_description.container_geometry import (
+    floor_support_area,
+    normalize_descriptor,
+    y_max_at_z,
+)
+
 
 FREE = "free"
 UNKNOWN = "unknown"
@@ -382,62 +388,110 @@ def raycast_information_gain(candidate, occupancy, intrinsics, config=None):
 
 
 class ContainerFloor(object):
-    """Fixed container inner-floor plane discretized into XY cells.
+    """Exact horizontal hull floor discretized into clipped XY cells.
 
-    Cell indexing matches ``CargoVolumeMapper._local_to_voxel`` when both are
-    built from the same container geometry, so ``(ix, iy)`` here is the same
-    column as ``(ix, iy, iz)`` in the occupancy grid.  The plane is the inner
-    floor derived from ``inner_size`` and does not move with cargo stacking.
+    ``center_base`` is the base-frame center of the descriptor AABB.  Legacy
+    callers may omit ``geometry_descriptor``; that explicitly constructs a
+    cuboid descriptor from ``inner_size`` rather than silently discarding a
+    supplied chamfer.
     """
 
-    def __init__(self, center_base, yaw, inner_size, resolution):
+    def __init__(self, center_base, yaw, inner_size, resolution,
+                 geometry_descriptor=None):
         self.center = _vector3(center_base, "center_base")
         self.yaw = _finite(yaw, "yaw")
         inner = _vector3(inner_size, "inner_size")
         if any(value <= 0.0 for value in inner):
             raise ValueError("inner_size must be positive")
-        self.inner_l, self.inner_w, self.inner_h = inner
+        if geometry_descriptor is None:
+            geometry_descriptor = {
+                "schema_version": 1,
+                "frame_id": "container_link",
+                "length": inner[0],
+                "width": inner[1],
+                "floor_z": -0.5 * inner[2],
+                "ceiling_z": 0.5 * inner[2],
+            }
+        self.geometry = normalize_descriptor(dict(geometry_descriptor))
+        expected = (
+            self.geometry.length, self.geometry.width, self.geometry.height)
+        if any(abs(left - right) > 1e-9
+               for left, right in zip(inner, expected)):
+            raise ValueError("inner_size does not match geometry descriptor")
+        self.inner_l, self.inner_w, self.inner_h = expected
         self.resolution = _finite(resolution, "resolution")
         if self.resolution <= 0.0:
             raise ValueError("resolution must be positive")
         self.nx = max(1, int(math.ceil(self.inner_l / self.resolution)))
         self.ny = max(1, int(math.ceil(self.inner_w / self.resolution)))
-        self.plane_z = self.center[2] - self.inner_h * 0.5
+        descriptor_mid_z = 0.5 * (
+            self.geometry.floor_z + self.geometry.ceiling_z)
+        self._origin_base = (
+            self.center[0], self.center[1], self.center[2] - descriptor_mid_z)
+        self.plane_z = self._origin_base[2] + self.geometry.floor_z
+        self._cell_areas = {}
+        for ix in range(self.nx):
+            for iy in range(self.ny):
+                x0 = -self.geometry.half_x + ix * self.resolution
+                x1 = min(x0 + self.resolution, self.geometry.half_x)
+                y0 = -self.geometry.half_y + iy * self.resolution
+                y1 = min(y0 + self.resolution, self.geometry.half_y)
+                area = floor_support_area(
+                    self.geometry, (x0, y0), (x1, y1))
+                if area > _EPSILON:
+                    self._cell_areas[(ix, iy)] = area
 
     @property
     def cell_count(self):
-        return self.nx * self.ny
+        return len(self._cell_areas)
+
+    @property
+    def total_area(self):
+        return sum(self._cell_areas.values())
+
+    def cell_area(self, cell):
+        return float(self._cell_areas.get(tuple(cell), 0.0))
 
     def world_to_cell(self, point):
-        """Return the ``(ix, iy)`` floor cell or None when outside the box."""
-        delta_x = point[0] - self.center[0]
-        delta_y = point[1] - self.center[1]
+        """Return an active ``(ix, iy)`` floor cell, else ``None``."""
+        delta_x = point[0] - self._origin_base[0]
+        delta_y = point[1] - self._origin_base[1]
         cos_yaw = math.cos(-self.yaw)
         sin_yaw = math.sin(-self.yaw)
         local_x = cos_yaw * delta_x - sin_yaw * delta_y
         local_y = sin_yaw * delta_x + cos_yaw * delta_y
-        half_l = self.inner_l * 0.5
-        half_w = self.inner_w * 0.5
-        if abs(local_x) > half_l or abs(local_y) > half_w:
+        if (local_x < -self.geometry.half_x - _EPSILON
+                or local_x > self.geometry.half_x + _EPSILON
+                or local_y < -self.geometry.half_y - _EPSILON
+                or local_y > self.geometry.half_y + _EPSILON):
             return None
-        ix = int((local_x + half_l) / self.resolution)
-        iy = int((local_y + half_w) / self.resolution)
-        return (
-            min(max(ix, 0), self.nx - 1),
-            min(max(iy, 0), self.ny - 1),
-        )
+        if local_y > y_max_at_z(
+                self.geometry, self.geometry.floor_z) + _EPSILON:
+            return None
+        ix = min(max(int((local_x + self.geometry.half_x)
+                         / self.resolution), 0), self.nx - 1)
+        iy = min(max(int((local_y + self.geometry.half_y)
+                         / self.resolution), 0), self.ny - 1)
+        cell = (ix, iy)
+        return cell if cell in self._cell_areas else None
 
     def cell_center_base(self, ix, iy, height=0.0):
-        """Return the base-frame center of a floor cell, offset upward."""
-        half_l = self.inner_l * 0.5
-        half_w = self.inner_w * 0.5
-        local_x = -half_l + (int(ix) + 0.5) * self.resolution
-        local_y = -half_w + (int(iy) + 0.5) * self.resolution
+        """Return a point at the center of the cell's clipped floor support."""
+        cell = (int(ix), int(iy))
+        if cell not in self._cell_areas:
+            raise ValueError("inactive floor cell")
+        x0 = -self.geometry.half_x + cell[0] * self.resolution
+        x1 = min(x0 + self.resolution, self.geometry.half_x)
+        y0 = -self.geometry.half_y + cell[1] * self.resolution
+        y1 = min(y0 + self.resolution, self.geometry.half_y)
+        floor_y_max = y_max_at_z(self.geometry, self.geometry.floor_z)
+        local_x = 0.5 * (x0 + x1)
+        local_y = 0.5 * (y0 + min(y1, floor_y_max))
         cos_yaw = math.cos(self.yaw)
         sin_yaw = math.sin(self.yaw)
         return (
-            self.center[0] + cos_yaw * local_x - sin_yaw * local_y,
-            self.center[1] + sin_yaw * local_x + cos_yaw * local_y,
+            self._origin_base[0] + cos_yaw * local_x - sin_yaw * local_y,
+            self._origin_base[1] + sin_yaw * local_x + cos_yaw * local_y,
             self.plane_z + _finite(height, "height"),
         )
 
@@ -531,12 +585,16 @@ def floor_coverage_metrics(
         covered.add(cell)
 
     blocked -= covered
-    total = float(floor.cell_count)
-    unknown_covered = sum(
-        1 for cell in covered if _column_has_unknown(occupancy, floor, cell))
+    total_area = float(floor.total_area)
+    covered_area = sum(floor.cell_area(cell) for cell in covered)
+    unknown_covered_area = sum(
+        floor.cell_area(cell) for cell in covered
+        if _column_has_unknown(occupancy, floor, cell))
     return {
-        "floor_xy_coverage": len(covered) / total if total else 0.0,
-        "floor_unknown_gain": unknown_covered / total if total else 0.0,
+        "floor_xy_coverage": (
+            covered_area / total_area if total_area else 0.0),
+        "floor_unknown_gain": (
+            unknown_covered_area / total_area if total_area else 0.0),
         "inside_container_fov_ratio": (
             float(rays_inside) / float(rays_cast) if rays_cast else 0.0),
         "outside_container_ratio": (
@@ -546,6 +604,9 @@ def floor_coverage_metrics(
         "floor_cells_total": int(floor.cell_count),
         "floor_cells_covered": len(covered),
         "floor_cells_blocked": len(blocked),
+        "floor_area_total": total_area,
+        "floor_area_covered": covered_area,
+        "floor_unknown_area_covered": unknown_covered_area,
         "rays_cast": rays_cast,
         "rays_inside": rays_inside,
         "rays_hit_floor": rays_hit_floor,

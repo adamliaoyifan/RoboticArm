@@ -1,6 +1,6 @@
 # 2026-09-07 -- PF-R9 preprocessor throughput and cloud-wait semantics
 
-- status: open
+- status: superseded
 - to_role: eng
 - to_agent: claude
 - to_model: glm-5.3
@@ -62,4 +62,11 @@ analysis base.
 - tests: full suite 510 passed; B6 8 new split/isolation tests + 19 existing preprocessor tests (1 updated to split semantics); B1/B2/B4/B5/B6 acceptance met; B3 blocked (0.462x vs 0.8, p50 256 ms vs 60 ms) with measured cause; whole-chain sanity active_output_hz 12.30, top 1.000, false 0
 - summary: Blocked on B3 only, by measurement. B1 done first (receipt lag p50 2.8/p95 22.9/max 39.3 ms, 15.24% cloudless RGB stamps, BEST_EFFORT loses 31-37% -> params tolerance 5 ms, deadline 60 ms, RGB-clock driven). B2 split implemented+tested. B4 passes on the final stride-2 config (cloud_ok 0.966, join 0.989, stale 0.012). B5: BLAS-free transform (node was 435% CPU), publisher-thread decoupling (publish p95 was 233 ms in-callback), float32+fast decode, decimation stride 2 (density 29.5k->7.4k cargo points), filter stats throttle. B3 misses with cause: DDS transport ~24 MB/s for 1.8 MB/emission, Python decode 16-59 ms/frame, pairing wait floor ~40 ms; stride 3 reaches 0.615x but breaks B4 at the filter. The plan's stated trigger fired: raise the out-of-scope pixel-space masking change as a new consensus item (removes the 307k cloud publish entirely; only path to both B3 bars). Whole chain at final config: active_output_hz 12.30 vs 4.0 bar, top_surface_rate 1.000, support z sub-micron, false 0.
 - evidence: docs/status/evidence/platform_free_height/2026-09-08_pfr9_throughput/
+
+## Superseded -- reviews/codex-reviews-main -- 2026-09-09 11:47 -- codex/gpt-5.6-sol
+
+- transitioned_at: 2026-09-09T11:47:29+08:00
+- old_generation: 1
+- replacement: 2026-09-09_1147_pf-r9-g2-payload-depth-primary.md
+- reason: User directly approved PF-R9 generation 2 payload-backed depth-primary execution at plan revision 5fe74ed72135e569efd1e01f47047f664234fb6b; generation 1 remains blocked on B3 and must stop before generation 2 claim.
 

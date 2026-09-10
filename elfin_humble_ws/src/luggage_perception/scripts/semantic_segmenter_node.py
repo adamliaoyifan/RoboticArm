@@ -82,6 +82,10 @@ class SemanticSegmenterNode(Node):
             # unlimited processing would pile callbacks up.
             "max_rate_hz": 0.0,
             "publish_overlay": True,
+            # PF-R9 g2: stats serialization on a timer (0 keeps per-frame
+            # for unit tests) — the per-frame json.dumps was a measured
+            # mask-rate limiter.
+            "stats_publish_hz": 1.0,
             "temporal_window_frames": 5,
             "temporal_min_positive_ratio": 0.5,
             "temporal_scene_change_mad": 10.0,
@@ -179,6 +183,10 @@ class SemanticSegmenterNode(Node):
             else 1.0 / float(self.get_parameter("max_rate_hz").value))
         self._last_process_sec = 0.0
         self._overlay_ok = bool(self.get_parameter("publish_overlay").value)
+        stats_hz = float(self.get_parameter("stats_publish_hz").value)
+        self._stats_interval_sec = 0.0 if stats_hz <= 0.0 else 1.0 / stats_hz
+        self._stats_dirty = False
+        self._last_stats_pub = 0.0
         self._overlay_missing_warned = False
         self._drop_count = 0
         self._camera_info = None
@@ -194,6 +202,11 @@ class SemanticSegmenterNode(Node):
 
         sensor_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
+        # Preprocessed colour rides a deeper transport queue: with depth=1
+        # the segmenter dropped input frames while a frame was processing
+        # and the mask stream fell below the emission rate (PF-R9 g2 D4).
+        colour_qos = QoSProfile(
+            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         mask_qos = QoSProfile(
             depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         overlay_qos = QoSProfile(
@@ -219,7 +232,7 @@ class SemanticSegmenterNode(Node):
 
         self.create_subscription(
             Image, self.get_parameter("input.color_image").value,
-            self._on_image, sensor_qos)
+            self._on_image, colour_qos)
         self.create_subscription(
             CameraInfo, self.get_parameter("input.camera_info").value,
             self._on_camera_info, sensor_qos)
@@ -227,6 +240,8 @@ class SemanticSegmenterNode(Node):
             String, self.get_parameter("current_box_topic").value,
             self._on_current_box, stats_qos)
         self._rebuild_self_body_mask()
+        if self._stats_interval_sec > 0.0:
+            self.create_timer(0.5, self._on_stats_timer)
 
         self.get_logger().info(
             "semantic_segmenter ready (backend=%s, prompts=%d, self_body=%s, "
@@ -436,6 +451,21 @@ class SemanticSegmenterNode(Node):
         self._publish_overlay(frame.image, out, stamp, pub_ms=pub_ms)
         self._publish_stats(out, recv_wall=recv_wall)
 
+    def _on_stats_timer(self):
+        import time as _time
+        now = _time.monotonic()
+        if (not self._stats_dirty
+                or now - self._last_stats_pub < self._stats_interval_sec):
+            return
+        self._stats_dirty = False
+        self._last_stats_pub = now
+        out = self._segmenter.copy_output()
+        if out is not None:
+            record = dict(out.stats)
+            record["stamp"] = out.stamp
+            record["frame_id"] = out.frame_id
+            self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+
     def _publish_yolo(self, out, stamp):
         msg = YoloDetections()
         msg.header.stamp = stamp
@@ -493,6 +523,9 @@ class SemanticSegmenterNode(Node):
         self._overlay_pub.publish(overlay)
 
     def _publish_stats(self, out, recv_wall=None):
+        if self._stats_interval_sec > 0.0:
+            self._stats_dirty = True
+            return
         record = dict(out.stats)
         record["stamp"] = out.stamp
         record["mask_stamp"] = out.stamp

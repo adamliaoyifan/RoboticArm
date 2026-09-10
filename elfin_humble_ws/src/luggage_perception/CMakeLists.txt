@@ -43,6 +43,8 @@ install(PROGRAMS
   scripts/cargo_volume_mapper_node.py
   scripts/dump_camera_frames.py
   scripts/aligned_depth_cloud_node.py
+  scripts/handeye_capture.py
+  scripts/handeye_solve.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

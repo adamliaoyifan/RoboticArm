@@ -12,12 +12,22 @@ from __future__ import division
 
 import argparse
 import json
+import os
+import sys
 from collections import Counter
 
-# Usable cargo volume from scene_tf (1.49 x 1.97 x 1.48 m).
-DEFAULT_USABLE_VOLUME_M3 = 4.344
-DEFAULT_USABLE_FLOOR_M2 = 1.49 * 1.97
+_SRC = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from luggage_packing.geometry_metrics import (  # noqa: E402
+    GeometryMetricsError,
+    capacity_report,
+    denominators_from_scene_config,
+)
+
 # Union of atlas REACHABLE/MARGINAL cells; see reachability_atlas.stats().
+# Reachable-volume claims are owned by TCIG-7, not G5.
 DEFAULT_REACHABLE_VOLUME_M3 = 0.804
 _FLOOR_PEAK_TOL = 1e-3
 ATLAS_UNREACHABLE = 1
@@ -30,17 +40,29 @@ def _placement_volume(record):
     return float(size[0]) * float(size[1]) * float(size[2])
 
 
-def _placement_footprint_area(record):
-    footprint = record.get("footprint") or (record.get("size") or [])[:2]
-    if not footprint or len(footprint) < 2:
-        return 0.0
-    return float(footprint[0]) * float(footprint[1])
+def _g5_boxes(placements):
+    boxes = []
+    for record in placements:
+        size = record.get("size")
+        if not size or len(size) < 3:
+            continue
+        box = {
+            "size": size,
+            "peak": record.get("peak"),
+            "yaw": record.get("yaw", 0.0),
+        }
+        if record.get("container_x") is not None and record.get(
+                "container_y") is not None:
+            box["container_x"] = record["container_x"]
+            box["container_y"] = record["container_y"]
+        boxes.append(box)
+    return boxes
 
 
 def evaluate_records(records, expected_boxes=3, max_cycle_sec=120.0,
                      min_floor_items=2,
-                     usable_volume_m3=DEFAULT_USABLE_VOLUME_M3,
-                     usable_floor_m2=DEFAULT_USABLE_FLOOR_M2,
+                     scene_config=None,
+                     scene_config_path=None,
                      reachable_volume_m3=DEFAULT_REACHABLE_VOLUME_M3):
     by_kind = {}
     for record in records:
@@ -83,7 +105,6 @@ def evaluate_records(records, expected_boxes=3, max_cycle_sec=120.0,
         "floor_candidates_available" in r for r in placements)
     pose_verified = [r for r in placements if r.get("pose_gate_passed")]
     placed_volume = sum(_placement_volume(r) for r in placements)
-    floor_area_used = sum(_placement_footprint_area(r) for r in floor_items)
     detect_success = [r for r in detections if r.get("success")]
     fallbacks = [
         r for r in detections if r.get("source") == "gt_fallback"]
@@ -118,6 +139,24 @@ def evaluate_records(records, expected_boxes=3, max_cycle_sec=120.0,
             not stacking_observable or not premature_stacks),
         "untainted_session": not tainted,
     }
+    g5_reason = None
+    try:
+        if scene_config is None:
+            from luggage_description.scene_tf_config_utils import (
+                load_scene_tf_config,
+                resolve_scene_tf_config_path,
+            )
+            scene_config = load_scene_tf_config(
+                scene_config_path or resolve_scene_tf_config_path())
+        hull = denominators_from_scene_config(scene_config)
+        g5 = capacity_report(
+            placed_volume, _g5_boxes(placements), hull["geometry"])
+    except GeometryMetricsError as exc:
+        g5 = None
+        g5_reason = exc.reason
+        gates["geometry_metrics"] = False
+    else:
+        gates["geometry_metrics"] = True
     failed = sorted(name for name, passed in gates.items() if not passed)
     metrics = {
         "expected_boxes": expected_boxes,
@@ -132,9 +171,17 @@ def evaluate_records(records, expected_boxes=3, max_cycle_sec=120.0,
         "floor_items": len(floor_items),
         "premature_stack_count": len(premature_stacks),
         "floor_coverage_ratio": (
-            floor_area_used / usable_floor_m2 if usable_floor_m2 > 0 else 0.0),
+            None if g5 is None else g5["floor_coverage"]),
         "volume_utilization": (
-            placed_volume / usable_volume_m3 if usable_volume_m3 > 0 else 0.0),
+            None if g5 is None else g5["volume_fraction"]),
+        "usable_volume_m3": None if g5 is None else g5["usable_volume_m3"],
+        "floor_area_m2": None if g5 is None else g5["floor_area_m2"],
+        "packed_volume_m3": placed_volume,
+        "packed_floor_area_m2": (
+            None if g5 is None else g5["packed_floor_area_m2"]),
+        "schema_version": None if g5 is None else g5["schema_version"],
+        "geometry_hash": None if g5 is None else g5["geometry_hash"],
+        "geometry_metrics_reason": g5_reason,
         "reachable_fill_rate": (
             placed_volume / reachable_volume_m3
             if reachable_volume_m3 > 0 else 0.0),
@@ -173,10 +220,8 @@ def main():
     parser.add_argument("--min-floor-items", type=int, default=2,
                         help="anti-regression gate: boxes that must land on "
                              "the container floor before stacking is allowed")
-    parser.add_argument("--usable-volume-m3", type=float,
-                        default=DEFAULT_USABLE_VOLUME_M3)
-    parser.add_argument("--usable-floor-m2", type=float,
-                        default=DEFAULT_USABLE_FLOOR_M2)
+    parser.add_argument("--scene-tf", default="",
+                        help="scene_tf.yaml used for G5 denominators")
     parser.add_argument("--reachable-volume-m3", type=float,
                         default=DEFAULT_REACHABLE_VOLUME_M3)
     parser.add_argument("--output", default="")
@@ -186,8 +231,7 @@ def main():
         expected_boxes=args.expected_boxes,
         max_cycle_sec=args.max_cycle_sec,
         min_floor_items=args.min_floor_items,
-        usable_volume_m3=args.usable_volume_m3,
-        usable_floor_m2=args.usable_floor_m2,
+        scene_config_path=args.scene_tf or None,
         reachable_volume_m3=args.reachable_volume_m3,
     )
     text = json.dumps(result, indent=2, sort_keys=True)

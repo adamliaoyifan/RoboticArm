@@ -76,7 +76,7 @@ class TestSuitcaseSdf(unittest.TestCase):
         self.assertEqual(vis_scale, size)
         self.assertEqual(col_scale, size)
         self.assertIsNone(root.find(".//collision/geometry/box"))
-        self.assertIsNotNone(root.find(".//visual/material/diffuse"))
+        self.assertIsNone(root.find(".//model/static"))
 
     def test_box_visual_kind_is_rejected(self):
         """Untextured primitive-box visuals were removed (YOLO-World
@@ -248,6 +248,7 @@ class TestPickupVisualSdf(unittest.TestCase):
         self.assertEqual(col_uri, vis_uri)
         self.assertEqual(scale, [1.0, 1.0, 1.0])
         self.assertEqual(os.listdir(dest_dir), [])
+        self.assertEqual(root.find(".//model/static").text, "true")
 
     def test_mesh_kind_rejects_non_catalog_size(self):
         with self.assertRaises(ValueError):

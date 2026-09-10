@@ -237,6 +237,20 @@ class PlatformFreeDetector:
         """Drop temporal state (new luggage instance spawned)."""
         self._stability.update(None)
 
+    def epoch_carry(self):
+        """New luggage instance on the SAME platform (PF-R10).
+
+        The support-Z window medians the static pickup platform's surface
+        in the annulus around the cargo footprint; a new box does not
+        move that surface. Carrying the window removes the post-spawn
+        refill tax (5 consecutive good fits) while every new sample is
+        still validated against the retained spread (max 0.015 m): a
+        genuinely different plane flips the window to UNSTABLE and it
+        refills exactly as before. ``reset`` remains for callers that
+        know the platform itself changed.
+        """
+        return None
+
     def update(self, cargo_points_world, raw_points_world, *,
                source="measure", geometry_ok=True,
                raw_same_stamp=True, platform_z=None, stamp_sec=0.0,
@@ -275,7 +289,11 @@ class PlatformFreeDetector:
         n_points = int(len(points))
         if n_points < int(self.config.min_top_points):
             result.top_reason = "DETECT_TOO_FEW_POINTS"
-            self._stability.update(None)
+            # A failed TOP is not evidence about the platform: the
+            # support-Z window mediates the static platform surface and
+            # every future sample is still spread-validated (PF-R10).
+            # Clearing here turned every mid-trial YOLO flicker into a
+            # 5-frame UNSTABLE refill on top of its own miss.
             return result
 
         top = estimate_top_surface(
@@ -283,7 +301,6 @@ class PlatformFreeDetector:
             timing=timing)
         if top is None:
             result.top_reason = DETECT_TOP_UNOBSERVABLE
-            self._stability.update(None)
             return result
         top.stamp = float(stamp_sec)
         result.top_valid = True
@@ -361,10 +378,13 @@ class PlatformFreeDetector:
             timing=timing)
         support.stamp = float(stamp_sec)
         if support.reason != "ok":
-            # Per-frame rejection (coverage/sides) must not enter the Z
-            # stability window: a filled window would otherwise flip it
-            # to "ok" and fake a measured height.
-            self._stability.update(None)
+            # Per-frame rejection (coverage/sides) must not ENTER the Z
+            # stability window. It also does not invalidate the retained
+            # window (PF-R10): a rejected fit is absence of evidence
+            # about a static platform, not evidence against it, and the
+            # 0.015 m spread gate still validates every later sample.
+            # Clearing here turned each mid-trial detection flicker into
+            # a five-frame UNSTABLE refill on top of its own miss.
             return support, ""
         filtered = self._stability.update(support)
         if filtered is not None:

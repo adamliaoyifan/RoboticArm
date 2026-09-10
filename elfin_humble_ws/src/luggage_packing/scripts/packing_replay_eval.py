@@ -29,7 +29,8 @@ import yaml
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCRIPTS = os.path.join(PKG_ROOT, "scripts")
 HARNESS = os.path.join(PKG_ROOT, "test", "harness")
-for _p in (SCRIPTS, HARNESS):
+SRC_ROOT = os.path.dirname(PKG_ROOT)
+for _p in (SCRIPTS, HARNESS, SRC_ROOT):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
@@ -43,6 +44,17 @@ from packing_replay import (  # noqa: E402
     unlock_floor_atlas,
 )
 from packing_sequences import generate_sequences, catalog_entries, load_catalog  # noqa: E402
+from luggage_description.container_geometry import (  # noqa: E402
+    descriptor_from_scene_config,
+)
+from luggage_description.scene_tf_config_utils import (  # noqa: E402
+    load_scene_tf_config,
+    resolve_scene_tf_config_path,
+)
+from luggage_packing.geometry_metrics import (  # noqa: E402
+    annotate_replay_runs,
+    denominators,
+)
 
 _DEFAULT_ATLAS = os.path.normpath(os.path.join(
     PKG_ROOT, "..", "luggage_planning", "data", "reachability_atlas",
@@ -64,34 +76,52 @@ def _run_fsm(atlas, entries, sequences, mode, **kw):
 
 
 def _fmt(s):
+    g5 = s.get("volume_fraction") or {}
     return (
-        "rfr mean=%.4f (stdev=%.4f, min=%.4f max=%.4f) | items=%.1f "
-        "| floor_items=%.1f floor_cov=%.3f" % (
-            s["reachable_fill_rate_mean"], s["reachable_fill_rate_stdev"],
-            s["reachable_fill_rate_min"], s["reachable_fill_rate_max"],
+        "rfr mean=%.4f (legacy_non_authoritative) | items=%.1f "
+        "| floor_items=%.1f floor_cov=%.3f (legacy_non_authoritative) "
+        "| G5 volume_fraction=%.4f" % (
+            s["reachable_fill_rate_mean"],
             s["items_placed_mean"], s.get("floor_items_mean", 0.0),
-            s.get("floor_coverage_mean", 0.0)))
+            s.get("floor_coverage_mean", 0.0),
+            g5.get("volume_fraction", 0.0)))
 
 
-def _run_all(atlas, entries, sequences, run_b3, label, w_floor_first=None):
+def _annotate(summary, runs, descriptor):
+    g5 = annotate_replay_runs(runs, descriptor)
+    out = dict(summary)
+    out["volume_fraction"] = g5["volume_fraction"]
+    out["legacy_non_authoritative"] = g5["legacy_non_authoritative"]
+    out["schema_version"] = g5["schema_version"]
+    out["geometry_hash"] = g5["geometry_hash"]
+    out["usable_volume_m3"] = g5["usable_volume_m3"]
+    return out
+
+
+def _run_all(atlas, entries, sequences, run_b3, label, descriptor,
+             w_floor_first=None):
     print("=" * 96)
     print(label)
     print("-" * 96)
     t0 = time.time()
-    s0 = summarize(_run_b0(atlas, sequences))
+    b0_runs = _run_b0(atlas, sequences)
+    s0 = _annotate(summarize(b0_runs), b0_runs, descriptor)
     print("B0 (bin_packer DBLF):       %s  [%.1fs]" % (_fmt(s0), time.time() - t0))
     t0 = time.time()
-    s2 = summarize(_run_fsm(atlas, entries, sequences, mode="b2"))
+    b2_runs = _run_fsm(atlas, entries, sequences, mode="b2")
+    s2 = _annotate(summarize(b2_runs), b2_runs, descriptor)
     print("B2 (FreeSpaceModel+proxy):  %s  [%.1fs]" % (_fmt(s2), time.time() - t0))
     t0 = time.time()
-    s4 = summarize(_run_fsm(atlas, entries, sequences, mode="b4",
-                            w_floor_first=w_floor_first))
+    b4_runs = _run_fsm(atlas, entries, sequences, mode="b4",
+                       w_floor_first=w_floor_first)
+    s4 = _annotate(summarize(b4_runs), b4_runs, descriptor)
     print("B4 (production scorer):     %s  [%.1fs]" % (_fmt(s4), time.time() - t0))
     s3 = None
     if run_b3:
         t0 = time.time()
-        s3 = summarize(_run_fsm(atlas, entries, sequences, mode="b3",
-                                top_k_rollout=5, rollout_K=3, rollout_M=8))
+        b3_runs = _run_fsm(atlas, entries, sequences, mode="b3",
+                           top_k_rollout=5, rollout_K=3, rollout_M=8)
+        s3 = _annotate(summarize(b3_runs), b3_runs, descriptor)
         print("B3 (B2 + rollout Vhat):     %s  [%.1fs]" % (_fmt(s3), time.time() - t0))
         print("  B3 - B2 (rollout lift):   %+.4f" % (
             s3["reachable_fill_rate_mean"] - s2["reachable_fill_rate_mean"]))
@@ -129,16 +159,20 @@ def main():
     atlas = ReachabilityAtlas(args.atlas)
     entries = catalog_entries(load_catalog())
     sequences = generate_sequences(range(args.seeds), args.length)
+    descriptor = descriptor_from_scene_config(
+        load_scene_tf_config(resolve_scene_tf_config_path()))
+    hull = denominators(descriptor)
 
     print("atlas: %s" % args.atlas)
-    print("container inner: %.2f x %.2f x %.2f m (V=%.3f m^3)" % (
-        atlas.inner_size[0], atlas.inner_size[1], atlas.inner_size[2],
-        atlas.inner_size[0] * atlas.inner_size[1] * atlas.inner_size[2]))
+    print("container exact hull: V=%.9f m^3  floor=%.9f m^2  hash=%s" % (
+        hull["usable_volume_m3"], hull["floor_area_m2"],
+        descriptor.geometry_hash[:12]))
     print("sequences: %d (length %d)" % (args.seeds, args.length))
 
     scenarios = [_run_all(
         atlas, entries, sequences, args.b3,
         "REAL atlas (configured slab-top floor)",
+        descriptor,
         w_floor_first=args.w_floor_first)]
 
     if args.no_unlock:
@@ -149,6 +183,8 @@ def main():
                     "atlas": args.atlas,
                     "seeds": args.seeds,
                     "length": args.length,
+                    "geometry_hash": descriptor.geometry_hash,
+                    "usable_volume_m3": hull["usable_volume_m3"],
                     "scenarios": scenarios,
                 }, stream, default_flow_style=False, sort_keys=False)
         return
@@ -159,6 +195,7 @@ def main():
         unlocked, entries, sequences, args.b3,
         "FLOOR-UNLOCKED historical what-if (ix<=%d, iz<=%d reachable)"
         % (args.unlock_ix, args.unlock_iz),
+        descriptor,
         w_floor_first=args.w_floor_first))
     if args.output:
         with open(args.output, "w") as stream:
@@ -167,6 +204,8 @@ def main():
                 "atlas": args.atlas,
                 "seeds": args.seeds,
                 "length": args.length,
+                "geometry_hash": descriptor.geometry_hash,
+                "usable_volume_m3": hull["usable_volume_m3"],
                 "scenarios": scenarios,
             }, stream, default_flow_style=False, sort_keys=False)
 

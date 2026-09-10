@@ -170,11 +170,17 @@ class TestImageAdapters(unittest.TestCase):
         self.assertIsNone(
             adapters.image_array_from_msg(_make_image(image, "rgb8", truncate=4)))
 
-    def test_decoded_array_does_not_alias_message(self):
+    def test_decoded_view_is_readonly_and_cannot_corrupt_message(self):
+        # PF-R9 g2: the decoded array IS an alias of the message payload —
+        # by contract. Isolation comes from read-only-ness, not copying.
         image = np.ones((2, 2, 3), dtype=np.uint8)
         msg = _make_image(image, "rgb8")
         out = adapters.image_array_from_msg(msg)
-        out[:] = 9
+        self.assertFalse(out.flags.writeable)
+        with self.assertRaises(ValueError):
+            out[:] = 9
+        with self.assertRaises(ValueError):
+            out.setflags(write=True)
         np.testing.assert_array_equal(
             adapters.image_array_from_msg(msg), image)
 
