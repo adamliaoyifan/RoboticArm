@@ -282,7 +282,7 @@ def main():
                     "t_first_full3d_sec": None,
                 })
                 continue
-            time.sleep(0.5)
+            node.collect(0.5)
             gt = node.get_gt()
             # Expected identity comes from the eval-side spawn response
             # (GT), never from the detector output being tested: if only

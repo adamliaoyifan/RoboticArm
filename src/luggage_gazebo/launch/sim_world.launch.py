@@ -555,11 +555,6 @@ def _launch_setup(context):
             "/world/%s/create@ros_gz_interfaces/srv/SpawnEntity" % WORLD_NAME,
             "/world/%s/remove@ros_gz_interfaces/srv/DeleteEntity" % WORLD_NAME,
             "/world/%s/set_pose@ros_gz_interfaces/srv/SetEntityPose" % WORLD_NAME,
-            # PF-R10 g3: closed-loop placement reads model pose from the
-            # same gz world the create/set_pose services mutate. Keep this
-            # on the existing bridge process; a fourth parameter_bridge
-            # PID is treated as leftover dual-sim.
-            "/world/%s/pose/info@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V" % WORLD_NAME,
         ],
     )
 

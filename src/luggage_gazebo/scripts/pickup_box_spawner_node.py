@@ -19,6 +19,8 @@ import json
 import math
 import os
 import random
+import re
+import subprocess
 import threading
 import time
 
@@ -29,7 +31,6 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from geometry_msgs.msg import Point, Pose, Quaternion
-from tf2_msgs.msg import TFMessage
 from luggage_msgs.msg import DetectedLuggage
 from luggage_msgs.srv import (
     ClearCurrentBox,
@@ -101,6 +102,36 @@ def _angle_err(actual, expected):
         (float(actual) - float(expected) + math.pi) % (2.0 * math.pi)
         - math.pi)
     return abs(delta)
+
+
+_GZ_POSE_BLOCK = re.compile(
+    r"pose\s*\{([^{}]*(?:\{[^{}]*\}[^{}]*)*)\}", re.MULTILINE)
+_GZ_NAME = re.compile(r'name:\s*"([^"]+)"')
+_GZ_FIELD = re.compile(
+    r"(x|y|z|w):\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)")
+
+
+def _parse_gz_pose_v(text):
+    """Parse ``ign topic -e`` Pose_V text into {name: geometry_msgs/Pose}."""
+    poses = {}
+    for body in _GZ_POSE_BLOCK.findall(text or ""):
+        named = _GZ_NAME.search(body)
+        if named is None:
+            continue
+        pos_m = re.search(r"position\s*\{([^}]*)\}", body)
+        ori_m = re.search(r"orientation\s*\{([^}]*)\}", body)
+        pos = dict(_GZ_FIELD.findall(pos_m.group(1))) if pos_m else {}
+        ori = dict(_GZ_FIELD.findall(ori_m.group(1))) if ori_m else {}
+        pose = Pose()
+        pose.position.x = float(pos.get("x", 0.0))
+        pose.position.y = float(pos.get("y", 0.0))
+        pose.position.z = float(pos.get("z", 0.0))
+        pose.orientation.x = float(ori.get("x", 0.0))
+        pose.orientation.y = float(ori.get("y", 0.0))
+        pose.orientation.z = float(ori.get("z", 0.0))
+        pose.orientation.w = float(ori.get("w", 1.0))
+        poses[named.group(1)] = pose
+    return poses
 
 
 class PickupBoxSpawner(Node):
@@ -185,6 +216,9 @@ class PickupBoxSpawner(Node):
         self._place_yaw_tol_rad = 0.12
         self._latest_world_poses = {}
         self._pose_lock = threading.Lock()
+        self._query_gz_poses = True
+        self._world_name = str(
+            self.get_parameter("world").value) or WORLD_NAME
         self._current_box = None
         self._current_model = None
         self._current_ref = None
@@ -226,13 +260,6 @@ class PickupBoxSpawner(Node):
         self._set_pose_cli = self.create_client(
             SetEntityPose, "/world/%s/set_pose" % world,
             callback_group=self._group)
-        pose_qos = QoSProfile(
-            depth=1,
-            reliability=ReliabilityPolicy.BEST_EFFORT,
-        )
-        self.create_subscription(
-            TFMessage, "/world/%s/pose/info" % world,
-            self._on_pose_info, pose_qos, callback_group=self._group)
 
         self.create_service(
             SpawnNextBox, "/pickup_box_spawner/spawn_next_box", self.handle_spawn_next,
@@ -302,6 +329,23 @@ class PickupBoxSpawner(Node):
                 pose.orientation.w = float(stamped.transform.rotation.w)
                 self._latest_world_poses[str(stamped.child_frame_id)] = pose
 
+    def _refresh_world_poses(self):
+        """One-shot /world/<w>/pose/info via gz; no ROS bridge flood."""
+        world = getattr(self, "_world_name", WORLD_NAME)
+        topic = "/world/%s/pose/info" % world
+        try:
+            proc = subprocess.run(
+                ["ign", "topic", "-e", "-t", topic, "--num", "1"],
+                capture_output=True, text=True, timeout=2.0,
+                check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            return
+        parsed = _parse_gz_pose_v(proc.stdout or "")
+        if not parsed:
+            return
+        with self._pose_lock:
+            self._latest_world_poses.update(parsed)
+
     def _lookup_model_pose(self, model_name):
         name = str(model_name)
         with self._pose_lock:
@@ -317,6 +361,9 @@ class PickupBoxSpawner(Node):
             return self._latest_world_poses[key]
 
     def _read_model_pose(self, model_name, timeout=None):
+        if getattr(self, "_query_gz_poses", False):
+            self._refresh_world_poses()
+            return self._lookup_model_pose(model_name)
         if timeout is None:
             timeout = self._place_read_timeout_sec
         deadline = time.monotonic() + max(0.0, float(timeout))

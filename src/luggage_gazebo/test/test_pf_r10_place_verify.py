@@ -86,6 +86,33 @@ class TestAngleHelpers(unittest.TestCase):
         self.assertAlmostEqual(yaw, 0.0, places=6)
 
 
+class TestGzPoseVParse(unittest.TestCase):
+
+    def test_parses_named_model_pose(self):
+        text = """
+header { stamp { sec: 1 nsec: 0 } }
+pose {
+  name: "pickup_box_0001_carryon"
+  id: 8
+  position { x: -1.02 y: 0.04 z: 0.81 }
+  orientation { x: 0 y: 0 z: 0.1 w: 0.995 }
+}
+pose {
+  name: "ground_plane"
+  position { x: 0 y: 0 z: 0 }
+  orientation { w: 1 }
+}
+"""
+        poses = _mod._parse_gz_pose_v(text)
+        self.assertIn("pickup_box_0001_carryon", poses)
+        p = poses["pickup_box_0001_carryon"]
+        self.assertAlmostEqual(p.position.x, -1.02)
+        self.assertAlmostEqual(p.position.y, 0.04)
+        self.assertAlmostEqual(p.position.z, 0.81)
+        self.assertAlmostEqual(p.orientation.z, 0.1)
+        self.assertAlmostEqual(p.orientation.w, 0.995)
+
+
 class TestPoseInfoCache(unittest.TestCase):
 
     def test_prefers_exact_name_then_shortest_link(self):
