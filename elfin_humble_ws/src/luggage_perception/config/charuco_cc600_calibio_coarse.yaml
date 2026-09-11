@@ -1,0 +1,19 @@
+# calib.io aluminium ChArUco 600 x 400 mm, Coarse pattern.
+# Product table: Rows x Columns = 9 x 14, checker 40 mm, marker 30 mm, DICT_5x5.
+# OpenCV CharucoBoard squaresX is the long axis (columns).
+#
+# Measure a 5-square pitch with callipers and override square_length_m
+# (pitch_mm / 5000) before the hand-eye solve. Do not trust print scale.
+
+name: cc600_calibio_coarse
+squares_x: 14
+squares_y: 9
+square_length_m: 0.040
+marker_length_m: 0.030
+dictionary: DICT_5X5_100
+legacy_pattern: false
+min_corners: 12
+plate_mm: [600, 400]
+note: >
+  9 rows is odd, so OpenCV 4.6+ field-order change does not apply.
+  DICT_5X5_50 is too small (~63 markers); use DICT_5X5_100 or larger.
