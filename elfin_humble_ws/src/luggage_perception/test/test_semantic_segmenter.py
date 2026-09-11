@@ -493,6 +493,87 @@ class TestCombinedSelfBody(unittest.TestCase):
         self.assertNotIn("panel", prompts)
         self.assertTrue(np.all(out.label_map[85:] != LABEL_CARGO))
 
+    def test_update_clears_unaccepted_cargo_bbox_from_mask(self):
+        import json
+        from luggage_perception.semantic_segmenter import (
+            SemanticSegmenter, WorkspaceAcceptanceContext)
+
+        fixture_path = os.path.join(
+            os.path.dirname(__file__), "fixtures", "pf_r8",
+            "acceptance_fixture.json")
+        with open(fixture_path, encoding="utf-8") as handle:
+            fixture = json.load(handle)
+        cam, ws = fixture["camera"], fixture["workspace"]
+        ctx = WorkspaceAcceptanceContext(
+            fx=float(cam["fx"]), fy=float(cam["fy"]),
+            cx=float(cam["cx"]), cy=float(cam["cy"]),
+            plane_z=float(ws["plane_z"]),
+            center_xy=tuple(float(v) for v in ws["center_xy"]),
+            half_xy=tuple(float(v) for v in ws["half_xy"]),
+            margin=float(ws["margin"]),
+            optical_to_world=tuple(
+                tuple(float(v) for v in row)
+                for row in cam["optical_to_world"]),
+        )
+        suitcase = [178, 144, 405, 297]
+        pedestal = [611, 112, 640, 295]
+
+        class _Both(SemanticSegmenter):
+            def segment(self, rgb_image):
+                labels = np.zeros(rgb_image.shape[:2], dtype=np.uint8)
+                x1, y1, x2, y2 = suitcase
+                labels[y1:y2, x1:x2] = LABEL_CARGO
+                x1, y1, x2, y2 = pedestal
+                labels[y1:y2, x1:x2] = LABEL_CARGO
+                return labels, [
+                    {"label": LABEL_CARGO, "prompt": "suitcase",
+                     "confidence": 0.4, "bbox": suitcase},
+                    {"label": LABEL_CARGO, "prompt": "pedestal",
+                     "confidence": 0.2, "bbox": pedestal},
+                ]
+
+        seg = _Both(["suitcase"], {"suitcase": LABEL_CARGO})
+        seg.workspace_ctx = ctx
+        rgb = np.full((480, 640, 3), 40, dtype=np.uint8)
+        seg.update(rgb, stamp=1.0, frame_id="f")
+        out = seg.copy_output()
+        sx1, sy1, sx2, sy2 = suitcase
+        px1, py1, px2, py2 = pedestal
+        self.assertTrue(np.all(out.label_map[sy1:sy2, sx1:sx2] == LABEL_CARGO))
+        self.assertTrue(np.all(out.label_map[py1:py2, px1:px2] == LABEL_BACKGROUND))
+        self.assertGreater(int(out.stats["unaccepted_cargo_pixels_cleared"]), 0)
+        accepted = [d["accepted"] for d in out.detections]
+        self.assertEqual(accepted, [True, False])
+
+
+class TestRestrictCargoMask(unittest.TestCase):
+    def test_missing_accepted_key_leaves_mask(self):
+        from luggage_perception.semantic_segmenter import (
+            restrict_cargo_mask_to_accepted)
+        labels = np.zeros((10, 10), dtype=np.uint8)
+        labels[2:8, 2:8] = LABEL_CARGO
+        out, _, n = restrict_cargo_mask_to_accepted(
+            labels, [{"label": LABEL_CARGO, "bbox": [2, 2, 8, 8]}])
+        self.assertEqual(n, 0)
+        self.assertTrue(np.array_equal(out, labels))
+
+    def test_unaccepted_bbox_is_cleared(self):
+        from luggage_perception.semantic_segmenter import (
+            restrict_cargo_mask_to_accepted)
+        labels = np.zeros((10, 12), dtype=np.uint8)
+        labels[1:4, 1:4] = LABEL_CARGO
+        labels[1:4, 8:11] = LABEL_CARGO
+        labels[6:9, 1:4] = LABEL_ROBOT_ARM
+        dets = [
+            {"label": LABEL_CARGO, "accepted": True, "bbox": [1, 1, 4, 4]},
+            {"label": LABEL_CARGO, "accepted": False, "bbox": [8, 1, 11, 4]},
+        ]
+        out, _, n = restrict_cargo_mask_to_accepted(labels, dets)
+        self.assertEqual(n, 9)
+        self.assertTrue(np.all(out[1:4, 1:4] == LABEL_CARGO))
+        self.assertTrue(np.all(out[1:4, 8:11] == LABEL_BACKGROUND))
+        self.assertTrue(np.all(out[6:9, 1:4] == LABEL_ROBOT_ARM))
+
 
 class TestUpdateTemporalHold(unittest.TestCase):
     def test_update_holds_bbox_on_flicker_miss(self):

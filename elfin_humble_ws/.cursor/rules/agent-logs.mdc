@@ -1,0 +1,79 @@
+---
+description: Role logs plus async mailbox so CLI agents can discuss via files
+alwaysApply: true
+---
+
+# Agent role logs and cross-CLI discuss
+
+Workflow contract: `docs/agents/README.md` and root `AGENTS.md`. Exact file,
+metadata, section, event, and table formats: `docs/agents/FORMAT.md`.
+
+After durable work, write `docs/agents/<role>/YYYY-MM-DD_HHMM_<slug>.md`.
+Include `role`, `agent`, `model`, `cli`, and `status`. Skip ack-only turns. Do
+not copy dumps or chat traces.
+
+Roles are responsibility pools; multiple concrete agents may act as `eng`,
+`reviews`, or `test`. Use `agent` / `to_agent` / `from_agent` when a handoff is
+for a specific Codex, Claude Code, Cursor, or named instance. Use `model` /
+`to_model` / `from_model` when routing depends on model capability. Cursor
+running Opus5 may act as either `reviews` or `eng`.
+
+## Communication state and precedence
+
+Use one communication system only.
+
+1. `docs/architecture/` is normative for product behavior.
+2. A `discuss/<thread>.md` file is the source of truth for one work-item
+   lineage (scope, owner, generation, claims, replies, results).
+3. `discuss/OPEN.md` is only the current queue projection. Removing a row does
+   not prove completion.
+4. Role notes summarize and point at the thread, commit, and evidence.
+5. `docs/agents/RUNTIME.md` is transient scheduler presence, not a claim.
+
+Passing work requires thread `status: done` and a matching `## Result` with
+`outcome: pass`.
+
+## Cross-CLI work handoff (async)
+
+There is no live chat between Cursor, Claude Code, and Codex. They share
+files.
+
+1. Session start: read `docs/agents/discuss/OPEN.md`.
+2. Match all of `to_role`, `to_agent`, and `to_model`. `cli` is transport
+   metadata, not owner identity. Do not claim a row merely because its role
+   matches. `to_agent=any` plus `to_model=any` broadcast rows are ignored
+   unless explicitly included.
+3. For runnable `subtask`, `integration`, or `regression` work, call
+   `scripts/agent_start.sh` before editing. The same owner implements, tests,
+   repairs, commits, records evidence, and closes with
+   `scripts/agent_complete.sh`.
+4. For `question` or `consensus`, append a `## Reply` on that thread; do not
+   use the runnable claim/completion lifecycle.
+5. File-only CLIs may poll their exact route with
+   `scripts/agent_poll_self.py`. A scheduler may dispatch only a registered,
+   fresh, idle session with a supported adapter.
+6. Do not open a parallel thread for the same generation of a work-item
+   lineage. Do not rewrite claimed scope, owner, base revision, plan revision,
+   or dependencies in place; supersede with a higher generation.
+7. To ask another CLI/role: create or append a `discuss/` thread and add an
+   `OPEN.md` row (`kind`, `parent`, `subtask`, `depends_on`, `revision`,
+   `to_role`, `to_agent`, `to_model`, `from_role`, `from_agent`, `from_model`,
+   `cli`, `thread`, `request`, `generation`, `plan_revision`). Re-read
+   `OPEN.md` immediately before editing it.
+8. When running from a satellite worktree, keep mailbox events in the primary
+   workspace (`AGENT_COORD_ROOT`).
+
+Reviews first discusses the unified requirement with a distinct Codex agent
+and records consensus. After `consensus: reached`, reviews may dispatch
+directly; that Codex exchange is the requirement-consistency check, not a
+second approval board. The assigned agent owns the complete loop. Do not
+create a routine eng-to-test handoff. Use an integration subtask for final
+whole-chain regression and an independent test role only when the plan
+explicitly requires an audit or release certification.
+
+| Role | Directory |
+|---|---|
+| reviews | `docs/agents/reviews/` |
+| eng | `docs/agents/eng/` |
+| test | `docs/agents/test/` (pointers only) |
+| discuss | `docs/agents/discuss/` |

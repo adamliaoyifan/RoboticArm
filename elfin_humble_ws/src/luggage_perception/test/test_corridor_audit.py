@@ -86,5 +86,79 @@ class TestAuditCorridor(unittest.TestCase):
         self.assertAlmostEqual(audit["required_carry_z"], 0.28 + 0.28 + 0.05)
 
 
+def _scene_geometry():
+    from luggage_description.container_geometry import normalize_descriptor
+    return normalize_descriptor(
+        {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": 1.49,
+            "width": 1.97,
+            "floor_z": 0.53,
+            "ceiling_z": 2.01,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.55,
+                "wall_y": 0.985,
+                "wall_z": 0.90,
+            },
+        }
+    )
+
+
+class TestGateG4Audit(unittest.TestCase):
+    INNER = [1.49, 1.97, 1.48]
+    SMALL = [0.55, 0.40, 0.25]
+    SIZE = [0.20, 0.20, 0.20]
+
+    def test_unsupported_opening_side_fails_closed(self):
+        with self.assertRaises(ValueError):
+            audit_corridor(
+                [0.0, 0.0, 1.2], self.SIZE, [], self.INNER, self.SMALL,
+                opening_side="positive_y",
+            )
+
+    def test_wedge_overlap_is_not_occupied(self):
+        geom = _scene_geometry()
+        slot = [0.0, -0.40, 0.65]
+        fat_smallest = [0.55, 2.4, 0.25]
+        wedge = [([0.0, 0.82, 0.62], [0.20, 0.20, 0.20])]
+        aabb = corridor_aabb(slot, self.SIZE, self.INNER, fat_smallest)
+        self.assertGreater(aabb[4], 0.72)
+        audit = audit_corridor(
+            slot, self.SIZE, wedge, self.INNER, fat_smallest, geometry=geom
+        )
+        self.assertEqual(audit["boxes_in_corridor"], 0)
+        self.assertEqual(audit["verdict"], CORRIDOR_FREE)
+        self.assertIsNone(audit["surface_max"])
+        self.assertIsNone(
+            corridor_surface_max(wedge, aabb, geometry=geom),
+            "wedge-only AABB overlap must not raise carry height",
+        )
+
+    def test_swept_slanted_face_is_occupied(self):
+        geom = _scene_geometry()
+        audit = audit_corridor(
+            [0.0, 0.70, 0.62], self.SIZE, [], self.INNER, self.SMALL,
+            geometry=geom,
+        )
+        self.assertEqual(audit["verdict"], CORRIDOR_OCCUPIED)
+
+    def test_safe_center_side_and_stacked_corridors(self):
+        geom = _scene_geometry()
+        cases = (
+            [0.0, 0.0, 1.20],
+            [0.10, -0.50, 1.20],
+            [0.0, 0.20, 1.50],
+        )
+        for center in cases:
+            audit = audit_corridor(
+                center, self.SIZE, [], self.INNER, self.SMALL, geometry=geom
+            )
+            self.assertEqual(
+                audit["verdict"], CORRIDOR_EMPTY_MAP, msg=center
+            )
+
+
 if __name__ == "__main__":
     unittest.main()

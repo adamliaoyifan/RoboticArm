@@ -162,6 +162,53 @@ def evaluate_detection_acceptance(bbox, ctx):
     return False, "outside_workspace"
 
 
+def restrict_cargo_mask_to_accepted(label_map, detections, instance_map=None,
+                                    cargo_label=LABEL_CARGO):
+    """Drop cargo pixels that are not covered by an accepted cargo bbox.
+
+    ``bbox_fill`` paints every YOLO AABB, including outside-workspace false
+    positives. The accepted-detection predicate already annotates those
+    boxes; this makes the published mask match that verdict so the
+    detector does not RANSAC a pedestal/platform cloud.
+
+    Detections with no ``accepted`` key keep historic accept-all behaviour.
+    """
+    labels = np.array(label_map, copy=True)
+    inst_out = (None if instance_map is None
+                else np.array(instance_map, copy=True))
+    cargo = labels == int(cargo_label)
+    if not cargo.any():
+        return labels, inst_out, 0
+    keep = np.zeros(labels.shape, dtype=bool)
+    saw_verdict = False
+    h, w = labels.shape[:2]
+    for det in detections or ():
+        if int(det.get("label", -1)) != int(cargo_label):
+            continue
+        if "accepted" not in det:
+            continue
+        saw_verdict = True
+        if not det.get("accepted"):
+            continue
+        bbox = det.get("bbox") or ()
+        if len(bbox) < 4:
+            continue
+        x1 = max(0, min(w, int(bbox[0])))
+        y1 = max(0, min(h, int(bbox[1])))
+        x2 = max(0, min(w, int(bbox[2])))
+        y2 = max(0, min(h, int(bbox[3])))
+        if x2 > x1 and y2 > y1:
+            keep[y1:y2, x1:x2] = True
+    if not saw_verdict:
+        return labels, inst_out, 0
+    drop = cargo & ~keep
+    n_drop = int(drop.sum())
+    labels[drop] = LABEL_BACKGROUND
+    if inst_out is not None and n_drop:
+        inst_out[drop] = 0
+    return labels, inst_out, n_drop
+
+
 def _setup_clip_vendor():
     """Make the vendored CLIP package + deps importable offline.
 
@@ -551,6 +598,9 @@ class SemanticSegmenter:
         stats["accept_reasons"] = accepted_reasons
         stats["workspace_predicate"] = bool(
             self.workspace_ctx is not None and self.workspace_ctx.available())
+        label_map, instance_map, n_cleared = restrict_cargo_mask_to_accepted(
+            label_map, detections, instance_map=instance_map)
+        stats["unaccepted_cargo_pixels_cleared"] = int(n_cleared)
         # Self-body first, then the vote. A panel flank scored as cargo on
         # every frame made the window think it always saw cargo, so a real
         # miss never reached the majority test.

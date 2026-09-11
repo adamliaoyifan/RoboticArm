@@ -36,3 +36,22 @@ Simulation-only next gate: after settle, verify entity identity, XY, roll/pitch,
 - claimed_generation: 3
 - claimed_plan_revision: 7b2a5f22e6957b6040e4849c64c847efa77cba00
 - claimed_dependencies: PF-R6=3,PF-R8=1,PF-R9=2
+
+## Reply -- eng/cursor -- 2026-09-10 21:17 -- cursor/grok-4.6
+
+Status for reviews. Generation 3 remains open. Placement closed-loop is on
+master (`0d24f18`, `60ad37e`, `a5c5e29`). Perception fix
+`df9c7a27f8ad81102b6f5462b08b724910b042cd` paints only accepted YOLO cargo
+boxes and vectorizes `_refine_rectangle` without changing RANSAC thresholds.
+
+Dirty-tree `exp_mask_accepted2` passed Gate-4 numbers (Hz 25.18, top 1.0,
+FULL_3D 0.983, `failed=0`, recovery 0.78-1.05 s, width p95 0.041 m) and is
+not C1. Clean identity run1 at `df9c7a2` (`dirty=0`) failed trial 2 large
+vintage with whole-window `DETECT_LOW_CONFIDENCE` and 2946 cargo points.
+Streak stopped. Teardown residual 0.
+
+C1 still requires three consecutive `gate4_short6` plus PF-G6S on one clean
+exact commit. Table: `docs/status/evidence/platform_free_height/2026-09-10_pfr10_g3/RESULT.md`.
+The generation-3 mailbox row is restored as `Q-20260910-1`. Status for
+reviews is `Q-20260910-3`
+(`docs/agents/discuss/2026-09-10_2119_pfr10-g3-status-for-reviews.md`).

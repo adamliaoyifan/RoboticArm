@@ -45,6 +45,7 @@ install(PROGRAMS
   scripts/aligned_depth_cloud_node.py
   scripts/handeye_capture.py
   scripts/handeye_solve.py
+  scripts/pendant_bag_replay_eval.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

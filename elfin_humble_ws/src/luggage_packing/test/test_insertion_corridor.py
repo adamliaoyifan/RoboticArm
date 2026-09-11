@@ -99,5 +99,122 @@ class TestProxyScore(unittest.TestCase):
                         "floor_prior must score below observed (lower confidence)")
 
 
+def _scene_floor_geometry():
+    from luggage_description.container_geometry import normalize_descriptor
+    return normalize_descriptor(
+        {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": 1.49,
+            "width": 1.97,
+            "floor_z": 0.0,
+            "ceiling_z": 1.48,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.55,
+                "wall_y": 0.985,
+                "wall_z": 0.37,
+            },
+        }
+    )
+
+
+class TestGateG4Corridor(unittest.TestCase):
+    INNER = (1.49, 1.97, 1.48)
+    SMALL = (0.55, 0.40, 0.25)
+
+    def test_unsupported_opening_side_fails_closed(self):
+        ems = (0.2, -0.2, 0.0, 0.6, 0.2, 0.25)
+        with self.assertRaises(ValueError) as ctx:
+            corridor_blocked(
+                ems, [], self.INNER, self.SMALL, opening_side="positive_x"
+            )
+        self.assertIn("unsupported opening_side", str(ctx.exception))
+
+    def test_low_z_true_width_wall_blocks_without_nominal_span(self):
+        """A low-Z wall covering the eroded hull width blocks a deep EMS.
+
+        The wall does not reach +inner_w/2, so the legacy AABB-width test
+        would miss it.
+        """
+        geom = _scene_floor_geometry()
+        deep = (0.20, -0.40, 0.0, 0.65, 0.20, 0.25)
+        wall = (-0.74, -0.985, 0.0, -0.30, 0.55, 0.30)
+        self.assertTrue(
+            corridor_blocked(
+                deep, [wall], self.INNER, self.SMALL, geometry=geom
+            )
+        )
+        self.assertFalse(
+            corridor_blocked(
+                deep, [wall], self.INNER, self.SMALL
+            ),
+            "cuboid fallback must not treat a 0.55-max-y wall as full width",
+        )
+
+    def test_wedge_only_broad_phase_overlap_is_not_an_obstacle(self):
+        geom = _scene_floor_geometry()
+        deep = (0.20, -0.40, 0.0, 0.65, 0.20, 0.25)
+        wedge = (-0.70, 0.70, 0.0, -0.20, 0.98, 0.30)
+        self.assertFalse(
+            corridor_blocked(
+                deep, [wedge], self.INNER, self.SMALL, geometry=geom
+            )
+        )
+
+    def test_blocks_deep_space_uses_hull_volume(self):
+        geom = _scene_floor_geometry()
+        e = EMS(self.INNER, min_useful_edge=0.1)
+        wall = (-0.74, -0.985, 0.0, -0.30, 0.55, 0.30)
+        blocked, is_blocked = blocks_deep_space(
+            wall,
+            e,
+            [],
+            self.INNER,
+            self.SMALL,
+            v_min=self.SMALL[0] * self.SMALL[1] * self.SMALL[2],
+            geometry=geom,
+        )
+        self.assertTrue(is_blocked)
+        self.assertGreater(blocked, 0.0)
+        wedge = (-0.70, 0.70, 0.0, -0.20, 0.98, 0.30)
+        _, wedge_blocked = blocks_deep_space(
+            wedge,
+            e,
+            [],
+            self.INNER,
+            self.SMALL,
+            v_min=self.SMALL[0] * self.SMALL[1] * self.SMALL[2],
+            geometry=geom,
+            blocked_tol=0.5,
+        )
+        self.assertFalse(wedge_blocked)
+
+    def test_empty_eroded_interval_blocks_without_boxes(self):
+        """A payload that cannot occupy the carry Z fails closed with no ledger.
+
+        The empty-interval check used to live inside the box loop, so an empty
+        map returned False even when payload_center_y_interval inverted.
+        """
+        from luggage_description.container_geometry import (
+            payload_center_y_interval,
+        )
+        geom = _scene_floor_geometry()
+        too_wide = (0.40, 1.60, 0.25)
+        deep = (0.20, -0.40, 0.0, 0.65, 0.20, 0.25)
+        y_lo, y_hi = payload_center_y_interval(geom, too_wide, 0.0, 0.25)
+        self.assertLess(y_hi, y_lo)
+        self.assertTrue(
+            corridor_blocked(
+                deep, [], self.INNER, too_wide, geometry=geom
+            )
+        )
+        self.assertFalse(
+            corridor_blocked(
+                deep, [], self.INNER, self.SMALL, geometry=geom
+            )
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

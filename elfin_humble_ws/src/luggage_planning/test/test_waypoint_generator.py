@@ -10,6 +10,7 @@ from luggage_planning.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
     build_sequence,
+    geometry_frame_payload_yaw,
     insertion_clearance,
     pick_tool_yaw,
     segment_names_for_phase,
@@ -64,7 +65,8 @@ class TestWaypointGenerator(unittest.TestCase):
             "luggage_bringup", "launch", "active_loading.launch"))
         if not os.path.isfile(launch):
             self.skipTest("bringup launch not present")
-        text = open(launch).read()
+        with open(launch) as handle:
+            text = handle.read()
 
         def launch_default(name):
             match = re.search(
@@ -351,6 +353,120 @@ class TestCorridorClearance(unittest.TestCase):
         self.assertAlmostEqual(
             corridor_clearance(1.30, 0.30, 0.805, 0.15),
             1.30 + 0.30 + 0.05 - 0.805, places=9)
+
+
+class TestGateG4SweptPayload(unittest.TestCase):
+    def _geometry(self):
+        from luggage_description.container_geometry import normalize_descriptor
+        return normalize_descriptor(
+            {
+                "schema_version": 1,
+                "frame_id": "container_link",
+                "length": 1.49,
+                "width": 1.97,
+                "floor_z": 0.53,
+                "ceiling_z": 2.01,
+                "chamfer": {
+                    "side": "positive_y",
+                    "floor_y": 0.55,
+                    "wall_y": 0.985,
+                    "wall_z": 0.90,
+                },
+            }
+        )
+
+    def test_slanted_face_crossing_rejected_before_motion(self):
+        from luggage_planning.waypoint_generator import (
+            SWEPT_PAYLOAD_OUTSIDE_HULL,
+            build_sequence,
+            ensure_place_sweeps_inside_hull,
+        )
+        geom = self._geometry()
+        size = [0.20, 0.20, 0.20]
+        sweeps = [([-0.2, 0.45, 0.62], [0.2, 0.70, 0.62])]
+        with self.assertRaises(ValueError) as ctx:
+            ensure_place_sweeps_inside_hull(geom, sweeps, size)
+        self.assertIn(SWEPT_PAYLOAD_OUTSIDE_HULL, str(ctx.exception))
+        slot = Slot()
+        slot.width, slot.depth, slot.height = size
+        with self.assertRaises(ValueError) as ctx:
+            build_sequence(
+                Box(), slot, "place",
+                hull_geometry=geom,
+                payload_size=size,
+                place_sweeps=sweeps,
+            )
+        self.assertIn(SWEPT_PAYLOAD_OUTSIDE_HULL, str(ctx.exception))
+
+    def test_safe_center_side_and_stacked_sweeps_pass(self):
+        from luggage_planning.waypoint_generator import (
+            build_sequence,
+            ensure_place_sweeps_inside_hull,
+        )
+        geom = self._geometry()
+        size = [0.20, 0.20, 0.20]
+        cases = (
+            ([-0.54, 0.0, 1.20], [0.0, 0.0, 1.20]),
+            ([-0.54, -0.50, 1.20], [0.10, -0.50, 1.20]),
+            ([-0.54, 0.20, 1.50], [0.0, 0.20, 1.50]),
+        )
+        for start, end in cases:
+            ensure_place_sweeps_inside_hull(geom, [(start, end)], size)
+            slot = Slot()
+            slot.width, slot.depth, slot.height = size
+            segs = build_sequence(
+                Box(), slot, "place",
+                hull_geometry=geom,
+                payload_size=size,
+                place_sweeps=[(start, end)],
+            )
+            self.assertTrue(segs)
+
+    def test_rotated_container_uses_geometry_frame_yaw(self):
+        """World slot yaw is not the hull-sweep yaw when the container rotates.
+
+        A non-square payload at the chamfer is inside at geometry yaw 0 and
+        outside at pi/2. A world heading of pi/2 with the same container yaw
+        must still use geometry-frame 0.
+        """
+        from luggage_planning.waypoint_generator import (
+            SWEPT_PAYLOAD_OUTSIDE_HULL,
+            ensure_place_sweeps_inside_hull,
+        )
+        geom = self._geometry()
+        size = [0.50, 0.16, 0.20]
+        sweeps = [([-0.20, 0.55, 0.70], [0.10, 0.55, 0.70])]
+        ensure_place_sweeps_inside_hull(geom, sweeps, size, yaw=0.0)
+        with self.assertRaises(ValueError) as ctx:
+            ensure_place_sweeps_inside_hull(
+                geom, sweeps, size, yaw=math.pi / 2.0
+            )
+        self.assertIn(SWEPT_PAYLOAD_OUTSIDE_HULL, str(ctx.exception))
+        self.assertAlmostEqual(
+            geometry_frame_payload_yaw(math.pi / 2.0, math.pi / 2.0), 0.0
+        )
+        slot = Slot()
+        slot.width, slot.depth, slot.height = size
+        yaw = math.pi / 2.0
+        slot.place_pose.orientation = Quaternion(
+            x=0.0, y=0.0, z=math.sin(yaw * 0.5), w=math.cos(yaw * 0.5)
+        )
+        with self.assertRaises(ValueError) as ctx:
+            build_sequence(
+                Box(), slot, "place",
+                hull_geometry=geom,
+                payload_size=size,
+                place_sweeps=sweeps,
+            )
+        self.assertIn(SWEPT_PAYLOAD_OUTSIDE_HULL, str(ctx.exception))
+        segs = build_sequence(
+            Box(), slot, "place",
+            hull_geometry=geom,
+            payload_size=size,
+            place_sweeps=sweeps,
+            payload_yaw=0.0,
+        )
+        self.assertTrue(segs)
 
 
 if __name__ == "__main__":

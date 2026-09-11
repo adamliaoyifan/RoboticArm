@@ -26,6 +26,9 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import ColorRGBA, String
 from visualization_msgs.msg import Marker, MarkerArray
 
+from luggage_description.container_geometry import (
+    descriptor_from_scene_config,
+)
 from luggage_description.box_catalog_utils import (
     box_catalog_path_from_scene,
     box_size_range,
@@ -55,7 +58,9 @@ from luggage_planning import ros_message_adapters as adapters
 from luggage_planning.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
+    _yaw_from_quaternion,
     build_sequence,
+    geometry_frame_payload_yaw,
     staging_offset,
 )
 
@@ -126,6 +131,9 @@ class WaypointGeneratorNode(Node):
         ceiling_z = container_inner_ceiling_z(self._scene_config)
         self._inner_size = [
             float(inner[0]), float(inner[1]), float(ceiling_z - floor_z)]
+        self._geometry = descriptor_from_scene_config(self._scene_config)
+        opening = (self._scene_config.get("container") or {}).get("opening") or {}
+        self._opening_side = str(opening.get("side") or "negative_x")
         self._smallest_box = self._smallest_box_size()
         self._committed_boxes = []
 
@@ -187,6 +195,25 @@ class WaypointGeneratorNode(Node):
             ledger.append((list(center), list(size)))
         self._committed_boxes = ledger
 
+    def _place_sweeps_in_container(self, slot):
+        """Horizontal opening-to-slot sweep in the TCIG-1 geometry frame."""
+        pos = slot.place_pose.position
+        base = xyz_world_to_base_link(
+            self._scene_config, [pos.x, pos.y, pos.z])
+        local = _point_in_container_link(base, self._scene_config)
+        size = [
+            float(getattr(slot, "width", 0.0) or 0.0),
+            float(getattr(slot, "depth", 0.0) or 0.0),
+            float(getattr(slot, "height", 0.0) or 0.0),
+        ]
+        start = [
+            -self._geometry.half_x + size[0] * 0.5,
+            float(local[1]),
+            float(local[2]),
+        ]
+        end = [float(local[0]), float(local[1]), float(local[2])]
+        return size, [(start, end)]
+
     def _corridor_surface_max_world(self, slot):
         """Highest committed top along the opening corridor, world Z.
 
@@ -200,12 +227,20 @@ class WaypointGeneratorNode(Node):
         local = _point_in_container_link(base, self._scene_config)
         aabb = corridor_aabb(
             local, [slot.width, slot.depth, slot.height],
-            self._inner_size, self._smallest_box)
-        surface_local = corridor_surface_max(self._committed_boxes, aabb)
+            self._inner_size, self._smallest_box,
+            opening_side=self._opening_side)
+        surface_local = corridor_surface_max(
+            self._committed_boxes, aabb, geometry=self._geometry)
         if surface_local is None:
             return None
         origin, _rpy = origin_in_world(self._scene_config)
         return float(surface_local) + float(origin[2])
+
+    def _payload_yaw_in_container(self, slot):
+        """Slot heading in ``container_link``, matching place-sweep points."""
+        slot_yaw_world = _yaw_from_quaternion(slot.place_pose.orientation)
+        _xyz, rpy = origin_in_world(self._scene_config)
+        return geometry_frame_payload_yaw(slot_yaw_world, rpy[2])
 
     def _on_detection_frame(self, msg):
         stamp = (
@@ -320,8 +355,14 @@ class WaypointGeneratorNode(Node):
                 surface_max = self._corridor_surface_max_world(place_slot)
                 if surface_max is not None:
                     notes.append("corridor_surface_max=%.3f" % surface_max)
+                payload_size, place_sweeps = self._place_sweeps_in_container(
+                    place_slot)
+                payload_yaw = self._payload_yaw_in_container(place_slot)
             else:
                 surface_max = None
+                payload_size = None
+                place_sweeps = None
+                payload_yaw = None
             segments = build_sequence(
                 pick, place_slot, phase,
                 pick_clearances=self._clearances(),
@@ -329,7 +370,11 @@ class WaypointGeneratorNode(Node):
                     self.get_parameter("place_clearance_z").value),
                 opening_info=opening,
                 fallback_yaw=fallback_yaw,
-                corridor_surface_max=surface_max)
+                corridor_surface_max=surface_max,
+                hull_geometry=self._geometry if phase == "place" else None,
+                payload_size=payload_size,
+                place_sweeps=place_sweeps,
+                payload_yaw=payload_yaw)
             response.segments = [adapters.segment_to_msg(s) for s in segments]
             response.success = bool(segments)
             message = (

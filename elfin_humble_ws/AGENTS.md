@@ -6,7 +6,9 @@ Codex, others). Follow these files; do not invent a parallel log tree.
 1. **Role notes and workflow** — `docs/agents/README.md`
 2. **Exact document format** — `docs/agents/FORMAT.md`
 3. **Mailbox** — `docs/agents/discuss/OPEN.md` (read at session start)
-4. **Sim teardown** — `.cursor/rules/sim-lifecycle.mdc` and `scripts/stop_sim.sh`
+4. **Sim exclusivity and teardown** — `.cursor/rules/sim-lifecycle.mdc` and
+   `scripts/stop_sim.sh`. Only one Gazebo stack at a time; queue behind a
+   running sim instead of launching a second world.
 5. **Architecture** — `docs/architecture/` (normative; violations are defects)
 
 Cross-agent discussion is **file-based and asynchronous**: post or reply in

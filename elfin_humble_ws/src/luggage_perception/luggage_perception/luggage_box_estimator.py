@@ -172,29 +172,32 @@ def _refine_rectangle(points_2d, initial_yaw, search_deg=20.0, step_deg=0.25):
     PCA orientation and arithmetic-mean center are biased by perspective point
     density. Scanning a narrow angle band and using geometric projection bounds
     recovers the physical rectangle axes and center.
+
+    Search width, step, trim percentiles, compensation, and first-min-on-ties
+    match the previous per-yaw Python loop. The batched form is the same
+    arithmetic without 322 per-yaw ``np.percentile`` calls.
     """
-    best = None
+    pts = np.asarray(points_2d, dtype=np.float64)
     steps = int(round(2.0 * search_deg / step_deg)) + 1
-    for delta_deg in np.linspace(-search_deg, search_deg, steps):
-        yaw = initial_yaw + math.radians(float(delta_deg))
-        axis = np.array([math.cos(yaw), math.sin(yaw)])
-        side = np.array([-math.sin(yaw), math.cos(yaw)])
-        p0 = points_2d.dot(axis)
-        p1 = points_2d.dot(side)
-        lo0, hi0 = np.percentile(
-            p0, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
-        lo1, hi1 = np.percentile(
-            p1, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
-        extent0 = float(hi0 - lo0) * _RECT_TRIM_COMPENSATION
-        extent1 = float(hi1 - lo1) * _RECT_TRIM_COMPENSATION
-        score = extent0 * extent1
-        if best is None or score < best[0]:
-            # The center is the midpoint of the trimmed bounds; trimming is
-            # symmetric so it does not bias the center, only the extents.
-            center = axis * ((lo0 + hi0) * 0.5) + side * (
-                (lo1 + hi1) * 0.5)
-            best = (score, yaw, extent0, extent1, center)
-    return best[1], best[2], best[3], best[4]
+    deltas_deg = np.linspace(-search_deg, search_deg, steps)
+    yaws = float(initial_yaw) + np.deg2rad(deltas_deg)
+    cos_y = np.cos(yaws)
+    sin_y = np.sin(yaws)
+    axes = np.column_stack((cos_y, sin_y))
+    sides = np.column_stack((-sin_y, cos_y))
+    p0 = axes @ pts.T
+    p1 = sides @ pts.T
+    q = [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT]
+    lo0, hi0 = np.percentile(p0, q, axis=1)
+    lo1, hi1 = np.percentile(p1, q, axis=1)
+    extent0 = (hi0 - lo0) * _RECT_TRIM_COMPENSATION
+    extent1 = (hi1 - lo1) * _RECT_TRIM_COMPENSATION
+    idx = int(np.argmin(extent0 * extent1))
+    # Center is the midpoint of the trimmed bounds; trimming is symmetric
+    # so it does not bias the center, only the extents.
+    center = axes[idx] * ((lo0[idx] + hi0[idx]) * 0.5) + sides[idx] * (
+        (lo1[idx] + hi1[idx]) * 0.5)
+    return float(yaws[idx]), float(extent0[idx]), float(extent1[idx]), center
 
 
 # ---------------------------------------------------------------------------

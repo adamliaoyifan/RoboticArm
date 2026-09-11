@@ -1,0 +1,46 @@
+---
+description: Stop agent-started sims after tests; inspect dumps, not a live GUI
+alwaysApply: true
+---
+
+# Sim lifecycle (agent-run)
+
+After any sim or eval **this agent started**, stop the stack before ending
+the turn. Failures are already on disk under `docs/status/evidence/<run>/`
+(`dumps/`, `ledger.jsonl`, `suite.json`, `final_layout/`). Do not leave
+Gazebo / RViz / MoveIt occupying CPU or GPU for post-mortem.
+
+## Must
+
+- Agent evals: `gui:=false use_rviz:=false` and a dedicated `ROS_DOMAIN_ID`
+  (convention: `7`). Write the launch PID to
+  `/tmp/elfin_humble_sim.pid` (or `$ELFIN_SIM_PIDFILE`).
+- When the driver exits, run `scripts/stop_sim.sh`. That sends SIGINT to
+  `ros2 launch` (same as Ctrl+C), waits, then SIGTERM leftover PIDs.
+- Do not `pkill -f "ign gazebo"` (matches the calling shell). Do not
+  SIGKILL `rviz2` / `move_group` as the first step.
+- Do not keep a GUI sim up so a human can "see what happened". Open the
+  dump directory instead.
+
+## One sim at a time (queue for Gazebo)
+
+The Gazebo stack is an exclusive machine resource. Two worlds contend for the
+GPU, physics stepping, and `/clock`, so both runs produce untrustworthy timing
+and evidence.
+
+- Before launching, check for an existing stack:
+  `pgrep -af 'ros2 launch luggage_gazebo'` and `/tmp/elfin_humble_sim.pid`
+  (or `$ELFIN_SIM_PIDFILE`). If one is up, queue: wait for it to finish, or
+  ask the user. Never start a second world alongside it.
+- A separate `ROS_DOMAIN_ID` isolates the ROS graph, not GPU/CPU contention.
+  It is not permission to run a parallel sim.
+- Release the slot as soon as the driver exits: run `scripts/stop_sim.sh`
+  before writing notes or evidence, not after.
+- When several agents need sim time, serialize through the `discuss/` thread
+  that owns the run; do not race on `OPEN.md` rows.
+
+## Do not
+
+- Stop a sim the user launched and is still using.
+- Stop another agent's running sim to take the slot.
+- Run `--all` unless leftover dual-sim is the problem.

@@ -61,6 +61,49 @@ def pick_contact_top_z(pick):
         % FULL_GEOMETRY_REQUIRED)
 
 
+SWEPT_PAYLOAD_OUTSIDE_HULL = "swept_payload_outside_hull"
+
+
+def ensure_swept_payload_inside_hull(
+    geometry, start_center, end_center, size, yaw=0.0, margin=0.0
+):
+    """Reject a place path whose oriented payload leaves the inner hull.
+
+    Shared narrow-phase check with corridor_audit (TCIG-1 contains_swept_box).
+    ``geometry`` None skips the check so existing cuboid callers stay unchanged.
+    """
+    if geometry is None:
+        return
+    from luggage_description.container_geometry import (
+        contains_swept_box,
+        normalize_descriptor,
+        ContainerGeometry,
+    )
+
+    if isinstance(geometry, dict):
+        geom = normalize_descriptor(geometry)
+    elif isinstance(geometry, ContainerGeometry):
+        geom = geometry
+    else:
+        raise TypeError("hull geometry must be ContainerGeometry or dict")
+    if not contains_swept_box(
+        geom, start_center, end_center, size, yaw=yaw, margin=margin
+    ):
+        raise ValueError(SWEPT_PAYLOAD_OUTSIDE_HULL)
+
+
+def ensure_place_sweeps_inside_hull(geometry, sweeps, size, yaw=0.0, margin=0.0):
+    """Check each piecewise-linear place segment against the hull."""
+    if geometry is None:
+        return
+    if not sweeps:
+        raise ValueError("hull geometry requires place_sweeps")
+    for start_center, end_center in sweeps:
+        ensure_swept_payload_inside_hull(
+            geometry, start_center, end_center, size, yaw=yaw, margin=margin
+        )
+
+
 def corridor_clearance(corridor_surface_max, box_height, contact_z,
                        place_clearance_z, margin=DEFAULT_CORRIDOR_MARGIN):
     """Effective place clearance honoring the corridor surface height.
@@ -105,6 +148,16 @@ def _yaw_from_quaternion(q):
     siny_cosp = 2.0 * (q.w * q.z + q.x * q.y)
     cosy_cosp = 1.0 - 2.0 * (q.y * q.y + q.z * q.z)
     return math.atan2(siny_cosp, cosy_cosp)
+
+
+def geometry_frame_payload_yaw(slot_yaw_world, container_yaw_world):
+    """Payload yaw in ``container_link`` from world-frame Z yaws.
+
+    TCIG-1 ``contains_swept_box`` consumes points and yaw in one geometry
+    frame. Subtracting container yaw converts a world slot heading into that
+    frame when both rotations are about world Z (no platform tilt).
+    """
+    return float(slot_yaw_world) - float(container_yaw_world)
 
 
 def pick_tool_yaw(detected_yaw, yaw_valid, fallback_yaw=0.0):
@@ -168,7 +221,9 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
                    place_clearance_z=None, perception_info=None,
                    opening_info=None, fallback_yaw=0.0,
                    corridor_surface_max=None,
-                   corridor_margin=DEFAULT_CORRIDOR_MARGIN):
+                   corridor_margin=DEFAULT_CORRIDOR_MARGIN,
+                   hull_geometry=None, payload_size=None,
+                   place_sweeps=None, payload_yaw=None):
     """Build MotionSegment list for pick or place phase.
 
     Args:
@@ -193,6 +248,16 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             None keeps the single-slot fixed-clearance behavior.
         corridor_margin: clearance kept between the payload bottom and the
             corridor surface when raising heights.
+        hull_geometry: optional TCIG-1 descriptor. When set, ``place_sweeps``
+            and ``payload_size`` are required and each segment is checked
+            with contains_swept_box before any motion segment is returned.
+        payload_size: oriented box extents for the hull sweep.
+        place_sweeps: iterable of (start_center, end_center) in the geometry
+            frame.
+        payload_yaw: yaw in the hull geometry frame. Required for a rotated
+            container: world-frame slot yaw is the wrong footprint. Defaults
+            to the slot yaw only when the caller has already expressed the
+            slot in the geometry frame (identity world/container yaw).
 
     Returns:
         list[MotionSegment]
@@ -260,6 +325,18 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             float(getattr(place_slot, "height", 0.0)
                   or getattr(pick, "height", 0.0)),
         )
+        if hull_geometry is not None:
+            size = payload_size
+            if size is None:
+                size = [
+                    float(getattr(place_slot, "width", 0.0) or 0.0),
+                    float(getattr(place_slot, "depth", 0.0) or 0.0),
+                    float(box_height),
+                ]
+            yaw = slot_yaw if payload_yaw is None else float(payload_yaw)
+            ensure_place_sweeps_inside_hull(
+                hull_geometry, place_sweeps, size, yaw=yaw
+            )
         contact_z = slot_pose.position.z + box_height * 0.5
         if place_clearance_z is None:
             place_clearance_z = DEFAULT_PLACE_CLEARANCE_Z

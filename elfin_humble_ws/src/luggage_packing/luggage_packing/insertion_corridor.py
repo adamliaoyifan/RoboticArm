@@ -4,87 +4,191 @@
 P2 of the online-packing redesign (design §5.5, §5.7). Pure Python, no ROS.
 
   - ``corridor_blocked``: is an EMS unreachable from the opening for a box of
-    the smallest catalog size? (conservative AABB sweep along the opening axis)
-  - ``blocks_deep_space``: volume of useful EMS that becomes unreachable after
-    placing a candidate box. > tol -> reject (the classic greedy failure mode
-    of walling off the deep interior).
-  - ``proxy_score``: the §5.7 degraded weighted heuristic (used when the
-    rollout V̂ budget is exhausted). ``ems_regularity`` carries the highest
-    weight because it is the best closed-form proxy for V̂.
+    the smallest catalog size? Broad-phase AABB plus hull-eroded Y coverage.
+  - ``blocks_deep_space``: hull-clipped volume of useful EMS that becomes
+    unreachable after placing a candidate box. > tol -> reject.
+  - ``proxy_score``: the §5.7 degraded weighted heuristic.
 
-Coordinates are floor-relative (X/Y in [-inner/2, +inner/2], Z in [0, inner_h]).
+Coordinates are floor-relative (X/Y in [-inner/2, +inner/2], Z in [0, inner_h])
+when ``geometry`` is omitted. Callers that pass a TCIG-1 descriptor must use
+the same frame as that descriptor. Corridor AABBs are broad-phase only.
 """
 
 from __future__ import division
 
-import math
-
-from luggage_packing.ems import volume
-
-
-def _aabb_overlap(a, b):
-    return (a[0] < b[3] and a[3] > b[0] and
-            a[1] < b[4] and a[4] > b[1] and
-            a[2] < b[5] and a[5] > b[2])
-
-
-def _corridor_to(ems, inner_size, smallest_size, opening_side="negative_x"):
-    """AABB of the horizontal corridor from the opening to the EMS near face."""
-    inner_l, inner_w, inner_h = inner_size
-    ex0, ey0, ez0, ex1, ey1, ez1 = ems
-    sw, sd = smallest_size[0], smallest_size[1]
-    if opening_side == "negative_x":
-        cx0, cx1 = -inner_l * 0.5, ex0
-        cy0, cy1 = ey0 - sd * 0.5, ey1 + sd * 0.5
-        cz0, cz1 = ez0, ez1
-    else:  # future: positive_x / side openings
-        cx0, cx1 = ex1, inner_l * 0.5
-        cy0, cy1 = ey0 - sd * 0.5, ey1 + sd * 0.5
-        cz0, cz1 = ez0, ez1
-    return (cx0, cy0, cz0, cx1, cy1, cz1)
+from luggage_description.container_geometry import (
+    ContainerGeometry,
+    aabb_intersection_volume,
+    contains_swept_box,
+    normalize_descriptor,
+    payload_center_y_interval,
+    volume as hull_volume,
+)
 
 
-def corridor_blocked(ems, boxes, inner_size, smallest_size,
-                      opening_side="negative_x"):
-    """Is the EMS's opening corridor walled off by a placed box?
+SUPPORTED_OPENING_SIDE = "negative_x"
+WALL_Y_SLOP = 1e-3
+HULL_VOLUME_EPS = 1e-9
 
-    Conservative "wall" detection: a single box blocks the corridor only if it
-    intersects the corridor's x-range AND spans the *full container width* in Y
-    (so a box cannot pass around it in Y). Partial-width boxes do not wall off
-    the deep interior. Multi-box walls are not detected (P2 simplification).
+
+def require_opening_side(opening_side):
+    """Fail closed unless the opening is the supported -X portal."""
+    if opening_side != SUPPORTED_OPENING_SIDE:
+        raise ValueError(
+            "unsupported opening_side: %r (supported: %s)"
+            % (opening_side, SUPPORTED_OPENING_SIDE)
+        )
+
+
+def geometry_from_inner_size(inner_size):
+    """Cuboid fallback: omission of chamfer is a valid rectangular hull."""
+    inner_l, inner_w, inner_h = [float(value) for value in inner_size]
+    if inner_l <= 0.0 or inner_w <= 0.0 or inner_h <= 0.0:
+        raise ValueError("inner_size values must be positive")
+    return normalize_descriptor(
+        {
+            "schema_version": 1,
+            "frame_id": "container_link",
+            "length": inner_l,
+            "width": inner_w,
+            "floor_z": 0.0,
+            "ceiling_z": inner_h,
+        }
+    )
+
+
+def resolve_geometry(geometry, inner_size):
+    """Return a TCIG-1 descriptor; reject inner_size / descriptor mismatches."""
+    inner_l, inner_w, inner_h = [float(value) for value in inner_size]
+    if geometry is None:
+        return geometry_from_inner_size(inner_size)
+    if isinstance(geometry, dict):
+        geom = normalize_descriptor(geometry)
+    elif isinstance(geometry, ContainerGeometry):
+        geom = geometry
+    else:
+        raise TypeError("geometry must be ContainerGeometry, dict, or None")
+    if abs(geom.length - inner_l) > 1e-6 or abs(geom.width - inner_w) > 1e-6:
+        raise ValueError("geometry descriptor does not match inner_size XY")
+    height = geom.ceiling_z - geom.floor_z
+    if abs(height - inner_h) > 1e-6:
+        raise ValueError("geometry descriptor does not match inner_size height")
+    return geom
+
+
+def corridor_aabb_from_target(
+    target_aabb, inner_size, smallest_size, opening_side=SUPPORTED_OPENING_SIDE
+):
+    """Broad-phase AABB from the -X opening plane to the target near face."""
+    require_opening_side(opening_side)
+    inner_l = float(inner_size[0])
+    ex0, ey0, ez0, ex1, ey1, ez1 = [float(value) for value in target_aabb]
+    del ex1
+    sd = float(smallest_size[1])
+    return (
+        -inner_l * 0.5,
+        ey0 - sd * 0.5,
+        ez0,
+        ex0,
+        ey1 + sd * 0.5,
+        ez1,
+    )
+
+
+def _corridor_to(ems, inner_size, smallest_size, opening_side=SUPPORTED_OPENING_SIDE):
+    return corridor_aabb_from_target(ems, inner_size, smallest_size, opening_side)
+
+
+def box_overlaps_usable_hull(geometry, box):
+    """True when the AABB occupies a positive hull-clipped volume."""
+    return (
+        aabb_intersection_volume(geometry, box[:3], box[3:]) > HULL_VOLUME_EPS
+    )
+
+
+def swept_payload_inside_hull(
+    geometry, start_center, end_center, size, yaw=0.0, margin=0.0
+):
+    """Narrow-phase swept-box hull check (TCIG-1 primitive)."""
+    return contains_swept_box(
+        geometry,
+        start_center,
+        end_center,
+        size,
+        yaw=yaw,
+        margin=margin,
+    )
+
+
+def corridor_blocked(
+    ems,
+    boxes,
+    inner_size,
+    smallest_size,
+    opening_side=SUPPORTED_OPENING_SIDE,
+    geometry=None,
+    payload_yaw=0.0,
+):
+    """Is the EMS opening corridor walled off by a placed box?
+
+    Conservative single-box wall: the box intersects the corridor X/Z band,
+    occupies usable hull (wedge-only AABB overlap is ignored), and spans the
+    payload-center Y interval eroded from the hull at the carry Z range.
     """
+    require_opening_side(opening_side)
+    geom = resolve_geometry(geometry, inner_size)
     corridor = _corridor_to(ems, inner_size, smallest_size, opening_side)
     cx0, _cy0, cz0, cx1, _cy1, cz1 = corridor
-    inner_w = inner_size[1]
-    full_y_min, full_y_max = -inner_w * 0.5, inner_w * 0.5
-    for b in boxes:
-        # Box must be in the corridor's x-range and overlap its z-range.
-        if not (b[0] < cx1 and b[3] > cx0 and b[2] < cz1 and b[5] > cz0):
+    y_lo, y_hi = payload_center_y_interval(
+        geom, smallest_size, cz0, cz1, yaw=float(payload_yaw)
+    )
+    # Empty eroded interval: the payload cannot occupy this carry Z even with
+    # no placed boxes. Fail closed before the ledger loop so an empty map
+    # cannot look feasible.
+    if y_hi + WALL_Y_SLOP < y_lo:
+        return True
+    for box in boxes:
+        if not (box[0] < cx1 and box[3] > cx0 and box[2] < cz1 and box[5] > cz0):
             continue
-        # Wall: spans the full container Y width at this x/z.
-        # Wall: spans the full container Y width at this x/z.
-        # 1 mm slop: yaw quantization / catalog width == inner_w.
-        if b[1] <= full_y_min + 1e-3 and b[4] >= full_y_max - 1e-3:
+        if not box_overlaps_usable_hull(geom, box):
+            continue
+        if box[1] <= y_lo + WALL_Y_SLOP and box[4] >= y_hi - WALL_Y_SLOP:
             return True
     return False
 
 
-def blocks_deep_space(cand_box, ems, boxes, inner_size, smallest_size,
-                      v_min, blocked_tol=0.02, opening_side="negative_x"):
-    """Volume of useful EMS blocked from the opening by placing ``cand_box``.
-
-    Computes the EMS list *after* placing the candidate (non-mutating), then
-    checks each useful EMS (volume >= v_min) for corridor reachability.
-    Returns (blocked_volume, is_blocked) where is_blocked = blocked_volume > tol.
-    """
+def blocks_deep_space(
+    cand_box,
+    ems,
+    boxes,
+    inner_size,
+    smallest_size,
+    v_min,
+    blocked_tol=0.02,
+    opening_side=SUPPORTED_OPENING_SIDE,
+    geometry=None,
+    payload_yaw=0.0,
+):
+    """Hull-clipped volume of useful EMS blocked from the opening by cand_box."""
+    require_opening_side(opening_side)
+    geom = resolve_geometry(geometry, inner_size)
     ems_after = ems.ems_after(cand_box)
     all_boxes = list(boxes) + [cand_box]
     blocked = 0.0
     for space in ems_after.spaces:
-        if volume(space) < v_min:
+        hull_v = aabb_intersection_volume(geom, space[:3], space[3:])
+        if hull_v < v_min:
             continue
-        if corridor_blocked(space, all_boxes, inner_size, smallest_size, opening_side):
-            blocked += volume(space)
+        if corridor_blocked(
+            space,
+            all_boxes,
+            inner_size,
+            smallest_size,
+            opening_side,
+            geometry=geom,
+            payload_yaw=payload_yaw,
+        ):
+            blocked += hull_v
     return blocked, blocked > blocked_tol
 
 
@@ -104,10 +208,21 @@ _PROXY_WEIGHTS = {
 }
 
 
-def proxy_score(cand, model, ems, inner_size, smallest_size,
-                reachability_prior=0.5, opening_side="negative_x"):
+def proxy_score(
+    cand,
+    model,
+    ems,
+    inner_size,
+    smallest_size,
+    reachability_prior=0.5,
+    opening_side=SUPPORTED_OPENING_SIDE,
+    geometry=None,
+    payload_yaw=0.0,
+):
     """§5.7 weighted proxy for V̂. Returns (score, breakdown dict)."""
-    inner_l, inner_w, inner_h = inner_size
+    require_opening_side(opening_side)
+    geom = resolve_geometry(geometry, inner_size)
+    inner_h = float(inner_size[2])
     peak = cand.get("peak", 0.0)
     box_l, box_w, box_h = cand["size"]
     v_min = smallest_size[0] * smallest_size[1] * smallest_size[2]
@@ -119,20 +234,39 @@ def proxy_score(cand, model, ems, inner_size, smallest_size,
     # wrong corridor.
     lx, ly = cand["center_local"][0], cand["center_local"][1]
     lz_floor = peak + box_h * 0.5
-    cand_box = (lx - box_l * 0.5, ly - box_w * 0.5, lz_floor - box_h * 0.5,
-                lx + box_l * 0.5, ly + box_w * 0.5, lz_floor + box_h * 0.5)
-    boxes = [(b["x0"], b["y0"], b["z0"], b["x1"], b["y1"], b["z1"]) for b in model.boxes]
+    cand_box = (
+        lx - box_l * 0.5,
+        ly - box_w * 0.5,
+        lz_floor - box_h * 0.5,
+        lx + box_l * 0.5,
+        ly + box_w * 0.5,
+        lz_floor + box_h * 0.5,
+    )
+    boxes = [
+        (b["x0"], b["y0"], b["z0"], b["x1"], b["y1"], b["z1"])
+        for b in model.boxes
+    ]
     blocked_v, _ = blocks_deep_space(
-        cand_box, ems, boxes, inner_size, smallest_size, v_min,
-        opening_side=opening_side)
+        cand_box,
+        ems,
+        boxes,
+        inner_size,
+        smallest_size,
+        v_min,
+        opening_side=opening_side,
+        geometry=geom,
+        payload_yaw=payload_yaw,
+    )
 
     ems_reg = ems.regularity()
     compactness = 1.0 - min(1.0, peak / max(inner_h, 1e-9))
-    clearance = max(0.0, min(1.0, cand.get("clearance_top", 0.0) / max(box_h, 1e-9)))
+    clearance = max(
+        0.0, min(1.0, cand.get("clearance_top", 0.0) / max(box_h, 1e-9))
+    )
     conf = cand.get("confidence_ratio", 0.0)
     support_q = 1.0 if cand.get("support_source", "sensor") != "floor_prior" else 0.5
     cog_height = peak / max(inner_h, 1e-9)
-    v_ref = inner_l * inner_w * inner_h
+    v_ref = hull_volume(geom)
     blocked_ratio = blocked_v / max(v_ref, 1e-9)
 
     w = _PROXY_WEIGHTS

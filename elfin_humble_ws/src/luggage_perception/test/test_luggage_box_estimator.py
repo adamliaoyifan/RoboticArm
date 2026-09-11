@@ -12,12 +12,39 @@ import numpy as np
 
 from luggage_perception.luggage_box_estimator import (  # noqa: E402
     BoxEstimate,
+    _RECT_TRIM_COMPENSATION,
+    _RECT_TRIM_PERCENT,
     _pca_rectangle,
     _refine_rectangle,
     estimate_box,
     match_catalog,
     yaw_valid_from_eigen_ratio,
 )
+
+
+def _refine_rectangle_loop(points_2d, initial_yaw, search_deg=20.0,
+                           step_deg=0.25):
+    """Pre-vectorization per-yaw loop; used only as an equivalence oracle."""
+    best = None
+    steps = int(round(2.0 * search_deg / step_deg)) + 1
+    for delta_deg in np.linspace(-search_deg, search_deg, steps):
+        yaw = initial_yaw + math.radians(float(delta_deg))
+        axis = np.array([math.cos(yaw), math.sin(yaw)])
+        side = np.array([-math.sin(yaw), math.cos(yaw)])
+        p0 = points_2d.dot(axis)
+        p1 = points_2d.dot(side)
+        lo0, hi0 = np.percentile(
+            p0, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
+        lo1, hi1 = np.percentile(
+            p1, [_RECT_TRIM_PERCENT, 100.0 - _RECT_TRIM_PERCENT])
+        extent0 = float(hi0 - lo0) * _RECT_TRIM_COMPENSATION
+        extent1 = float(hi1 - lo1) * _RECT_TRIM_COMPENSATION
+        score = extent0 * extent1
+        if best is None or score < best[0]:
+            center = axis * ((lo0 + hi0) * 0.5) + side * (
+                (lo1 + hi1) * 0.5)
+            best = (score, yaw, extent0, extent1, center)
+    return best[1], best[2], best[3], best[4]
 
 
 def _synthetic_box_cloud(cx, cy, platform_z, width, depth, height, yaw,
@@ -101,6 +128,25 @@ class TestEstimateBoxBasic(unittest.TestCase):
         self.assertLess(error, math.radians(1.0))
         self.assertAlmostEqual(center[0], -1.0, delta=0.02)
         self.assertAlmostEqual(center[1], 0.1, delta=0.02)
+
+    def test_vectorized_refine_matches_loop(self):
+        rng = np.random.RandomState(21)
+        for seed_yaw in (0.0, 0.31, -0.47, 1.2):
+            points = np.column_stack((
+                rng.uniform(-0.4, 0.4, 2500),
+                rng.uniform(-0.25, 0.25, 2500),
+            ))
+            dense = np.column_stack((
+                rng.normal(0.28, 0.03, 400),
+                rng.normal(0.16, 0.03, 400),
+            ))
+            points = np.vstack((points, dense))
+            loop = _refine_rectangle_loop(points, seed_yaw)
+            batched = _refine_rectangle(points, seed_yaw)
+            self.assertAlmostEqual(loop[0], batched[0], places=12)
+            self.assertAlmostEqual(loop[1], batched[1], places=12)
+            self.assertAlmostEqual(loop[2], batched[2], places=12)
+            np.testing.assert_allclose(loop[3], batched[3], rtol=0, atol=1e-12)
 
     """Basic estimation on a clean synthetic top surface."""
 

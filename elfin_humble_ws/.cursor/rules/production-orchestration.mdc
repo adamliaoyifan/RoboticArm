@@ -1,0 +1,30 @@
+---
+description: Production orchestration authorization, request correlation, and ROS-free contracts
+globs: src/luggage_planning/**,src/luggage_bringup/**,src/luggage_msgs/**,src/luggage_gazebo/**
+alwaysApply: false
+---
+
+# Production orchestration
+
+Full contract: `docs/architecture/production_orchestration.md`.
+
+## Must
+
+- Start in `WAIT_START`. Launch, activation, readiness, sensor, timer, `run`,
+  and `step` events must not emit motion, vacuum, or detection effects.
+- Require an explicit operator `start` command before initial cargo-map reset,
+  exploration, return to `pick_observe_pose`, and pickup-ready prompting.
+- Correlate pickup-ready messages by exact current request ID and schema
+  version. Missing, stale, duplicate, malformed, or wrong-ID confirmations must
+  fail closed without motion or detection.
+- Keep operator prompt and pickup-ready payloads free of box geometry, pose,
+  identity, dimensions, and simulation truth.
+- Keep the orchestration reducer and exploration policy contracts ROS-free:
+  no ROS calls, sleeps, YAML reads, TF lookups, Gazebo state, or motion
+  execution.
+- Represent side effects declaratively and mark motion, vacuum, and detection
+  capabilities explicitly for tests.
+- Preserve vacuum on carrying faults until explicit recovery confirms payload
+  release.
+- Keep simulation/hardware parity. Production code must not branch on
+  `sim_mode`, consume GT, or use fake success paths.
