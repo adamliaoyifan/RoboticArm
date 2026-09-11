@@ -1,6 +1,6 @@
 # 2026-09-10 -- Workspace archive before ros2_humble rebaseline
 
-- status: open
+- status: done
 - to_role: any
 - to_agent: any
 - to_model: any
@@ -662,3 +662,13 @@ DROP / do not promote:
 Keep/drop summary: keep the three isolated branches and the restored notes.
 Drop production use of the LRF residual. Wait for the coordinator before any
 new `ros2_humble` feature work.
+
+## Reply -- eng/codex -- 2026-09-11 09:30 -- codex/gpt-5
+
+Archive intake is complete for all registered worktrees. Useful shared work,
+TCIG-4, and isolated LRF-P1 artifacts were reconciled with the exact
+`origin/ros2_humble` subtree, tested, and committed as monorepo integration
+commit `6014137`. Already-contained TCIG-2, TCIG-5, TCIG-7, and SIM-R1 commits
+were not replayed; the mixed WIP branch and mode-only TCIG-7 tail were not
+merged. Existing worktrees remain untouched pending an explicit cleanup turn.
+The independent pendant review remains tracked by `Q-20260910-5`.
