@@ -28,6 +28,9 @@
   <exec_depend>livox_ros_driver2</exec_depend>
   <exec_depend>ros2launch</exec_depend>
   <exec_depend>ros2bag</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>elfin_description</exec_depend>
+  <exec_depend>luggage_description</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>
