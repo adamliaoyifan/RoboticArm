@@ -1,6 +1,0 @@
-{"trial": 0, "box_id": "pickup_box_0001_carryon", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}
-{"trial": 1, "box_id": "pickup_box_0002_standard", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}
-{"trial": 2, "box_id": "pickup_box_0003_large", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}
-{"trial": 3, "box_id": "pickup_box_0004_carryon", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}
-{"trial": 4, "box_id": "pickup_box_0005_standard", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}
-{"trial": 5, "box_id": "pickup_box_0006_large", "spawn_ok": true, "top_surface_valid": false, "height_valid": false, "message": "no detection_frame during settle window"}

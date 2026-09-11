@@ -1,9 +1,0 @@
- .../config/semantic_segmenter.yaml                 |   1 +
- .../luggage_perception/platform_free_pipeline.py   |  23 ++-
- .../luggage_perception/semantic_point_filter.py    |  26 ++++
- .../luggage_perception/top_support_estimator.py    |  53 ++++++-
- .../scripts/luggage_detector_node.py               | 113 +++++++++++++--
- .../scripts/semantic_point_filter_node.py          |  97 ++++++++++++-
- src/luggage_perception/scripts/stage_perf_probe.py | 156 ++++++++++++++-------
- .../test/test_semantic_point_filter.py             |  16 +++
- 8 files changed, 410 insertions(+), 75 deletions(-)

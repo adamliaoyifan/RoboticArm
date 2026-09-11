@@ -1,7 +1,0 @@
-tested_commit=40ab61ca0f6d5237f26091d946c05227bb6fc468
-dirty_count=10
-captured_at=2026-09-08T19:51:32+08:00
-hostname=adamliao-ThinkPad-T14p-Gen-3
-ROS_DISTRO=jazzy
-ROS_DOMAIN_ID=7
-uname=Linux adamliao-ThinkPad-T14p-Gen-3 6.17.0-35-generic #35~24.04.1-Ubuntu SMP PREEMPT_DYNAMIC Tue May 26 19:30:42 UTC 2 x86_64 x86_64 x86_64 GNU/Linux

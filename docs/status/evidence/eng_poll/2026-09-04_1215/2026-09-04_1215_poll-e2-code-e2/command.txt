@@ -1,1 +1,0 @@
-builtin:e2_pipeline_smoke
