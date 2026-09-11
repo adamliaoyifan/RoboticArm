@@ -60,6 +60,18 @@ def generate_launch_description():
             }
         ],
     )
+    scene_assets = Node(
+        package="luggage_description",
+        executable="scene_assets_node",
+        name="scene_assets",
+        output="screen",
+        parameters=[
+            {
+                "scene_tf_config": scene_tf_config,
+                "use_sim_time": use_sim_time,
+            }
+        ],
+    )
     rsp = Node(
         package="robot_state_publisher",
         executable="robot_state_publisher",
@@ -100,10 +112,13 @@ def generate_launch_description():
                 msg=(
                     "[scene_hardware] No Gazebo, no zero joints. "
                     "Expect /joint_states from cps_telemetry or jazzy_real. "
+                    "Publishes world→elfin_base_link (URDF) + container TF + "
+                    "/luggage/debug/scene_assets. "
                     "Replace scene_tf.yaml with measured site values."
                 )
             ),
             publisher,
+            scene_assets,
             rsp,
             rviz,
         ]

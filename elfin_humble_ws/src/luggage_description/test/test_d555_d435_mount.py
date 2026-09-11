@@ -22,9 +22,12 @@ class TestD555UsesD435Extrinsics(unittest.TestCase):
         with open(CAM, encoding="utf-8") as handle:
             text = handle.read()
         self.assertIn('name="cam_mount_parent" value="eef_mount_adapter"', text)
-        self.assertIn('name="cam_mount_xyz" value="0.013000 0.097000 -0.021000"', text)
         self.assertIn(
-            'name="cam_mount_rpy" value="0.03769911 1.36345121 1.57079633"',
+            'name="cam_mount_xyz" value="-0.028833 0.107910 -0.077120"',
+            text,
+        )
+        self.assertIn(
+            'name="cam_mount_rpy" value="-0.01784105 1.39066481 1.56765511"',
             text,
         )
 

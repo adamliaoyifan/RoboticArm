@@ -27,13 +27,20 @@ if(EXISTS "${_gz_models}/suction_panel/collision")
   install(DIRECTORY "${_gz_models}/suction_panel/collision/"
     DESTINATION share/${PROJECT_NAME}/meshes/suction_panel)
 endif()
+if(EXISTS "${_gz_models}/airport_container_real/meshes/container_visual.stl")
+  install(DIRECTORY "${_gz_models}/airport_container_real/meshes/"
+    DESTINATION share/${PROJECT_NAME}/meshes/airport_container_real)
+endif()
 
 install(PROGRAMS
   scripts/container_tf_publisher
+  scripts/scene_assets_node
   scripts/xacro_robot_with_scene_base
   scripts/zero_joint_state_publisher
   scripts/generate_sized_suitcases.py
   scripts/he1_d555_cad_seed.py
+  scripts/write_handeye_layer3.py
+  scripts/align_livox_to_d555.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

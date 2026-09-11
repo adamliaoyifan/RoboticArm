@@ -1,5 +1,4 @@
 <?xml version="1.0"?>
-<!-- mid360_mount from D555-referenced ICP 2026-09-11, mount xyz 0.01 0.13 0.015 m. Camera Layer 3 is the reference. livox_optical/IMU stay handbook. CAD pad was 0.022 0.103 0.038 / 0 pi/2 pi/2. -->
 <!-- Mid-360S frames (Livox Mid-360 / Mid-360S user manual).
 
      livox_frame (point-cloud / ROS header):
@@ -19,8 +18,8 @@
        heading as camera_link +X). Optical centre is still +47 mm along
        mount Z from the plate (handbook). -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
-  <xacro:property name="mid360_mount_xyz" value="0.010000 0.130000 0.015000"/>
-  <xacro:property name="mid360_mount_rpy" value="0.16221799 1.63740799 1.77427038"/>
+  <xacro:property name="mid360_mount_xyz" value="0.022 0.103 0.038"/>
+  <xacro:property name="mid360_mount_rpy" value="0 1.57079633 1.57079633"/>
   <!-- Base of the sensor -> livox_frame (optical / point-cloud origin). -->
   <xacro:property name="livox_optical_xyz" value="0.000 0.000 0.047"/>
   <xacro:property name="livox_optical_rpy" value="0 0 0"/>
