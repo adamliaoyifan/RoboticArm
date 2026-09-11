@@ -294,12 +294,16 @@ def drop_unraised_cargo_sel(depth_image, cargo_sel, blocked=None,
     cargo_v = cargo & valid
     if int(cargo_v.sum()) < 20:
         return cargo, stats
+    cargo_med = float(np.median(z[cargo_v]))
+    far_scene = float(np.percentile(z[valid], 90))
+    if cargo_med >= far_scene - float(raise_mm):
+        stats["cargo_unraised_drop"] = 1
+        return np.zeros(cargo.shape, dtype=bool), stats
     ring = _expand_bbox_mask(cargo, int(ring_px)) & valid & ~cargo_v
     if blocked is not None:
         ring = ring & ~np.asarray(blocked, dtype=bool)
     if int(ring.sum()) < 20:
         return cargo, stats
-    cargo_med = float(np.median(z[cargo_v]))
     ring_far = float(np.percentile(z[ring], 75))
     if cargo_med + float(raise_mm) <= ring_far:
         return cargo, stats

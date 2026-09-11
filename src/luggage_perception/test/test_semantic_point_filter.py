@@ -441,6 +441,17 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertEqual(stats["cargo_unraised_drop"], 1)
         self.assertFalse(out.any())
 
+    def test_drops_large_far_surface_mask(self):
+        from luggage_perception.semantic_point_filter import (
+            drop_unraised_cargo_sel)
+        h, w = 40, 40
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        cargo = np.ones((h, w), dtype=bool)
+        cargo[0:2, :] = False
+        out, stats = drop_unraised_cargo_sel(depth, cargo, raise_mm=50)
+        self.assertEqual(stats["cargo_unraised_drop"], 1)
+        self.assertFalse(out.any())
+
     def test_keeps_raised_lid(self):
         from luggage_perception.semantic_point_filter import (
             drop_unraised_cargo_sel)

@@ -167,7 +167,7 @@ semantic_point_filter:
     # lid. 0 keeps the seed AABB only. A mask that is not at least
     # cargo_grow_raise_mm closer than its surrounding ring is cleared so
     # a platform patch cannot be reported as a valid top.
-    cargo_grow_search_radius_px: 140
+    cargo_grow_search_radius_px: 400
     cargo_grow_raise_mm: 50
     # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
     # callback (~60-70 Hz json.dumps inside the join's callback group).
