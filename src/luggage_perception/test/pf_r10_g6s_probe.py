@@ -12,12 +12,13 @@ wall-clock timestamps, every quantity the C2 rules make decidable:
   from `/luggage/preprocessed/status`, filter join buffers from the filter
   stats, detector raw-join buffer from `/luggage_detector/stream_stats_json`;
 - per-node RSS of the four online perception processes, sampled from
-  /proc/<pid>/status at --rss-hz.
+  /proc/<pid>/status at --rss-hz, each labelled with current-box generation,
+  luggage size, and scored occurrence.
 
 Writes `<out>/g6s_raw.json` (series) and `<out>/g6s_summary.json`
-(threshold verdicts). Quartiles Q1/Q4 are time quartiles of the scored
-window: samples whose timestamp falls in the first / last 25 % of the
-run, per the PF-R10 C2 definition. The C1 quantities themselves
+(threshold verdicts). Raw RSS first/last/min/max, Q1/Q4, and mixed-size
+slope are diagnostics only. The C2 growth gate is the size-controlled
+time coefficient ``beta`` on settled labelled samples. The C1 quantities
 (`active_output_hz`, gate4 rates) come from the gate4 eval summary, not
 from this probe.
 """
@@ -33,9 +34,10 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
@@ -60,6 +62,11 @@ PENDING_WORK_BUFFERS = (
     "filter.depth", "filter.mask", "filter.instance",
     "filter.exact_join_candidates", "detector.raw_buffer",
 )
+
+CATALOG_SIZE_IDS = ("carryon", "standard", "large")
+RSS_GROWTH_BETA_LIMIT = 2.0
+MIN_OCCURRENCES_PER_SIZE = 2
+MIN_SAMPLES_PER_OCCURRENCE = 10
 
 
 def resolve_pids():
@@ -124,13 +131,198 @@ def lsq_slope(values):
     return sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / denom
 
 
+def parse_box_dict(payload):
+    """Return a dict from a ``/luggage/current_box`` JSON payload."""
+    if not payload:
+        return {}
+    if isinstance(payload, dict):
+        return payload if payload else {}
+    try:
+        data = json.loads(payload)
+    except (TypeError, ValueError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def luggage_size_label(payload):
+    """Catalog size id, or a rounded WxDxH string for a non-empty box."""
+    data = parse_box_dict(payload)
+    box_id = str(data.get("id") or data.get("model_name") or "")
+    if not box_id:
+        return ""
+    lower = box_id.lower()
+    for name in CATALOG_SIZE_IDS:
+        if lower == name or lower.endswith("_" + name):
+            return name
+    width, depth, height = data.get("width"), data.get("depth"), data.get("height")
+    if all(isinstance(v, (int, float)) for v in (width, depth, height)):
+        return "%.3fx%.3fx%.3f" % (float(width), float(depth), float(height))
+    return box_id
+
+
+class CurrentBoxLabeler:
+    """Track generation, size, and per-size scored occurrence index."""
+
+    def __init__(self):
+        self.generation = 0
+        self.size = ""
+        self.occurrence = 0
+        self.occurrences = {}
+
+    def update(self, payload):
+        data = parse_box_dict(payload)
+        try:
+            generation = int(data.get("generation") or 0)
+        except (TypeError, ValueError):
+            generation = 0
+        size = luggage_size_label(data)
+        if generation != self.generation or size != self.size:
+            self.generation = generation
+            self.size = size
+            if size:
+                self.occurrences[size] = int(self.occurrences.get(size) or 0) + 1
+                self.occurrence = self.occurrences[size]
+            else:
+                self.occurrence = 0
+        return self.snapshot()
+
+    def snapshot(self):
+        return {
+            "generation": int(self.generation),
+            "size": str(self.size or ""),
+            "occurrence": (int(self.occurrence) if self.size else None),
+        }
+
+
+def labelled_rss_row(stamp_sec, rss_mib, label):
+    return {
+        "t": float(stamp_sec),
+        "rss_mib": float(rss_mib),
+        "generation": int(label.get("generation") or 0),
+        "size": str(label.get("size") or ""),
+        "occurrence": label.get("occurrence"),
+    }
+
+
+def occurrence_coverage(rows):
+    """Count labelled samples per (size, occurrence). Empty epochs omitted."""
+    counts = {}
+    for row in rows:
+        size = row.get("size") or ""
+        occ = row.get("occurrence")
+        if not size or occ is None:
+            continue
+        key = (str(size), int(occ))
+        counts[key] = counts.get(key, 0) + 1
+    return counts
+
+
+def coverage_scorable(rows, min_occurrences=MIN_OCCURRENCES_PER_SIZE,
+                      min_samples=MIN_SAMPLES_PER_OCCURRENCE):
+    counts = occurrence_coverage(rows)
+    sizes = sorted({size for size, _occ in counts})
+    if not sizes:
+        return False, "no_labelled_size_samples", {}
+    per_size = {}
+    for size in sizes:
+        qualified = [
+            occ for (s, occ), n in counts.items()
+            if s == size and n >= min_samples]
+        per_size[size] = {
+            "qualified_occurrences": len(qualified),
+            "occurrences": sorted(
+                occ for s, occ in counts if s == size),
+        }
+        if len(qualified) < min_occurrences:
+            return False, "size_%s_needs_%d_occurrences_of_%d_samples" % (
+                size, min_occurrences, min_samples), per_size
+    return True, "", per_size
+
+
+def warmup_cutoff_sec(rows):
+    """First time every observed size has appeared at least once."""
+    first = {}
+    for row in rows:
+        size = row.get("size") or ""
+        if not size:
+            continue
+        t = float(row["t"])
+        if size not in first or t < first[size]:
+            first[size] = t
+    if not first:
+        return None
+    return max(first.values())
+
+
+def fit_samples(rows, occupancy_ready_t=None):
+    """Settled labelled samples after every size has been exercised once."""
+    cutoff = warmup_cutoff_sec(rows)
+    if cutoff is None:
+        return []
+    if occupancy_ready_t is not None:
+        cutoff = max(cutoff, float(occupancy_ready_t))
+    out = []
+    for row in rows:
+        if (row.get("size")
+                and row.get("occurrence") is not None
+                and float(row["t"]) >= cutoff):
+            out.append(row)
+    return out
+
+
+def fit_size_adjusted_beta(rows):
+    """OLS: RSS = intercept + size FE + beta * elapsed_minutes."""
+    if len(rows) < 4:
+        return {
+            "scorable": False,
+            "reason": "too_few_fit_samples",
+            "n_fit": len(rows),
+            "beta_mib_per_min": None,
+        }
+    sizes = sorted({row["size"] for row in rows})
+    t0 = float(rows[0]["t"])
+    design = []
+    observed = []
+    for row in rows:
+        line = [1.0]
+        for size in sizes[1:]:
+            line.append(1.0 if row["size"] == size else 0.0)
+        line.append((float(row["t"]) - t0) / 60.0)
+        design.append(line)
+        observed.append(float(row["rss_mib"]))
+    matrix = np.asarray(design, dtype=np.float64)
+    y = np.asarray(observed, dtype=np.float64)
+    coef, _resid, rank, _sv = np.linalg.lstsq(matrix, y, rcond=None)
+    if int(rank) < matrix.shape[1]:
+        return {
+            "scorable": False,
+            "reason": "rank_deficient_design",
+            "n_fit": len(rows),
+            "beta_mib_per_min": None,
+            "rank": int(rank),
+        }
+    effects = {sizes[0]: 0.0}
+    for i, size in enumerate(sizes[1:]):
+        effects[size] = float(coef[1 + i])
+    return {
+        "scorable": True,
+        "reason": "",
+        "n_fit": len(rows),
+        "beta_mib_per_min": float(coef[-1]),
+        "intercept_mib": float(coef[0]),
+        "size_effects_mib": effects,
+        "sizes": sizes,
+        "rank": int(rank),
+    }
+
+
 class G6SProbe(Node):
     def __init__(self, rss_hz):
         super().__init__("pf_r10_g6s_probe")
         self._rss_period = 1.0 / max(rss_hz, 0.1)
         self._events = defaultdict(list)        # topic -> receipt times
         self._stamps = defaultdict(dict)        # topic -> {key: receipt}
-        self._rss = defaultdict(list)           # node -> (t, MiB)
+        self._rss = defaultdict(list)           # node -> labelled sample dicts
         self._rss_fit_series = {}               # node -> bucket-min series
         self._rss_bucket_sec = 5.0
         self._pids = {}
@@ -145,6 +337,7 @@ class G6SProbe(Node):
         self._last_filter_stats = {}
         self._last_detector_stats = {}
         self._last_prep_status = {}
+        self._box_labeler = CurrentBoxLabeler()
 
         be10 = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         be20 = QoSProfile(depth=20, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -269,13 +462,27 @@ class G6SProbe(Node):
         self.create_subscription(
             String, "/semantic_segmenter/stats_json", segmenter_cb, rl10)
 
+        box_qos = QoSProfile(
+            depth=10,
+            reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL,
+        )
+
+        def current_box_cb(msg):
+            self._box_labeler.update(msg.data)
+
+        self.create_subscription(
+            String, "/luggage/current_box", current_box_cb, box_qos)
+
     def sample_rss(self):
+        label = self._box_labeler.snapshot()
+        now = time.monotonic()
         for name, pid in self._pids.items():
             if pid is None:
                 continue
             value = read_rss_mib(pid)
             if value is not None:
-                self._rss[name].append((time.monotonic(), value))
+                self._rss[name].append(labelled_rss_row(now, value, label))
 
     def refresh_pids(self):
         resolved = resolve_pids()
@@ -340,34 +547,78 @@ def bucket_min_series(series, bucket_sec, t_end=None):
     return out
 
 
+def rss_pairs(rows):
+    pairs = []
+    for row in rows:
+        if isinstance(row, dict):
+            pairs.append((float(row["t"]), float(row["rss_mib"])))
+        else:
+            pairs.append((float(row[0]), float(row[1])))
+    return pairs
+
+
+def occupancy_ready_t(probe):
+    times = []
+    for series in probe._occupancy.values():
+        times.extend(t for t, _value in series)
+    return min(times) if times else None
+
+
 def rss_verdicts(probe):
     out = {}
+    ready_t = occupancy_ready_t(probe)
     for name, raw_series in probe._rss.items():
+        pairs = rss_pairs(raw_series)
         series = bucket_min_series(
-            raw_series, getattr(probe, "_rss_bucket_sec", 5.0))
+            pairs, getattr(probe, "_rss_bucket_sec", 5.0))
         probe._rss_fit_series[name] = series
-        if not series:
+        if not pairs:
             out[name] = {"n": 0, "pid": probe._pids.get(name)}
             continue
-        q1, q4 = time_quartiles(series)
+        q1, q4 = time_quartiles(series if series else pairs)
         q1m, q4m = mean(q1), mean(q4)
-        slope = lsq_slope(series)
+        slope = lsq_slope(series if series else pairs)
+        labelled = [row for row in raw_series if isinstance(row, dict)]
+        coverage_ok, coverage_reason, per_size = coverage_scorable(labelled)
+        settled = fit_samples(labelled, occupancy_ready_t=ready_t)
+        adjusted = fit_size_adjusted_beta(settled) if settled else {
+            "scorable": False,
+            "reason": "no_settled_labelled_samples",
+            "n_fit": 0,
+            "beta_mib_per_min": None,
+        }
+        scorable = bool(coverage_ok and adjusted.get("scorable"))
+        reason = coverage_reason or adjusted.get("reason") or ""
+        beta = adjusted.get("beta_mib_per_min")
+        beta_ok = bool(
+            scorable and beta is not None and beta <= RSS_GROWTH_BETA_LIMIT)
         entry = {
             "pid": probe._pids.get(name),
-            "n": len(series),
-            "rss_mib_first": series[0][1],
-            "rss_mib_last": series[-1][1],
-            "rss_mib_min": min(v for _, v in series),
-            "rss_mib_max": max(v for _, v in series),
+            "n": len(series) if series else len(pairs),
+            "n_labelled": len(labelled),
+            "rss_mib_first": pairs[0][1],
+            "rss_mib_last": pairs[-1][1],
+            "rss_mib_min": min(v for _, v in pairs),
+            "rss_mib_max": max(v for _, v in pairs),
             "q1_mean_mib": q1m,
             "q4_mean_mib": q4m,
             "slope_mib_per_min": slope,
-            "slope_ok": (slope is not None and slope <= 2.0),
-            "quartile_ok": (
-                q1m is not None and q4m is not None
-                and q4m <= 1.10 * q1m + 50.0),
+            "raw_slope_is_diagnostic": True,
+            "quartile_is_diagnostic": True,
+            "coverage_ok": coverage_ok,
+            "coverage_reason": coverage_reason,
+            "coverage_per_size": per_size,
+            "warmup_cutoff_sec": warmup_cutoff_sec(labelled),
+            "occupancy_ready_sec": ready_t,
+            "n_fit": adjusted.get("n_fit", 0),
+            "beta_mib_per_min": beta,
+            "beta_ok": beta_ok,
+            "size_effects_mib": adjusted.get("size_effects_mib"),
+            "intercept_mib": adjusted.get("intercept_mib"),
+            "growth_scorable": scorable,
+            "unscorable_reason": ("" if scorable else reason),
         }
-        entry["pass"] = bool(entry["slope_ok"] and entry["quartile_ok"])
+        entry["pass"] = bool(beta_ok)
         out[name] = entry
     return out
 
