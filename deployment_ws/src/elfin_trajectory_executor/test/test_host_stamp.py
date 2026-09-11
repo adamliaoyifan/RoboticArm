@@ -53,6 +53,35 @@ class D555LaunchContractTest(unittest.TestCase):
         self.assertIn("_imu_remaps", src)
         self.assertIn("_prefixed_remaps", src)
 
+    def test_calib_launch_does_not_remap_or_stamp(self):
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "launch"
+            / "d555_calib.launch.py"
+        ).read_text()
+        self.assertIn('"enable_depth": True', src)
+        self.assertIn("align_depth.enable", src)
+        self.assertIn("pointcloud_enable", src)
+        self.assertIn("align_depth_enable", src)
+        self.assertIn('"color_qos": "DEFAULT"', src)
+        self.assertNotIn('executable="d555_host_stamp"', src)
+        self.assertNotIn("image_hw", src)
+        self.assertNotIn("enable_pub_plugins", src)
+
+    def test_image_hw_qos_matches_d555_image_transport(self):
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "elfin_trajectory_executor"
+            / "d555_host_stamp_node.py"
+        ).read_text()
+        self.assertIn("_IMAGE_HW", src)
+        self.assertIn("DurabilityPolicy.TRANSIENT_LOCAL", src)
+        self.assertIn("for qos in (_IMAGE_HW, _SENSOR):", src)
+
     def test_canonical_camera_info_is_latched_reliable(self):
         from pathlib import Path
 

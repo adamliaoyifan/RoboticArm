@@ -100,9 +100,7 @@ source "$DEPLOY/install/setup.bash"
 set -u
 
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"
-# Keep ROS DDS on loopback so Image/PointCloud2 do not flood enp0s31f6
-# (that NIC also carries CPS TCP). D555 realdds + Livox SDK still use the NIC.
-export ROS_LOCALHOST_ONLY="${ROS_LOCALHOST_ONLY:-1}"
+unset ROS_LOCALHOST_ONLY
 export PYTHONPATH="${SDK}${PYTHONPATH:+:${PYTHONPATH}}"
 export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
@@ -122,7 +120,6 @@ fi
 
 echo "record_mode=${MODE}"
 echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
-echo "ROS_LOCALHOST_ONLY=${ROS_LOCALHOST_ONLY}"
 echo "bag -> ${BAG_PATH}"
 echo "Ctrl+C to stop"
 if [[ "$MODE" == "real" ]]; then

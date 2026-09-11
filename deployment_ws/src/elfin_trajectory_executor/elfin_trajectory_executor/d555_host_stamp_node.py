@@ -71,6 +71,15 @@ _IMU_RELIABLE = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.VOLATILE,
 )
+# D555 image_transport raw publishers on this cell are RELIABLE +
+# TRANSIENT_LOCAL. A BEST_EFFORT/VOLATILE reader never sees frames, so
+# canonical /camera/d555/color/image_raw stays silent while IMU still works.
+_IMAGE_HW = QoSProfile(
+    history=HistoryPolicy.KEEP_LAST,
+    depth=20,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+)
 
 
 def apply_common_stamp(msgs: Iterable, stamp) -> None:
@@ -122,6 +131,9 @@ class D555HostStampNode(Node):
 
         self._cinfo = None
         self._dinfo = None
+        self._n_color_hw = 0
+        self._n_depth_hw = 0
+        self._last_pair_key = None
         self.create_subscription(
             CameraInfo, f"{base}/color/camera_info_hw", self._on_cinfo, _SENSOR
         )
@@ -141,14 +153,21 @@ class D555HostStampNode(Node):
             _INFO_STREAM,
         )
 
-        self._color_sub = Subscriber(self, color_type, color_in, qos_profile=_SENSOR)
-        self._depth_sub = Subscriber(self, depth_type, depth_in, qos_profile=_SENSOR)
-        self._sync = ApproximateTimeSynchronizer(
-            [self._color_sub, self._depth_sub],
-            queue_size=20,
-            slop=slop,
-        )
-        self._sync.registerCallback(on_pair)
+        self._syncs = []
+        for qos in (_IMAGE_HW, _SENSOR):
+            color_sub = Subscriber(self, color_type, color_in, qos_profile=qos)
+            depth_sub = Subscriber(self, depth_type, depth_in, qos_profile=qos)
+            sync = ApproximateTimeSynchronizer(
+                [color_sub, depth_sub],
+                queue_size=20,
+                slop=slop,
+            )
+            sync.registerCallback(on_pair)
+            self._syncs.append((color_sub, depth_sub, sync))
+        self.create_subscription(color_type, color_in, self._on_color_hw_count, _IMAGE_HW)
+        self.create_subscription(color_type, color_in, self._on_color_hw_count, _SENSOR)
+        self.create_subscription(depth_type, depth_in, self._on_depth_hw_count, _IMAGE_HW)
+        self.create_subscription(depth_type, depth_in, self._on_depth_hw_count, _SENSOR)
 
         self._color_pub = None
         self._depth_pub = None
@@ -223,9 +242,17 @@ class D555HostStampNode(Node):
         self._warned = True
         self.get_logger().error(
             "[d555_host_stamp] no color+aligned_depth pair in 10s. "
-            "Check realsense2_camera_node is still up and publishing %s. "
-            "Canonical /camera/d555/* topics stay silent until the HW pair arrives."
-            % self._color_in
+            "in=%s color_hw=%d aligned_hw=%d cinfo=%s dinfo=%s pairs=%d. "
+            "D555 image_transport is RELIABLE+TRANSIENT_LOCAL; "
+            "canonical /camera/d555/* stay silent until a matched pair arrives."
+            % (
+                self._color_in,
+                self._n_color_hw,
+                self._n_depth_hw,
+                self._cinfo is not None,
+                self._dinfo is not None,
+                self._n,
+            )
         )
 
     def _on_cinfo(self, msg: CameraInfo) -> None:
@@ -233,6 +260,23 @@ class D555HostStampNode(Node):
 
     def _on_dinfo(self, msg: CameraInfo) -> None:
         self._dinfo = msg
+
+    def _on_color_hw_count(self, _msg) -> None:
+        self._n_color_hw += 1
+
+    def _on_depth_hw_count(self, _msg) -> None:
+        self._n_depth_hw += 1
+
+    def _pair_key(self, color) -> tuple:
+        stamp = color.header.stamp
+        return (int(stamp.sec), int(stamp.nanosec))
+
+    def _should_emit_pair(self, color) -> bool:
+        key = self._pair_key(color)
+        if key == self._last_pair_key:
+            return False
+        self._last_pair_key = key
+        return True
 
     def _finish_group(self, cinfo, dinfo, stamp) -> None:
         cinfo = copy.deepcopy(cinfo)
@@ -249,6 +293,8 @@ class D555HostStampNode(Node):
 
     def _on_rgbd_raw(self, color: Image, depth: Image) -> None:
         if self._cinfo is None or self._dinfo is None:
+            return
+        if not self._should_emit_pair(color):
             return
         stamp = self._host_stamp()
         apply_common_stamp((color, depth), stamp)
@@ -268,6 +314,8 @@ class D555HostStampNode(Node):
         self, color: CompressedImage, depth: CompressedImage
     ) -> None:
         if self._cinfo is None or self._dinfo is None:
+            return
+        if not self._should_emit_pair(color):
             return
         stamp = self._host_stamp()
         try:

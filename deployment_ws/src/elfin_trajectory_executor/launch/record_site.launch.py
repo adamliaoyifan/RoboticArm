@@ -426,7 +426,7 @@ def generate_launch_description():
                 msg=(
                     "[record_site] No Gazebo. Clock master = host ROS system time. "
                     "CPS + Mid-360 CustomMsg + D555 JPEG/PNG (d555_host_stamp). "
-                    "ROS_LOCALHOST_ONLY recommended. use_sim_time=false."
+                    "use_sim_time=false."
                 )
             ),
             OpaqueFunction(function=_cps_or_executor),
