@@ -369,10 +369,26 @@ exact command. All rates and ratios below are computed on that window.
     which are deliberate history: `camera_horizon_sec` 0.35 at ~21 Hz fills
     roughly 7 of 10 slots with no backlog at all;
   - `executor_lag_sec`: Q4 mean <= 0.20 s **and** <= 1.25 x Q1 mean;
-  - RSS per online perception node: fit a least-squares line to the per-sample
-    RSS series over the scored run and require slope <= **2 MiB/min**, **and**
-    Q4 mean <= 1.10 x Q1 mean + 50 MiB. The slope is the growth test; the
-    quartile ratio alone measures net drift, not absence of growth;
+  - RSS per online perception node (amended 2026-09-11 by user decision):
+    always report the measured first, last, minimum, maximum, Q1 mean, Q4
+    mean, and unadjusted least-squares slope. Those raw values are diagnostics,
+    not a pass/fail comparison, because the scored sequence deliberately mixes
+    luggage sizes whose bounded working sets differ. In particular, a Q1/Q4
+    comparison or a fit to time-window minima MUST NOT be used as a leak gate.
+    The growth gate remains <= **2 MiB/min**, but it applies to the
+    workload-adjusted time coefficient, not the raw mixed-workload slope:
+    the probe MUST label every RSS sample with current-box generation, luggage
+    size, and scored occurrence; after the launch has exercised every size at
+    least once and bounded history buffers have reached operating occupancy,
+    fit `RSS = intercept + size fixed effect + beta * elapsed_minutes` over
+    settled scored samples and require `beta <= 2 MiB/min` for every online
+    perception node. Each size MUST have at least two scored occurrences and
+    at least 10 RSS samples per occurrence; otherwise C2 memory growth is not
+    scorable and must be rerun. Arena high-water, native-library thread caches,
+    and freed pages still counted in RSS are not failures by themselves when
+    bounded structures remain within capacity and the adjusted coefficient
+    passes. This gate is specifically intended to catch time/epoch-dependent
+    accumulation after controlling for legitimate workload size;
   - residual process count exactly 0 after `scripts/stop_sim.sh`.
 
   Run duration for C2 is the same three `gate4_short6` runs as C1, scored
