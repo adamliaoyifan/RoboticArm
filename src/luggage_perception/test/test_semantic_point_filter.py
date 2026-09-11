@@ -369,6 +369,35 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertTrue(np.all(grown[8:20, 8:40]))
         self.assertFalse(np.any(grown[20:40, 8:40]))
 
+    def test_skips_flood_when_origin_already_large(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 120, 120
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[10:100, 10:110] = 500
+        depth[100:118, 10:110] = 500
+        seed = np.zeros((h, w), dtype=bool)
+        seed[10:100, 10:110] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=60000)
+        self.assertEqual(stats["cargo_grow_flood_skipped"], 1)
+        self.assertTrue(np.all(grown[10:100, 10:110]))
+        self.assertFalse(np.any(grown[100:118, 10:110]))
+
+    def test_vertical_flood_aborts_to_origin(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 48, 32
+        yy = np.arange(h, dtype=np.uint16)[:, None]
+        depth = np.broadcast_to((400 + 3 * yy).astype(np.uint16), (h, w)).copy()
+        seed = np.zeros((h, w), dtype=bool)
+        seed[16:24, 8:16] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=8000, max_radius_px=40)
+        self.assertEqual(stats["cargo_grow_vertical_abort"], 1)
+        self.assertTrue(np.all(grown[16:24, 8:16]))
+        self.assertFalse(np.any(grown[0:8, :]))
+
 
 if __name__ == "__main__":
     unittest.main()

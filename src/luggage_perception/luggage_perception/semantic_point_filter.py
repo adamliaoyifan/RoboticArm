@@ -152,6 +152,11 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     strip (panel, container lip) cannot flood the frame. If the connected
     component would exceed ``max_pixels`` the original seed is kept.
 
+    A large origin (already a lid-sized mask) is returned without
+    flooding: extra same-depth pixels are usually a vertical panel. A flood
+    whose image-row depth slope looks like a vertical face is also
+    rejected back to the origin.
+
     ``depth_tol_mm <= 0`` disables growth. Returns (grown_sel, stats).
     """
     seed = np.asarray(cargo_sel, dtype=bool)
@@ -161,6 +166,8 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         "cargo_pixels_grown": 0,
         "cargo_grow_aborted": 0,
         "cargo_grow_origin_pixels": 0,
+        "cargo_grow_flood_skipped": 0,
+        "cargo_grow_vertical_abort": 0,
     }
     tol = int(depth_tol_mm)
     cap = int(max_pixels)
@@ -185,6 +192,11 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         stats["cargo_grow_aborted"] = 1
         return seed, stats
     stats["cargo_grow_origin_pixels"] = int(origin.sum())
+    if stats["cargo_grow_origin_pixels"] >= _GROW_FLOOD_ORIGIN_MAX_PX:
+        stats["cargo_grow_flood_skipped"] = 1
+        stats["cargo_pixels_grown"] = int(max(
+            0, stats["cargo_grow_origin_pixels"] - stats["cargo_pixels_seed"]))
+        return origin, stats
     origin_z = z[origin]
     median_z = float(np.median(origin_z))
     similar = valid & (np.abs(z - median_z) <= float(tol))
@@ -204,8 +216,32 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     if n_grown > cap:
         stats["cargo_grow_aborted"] = 1
         return seed, stats
+    if abs(_depth_row_slope_mm_per_px(z, grown)) > _GROW_VERTICAL_SLOPE_MM_PER_PX:
+        stats["cargo_grow_vertical_abort"] = 1
+        stats["cargo_pixels_grown"] = int(max(
+            0, stats["cargo_grow_origin_pixels"] - stats["cargo_pixels_seed"]))
+        return origin, stats
     stats["cargo_pixels_grown"] = int(max(0, n_grown - stats["cargo_pixels_seed"]))
     return grown, stats
+
+
+_GROW_FLOOD_ORIGIN_MAX_PX = 8000
+_GROW_VERTICAL_SLOPE_MM_PER_PX = 1.25
+
+
+def _depth_row_slope_mm_per_px(z, sel):
+    """Least-squares mm-per-row slope of depth over ``sel`` (0 if degenerate)."""
+    ys = np.nonzero(sel)[0]
+    if ys.size < 24:
+        return 0.0
+    gz = np.asarray(z, dtype=np.float64)[sel]
+    if ys.size > 2000:
+        idx = np.linspace(0, ys.size - 1, 2000).astype(np.int32)
+        ys = ys[idx]
+        gz = gz[idx]
+    if float(ys.max() - ys.min()) < 8:
+        return 0.0
+    return float(np.polyfit(ys.astype(np.float64), gz, 1)[0])
 
 
 def _connected_to_seed(similar, seed):

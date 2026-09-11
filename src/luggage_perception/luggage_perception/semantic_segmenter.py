@@ -249,35 +249,50 @@ def bbox_is_edge_strip(bbox, width, height, margin=12, max_strip_px=80):
 def unaccept_border_cargo_when_inner_exists(detections, image_shape,
                                            cargo_label=LABEL_CARGO,
                                            margin=12, max_strip_px=80):
-    """If an inner accepted cargo box exists, drop thin edge-strip cargo.
+    """Keep one compact cargo AABB; drop thin edge strips when possible.
 
-    Pedestal/container AABBs sit on the image edge as thin strips. When
-    YOLO also sees the suitcase, those strips must not remain accepted or
-    the depth grow step floods a non-horizontal surface. A compact
-    suitcase that only touches the border is kept, even if a smaller inner
-    false positive is also accepted.
+    Pedestal/container AABBs sit on the image edge as thin strips. When a
+    compact suitcase box exists those strips must not remain accepted or
+    the depth grow step floods a non-horizontal surface. If two compact
+    boxes are accepted, keep the largest so a small inner false positive
+    cannot replace a clipped suitcase, and a closer panel cannot become
+    the grow origin of a unioned mask.
     """
     dets = list(detections or [])
     h, w = (int(image_shape[0]), int(image_shape[1])) if image_shape else (0, 0)
     if w <= 0 or h <= 0:
         return dets, 0
+
+    def _area(det):
+        bbox = det.get("bbox") or ()
+        if len(bbox) < 4:
+            return 0
+        return max(0, int(bbox[2]) - int(bbox[0])) * max(
+            0, int(bbox[3]) - int(bbox[1]))
+
     accepted = [d for d in dets
                 if int(d.get("label", -1)) == int(cargo_label)
                 and d.get("accepted")]
-    inner = [d for d in accepted
-             if not bbox_touches_border(d.get("bbox"), w, h, margin)]
-    if not inner:
+    if not accepted:
         return dets, 0
+    compact = []
+    strips = []
+    for det in accepted:
+        if bbox_is_edge_strip(det.get("bbox"), w, h, margin, max_strip_px):
+            strips.append(det)
+        else:
+            compact.append(det)
+    drop = []
+    if compact:
+        primary = max(compact, key=_area)
+        drop.extend(strips)
+        drop.extend(d for d in compact if d is not primary)
+    if not drop:
+        return dets, 0
+    drop_ids = set(id(d) for d in drop)
     n_drop = 0
     for det in dets:
-        if int(det.get("label", -1)) != int(cargo_label):
-            continue
-        if not det.get("accepted"):
-            continue
-        if not bbox_touches_border(det.get("bbox"), w, h, margin):
-            continue
-        if not bbox_is_edge_strip(
-                det.get("bbox"), w, h, margin, max_strip_px):
+        if id(det) not in drop_ids:
             continue
         det["accepted"] = False
         det["accept_reason"] = "border_cargo_with_inner"

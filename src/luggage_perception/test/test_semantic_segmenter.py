@@ -572,8 +572,8 @@ class TestUnacceptBorderCargo(unittest.TestCase):
                      "bbox": [0, 60, 200, 260]}
         dets, n = unaccept_border_cargo_when_inner_exists(
             [inner, suitcase], (480, 640), margin=12)
-        self.assertEqual(n, 0)
-        self.assertTrue(inner["accepted"])
+        self.assertEqual(n, 1)
+        self.assertFalse(inner["accepted"])
         self.assertTrue(suitcase["accepted"])
 
 
