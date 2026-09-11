@@ -216,12 +216,6 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     origin_vertical = (
         abs(_depth_row_slope_mm_per_px(z, origin))
         > _GROW_VERTICAL_SLOPE_MM_PER_PX)
-    if (stats["cargo_grow_origin_pixels"] >= _GROW_FLOOD_ORIGIN_MAX_PX
-            and not origin_vertical):
-        stats["cargo_grow_flood_skipped"] = 1
-        stats["cargo_pixels_grown"] = int(max(
-            0, stats["cargo_grow_origin_pixels"] - stats["cargo_pixels_seed"]))
-        return origin, stats
     if origin_vertical:
         stats["cargo_grow_vertical_abort"] = 1
         stats["cargo_pixels_grown"] = int(max(
@@ -229,7 +223,8 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         return origin, stats
     origin_z = z[origin]
     median_z = float(np.median(origin_z))
-    similar = valid & (np.abs(z - median_z) <= float(tol))
+    flood_tol = float(tol + _GROW_FLOOD_EXTRA_TOL_MM)
+    similar = valid & (np.abs(z - median_z) <= flood_tol)
     if blocked_b is not None:
         similar = similar & ~blocked_b
     if radius > 0:
@@ -258,6 +253,7 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
 _GROW_FLOOD_ORIGIN_MAX_PX = 8000
 _GROW_VERTICAL_SLOPE_MM_PER_PX = 1.25
 _GROW_PEEL_TOL_MM = 12
+_GROW_FLOOD_EXTRA_TOL_MM = 25
 
 
 def _expand_bbox_mask(seed, radius):

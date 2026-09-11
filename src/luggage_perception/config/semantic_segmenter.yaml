@@ -162,7 +162,7 @@ semantic_point_filter:
     # min_points / min_confidence are unchanged.
     cargo_grow_depth_tol_mm: 30
     cargo_grow_max_pixels: 60000
-    cargo_grow_max_radius_px: 280
+    cargo_grow_max_radius_px: 400
     # Search this many pixels around a platform-level seed for a closer
     # lid. 0 keeps the seed AABB only. A mask that is not at least
     # cargo_grow_raise_mm closer than its surrounding ring is cleared so

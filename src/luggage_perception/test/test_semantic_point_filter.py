@@ -369,7 +369,7 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertTrue(np.all(grown[8:20, 8:40]))
         self.assertFalse(np.any(grown[20:40, 8:40]))
 
-    def test_skips_flood_when_origin_already_large(self):
+    def test_large_lid_floods_connected_same_depth(self):
         from luggage_perception.semantic_point_filter import (
             grow_cargo_sel_by_depth)
         h, w = 120, 120
@@ -380,9 +380,9 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         seed[10:100, 10:110] = True
         grown, stats = grow_cargo_sel_by_depth(
             depth, seed, depth_tol_mm=30, max_pixels=60000)
-        self.assertEqual(stats["cargo_grow_flood_skipped"], 1)
+        self.assertEqual(stats["cargo_grow_aborted"], 0)
         self.assertTrue(np.all(grown[10:100, 10:110]))
-        self.assertFalse(np.any(grown[100:118, 10:110]))
+        self.assertTrue(np.any(grown[100:118, 10:110]))
 
     def test_large_vertical_origin_is_peeled_not_skipped(self):
         from luggage_perception.semantic_point_filter import (

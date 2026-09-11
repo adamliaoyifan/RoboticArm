@@ -91,7 +91,7 @@ class SemanticPointFilterNode(Node):
             "output_pixel_stride": 2,
             "cargo_grow_depth_tol_mm": 30,
             "cargo_grow_max_pixels": 60000,
-            "cargo_grow_max_radius_px": 280,
+            "cargo_grow_max_radius_px": 400,
             "cargo_grow_search_radius_px": 400,
             "cargo_grow_raise_mm": 50,
             # PF-R9 B5: stats serialization moved off the per-callback path
