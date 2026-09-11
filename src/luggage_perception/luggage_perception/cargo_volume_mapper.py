@@ -57,18 +57,21 @@ class CargoVolumeMapper:
 
     def reset(self, preserve_placed=False):
         saved = list(self._placed_boxes) if preserve_placed else []
-        if not preserve_placed:
-            self._placed_boxes = []
+        self._placed_boxes = saved
+        self._clear_grid()
+        for placed in saved:
+            self._rasterize_placed_box(
+                placed["center"], placed["size"], placed["yaw"])
         self._revision += 1
+
+    def _clear_grid(self):
+        """Clear voxel state without changing the commit revision."""
         total = self.nx * self.ny * self.nz
         self._occupancy = LogOddsGrid(total, **self.occupancy_params)
         self._grid = self._occupancy.states()
         self._source = [SOURCE_NONE] * total
         self._labels = [0] * total
         self._instance_ids = [0] * total
-        for placed in saved:
-            self._rasterize_placed_box(
-                placed["center"], placed["size"], placed["yaw"])
 
     def _build_active_mask(self):
         total = self.nx * self.ny * self.nz
@@ -371,48 +374,79 @@ class CargoVolumeMapper:
                     free += 1
         return float(free) / float(total) if total else 0.0
 
-    def mark_placed_box(self, center, size, yaw=0.0):
+    @staticmethod
+    def _yaw_error(a, b):
+        return abs((float(a) - float(b) + math.pi) % (2.0 * math.pi) - math.pi)
+
+    def _matching_placed_box(self, center, size, yaw=None, tolerance=0.05):
+        center = [float(v) for v in center]
+        size = [float(v) for v in size]
+        for index, record in enumerate(self._placed_boxes):
+            position_error = math.sqrt(sum(
+                (record["center"][axis] - center[axis]) ** 2
+                for axis in range(3)))
+            size_error = max(
+                abs(record["size"][axis] - size[axis])
+                for axis in range(3))
+            yaw_matches = (
+                yaw is None
+                or self._yaw_error(record["yaw"], yaw) <= 1e-3
+            )
+            if (position_error <= tolerance and size_error <= tolerance
+                    and yaw_matches):
+                return index
+        return None
+
+    def mark_placed_box(self, center, size, yaw=0.0, tolerance=0.05):
         """Mark an axis/yaw-aligned box as occupied (size: width, depth, height).
 
         Samples at the voxel resolution so thin boxes are not skipped. ``center``
         is in base/world coordinates; ``yaw`` rotates the footprint about Z.
         Uses SOURCE_GEOMETRY so the map can distinguish this from sensor data.
         """
+        center = [float(v) for v in center]
+        size = [float(v) for v in size]
+        if (len(center) != 3 or len(size) != 3
+                or not all(math.isfinite(v) for v in center + size)
+                or any(v <= 0.0 for v in size)
+                or not math.isfinite(float(yaw))):
+            raise ValueError("placed box needs finite xyz and positive size")
+        if self._matching_placed_box(center, size, yaw, tolerance) is not None:
+            return False
         record = {
-            "center": [float(v) for v in center],
-            "size": [float(v) for v in size],
+            "center": center,
+            "size": size,
             "yaw": float(yaw),
         }
         self._placed_boxes.append(record)
         self._rasterize_placed_box(
             record["center"], record["size"], record["yaw"])
         self._revision += 1
+        return True
 
-    def unmark_placed_box(self, center, size, tolerance=0.05):
+    def unmark_placed_box(self, center, size, yaw=None, tolerance=0.05):
         """Remove a committed geometry record and rebuild fail-closed state."""
-        match = None
-        for index, record in enumerate(self._placed_boxes):
-            position_error = math.sqrt(sum(
-                (record["center"][axis] - float(center[axis])) ** 2
-                for axis in range(3)))
-            size_error = max(
-                abs(record["size"][axis] - float(size[axis]))
-                for axis in range(3))
-            if position_error <= tolerance and size_error <= tolerance:
-                match = index
-                break
+        match = self._matching_placed_box(center, size, yaw, tolerance)
         if match is None:
             return False
         remaining = [
             record for index, record in enumerate(self._placed_boxes)
             if index != match]
-        self.reset(preserve_placed=False)
         self._placed_boxes = remaining
+        self._clear_grid()
         for record in remaining:
             self._rasterize_placed_box(
                 record["center"], record["size"], record["yaw"])
         self._revision += 1
         return True
+
+    def commit_ledger(self):
+        """Return a detached, deterministic snapshot of committed boxes."""
+        return [{
+            "center": list(record["center"]),
+            "size": list(record["size"]),
+            "yaw": float(record["yaw"]),
+        } for record in self._placed_boxes]
 
     def _rasterize_placed_box(self, center, size, yaw=0.0):
         """Rasterize a committed box without changing history/revision."""
@@ -472,6 +506,7 @@ class CargoVolumeMapper:
             "occupied_count": occupied,
             "unknown_ratio": float(unknown) / total if total else 0.0,
             "occupancy_ratio": float(occupied) / total if total else 0.0,
+            "occupied_volume": float(occupied) * voxel_vol,
             "free_volume": float(free) * voxel_vol,
             "frontier_count": len(self._frontier_indices()),
             "label_distribution": {str(k): v for k, v in label_dist.items()},

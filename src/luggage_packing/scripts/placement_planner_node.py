@@ -62,14 +62,10 @@ from luggage_description.scene_tf_config_utils import (
     yaw_base_link_to_world,
     yaw_world_to_base_link,
 )
-from luggage_packing.insertion_corridor import corridor_blocked
-from luggage_packing.placement_solver import generate_candidates
-
-# Reject reasons surfaced in the response message (A5 histogram inputs).
-REASON_OVERLAP = "overlap"
-REASON_OUTSIDE_APERTURE = "outside_aperture"
-REASON_OUTSIDE_HULL = "outside_hull"
-REASON_CORRIDOR_BLOCKED = "corridor_blocked"
+from luggage_packing.placement_solver import (
+    placement_constraint_reason,
+    solve_placement,
+)
 
 
 def yaw_from_quaternion(q):
@@ -267,32 +263,6 @@ class PlacementPlannerNode(Node):
     # ------------------------------------------------------------------
     # Feasibility gates (G2 + corridor)
 
-    def _footprint_y_span(self, candidate):
-        footprint = candidate.get("footprint") or [0.0, 0.0]
-        local = candidate.get("center_local") or [0.0, 0.0, 0.0]
-        half_w = float(footprint[1]) * 0.5
-        return float(local[1]) - half_w, float(local[1]) + half_w
-
-    def _aperture_reject(self, candidate):
-        """True when the footprint cannot pass through the opening at all."""
-        if self._aperture_y is None:
-            return False
-        lo, hi = self._footprint_y_span(candidate)
-        a_lo, a_hi = self._aperture_y
-        return lo < a_lo - 1e-6 or hi > a_hi + 1e-6
-
-    def _hull_reject(self, candidate):
-        """True when any AABB corner sits in the cut-off +Y triangle."""
-        x0, y0, z0, x1, y1, z1 = self._candidate_aabb(candidate)
-        floor_z = self._floor_z
-        for x in (x0, x1):
-            for y in (y0, y1):
-                for z in (z0, z1):
-                    if not point_inside_container_inner_hull_container(
-                            [x, y, z + floor_z], self._scene):
-                        return True
-        return False
-
     def _placed_aabbs(self, placed_slots):
         """Floor-relative container AABBs from elfin_base_link SlotSpecs."""
         aabbs = []
@@ -320,30 +290,20 @@ class PlacementPlannerNode(Node):
             ))
         return aabbs
 
-    def _candidate_aabb(self, candidate):
-        """Floor-relative AABB matching insertion_corridor.corridor_blocked."""
-        local = candidate.get("center_local") or [0.0, 0.0, 0.0]
-        footprint = candidate.get("footprint") or candidate["size"][:2]
-        h = float(candidate["size"][2])
-        half_h = self._inner_size[2] * 0.5
-        z_floor_c = float(local[2]) + half_h
-        fl, fw = float(footprint[0]), float(footprint[1])
-        return (
-            float(local[0]) - fl * 0.5,
-            float(local[1]) - fw * 0.5,
-            z_floor_c - h * 0.5,
-            float(local[0]) + fl * 0.5,
-            float(local[1]) + fw * 0.5,
-            z_floor_c + h * 0.5,
-        )
+    def _constraint_reason(self, candidate, placed_aabbs):
+        def hull_contains_floor_relative(point):
+            return point_inside_container_inner_hull_container(
+                [point[0], point[1], point[2] + self._floor_z], self._scene)
 
-    def _corridor_reject(self, candidate, placed_slots):
-        """corridor_blocked: the opening corridor to this candidate is walled."""
-        inner_l, inner_w, inner_h = self._inner_size
-        return corridor_blocked(
-            self._candidate_aabb(candidate),
-            self._placed_aabbs(placed_slots),
-            [inner_l, inner_w, inner_h], list(self._smallest_box))
+        return placement_constraint_reason(
+            candidate,
+            self._inner_size[2],
+            placed_aabbs=placed_aabbs,
+            aperture_y=self._aperture_y,
+            hull_contains=hull_contains_floor_relative,
+            inner_size=self._inner_size,
+            smallest_size=self._smallest_box,
+        )
 
     def _publish_last(self, payload):
         pub = dict(payload)
@@ -373,37 +333,18 @@ class PlacementPlannerNode(Node):
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]
         surface = self._active_surface()
-        candidates = generate_candidates(
+        placed_aabbs = self._placed_aabbs(request.placed)
+        result = solve_placement(
             surface, size,
             allowed_yaws=self._allowed_yaws,
-            params=self._params)
-
-        histogram = {}
-        feasible = []
-        for candidate in candidates:
-            if not candidate.get("feasible", False):
-                reason = candidate.get("reason", REASON_OVERLAP)
-                histogram[reason] = histogram.get(reason, 0) + 1
-                continue
-            if self._aperture_reject(candidate):
-                candidate["feasible"] = False
-                candidate["reason"] = REASON_OUTSIDE_APERTURE
-                histogram[REASON_OUTSIDE_APERTURE] = \
-                    histogram.get(REASON_OUTSIDE_APERTURE, 0) + 1
-                continue
-            if self._hull_reject(candidate):
-                candidate["feasible"] = False
-                candidate["reason"] = REASON_OUTSIDE_HULL
-                histogram[REASON_OUTSIDE_HULL] = \
-                    histogram.get(REASON_OUTSIDE_HULL, 0) + 1
-                continue
-            if self._corridor_reject(candidate, request.placed):
-                candidate["feasible"] = False
-                candidate["reason"] = REASON_CORRIDOR_BLOCKED
-                histogram[REASON_CORRIDOR_BLOCKED] = \
-                    histogram.get(REASON_CORRIDOR_BLOCKED, 0) + 1
-                continue
-            feasible.append(candidate)
+            params=self._params,
+            candidate_validator=lambda candidate: self._constraint_reason(
+                candidate, placed_aabbs),
+        )
+        candidates = result["candidates"]
+        histogram = result["reject_histogram"]
+        feasible = [candidate for candidate in candidates
+                    if candidate.get("feasible", False)]
 
         dump = {
             "success": bool(feasible),
@@ -417,24 +358,19 @@ class PlacementPlannerNode(Node):
                            for c in candidates],
         }
 
-        if not feasible:
+        if not result["success"]:
             response.slot = SlotSpec()
             response.success = False
-            parts = " ".join("%s=%d" % (k, v)
-                             for k, v in sorted(histogram.items()))
-            response.message = "BIN_FULL no_candidate%s%s" % (
-                ": " if parts else "", parts)
+            response.message = result["message"]
             dump["message"] = response.message
             self._publish_last(dump)
             return response
 
-        best = max(feasible, key=lambda c: c.get("score", 0.0))
+        best = result["selected"]
         slot, annotated = self._slot_from_candidate(best, size)
         response.slot = slot
         response.success = True
-        response.message = "slot score=%.3f feasible=%d rejected=%s" % (
-            best.get("score", 0.0), len(feasible),
-            json.dumps(histogram, sort_keys=True) or "{}")
+        response.message = result["message"]
         dump["message"] = response.message
         dump["selected"] = jsonable_candidate(annotated)
         dump["pose_base_link"] = annotated["center_base_link"]

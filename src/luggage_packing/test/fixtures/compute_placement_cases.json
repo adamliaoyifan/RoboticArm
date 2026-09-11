@@ -1,0 +1,38 @@
+{
+  "surface_empty": {
+    "map_revision": 7,
+    "resolution": 0.1,
+    "nx": 6,
+    "ny": 4,
+    "inner_size": [0.6, 0.4, 0.5],
+    "floor_z": 0.0,
+    "center_base": [0.0, 0.0, 0.25],
+    "yaw": 0.0,
+    "height": [[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+    "state": [["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"]],
+    "confidence": [["none", "none", "none", "none"], ["none", "none", "none", "none"], ["none", "none", "none", "none"], ["none", "none", "none", "none"], ["none", "none", "none", "none"], ["none", "none", "none", "none"]]
+  },
+  "surface_with_box": {
+    "map_revision": 8,
+    "resolution": 0.1,
+    "nx": 6,
+    "ny": 4,
+    "inner_size": [0.6, 0.4, 0.5],
+    "floor_z": 0.0,
+    "center_base": [0.0, 0.0, 0.25],
+    "yaw": 0.0,
+    "height": [[0.2, 0.2, 0.2, 0.2], [0.2, 0.2, 0.2, 0.2], [0.2, 0.2, 0.2, 0.2], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]],
+    "state": [["occupied", "occupied", "occupied", "occupied"], ["occupied", "occupied", "occupied", "occupied"], ["occupied", "occupied", "occupied", "occupied"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"], ["unknown", "unknown", "unknown", "unknown"]],
+    "confidence": [["geometry", "geometry", "geometry", "geometry"], ["geometry", "geometry", "geometry", "geometry"], ["geometry", "geometry", "geometry", "geometry"], ["none", "none", "none", "none"], ["none", "none", "none", "none"], ["none", "none", "none", "none"]]
+  },
+  "cases": {
+    "empty": {"surface": "surface_empty", "box": [0.2, 0.2, 0.2]},
+    "existing": {"surface": "surface_with_box", "box": [0.2, 0.2, 0.2], "placed": [[-0.3, -0.2, 0.0, 0.0, 0.2, 0.2]]},
+    "boundary": {"surface": "surface_empty", "box": [0.6, 0.4, 0.2], "aperture_y": [-0.2, 0.2], "hull_bounds": [-0.3, -0.2, 0.0, 0.3, 0.2, 0.5]},
+    "aperture": {"surface": "surface_empty", "box": [0.2, 0.2, 0.2], "aperture_y": [-0.1, 0.1]},
+    "hull": {"surface": "surface_empty", "box": [0.2, 0.2, 0.2], "hull_bounds": [-0.2, -0.2, 0.0, 0.3, 0.2, 0.5]},
+    "overlap": {"surface": "surface_empty", "box": [0.2, 0.2, 0.2], "placed": [[-0.3, -0.2, 0.0, 0.3, 0.2, 0.2]]},
+    "corridor": {"surface": "surface_empty", "box": [0.2, 0.2, 0.2], "placed": [[-0.1, -0.2, 0.0, 0.0, 0.2, 0.5]], "smallest_size": [0.2, 0.2, 0.2]},
+    "no_candidate": {"surface": "surface_empty", "box": [0.7, 0.2, 0.2]}
+  }
+}

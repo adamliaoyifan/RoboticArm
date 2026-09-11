@@ -21,6 +21,66 @@ from __future__ import division
 import math
 
 
+REASON_OVERLAP = "overlap"
+REASON_OUTSIDE_APERTURE = "outside_aperture"
+REASON_OUTSIDE_HULL = "outside_hull"
+REASON_CORRIDOR_BLOCKED = "corridor_blocked"
+
+
+def candidate_aabb(candidate, inner_h):
+    """Return a candidate AABB in floor-relative container coordinates."""
+    local = candidate.get("center_local") or [0.0, 0.0, 0.0]
+    footprint = candidate.get("footprint") or candidate["size"][:2]
+    height = float(candidate["size"][2])
+    center_z = float(local[2]) + float(inner_h) * 0.5
+    half_l = float(footprint[0]) * 0.5
+    half_w = float(footprint[1]) * 0.5
+    half_h = height * 0.5
+    return (
+        float(local[0]) - half_l, float(local[1]) - half_w, center_z - half_h,
+        float(local[0]) + half_l, float(local[1]) + half_w, center_z + half_h,
+    )
+
+
+def aabb_overlap(a, b, tolerance=1e-9):
+    """True for positive-volume overlap; touching support faces are allowed."""
+    return (
+        a[0] < b[3] - tolerance and a[3] > b[0] + tolerance
+        and a[1] < b[4] - tolerance and a[4] > b[1] + tolerance
+        and a[2] < b[5] - tolerance and a[5] > b[2] + tolerance
+    )
+
+
+def placement_constraint_reason(
+        candidate, inner_h, placed_aabbs=None, aperture_y=None,
+        hull_contains=None, inner_size=None, smallest_size=None):
+    """Return the first hard-constraint reject reason, or ``None``.
+
+    ``hull_contains`` receives floor-relative XYZ corners. Keeping it as an
+    injected geometry-kernel callback makes this function ROS-free without
+    duplicating the authoritative seven-face hull implementation.
+    """
+    box = candidate_aabb(candidate, inner_h)
+    if aperture_y is not None:
+        if box[1] < float(aperture_y[0]) - 1e-6 \
+                or box[4] > float(aperture_y[1]) + 1e-6:
+            return REASON_OUTSIDE_APERTURE
+    if hull_contains is not None:
+        for x in (box[0], box[3]):
+            for y in (box[1], box[4]):
+                for z in (box[2], box[5]):
+                    if not hull_contains((x, y, z)):
+                        return REASON_OUTSIDE_HULL
+    if any(aabb_overlap(box, placed) for placed in (placed_aabbs or [])):
+        return REASON_OVERLAP
+    if (inner_size is not None and smallest_size is not None):
+        from luggage_packing.insertion_corridor import corridor_blocked
+        if corridor_blocked(
+                box, placed_aabbs or [], inner_size, smallest_size):
+            return REASON_CORRIDOR_BLOCKED
+    return None
+
+
 def _default_params():
     return {
         "clearance_margin": 0.03,   # required free space above the placed box [m]
@@ -101,7 +161,8 @@ def _local_to_base(center_base, yaw, lx, ly, lz):
     return [bx, by, bz]
 
 
-def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None):
+def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
+                        candidate_validator=None):
     """Return scored placement candidates sorted feasible-first by score.
 
     ``surface_map`` is the ``surface_map_2d`` dict. ``box_size`` is
@@ -181,7 +242,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None):
                     + w_conf * confidence_ratio
                 )
 
-                candidates.append({
+                candidate = {
                     "center_base": center_base_xyz,
                     "center_local": [lx, ly, lz],
                     "yaw": map_yaw + box_yaw,
@@ -198,12 +259,63 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None):
                     "score": round(score, 4),
                     "feasible": feasible,
                     "reason": reason,
-                })
+                }
+                if feasible and candidate_validator is not None:
+                    constraint_reason = candidate_validator(candidate)
+                    if constraint_reason:
+                        candidate["feasible"] = False
+                        candidate["reason"] = str(constraint_reason)
+                candidates.append(candidate)
 
     candidates.sort(key=lambda c: (not c["feasible"], -c["score"]))
     feasible = [c for c in candidates if c["feasible"]][: int(cfg["top_n"])]
     rejected = [c for c in candidates if not c["feasible"]][: int(cfg["keep_rejected"])]
     return feasible + rejected
+
+
+def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
+                    candidate_validator=None):
+    """ROS-free ComputePlacement core with stable BIN_FULL diagnostics."""
+    size = [float(v) for v in box_size]
+    if len(size) != 3 or not all(math.isfinite(v) and v > 0.0 for v in size):
+        return {
+            "success": False,
+            "selected": None,
+            "candidates": [],
+            "reject_histogram": {"invalid_size": 1},
+            "message": "BIN_FULL invalid_size",
+            "map_revision": surface_map.get("map_revision"),
+        }
+    candidates = generate_candidates(
+        surface_map, size, allowed_yaws=allowed_yaws, params=params,
+        candidate_validator=candidate_validator)
+    feasible = [candidate for candidate in candidates
+                if candidate.get("feasible", False)]
+    histogram = {}
+    for candidate in candidates:
+        if candidate.get("feasible", False):
+            continue
+        reason = str(candidate.get("reason") or "rejected")
+        histogram[reason] = histogram.get(reason, 0) + 1
+    if not feasible:
+        parts = " ".join("%s=%d" % (key, value)
+                         for key, value in sorted(histogram.items()))
+        message = "BIN_FULL no_candidate%s%s" % (
+            ": " if parts else "", parts)
+        selected = None
+    else:
+        selected = max(feasible, key=lambda item: item.get("score", 0.0))
+        message = "slot score=%.3f feasible=%d rejected=%s" % (
+            selected.get("score", 0.0), len(feasible),
+            histogram or {})
+    return {
+        "success": bool(feasible),
+        "selected": selected,
+        "candidates": candidates,
+        "reject_histogram": histogram,
+        "message": message,
+        "map_revision": surface_map.get("map_revision"),
+    }
 
 
 def best_candidate(candidates):

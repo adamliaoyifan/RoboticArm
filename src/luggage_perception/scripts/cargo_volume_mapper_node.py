@@ -137,7 +137,7 @@ class CargoVolumeMapperNode(Node):
     def _to_container(self, pose_world):
         """world pose -> container frame (yaw-only container assumed)."""
         import math
-        tx, ty, _tz = self._world_from_container["translation"]
+        tx, ty, tz = self._world_from_container["translation"]
         yaw = self._world_from_container["rotation_rpy"][2]
         cos_y, sin_y = math.cos(-yaw), math.sin(-yaw)
         dx = pose_world.position.x - tx
@@ -145,7 +145,7 @@ class CargoVolumeMapperNode(Node):
         out = PoseMsg()
         out.position.x = dx * cos_y - dy * sin_y
         out.position.y = dx * sin_y + dy * cos_y
-        out.position.z = pose_world.position.z
+        out.position.z = pose_world.position.z - tz
         out.orientation = pose_world.orientation
         return out
 
@@ -158,9 +158,12 @@ class CargoVolumeMapperNode(Node):
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
                 max(0.0, float(slot.height))]
-        yaw = self._yaw_from_pose(slot.place_pose)
+        yaw = (
+            self._yaw_from_pose(slot.place_pose)
+            - float(self._world_from_container["rotation_rpy"][2])
+        )
         try:
-            self._mapper.mark_placed_box(
+            added = self._mapper.mark_placed_box(
                 [center_c.position.x, center_c.position.y,
                  center_c.position.z],
                 size, yaw=yaw)
@@ -170,8 +173,9 @@ class CargoVolumeMapperNode(Node):
             return response
         self._publish_all()
         response.success = True
-        response.message = "committed %d boxes (rev %d)" % (
-            len(self._mapper._placed_boxes), self._mapper._revision)
+        response.message = "%s %d boxes (rev %d)" % (
+            "committed" if added else "already committed",
+            len(self._mapper.commit_ledger()), self._mapper._revision)
         return response
 
     def _on_remove(self, request, response):
@@ -180,10 +184,14 @@ class CargoVolumeMapperNode(Node):
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
                 max(0.0, float(slot.height))]
+        yaw = (
+            self._yaw_from_pose(slot.place_pose)
+            - float(self._world_from_container["rotation_rpy"][2])
+        )
         removed = self._mapper.unmark_placed_box(
             [center_c.position.x, center_c.position.y,
              center_c.position.z],
-            size)
+            size, yaw=yaw)
         self._publish_all()
         response.success = bool(removed)
         response.message = (
@@ -202,6 +210,7 @@ class CargoVolumeMapperNode(Node):
         response.success = True
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])
+        response.occupied_volume = float(stats["occupied_volume"])
         response.free_volume = float(stats["free_volume"])
         response.unknown_count = int(stats["unknown_count"])
         response.free_count = int(stats["free_count"])
@@ -229,7 +238,7 @@ class CargoVolumeMapperNode(Node):
         self._ledger_pub.publish(String(data=json.dumps({
             "frame": self._frame,
             "container_in_world": self._world_from_container,
-            "boxes": self._mapper._placed_boxes,
+            "boxes": self._mapper.commit_ledger(),
             "map_revision": self._mapper._revision,
         }, sort_keys=True)))
 
