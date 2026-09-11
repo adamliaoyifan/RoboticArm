@@ -134,7 +134,7 @@ _LABEL_ROBOT_ARM = 3
 
 def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
                              depth_tol_mm=30, max_pixels=60000,
-                             max_radius_px=280):
+                             max_radius_px=280, search_radius_px=0):
     """Expand a cargo pixel seed across the same-depth connected surface.
 
     YOLO bbox_fill can accept a too-small in-workspace box (~few thousand
@@ -152,10 +152,11 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     strip (panel, container lip) cannot flood the frame. If the connected
     component would exceed ``max_pixels`` the original seed is kept.
 
-    A large origin (already a lid-sized mask) is returned without
-    flooding: extra same-depth pixels are usually a vertical panel. A flood
-    whose image-row depth slope looks like a vertical face is also
-    rejected back to the origin.
+    A YOLO box on the platform beside the suitcase has no lid pixels in
+    the seed. ``search_radius_px`` expands the seed AABB so the closest
+    band can jump to a nearby lid. Platform-only seeds stay on the
+    platform and are dropped later if they are not raised above their
+    ring.
 
     ``depth_tol_mm <= 0`` disables growth. Returns (grown_sel, stats).
     """
@@ -187,14 +188,27 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     if seed_z.size == 0:
         stats["cargo_grow_aborted"] = 1
         return seed, stats
-    z_lo = float(np.percentile(seed_z, 5))
-    origin = seed & valid & (z <= z_lo + float(tol))
+    blocked_b = None if blocked is None else np.asarray(blocked, dtype=bool)
+    search = seed & valid
+    if blocked_b is not None:
+        search = search & ~blocked_b
+    if int(search_radius_px) > 0:
+        expanded = _expand_bbox_mask(seed, int(search_radius_px))
+        search = expanded & valid
+        if blocked_b is not None:
+            search = search & ~blocked_b
+    search_z = z[search]
+    if search_z.size == 0:
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    z_lo = float(np.percentile(search_z, 5))
+    origin = search & (z <= z_lo + float(tol))
     if not origin.any():
         stats["cargo_grow_aborted"] = 1
         return seed, stats
     stats["cargo_grow_origin_pixels"] = int(origin.sum())
     if abs(_depth_row_slope_mm_per_px(z, origin)) > _GROW_VERTICAL_SLOPE_MM_PER_PX:
-        peeled = seed & valid & (z <= z_lo + float(_GROW_PEEL_TOL_MM))
+        peeled = search & (z <= z_lo + float(_GROW_PEEL_TOL_MM))
         if peeled.any():
             origin = peeled
             stats["cargo_grow_vertical_peel"] = 1
@@ -216,8 +230,8 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     origin_z = z[origin]
     median_z = float(np.median(origin_z))
     similar = valid & (np.abs(z - median_z) <= float(tol))
-    if blocked is not None:
-        similar = similar & ~np.asarray(blocked, dtype=bool)
+    if blocked_b is not None:
+        similar = similar & ~blocked_b
     if radius > 0:
         ys, xs = np.nonzero(origin)
         cy = float(np.mean(ys))
@@ -244,6 +258,53 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
 _GROW_FLOOD_ORIGIN_MAX_PX = 8000
 _GROW_VERTICAL_SLOPE_MM_PER_PX = 1.25
 _GROW_PEEL_TOL_MM = 12
+
+
+def _expand_bbox_mask(seed, radius):
+    """Axis-aligned expansion of the seed's bounding box."""
+    out = np.zeros(seed.shape, dtype=bool)
+    ys, xs = np.nonzero(seed)
+    if ys.size == 0 or int(radius) <= 0:
+        return np.asarray(seed, dtype=bool)
+    r = int(radius)
+    y1 = max(0, int(ys.min()) - r)
+    y2 = min(seed.shape[0], int(ys.max()) + 1 + r)
+    x1 = max(0, int(xs.min()) - r)
+    x2 = min(seed.shape[1], int(xs.max()) + 1 + r)
+    out[y1:y2, x1:x2] = True
+    return out
+
+
+def drop_unraised_cargo_sel(depth_image, cargo_sel, blocked=None,
+                              raise_mm=50, ring_px=12):
+    """Clear cargo that sits at the same depth as its surrounding ring.
+
+    A platform-level false box is a horizontal plane at support height.
+    A suitcase lid is at least ``raise_mm`` closer than the farther part
+    of a ring around the mask. Fail-open when the ring is empty.
+    """
+    cargo = np.asarray(cargo_sel, dtype=bool)
+    stats = {"cargo_unraised_drop": 0}
+    if int(raise_mm) <= 0 or not cargo.any():
+        return cargo, stats
+    z = np.asarray(depth_image, dtype=np.float32)
+    if z.shape != cargo.shape:
+        return cargo, stats
+    valid = np.isfinite(z) & (z > 0.0)
+    cargo_v = cargo & valid
+    if int(cargo_v.sum()) < 20:
+        return cargo, stats
+    ring = _expand_bbox_mask(cargo, int(ring_px)) & valid & ~cargo_v
+    if blocked is not None:
+        ring = ring & ~np.asarray(blocked, dtype=bool)
+    if int(ring.sum()) < 20:
+        return cargo, stats
+    cargo_med = float(np.median(z[cargo_v]))
+    ring_far = float(np.percentile(z[ring], 75))
+    if cargo_med + float(raise_mm) <= ring_far:
+        return cargo, stats
+    stats["cargo_unraised_drop"] = 1
+    return np.zeros(cargo.shape, dtype=bool), stats
 
 
 def _depth_row_slope_mm_per_px(z, sel):
@@ -315,7 +376,8 @@ class SemanticPointFilter:
     def __init__(self, color_intrinsics, depth_intrinsics,
                  depth_to_color, cargo_labels, obstacle_labels,
                  exclude_labels=None, grow_depth_tol_mm=0,
-                 grow_max_pixels=60000, grow_max_radius_px=280):
+                 grow_max_pixels=60000, grow_max_radius_px=280,
+                 grow_search_radius_px=0, grow_raise_mm=0):
         self.color_intrinsics = color_intrinsics
         self.depth_intrinsics = depth_intrinsics
         self.depth_to_color = depth_to_color
@@ -325,6 +387,8 @@ class SemanticPointFilter:
         self.grow_depth_tol_mm = int(grow_depth_tol_mm)
         self.grow_max_pixels = int(grow_max_pixels)
         self.grow_max_radius_px = int(grow_max_radius_px)
+        self.grow_search_radius_px = int(grow_search_radius_px)
+        self.grow_raise_mm = int(grow_raise_mm)
         self._deproject_buffers = {}
         self._last_stats = {
             "raw_count": 0,
@@ -397,7 +461,11 @@ class SemanticPointFilter:
             depth, cargo_sel, blocked=blocked,
             depth_tol_mm=self.grow_depth_tol_mm,
             max_pixels=self.grow_max_pixels,
-            max_radius_px=self.grow_max_radius_px)
+            max_radius_px=self.grow_max_radius_px,
+            search_radius_px=self.grow_search_radius_px)
+        cargo_sel, raise_stats = drop_unraised_cargo_sel(
+            depth, cargo_sel, blocked=blocked,
+            raise_mm=self.grow_raise_mm)
         obstacle_sel = _sel(self.obstacle_labels) & ~excl
         if self.cargo_labels & self.obstacle_labels:
             obstacle_sel = obstacle_sel | cargo_sel
@@ -439,6 +507,7 @@ class SemanticPointFilter:
             "out_of_frame_count": 0,
         }
         self._last_stats.update(grow_stats)
+        self._last_stats.update(raise_stats)
         return cargo_pts, obstacle_pts
 
     def filter_points(self, points_depth, label_map, instance_map=None):

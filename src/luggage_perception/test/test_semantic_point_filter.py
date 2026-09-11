@@ -416,6 +416,43 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertFalse(np.any(grown[0:8, :]))
         self.assertFalse(np.any(grown[40:, :]))
 
+    def test_search_radius_finds_nearby_lid(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 64, 80
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[8:28, 8:40] = 500
+        seed = np.zeros((h, w), dtype=bool)
+        seed[32:40, 48:60] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=8000,
+            search_radius_px=24)
+        self.assertTrue(np.any(grown[8:28, 8:40]))
+        self.assertFalse(np.any(grown[32:40, 48:60]))
+
+    def test_drops_unraised_platform_patch(self):
+        from luggage_perception.semantic_point_filter import (
+            drop_unraised_cargo_sel)
+        h, w = 40, 40
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        cargo = np.zeros((h, w), dtype=bool)
+        cargo[16:24, 16:24] = True
+        out, stats = drop_unraised_cargo_sel(depth, cargo, raise_mm=50)
+        self.assertEqual(stats["cargo_unraised_drop"], 1)
+        self.assertFalse(out.any())
+
+    def test_keeps_raised_lid(self):
+        from luggage_perception.semantic_point_filter import (
+            drop_unraised_cargo_sel)
+        h, w = 40, 40
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[16:24, 16:24] = 500
+        cargo = np.zeros((h, w), dtype=bool)
+        cargo[16:24, 16:24] = True
+        out, stats = drop_unraised_cargo_sel(depth, cargo, raise_mm=50)
+        self.assertEqual(stats["cargo_unraised_drop"], 0)
+        self.assertTrue(np.array_equal(out, cargo))
+
 
 if __name__ == "__main__":
     unittest.main()

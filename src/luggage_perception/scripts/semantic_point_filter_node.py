@@ -92,6 +92,8 @@ class SemanticPointFilterNode(Node):
             "cargo_grow_depth_tol_mm": 30,
             "cargo_grow_max_pixels": 60000,
             "cargo_grow_max_radius_px": 280,
+            "cargo_grow_search_radius_px": 140,
+            "cargo_grow_raise_mm": 50,
             # PF-R9 B5: stats serialization moved off the per-callback path
             # onto a timer (0 keeps the legacy per-call behaviour for unit
             # tests).
@@ -118,6 +120,10 @@ class SemanticPointFilterNode(Node):
             0, int(self.get_parameter("cargo_grow_max_pixels").value))
         self._grow_max_radius_px = max(
             0, int(self.get_parameter("cargo_grow_max_radius_px").value))
+        self._grow_search_radius_px = max(
+            0, int(self.get_parameter("cargo_grow_search_radius_px").value))
+        self._grow_raise_mm = max(
+            0, int(self.get_parameter("cargo_grow_raise_mm").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
         stats_hz = float(self.get_parameter("stats_publish_hz").value)
         self._stats_publish_interval_sec = (
@@ -267,7 +273,9 @@ class SemanticPointFilterNode(Node):
                     self._cargo_labels, self._obstacle_labels,
                     grow_depth_tol_mm=self._grow_depth_tol_mm,
                     grow_max_pixels=self._grow_max_pixels,
-                    grow_max_radius_px=self._grow_max_radius_px)
+                    grow_max_radius_px=self._grow_max_radius_px,
+                    grow_search_radius_px=self._grow_search_radius_px,
+                    grow_raise_mm=self._grow_raise_mm)
             self._intrinsics = intr
 
     def _on_depth(self, msg):
