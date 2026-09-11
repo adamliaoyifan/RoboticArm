@@ -341,6 +341,19 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertGreater(int(filt.last_stats["cargo_pixels_grown"]), 0)
         self.assertGreaterEqual(cargo.shape[0], 16 * 16)
 
+    def test_radius_cap_blocks_far_similar_depth(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 64, 64
+        depth = np.full((h, w), 500, dtype=np.uint16)
+        seed = np.zeros((h, w), dtype=bool)
+        seed[28:36, 28:36] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=5000, max_radius_px=10)
+        self.assertEqual(stats["cargo_grow_aborted"], 0)
+        self.assertFalse(np.any(grown[0:8, :]))
+        self.assertTrue(np.all(grown[28:36, 28:36]))
+
 
 if __name__ == "__main__":
     unittest.main()

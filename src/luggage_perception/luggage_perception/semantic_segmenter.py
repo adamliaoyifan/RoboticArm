@@ -209,6 +209,51 @@ def restrict_cargo_mask_to_accepted(label_map, detections, instance_map=None,
     return labels, inst_out, n_drop
 
 
+def bbox_touches_border(bbox, width, height, margin=12):
+    if bbox is None or len(bbox) < 4:
+        return True
+    x1, y1, x2, y2 = (int(v) for v in bbox[:4])
+    m = int(margin)
+    return (x1 <= m or y1 <= m or x2 >= int(width) - m
+            or y2 >= int(height) - m)
+
+
+def unaccept_border_cargo_when_inner_exists(detections, image_shape,
+                                           cargo_label=LABEL_CARGO,
+                                           margin=12):
+    """If an inner accepted cargo box exists, drop border-clipped cargo.
+
+    Pedestal/container AABBs sit on the image edge. When YOLO also sees
+    the suitcase, those edge boxes must not remain accepted or the depth
+    grow step floods a non-horizontal surface and the trial goes
+    DETECT_TOP_UNOBSERVABLE for the whole window.
+    """
+    dets = list(detections or [])
+    h, w = (int(image_shape[0]), int(image_shape[1])) if image_shape else (0, 0)
+    if w <= 0 or h <= 0:
+        return dets, 0
+    accepted = [d for d in dets
+                if int(d.get("label", -1)) == int(cargo_label)
+                and d.get("accepted")]
+    inner = [d for d in accepted
+             if not bbox_touches_border(d.get("bbox"), w, h, margin)]
+    if not inner or len(inner) == len(accepted):
+        return dets, 0
+    n_drop = 0
+    inner_ids = set(id(d) for d in inner)
+    for det in dets:
+        if id(det) in inner_ids:
+            continue
+        if int(det.get("label", -1)) != int(cargo_label):
+            continue
+        if not det.get("accepted"):
+            continue
+        det["accepted"] = False
+        det["accept_reason"] = "border_cargo_with_inner"
+        n_drop += 1
+    return dets, n_drop
+
+
 def _setup_clip_vendor():
     """Make the vendored CLIP package + deps importable offline.
 
@@ -594,8 +639,17 @@ class SemanticSegmenter:
                 accepted_reasons.get(str(reason), 0) + 1)
             if accepted:
                 n_accepted += 1
+        detections, n_border = unaccept_border_cargo_when_inner_exists(
+            detections, rgb_uint8.shape[:2])
+        if n_border:
+            n_accepted = sum(
+                1 for det in detections
+                if int(det.get("label", -1)) == LABEL_CARGO
+                and det.get("accepted"))
+            accepted_reasons["border_cargo_with_inner"] = int(n_border)
         stats["accepted_cargo_count"] = int(n_accepted)
         stats["accept_reasons"] = accepted_reasons
+        stats["border_cargo_unaccepted"] = int(n_border)
         stats["workspace_predicate"] = bool(
             self.workspace_ctx is not None and self.workspace_ctx.available())
         label_map, instance_map, n_cleared = restrict_cargo_mask_to_accepted(

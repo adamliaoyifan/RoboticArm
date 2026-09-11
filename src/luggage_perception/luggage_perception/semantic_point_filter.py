@@ -133,7 +133,8 @@ _LABEL_ROBOT_ARM = 3
 
 
 def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
-                             depth_tol_mm=30, max_pixels=60000):
+                             depth_tol_mm=30, max_pixels=60000,
+                             max_radius_px=280):
     """Expand a cargo pixel seed across the same-depth connected surface.
 
     YOLO bbox_fill can accept a too-small in-workspace box (~few thousand
@@ -143,9 +144,10 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     min_confidence.
 
     The platform sits one luggage-height farther than the lid, so a 30 mm
-    band around the seed median does not leak onto it. If the connected
-    component would exceed ``max_pixels`` (a platform-sized flood), the
-    original seed is kept — fail closed rather than painting the floor.
+    band around the seed median does not leak onto it. Growth is also
+    clipped to ``max_radius_px`` around the seed centroid so a similar-depth
+    strip (panel, container lip) cannot flood the frame. If the connected
+    component would exceed ``max_pixels`` the original seed is kept.
 
     ``depth_tol_mm <= 0`` disables growth. Returns (grown_sel, stats).
     """
@@ -158,6 +160,7 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     }
     tol = int(depth_tol_mm)
     cap = int(max_pixels)
+    radius = int(max_radius_px)
     if tol <= 0 or cap <= 0 or not seed.any():
         return seed, stats
     depth = np.asarray(depth_image)
@@ -176,6 +179,12 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     similar = valid & (np.abs(z - median_z) <= float(tol))
     if blocked is not None:
         similar = similar & ~np.asarray(blocked, dtype=bool)
+    if radius > 0:
+        ys, xs = np.nonzero(seed)
+        cy = float(np.mean(ys))
+        cx = float(np.mean(xs))
+        yy, xx = np.ogrid[:seed.shape[0], :seed.shape[1]]
+        similar = similar & (((yy - cy) ** 2 + (xx - cx) ** 2) <= radius * radius)
     grown = _connected_to_seed(similar, seed)
     if grown is None:
         stats["cargo_grow_aborted"] = 1
@@ -242,7 +251,7 @@ class SemanticPointFilter:
     def __init__(self, color_intrinsics, depth_intrinsics,
                  depth_to_color, cargo_labels, obstacle_labels,
                  exclude_labels=None, grow_depth_tol_mm=0,
-                 grow_max_pixels=60000):
+                 grow_max_pixels=60000, grow_max_radius_px=280):
         self.color_intrinsics = color_intrinsics
         self.depth_intrinsics = depth_intrinsics
         self.depth_to_color = depth_to_color
@@ -251,6 +260,7 @@ class SemanticPointFilter:
         self.exclude_labels = set(int(l) for l in (exclude_labels or []))
         self.grow_depth_tol_mm = int(grow_depth_tol_mm)
         self.grow_max_pixels = int(grow_max_pixels)
+        self.grow_max_radius_px = int(grow_max_radius_px)
         self._deproject_buffers = {}
         self._last_stats = {
             "raw_count": 0,
@@ -322,7 +332,8 @@ class SemanticPointFilter:
         cargo_sel, grow_stats = grow_cargo_sel_by_depth(
             depth, cargo_sel, blocked=blocked,
             depth_tol_mm=self.grow_depth_tol_mm,
-            max_pixels=self.grow_max_pixels)
+            max_pixels=self.grow_max_pixels,
+            max_radius_px=self.grow_max_radius_px)
         obstacle_sel = _sel(self.obstacle_labels) & ~excl
         if self.cargo_labels & self.obstacle_labels:
             obstacle_sel = obstacle_sel | cargo_sel

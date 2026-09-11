@@ -538,6 +538,32 @@ class TestRestrictCargoMask(unittest.TestCase):
         self.assertTrue(np.all(out[6:9, 1:4] == LABEL_ROBOT_ARM))
 
 
+class TestUnacceptBorderCargo(unittest.TestCase):
+    def test_unaccepts_border_when_inner_exists(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        inner = {"label": LABEL_CARGO, "accepted": True,
+                 "bbox": [40, 40, 80, 90]}
+        border = {"label": LABEL_CARGO, "accepted": True,
+                  "bbox": [600, 20, 640, 200]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [inner, border], (480, 640), margin=12)
+        self.assertEqual(n, 1)
+        self.assertTrue(inner["accepted"])
+        self.assertFalse(border["accepted"])
+        self.assertEqual(border["accept_reason"], "border_cargo_with_inner")
+
+    def test_keeps_border_when_it_is_the_only_box(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        border = {"label": LABEL_CARGO, "accepted": True,
+                  "bbox": [600, 20, 640, 200]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [border], (480, 640), margin=12)
+        self.assertEqual(n, 0)
+        self.assertTrue(border["accepted"])
+
+
 class TestUpdateTemporalHold(unittest.TestCase):
     def test_update_holds_bbox_on_flicker_miss(self):
         from luggage_perception.semantic_segmenter import SemanticSegmenter
