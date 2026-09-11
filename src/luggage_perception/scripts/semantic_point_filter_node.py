@@ -89,6 +89,8 @@ class SemanticPointFilterNode(Node):
             "realsense_extrinsics_config": "",
             "buffer_maxlen": 10,
             "output_pixel_stride": 2,
+            "cargo_grow_depth_tol_mm": 30,
+            "cargo_grow_max_pixels": 60000,
             # PF-R9 B5: stats serialization moved off the per-callback path
             # onto a timer (0 keeps the legacy per-call behaviour for unit
             # tests).
@@ -109,6 +111,10 @@ class SemanticPointFilterNode(Node):
         self._buffer_maxlen = max(2, int(self.get_parameter("buffer_maxlen").value))
         self._pixel_stride = max(
             1, int(self.get_parameter("output_pixel_stride").value))
+        self._grow_depth_tol_mm = max(
+            0, int(self.get_parameter("cargo_grow_depth_tol_mm").value))
+        self._grow_max_pixels = max(
+            0, int(self.get_parameter("cargo_grow_max_pixels").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
         stats_hz = float(self.get_parameter("stats_publish_hz").value)
         self._stats_publish_interval_sec = (
@@ -255,7 +261,9 @@ class SemanticPointFilterNode(Node):
                     self._intrinsics.cx, self._intrinsics.cy):
                 self._filter = SemanticPointFilter(
                     intr, intr, self._extrinsics,
-                    self._cargo_labels, self._obstacle_labels)
+                    self._cargo_labels, self._obstacle_labels,
+                    grow_depth_tol_mm=self._grow_depth_tol_mm,
+                    grow_max_pixels=self._grow_max_pixels)
             self._intrinsics = intr
 
     def _on_depth(self, msg):

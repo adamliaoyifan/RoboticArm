@@ -126,6 +126,111 @@ def _project_to_color(points_depth, rotation, translation, color_intr):
     return uv, z
 
 
+# Semantic label ids matching semantic_segmenter. Kept numeric here so this
+# module does not import the segmenter (node-layer / cycle risk).
+_LABEL_CONTAINER_WALL = 1
+_LABEL_ROBOT_ARM = 3
+
+
+def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
+                             depth_tol_mm=30, max_pixels=60000):
+    """Expand a cargo pixel seed across the same-depth connected surface.
+
+    YOLO bbox_fill can accept a too-small in-workspace box (~few thousand
+    pixels). Count-based detector confidence then stays below min_confidence
+    (DETECT_LOW_CONFIDENCE) even though the lid is present. Growing along
+    aligned depth recovers the lid without changing RANSAC / min_points /
+    min_confidence.
+
+    The platform sits one luggage-height farther than the lid, so a 30 mm
+    band around the seed median does not leak onto it. If the connected
+    component would exceed ``max_pixels`` (a platform-sized flood), the
+    original seed is kept — fail closed rather than painting the floor.
+
+    ``depth_tol_mm <= 0`` disables growth. Returns (grown_sel, stats).
+    """
+    seed = np.asarray(cargo_sel, dtype=bool)
+    stats = {
+        "cargo_grow_enabled": False,
+        "cargo_pixels_seed": int(seed.sum()),
+        "cargo_pixels_grown": 0,
+        "cargo_grow_aborted": 0,
+    }
+    tol = int(depth_tol_mm)
+    cap = int(max_pixels)
+    if tol <= 0 or cap <= 0 or not seed.any():
+        return seed, stats
+    depth = np.asarray(depth_image)
+    if depth.shape != seed.shape:
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    stats["cargo_grow_enabled"] = True
+    z = np.empty(depth.shape, dtype=np.float32)
+    z[:, :] = depth
+    valid = np.isfinite(z) & (z > 0.0)
+    seed_z = z[seed & valid]
+    if seed_z.size == 0:
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    median_z = float(np.median(seed_z))
+    similar = valid & (np.abs(z - median_z) <= float(tol))
+    if blocked is not None:
+        similar = similar & ~np.asarray(blocked, dtype=bool)
+    grown = _connected_to_seed(similar, seed)
+    if grown is None:
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    n_grown = int(grown.sum())
+    if n_grown > cap:
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    stats["cargo_pixels_grown"] = int(max(0, n_grown - stats["cargo_pixels_seed"]))
+    return grown, stats
+
+
+def _connected_to_seed(similar, seed):
+    """4-connected component(s) of ``similar`` that overlap ``seed``."""
+    similar_u8 = np.asarray(similar, dtype=np.uint8)
+    seed_b = np.asarray(seed, dtype=bool)
+    try:
+        import cv2  # noqa: WPS433
+        _num, cc = cv2.connectedComponents(similar_u8, connectivity=4)
+    except Exception:
+        cc = _connected_components_numpy(similar_u8)
+    if cc is None:
+        return None
+    keep_ids = np.unique(cc[seed_b])
+    keep_ids = keep_ids[keep_ids != 0]
+    if keep_ids.size == 0:
+        return seed_b
+    return np.isin(cc, keep_ids) | seed_b
+
+
+def _connected_components_numpy(similar_u8):
+    """Fallback 4-connected labels when OpenCV is unavailable."""
+    h, w = similar_u8.shape
+    labels = np.zeros((h, w), dtype=np.int32)
+    current = 0
+    similar = similar_u8.astype(bool)
+    for y, x in zip(*np.nonzero(similar)):
+        if labels[y, x]:
+            continue
+        current += 1
+        stack = [(int(y), int(x))]
+        labels[y, x] = current
+        while stack:
+            cy, cx = stack.pop()
+            for ny, nx in ((cy - 1, cx), (cy + 1, cx),
+                           (cy, cx - 1), (cy, cx + 1)):
+                if ny < 0 or nx < 0 or ny >= h or nx >= w:
+                    continue
+                if not similar[ny, nx] or labels[ny, nx]:
+                    continue
+                labels[ny, nx] = current
+                stack.append((ny, nx))
+    return labels
+
+
 class SemanticPointFilter:
     """Route depth points to output streams based on a semantic label map.
 
@@ -136,13 +241,16 @@ class SemanticPointFilter:
 
     def __init__(self, color_intrinsics, depth_intrinsics,
                  depth_to_color, cargo_labels, obstacle_labels,
-                 exclude_labels=None):
+                 exclude_labels=None, grow_depth_tol_mm=0,
+                 grow_max_pixels=60000):
         self.color_intrinsics = color_intrinsics
         self.depth_intrinsics = depth_intrinsics
         self.depth_to_color = depth_to_color
         self.cargo_labels = set(int(l) for l in cargo_labels)
         self.obstacle_labels = set(int(l) for l in obstacle_labels)
         self.exclude_labels = set(int(l) for l in (exclude_labels or []))
+        self.grow_depth_tol_mm = int(grow_depth_tol_mm)
+        self.grow_max_pixels = int(grow_max_pixels)
         self._deproject_buffers = {}
         self._last_stats = {
             "raw_count": 0,
@@ -209,7 +317,15 @@ class SemanticPointFilter:
 
         excl = _sel(self.exclude_labels)
         cargo_sel = _sel(self.cargo_labels) & ~excl
+        blocked = excl | (label_arr == _LABEL_ROBOT_ARM) \
+            | (label_arr == _LABEL_CONTAINER_WALL)
+        cargo_sel, grow_stats = grow_cargo_sel_by_depth(
+            depth, cargo_sel, blocked=blocked,
+            depth_tol_mm=self.grow_depth_tol_mm,
+            max_pixels=self.grow_max_pixels)
         obstacle_sel = _sel(self.obstacle_labels) & ~excl
+        if self.cargo_labels & self.obstacle_labels:
+            obstacle_sel = obstacle_sel | cargo_sel
         excluded_px = int((excl | ~(cargo_sel | obstacle_sel)).sum())
 
         intr = self.color_intrinsics
@@ -247,6 +363,7 @@ class SemanticPointFilter:
             "excluded_count": excluded_px,
             "out_of_frame_count": 0,
         }
+        self._last_stats.update(grow_stats)
         return cargo_pts, obstacle_pts
 
     def filter_points(self, points_depth, label_map, instance_map=None):

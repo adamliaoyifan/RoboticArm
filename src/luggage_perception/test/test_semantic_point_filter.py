@@ -268,5 +268,79 @@ class TestJoinStampTracker(unittest.TestCase):
         self.assertEqual(payload["instance_id"], "pickup_box_0004_carryon")
 
 
+def _tiny_intrinsics(h=64, w=64):
+    return CameraIntrinsics(
+        fx=100.0, fy=100.0, cx=w / 2.0, cy=h / 2.0, width=w, height=h)
+
+
+class TestGrowCargoSelByDepth(unittest.TestCase):
+    def test_grows_raised_lid_not_platform(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 64, 64
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[16:48, 16:48] = 500
+        seed = np.zeros((h, w), dtype=bool)
+        seed[28:36, 28:36] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=5000)
+        self.assertTrue(stats["cargo_grow_enabled"])
+        self.assertEqual(stats["cargo_grow_aborted"], 0)
+        self.assertTrue(np.all(grown[16:48, 16:48]))
+        self.assertFalse(np.any(grown[0:16, :]))
+        self.assertGreater(stats["cargo_pixels_grown"], 0)
+
+    def test_aborts_platform_sized_flood(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 64, 64
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        seed = np.zeros((h, w), dtype=bool)
+        seed[30:34, 30:34] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=100)
+        self.assertEqual(stats["cargo_grow_aborted"], 1)
+        self.assertTrue(np.array_equal(grown, seed))
+
+    def test_disabled_tol_is_noop(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        seed = np.zeros((8, 8), dtype=bool)
+        seed[3:5, 3:5] = True
+        depth = np.full((8, 8), 500, dtype=np.uint16)
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=0, max_pixels=100)
+        self.assertFalse(stats["cargo_grow_enabled"])
+        self.assertTrue(np.array_equal(grown, seed))
+
+    def test_does_not_grow_into_robot_arm_block(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        depth = np.full((16, 16), 500, dtype=np.uint16)
+        seed = np.zeros((16, 16), dtype=bool)
+        seed[6:10, 6:10] = True
+        blocked = np.zeros((16, 16), dtype=bool)
+        blocked[:, 12:] = True
+        grown, _stats = grow_cargo_sel_by_depth(
+            depth, seed, blocked=blocked, depth_tol_mm=30, max_pixels=400)
+        self.assertFalse(np.any(grown[:, 12:]))
+
+    def test_filter_depth_uses_grown_mask(self):
+        from luggage_perception.semantic_point_filter import SemanticPointFilter
+        h, w = 32, 32
+        intr = _tiny_intrinsics(h, w)
+        filt = SemanticPointFilter(
+            intr, intr, DepthToColorExtrinsics.identity(),
+            cargo_labels=[2], obstacle_labels=[2, 4],
+            grow_depth_tol_mm=30, grow_max_pixels=2000)
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[8:24, 8:24] = 500
+        labels = np.zeros((h, w), dtype=np.uint8)
+        labels[14:18, 14:18] = 2
+        cargo, _obs = filt.filter_depth(depth, labels, pixel_stride=1)
+        self.assertGreater(int(filt.last_stats["cargo_pixels_grown"]), 0)
+        self.assertGreaterEqual(cargo.shape[0], 16 * 16)
+
+
 if __name__ == "__main__":
     unittest.main()
