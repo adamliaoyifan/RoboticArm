@@ -24,8 +24,10 @@ elfin_s20_visualization.html
 *.bak
 *.deb
 
-# Keep status evidence logs (the blanket *.log rule would drop them)
-!elfin_jazzy_ws/docs/status/evidence/**/*.log
+# Agent notes, mailbox, generated status/evidence, and working plans
+elfin_jazzy_ws/docs/agents/
+elfin_jazzy_ws/docs/status/
+elfin_jazzy_ws/docs/plans/
 
 # Nested vendor clone metadata (flattened into monorepo)
 elfin_noetic_ws/src/elfin_s_robot/.git/
