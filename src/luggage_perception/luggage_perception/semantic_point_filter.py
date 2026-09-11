@@ -168,6 +168,7 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         "cargo_grow_origin_pixels": 0,
         "cargo_grow_flood_skipped": 0,
         "cargo_grow_vertical_abort": 0,
+        "cargo_grow_vertical_peel": 0,
     }
     tol = int(depth_tol_mm)
     cap = int(max_pixels)
@@ -192,8 +193,23 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         stats["cargo_grow_aborted"] = 1
         return seed, stats
     stats["cargo_grow_origin_pixels"] = int(origin.sum())
-    if stats["cargo_grow_origin_pixels"] >= _GROW_FLOOD_ORIGIN_MAX_PX:
+    if abs(_depth_row_slope_mm_per_px(z, origin)) > _GROW_VERTICAL_SLOPE_MM_PER_PX:
+        peeled = seed & valid & (z <= z_lo + float(_GROW_PEEL_TOL_MM))
+        if peeled.any():
+            origin = peeled
+            stats["cargo_grow_vertical_peel"] = 1
+            stats["cargo_grow_origin_pixels"] = int(origin.sum())
+    origin_vertical = (
+        abs(_depth_row_slope_mm_per_px(z, origin))
+        > _GROW_VERTICAL_SLOPE_MM_PER_PX)
+    if (stats["cargo_grow_origin_pixels"] >= _GROW_FLOOD_ORIGIN_MAX_PX
+            and not origin_vertical):
         stats["cargo_grow_flood_skipped"] = 1
+        stats["cargo_pixels_grown"] = int(max(
+            0, stats["cargo_grow_origin_pixels"] - stats["cargo_pixels_seed"]))
+        return origin, stats
+    if origin_vertical:
+        stats["cargo_grow_vertical_abort"] = 1
         stats["cargo_pixels_grown"] = int(max(
             0, stats["cargo_grow_origin_pixels"] - stats["cargo_pixels_seed"]))
         return origin, stats
@@ -227,6 +243,7 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
 
 _GROW_FLOOD_ORIGIN_MAX_PX = 8000
 _GROW_VERTICAL_SLOPE_MM_PER_PX = 1.25
+_GROW_PEEL_TOL_MM = 12
 
 
 def _depth_row_slope_mm_per_px(z, sel):
