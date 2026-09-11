@@ -33,6 +33,11 @@ __pycache__/
 !.cursor/rules/
 !.cursor/rules/**
 
+# Agent notes, mailbox, generated status/evidence, and working plans
+docs/agents/
+docs/status/
+docs/plans/
+
 # Misc
 *.swp
 *~

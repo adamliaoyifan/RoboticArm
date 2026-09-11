@@ -1,1 +1,0 @@
-reused:builtin:wf1_contract

@@ -1,4 +1,0 @@
-pytest_focused: 56 passed in 2.10s (after source install/setup.bash)
-colcon_build: luggage_perception finished 0.43s
-stop_sim_residual_comm: 0
-detection_frame: never published (wait timeout ~136s)

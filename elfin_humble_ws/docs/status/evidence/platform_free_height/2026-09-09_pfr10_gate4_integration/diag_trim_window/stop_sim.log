@@ -1,3 +1,0 @@
-stop_sim: SIGINT launch 1106325 (wait 12s)
-stop_sim: SIGTERM leftovers still alive after SIGINT
-stop_sim: stack stopped
