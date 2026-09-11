@@ -75,9 +75,18 @@ def rotation_from_xyzw(qx, qy, qz, qw):
 
 def transform_points(points, rotation, translation):
     """Apply ``p' = R p + t`` to an Nx3 cloud."""
-    pts = xyz_array(points)
+    # Do not eagerly promote an already-contiguous float32 camera cloud to a
+    # second Nx3 float64 array.  The matrix product produces the required
+    # float64 world cloud itself; the old promotion was a large, variable-size
+    # allocation on every semantic frame.
+    pts = np.asarray(points)
+    if pts.size == 0:
+        return np.zeros((0, 3), dtype=np.float64)
+    if pts.ndim == 1:
+        pts = pts.reshape(1, -1)
+    pts = pts[:, :3]
     if pts.shape[0] == 0:
-        return pts
+        return np.zeros((0, 3), dtype=np.float64)
     rot = np.asarray(rotation, dtype=np.float64).reshape(3, 3)
     trans = np.asarray(translation, dtype=np.float64).reshape(3)
     return pts.dot(rot.T) + trans
@@ -96,6 +105,26 @@ class CargoInstanceTracker:
         self.cloud_stamp = 0.0
         self.source = SOURCE_EMPTY
         self.motion_weight = 1.0
+        self._points_buffer = None
+
+    def reserve_points(self, capacity):
+        """Reserve stable storage for the tracked cloud.
+
+        Semantic masks vary substantially between trials.  Keeping an exact
+        sized allocation for every accepted cloud made the allocator retain a
+        succession of differently-sized chunks.  Camera-info gives the node a
+        hard pixel bound, so it can reserve once before scored frames begin.
+        """
+        capacity = max(0, int(capacity))
+        current = (0 if self._points_buffer is None
+                   else int(self._points_buffer.shape[0]))
+        if capacity <= current:
+            return
+        grown = np.empty((capacity, 3), dtype=np.float64)
+        if self.points_world is not None and self.n_points:
+            grown[:self.n_points] = self.points_world[:self.n_points]
+            self.points_world = grown[:self.n_points]
+        self._points_buffer = grown
 
     def reset(self):
         """Drop the geometric track. Epoch id/generation are left as-is."""
@@ -121,10 +150,18 @@ class CargoInstanceTracker:
         return self.generation > 0 and not self.instance_id
 
     def _accept(self, points_world, centroid, stamp_sec, source):
-        self.points_world = np.ascontiguousarray(
-            points_world, dtype=np.float64)
+        points = xyz_array(points_world)
+        n_points = int(points.shape[0])
+        if self._points_buffer is None or self._points_buffer.shape[0] < n_points:
+            # Non-ROS callers need no explicit reserve.  Geometric growth
+            # still avoids exact-size churn as measurement density varies.
+            current = (0 if self._points_buffer is None
+                       else int(self._points_buffer.shape[0]))
+            self.reserve_points(max(n_points, max(1, current * 2)))
+        self._points_buffer[:n_points] = points
+        self.points_world = self._points_buffer[:n_points]
         self.centroid = np.asarray(centroid, dtype=np.float64).reshape(3)
-        self.n_points = int(self.points_world.shape[0])
+        self.n_points = n_points
         self.cloud_stamp = float(stamp_sec)
         self.source = source
         self.motion_weight = 1.0

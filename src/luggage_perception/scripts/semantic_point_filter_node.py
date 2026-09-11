@@ -30,6 +30,7 @@ import json
 import threading
 import time
 
+import numpy as np
 import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
@@ -276,6 +277,13 @@ class SemanticPointFilterNode(Node):
                     grow_max_radius_px=self._grow_max_radius_px,
                     grow_search_radius_px=self._grow_search_radius_px,
                     grow_raise_mm=self._grow_raise_mm)
+                # A decimated cargo cloud cannot exceed this bound.  Reserve
+                # the tracker once instead of retaining a new exact-sized
+                # float64 cloud whenever the mask area changes.
+                capacity = (
+                    intr.width * intr.height + self._pixel_stride - 1
+                ) // self._pixel_stride
+                self._tracker.reserve_points(capacity)
             self._intrinsics = intr
 
     def _on_depth(self, msg):
@@ -398,7 +406,14 @@ class SemanticPointFilterNode(Node):
         return transform_points(points_world, rot, trans)
 
     def _publish_cargo(self, points_xyz, stamp, frame_id, n_points=None):
-        xyz = xyz_array(points_xyz)
+        # filter_depth already returns a contiguous float32 view into its
+        # fixed-capacity buffer.  Preserve it through the normal measurement
+        # path; promoting to float64 only for cloud_msg_from_points to convert
+        # it straight back doubled allocation traffic.
+        if isinstance(points_xyz, np.ndarray):
+            xyz = points_xyz.reshape(-1, points_xyz.shape[-1])[:, :3]
+        else:
+            xyz = xyz_array(points_xyz)
         if self._cargo_voxel_size > 0.0 and xyz.shape[0]:
             xyz = voxel_downsample(xyz, self._cargo_voxel_size)
         n = int(xyz.shape[0] if n_points is None else n_points)
@@ -497,7 +512,7 @@ class SemanticPointFilterNode(Node):
 
         stamp = depth_msg.header.stamp
         frame_id = depth_msg.header.frame_id or self._last_depth_frame
-        camera_pts = xyz_array(cargo)
+        camera_pts = cargo
         world_pts = None
         tf_miss = False
         before_tf = time.monotonic()
@@ -524,8 +539,13 @@ class SemanticPointFilterNode(Node):
                 self._tracker.generation > 0
                 and not self._tracker.instance_id)
             tracked = self._tracker.points_world
-            if tracked is not None:
+            # Only hold/reject paths use the tracked world cloud after the
+            # lock is released.  Copying it on every accepted measurement was
+            # an otherwise-unused variable-size allocation.
+            if source != SOURCE_MEASURE and tracked is not None:
                 tracked = tracked.copy()
+            elif source == SOURCE_MEASURE:
+                tracked = None
             after_track = time.monotonic()
 
         before_publish = time.monotonic()

@@ -74,6 +74,26 @@ class TestTransformPoints(unittest.TestCase):
 
 class TestCargoInstanceTracker(unittest.TestCase):
 
+    def test_reserved_storage_is_reused_across_varying_cloud_sizes(self):
+        tracker = CargoInstanceTracker()
+        tracker.reserve_points(32)
+        backing = tracker._points_buffer
+        tracker.observe(1.0, _cloud(0.4, 0.2, n=8))
+        tracker.observe(1.1, _cloud(0.4, 0.2, n=24))
+        self.assertIs(tracker._points_buffer, backing)
+        self.assertTrue(np.shares_memory(tracker.points_world, backing))
+        self.assertEqual(tracker.points_world.shape, (24, 3))
+
+    def test_reserved_storage_survives_epoch_reset(self):
+        tracker = CargoInstanceTracker()
+        tracker.reserve_points(16)
+        backing = tracker._points_buffer
+        tracker.set_epoch(2, "box")
+        tracker.observe(1.0, _cloud(0.4, 0.2, n=8))
+        tracker.set_epoch(3, "")
+        self.assertIs(tracker._points_buffer, backing)
+        self.assertIsNone(tracker.points_world)
+
     def test_first_measurement_is_accepted(self):
         tracker = CargoInstanceTracker()
         tracker.set_epoch(2, "pickup_box_0001_carryon")
