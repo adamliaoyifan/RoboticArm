@@ -563,6 +563,19 @@ class TestUnacceptBorderCargo(unittest.TestCase):
         self.assertEqual(n, 0)
         self.assertTrue(border["accepted"])
 
+    def test_keeps_clipped_suitcase_when_small_inner_exists(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        inner = {"label": LABEL_CARGO, "accepted": True,
+                 "bbox": [200, 80, 260, 140]}
+        suitcase = {"label": LABEL_CARGO, "accepted": True,
+                     "bbox": [0, 60, 200, 260]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [inner, suitcase], (480, 640), margin=12)
+        self.assertEqual(n, 0)
+        self.assertTrue(inner["accepted"])
+        self.assertTrue(suitcase["accepted"])
+
 
 class TestUpdateTemporalHold(unittest.TestCase):
     def test_update_holds_bbox_on_flicker_miss(self):

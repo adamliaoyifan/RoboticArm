@@ -354,6 +354,21 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         self.assertFalse(np.any(grown[0:8, :]))
         self.assertTrue(np.all(grown[28:36, 28:36]))
 
+    def test_closest_band_drops_farther_front_face(self):
+        from luggage_perception.semantic_point_filter import (
+            grow_cargo_sel_by_depth)
+        h, w = 48, 48
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[8:20, 8:40] = 500
+        depth[20:40, 8:40] = 580
+        seed = np.zeros((h, w), dtype=bool)
+        seed[8:40, 8:40] = True
+        grown, stats = grow_cargo_sel_by_depth(
+            depth, seed, depth_tol_mm=30, max_pixels=8000)
+        self.assertEqual(stats["cargo_grow_aborted"], 0)
+        self.assertTrue(np.all(grown[8:20, 8:40]))
+        self.assertFalse(np.any(grown[20:40, 8:40]))
+
 
 if __name__ == "__main__":
     unittest.main()

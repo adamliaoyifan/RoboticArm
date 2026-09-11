@@ -218,15 +218,44 @@ def bbox_touches_border(bbox, width, height, margin=12):
             or y2 >= int(height) - m)
 
 
+def bbox_is_edge_strip(bbox, width, height, margin=12, max_strip_px=80):
+    """True when a border-clipped box is a thin pedestal/wall strip.
+
+    A suitcase that merely touches the image edge still has a compact
+    AABB (one side well above ``max_strip_px``). The documented base_link
+    false positive is a ~30 px strip glued to the right edge. Only the
+    strip should lose to an inner suitcase; dropping every border-touching
+    box also drops a clipped suitcase when a small inner false positive
+    exists.
+    """
+    if bbox is None or len(bbox) < 4:
+        return False
+    x1, y1, x2, y2 = (int(v) for v in bbox[:4])
+    m = int(margin)
+    cap = int(max_strip_px)
+    bw = max(0, x2 - x1)
+    bh = max(0, y2 - y1)
+    if x1 <= m and bw <= cap:
+        return True
+    if x2 >= int(width) - m and bw <= cap:
+        return True
+    if y1 <= m and bh <= cap:
+        return True
+    if y2 >= int(height) - m and bh <= cap:
+        return True
+    return False
+
+
 def unaccept_border_cargo_when_inner_exists(detections, image_shape,
                                            cargo_label=LABEL_CARGO,
-                                           margin=12):
-    """If an inner accepted cargo box exists, drop border-clipped cargo.
+                                           margin=12, max_strip_px=80):
+    """If an inner accepted cargo box exists, drop thin edge-strip cargo.
 
-    Pedestal/container AABBs sit on the image edge. When YOLO also sees
-    the suitcase, those edge boxes must not remain accepted or the depth
-    grow step floods a non-horizontal surface and the trial goes
-    DETECT_TOP_UNOBSERVABLE for the whole window.
+    Pedestal/container AABBs sit on the image edge as thin strips. When
+    YOLO also sees the suitcase, those strips must not remain accepted or
+    the depth grow step floods a non-horizontal surface. A compact
+    suitcase that only touches the border is kept, even if a smaller inner
+    false positive is also accepted.
     """
     dets = list(detections or [])
     h, w = (int(image_shape[0]), int(image_shape[1])) if image_shape else (0, 0)
@@ -237,16 +266,18 @@ def unaccept_border_cargo_when_inner_exists(detections, image_shape,
                 and d.get("accepted")]
     inner = [d for d in accepted
              if not bbox_touches_border(d.get("bbox"), w, h, margin)]
-    if not inner or len(inner) == len(accepted):
+    if not inner:
         return dets, 0
     n_drop = 0
-    inner_ids = set(id(d) for d in inner)
     for det in dets:
-        if id(det) in inner_ids:
-            continue
         if int(det.get("label", -1)) != int(cargo_label):
             continue
         if not det.get("accepted"):
+            continue
+        if not bbox_touches_border(det.get("bbox"), w, h, margin):
+            continue
+        if not bbox_is_edge_strip(
+                det.get("bbox"), w, h, margin, max_strip_px):
             continue
         det["accepted"] = False
         det["accept_reason"] = "border_cargo_with_inner"

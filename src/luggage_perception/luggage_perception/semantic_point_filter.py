@@ -143,9 +143,12 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     aligned depth recovers the lid without changing RANSAC / min_points /
     min_confidence.
 
-    The platform sits one luggage-height farther than the lid, so a 30 mm
-    band around the seed median does not leak onto it. Growth is also
-    clipped to ``max_radius_px`` around the seed centroid so a similar-depth
+    The flood origin is the closest-depth band of the seed, not the seed
+    median. A mixed AABB (lid + vertical front) would otherwise grow the
+    front face and freeze the trial at DETECT_TOP_UNOBSERVABLE. The
+    platform sits one luggage-height farther than the lid, so a 30 mm
+    band around the near-band median does not leak onto it. Growth is also
+    clipped to ``max_radius_px`` around the origin centroid so a similar-depth
     strip (panel, container lip) cannot flood the frame. If the connected
     component would exceed ``max_pixels`` the original seed is kept.
 
@@ -157,6 +160,7 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
         "cargo_pixels_seed": int(seed.sum()),
         "cargo_pixels_grown": 0,
         "cargo_grow_aborted": 0,
+        "cargo_grow_origin_pixels": 0,
     }
     tol = int(depth_tol_mm)
     cap = int(max_pixels)
@@ -175,17 +179,24 @@ def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
     if seed_z.size == 0:
         stats["cargo_grow_aborted"] = 1
         return seed, stats
-    median_z = float(np.median(seed_z))
+    z_lo = float(np.percentile(seed_z, 5))
+    origin = seed & valid & (z <= z_lo + float(tol))
+    if not origin.any():
+        stats["cargo_grow_aborted"] = 1
+        return seed, stats
+    stats["cargo_grow_origin_pixels"] = int(origin.sum())
+    origin_z = z[origin]
+    median_z = float(np.median(origin_z))
     similar = valid & (np.abs(z - median_z) <= float(tol))
     if blocked is not None:
         similar = similar & ~np.asarray(blocked, dtype=bool)
     if radius > 0:
-        ys, xs = np.nonzero(seed)
+        ys, xs = np.nonzero(origin)
         cy = float(np.mean(ys))
         cx = float(np.mean(xs))
         yy, xx = np.ogrid[:seed.shape[0], :seed.shape[1]]
         similar = similar & (((yy - cy) ** 2 + (xx - cx) ** 2) <= radius * radius)
-    grown = _connected_to_seed(similar, seed)
+    grown = _connected_to_seed(similar, origin)
     if grown is None:
         stats["cargo_grow_aborted"] = 1
         return seed, stats
