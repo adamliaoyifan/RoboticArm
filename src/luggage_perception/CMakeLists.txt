@@ -48,6 +48,7 @@ install(PROGRAMS
   scripts/pendant_bag_replay_eval.py
   scripts/export_lidar_camera_calib.py
   scripts/table_patch_icp.py
+  scripts/viz_eef_tf_fit.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

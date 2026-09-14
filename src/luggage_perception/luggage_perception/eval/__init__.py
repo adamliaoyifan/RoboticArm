@@ -12,7 +12,8 @@ imported by N-trial drivers and their pytest files:
 - ``site_pick_replay`` — offline mcap pick vs recorded TCP/joints HTML viz
 - ``open3d_rgbd_export`` — offline RGB-D + FK pose dump for Open3D TSDF samples
 - ``lidar_camera_calib_export`` — offline Mid-360 CustomMsg vs D555 dump for mount TF
-- ``table_patch_icp`` — frozen D555 table vs Livox BR-corner/side ICP
+- ``eef_tf_fit_viz`` — locked EEF TF tree + URDF meshes + projected D555/Livox HTML
+- ``table_patch_icp`` — frozen D555 table vs Livox balanced-corners ICP
 - ``sim_texture`` — PF-R10 generation-6 eval-only texture waiver / spawn-flip / C1-G6
 
 Drivers: ``scripts/detection_gt_gate_run.py``, ``scripts/yolo_two_class_window.py``.
