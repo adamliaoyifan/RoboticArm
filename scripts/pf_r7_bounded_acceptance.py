@@ -1,0 +1,301 @@
+#!/usr/bin/env python3
+"""PF-R7 generation-3 bounded acceptance CLI.
+
+Default path is the live campaign. It never starts a second Gazebo world:
+an occupied sim slot exits 2. ``--fixture`` runs the ROS-free harness used
+by PF-R7-H1 tests.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+
+def _workspace_root():
+    return Path(__file__).resolve().parents[1]
+
+
+def _parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="PF-R7 generation-3 bounded conditional acceptance")
+    parser.add_argument(
+        "--out", required=True,
+        help="evidence root, typically docs/status/evidence/platform_free_height/<run>/")
+    parser.add_argument("--slots", type=int, default=3)
+    parser.add_argument("--eligible-per-size", type=int, default=2)
+    parser.add_argument("--max-attempts-per-slot", type=int, default=12)
+    parser.add_argument("--max-exclusions-per-slot", type=int, default=6)
+    parser.add_argument("--max-consecutive-size-exclusions", type=int, default=3)
+    parser.add_argument("--max-stack-resets", type=int, default=2)
+    parser.add_argument("--max-attempts-campaign", type=int, default=36)
+    parser.add_argument("--campaign-timeout-sec", type=float, default=2700)
+    parser.add_argument("--ros-domain-id", type=int, default=7)
+    parser.add_argument(
+        "--fixture", default="",
+        help="JSON fixture with records_by_size or attempts; skips Gazebo")
+    parser.add_argument(
+        "--git-commit", default="",
+        help="exact revision recorded in the verdict; default is git HEAD")
+    parser.add_argument(
+        "--pidfile", default="/tmp/elfin_humble_sim.pid")
+    parser.add_argument(
+        "--live", action="store_true",
+        help="run the Gazebo campaign (refuses if the sim slot is busy)")
+    parser.add_argument(
+        "--wait-slot-sec", type=float, default=0,
+        help="wait up to this many seconds for the exclusive sim slot")
+    parser.add_argument(
+        "--overlay", default="/tmp/pfr10_g6",
+        help="colcon overlay with production nodes at the PF-R10 revision")
+    parser.add_argument(
+        "--production-commit",
+        default="60dafb7deee50a6f3a76d48076b743bf3e3e1bc8")
+    return parser.parse_args(argv)
+
+
+def _git_head(root):
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, check=False)
+        if proc.returncode == 0:
+            return proc.stdout.strip()
+    except OSError:
+        pass
+    return ""
+
+
+EVALUATOR_PATHS = (
+    "scripts/pf_r7_bounded_acceptance.py",
+    "scripts/pf_r7_live_backend.py",
+    "scripts/platform_free_height_gate4_eval.py",
+    "src/luggage_perception/luggage_perception/eval/pf_r7_classifier.py",
+    "src/luggage_perception/luggage_perception/eval/pf_r7_campaign.py",
+    "src/luggage_perception/luggage_perception/eval/gate4_scoring.py",
+    "src/luggage_gazebo/scripts/pickup_box_spawner_node.py",
+    "scripts/pf_r7_generation3_live.sh",
+    "src/luggage_perception/test/eval/test_pf_r7_classifier.py",
+    "src/luggage_perception/test/eval/test_pf_r7_campaign.py",
+    "src/luggage_perception/test/eval/test_pf_r7_score_window.py",
+    "src/luggage_perception/test/eval/pf_r7_fixtures.py",
+)
+
+
+def _git_dirty_paths(root, paths):
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain", "--"] + list(paths),
+            capture_output=True, text=True, check=False)
+    except OSError:
+        return ["git_status_unavailable"]
+    lines = [line for line in (proc.stdout or "").splitlines() if line.strip()]
+    return lines
+
+
+def _overlay_revision(overlay):
+    head = _git_head(overlay)
+    dirty = _git_dirty_paths(overlay, ["."])
+    return head, len(dirty)
+
+
+def _load_fixture(path):
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    if "records_by_size" in payload:
+        return payload["records_by_size"]
+    attempts = payload.get("attempts") or payload.get("records") or []
+    by_size = {}
+    for record in attempts:
+        size = str(record.get("size") or "")
+        by_size.setdefault(size, []).append(record)
+    return by_size
+
+
+def _stop_sim(root, pidfile):
+    script = root / "scripts" / "stop_sim.sh"
+    if not script.is_file():
+        return
+    env = os.environ.copy()
+    env["ELFIN_SIM_PIDFILE"] = pidfile
+    subprocess.run(
+        [str(script)], cwd=str(root), env=env, check=False)
+
+
+def _wait_slot(pidfile, timeout_sec):
+    import time
+    from luggage_perception.eval.pf_r7_campaign import sim_slot_busy
+    t0 = time.monotonic()
+    while True:
+        if not sim_slot_busy(pidfile):
+            return True
+        if timeout_sec <= 0 or (time.monotonic() - t0) >= float(timeout_sec):
+            return False
+        time.sleep(5)
+
+
+def _merge_c2(out, verdict):
+    summary = Path(out) / "g6s" / "g6s_summary.json"
+    if not summary.is_file():
+        verdict["c2_pass"] = None
+        verdict["c2_missing"] = True
+        if verdict.get("outcome") == "pass":
+            verdict["outcome"] = "fail"
+            verdict["reason"] = "eligible_fail"
+            verdict["c2_failures"] = ["g6s_summary_missing"]
+        return verdict
+    payload = json.loads(summary.read_text(encoding="utf-8"))
+    failures = payload.get("c2_failures") or []
+    only_unscorable = bool(failures) and all(
+        "scorable=False" in str(item) for item in failures)
+    verdict["c2_pass"] = bool(payload.get("c2_pass"))
+    verdict["c2_failures"] = failures
+    if only_unscorable:
+        verdict["c2_unscorable"] = True
+        return verdict
+    if verdict.get("outcome") == "pass" and not payload.get("c2_pass"):
+        verdict["outcome"] = "fail"
+        verdict["reason"] = "eligible_fail"
+    return verdict
+
+
+def main(argv=None):
+    args = _parse_args(argv)
+    root = _workspace_root()
+    sys.path.insert(0, str(root / "src" / "luggage_perception"))
+    sys.path.insert(0, str(root / "scripts"))
+    from luggage_perception.eval.pf_r7_campaign import (
+        CampaignDriver,
+        ScriptedBackend,
+        sim_slot_busy,
+    )
+
+    git_commit = args.git_commit or _git_head(root)
+    budgets = {
+        "slots": args.slots,
+        "eligible_per_size": args.eligible_per_size,
+        "max_attempts_per_slot": args.max_attempts_per_slot,
+        "max_exclusions_per_slot": args.max_exclusions_per_slot,
+        "max_consecutive_size_exclusions": args.max_consecutive_size_exclusions,
+        "max_stack_resets": args.max_stack_resets,
+        "max_attempts_campaign": args.max_attempts_campaign,
+    }
+    deadlines = {"campaign_sec": float(args.campaign_timeout_sec)}
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+
+    if args.fixture:
+        backend = ScriptedBackend(records_by_size=_load_fixture(args.fixture))
+        driver = CampaignDriver(
+            out_dir=str(out),
+            backend=backend,
+            budgets=budgets,
+            deadlines=deadlines,
+            git_commit=git_commit,
+            install_signals=True,
+        )
+        verdict = driver.run()
+        print(json.dumps(verdict, sort_keys=True))
+        if verdict.get("outcome") == "pass":
+            return 0
+        if verdict.get("outcome") == "fail":
+            return 1
+        return 3
+
+    if args.wait_slot_sec:
+        print("waiting for sim slot (timeout %ss)" % args.wait_slot_sec,
+              file=sys.stderr)
+        if not _wait_slot(args.pidfile, args.wait_slot_sec):
+            print("sim slot busy; refusing second world", file=sys.stderr)
+            return 2
+
+    if sim_slot_busy(args.pidfile):
+        print("sim slot busy; refusing second world", file=sys.stderr)
+        return 2
+
+    if not args.live:
+        print(
+            "PF-R7-H1 harness is ready. Pass --fixture or --live.",
+            file=sys.stderr)
+        return 4
+
+    evaluator_dirty = _git_dirty_paths(root, EVALUATOR_PATHS)
+    if evaluator_dirty:
+        print("evaluator dirty=1; commit H1 before live:", file=sys.stderr)
+        for line in evaluator_dirty:
+            print("  %s" % line, file=sys.stderr)
+        return 4
+
+    os.environ["ROS_DOMAIN_ID"] = str(args.ros_domain_id)
+    os.environ["ELFIN_SIM_PIDFILE"] = args.pidfile
+    from pf_r7_live_backend import LiveTrialBackend
+
+    def stop():
+        _stop_sim(root, args.pidfile)
+
+    stop()
+    time.sleep(3)
+    if sim_slot_busy(args.pidfile):
+        print("sim still busy after stop_sim; refusing", file=sys.stderr)
+        return 2
+
+    backend = LiveTrialBackend(
+        root=root,
+        out_dir=out,
+        overlay=args.overlay,
+        pidfile=args.pidfile,
+        domain=args.ros_domain_id,
+        observe_sec=8.0,
+        stop_sim=stop,
+    )
+    launched = backend.launch_stack(out / "launch.log")
+    if not launched.get("ok"):
+        print("launch failed: %s" % launched, file=sys.stderr)
+        stop()
+        return 1
+    ready = backend.wait_ready()
+    (out / "preflight.json").write_text(json.dumps(ready, indent=2) + "\n")
+    if not ready.get("ok"):
+        print("preflight failed: %s" % ready, file=sys.stderr)
+        backend.teardown()
+        return 1
+    stop_file = "/tmp/pfr7_g3_probe_stop"
+    backend.start_probe(out / "g6s", stop_file)
+    time.sleep(20)
+    deadlines["observe_sec"] = 16.0
+    driver = CampaignDriver(
+        out_dir=str(out),
+        backend=backend,
+        budgets=budgets,
+        deadlines=deadlines,
+        git_commit=git_commit or args.production_commit,
+        stop_sim_fn=stop,
+        install_signals=True,
+    )
+    try:
+        verdict = driver.run()
+    finally:
+        backend.stop_probe(stop_file)
+        stop()
+    verdict["production_commit"] = args.production_commit
+    overlay_head, overlay_dirty_n = _overlay_revision(args.overlay)
+    verdict["production_overlay_commit"] = overlay_head
+    verdict["production_overlay_dirty"] = overlay_dirty_n
+    verdict["evaluator_commit"] = git_commit
+    verdict["evaluator_dirty"] = 0
+    verdict = _merge_c2(out, verdict)
+    (out / "verdict.json").write_text(
+        json.dumps(verdict, indent=2, sort_keys=True) + "\n")
+    print(json.dumps(verdict, sort_keys=True))
+    if verdict.get("outcome") == "pass":
+        return 0
+    if verdict.get("outcome") == "fail":
+        return 1
+    return 3
+
+
+if __name__ == "__main__":
+    sys.exit(main())

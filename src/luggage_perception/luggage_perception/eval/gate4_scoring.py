@@ -84,6 +84,225 @@ def split_warmup(rows, warmup_frames=5):
     return warmup, settled
 
 
+# Post-spawn drain before the scored cursor (PF-R7 G3 / Gate4). ROS stamp
+# first; monotonic receipt is the fallback when stamps are missing.
+SCORE_DRAIN_SEC = 0.4
+SCORE_WARMUP_FRAMES = 5
+
+
+def row_time_sec(row):
+    """Barrier clock: ROS header stamp, else receipt monotonic."""
+    if row is None:
+        return None
+    for key in ("stamp_sec", "monotonic_sec", "receipt_monotonic_sec"):
+        value = row.get(key)
+        if value is None:
+            continue
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def row_matches_barrier(row, instance_id, generation):
+    """True when the frame belongs to the scored instance *and* generation."""
+    if instance_id is not None and row.get("instance_id") != instance_id:
+        return False
+    if generation is None:
+        return True
+    value = row.get("generation")
+    if value is None:
+        return False
+    try:
+        return int(value) == int(generation)
+    except (TypeError, ValueError):
+        return False
+
+
+def infer_expected_generation(rows, instance_id):
+    """Newest generation among frames already tagged with ``instance_id``."""
+    gens = []
+    for row in rows or []:
+        if instance_id is not None and row.get("instance_id") != instance_id:
+            continue
+        value = row.get("generation")
+        if value is None:
+            continue
+        try:
+            gens.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    if not gens:
+        return None
+    return max(gens)
+
+
+def quarantine_record(row, reason, region):
+    return {
+        "instance_id": row.get("instance_id"),
+        "generation": row.get("generation"),
+        "stamp_sec": row.get("stamp_sec"),
+        "monotonic_sec": row.get("monotonic_sec"),
+        "receipt_monotonic_sec": row.get("receipt_monotonic_sec") or row.get(
+            "monotonic_sec"),
+        "reason": reason,
+        "region": region,
+        "support_reason": row.get("support_reason"),
+        "geometry_level": row.get("geometry_level"),
+        "support_inliers": row.get("support_inliers"),
+        "support_side_coverage": row.get("support_side_coverage"),
+        "support_residual": row.get("support_residual"),
+        "support_confidence": row.get("support_confidence"),
+        "support_n_candidates": row.get("support_n_candidates"),
+        "pca_source": row.get("pca_source"),
+        "pca_raw_source": row.get("pca_raw_source") or row.get("pca_source"),
+    }
+
+
+def split_score_windows(rows, instance_id, generation=None,
+                        drain_sec=SCORE_DRAIN_SEC,
+                        warmup_frames=SCORE_WARMUP_FRAMES):
+    """Split spawn-aligned rows into drain, recovery, and scored windows.
+
+    ``rows`` must be chronological. The drain uses the first row's ROS
+    stamp (fallback: monotonic) plus ``drain_sec``. Owned drain frames
+    are quarantined as unscored, not as safety failures. Stale frames
+    observed before the barrier, and stale frames dropped after it, are
+    diagnostics. Only a stale frame admitted into warmup/settled counts
+    as ``stale_scored_or_fused``.
+    """
+    rows = list(rows or [])
+    empty = {
+        "drain": [],
+        "owned_recovery": [],
+        "owned_scored": [],
+        "warmup": [],
+        "settled": [],
+        "stale_pre_barrier_observed": 0,
+        "stale_post_barrier_dropped": 0,
+        "stale_scored_or_fused": 0,
+        "quarantine": [],
+        "instance_id": instance_id,
+        "generation": generation,
+        "t0_sec": None,
+    }
+    if not rows:
+        return empty
+    if generation is None:
+        generation = infer_expected_generation(rows, instance_id)
+        empty["generation"] = generation
+    t0 = row_time_sec(rows[0])
+    empty["t0_sec"] = t0
+    drain = []
+    post = []
+    for row in rows:
+        stamp = row_time_sec(row)
+        if (
+            t0 is not None and stamp is not None
+            and (stamp - t0) < float(drain_sec)
+        ):
+            drain.append(row)
+        else:
+            post.append(row)
+    quarantine = []
+    stale_pre = 0
+    for row in drain:
+        if row_matches_barrier(row, instance_id, generation):
+            quarantine.append(quarantine_record(
+                row, "post_spawn_drain", "drain"))
+        else:
+            stale_pre += 1
+            quarantine.append(quarantine_record(
+                row, "stale_pre_barrier_observed", "drain"))
+    stale_post = 0
+    owned_scored = []
+    for row in post:
+        if row_matches_barrier(row, instance_id, generation):
+            owned_scored.append(row)
+        else:
+            stale_post += 1
+            quarantine.append(quarantine_record(
+                row, "stale_post_barrier_dropped", "score"))
+    warmup, settled = split_warmup(owned_scored, warmup_frames=warmup_frames)
+    owned_recovery = [
+        row for row in rows
+        if row_matches_barrier(row, instance_id, generation)]
+    stale_scored = 0
+    for row in list(warmup) + list(settled):
+        if not row_matches_barrier(row, instance_id, generation):
+            stale_scored += 1
+            quarantine.append(quarantine_record(
+                row, "stale_scored_or_fused", "scored"))
+    empty.update({
+        "drain": drain,
+        "owned_recovery": owned_recovery,
+        "owned_scored": owned_scored,
+        "warmup": warmup,
+        "settled": settled,
+        "stale_pre_barrier_observed": stale_pre,
+        "stale_post_barrier_dropped": stale_post,
+        "stale_scored_or_fused": stale_scored,
+        "quarantine": quarantine,
+        "generation": generation,
+    })
+    return empty
+
+
+def bind_collected_windows(drain_rows, score_rows, instance_id,
+                           generation=None,
+                           warmup_frames=SCORE_WARMUP_FRAMES):
+    """Gate4 live order: drain collection is already excluded from score rows."""
+    drain_rows = list(drain_rows or [])
+    score_rows = list(score_rows or [])
+    if generation is None:
+        generation = infer_expected_generation(
+            drain_rows + score_rows, instance_id)
+    quarantine = []
+    stale_pre = 0
+    owned_drain = []
+    for row in drain_rows:
+        if row_matches_barrier(row, instance_id, generation):
+            owned_drain.append(row)
+            quarantine.append(quarantine_record(
+                row, "post_spawn_drain", "drain"))
+        else:
+            stale_pre += 1
+            quarantine.append(quarantine_record(
+                row, "stale_pre_barrier_observed", "drain"))
+    stale_post = 0
+    owned_scored = []
+    for row in score_rows:
+        if row_matches_barrier(row, instance_id, generation):
+            owned_scored.append(row)
+        else:
+            stale_post += 1
+            quarantine.append(quarantine_record(
+                row, "stale_post_barrier_dropped", "score"))
+    warmup, settled = split_warmup(owned_scored, warmup_frames=warmup_frames)
+    stale_scored = 0
+    for row in list(warmup) + list(settled):
+        if not row_matches_barrier(row, instance_id, generation):
+            stale_scored += 1
+            quarantine.append(quarantine_record(
+                row, "stale_scored_or_fused", "scored"))
+    return {
+        "drain": drain_rows,
+        "owned_recovery": owned_drain + owned_scored,
+        "owned_scored": owned_scored,
+        "warmup": warmup,
+        "settled": settled,
+        "stale_pre_barrier_observed": stale_pre,
+        "stale_post_barrier_dropped": stale_post,
+        "stale_scored_or_fused": stale_scored,
+        "quarantine": quarantine,
+        "instance_id": instance_id,
+        "generation": generation,
+        "t0_sec": row_time_sec(drain_rows[0]) if drain_rows else row_time_sec(
+            score_rows[0] if score_rows else None),
+    }
+
+
 def _percentile(sorted_vals, p):
     return sorted_vals[min(len(sorted_vals) - 1,
                            int(round((p / 100.0) * (len(sorted_vals) - 1))))]

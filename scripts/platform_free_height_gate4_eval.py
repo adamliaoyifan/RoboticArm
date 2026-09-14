@@ -732,6 +732,13 @@ def _row(frame, gt, trial, box_id, monotonic_sec=None):
         "support_valid": bool(frame.support_valid),
         "support_reason": str(frame.support_reason),
         "support_z": support_z,
+        "support_confidence": float(getattr(frame, "support_confidence", 0.0) or 0.0),
+        "support_residual": float(getattr(frame, "support_residual", 0.0) or 0.0),
+        "support_side_coverage": float(
+            getattr(frame, "support_side_coverage", 0.0) or 0.0),
+        "support_inliers": int(getattr(frame, "support_inliers", 0) or 0),
+        "support_n_candidates": getattr(frame, "support_n_candidates", None),
+        "pca_raw_source": str(getattr(frame, "pca_source", "") or ""),
         "top_surface_valid": bool(box.top_surface_valid),
         "height_valid": bool(box.height_valid),
         "height_source": int(box.height_source),

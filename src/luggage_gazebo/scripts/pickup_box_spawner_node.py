@@ -154,6 +154,10 @@ class PickupBoxSpawner(Node):
         self.declare_parameter("size_mode", "catalog")
         self.declare_parameter("sequence_ids", [""],
                                descriptor=None)
+        # Eval-only next spawn override. Empty keeps catalog/sequence sampling.
+        self.declare_parameter("next_catalog_id", "")
+        self.declare_parameter("next_yaw", float("nan"))
+        self.declare_parameter("next_xy_offset", [float("nan"), float("nan")])
         # Box visual: ogre2 can lag create. Mesh uses preloaded URIs (0).
         self.declare_parameter("visual_settle_sec", 2.0)
         # box: primitive AABB. mesh: pre-scaled model:// visual=collision.
@@ -519,6 +523,15 @@ class PickupBoxSpawner(Node):
     # ------------------------------------------------------------------
 
     def _choose_entry(self):
+        try:
+            forced = str(self.get_parameter("next_catalog_id").value or "")
+        except Exception:  # noqa: BLE001 - param may be undeclared on old overlay
+            forced = ""
+        forced = forced.strip()
+        if forced:
+            if forced not in self._entries_by_id:
+                raise RuntimeError("unknown next_catalog_id '%s'" % forced)
+            return self._entries_by_id[forced]
         if self._sequence_ids:
             entry_id = self._sequence_ids[
                 self._sequence % len(self._sequence_ids)]
@@ -557,6 +570,12 @@ class PickupBoxSpawner(Node):
         Link origin is the AABB center, so z is platform-top + height/2.
         """
         yaw_offset = self._sample_yaw_offset(entry)
+        try:
+            forced_yaw = float(self.get_parameter("next_yaw").value)
+        except Exception:  # noqa: BLE001
+            forced_yaw = float("nan")
+        if forced_yaw == forced_yaw:
+            yaw_offset = forced_yaw
         size = list(size) if size is not None else entry["size"]
         dx = (
             self._rng.uniform(-self._xy_jitter[0], self._xy_jitter[0])
@@ -564,6 +583,14 @@ class PickupBoxSpawner(Node):
         dy = (
             self._rng.uniform(-self._xy_jitter[1], self._xy_jitter[1])
             if self._xy_jitter[1] else 0.0)
+        try:
+            xy = list(self.get_parameter("next_xy_offset").value or [])
+        except Exception:  # noqa: BLE001
+            xy = []
+        if len(xy) >= 2:
+            fdx, fdy = float(xy[0]), float(xy[1])
+            if fdx == fdx and fdy == fdy:
+                dx, dy = fdx, fdy
         xyz, rpy = pickup_box_pose(
             self._source_xyz, self._source_rpy, size, yaw_offset, (dx, dy))
         pose = Pose()
