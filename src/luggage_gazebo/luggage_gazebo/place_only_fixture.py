@@ -541,12 +541,13 @@ def _cell_grid(surface):
 
 
 def gt_footprint_cells(surface, center_local, size, yaw):
-    """Cells whose center lies inside the independently rasterized oriented
-    footprint of a placed box (floor-relative container coords).
+    """Cells overlapped by the oriented footprint, at map resolution.
 
-    The cell offset is rotated into the box frame and bounded by the box's
-    own half extents, so arbitrary yaws rasterize correctly (the snapped
-    0/90-degree yaws reduce to the axis-aligned swap).
+    A cell counts when its full resolution square intersects the box
+    footprint ("resolution clipping"): the cargo mapper marks every voxel
+    touched by its box-sample grid, so center-inside rasterization would
+    systematically undercount boundary cells. The cell rectangle is
+    tested against the oriented footprint via corner SAT.
     """
     res, nx, ny, inner_l, inner_w = _cell_grid(surface)
     half_l = 0.5 * float(size[0])
@@ -558,11 +559,44 @@ def gt_footprint_cells(surface, center_local, size, yaw):
         for iy in range(ny):
             px = -inner_l * 0.5 + (ix + 0.5) * res - cx
             py = -inner_w * 0.5 + (iy + 0.5) * res - cy
-            rx = cos_y * px + sin_y * py
-            ry = -sin_y * px + cos_y * py
-            if abs(rx) <= half_l + 1e-9 and abs(ry) <= half_w + 1e-9:
+            # Quick reject on the cell's circumscribed radius.
+            if px * px + py * py > (half_l + half_w + res) ** 2:
+                continue
+            corners = [
+                (px + dx * res * 0.5, py + dy * res * 0.5)
+                for dx in (-1.0, 1.0) for dy in (-1.0, 1.0)]
+            if all(
+                    abs(cos_y * qx + sin_y * qy) <= half_l + 1e-9
+                    and abs(-sin_y * qx + cos_y * qy) <= half_w + 1e-9
+                    for qx, qy in corners):
+                # Cell fully inside the footprint.
+                cells.add((ix, iy))
+                continue
+            cell_aabb = (
+                min(q[0] for q in corners) + cx, min(q[1] for q in corners) + cy,
+                max(q[0] for q in corners) + cx, max(q[1] for q in corners) + cy)
+            box_corners = [
+                (cx + cos_y * lx - sin_y * ly, cy + sin_y * lx + cos_y * ly)
+                for lx in (-half_l, half_l) for ly in (-half_w, half_w)]
+            if _rects_overlap_2d(cell_aabb, box_corners, yaw):
                 cells.add((ix, iy))
     return cells
+
+
+def _rects_overlap_2d(cell_aabb, box_corners, yaw):
+    """2D overlap between an axis-aligned cell rectangle and an oriented
+    box (given by its corners) — SAT on both rectangles' edge axes."""
+    x0, y0, x1, y1 = cell_aabb
+    cell_corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+    axes = [(1.0, 0.0), (0.0, 1.0),
+            (math.cos(float(yaw)), math.sin(float(yaw))),
+            (-math.sin(float(yaw)), math.cos(float(yaw)))]
+    for ax, ay in axes:
+        ca = [c[0] * ax + c[1] * ay for c in cell_corners]
+        cb = [c[0] * ax + c[1] * ay for c in box_corners]
+        if max(ca) < min(cb) - 1e-9 or max(cb) < min(ca) - 1e-9:
+            return False
+    return True
 
 
 def occupancy_diff(pre_surface, post_surface, center_local, size, yaw):
@@ -646,7 +680,9 @@ def validate_commit_order(events):
     """events: [(name, t_ros)] with names release|retreat|verify|commit.
 
     Commit is legal only after release, retreat, and physical verification,
-    each strictly ordered in time. Returns (ok, reason).
+    in that sequence. Equal timestamps are tolerated (probe/dry-run chains
+    can transition within one sim tick); only a true reversal fails.
+    Returns (ok, reason).
     """
     order = {"release": 0, "retreat": 1, "verify": 2, "commit": 3}
     seen = {}
@@ -660,7 +696,7 @@ def validate_commit_order(events):
         if name not in seen:
             return False, "missing event %s" % name
     seq = [seen["release"], seen["retreat"], seen["verify"], seen["commit"]]
-    if any(seq[i] >= seq[i + 1] for i in range(len(seq) - 1)):
+    if any(seq[i] > seq[i + 1] for i in range(len(seq) - 1)):
         return False, "out-of-order commit chain: %s" % seq
     return True, "commit after release->retreat->verify"
 

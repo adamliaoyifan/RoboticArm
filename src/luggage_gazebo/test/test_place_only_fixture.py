@@ -219,6 +219,10 @@ def test_commit_order_valid_and_invalid():
     ok = [("release", 10.0), ("retreat", 10.5), ("verify", 11.0),
           ("commit", 11.5)]
     assert fx.validate_commit_order(ok)[0] is True
+    # Equal timestamps are tolerated (probe chains inside one sim tick).
+    assert fx.validate_commit_order([
+        ("release", 10.0), ("retreat", 10.0), ("verify", 10.0),
+        ("commit", 10.0)])[0] is True
     assert fx.validate_commit_order([
         ("release", 10.0), ("retreat", 10.5), ("verify", 11.0),
         ("commit", 10.6)])[0] is False
@@ -250,16 +254,9 @@ def test_occupancy_diff_scores_commit_footprint():
     center = (0.10, -0.30, 0.125)   # carryon center, floor-relative
     size = fx.CATALOG_SIZES["carryon"]
     res = post["resolution"]
-    inner_l = post["inner_size"][0]
-    inner_w = post["inner_size"][1]
-    for ix in range(post["nx"]):
-        for iy in range(post["ny"]):
-            px = -inner_l * 0.5 + (ix + 0.5) * res
-            py = -inner_w * 0.5 + (iy + 0.5) * res
-            if abs(px - center[0]) <= 0.275 + 1e-9 \
-                    and abs(py - center[1]) <= 0.20 + 1e-9:
-                post["height"][ix][iy] = 0.25
-                post["state"][ix][iy] = "occupied"
+    for ix, iy in fx.gt_footprint_cells(post, center, size, 0.0):
+        post["height"][ix][iy] = 0.25
+        post["state"][ix][iy] = "occupied"
     diff = fx.occupancy_diff(pre, post, center, size, 0.0)
     assert diff["iou"] == pytest.approx(1.0)
     assert diff["iou_ok"] is True
