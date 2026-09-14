@@ -31,8 +31,12 @@ done
 [[ -n "$OUT" ]] || { echo "--out required" >&2; exit 2; }
 
 PRIMARY_WS="${AGENT_COORD_ROOT:-/home/adamliao/work/elfin_humble_ws}"
+# ROS setup scripts reference unset vars (AMENT_TRACE_SETUP_FILES); relax
+# nounset around the sources.
+set +u
 source /opt/ros/humble/setup.bash
 source "$WS/install/setup.bash"
+set -u
 export ROS_DOMAIN_ID=7
 PIDFILE="${ELFIN_SIM_PIDFILE:-/tmp/elfin_humble_sim.pid}"
 
@@ -63,7 +67,7 @@ clean_room() {
     bash "$PRIMARY_WS/scripts/stop_sim.sh" || true
   fi
   local residuals
-  residuals=$(residual_count)
+  residuals=$(residual_count || true)
   echo "{\"stage\": \"clean_room\", \"residual_processes\": $residuals}" \
     >> "$OUT/lifecycle.jsonl"
   if [[ "$residuals" -ne 0 ]]; then
@@ -76,7 +80,7 @@ teardown() {
   bash "$PRIMARY_WS/scripts/stop_sim.sh" || true
   sleep 2
   local residuals
-  residuals=$(residual_count)
+  residuals=$(residual_count || true)
   echo "{\"stage\": \"teardown\", \"residual_processes\": $residuals,
         \"ts\": \"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
   echo "teardown residual count: $residuals"
