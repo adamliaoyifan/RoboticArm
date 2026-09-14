@@ -328,9 +328,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         # stall with the tool 0.25 m short of the traverse target). A hard
         # block fails the retry identically and the case aborts with
         # evidence; the retry is recorded in the segments log.
-        retry = dict(segment)
         retry_ok, retry_code, retry_rec = super()._execute_segment(
-            retry, trial)
+            segment, trial)
         if retry_rec is not None:
             retry_rec = dict(retry_rec)
             retry_rec["retry_of"] = str(segment.name)
