@@ -272,6 +272,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         self._fixture_models = []      # gz model names installed this streak
         self._deleted_finalized = set()  # finalized models already removed
         self._case_t1 = []
+        self._segment_sink = {}
+        self._segment_samples = []
         self._case_dir = ""
         self._current_case_id = ""
         self._scoring_active = False
@@ -313,13 +315,62 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             self._pos_guards["detect_calls"] += 1
         return super().call_srv(client, request, timeout)
 
+    def _segment_profile(self, segment_name, sink, stop_flag):
+        """10 Hz in-segment sampler: panel TF, box pose, joint states.
+
+        Before/after sampling cannot localize a mid-path stall; this
+        records the divergence profile (which joints freeze, where the
+        tool stops) for the boundary dump."""
+        import rclpy
+        from sensor_msgs.msg import JointState
+        sub = self.create_subscription(
+            JointState, "/joint_states",
+            lambda m: sink.__setitem__("joints", list(m.position)),
+            10, callback_group=self._group)
+        try:
+            while not stop_flag["flag"] and rclpy.ok():
+                suction, _err = self.suction_xyz()
+                sample = {
+                    "t": round(self.ros_now_sec(), 3),
+                    "suction": [round(v, 4) for v in suction]
+                    if suction else None,
+                    "box_gz": self._gz_box_pose(),
+                    "joints": [round(v, 4) for v in (sink.get("joints") or [])],
+                }
+                self._segment_samples.append(sample)
+                time.sleep(0.1)
+        finally:
+            self.destroy_subscription(sub)
+
     def _execute_segment(self, segment, trial):
         # Motion guard: record every executed segment name; pick-phase
         # names must never appear.
         self._pos_guards["executed_goals"].append(
             {"case": self._current_case_id, "name": str(segment.name),
              "scored": bool(self._scoring_active)})
-        result = super()._execute_segment(segment, trial)
+        self._segment_samples = []
+        stop_flag = {"flag": False}
+        sampler = threading.Thread(
+            target=self._segment_profile,
+            args=(str(segment.name), self._segment_sink, stop_flag),
+            daemon=True)
+        sampler.start()
+        try:
+            result = super()._execute_segment(segment, trial)
+        finally:
+            stop_flag["flag"] = True
+            sampler.join(timeout=1.0)
+            if self._segment_samples:
+                path = os.path.join(
+                    self._case_dir or ".",
+                    "segment_%s_profile.jsonl" % segment.name)
+                try:
+                    with open(path, "w", encoding="utf-8") as handle:
+                        for row in self._segment_samples:
+                            handle.write(json.dumps(
+                                row, sort_keys=True, default=str) + "\n")
+                except OSError:
+                    pass
         ok, code = result[0], result[1]
         if ok or code in ("RELEASE_SETTLE_FAILED", "PLACE_LOST_PAYLOAD"):
             return result
