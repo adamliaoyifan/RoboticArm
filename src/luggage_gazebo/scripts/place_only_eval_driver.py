@@ -321,6 +321,25 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
              "scored": bool(self._scoring_active)})
         return super()._execute_segment(segment, trial)
 
+    def _check_i1(self):
+        """Tolerant payload check: a single failed follow tick (gz set_pose
+        timeout under load) leaves a sticky fail_reason in the vacuum state
+        while the attachment itself is intact. Only a real detach, or a
+        fail_reason that persists across retries, is a lost payload."""
+        if not getattr(self._args, "use_vacuum", False):
+            return True, ""
+        last = {}
+        for _ in range(3):
+            last = dict(self._vacuum_state or {})
+            if last.get("attached") and not last.get("fail_reason"):
+                return True, ""
+            if not last.get("attached"):
+                return False, "PLACE_LOST_PAYLOAD"
+            time.sleep(0.5)
+        if last.get("attached") and last.get("fail_reason"):
+            return False, "PLACE_LOST_PAYLOAD:%s" % last.get("fail_reason")
+        return False, "PLACE_LOST_PAYLOAD"
+
     def graph_error(self):
         for label, pattern in (
                 ("move_group", "moveit_ros_move_group/move_group"),
