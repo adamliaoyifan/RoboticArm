@@ -120,6 +120,15 @@ run_driver() {
 }
 
 mkdir -p "$OUT"
+# Rotate any previous attempt's evidence so case dumps can never mix
+# runs (the driver keeps an existing case dir instead of renaming onto it).
+if compgen -G "$OUT/dumps/*" > /dev/null; then
+  PREV="$OUT/attempt_$(date +%H%M%S)"
+  mkdir -p "$PREV"
+  for item in "$OUT"/dumps "$OUT"/launch_streak*.log; do
+    [ -e "$item" ] && mv "$item" "$PREV/"
+  done
+fi
 echo "{\"stage\": \"start\", \"mode\": \"$MODE\", \"streak\": $STREAK_INDEX,
       \"ws\": \"$WS\", \"ts\": \"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
 
