@@ -64,6 +64,7 @@ from luggage_perception.eval.gate4_dump import (
     write_snapshot_dir,
 )
 from luggage_perception.eval.sim_texture import (
+    CATALOG_SIZES,
     aabb_from_span,
     c1_g6_gate,
     catalog_size_from_box_id,
@@ -1247,6 +1248,25 @@ def main():
 
         max_attempts = args.trials * 3 if args.c1_g6 else args.trials
         attempts = 0
+        size_ok = {name: 0 for name in CATALOG_SIZES}
+
+        def _exclude_if_unlabelled(payload):
+            if payload.get("trial_class") == "normal_pass":
+                size = catalog_size_from_box_id(
+                    payload.get("size") or payload.get("box_id"))
+                if size in size_ok:
+                    size_ok[size] += 1
+                return
+            gen = int(payload.get("generation") or 0)
+            if gen:
+                c2_exclude.append(gen)
+                _write_exclude_generations(exclude_path, c2_exclude)
+
+        if args.c1_g6:
+            # One unscored catalog cycle so scored C1 starts on the next
+            # carryon,standard,large pair with a warm YOLO epoch.
+            for _prime in range(len(CATALOG_SIZES)):
+                _exclude_if_unlabelled(execute_one(score_c1=False))
         while scored_c1 < args.trials and attempts < max_attempts:
             attempts += 1
             payload = execute_one(score_c1=True)
@@ -1259,18 +1279,20 @@ def main():
             if payload.get("trial_class") == "SIM_TEXTURE_LOW_CONFIDENCE":
                 c2_exclude.append(int(payload.get("generation") or 0))
                 _write_exclude_generations(exclude_path, c2_exclude)
-        for _extend in range(c2_extend):
+            elif payload.get("trial_class") == "normal_pass":
+                size = catalog_size_from_box_id(
+                    payload.get("size") or payload.get("box_id"))
+                if size in size_ok:
+                    size_ok[size] += 1
+        extra = 0
+        max_extra = max(c2_extend, 24 if args.c1_g6 else c2_extend)
+        while extra < max_extra:
+            if extra >= c2_extend and all(
+                    size_ok[name] >= 2 for name in CATALOG_SIZES):
+                break
             payload = execute_one(score_c1=False)
-            if payload.get("trial_class") in (
-                    "SIM_TEXTURE_LOW_CONFIDENCE",
-                    "infrastructure_invalid"):
-                c2_exclude.append(int(payload.get("generation") or 0))
-                _write_exclude_generations(exclude_path, c2_exclude)
-            elif payload.get("trial_class") != "normal_pass":
-                # Extra C2-window misses still must not enter the RSS fit.
-                if int(payload.get("generation") or 0):
-                    c2_exclude.append(int(payload.get("generation") or 0))
-                    _write_exclude_generations(exclude_path, c2_exclude)
+            extra += 1
+            _exclude_if_unlabelled(payload)
     finally:
         node.destroy_node()
         rclpy.shutdown()
