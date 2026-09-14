@@ -10,6 +10,13 @@ semantic_segmenter:
   ros__parameters:
     # This host has no NVIDIA GPU; override back to cuda after nvidia-smi works.
     device: cpu
+    # Same three floors as semantic_segmenter.yaml. Edit here or live-tune:
+    #   ros2 param set /semantic_segmenter confidence_threshold 0.2
+    #   ros2 param set /semantic_segmenter cargo_min_confidence 0.2
+    #   ros2 param set /semantic_segmenter robot_arm_confidence_threshold 0.5
+    confidence_threshold: 0.2
+    cargo_min_confidence: 0.2
+    robot_arm_confidence_threshold: 0.5
 
 semantic_point_filter:
   ros__parameters:

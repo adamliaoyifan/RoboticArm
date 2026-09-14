@@ -754,13 +754,14 @@ class PickupBoxSpawner(Node):
         place_err = self._enforce_intended_pose(model_name, pose)
         if place_err is not None:
             self.get_logger().error("pickup_box_spawner: %s" % place_err)
-            del_err = self._delete_model(model_name)
-            if del_err is not None:
-                self.get_logger().warning(
-                    "pickup_box_spawner: cleanup after place verify: %s"
-                    % del_err)
+            # Leave the unpublished model in the world so the eval can dump
+            # RGB/depth of a physical flip, then the next spawn/clear deletes
+            # it. Do not publish box state: this is not a scored instance.
+            self._current_model = model_name
+            self._current_box = None
+            self._current_ref = None
             response.success = False
-            response.message = place_err
+            response.message = "%s model=%s" % (place_err, model_name)
             return response
 
         # Observable reference: the lid plane sits lid_offset below the

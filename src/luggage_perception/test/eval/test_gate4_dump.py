@@ -11,12 +11,14 @@ import numpy as np
 from luggage_perception.eval.gate4_dump import (
     cargo_summary,
     crop_workspace_xy,
+    deproject_labelled_clouds,
     extract_top_ransac,
     parse_gz_pose_info,
     select_dump_stamps,
     trial_folder_name,
     trial_is_failure,
     write_index,
+    write_pca_replay_dir,
     write_ply_xyz,
     write_snapshot_dir,
     write_top_ransac_dir,
@@ -44,6 +46,24 @@ class TestTrialFailure(unittest.TestCase):
 
     def test_spawn_fail(self):
         self.assertTrue(trial_is_failure({"spawn_ok": False, "n_settled": 0}))
+
+    def test_spawn_flip_is_not_a_perception_failure(self):
+        rec = {
+            "spawn_ok": False, "n_settled": 0,
+            "trial_class": "infrastructure_invalid",
+        }
+        self.assertFalse(trial_is_failure(rec))
+        name = trial_folder_name(2, rec, "pickup_box_0003_large")
+        self.assertTrue(name.startswith("trial_02_invalid_"))
+
+    def test_texture_waiver_folder(self):
+        rec = {
+            "spawn_ok": True, "n_settled": 80,
+            "t_first_valid_sec": None, "t_first_full3d_sec": None,
+            "trial_class": "SIM_TEXTURE_LOW_CONFIDENCE",
+        }
+        name = trial_folder_name(3, rec, "pickup_box_0004_carryon")
+        self.assertTrue(name.startswith("trial_03_waive_"))
 
 
 class TestSelectStamps(unittest.TestCase):
@@ -152,6 +172,47 @@ class TestClouds(unittest.TestCase):
             [{"top_surface_valid": True, "pca_reason": "ok"}],
         )
         self.assertIn("slow_full3d", name)
+
+
+class TestDeprojectAndPcaReplay(unittest.TestCase):
+    def test_labelled_deproject_splits_cargo(self):
+        depth = np.full((8, 8), 1.2, dtype=np.float32)
+        mask = np.zeros((8, 8), dtype=np.uint8)
+        mask[2:6, 2:6] = 2
+        info = {"k": [200.0, 0.0, 4.0, 0.0, 200.0, 4.0, 0.0, 0.0, 1.0]}
+        out = deproject_labelled_clouds(depth, mask, info, stride=1)
+        self.assertTrue(out["stats"]["ok"])
+        self.assertGreater(out["stats"]["n_depth_all"], 0)
+        self.assertGreater(out["stats"]["n_mask_cargo"], 0)
+        self.assertEqual(out["mask_hist"]["2"], 16)
+        self.assertEqual(len(out["clouds"]["mask_cargo"]),
+                         out["stats"]["n_mask_cargo"])
+
+    def test_missing_depth(self):
+        out = deproject_labelled_clouds(None, None, None)
+        self.assertFalse(out["stats"]["ok"])
+        self.assertEqual(len(out["clouds"]["depth_all"]), 0)
+
+    def test_pca_replay_dir(self):
+        rng = np.random.RandomState(1)
+        top = np.column_stack((
+            rng.uniform(-1.15, -0.85, 80),
+            rng.uniform(-0.1, 0.1, 80),
+            np.full(80, 1.16),
+        ))
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = os.path.join(tmp, "pca_replay")
+            summary = write_pca_replay_dir(
+                dest,
+                {"mask_cargo_world": top, "cargo_world": np.zeros((0, 3))},
+            )
+            self.assertTrue(summary["mask_cargo_world"]["ok"])
+            self.assertFalse(summary["cargo_world"]["ok"])
+            self.assertTrue(os.path.isfile(os.path.join(dest, "pca_replay.json")))
+            self.assertTrue(os.path.isfile(
+                os.path.join(dest, "mask_cargo_world", "top_inliers.ply")))
+            payload = json.loads(open(os.path.join(dest, "pca_replay.json")).read())
+            self.assertIn("n_input", payload["mask_cargo_world"])
 
 
 class TestGzPose(unittest.TestCase):

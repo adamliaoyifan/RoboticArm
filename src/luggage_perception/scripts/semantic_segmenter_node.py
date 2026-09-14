@@ -29,6 +29,7 @@ import time
 import numpy as np
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -47,9 +48,12 @@ from luggage_perception.detect_overlay import (
     timestamp_banner_lines,
 )
 from luggage_perception.semantic_segmenter import (
+    LIVE_CONFIDENCE_PARAMS,
     WorkspaceAcceptanceContext,
     build_segmenter,
+    confidence_floors,
     draw_detections_overlay,
+    set_live_confidence_param,
 )
 from luggage_perception.wrist_self_body import (
     matrix_from_translation_quaternion,
@@ -66,7 +70,9 @@ class SemanticSegmenterNode(Node):
             "backend": "stub",
             "model_name": "yolov8s-world.pt",
             "device": "cuda",
-            "confidence_threshold": 0.25,
+            "confidence_threshold": 0.2,
+            "robot_arm_confidence_threshold": 0.5,
+            "cargo_min_confidence": 0.2,
             "sam2.checkpoint": "facebook/sam2-hiera-small",
             "sam2.model_type": "sam2_hiera_s",
             "prompts": [""],
@@ -138,6 +144,10 @@ class SemanticSegmenterNode(Node):
             "class_mapping": class_mapping,
             "confidence_threshold": float(
                 self.get_parameter("confidence_threshold").value),
+            "robot_arm_confidence_threshold": float(
+                self.get_parameter("robot_arm_confidence_threshold").value),
+            "cargo_min_confidence": float(
+                self.get_parameter("cargo_min_confidence").value),
             "device": self.get_parameter("device").value,
             "temporal_window_frames": int(
                 self.get_parameter("temporal_window_frames").value),
@@ -155,6 +165,7 @@ class SemanticSegmenterNode(Node):
                 self.get_parameter("self_body_row_start_frac").value),
         }
         self._segmenter = build_segmenter(config)
+        self.add_on_set_parameters_callback(self._on_set_parameters)
         self._workspace_accept = bool(
             self.get_parameter("workspace_accept_enabled").value)
         self._workspace_center = [
@@ -237,11 +248,32 @@ class SemanticSegmenterNode(Node):
         if self._stats_interval_sec > 0.0:
             self.create_timer(0.5, self._on_stats_timer)
 
+        floors = confidence_floors(self._segmenter)
         self.get_logger().info(
             "semantic_segmenter ready (backend=%s, prompts=%d, self_body=%s, "
-            "temporal_window=%s)"
+            "temporal_window=%s, confidence_threshold=%.3f, "
+            "cargo_min_confidence=%.3f, robot_arm_confidence_threshold=%.3f)"
             % (backend, len(prompts), self._self_body_source,
-               getattr(self._segmenter.temporal_gate, "window_size", 0)))
+               getattr(self._segmenter.temporal_gate, "window_size", 0),
+               floors["confidence_threshold"],
+               floors["cargo_min_confidence"],
+               floors["robot_arm_confidence_threshold"]))
+
+    def _on_set_parameters(self, params):
+        """Live-tune YOLO / cargo / robot-arm floors without a restart."""
+        result = SetParametersResult(successful=True)
+        for param in params:
+            if param.name not in LIVE_CONFIDENCE_PARAMS:
+                continue
+            ok, reason = set_live_confidence_param(
+                self._segmenter, param.name, param.value)
+            if not ok:
+                result.successful = False
+                result.reason = reason
+                return result
+            self.get_logger().info(
+                "live %s = %.3f" % (param.name, float(param.value)))
+        return result
 
     @staticmethod
     def _resolve_model(model_name):

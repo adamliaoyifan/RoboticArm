@@ -2,10 +2,11 @@
 """Vintage-pose segmenter regression (PF-R5 rework).
 
 docs/agents/reviews/2026-09-04_1943_pfr5-vintage-segmenter-decision.md:
-the vintage/loafbrr suitcase drops below the 0.04 confidence threshold
+the vintage/loafbrr suitcase drops below a 0.04 YOLO floor
 at diagonal-yaw poses in one lighting state (0.01-0.03 measured on the
 2026-09-04 16-pose sweep). The descriptive prompt added to
-``semantic_segmenter.yaml`` lifts those exact frames to 0.17-0.23.
+``semantic_segmenter.yaml`` lifts those exact frames to 0.17-0.23. The
+shipped YOLO floor is now 0.2; this test uses that yaml value.
 
 The fixtures under ``fixtures/vintage_pose/`` are the two failing frames
 (``fail_pose_*``) and two healthy frames (``ok_pose_*``) from that
@@ -78,13 +79,15 @@ class TestVintagePoseRegression(unittest.TestCase):
 
     def test_every_pose_has_a_central_luggage_box(self):
         """The two former sub-threshold poses must now detect the
-        suitcase above the unchanged 0.04 threshold."""
+        suitcase at or above the shipped YOLO floor."""
+        floor = float(yaml.safe_load(open(_CONFIG))["semantic_segmenter"][
+            "ros__parameters"]["confidence_threshold"])
         for frame in FRAMES:
             boxes = self._central_luggage_boxes(frame)
             self.assertTrue(
                 boxes, "%s: no central luggage detection" % frame)
             best = max(d["confidence"] for d in boxes)
-            self.assertGreaterEqual(best, 0.04, frame)
+            self.assertGreaterEqual(best, floor, frame)
 
     def test_failing_poses_lifted_well_above_threshold(self):
         """Regression margin: the former failures should sit comfortably

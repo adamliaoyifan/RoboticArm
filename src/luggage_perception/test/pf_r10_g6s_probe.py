@@ -217,10 +217,29 @@ def occurrence_coverage(rows):
     return counts
 
 
+def drop_generations(rows, generations):
+    """Remove labelled RSS rows whose box generation is excluded."""
+    banned = {int(g) for g in (generations or ()) if g is not None}
+    if not banned:
+        return list(rows)
+    out = []
+    for row in rows:
+        try:
+            generation = int(row.get("generation") or 0)
+        except (TypeError, ValueError, AttributeError):
+            out.append(row)
+            continue
+        if generation not in banned:
+            out.append(row)
+    return out
+
+
 def coverage_scorable(rows, min_occurrences=MIN_OCCURRENCES_PER_SIZE,
-                      min_samples=MIN_SAMPLES_PER_OCCURRENCE):
+                      min_samples=MIN_SAMPLES_PER_OCCURRENCE,
+                      required_sizes=None):
     counts = occurrence_coverage(rows)
-    sizes = sorted({size for size, _occ in counts})
+    observed = {size for size, _occ in counts}
+    sizes = sorted(observed | set(required_sizes or ()))
     if not sizes:
         return False, "no_labelled_size_samples", {}
     per_size = {}
@@ -564,9 +583,11 @@ def occupancy_ready_t(probe):
     return min(times) if times else None
 
 
-def rss_verdicts(probe):
+def rss_verdicts(probe, exclude_generations=None,
+                 required_sizes=CATALOG_SIZE_IDS):
     out = {}
     ready_t = occupancy_ready_t(probe)
+    banned = list(exclude_generations or [])
     for name, raw_series in probe._rss.items():
         pairs = rss_pairs(raw_series)
         series = bucket_min_series(
@@ -579,7 +600,9 @@ def rss_verdicts(probe):
         q1m, q4m = mean(q1), mean(q4)
         slope = lsq_slope(series if series else pairs)
         labelled = [row for row in raw_series if isinstance(row, dict)]
-        coverage_ok, coverage_reason, per_size = coverage_scorable(labelled)
+        labelled = drop_generations(labelled, banned)
+        coverage_ok, coverage_reason, per_size = coverage_scorable(
+            labelled, required_sizes=required_sizes)
         settled = fit_samples(labelled, occupancy_ready_t=ready_t)
         adjusted = fit_size_adjusted_beta(settled) if settled else {
             "scorable": False,
@@ -617,6 +640,7 @@ def rss_verdicts(probe):
             "intercept_mib": adjusted.get("intercept_mib"),
             "growth_scorable": scorable,
             "unscorable_reason": ("" if scorable else reason),
+            "excluded_generations": banned,
         }
         entry["pass"] = bool(beta_ok)
         out[name] = entry
@@ -642,6 +666,61 @@ def executor_lag_verdict(probe):
     }
 
 
+def c2_resource_failures(summary):
+    """C2 resource/lifecycle verdicts except residual process count."""
+    failures = []
+    lag = (summary or {}).get("executor_lag_sec") or {}
+    if not lag.get("n"):
+        failures.append("executor_lag has no samples")
+    else:
+        if not lag.get("q4_mean_ok"):
+            failures.append("executor_lag Q4 mean %s > 0.20 s" % (
+                lag.get("q4_mean"),))
+        if not lag.get("ratio_ok"):
+            failures.append("executor_lag Q4/Q1 %s/%s > 1.25" % (
+                lag.get("q4_mean"), lag.get("q1_mean")))
+    for name, entry in ((summary or {}).get("occupancy") or {}).items():
+        if entry.get("peak_within_maxlen") is False:
+            failures.append("%s peak %s > maxlen %s" % (
+                name, entry.get("peak"), entry.get("configured_maxlen")))
+        if name in PENDING_WORK_BUFFERS and entry.get(
+                "q4_mean_within_half") is False:
+            failures.append("%s Q4 mean %s > 0.5 x maxlen" % (
+                name, entry.get("q4_mean")))
+    rss = (summary or {}).get("rss") or {}
+    if not rss:
+        failures.append("rss has no nodes")
+    for name, entry in rss.items():
+        if not entry.get("pass"):
+            failures.append("%s beta %s (scorable=%s %s)" % (
+                name, entry.get("beta_mib_per_min"),
+                entry.get("growth_scorable"),
+                entry.get("unscorable_reason") or ""))
+    rates = (summary or {}).get("active_rates_hz") or {}
+    frame_hz = rates.get("frame") or rates.get("raw_img")
+    if frame_hz is not None and float(frame_hz) < 4.0:
+        failures.append("accepted output %s Hz < 4.0" % frame_hz)
+    return failures
+
+
+def load_exclude_generations(path):
+    if not path or not os.path.isfile(path):
+        return []
+    try:
+        data = json.loads(Path(path).read_text())
+    except (OSError, TypeError, ValueError):
+        return []
+    if isinstance(data, list):
+        out = []
+        for item in data:
+            try:
+                out.append(int(item))
+            except (TypeError, ValueError):
+                continue
+        return out
+    return []
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
@@ -650,6 +729,10 @@ def main():
     ap.add_argument("--stop-file", default="",
                     help="end the window early when this file appears, so "
                          "the probe window can match the gate4 run exactly")
+    ap.add_argument(
+        "--exclude-generations-file", default="",
+        help="JSON list of current_box generations to drop from labelled "
+             "RSS coverage and the size-controlled beta fit")
     ap.add_argument("--gap", type=float, default=2.0)
     ap.add_argument("--rss-hz", type=float, default=2.0)
     ap.add_argument("--rss-bucket-sec", type=float, default=5.0,
@@ -740,9 +823,16 @@ def main():
         "stage_percentiles": stage_series,
         "executor_lag_sec": executor_lag_verdict(probe),
         "occupancy": occupancy_verdicts(probe),
-        "rss": rss_verdicts(probe),
+        "rss": rss_verdicts(
+            probe,
+            exclude_generations=load_exclude_generations(
+                args.exclude_generations_file)),
         "maxlens": dict(probe._maxlens),
     }
+    summary["c2_failures"] = c2_resource_failures(summary)
+    summary["c2_pass"] = not summary["c2_failures"]
+    summary["excluded_generations"] = load_exclude_generations(
+        args.exclude_generations_file)
     (out / "g6s_summary.json").write_text(
         json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))

@@ -95,16 +95,22 @@ class TestDetectionAcceptancePredicate(unittest.TestCase):
         self.assertTrue(accepted)
         self.assertEqual("in_workspace", reason)
 
-    def test_unavailable_context_fails_open_flagged(self):
+    def test_unavailable_context_rejects_edge_strip(self):
         accepted, reason = evaluate_detection_acceptance(
-            [611, 112, 640, 295], None)
-        self.assertTrue(accepted)
-        self.assertEqual("predicate_unavailable", reason)
+            [611, 112, 640, 295], None, image_shape=(480, 640))
+        self.assertFalse(accepted)
+        self.assertEqual("predicate_unavailable_edge_strip", reason)
         empty = WorkspaceAcceptanceContext(
             fx=0.0, fy=0.0, cx=0.0, cy=0.0, plane_z=0.86,
             center_xy=(-1.0, 0.0), half_xy=(0.5, 0.5), margin=0.15)
         accepted, reason = evaluate_detection_acceptance(
-            [611, 112, 640, 295], empty)
+            [611, 112, 640, 295], empty, image_shape=(480, 640))
+        self.assertFalse(accepted)
+        self.assertEqual("predicate_unavailable_edge_strip", reason)
+
+    def test_unavailable_context_keeps_compact_suitcase(self):
+        accepted, reason = evaluate_detection_acceptance(
+            [178, 144, 405, 297], None, image_shape=(480, 640))
         self.assertTrue(accepted)
         self.assertEqual("predicate_unavailable", reason)
 

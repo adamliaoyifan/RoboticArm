@@ -49,8 +49,21 @@ class StampBuffer(object):
 
 
 def trial_is_failure(recovery, settled=None):
-    """True when this trial would fail C1 / placement-recovery."""
+    """True when this trial would fail C1 / placement-recovery.
+
+    Infrastructure-invalid spawn flips are not perception failures; they
+    still dump, under a distinct folder kind.
+    """
     recovery = recovery or {}
+    trial_class = str(recovery.get("trial_class") or recovery.get("class") or "")
+    if trial_class == "infrastructure_invalid":
+        return False
+    if trial_class == "SIM_TEXTURE_LOW_CONFIDENCE":
+        return True
+    if trial_class == "fail":
+        return True
+    if trial_class == "normal_pass":
+        return False
     if not recovery.get("spawn_ok", True):
         return True
     t_valid = recovery.get("t_first_valid_sec")
@@ -103,6 +116,148 @@ def cargo_summary(points, frame_id=""):
     summary["min_xyz"] = [float(v) for v in pts.min(axis=0)]
     summary["max_xyz"] = [float(v) for v in pts.max(axis=0)]
     summary["mean_xyz"] = [float(v) for v in pts.mean(axis=0)]
+    return summary
+
+
+class _Intrinsics(object):
+    __slots__ = ("fx", "fy", "cx", "cy")
+
+    def __init__(self, fx, fy, cx, cy):
+        self.fx = float(fx)
+        self.fy = float(fy)
+        self.cx = float(cx)
+        self.cy = float(cy)
+
+
+def intrinsics_from_camera_info(info):
+    """Colour-grid K from a camera_info dict or object. None if unusable."""
+    if info is None:
+        return None
+    if isinstance(info, dict):
+        k = info.get("k")
+    else:
+        k = getattr(info, "k", None)
+    if k is None:
+        return None
+    k = [float(v) for v in list(k)]
+    if len(k) < 6:
+        return None
+    fx, fy, cx, cy = k[0], k[4], k[2], k[5]
+    if min(fx, fy) <= 1e-9:
+        return None
+    return _Intrinsics(fx, fy, cx, cy)
+
+
+def mask_histogram(mask_labels):
+    labels = np.asarray(
+        mask_labels if mask_labels is not None else [], dtype=np.int64)
+    if labels.size == 0:
+        return {}
+    flat = labels.reshape(-1)
+    counts = {}
+    for value in np.unique(flat):
+        counts[str(int(value))] = int((flat == value).sum())
+    return counts
+
+
+def deproject_labelled_clouds(depth_m, mask_labels, camera_info, stride=2):
+    """Rebuild camera-frame clouds from dumped depth (metres) + class mask.
+
+    Eval-only. Matches the filter's colour-grid deprojection so a
+    ``DETECT_NO_CLOUD`` dump can still show whether the box exists in
+    depth, in the cargo mask, or only in the published cargo topic.
+    """
+    from luggage_perception.depth_deprojection import deproject_selected
+
+    stats = {
+        "ok": False,
+        "reason": "missing_depth_or_intrinsics",
+        "stride": int(max(1, stride)),
+        "n_depth_px": 0,
+    }
+    empty = np.zeros((0, 3), dtype=np.float64)
+    clouds = {
+        "depth_all": empty,
+        "mask_cargo": empty,
+        "mask_unknown": empty,
+        "mask_wall": empty,
+        "mask_arm": empty,
+    }
+    hist = mask_histogram(mask_labels)
+    if depth_m is None:
+        return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+    depth = np.asarray(depth_m, dtype=np.float32)
+    if depth.ndim != 2:
+        stats["reason"] = "depth_not_hw"
+        return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+    intr = intrinsics_from_camera_info(camera_info)
+    if intr is None:
+        stats["reason"] = "bad_intrinsics"
+        return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+    stride = int(max(1, stride))
+    h, w = depth.shape
+    stats["n_depth_px"] = int(h * w)
+    depth_mm = np.nan_to_num(depth, nan=0.0, posinf=0.0, neginf=0.0) * 1000.0
+    vu, uu = np.mgrid[0:h:stride, 0:w:stride]
+    uu = uu.reshape(-1)
+    vu = vu.reshape(-1)
+    pts, n_kept = deproject_selected(depth_mm, uu, vu, intr)
+    clouds["depth_all"] = np.asarray(pts[:n_kept], dtype=np.float64)
+    stats.update({
+        "ok": True,
+        "reason": "ok",
+        "n_strided_px": int(len(uu)),
+        "n_depth_all": int(n_kept),
+        "fx": intr.fx,
+        "fy": intr.fy,
+        "cx": intr.cx,
+        "cy": intr.cy,
+        "height": int(h),
+        "width": int(w),
+    })
+    if mask_labels is None:
+        stats["mask"] = "missing"
+        return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+    mask = np.asarray(mask_labels)
+    if mask.shape[:2] != depth.shape:
+        stats["mask"] = "shape_mismatch"
+        return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+    label_names = {
+        1: "mask_wall",
+        2: "mask_cargo",
+        3: "mask_arm",
+        4: "mask_unknown",
+    }
+    for label, name in label_names.items():
+        sel = mask[vu, uu] == int(label)
+        if not np.any(sel):
+            clouds[name] = empty
+            stats["n_%s" % name] = 0
+            continue
+        labelled, n_lab = deproject_selected(
+            depth_mm, uu[sel], vu[sel], intr)
+        clouds[name] = np.asarray(labelled[:n_lab], dtype=np.float64)
+        stats["n_%s" % name] = int(n_lab)
+    return {"clouds": clouds, "mask_hist": hist, "stats": stats}
+
+
+def write_pca_replay_dir(dest, named_clouds, workspace=None, config=None):
+    """Replay top RANSAC/PCA on each named world cloud. Returns summary."""
+    os.makedirs(dest, exist_ok=True)
+    summary = {}
+    for name, points in (named_clouds or {}).items():
+        if not name:
+            continue
+        sub = os.path.join(dest, str(name))
+        record = write_top_ransac_dir(
+            sub, points, workspace=workspace, config=config)
+        summary[str(name)] = {
+            k: v for k, v in record.items()
+            if k not in ("inliers", "outliers", "voxel")
+        }
+    with open(os.path.join(dest, "pca_replay.json"), "w", encoding="utf-8") as handle:
+        json.dump(summary, handle, indent=2, sort_keys=True)
+        handle.write("\n")
     return summary
 
 
@@ -217,14 +372,22 @@ def model_pose_from_gz(poses, model_name):
 
 
 def trial_folder_name(trial, recovery, box_id, settled=None):
+    recovery = recovery or {}
+    trial_class = str(recovery.get("trial_class") or recovery.get("class") or "")
     failed = trial_is_failure(recovery, settled)
-    reason = "spawn_fail"
-    if recovery.get("spawn_ok", True):
+    if trial_class == "infrastructure_invalid":
+        kind, reason = "invalid", "spawn_flip"
+    elif trial_class == "SIM_TEXTURE_LOW_CONFIDENCE":
+        kind, reason = "waive", "SIM_TEXTURE_LOW_CONFIDENCE"
+    elif not recovery.get("spawn_ok", True):
+        kind, reason = "fail", "spawn_fail"
+    else:
         t_full = recovery.get("t_first_full3d_sec")
         reasons = [
             str(row.get("pca_reason") or "")
             for row in (settled or [])
             if not row.get("top_surface_valid")]
+        kind = "fail" if failed else "ok"
         reason = "ok"
         if failed:
             if t_full is not None and float(t_full) > 1.4:
@@ -233,7 +396,6 @@ def trial_folder_name(trial, recovery, box_id, settled=None):
                 reason = reasons[-1] if reasons else "fail"
     slug = re.sub(r"[^A-Za-z0-9._-]+", "_", str(reason)).strip("_")[:60]
     ident = re.sub(r"[^A-Za-z0-9._-]+", "_", str(box_id or "unknown"))[:80]
-    kind = "fail" if failed else "ok"
     return "trial_%02d_%s_%s_%s" % (int(trial), kind, slug or "na", ident)
 
 
@@ -395,10 +557,13 @@ def write_index(dump_root, records, extra=None):
     lines = [
         "# Gate-4 trial dumps",
         "",
-        "Open `late/color.png`, `late/overlay.png`, and `late/cargo_camera.ply`.",
-        "Failed trials also keep `early/` and `mid/`. `meta.json` has detector",
-        "`stream_stats` (including `timing_ms.pipeline` crop/inlier counts),",
-        "segmenter/filter stats, and GT. `gz_pose.json` is the live Gazebo pose.",
+        "Open `late/color.png`, `late/overlay.png`, and `late/cargo_camera.ply`",
+        "(published filter cargo — empty on `DETECT_NO_CLOUD`). Failed trials",
+        "also keep `early/` / `mid/`, reconstructed `depth_all.ply` /",
+        "`mask_cargo.ply`, and `pca_replay/pca_replay.json` (RANSAC/PCA on",
+        "world clouds). `meta.json` has `deproject` counts, `mask_hist`,",
+        "detector `stream_stats` (`timing_ms.pipeline`), and GT.",
+        "`gz_pose.json` is the live Gazebo pose.",
         "",
         "| trial | folder | result | box | pca_reason | n_cargo | t_valid_s | t_full3d_s |",
         "|---|---|---|---|---|---|---|---|",

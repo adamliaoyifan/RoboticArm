@@ -45,23 +45,55 @@ from luggage_perception.eval import gate4_scoring as scoring
 from luggage_perception.eval.detection_gate_sampling import (
     build_aligned_dump,
     pick_joined_stamp,
+    project_box_observation,
     stamp_sec_from_key,
 )
 from luggage_perception.eval.gate4_dump import (
     StampBuffer,
     crop_workspace_xy,
+    deproject_labelled_clouds,
+    extract_top_ransac,
     model_pose_from_gz,
     parse_gz_pose_info,
     select_dump_stamps,
     trial_folder_name,
     trial_is_failure,
     write_index,
+    write_pca_replay_dir,
     write_snapshot_dir,
+)
+from luggage_perception.eval.sim_texture import (
+    aabb_from_span,
+    c1_g6_gate,
+    catalog_size_from_box_id,
+    classify_trial,
+    dump_capture_health,
+    edge_strip_accepted,
+    model_name_from_spawn_message,
+    spawn_is_flip,
+    write_dump_manifest,
 )
 from luggage_perception.sensor_preprocessor import transform_points
 
 WARMUP_FRAMES = 5  # support-stability window after an instance change
 GAP_SEC = 2.0      # orchestration gap threshold for active-window Hz
+
+_PCA_CLOUD_KEYS = (
+    "cargo_world",
+    "mask_cargo_world",
+    "depth_all_workspace",
+    "filter_obstacle_world",
+)
+
+
+def _pca_replay_clouds(clouds):
+    out = {}
+    for key in _PCA_CLOUD_KEYS:
+        payload = (clouds or {}).get(key)
+        if not payload:
+            continue
+        out[key] = payload.get("points")
+    return out
 
 
 def _stamp_sec(header):
@@ -188,6 +220,8 @@ class Gate4Eval(Node):
             "mask": StampBuffer(maxlen=80),
             "instance_mask": StampBuffer(maxlen=40),
             "cargo": StampBuffer(maxlen=40),
+            "obstacle": StampBuffer(maxlen=40),
+            "depth_pts": StampBuffer(maxlen=40),
         }
         self._trial_samples = []
         for name, topic in (
@@ -200,10 +234,14 @@ class Gate4Eval(Node):
                 Image, topic,
                 lambda m, stream=name: self._buffers[stream].push(m),
                 image_qos)
-        self.create_subscription(
-            PointCloud2, "/luggage/semantic/cargo_points",
-            lambda m: self._buffers["cargo"].push(m),
-            image_qos)
+        for name, topic in (
+                ("cargo", "/luggage/semantic/cargo_points"),
+                ("obstacle", "/luggage/semantic/obstacle_points"),
+                ("depth_pts", "/luggage/preprocessed/camera/depth/points")):
+            self.create_subscription(
+                PointCloud2, topic,
+                lambda m, stream=name: self._buffers[stream].push(m),
+                image_qos)
         self.create_subscription(
             CameraInfo, "/luggage/preprocessed/camera/color/camera_info",
             self._on_camera_info, image_qos)
@@ -293,6 +331,23 @@ class Gate4Eval(Node):
             float(r.x), float(r.y), float(r.z), float(r.w))
         return transform_points(pts, matrix), None
 
+    def _world_to_optical(self, optical_frame):
+        """Return (R, t) mapping world points into the optical frame."""
+        if self._tf_buffer is None or not optical_frame:
+            return None, None, "tf unavailable"
+        try:
+            tf_msg = self._tf_buffer.lookup_transform(
+                str(optical_frame), "world", Time(),
+                timeout=Duration(seconds=0.25))
+        except Exception as exc:  # noqa: BLE001 - dump must not crash scoring
+            return None, None, str(exc)
+        t = tf_msg.transform.translation
+        r = tf_msg.transform.rotation
+        matrix = _quat_matrix(
+            float(t.x), float(t.y), float(t.z),
+            float(r.x), float(r.y), float(r.z), float(r.w))
+        return matrix[:3, :3], matrix[:3, 3], None
+
     def _nearest_msg(self, snaps, name, key):
         items = snaps.get(name) or {}
         if not items:
@@ -300,6 +355,24 @@ class Gate4Eval(Node):
         if key in items:
             return items[key]
         return items[max(items)]
+
+    def _workspace_pair(self):
+        return getattr(self, "_workspace", ([-1.0, 0.0], [0.5, 0.5]))
+
+    def _put_cloud(self, clouds, extras, name, points, frame_id):
+        if points is None:
+            points = np.zeros((0, 3), dtype=np.float64)
+        clouds[name] = {"points": points, "frame_id": str(frame_id or "")}
+        world, err = self._tf_to_world(points, frame_id)
+        extras.setdefault("tf_errors", {})[name] = err
+        if world is None:
+            return
+        clouds[name + "_world"] = {"points": world, "frame_id": "world"}
+        center, half = self._workspace_pair()
+        clouds[name + "_workspace"] = {
+            "points": crop_workspace_xy(world, center, half),
+            "frame_id": "world",
+        }
 
     def _snapshot_from_key(self, key):
         snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
@@ -349,7 +422,32 @@ class Gate4Eval(Node):
             extras["cargo_fallback_stamp"] = (
                 float(cargo_msg.header.stamp.sec)
                 + 1e-9 * float(cargo_msg.header.stamp.nanosec))
-        return images, arrays, extras, cargo_pts, cargo_frame
+        clouds = {}
+        optical = extras.get("color_frame_id") or cargo_frame or (
+            "camera_color_optical_frame")
+        self._put_cloud(clouds, extras, "cargo_camera", cargo_pts, cargo_frame)
+        for stream, name in (
+                ("obstacle", "filter_obstacle"),
+                ("depth_pts", "depth_topic")):
+            msg = self._nearest_msg(snaps, stream, key)
+            pts = (
+                adapters.cloud_points_from_msg(msg)
+                if msg is not None else None)
+            frame = msg.header.frame_id if msg is not None else optical
+            extras["%s_matched" % stream] = bool(
+                msg is not None and _stamp_key(msg) == key)
+            self._put_cloud(clouds, extras, name, pts, frame)
+        rebuilt = deproject_labelled_clouds(
+            (arrays or {}).get("depth"),
+            (arrays or {}).get("mask_labels"),
+            extras.get("camera_info"),
+            stride=2)
+        extras["mask_hist"] = rebuilt.get("mask_hist")
+        extras["deproject"] = rebuilt.get("stats")
+        for name, pts in (rebuilt.get("clouds") or {}).items():
+            self._put_cloud(clouds, extras, name, pts, optical)
+        extras["tf_error"] = (extras.get("tf_errors") or {}).get("cargo_camera")
+        return images, arrays, extras, clouds
 
     def _capture_decoded_sample(self):
         if not self._buffers:
@@ -363,21 +461,8 @@ class Gate4Eval(Node):
             if not color_keys:
                 return None
             key = max(color_keys)
-        images, arrays, extras, cargo_pts, cargo_frame = (
-            self._snapshot_from_key(key))
-        world_pts, tf_err = self._tf_to_world(cargo_pts, cargo_frame)
-        extras["tf_error"] = tf_err
+        images, arrays, extras, clouds = self._snapshot_from_key(key)
         extras["captured_monotonic"] = time.monotonic()
-        cropped = None
-        if world_pts is not None:
-            cropped = crop_workspace_xy(
-                world_pts, getattr(self, "_workspace", ([-1.0, 0.0], [0.5, 0.5]))[0],
-                getattr(self, "_workspace", ([-1.0, 0.0], [0.5, 0.5]))[1])
-        clouds = {"cargo_camera": {"points": cargo_pts, "frame_id": cargo_frame}}
-        if world_pts is not None:
-            clouds["cargo_world"] = {"points": world_pts, "frame_id": "world"}
-        if cropped is not None:
-            clouds["cargo_workspace"] = {"points": cropped, "frame_id": "world"}
         return {
             "images": images, "arrays": arrays, "extras": extras,
             "clouds": clouds, "stamp_key": key,
@@ -400,7 +485,7 @@ class Gate4Eval(Node):
         last_n_cargo = None
         if samples:
             idxs = select_dump_stamps(
-                list(range(len(samples))), count=(3 if failed else 1))
+                list(range(len(samples))), count=3)
             labels = (
                 ("early", "mid", "late") if len(idxs) >= 3
                 else (("late",) if len(idxs) == 1
@@ -424,6 +509,10 @@ class Gate4Eval(Node):
                 if last_n_cargo is None:
                     last_n_cargo = stats.get("n_cargo_points")
                     last_reason = stats.get("pca_reason") or last_reason
+                extras["pca_replay"] = write_pca_replay_dir(
+                    str(dest / label / "pca_replay"),
+                    _pca_replay_clouds(sample.get("clouds")),
+                    workspace=workspace)
                 write_snapshot_dir(
                     str(dest / label),
                     images=sample.get("images"),
@@ -446,34 +535,22 @@ class Gate4Eval(Node):
                 else (("late",) if len(keys) == 1
                       else ("early", "late")[:len(keys)]))
             for label, stamp_key in zip(labels, keys):
-                images, arrays, extras, cargo_pts, cargo_frame = (
-                    self._snapshot_from_key(stamp_key))
-                world_pts, tf_err = self._tf_to_world(cargo_pts, cargo_frame)
-                cropped = None
-                if world_pts is not None:
-                    cropped = crop_workspace_xy(
-                        world_pts, workspace[0], workspace[1])
+                images, arrays, extras, clouds = self._snapshot_from_key(
+                    stamp_key)
                 extras["trial"] = trial
                 extras["box_id"] = box_id
                 extras["failed"] = failed
                 extras["recovery"] = recovery
                 extras["workspace_center_xy"] = list(workspace[0])
                 extras["workspace_half_extents"] = list(workspace[1])
-                extras["tf_error"] = tf_err
                 extras["scoring_tail"] = (rows or [])[-1] if rows else None
                 if extras.get("scoring_tail"):
                     last_reason = extras["scoring_tail"].get("pca_reason") or ""
                     last_n_cargo = extras["scoring_tail"].get("n_cargo_points")
-                clouds = {
-                    "cargo_camera": {
-                        "points": cargo_pts, "frame_id": cargo_frame},
-                }
-                if world_pts is not None:
-                    clouds["cargo_world"] = {
-                        "points": world_pts, "frame_id": "world"}
-                if cropped is not None:
-                    clouds["cargo_workspace"] = {
-                        "points": cropped, "frame_id": "world"}
+                extras["pca_replay"] = write_pca_replay_dir(
+                    str(dest / label / "pca_replay"),
+                    _pca_replay_clouds(clouds),
+                    workspace=workspace)
                 write_snapshot_dir(
                     str(dest / label), images=images, arrays=arrays,
                     extras=extras, clouds=clouds)
@@ -497,6 +574,17 @@ class Gate4Eval(Node):
         with (dest / "scores.jsonl").open("w") as handle:
             for row in rows or []:
                 handle.write(json.dumps(row) + "\n")
+        health = dump_capture_health(str(dest))
+        write_dump_manifest(str(dest), {
+            "trial": trial,
+            "box_id": box_id,
+            "failed": failed,
+            "recovery": recovery,
+            "capture_complete": health.get("capture_complete"),
+            "replay_possible": health.get("replay_possible"),
+            "missing": health.get("missing"),
+            "snapshots": snapshot_dirs,
+        })
         return {
             "trial": trial,
             "folder": folder,
@@ -507,6 +595,8 @@ class Gate4Eval(Node):
             "t_first_valid_sec": recovery.get("t_first_valid_sec"),
             "t_first_full3d_sec": recovery.get("t_first_full3d_sec"),
             "snapshots": snapshot_dirs,
+            "dump_dir": str(dest),
+            "dump_health": health,
         }
 
 
@@ -577,6 +667,126 @@ def _row(frame, gt, trial, box_id, monotonic_sec=None):
             box.height_valid and int(frame.geometry_level) == 1
             and not frame.support_valid),
         "monotonic_sec": monotonic_sec,
+    }
+
+
+def _gt_fields(gt):
+    if gt is None or not getattr(gt, "success", False):
+        return None
+    box = gt.box
+    return {
+        "gt_top_z": float(box.pose.position.z) + 0.5 * float(box.height),
+        "gt_xy": [float(box.pose.position.x), float(box.pose.position.y)],
+        "gt_width": float(box.width),
+        "gt_depth": float(box.depth),
+        "gt_height": float(box.height),
+        "obs": {
+            "x": float(box.pose.position.x),
+            "y": float(box.pose.position.y),
+            "z": float(box.pose.position.z),
+            "yaw": _yaw_from_quat(box.pose.orientation),
+            "width": float(box.width),
+            "depth": float(box.depth),
+            "height": float(box.height),
+        },
+    }
+
+
+def _detections_from_sample(sample):
+    extras = (sample or {}).get("extras") or {}
+    stats = extras.get("seg_stats") or {}
+    dets = list(stats.get("detections") or [])
+    if dets:
+        return dets
+    return list(extras.get("detections") or [])
+
+
+def _intrinsics_xy(camera_info):
+    if not camera_info:
+        return None
+    k = camera_info.get("k") if isinstance(camera_info, dict) else None
+    if k is None or len(k) < 6:
+        return None
+    fx, fy, cx, cy = float(k[0]), float(k[4]), float(k[2]), float(k[5])
+    if min(fx, fy) <= 1e-9:
+        return None
+    return (fx, fy, cx, cy)
+
+
+def _write_exclude_generations(path, generations):
+    if not path:
+        return
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(sorted(set(int(g) for g in generations))) + "\n")
+
+
+def _classify_trial_inputs(node, gt, recovery, settled, dumped, spawn_message,
+                           workspace):
+    sample = (node._trial_samples or [None])[-1] if node._trial_samples else None
+    extras = (sample or {}).get("extras") or {}
+    detections = _detections_from_sample(sample)
+    current = extras.get("current_box") or {}
+    if isinstance(current, str):
+        try:
+            current = json.loads(current)
+        except (TypeError, ValueError):
+            current = {}
+    gt_info = _gt_fields(gt)
+    gt_bbox = None
+    optical = extras.get("color_frame_id") or "camera_color_optical_frame"
+    rotation, translation, _tf_err = node._world_to_optical(optical)
+    intr = _intrinsics_xy(extras.get("camera_info"))
+    if gt_info and rotation is not None and intr is not None:
+        proj = project_box_observation(
+            gt_info["obs"], rotation, translation, intr)
+        if proj is not None:
+            gt_bbox = aabb_from_span(proj.get("span"))
+    clouds = (sample or {}).get("clouds") or {}
+    depth_ws = ((clouds.get("depth_all_workspace") or clouds.get(
+        "depth_all_world") or {}).get("points"))
+    ransac = None
+    if depth_ws is not None:
+        ransac = extract_top_ransac(depth_ws, workspace=workspace)
+        ransac = {k: v for k, v in ransac.items()
+                  if k not in ("inliers", "outliers", "voxel")}
+    n_cargo = 0
+    for row in settled or []:
+        try:
+            n_cargo = max(n_cargo, int(row.get("n_cargo_points") or 0))
+        except (TypeError, ValueError):
+            pass
+    if dumped and dumped.get("n_cargo_points"):
+        try:
+            n_cargo = max(n_cargo, int(dumped.get("n_cargo_points") or 0))
+        except (TypeError, ValueError):
+            pass
+    n_accepted = sum(
+        1 for det in detections
+        if det.get("accepted") and int(det.get("label", -1)) == 2)
+    generation = 0
+    try:
+        generation = int(current.get("generation") or 0)
+    except (TypeError, ValueError):
+        generation = 0
+    health = (dumped or {}).get("dump_health") or {}
+    if dumped and dumped.get("dump_dir") and not health:
+        health = dump_capture_health(dumped.get("dump_dir"))
+    return {
+        "visual_kind": str(current.get("visual_kind") or "mesh"),
+        "gt_bbox": gt_bbox,
+        "image_wh": (640, 480),
+        "detections": detections,
+        "raw_depth_ransac": ransac,
+        "gt": gt_info,
+        "n_accepted_cargo": n_accepted,
+        "n_cargo_points": n_cargo,
+        "dump_health": health,
+        "recovery": recovery,
+        "settled": settled,
+        "spawn_message": spawn_message,
+        "generation": generation,
+        "edge_fp_accepted": bool(edge_strip_accepted(detections)),
     }
 
 
@@ -668,7 +878,13 @@ def main():
                         help="exact launch argument string, recorded as-is")
     parser.add_argument(
         "--dump-dir", default="",
-        help="eval-only: write RGB/depth/mask/cloud dumps per trial")
+        help="eval-only: write RGB/depth/mask/cloud dumps per trial; "
+             "failed trials also write reconstructed depth/mask clouds "
+             "and pca_replay RANSAC/PCA intermediates. Empty defaults to "
+             "<out>/dumps")
+    parser.add_argument(
+        "--no-dump", action="store_true",
+        help="skip camera/cloud dumps even when --out is set")
     parser.add_argument("--world-name", default="airport_loading")
     parser.add_argument(
         "--workspace-center", nargs=2, type=float, default=[-1.0, 0.0],
@@ -676,10 +892,26 @@ def main():
     parser.add_argument(
         "--workspace-half", nargs=2, type=float, default=[0.5, 0.5],
         metavar=("HX", "HY"))
+    parser.add_argument(
+        "--c1-g6", action="store_true",
+        help="PF-R10 generation-6 trial-level C1: 4/6 normal pass with "
+             "size mix, at most two SIM_TEXTURE_LOW_CONFIDENCE waivers, "
+             "spawn-flip replacements, and C2 sampling extension")
+    parser.add_argument(
+        "--c2-extend-trials", type=int, default=-1,
+        help="extra unscored trials after C1 so labelled RSS coverage "
+             "can reach two occurrences per size. -1 means 6 when "
+             "--c1-g6, else 0")
+    parser.add_argument(
+        "--c2-exclude-file", default="",
+        help="JSON list of current_box generations excluded from C2 RSS "
+             "fits (texture-waived trials)")
     args = parser.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    dump_root = Path(args.dump_dir) if args.dump_dir else None
+    dump_root = None
+    if not args.no_dump:
+        dump_root = Path(args.dump_dir) if args.dump_dir else (out / "dumps")
     if dump_root is not None:
         dump_root.mkdir(parents=True, exist_ok=True)
     workspace = (list(args.workspace_center), list(args.workspace_half))
@@ -696,6 +928,17 @@ def main():
     spawn_failures = 0
     trial_recoveries = []
     dump_records = []
+    classified_trials = []
+    c2_exclude = []
+    dump_index = 0
+    scored_c1 = 0
+    c2_extend = (
+        args.c2_extend_trials if args.c2_extend_trials >= 0
+        else (6 if args.c1_g6 else 0))
+    exclude_path = args.c2_exclude_file or (
+        str(out / "c2_exclude_generations.json") if args.c1_g6 else "")
+    if exclude_path:
+        _write_exclude_generations(exclude_path, [])
     try:
         # Let the stream settle before trial 0 (arm/observe/camera
         # warmup after launch): a first trial started mid-warmup fails
@@ -706,41 +949,65 @@ def main():
             node.collect(1.0)
             if before > 0 and len(node._frames) - before >= 2:
                 break
-        for trial in range(args.trials):
+
+        def execute_one(score_c1):
+            nonlocal dump_index, spawn_failures, stale_frames_total
+            trial = dump_index
+            dump_index += 1
             n0 = len(node._frames)
             spawn = node.spawn_next()
             t_placed = time.monotonic()
+            spawn_message = (
+                None if spawn is None else getattr(spawn, "message", None))
             if spawn is None or not spawn.success:
-                spawn_failures += 1
-                all_rows.append({
-                    "trial": trial, "spawn_ok": False,
-                    "message": None if spawn is None else spawn.message,
-                })
                 rec = {
                     "trial": trial, "spawn_ok": False,
                     "n_settled": 0,
                     "t_first_valid_sec": None,
                     "t_first_full3d_sec": None,
                 }
-                trial_recoveries.append(rec)
+                box_id = model_name_from_spawn_message(spawn_message)
+                if args.c1_g6 and spawn_is_flip(spawn_message):
+                    rec["trial_class"] = "infrastructure_invalid"
+                    rec["class"] = "infrastructure_invalid"
+                else:
+                    spawn_failures += 1
+                    rec["trial_class"] = "fail"
+                all_rows.append({
+                    "trial": trial, "spawn_ok": False,
+                    "message": spawn_message,
+                    "trial_class": rec.get("trial_class"),
+                })
                 try:
                     dumped = node.write_trial_dump(
-                        dump_root, trial, rec,
-                        None if spawn is None else spawn.message,
+                        dump_root, trial, rec, box_id or spawn_message,
                         [], None, workspace, args.world_name)
-                except Exception as exc:  # noqa: BLE001 - dump must not fail scoring
+                except Exception as exc:  # noqa: BLE001
                     node.get_logger().error("trial dump failed: %s" % exc)
                     dumped = None
                 if dumped:
+                    dumped["trial_class"] = rec.get("trial_class")
                     dump_records.append(dumped)
-                continue
+                payload = {
+                    "trial": trial,
+                    "box_id": box_id,
+                    "size": catalog_size_from_box_id(box_id),
+                    "trial_class": rec.get("trial_class"),
+                    "reasons": (
+                        ["spawn_flip"] if rec.get("trial_class")
+                        == "infrastructure_invalid" else ["spawn_fail"]),
+                    "recovery": rec,
+                    "warmup": [],
+                    "settled": [],
+                    "generation": 0,
+                    "score_c1": bool(score_c1),
+                }
+                if rec.get("trial_class") != "infrastructure_invalid":
+                    trial_recoveries.append(rec)
+                return payload
             node.collect(0.5, record_dump_samples=node._dump_enabled,
                          reset_samples=True)
             gt = node.get_gt()
-            # Expected identity comes from the eval-side spawn response
-            # (GT), never from the detector output being tested: if only
-            # stale frames arrive after a spawn they must be counted as
-            # stale, not adopted as the new instance.
             expected_instance = (
                 spawn.box.id or
                 (gt.box.id if gt and gt.success else None))
@@ -749,7 +1016,8 @@ def main():
                 record_dump_samples=node._dump_enabled,
                 reset_samples=False)
             stamps = [_stamp_sec(fr.header) for _t, fr in samples]
-            all_stamps.extend(stamps)
+            if score_c1:
+                all_stamps.extend(stamps)
             rows = [
                 _row(fr, gt, trial, expected_instance or "unknown",
                      monotonic_sec=t)
@@ -757,7 +1025,8 @@ def main():
             all_rows.extend(rows)
             owned, stale_n = scoring.filter_expected_instance(
                 rows, expected_instance)
-            stale_frames_total += stale_n
+            if score_c1:
+                stale_frames_total += stale_n
             warmup, settled = scoring.split_warmup(
                 owned, warmup_frames=args.warmup_frames)
             recovery_rows = []
@@ -780,35 +1049,77 @@ def main():
                 "t_first_valid_sec": t_valid,
                 "t_first_full3d_sec": t_full,
             }
-            trial_recoveries.append(recovery)
             try:
                 dumped = node.write_trial_dump(
                     dump_root, trial, recovery, expected_instance,
                     owned, min(stamps) if stamps else None,
                     workspace, args.world_name)
-            except Exception as exc:  # noqa: BLE001 - dump must not fail scoring
+            except Exception as exc:  # noqa: BLE001
                 node.get_logger().error("trial dump failed: %s" % exc)
                 dumped = None
             if dumped:
                 dump_records.append(dumped)
-            trials.append({
-                "trial": trial, "box_id": expected_instance,
+            inputs = _classify_trial_inputs(
+                node, gt, recovery, settled, dumped, spawn_message,
+                workspace)
+            if args.c1_g6:
+                classified = classify_trial(dict(
+                    inputs, box_id=expected_instance,
+                    size=catalog_size_from_box_id(expected_instance)))
+                recovery["trial_class"] = classified["trial_class"]
+                recovery["class"] = classified["trial_class"]
+                if dumped is not None:
+                    dumped["trial_class"] = classified["trial_class"]
+                    dumped["reasons"] = classified.get("reasons")
+            else:
+                classified = {"trial_class": (
+                    "fail" if trial_is_failure(recovery, settled)
+                    else "normal_pass"), "reasons": []}
+            payload = {
+                "trial": trial,
+                "box_id": expected_instance,
                 "instance_id": expected_instance,
-                "warmup": warmup, "settled": settled,
-            })
-            trials_gt.append({
-                "gt_width": (float(gt.box.width)
-                             if gt and gt.success else None),
-                "gt_depth": (float(gt.box.depth)
-                             if gt and gt.success else None),
-                "gt_height": (float(gt.box.height)
+                "size": catalog_size_from_box_id(expected_instance),
+                "trial_class": classified.get("trial_class"),
+                "reasons": classified.get("reasons") or [],
+                "texture_proof": classified.get("texture_proof"),
+                "recovery": recovery,
+                "warmup": warmup,
+                "settled": settled,
+                "generation": inputs.get("generation") or 0,
+                "score_c1": bool(score_c1),
+            }
+            if dumped and dumped.get("dump_dir"):
+                dest = Path(dumped["dump_dir"])
+                dest.mkdir(parents=True, exist_ok=True)
+                (dest / "detections.json").write_text(
+                    json.dumps(inputs.get("detections") or [], indent=2) + "\n")
+                (dest / "iou.json").write_text(json.dumps({
+                    "gt_bbox": inputs.get("gt_bbox"),
+                    "trial_class": payload["trial_class"],
+                    "texture_proof": classified.get("texture_proof"),
+                }, indent=2, default=str) + "\n")
+            if score_c1:
+                trial_recoveries.append(recovery)
+                trials.append({
+                    "trial": trial, "box_id": expected_instance,
+                    "instance_id": expected_instance,
+                    "warmup": warmup, "settled": settled,
+                    "trial_class": payload["trial_class"],
+                })
+                trials_gt.append({
+                    "gt_width": (float(gt.box.width)
+                                 if gt and gt.success else None),
+                    "gt_depth": (float(gt.box.depth)
+                                 if gt and gt.success else None),
+                    "gt_height": (float(gt.box.height)
+                                  if gt and gt.success else None),
+                    "gt_xy": ([float(gt.box.pose.position.x),
+                               float(gt.box.pose.position.y)]
                               if gt and gt.success else None),
-                "gt_xy": ([float(gt.box.pose.position.x),
-                           float(gt.box.pose.position.y)]
-                          if gt and gt.success else None),
-                "gt_yaw": (_yaw_from_quat(gt.box.pose.orientation)
-                           if gt and gt.success else None),
-            })
+                    "gt_yaw": (_yaw_from_quat(gt.box.pose.orientation)
+                               if gt and gt.success else None),
+                })
             if not samples:
                 all_rows.append({
                     "trial": trial, "box_id": expected_instance,
@@ -816,6 +1127,34 @@ def main():
                     "top_surface_valid": False, "height_valid": False,
                     "message": "no detection_frame during settle window",
                 })
+            return payload
+
+        max_attempts = args.trials * 3 if args.c1_g6 else args.trials
+        attempts = 0
+        while scored_c1 < args.trials and attempts < max_attempts:
+            attempts += 1
+            payload = execute_one(score_c1=True)
+            if args.c1_g6 and payload.get("trial_class") == (
+                    "infrastructure_invalid"):
+                classified_trials.append(payload)
+                continue
+            scored_c1 += 1
+            classified_trials.append(payload)
+            if payload.get("trial_class") == "SIM_TEXTURE_LOW_CONFIDENCE":
+                c2_exclude.append(int(payload.get("generation") or 0))
+                _write_exclude_generations(exclude_path, c2_exclude)
+        for _extend in range(c2_extend):
+            payload = execute_one(score_c1=False)
+            if payload.get("trial_class") in (
+                    "SIM_TEXTURE_LOW_CONFIDENCE",
+                    "infrastructure_invalid"):
+                c2_exclude.append(int(payload.get("generation") or 0))
+                _write_exclude_generations(exclude_path, c2_exclude)
+            elif payload.get("trial_class") != "normal_pass":
+                # Extra C2-window misses still must not enter the RSS fit.
+                if int(payload.get("generation") or 0):
+                    c2_exclude.append(int(payload.get("generation") or 0))
+                    _write_exclude_generations(exclude_path, c2_exclude)
     finally:
         node.destroy_node()
         rclpy.shutdown()
@@ -845,6 +1184,22 @@ def main():
             run_sec / args.trials if args.trials else None),
         "matrix_coverage": _matrix_coverage(trials_gt),
         "trial_recoveries": trial_recoveries,
+        "c1_g6": bool(args.c1_g6),
+        "c2_exclude_generations": c2_exclude,
+        "c2_exclude_file": exclude_path,
+        "classified_trials": [
+            {
+                "trial": t.get("trial"),
+                "box_id": t.get("box_id"),
+                "size": t.get("size"),
+                "trial_class": t.get("trial_class"),
+                "reasons": t.get("reasons"),
+                "generation": t.get("generation"),
+                "score_c1": t.get("score_c1"),
+                "recovery": t.get("recovery"),
+            }
+            for t in classified_trials
+        ],
     }
     if args.negative_control_raw_only:
         settled_rows = [r for t in trials for r in t["settled"]]
@@ -854,27 +1209,43 @@ def main():
             and summary["active_output_hz"] is not None)
     else:
         summary.update(scoring.aggregate(trials))
-        summary = scoring.gate_pass(summary)
-        summary["coverage_failures"] = scoring.coverage_gate(
-            summary["matrix_coverage"],
-            min_sizes=args.min_sizes,
-            min_xy_offsets=args.min_xy_offsets,
-            min_yaws=args.min_yaws,
-            min_trials=args.trials,
-            min_trials_per_size=args.min_trials_per_size)
-        if summary["coverage_failures"]:
-            summary["gate4_pass"] = False
-            summary["gate4_failures"] = (
-                list(summary.get("gate4_failures", []))
-                + summary["coverage_failures"])
-        extra = scoring.placement_recovery_gate(
-            spawn_failures,
-            trial_recoveries,
-            failed_count=summary["categories"]["failed"])
-        if extra:
-            summary["gate4_pass"] = False
-            summary["gate4_failures"] = (
-                list(summary.get("gate4_failures", [])) + extra)
+        if args.c1_g6:
+            scored = [t for t in classified_trials if t.get("score_c1")]
+            g6 = c1_g6_gate(
+                scored,
+                active_output_hz=scoring.active_window_hz(
+                    [row.get("stamp_sec")
+                     for t in scored
+                     if t.get("trial_class") == "normal_pass"
+                     for row in (t.get("settled") or [])
+                     if row.get("stamp_sec") is not None],
+                    gap_sec=args.gap_sec),
+                diagnostic_summary=summary)
+            summary.update(g6)
+            summary["gate4_pass"] = bool(g6.get("c1_g6_pass"))
+            summary["gate4_failures"] = list(g6.get("c1_g6_failures") or [])
+        else:
+            summary = scoring.gate_pass(summary)
+            summary["coverage_failures"] = scoring.coverage_gate(
+                summary["matrix_coverage"],
+                min_sizes=args.min_sizes,
+                min_xy_offsets=args.min_xy_offsets,
+                min_yaws=args.min_yaws,
+                min_trials=args.trials,
+                min_trials_per_size=args.min_trials_per_size)
+            if summary["coverage_failures"]:
+                summary["gate4_pass"] = False
+                summary["gate4_failures"] = (
+                    list(summary.get("gate4_failures", []))
+                    + summary["coverage_failures"])
+            extra = scoring.placement_recovery_gate(
+                spawn_failures,
+                trial_recoveries,
+                failed_count=summary["categories"]["failed"])
+            if extra:
+                summary["gate4_pass"] = False
+                summary["gate4_failures"] = (
+                    list(summary.get("gate4_failures", [])) + extra)
     if dump_root is not None:
         summary["dump_dir"] = str(dump_root)
         summary["dump_trials"] = dump_records

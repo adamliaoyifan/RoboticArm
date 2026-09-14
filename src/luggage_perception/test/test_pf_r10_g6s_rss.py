@@ -8,6 +8,7 @@ import unittest
 from pf_r10_g6s_probe import (
     CurrentBoxLabeler,
     coverage_scorable,
+    drop_generations,
     fit_samples,
     fit_size_adjusted_beta,
     luggage_size_label,
@@ -96,6 +97,26 @@ class TestCoverageAndFit(unittest.TestCase):
         ok, reason, _ = coverage_scorable(rows)
         self.assertFalse(ok)
         self.assertIn("carryon", reason)
+
+    def test_excluded_generation_does_not_count(self):
+        rows = _cycle_rows(lambda t, size: 100.0)
+        large = [row for row in rows if row["size"] == "large"]
+        banned = {large[0]["generation"]}
+        kept = drop_generations(rows, banned)
+        self.assertLess(len(kept), len(rows))
+        ok, reason, _ = coverage_scorable(
+            kept, required_sizes=("carryon", "standard", "large"))
+        self.assertFalse(ok)
+        self.assertIn("large", reason)
+
+    def test_required_catalog_sizes_even_if_unobserved(self):
+        rows = [
+            _row(i * 0.5, 100.0, "carryon", 1, occ)
+            for occ in (1, 2) for i in range(12)]
+        ok, reason, _ = coverage_scorable(
+            rows, required_sizes=("carryon", "standard", "large"))
+        self.assertFalse(ok)
+        self.assertTrue("standard" in reason or "large" in reason)
 
 
 class TestSizeAdjustedBeta(unittest.TestCase):

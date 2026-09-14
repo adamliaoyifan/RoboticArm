@@ -42,6 +42,52 @@ DEFAULT_LABEL_NAMES = {
     LABEL_UNKNOWN: "unknown_object",
 }
 
+# YOLO-World ``predict(conf=)`` floor. Boxes below this never leave the
+# model. Hardware-tunable on ``/semantic_segmenter``.
+DEFAULT_YOLO_CONFIDENCE_THRESHOLD = 0.2
+# YOLO robot_arm boxes below this do not stamp class 3. Geometric
+# self-body (panel mesh + row-band) is separate.
+DEFAULT_ROBOT_ARM_CONFIDENCE_THRESHOLD = 0.5
+# After workspace acceptance, keep one cargo AABB: the highest-confidence
+# compact box at or above this floor. Raise independently of the YOLO
+# floor if overlay should still show weaker proposals.
+DEFAULT_CARGO_MIN_CONFIDENCE = 0.2
+LIVE_CONFIDENCE_PARAMS = (
+    "confidence_threshold",
+    "cargo_min_confidence",
+    "robot_arm_confidence_threshold",
+)
+_LIVE_CONFIDENCE_ATTR = {
+    "confidence_threshold": "confidence_threshold",
+    "cargo_min_confidence": "cargo_min_confidence",
+    "robot_arm_confidence_threshold": "robot_arm_confidence_threshold",
+}
+
+
+def set_live_confidence_param(segmenter, name, value):
+    """Apply a hardware-tunable floor. Returns ``(ok, reason)``."""
+    attr = _LIVE_CONFIDENCE_ATTR.get(str(name))
+    if attr is None:
+        return False, "not a live confidence param: %s" % name
+    try:
+        val = float(value)
+    except (TypeError, ValueError):
+        return False, "%s must be a number" % name
+    if not 0.0 <= val <= 1.0:
+        return False, "%s must be in [0, 1]" % name
+    setattr(segmenter, attr, val)
+    return True, ""
+
+
+def confidence_floors(segmenter):
+    """Current YOLO / cargo / robot-arm floors for stats and logs."""
+    return {
+        "confidence_threshold": float(segmenter.confidence_threshold),
+        "cargo_min_confidence": float(segmenter.cargo_min_confidence),
+        "robot_arm_confidence_threshold": float(
+            segmenter.robot_arm_confidence_threshold),
+    }
+
 # BGR palette shared by colorize_label_map and the detection overlay so the
 # debug viz matches the published colorized mask. Cargo is red so the primary
 # task object stands out.
@@ -131,7 +177,7 @@ def bbox_center_on_plane(bbox, ctx):
     return (tx + s * dx, ty + s * dy)
 
 
-def evaluate_detection_acceptance(bbox, ctx):
+def evaluate_detection_acceptance(bbox, ctx, image_shape=None):
     """Accepted-detection predicate for one bbox (PF-R8 A1).
 
     A detection is accepted when its bbox-center ray lands on the workspace
@@ -142,16 +188,19 @@ def evaluate_detection_acceptance(bbox, ctx):
     platform is accepted; static structures outside the platform (the robot
     pedestal at the image border, the container wall) are rejected.
 
-    Returns ``(accepted, reason)``. ``predicate_unavailable`` fails open:
-    without camera_info or stamped TF the frame keeps today's behaviour and
-    the miss is flagged, not faked.
+    Returns ``(accepted, reason)``. Compact in-workspace cargo still fails
+    open when camera_info or stamped TF is missing (flagged, not faked).
+    An edge-strip bbox may not ride that fail-open path: without a
+    workspace decision it is rejected as ``predicate_unavailable_edge_strip``.
     """
-    if ctx is None:
+    if ctx is None or not ctx.available():
+        if image_shape is not None and len(image_shape) >= 2:
+            height, width = int(image_shape[0]), int(image_shape[1])
+            if bbox_is_edge_strip(bbox, width, height):
+                return False, "predicate_unavailable_edge_strip"
         return True, "predicate_unavailable"
     point = bbox_center_on_plane(bbox, ctx)
     if point is None:
-        if not ctx.available():
-            return True, "predicate_unavailable"
         return False, "ray_off_plane"
     dx = point[0] - float(ctx.center_xy[0])
     dy = point[1] - float(ctx.center_xy[1])
@@ -233,6 +282,12 @@ def bbox_is_edge_strip(bbox, width, height, margin=12, max_strip_px=80):
     x1, y1, x2, y2 = (int(v) for v in bbox[:4])
     m = int(margin)
     cap = int(max_strip_px)
+    width = int(width)
+    height = int(height)
+    if width < 160 or height < 120:
+        # Fixture / cropped images are smaller than a pedestal strip on
+        # the 640x480 pickup_observe frame; do not classify them.
+        return False
     bw = max(0, x2 - x1)
     bh = max(0, y2 - y1)
     if x1 <= m and bw <= cap:
@@ -248,54 +303,60 @@ def bbox_is_edge_strip(bbox, width, height, margin=12, max_strip_px=80):
 
 def unaccept_border_cargo_when_inner_exists(detections, image_shape,
                                            cargo_label=LABEL_CARGO,
-                                           margin=12, max_strip_px=80):
-    """Keep one compact cargo AABB; drop thin edge strips when possible.
+                                           margin=12, max_strip_px=80,
+                                           min_conf=DEFAULT_CARGO_MIN_CONFIDENCE):
+    """Keep the highest-confidence suitcase; drop the rest.
 
-    Pedestal/container AABBs sit on the image edge as thin strips. When a
-    compact suitcase box exists those strips must not remain accepted or
-    the depth grow step floods a non-horizontal surface. If two compact
-    boxes are accepted, keep the largest so a small inner false positive
-    cannot replace a clipped suitcase, and a closer panel cannot become
-    the grow origin of a unioned mask.
+    Pedestal/container AABBs sit on the image edge as thin strips. A
+    full-frame 0.015 cargo box can also pass the workspace predicate and
+    used to win by area (``max(compact, key=area)``), erasing the 0.589
+    suitcase. The live rule matches the replay selector: among accepted
+    cargo with ``confidence >= min_conf``, prefer a compact (non-strip)
+    box and keep the max-confidence one. Nothing at or above the floor
+    means an honest miss — a sub-threshold box is never the suitcase.
     """
     dets = list(detections or [])
     h, w = (int(image_shape[0]), int(image_shape[1])) if image_shape else (0, 0)
     if w <= 0 or h <= 0:
         return dets, 0
 
-    def _area(det):
-        bbox = det.get("bbox") or ()
-        if len(bbox) < 4:
-            return 0
-        return max(0, int(bbox[2]) - int(bbox[0])) * max(
-            0, int(bbox[3]) - int(bbox[1]))
+    def _conf(det):
+        return float(det.get("confidence") or 0.0)
 
     accepted = [d for d in dets
                 if int(d.get("label", -1)) == int(cargo_label)
                 and d.get("accepted")]
     if not accepted:
         return dets, 0
-    compact = []
-    strips = []
-    for det in accepted:
-        if bbox_is_edge_strip(det.get("bbox"), w, h, margin, max_strip_px):
-            strips.append(det)
-        else:
-            compact.append(det)
-    drop = []
-    if compact:
-        primary = max(compact, key=_area)
-        drop.extend(strips)
-        drop.extend(d for d in compact if d is not primary)
-    if not drop:
-        return dets, 0
-    drop_ids = set(id(d) for d in drop)
+    floor = float(min_conf)
+    above = [d for d in accepted if _conf(d) >= floor]
+    compact_above = [
+        d for d in above
+        if not bbox_is_edge_strip(d.get("bbox"), w, h, margin, max_strip_px)]
+    # Never promote a pedestal/wall strip just because it is the only box
+    # above the cargo floor. A clipped suitcase is compact, not a strip.
+    pool = compact_above
+    if not pool:
+        n_drop = 0
+        for det in accepted:
+            det["accepted"] = False
+            if bbox_is_edge_strip(
+                    det.get("bbox"), w, h, margin, max_strip_px):
+                det["accept_reason"] = "edge_strip_rejected"
+            else:
+                det["accept_reason"] = "cargo_below_min_conf"
+            n_drop += 1
+        return dets, n_drop
+    primary = max(pool, key=_conf)
     n_drop = 0
-    for det in dets:
-        if id(det) not in drop_ids:
+    for det in accepted:
+        if det is primary:
             continue
         det["accepted"] = False
-        det["accept_reason"] = "border_cargo_with_inner"
+        if _conf(det) < floor:
+            det["accept_reason"] = "cargo_below_min_conf"
+        else:
+            det["accept_reason"] = "border_cargo_with_inner"
         n_drop += 1
     return dets, n_drop
 
@@ -502,6 +563,90 @@ def detections_dropped_by_self_body(before, after, body_mask):
     return dropped
 
 
+def clip_bbox_xyxy(bbox, width, height):
+    """Integer xyxy clipped to an image. None if empty after clip."""
+    if bbox is None or len(bbox) < 4:
+        return None
+    x1 = max(0, min(int(width), int(bbox[0])))
+    y1 = max(0, min(int(height), int(bbox[1])))
+    x2 = max(0, min(int(width), int(bbox[2])))
+    y2 = max(0, min(int(height), int(bbox[3])))
+    if x2 <= x1 or y2 <= y1:
+        return None
+    return x1, y1, x2, y2
+
+
+def robot_arm_below_conf_floor(label_id, confidence, min_conf):
+    """True when a YOLO robot_arm box is below the class-3 paint floor."""
+    return (int(label_id) == LABEL_ROBOT_ARM
+            and float(min_conf) > 0.0
+            and float(confidence) < float(min_conf))
+
+
+def paint_detection_on_label_map(label_map, det):
+    """Fill *det* onto *label_map* (instance mask if present, else bbox)."""
+    label_id = int(det.get("label", LABEL_BACKGROUND))
+    mask = det.get("mask")
+    if mask is not None:
+        m = np.asarray(mask)
+        if m.shape[:2] == label_map.shape[:2] and m.any():
+            label_map[np.asarray(m, dtype=bool)] = label_id
+            return
+    box = clip_bbox_xyxy(det.get("bbox"), label_map.shape[1], label_map.shape[0])
+    if box is None:
+        return
+    x1, y1, x2, y2 = box
+    label_map[y1:y2, x1:x2] = label_id
+
+
+def suppress_low_conf_robot_arm(label_map, detections, min_conf,
+                                instance_map=None):
+    """Drop YOLO robot_arm boxes below *min_conf* and restore overwritten pixels.
+
+    ``bbox_fill`` paints later detections over earlier ones, so a 0.006
+    ``robot arm`` AABB can erase an accepted cargo box. Geometric self-body
+    stamping happens after this and is not affected. Returns
+    ``(label_map, detections, instance_map, n_dropped)``.
+    """
+    dets = list(detections or [])
+    labels = np.asarray(label_map)
+    if float(min_conf) <= 0.0 or labels.size == 0:
+        return labels, dets, instance_map, 0
+    kept = []
+    n_dropped = 0
+    for det in dets:
+        if robot_arm_below_conf_floor(
+                det.get("label", -1), det.get("confidence", 0.0), min_conf):
+            n_dropped += 1
+            continue
+        kept.append(det)
+    if n_dropped == 0:
+        return labels, dets, instance_map, 0
+    out = np.zeros(labels.shape[:2], dtype=np.uint8)
+    inst_out = None
+    if instance_map is not None:
+        inst_out = np.zeros(
+            labels.shape[:2], dtype=np.asarray(instance_map).dtype)
+    for i, det in enumerate(kept, start=1):
+        paint_detection_on_label_map(out, det)
+        if inst_out is None:
+            continue
+        inst_id = int(det.get("instance_id") or i)
+        mask = det.get("mask")
+        if mask is not None:
+            m = np.asarray(mask)
+            if m.shape[:2] == inst_out.shape[:2] and m.any():
+                inst_out[np.asarray(m, dtype=bool)] = inst_id
+                continue
+        box = clip_bbox_xyxy(
+            det.get("bbox"), inst_out.shape[1], inst_out.shape[0])
+        if box is None:
+            continue
+        x1, y1, x2, y2 = box
+        inst_out[y1:y2, x1:x2] = inst_id
+    return out, kept, inst_out, n_dropped
+
+
 def apply_self_body_mask(label_map, detections, body_mask,
                          label_id=LABEL_ROBOT_ARM, instance_map=None,
                          overlap_drop=0.5):
@@ -602,7 +747,7 @@ def apply_wrist_self_body(label_map, detections, row_start_frac,
 class SemanticSegmenter:
     """Base interface. Subclasses implement ``segment``."""
 
-    def __init__(self, prompts, class_mapping=None, confidence_threshold=0.25):
+    def __init__(self, prompts, class_mapping=None, confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD):
         self.prompts = list(prompts)
         self.class_mapping = _resolve_class_mapping(prompts, class_mapping)
         self.confidence_threshold = float(confidence_threshold)
@@ -619,6 +764,9 @@ class SemanticSegmenter:
         self.self_body_row_start_frac = 0.0
         self.self_body_mask = None
         self.temporal_gate = None
+        self.robot_arm_confidence_threshold = (
+            DEFAULT_ROBOT_ARM_CONFIDENCE_THRESHOLD)
+        self.cargo_min_confidence = DEFAULT_CARGO_MIN_CONFIDENCE
         # Per-frame WorkspaceAcceptanceContext set by the ROS node right
         # before update(); None disables the accepted-detection predicate.
         self.workspace_ctx = None
@@ -657,12 +805,20 @@ class SemanticSegmenter:
             rgb_in = np.array(rgb_uint8, copy=True)
             rgb_in[body] = 114
         label_map, detections = self.segment(rgb_in)
+        label_map, detections, instance_map, n_arm_drop = (
+            suppress_low_conf_robot_arm(
+                label_map, detections, self.robot_arm_confidence_threshold,
+                instance_map=self._instance_map))
+        if n_arm_drop:
+            self._instance_map = instance_map
         detections_before = list(detections or [])
         n_before = cargo_detection_count(detections_before)
         label_map, detections, instance_map, n_self = apply_self_body_mask(
             label_map, detections, body, instance_map=self._instance_map)
         n_after = cargo_detection_count(detections)
         stats = dict(self._last_stats)
+        stats["n_dropped_low_conf_robot_arm"] = int(n_arm_drop)
+        stats.update(confidence_floors(self))
         stats["n_yolo_cargo_before_self_body"] = int(n_before)
         stats["n_dropped_self_body"] = int(max(0, n_before - n_after))
         stats["detections_dropped_self_body"] = detections_dropped_by_self_body(
@@ -678,7 +834,8 @@ class SemanticSegmenter:
             if int(det.get("label", -1)) != LABEL_CARGO:
                 continue
             accepted, reason = evaluate_detection_acceptance(
-                det.get("bbox"), self.workspace_ctx)
+                det.get("bbox"), self.workspace_ctx,
+                image_shape=rgb_uint8.shape[:2])
             det["accepted"] = bool(accepted)
             det["accept_reason"] = str(reason)
             accepted_reasons[str(reason)] = (
@@ -686,13 +843,17 @@ class SemanticSegmenter:
             if accepted:
                 n_accepted += 1
         detections, n_border = unaccept_border_cargo_when_inner_exists(
-            detections, rgb_uint8.shape[:2])
-        if n_border:
-            n_accepted = sum(
-                1 for det in detections
-                if int(det.get("label", -1)) == LABEL_CARGO
-                and det.get("accepted"))
-            accepted_reasons["border_cargo_with_inner"] = int(n_border)
+            detections, rgb_uint8.shape[:2],
+            min_conf=self.cargo_min_confidence)
+        accepted_reasons = {}
+        n_accepted = 0
+        for det in detections:
+            if int(det.get("label", -1)) != LABEL_CARGO:
+                continue
+            reason = str(det.get("accept_reason") or "")
+            accepted_reasons[reason] = accepted_reasons.get(reason, 0) + 1
+            if det.get("accepted"):
+                n_accepted += 1
         stats["accepted_cargo_count"] = int(n_accepted)
         stats["accept_reasons"] = accepted_reasons
         stats["border_cargo_unaccepted"] = int(n_border)
@@ -762,7 +923,7 @@ class StubSegmenter(SemanticSegmenter):
     map until a real segmenter is wired in.
     """
 
-    def __init__(self, prompts, class_mapping=None, confidence_threshold=0.25):
+    def __init__(self, prompts, class_mapping=None, confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD):
         super().__init__(prompts, class_mapping, confidence_threshold)
         self._last_stats["backend"] = "stub"
 
@@ -789,7 +950,8 @@ class BboxFillSegmenter(SemanticSegmenter):
     target objects (true for the container-interior explore views).
     """
 
-    def __init__(self, prompts, class_mapping=None, confidence_threshold=0.25,
+    def __init__(self, prompts, class_mapping=None,
+                 confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD,
                  model_name="yolov8s-world.pt", device="cpu"):
         super().__init__(prompts, class_mapping, confidence_threshold)
         import time
@@ -853,6 +1015,9 @@ class BboxFillSegmenter(SemanticSegmenter):
                 continue
             prompt = self.prompts[cls_idx]
             label_id = self.class_mapping.get(prompt, LABEL_UNKNOWN)
+            if robot_arm_below_conf_floor(
+                    label_id, confs[idx], self.robot_arm_confidence_threshold):
+                continue
             x1, y1, x2, y2 = boxes[idx]
             ix1 = max(0, int(round(x1)))
             iy1 = max(0, int(round(y1)))
@@ -889,7 +1054,8 @@ class YoloWorldSam2Segmenter(SemanticSegmenter):
     instance_map (uint16, 0 = background, 1..N per detection).
     """
 
-    def __init__(self, prompts, class_mapping=None, confidence_threshold=0.25,
+    def __init__(self, prompts, class_mapping=None,
+                 confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD,
                  model_name="yolov8s-world.pt", device="cuda",
                  sam2_checkpoint="facebook/sam2-hiera-small",
                  sam2_model_type="sam2_hiera_s"):
@@ -964,6 +1130,10 @@ class YoloWorldSam2Segmenter(SemanticSegmenter):
                 continue
             prompt = self.prompts[cls_idx]
             label_id = self.class_mapping.get(prompt, LABEL_UNKNOWN)
+            if robot_arm_below_conf_floor(
+                    label_id, confs_np[rank_idx],
+                    self.robot_arm_confidence_threshold):
+                continue
             box = boxes_np[rank_idx]
 
             masks, scores, _logits = self._sam2_predictor.predict(
@@ -1027,7 +1197,9 @@ def build_segmenter(config):
         backend: "stub" | "bbox_fill" | "yolo_world" | "yolo_world_sam2"
         prompts: list[str]
         class_mapping: dict[str, int]   (optional)
-        confidence_threshold: float     (optional, default 0.25)
+        confidence_threshold: float     (optional, default 0.2)
+        robot_arm_confidence_threshold: float (optional, default 0.5)
+        cargo_min_confidence: float     (optional, default 0.2)
         model_name: str                 (optional, YOLO-World checkpoint)
         device: str                     (optional, "cpu" | "cuda:0")
         sam2_checkpoint: str            (optional, SAM2 model checkpoint)
@@ -1041,13 +1213,20 @@ def build_segmenter(config):
     backend = str(config.get("backend", "stub"))
     prompts = list(config.get("prompts", []))
     class_mapping = config.get("class_mapping")
-    conf = float(config.get("confidence_threshold", 0.25))
+    conf = float(config.get(
+        "confidence_threshold", DEFAULT_YOLO_CONFIDENCE_THRESHOLD))
     model_name = str(config.get("model_name", "yolov8s-world.pt"))
     device = str(config.get("device", "cpu"))
     self_body_frac = float(config.get("self_body_row_start_frac", 0.0))
 
     def _finish(segmenter):
         segmenter.self_body_row_start_frac = self_body_frac
+        segmenter.robot_arm_confidence_threshold = float(
+            config.get("robot_arm_confidence_threshold",
+                       DEFAULT_ROBOT_ARM_CONFIDENCE_THRESHOLD))
+        segmenter.cargo_min_confidence = float(
+            config.get("cargo_min_confidence",
+                       DEFAULT_CARGO_MIN_CONFIDENCE))
         window = int(config.get("temporal_window_frames", 5) or 0)
         if window > 1:
             from luggage_perception.detection_temporal_gate import (

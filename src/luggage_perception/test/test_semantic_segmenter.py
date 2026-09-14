@@ -542,9 +542,9 @@ class TestUnacceptBorderCargo(unittest.TestCase):
     def test_unaccepts_border_when_inner_exists(self):
         from luggage_perception.semantic_segmenter import (
             unaccept_border_cargo_when_inner_exists)
-        inner = {"label": LABEL_CARGO, "accepted": True,
+        inner = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.5,
                  "bbox": [40, 40, 80, 90]}
-        border = {"label": LABEL_CARGO, "accepted": True,
+        border = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.4,
                   "bbox": [600, 20, 640, 200]}
         dets, n = unaccept_border_cargo_when_inner_exists(
             [inner, border], (480, 640), margin=12)
@@ -553,28 +553,76 @@ class TestUnacceptBorderCargo(unittest.TestCase):
         self.assertFalse(border["accepted"])
         self.assertEqual(border["accept_reason"], "border_cargo_with_inner")
 
-    def test_keeps_border_when_it_is_the_only_box(self):
+    def test_rejects_strip_when_it_is_the_only_box(self):
         from luggage_perception.semantic_segmenter import (
             unaccept_border_cargo_when_inner_exists)
-        border = {"label": LABEL_CARGO, "accepted": True,
+        border = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.5,
                   "bbox": [600, 20, 640, 200]}
         dets, n = unaccept_border_cargo_when_inner_exists(
             [border], (480, 640), margin=12)
-        self.assertEqual(n, 0)
-        self.assertTrue(border["accepted"])
+        self.assertEqual(n, 1)
+        self.assertFalse(border["accepted"])
+        self.assertEqual(border["accept_reason"], "edge_strip_rejected")
 
     def test_keeps_clipped_suitcase_when_small_inner_exists(self):
         from luggage_perception.semantic_segmenter import (
             unaccept_border_cargo_when_inner_exists)
-        inner = {"label": LABEL_CARGO, "accepted": True,
+        inner = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.35,
                  "bbox": [200, 80, 260, 140]}
-        suitcase = {"label": LABEL_CARGO, "accepted": True,
+        suitcase = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.6,
                      "bbox": [0, 60, 200, 260]}
         dets, n = unaccept_border_cargo_when_inner_exists(
             [inner, suitcase], (480, 640), margin=12)
         self.assertEqual(n, 1)
         self.assertFalse(inner["accepted"])
         self.assertTrue(suitcase["accepted"])
+
+    def test_max_confidence_beats_larger_area(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        huge = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.015,
+                "bbox": [6, 0, 638, 330]}
+        suitcase = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.589,
+                    "bbox": [119, 27, 512, 365]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [huge, suitcase], (480, 640))
+        self.assertEqual(n, 1)
+        self.assertTrue(suitcase["accepted"])
+        self.assertFalse(huge["accepted"])
+        self.assertEqual(huge["accept_reason"], "cargo_below_min_conf")
+
+    def test_unaccepts_all_when_nothing_above_floor(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        low = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.015,
+               "bbox": [6, 0, 638, 330]}
+        dets, n = unaccept_border_cargo_when_inner_exists([low], (480, 640))
+        self.assertEqual(n, 1)
+        self.assertFalse(low["accepted"])
+        self.assertEqual(low["accept_reason"], "cargo_below_min_conf")
+
+    def test_keeps_correct_aabb_at_0p24(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        suitcase = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.243,
+                    "bbox": [142, 95, 507, 307]}
+        huge = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.016,
+                "bbox": [0, 0, 597, 338]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [suitcase, huge], (480, 640))
+        self.assertEqual(n, 1)
+        self.assertTrue(suitcase["accepted"])
+        self.assertFalse(huge["accepted"])
+
+    def test_honest_miss_when_in_workspace_is_0p02(self):
+        from luggage_perception.semantic_segmenter import (
+            unaccept_border_cargo_when_inner_exists)
+        suitcase = {"label": LABEL_CARGO, "accepted": True, "confidence": 0.017,
+                    "bbox": [106, 85, 434, 324]}
+        dets, n = unaccept_border_cargo_when_inner_exists(
+            [suitcase], (480, 640))
+        self.assertEqual(n, 1)
+        self.assertFalse(suitcase["accepted"])
 
 
 class TestUpdateTemporalHold(unittest.TestCase):
@@ -611,4 +659,118 @@ class TestUpdateTemporalHold(unittest.TestCase):
         self.assertTrue(out.stats["temporal"]["held"])
         self.assertGreater(int((out.label_map == LABEL_CARGO).sum()), 0)
         self.assertTrue(any(d.get("held") for d in out.detections))
+
+
+class TestLowConfRobotArmFloor(unittest.TestCase):
+    """A 0.006 robot-arm AABB must not erase an accepted cargo box."""
+
+    def _backend(self, dets):
+        from luggage_perception.semantic_segmenter import SemanticSegmenter
+
+        class _Paint(SemanticSegmenter):
+            def segment(self, rgb_image):
+                labels = np.zeros(rgb_image.shape[:2], dtype=np.uint8)
+                for det in dets:
+                    x1, y1, x2, y2 = (int(v) for v in det["bbox"])
+                    labels[y1:y2, x1:x2] = int(det["label"])
+                return labels, [dict(d) for d in dets]
+
+        seg = _Paint(["box", "robot arm"])
+        seg.temporal_gate = None
+        return seg
+
+    def test_helper_restores_cargo_under_low_conf_arm(self):
+        from luggage_perception.semantic_segmenter import (
+            suppress_low_conf_robot_arm)
+        labels = np.zeros((20, 20), dtype=np.uint8)
+        labels[4:16, 4:16] = LABEL_ROBOT_ARM
+        dets = [
+            {"label": LABEL_CARGO, "prompt": "box", "confidence": 0.40,
+             "bbox": [4, 4, 16, 16]},
+            {"label": LABEL_ROBOT_ARM, "prompt": "robot arm",
+             "confidence": 0.0058, "bbox": [4, 4, 16, 16]},
+        ]
+        out, kept, _, n_drop = suppress_low_conf_robot_arm(labels, dets, 0.5)
+        self.assertEqual(n_drop, 1)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["label"], LABEL_CARGO)
+        self.assertTrue(np.all(out[4:16, 4:16] == LABEL_CARGO))
+
+    def test_update_ignores_arm_below_floor(self):
+        dets = [
+            {"label": LABEL_CARGO, "prompt": "box", "confidence": 0.40,
+             "bbox": [4, 4, 16, 16]},
+            {"label": LABEL_ROBOT_ARM, "prompt": "robot arm",
+             "confidence": 0.0058, "bbox": [4, 5, 16, 16]},
+        ]
+        seg = self._backend(dets)
+        seg.update(np.zeros((20, 20, 3), dtype=np.uint8), 1.0, "f")
+        out = seg.copy_output()
+        self.assertEqual(out.stats["n_dropped_low_conf_robot_arm"], 1)
+        self.assertAlmostEqual(out.stats["robot_arm_confidence_threshold"], 0.5)
+        self.assertAlmostEqual(out.stats["confidence_threshold"], 0.2)
+        self.assertAlmostEqual(out.stats["cargo_min_confidence"], 0.2)
+        self.assertTrue(np.all(out.label_map[4:16, 4:16] == LABEL_CARGO))
+        self.assertFalse(any(
+            int(d["label"]) == LABEL_ROBOT_ARM for d in out.detections))
+
+    def test_update_keeps_arm_at_or_above_floor(self):
+        dets = [
+            {"label": LABEL_CARGO, "prompt": "box", "confidence": 0.40,
+             "bbox": [4, 4, 16, 16]},
+            {"label": LABEL_ROBOT_ARM, "prompt": "robot arm",
+             "confidence": 0.51, "bbox": [4, 4, 16, 16]},
+        ]
+        seg = self._backend(dets)
+        seg.update(np.zeros((20, 20, 3), dtype=np.uint8), 1.0, "f")
+        out = seg.copy_output()
+        self.assertEqual(out.stats["n_dropped_low_conf_robot_arm"], 0)
+        self.assertTrue(np.all(out.label_map[4:16, 4:16] == LABEL_ROBOT_ARM))
+
+    def test_zero_floor_keeps_low_conf_arm(self):
+        labels = np.zeros((8, 8), dtype=np.uint8)
+        labels[:, :] = LABEL_ROBOT_ARM
+        dets = [{"label": LABEL_ROBOT_ARM, "prompt": "robot arm",
+                 "confidence": 0.006, "bbox": [0, 0, 8, 8]}]
+        from luggage_perception.semantic_segmenter import (
+            suppress_low_conf_robot_arm)
+        out, kept, _, n_drop = suppress_low_conf_robot_arm(labels, dets, 0.0)
+        self.assertEqual(n_drop, 0)
+        self.assertEqual(len(kept), 1)
+        self.assertTrue(np.all(out == LABEL_ROBOT_ARM))
+
+
+class TestLiveConfidenceParams(unittest.TestCase):
+    def test_set_and_reject(self):
+        from luggage_perception.semantic_segmenter import (
+            StubSegmenter, set_live_confidence_param)
+
+        seg = StubSegmenter(["suitcase"])
+        ok, reason = set_live_confidence_param(
+            seg, "confidence_threshold", 0.35)
+        self.assertTrue(ok, reason)
+        self.assertAlmostEqual(seg.confidence_threshold, 0.35)
+        ok, reason = set_live_confidence_param(
+            seg, "cargo_min_confidence", 0.4)
+        self.assertTrue(ok, reason)
+        self.assertAlmostEqual(seg.cargo_min_confidence, 0.4)
+        ok, reason = set_live_confidence_param(
+            seg, "robot_arm_confidence_threshold", 0.6)
+        self.assertTrue(ok, reason)
+        self.assertAlmostEqual(seg.robot_arm_confidence_threshold, 0.6)
+        ok, reason = set_live_confidence_param(
+            seg, "confidence_threshold", 1.5)
+        self.assertFalse(ok)
+        self.assertIn("[0, 1]", reason)
+        self.assertAlmostEqual(seg.confidence_threshold, 0.35)
+        ok, reason = set_live_confidence_param(seg, "not_a_floor", 0.2)
+        self.assertFalse(ok)
+
+    def test_build_segmenter_defaults_match_yaml_floors(self):
+        from luggage_perception.semantic_segmenter import build_segmenter
+
+        seg = build_segmenter({"backend": "stub", "prompts": ["suitcase"]})
+        self.assertAlmostEqual(seg.confidence_threshold, 0.2)
+        self.assertAlmostEqual(seg.cargo_min_confidence, 0.2)
+        self.assertAlmostEqual(seg.robot_arm_confidence_threshold, 0.5)
 
