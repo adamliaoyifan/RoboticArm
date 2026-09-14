@@ -1174,6 +1174,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _execute_place_chain(self, case, pick_msg, slot, slot_meta):
         self._scoring_active = True
+        # run_place_from_carry is invoked directly (not via run_trial), so
+        # reset the per-trial traces the base class would have cleared.
+        self._timeline = []
+        self._segments_log = []
+        self._tf_trace = []
+        self._place_state = "INIT"
+        self._probe_joints = None
         args = self._args
         args.dump_dir = self._case_dir
         args.dump_exact = False

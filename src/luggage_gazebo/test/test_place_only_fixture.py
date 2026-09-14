@@ -386,7 +386,7 @@ def test_support_touching_neighbours_are_not_overlap():
     touching = (-0.345, -0.26, 0.14)
     assert fx.box_overlaps_aabb(
         touching, (0.70, 0.45, 0.28), 0.0, carryon.aabb()) is False
-    intruding = (-0.345, -0.255, 0.14)   # 5 mm into the carryon's Y span
+    intruding = (-0.345, -0.265, 0.14)   # 5 mm into the carryon's Y span
     assert fx.box_overlaps_aabb(
         intruding, (0.70, 0.45, 0.28), 0.0, carryon.aabb()) is True
 
