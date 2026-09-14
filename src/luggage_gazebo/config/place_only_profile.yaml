@@ -19,6 +19,9 @@ sim_world:
   # Plan acceptance B: selected box keeps >=10 mm inward clearance from the
   # seven-face hull (production default stays 0 = flush-wall).
   hull_margin: 0.01
+  # Retain enough feasible candidates for the driver's pre-execution
+  # rejection/retry loop (default 24 is visualization-sized).
+  last_result_max_candidates: 200
   visual_kind: mesh
   size_mode: catalog
   yaw_mode: discrete

@@ -109,6 +109,10 @@ class PlacementPlannerNode(Node):
         # profiles configure 0.01 (plan acceptance: >=10 mm).
         self.declare_parameter("hull_margin", 0.0)
         self.declare_parameter("floor_prior_resolution", 0.05)
+        # Cap on candidates serialized into the latched last_result dump
+        # (eval drivers retry over the retained list; 24 is the historical
+        # visualization-sized default).
+        self.declare_parameter("last_result_max_candidates", 24)
 
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
@@ -334,8 +338,9 @@ class PlacementPlannerNode(Node):
     def _publish_last(self, payload):
         pub = dict(payload)
         cands = list(pub.get("candidates") or [])
-        if len(cands) > 24:
-            pub["candidates"] = cands[:24]
+        cap = int(self.get_parameter("last_result_max_candidates").value)
+        if len(cands) > cap:
+            pub["candidates"] = cands[:cap]
             pub["candidates_truncated"] = True
         self._last_pub.publish(String(data=json.dumps(
             pub, sort_keys=True, default=str)))

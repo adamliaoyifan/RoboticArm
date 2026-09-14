@@ -71,6 +71,7 @@ def _default_launch_values():
         "use_rviz": "true",
         "use_perception": "true",
         "hull_margin": "0.0",
+        "last_result_max_candidates": "24",
         "use_cargo_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
@@ -790,6 +791,8 @@ def _launch_setup(context):
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
                 "hull_margin": float(cfg["hull_margin"]),
+                "last_result_max_candidates": int(
+                    float(cfg["last_result_max_candidates"])),
             }],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
@@ -882,6 +885,10 @@ def generate_launch_description():
                 "hull_margin",
                 "Placement planner inward hull clearance in metres "
                 "(default 0 = flush-wall, historical behavior)."),
+            profile_arg(
+                "last_result_max_candidates",
+                "Candidates kept in the placement last_result dump "
+                "(default 24)."),
             profile_arg(
                 "semantic_require_backend",
                 "If set, segmenter startup fails unless "
