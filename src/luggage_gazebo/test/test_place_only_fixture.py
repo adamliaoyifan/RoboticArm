@@ -96,30 +96,36 @@ def test_saturated_fixture_covers_floor_and_blocks_capacity(ctx):
 
 def test_obstacle_fixture_leaves_tempting_slot_and_blocks_sweep(ctx):
     boxes = fx.obstacle_fixture_boxes(ctx, fx.CATALOG_SIZES["standard"])
-    assert len(boxes) == 1
-    wall = boxes[0]
-    assert ctx["contains_floor_box"](wall.center, wall.size, wall.yaw)
-    # Standard still fits geometrically (in front of the wall).
+    roles = {box.role: box for box in boxes}
+    assert set(roles) == {"path_obstacle", "front_low_box"}
+    wall = roles["path_obstacle"]
+    low = roles["front_low_box"]
+    assert wall.in_map is False and low.in_map is True
+    for box in boxes:
+        assert ctx["contains_floor_box"](box.center, box.size, box.yaw)
+    # Standard still fits geometrically behind the blind wall (map-blind).
     fits, first = fx.geometric_capacity(
-        ctx, fx.CATALOG_SIZES["standard"], [wall.aabb()])
+        ctx, fx.CATALOG_SIZES["standard"], [low.aabb()])
     assert fits is True
-    assert first is not None
-    assert first["center"][0] < wall.aabb()[0]
-    # A slot behind the wall is swept-path blocked at the corridor height.
-    behind = [wall.aabb()[3] + 0.30, wall.center[1], 0.14]
+    # A deep slot beyond the wall is swept-path blocked at the map-derived
+    # traverse height (the corridor raise cannot see the blind wall).
+    behind = [wall.aabb()[3] + 0.25, wall.center[1], 0.14]
     traverse_z = fx.corridor_traverse_z(
-        ctx, behind, fx.CATALOG_SIZES["standard"], boxes)
+        ctx, behind, fx.CATALOG_SIZES["standard"], [low])
     blocked, hits = fx.swept_path_blocked(
-        ctx, behind, fx.CATALOG_SIZES["standard"], 0.0, [wall.aabb()],
-        traverse_contact_z=traverse_z)
+        ctx, behind, fx.CATALOG_SIZES["standard"], 0.0,
+        [box.aabb() for box in boxes], traverse_contact_z=traverse_z)
     assert blocked is True and hits
     assert hits[0]["stage"] == "traverse"
-    # A slot in front of the wall is sweep-free.
-    front = [wall.aabb()[0] - 0.35, wall.center[1], 0.14]
-    blocked_front, hits_front = fx.swept_path_blocked(
-        ctx, front, fx.CATALOG_SIZES["standard"], 0.0, [wall.aabb()],
-        traverse_contact_z=0.15 + 0.14)
-    assert blocked_front is False and not hits_front
+    # A slot stacked on the low front box is sweep-free (corridor raise
+    # comes from the committed map, which knows the low box).
+    stacked = [low.center[0], low.center[1], low.size[2] + 0.14]
+    traverse_z2 = fx.corridor_traverse_z(
+        ctx, stacked, fx.CATALOG_SIZES["standard"], [low])
+    blocked2, hits2 = fx.swept_path_blocked(
+        ctx, stacked, fx.CATALOG_SIZES["standard"], 0.0,
+        [box.aabb() for box in boxes], traverse_contact_z=traverse_z2)
+    assert blocked2 is False and not hits2
 
 
 def test_enumeration_is_deterministic(ctx):

@@ -54,12 +54,19 @@ OPENING_SIDE = "negative_x"
 
 @dataclass(frozen=True)
 class FixtureBox(object):
-    """One declared fixture box, container_link, floor-relative Z."""
+    """One declared fixture box, container_link, floor-relative Z.
+
+    ``in_map`` False declares a planner-blind obstacle: it exists
+    physically and in the MoveIt scene, but is NOT committed to the cargo
+    map, so placement planning does not know to route around it (the P4
+    trap). Everything else is committed through the production map path.
+    """
 
     center: tuple  # (x, y, z) floor-relative
     size: tuple    # (width, depth, height)
     yaw: float = 0.0
     role: str = "fixture"
+    in_map: bool = True
 
     def aabb(self):
         """Floor-relative axis-aligned bounds (yaw must be k*pi/2)."""
@@ -74,6 +81,7 @@ class FixtureBox(object):
             "size": [float(v) for v in self.size],
             "yaw": float(self.yaw),
             "role": str(self.role),
+            "in_map": bool(self.in_map),
         }
 
 
@@ -255,12 +263,19 @@ def saturated_fixture_boxes(ctx, cargo_size, clearance_margin=0.03,
 
 def obstacle_fixture_boxes(ctx, cargo_size, edge_margin=0.01,
                            wall_thickness=0.20, wall_height=0.55,
-                           wall_x_center=0.20):
-    """P4: one full-width wall leaving tempting deep slots behind it.
+                           wall_x_center=0.15, low_height=0.20,
+                           low_size=(0.25, 1.00, 0.20),
+                           low_center=(-0.475, -0.30)):
+    """P4: a planner-blind path wall plus a committed low front box.
 
-    The wall spans the full usable floor width in Y so the swept path to any
-    slot behind it is blocked; the region beyond the wall (toward +X, away
-    from the negative_x portal) stays geometrically free in the map.
+    - ``path_obstacle`` (in_map=False): spans the full usable floor width
+      at mid-length. It is physically present and in the MoveIt scene, but
+      not in the cargo map, so the corridor-aware traverse height is NOT
+      raised for it and the swept path to any slot beyond it is blocked.
+    - ``front_low_box`` (in_map=True): lowers the score of front-floor
+      slots (stacking) so the geometrically tempting deep floor slots
+      beyond the wall rank first — the candidate the system must not
+      blindly execute into.
     """
     inner_w = ctx["inner_w"]
     y_hi = min(ctx["y_max_at_z"](0.0, margin=edge_margin),
@@ -269,10 +284,18 @@ def obstacle_fixture_boxes(ctx, cargo_size, edge_margin=0.01,
     wall = FixtureBox(
         center=(float(wall_x_center), 0.5 * (y_lo + y_hi), wall_height * 0.5),
         size=(float(wall_thickness), y_hi - y_lo, float(wall_height)),
-        role="obstacle_wall")
-    if not ctx["contains_floor_box"](wall.center, wall.size, wall.yaw):
-        raise ValueError("obstacle wall outside hull: %r" % (wall,))
-    return [wall]
+        role="path_obstacle", in_map=False)
+    low = FixtureBox(
+        center=(float(low_center[0]), float(low_center[1]),
+                float(low_height) * 0.5),
+        size=(float(low_size[0]), float(low_size[1]), float(low_height)),
+        role="front_low_box", in_map=True)
+    for box in (wall, low):
+        if not ctx["contains_floor_box"](box.center, box.size, box.yaw):
+            raise ValueError("obstacle fixture outside hull: %r" % (box,))
+    if wall.aabb()[0] - low.aabb()[3] < 0.05:
+        raise ValueError("front box and wall must leave a clear gap")
+    return [wall, low]
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +483,10 @@ def swept_path_blocked(ctx, slot_center, size, yaw, obstacle_aabbs,
     portal_x = float(portal_x if portal_x is not None else -inner_l * 0.5)
     box_h = float(size[2])
     sx, sy = float(slot_center[0]), float(slot_center[1])
-    carry_z = float(traverse_contact_z) - box_h  # payload center at carry
+    # traverse_contact_z is the suction contact height = payload TOP
+    # (waypoint generator contract); the payload centre hangs half a box
+    # below it.
+    carry_z = float(traverse_contact_z) - box_h * 0.5
     final_z = float(slot_center[2])
 
     hits = []

@@ -266,7 +266,9 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         }
         self._commit_seq = 0
         self._placed_slots = []        # base_link SlotSpec list for requests
-        self._placed_local_boxes = []  # fx.FixtureBox records (local, floor-rel)
+        self._placed_local_boxes = []  # map-committed (local, floor-relative)
+        self._blind_obstacles = []     # planner-blind fixture obstacles
+        self._fixture_scene_slots = []  # every fixture scene object, teardown
         self._fixture_models = []      # gz model names installed this streak
         self._deleted_finalized = set()  # finalized models already removed
         self._case_t1 = []
@@ -580,11 +582,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             ok = self._delete_gz_model(name)
             removed.append({"model": name, "ok": ok})
         self._fixture_models = []
-        for slot in list(self._placed_slots):
+        for slot in list(self._placed_slots) + list(self._fixture_scene_slots):
             self._call(self._remove_placed, RemovePlacedBox.Request(slot=slot),
                        timeout=10.0)
         self._placed_slots = []
         self._placed_local_boxes = []
+        self._blind_obstacles = []
+        self._fixture_scene_slots = []
         reset = self._call(self._map_reset, ResetCargoMap.Request(),
                            timeout=10.0)
         self._commit_seq = 0
@@ -619,24 +623,29 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _install_fixture_boxes(self, boxes, spawn_physical=True):
         """Install the declared serialized fixture: production cargo-map
-        commits + scene_manager collision objects (+ physical models in
-        scored mode so Gazebo matches the map)."""
+        commits (for in_map boxes) + scene_manager collision objects for
+        all declared boxes (+ physical models in scored mode so Gazebo
+        matches the fixture). Planner-blind obstacles skip the map."""
         installed = []
-        world_slots = []
         for index, box in enumerate(boxes):
             slot = self._fixture_world_slot(box, 900 + index)
-            world_slots.append(slot)
-            map_resp = self._call(
-                self._map_add, AddPlacedBox.Request(slot=slot), timeout=15.0)
+            map_resp = None
+            if box.in_map:
+                map_resp = self._call(
+                    self._map_add, AddPlacedBox.Request(slot=slot),
+                    timeout=15.0)
             scene_resp = self._call(
                 self._add_placed, AddPlacedBox.Request(slot=slot),
                 timeout=15.0)
-            ok = bool(map_resp and map_resp.success
-                      and scene_resp and scene_resp.success)
+            ok = bool(scene_resp and scene_resp.success
+                      and (not box.in_map
+                           or (map_resp and map_resp.success)))
             record = {
                 "role": box.role,
                 "record": box.record(),
-                "map_message": map_resp.message if map_resp else "timeout",
+                "map_message": (map_resp.message if map_resp
+                                else ("skipped: planner-blind obstacle"
+                                      if not box.in_map else "timeout")),
                 "scene_message": scene_resp.message if scene_resp
                 else "timeout",
                 "ok": ok,
@@ -662,13 +671,18 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                     self._fixture_models.append(model)
             installed.append(record)
             self._t1("fixture_install", index=index, role=box.role,
-                     ok=record["ok"])
+                     in_map=box.in_map, ok=record["ok"])
             if not record["ok"]:
                 return False, installed
         time.sleep(0.5)
         for index, box in enumerate(boxes):
-            self._placed_local_boxes.append(box)
-            self._placed_slots.append(
+            if box.in_map:
+                self._placed_local_boxes.append(box)
+                self._placed_slots.append(
+                    self._fixture_base_slot(box, 900 + index))
+            else:
+                self._blind_obstacles.append(box)
+            self._fixture_scene_slots.append(
                 self._fixture_base_slot(box, 900 + index))
         return True, installed
 
@@ -849,7 +863,15 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
     # Case execution
 
     def _planned_aabbs_local(self):
+        """Map-committed boxes only (capacity arbitration + corridor height
+        must reason on exactly what the production planner sees)."""
         return [tuple(box.aabb()) for box in self._placed_local_boxes]
+
+    def _all_obstacle_aabbs_local(self):
+        """Everything physically present: committed boxes plus declared
+        planner-blind obstacles (swept-path validation)."""
+        return [tuple(box.aabb()) for box
+                in self._placed_local_boxes + self._blind_obstacles]
 
     def _validate_selected(self, slot):
         """Independent acceptance-B checks on the selected candidate."""
@@ -857,10 +879,9 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         checks = {}
         checks["inside_hull_10mm"] = self._ctx["contains_floor_box_lateral"](
             center, size, yaw, margin=0.010)
-        placed_aabbs = self._planned_aabbs_local()
         checks["footprint_overlap_free"] = not any(
             fx.box_overlaps_aabb(center, size, yaw, aabb)
-            for aabb in placed_aabbs)
+            for aabb in self._all_obstacle_aabbs_local())
         traverse_z = fx.corridor_traverse_z(
             self._ctx, center, size, self._placed_local_boxes)
         carry_center = [center[0], center[1], traverse_z - size[2] * 0.5]
@@ -875,7 +896,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             and self._ctx["contains_floor_sweep"](
                 carry_center, center, size, yaw, margin=0.0))
         blocked, hits = fx.swept_path_blocked(
-            self._ctx, center, size, yaw, placed_aabbs,
+            self._ctx, center, size, yaw, self._all_obstacle_aabbs_local(),
             traverse_contact_z=traverse_z)
         checks["swept_collision_free"] = not blocked
         return {
@@ -1021,23 +1042,29 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             record["fail_code"] = "PLACEMENT_IDENTITY_MISMATCH"
         elif not validation["checks"]["inside_hull_10mm"]:
             record["fail_code"] = "HULL_CLEARANCE_VIOLATION"
-        elif not validation["checks"]["footprint_overlap_free"]:
-            record["fail_code"] = "FOOTPRINT_OVERLAP"
         elif case.case_id == "P4" and not record["checks"].get(
                 "p4_fixture_property_proven"):
             record["fail_code"] = "FIXTURE_SETUP_FAILED:p4_property_unproven"
-        elif not validation["checks"]["swept_collision_free"]:
-            alt = self._try_alternative_candidates(case, last_dump)
-            record["alternative_candidates"] = alt
-            if alt.get("slot") is not None:
-                slot = alt["slot"]
-                slot_meta = self._slot_meta(slot)
-                record["checks"]["alternative_collision_free"] = True
-            elif case.case_id == "P4":
-                return self._p4_reject_before_execution(
-                    record, case, pre_map, validation, t0)
+        elif not (validation["checks"]["footprint_overlap_free"]
+                  and validation["checks"]["swept_collision_free"]):
+            # P4: the tempting candidate is rejected (blind obstacle in its
+            # path or footprint); try retained alternatives before failing.
+            # Elsewhere a blocked or overlapping candidate is a hard defect.
+            if case.case_id != "P4":
+                record["fail_code"] = (
+                    "FOOTPRINT_OVERLAP"
+                    if not validation["checks"]["footprint_overlap_free"]
+                    else "SWEPT_PATH_BLOCKED")
             else:
-                record["fail_code"] = "SWEPT_PATH_BLOCKED"
+                alt = self._try_alternative_candidates(case, last_dump)
+                record["alternative_candidates"] = alt
+                if alt.get("slot") is not None:
+                    slot = alt["slot"]
+                    slot_meta = self._slot_meta(slot)
+                    record["checks"]["alternative_collision_free"] = True
+                else:
+                    return self._p4_reject_before_execution(
+                        record, case, pre_map, validation, t0)
 
         # --- execute production place chain ----------------------------
         if not record["fail_code"]:
@@ -1152,9 +1179,15 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             size = [float(v) for v in (cand.get("size") or size_default)]
             traverse_z = fx.corridor_traverse_z(
                 self._ctx, center, size, self._placed_local_boxes)
+            overlap = any(
+                fx.box_overlaps_aabb(center, size, yaw, aabb)
+                for aabb in self._all_obstacle_aabbs_local())
             blocked, hits = fx.swept_path_blocked(
-                self._ctx, center, size, yaw, self._planned_aabbs_local(),
+                self._ctx, center, size, yaw, self._all_obstacle_aabbs_local(),
                 traverse_contact_z=traverse_z)
+            if overlap:
+                blocked = True
+                hits = [{"stage": "footprint_overlap"}]
             tried.append({
                 "center_local": [round(float(v), 4) for v in center],
                 "yaw": round(yaw, 4), "blocked": bool(blocked),
@@ -1496,7 +1529,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             traverse_z = fx.corridor_traverse_z(
                 self._ctx, center, size, self._placed_local_boxes)
             blocked, hits = fx.swept_path_blocked(
-                self._ctx, center, size, yaw, self._planned_aabbs_local(),
+                self._ctx, center, size, yaw,
+                self._all_obstacle_aabbs_local(),
                 traverse_contact_z=traverse_z)
             checked.append({
                 "center_local": [round(float(v), 4) for v in center],
