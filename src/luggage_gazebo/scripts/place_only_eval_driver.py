@@ -319,7 +319,28 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         self._pos_guards["executed_goals"].append(
             {"case": self._current_case_id, "name": str(segment.name),
              "scored": bool(self._scoring_active)})
-        return super()._execute_segment(segment, trial)
+        result = super()._execute_segment(segment, trial)
+        ok, code = result[0], result[1]
+        if ok or code in ("RELEASE_SETTLE_FAILED", "PLACE_LOST_PAYLOAD"):
+            return result
+        # One replanned retry from the current state: a controller goal-time
+        # abort can leave the arm mid-path at a valid pose (observed: joint1
+        # stall with the tool 0.25 m short of the traverse target). A hard
+        # block fails the retry identically and the case aborts with
+        # evidence; the retry is recorded in the segments log.
+        retry = dict(segment)
+        retry_ok, retry_code, retry_rec = super()._execute_segment(
+            retry, trial)
+        if retry_rec is not None:
+            retry_rec = dict(retry_rec)
+            retry_rec["retry_of"] = str(segment.name)
+            self._segments_log.append(retry_rec)
+        self._t1("segment_retry", segment=str(segment.name),
+                 first_code=code, retry_ok=bool(retry_ok),
+                 retry_code=retry_code)
+        if retry_ok:
+            return True, "", retry_rec
+        return False, retry_code, retry_rec
 
     def _check_i1(self):
         """Tolerant payload check: a single failed follow tick (gz set_pose
