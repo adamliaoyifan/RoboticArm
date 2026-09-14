@@ -10,6 +10,17 @@ import sys
 
 import numpy as np
 
+_PKG = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _PKG not in sys.path:
+    sys.path.insert(0, _PKG)
+
+from luggage_perception.charuco_board import (  # noqa: E402
+    apply_overrides,
+    default_config_path,
+    load_spec,
+    make_board,
+)
+
 
 def _R_t_from_rtvec(rvec, tvec):
     import cv2
@@ -17,14 +28,12 @@ def _R_t_from_rtvec(rvec, tvec):
     return rotation, np.asarray(tvec, dtype=np.float64).reshape(3)
 
 
-def board_pose(corners, ids, camera_matrix, dist, square_length_m, marker_length_m):
+def board_pose(corners, ids, camera_matrix, dist, spec):
     import cv2
-    dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
-    board = cv2.aruco.CharucoBoard((10, 8), square_length_m, marker_length_m, dictionary)
+    board, _dictionary = make_board(spec)
     obj = []
     img = []
     chess = board.getChessboardCorners()
-    id_set = {int(v): i for i, v in enumerate(np.asarray(ids).reshape(-1))}
     for ident, uv in zip(np.asarray(ids).reshape(-1), np.asarray(corners).reshape(-1, 2)):
         ident = int(ident)
         if ident < 0 or ident >= len(chess):
@@ -56,20 +65,33 @@ def rpy_to_R(rpy):
     return rz.dot(ry).dot(rx)
 
 
-def load_poses(path, square_length_m):
+def load_poses(path, spec):
     with open(path, "r", encoding="utf-8") as handle:
         blob = json.load(handle)
     poses = blob["poses"] if isinstance(blob, dict) and "poses" in blob else blob
-    return poses, float(blob.get("square_length_m", square_length_m) if isinstance(blob, dict) else square_length_m)
+    stored = dict(spec)
+    if isinstance(blob, dict):
+        if isinstance(blob.get("board"), dict):
+            stored.update(blob["board"])
+        if "square_length_m" in blob:
+            stored["square_length_m"] = float(blob["square_length_m"])
+        if "marker_length_m" in blob:
+            stored["marker_length_m"] = float(blob["marker_length_m"])
+    stored["squares_x"] = int(stored["squares_x"])
+    stored["squares_y"] = int(stored["squares_y"])
+    stored["square_length_m"] = float(stored["square_length_m"])
+    stored["marker_length_m"] = float(stored["marker_length_m"])
+    return poses, stored
 
 
-def solve(poses, camera_matrix, dist, square_length_m, marker_length_m, methods=None):
+def solve(poses, camera_matrix, dist, spec, methods=None):
     import cv2
     methods = methods or {
         "TSAI": cv2.CALIB_HAND_EYE_TSAI,
         "PARK": cv2.CALIB_HAND_EYE_PARK,
         "DANIILIDIS": cv2.CALIB_HAND_EYE_DANIILIDIS,
     }
+    min_corners = int(spec.get("min_corners", 6))
     R_gripper2base = []
     t_gripper2base = []
     R_target2cam = []
@@ -77,11 +99,11 @@ def solve(poses, camera_matrix, dist, square_length_m, marker_length_m, methods=
     used = []
     for pose in poses:
         det = pose.get("detection") or {}
-        if not det or det.get("count", 0) < 6:
+        if not det or det.get("count", 0) < min_corners:
             continue
         board = board_pose(
             det["corners_px"], det["corner_ids"],
-            camera_matrix, dist, square_length_m, marker_length_m,
+            camera_matrix, dist, spec,
         )
         if board is None:
             continue
@@ -121,15 +143,22 @@ def solve(poses, camera_matrix, dist, square_length_m, marker_length_m, methods=
             "translation_mm": float(np.linalg.norm(t0 - t1) * 1000.0),
             "rotation_deg": float(ang),
         }
-    return {"methods": results, "used_poses": used, "spread": spread, "n": len(used)}
+    return {
+        "methods": results,
+        "used_poses": used,
+        "spread": spread,
+        "n": len(used),
+        "board": spec,
+    }
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, help="capture_index.json or pose directory")
-    parser.add_argument("--square-length-m", type=float, default=0.050,
+    parser.add_argument("--board-config", default=default_config_path())
+    parser.add_argument("--square-length-m", type=float, default=None,
                         help="Measured physical pitch; do not hard-code printer scale")
-    parser.add_argument("--marker-length-m", type=float, default=0.0375)
+    parser.add_argument("--marker-length-m", type=float, default=None)
     parser.add_argument("--fx", type=float)
     parser.add_argument("--fy", type=float)
     parser.add_argument("--cx", type=float)
@@ -139,16 +168,27 @@ def main(argv=None):
     path = args.input
     if os.path.isdir(path):
         path = os.path.join(path, "capture_index.json")
-    poses, stored = load_poses(path, args.square_length_m)
-    square = args.square_length_m if args.square_length_m else stored
+    spec = apply_overrides(
+        load_spec(args.board_config), args.square_length_m, args.marker_length_m)
+    poses, stored = load_poses(path, spec)
+    if args.square_length_m is None:
+        spec["square_length_m"] = stored["square_length_m"]
+    if args.marker_length_m is None:
+        spec["marker_length_m"] = stored.get("marker_length_m", spec["marker_length_m"])
+    for key in ("squares_x", "squares_y", "dictionary", "legacy_pattern"):
+        if key in stored:
+            spec[key] = stored[key]
     cam = poses[0].get("camera_matrix") if poses else None
-    dist = np.zeros(5)
+    dist = poses[0].get("dist") if poses else None
+    if dist is None:
+        dist = np.zeros(5)
     if cam is None:
         if None in (args.fx, args.fy, args.cx, args.cy):
             raise SystemExit("camera_matrix missing; pass --fx --fy --cx --cy")
         cam = [[args.fx, 0.0, args.cx], [0.0, args.fy, args.cy], [0.0, 0.0, 1.0]]
     cam = np.asarray(cam, dtype=np.float64)
-    result = solve(poses, cam, dist, square, args.marker_length_m)
+    dist = np.asarray(dist, dtype=np.float64)
+    result = solve(poses, cam, dist, spec)
     text = json.dumps(result, indent=2)
     if args.out:
         with open(args.out, "w", encoding="utf-8") as handle:

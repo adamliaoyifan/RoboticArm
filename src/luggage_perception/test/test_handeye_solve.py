@@ -15,6 +15,7 @@ if SCRIPTS not in sys.path:
     sys.path.insert(0, SCRIPTS)
 
 import handeye_solve  # noqa: E402
+from luggage_perception.charuco_board import CC600_CALIBIO_COARSE  # noqa: E402
 
 
 def _rand_R(rng):
@@ -46,11 +47,11 @@ class HandeyeSolveTests(unittest.TestCase):
         T_fc[:3, :3] = R_cam
         T_fc[:3, 3] = t_cam
         poses = []
-        K = np.array([[646.0, 0.0, 640.0], [0.0, 646.0, 360.0], [0.0, 0.0, 1.0]])
-        square = 0.051
-        import cv2
-        dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
-        board = cv2.aruco.CharucoBoard((10, 8), square, 0.0375, dictionary)
+        K = np.array([[646.0, 0.0, 320.0], [0.0, 646.0, 180.0], [0.0, 0.0, 1.0]])
+        spec = dict(CC600_CALIBIO_COARSE)
+        spec["square_length_m"] = 0.040
+        from luggage_perception.charuco_board import make_board
+        board, _dictionary = make_board(spec)
         obj = board.getChessboardCorners()
         ids = list(range(min(20, len(obj))))
         for i in range(16):
@@ -85,21 +86,23 @@ class HandeyeSolveTests(unittest.TestCase):
                     "corners_px": img,
                 },
             })
-        result = handeye_solve.solve(poses, K, np.zeros(5), square, 0.0375)
+        result = handeye_solve.solve(poses, K, np.zeros(5), spec)
         self.assertGreaterEqual(result["n"], 8)
         est = np.asarray(result["methods"]["PARK"]["t_m"])
         self.assertLess(np.linalg.norm(est - t_cam), 0.03)
         self.assertIsNotNone(result["spread"])
         self.assertLess(result["spread"]["translation_mm"], 10.0)
+        self.assertEqual(result["board"]["squares_x"], 14)
 
     def test_replay_index_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
-            blob = {"square_length_m": 0.0497, "poses": []}
+            blob = {"square_length_m": 0.0398, "poses": []}
             path = os.path.join(tmp, "capture_index.json")
             with open(path, "w", encoding="utf-8") as handle:
                 json.dump(blob, handle)
-            poses, square = handeye_solve.load_poses(path, 0.05)
-            self.assertEqual(square, 0.0497)
+            poses, stored = handeye_solve.load_poses(path, dict(CC600_CALIBIO_COARSE))
+            self.assertAlmostEqual(stored["square_length_m"], 0.0398)
+            self.assertEqual(stored["squares_x"], 14)
             self.assertEqual(poses, [])
 
 
