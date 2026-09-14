@@ -45,7 +45,7 @@ class OpaquePayload(object):
 
     def __init__(self, obj, origin="ros"):
         self._obj = obj
-        self._nbytes = len(obj)
+        self._nbytes = memoryview(obj).nbytes
         self.origin = str(origin)
 
     def nbytes(self):

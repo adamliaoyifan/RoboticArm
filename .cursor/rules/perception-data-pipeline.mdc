@@ -8,7 +8,9 @@ alwaysApply: false
 
 Full contract: `docs/architecture/sensor_data_pipeline.md`.
 
-Single-stream adapters may canonicalize one topic. Only the preprocessor
+Single-stream adapters may canonicalize one topic. The D555 adapter may
+encode raw driver streams as JPEG colour plus lossless 16UC1 PNG depth, but it
+must not pair them. Only the preprocessor
 pairs streams, keeps history, corrects frames, and scores motion.
 
 Downstream nodes subscribe to `/luggage/preprocessed/...`. They do not
@@ -25,6 +27,10 @@ subscribe to raw D435 / Mid-360 / joints to invent alignment.
   `units`; clouds carry `data_frame` separately from `frame_id`.
 - Pick detection is camera-triggered. Never block until lidar is present.
 - Tolerate an absent lidar stream.
+- Compressed D555 input is decoded exactly once at the preprocessor boundary;
+  downstream nodes must not decode or subscribe around that boundary.
+- Hardware image headers carry mapped acquisition time, never callback receipt
+  `now()`. Preserve device, mapped-host, receipt, epoch, and quality evidence.
 
 ## Missing data is flagged, not faked
 

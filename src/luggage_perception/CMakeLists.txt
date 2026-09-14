@@ -38,6 +38,7 @@ endif()
 install(PROGRAMS
   scripts/luggage_detector_node.py
   scripts/sensor_preprocessor_node.py
+  scripts/d555_transport_adapter_node.py
   scripts/semantic_segmenter_node.py
   scripts/semantic_point_filter_node.py
   scripts/cargo_volume_mapper_node.py

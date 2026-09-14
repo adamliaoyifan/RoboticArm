@@ -11,6 +11,7 @@ pytest.importorskip("sensor_msgs")
 from geometry_msgs.msg import TransformStamped  # noqa: E402
 from sensor_msgs.msg import (  # noqa: E402
     CameraInfo,
+    CompressedImage,
     Image,
     JointState,
     PointCloud2,
@@ -140,6 +141,32 @@ class TestCloudDecoding(unittest.TestCase):
 
 
 class TestImageAdapters(unittest.TestCase):
+    def test_compressed_jpeg_decodes_once_to_readonly_rgb(self):
+        cv2 = pytest.importorskip("cv2")
+        bgr = np.zeros((8, 10, 3), dtype=np.uint8)
+        bgr[:, :, 2] = 200
+        ok, encoded = cv2.imencode(".jpg", bgr)
+        self.assertTrue(ok)
+        msg = CompressedImage()
+        msg.header.frame_id = "d555_color_optical_frame"
+        msg.header.stamp.sec = 12
+        msg.header.stamp.nanosec = 34
+        msg.format = "jpeg"
+        msg.data = encoded.tobytes()
+        frame = adapters.rgb_frame_from_compressed_msg(msg)
+        self.assertEqual(frame.image.shape, (8, 10, 3))
+        self.assertFalse(frame.image.flags.writeable)
+        with self.assertRaises(ValueError):
+            frame.image.setflags(write=True)
+        self.assertEqual(frame.stamp_key, (12, 34))
+        self.assertGreater(frame.image[:, :, 0].mean(), 150)
+
+    def test_compressed_unknown_color_format_is_rejected(self):
+        msg = CompressedImage()
+        msg.format = "h264"
+        msg.data = b"not-an-image"
+        self.assertIsNone(adapters.rgb_frame_from_compressed_msg(msg))
+
     def test_rgb8_round_trip(self):
         image = np.arange(2 * 3 * 3, dtype=np.uint8).reshape(2, 3, 3)
         frame = adapters.rgb_frame_from_msg(_make_image(image, "rgb8"))
@@ -185,6 +212,29 @@ class TestImageAdapters(unittest.TestCase):
 
 
 class TestDepthAdapters(unittest.TestCase):
+    def test_compressed_png_depth_is_exact_and_readonly(self):
+        cv2 = pytest.importorskip("cv2")
+        depth = np.array([[0, 1, 1000], [65535, 42, 9000]], dtype=np.uint16)
+        ok, encoded = cv2.imencode(".png", depth)
+        self.assertTrue(ok)
+        msg = CompressedImage()
+        msg.header.frame_id = "d555_color_optical_frame"
+        msg.header.stamp.sec = 3
+        msg.header.stamp.nanosec = 5
+        msg.format = "16UC1; png"
+        msg.data = encoded.tobytes()
+        frame = adapters.depth_frame_from_compressed_msg(msg)
+        np.testing.assert_array_equal(frame.depth, depth)
+        self.assertFalse(frame.depth.flags.writeable)
+        with self.assertRaises(ValueError):
+            frame.depth.setflags(write=True)
+        self.assertEqual(frame.stamp_key, (3, 5))
+
+    def test_compressed_jpeg_depth_is_rejected(self):
+        msg = CompressedImage()
+        msg.format = "jpeg"
+        msg.data = b"lossy-depth"
+        self.assertIsNone(adapters.depth_frame_from_compressed_msg(msg))
     def test_16uc1_round_trip(self):
         depth = np.array([[1000, 0], [65535, 250]], dtype=np.uint16)
         frame = adapters.depth_frame_from_msg(_make_image(depth, "16UC1"))

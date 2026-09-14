@@ -33,6 +33,73 @@ COLOR_ENCODINGS = ("rgb8", "bgr8")
 MONO_ENCODINGS = ("mono8",)
 DEPTH_ENCODINGS = ("16UC1", "mono16")
 
+try:
+    import cv2
+except ImportError:  # pragma: no cover
+    cv2 = None
+
+
+def _compressed_format(msg):
+    return str(getattr(msg, "format", "") or "").lower()
+
+
+def _compressed_bytes(msg):
+    return np.frombuffer(msg.data, dtype=np.uint8)
+
+
+def _decoded_payload(array):
+    """Own a decoded array through a read-only buffer without another copy."""
+    return OpaquePayload(memoryview(array).toreadonly(), origin="decoded")
+
+
+def rgb_frame_from_compressed_msg(msg):
+    """Decode one JPEG/PNG transport payload into an immutable RGB frame."""
+    if cv2 is None or msg is None or not msg.data:
+        return None
+    fmt = _compressed_format(msg)
+    if fmt and not any(token in fmt for token in ("jpeg", "jpg", "png")):
+        return None
+    bgr = cv2.imdecode(_compressed_bytes(msg), cv2.IMREAD_COLOR)
+    if bgr is None or bgr.ndim != 3 or bgr.shape[2] != 3:
+        return None
+    rgb = np.ascontiguousarray(bgr[:, :, ::-1])
+    rgb.setflags(write=False)
+    return RgbFrame(
+        stamp=stamp_to_sec(msg.header.stamp),
+        frame_id=msg.header.frame_id,
+        encoding="rgb8",
+        payload=_decoded_payload(rgb),
+        height=int(rgb.shape[0]),
+        width=int(rgb.shape[1]),
+        step=int(rgb.shape[1] * 3),
+        stamp_key=stamp_key(msg.header.stamp),
+    )
+
+
+def depth_frame_from_compressed_msg(msg):
+    """Decode lossless 16-bit PNG depth; reject lossy/ambiguous formats."""
+    if cv2 is None or msg is None or not msg.data:
+        return None
+    fmt = _compressed_format(msg)
+    if "jpeg" in fmt or "jpg" in fmt or (fmt and "png" not in fmt):
+        return None
+    depth = cv2.imdecode(_compressed_bytes(msg), cv2.IMREAD_UNCHANGED)
+    if depth is None or depth.ndim != 2 or depth.dtype != np.uint16:
+        return None
+    depth = np.ascontiguousarray(depth)
+    depth.setflags(write=False)
+    return DepthFrame(
+        stamp=stamp_to_sec(msg.header.stamp),
+        frame_id=msg.header.frame_id,
+        units="millimetres",
+        encoding="16UC1",
+        payload=_decoded_payload(depth),
+        height=int(depth.shape[0]),
+        width=int(depth.shape[1]),
+        step=int(depth.shape[1] * 2),
+        stamp_key=stamp_key(msg.header.stamp),
+    )
+
 
 def stamp_to_sec(stamp):
     return float(stamp.sec) + 1e-9 * float(stamp.nanosec)

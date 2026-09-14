@@ -1,14 +1,15 @@
 # Sensor data pipeline
 
-Backend drivers and adapters may decode a **single** vendor stream into a
-canonical ROS topic (Gazebo 32FC1 metres to D435-like 16UC1 millimetres is
-the existing example). The preprocessor is the only place allowed to **pair**
+Backend drivers and adapters may canonicalize a **single** vendor stream into
+a canonical ROS topic (Gazebo 32FC1 metres to D435-like 16UC1 millimetres and
+D555 raw-to-JPEG/lossless-PNG transport are examples). The preprocessor is the
+only place allowed to **pair**
 streams, keep bounded history, correct frames, and score motion. Algorithm
 nodes do not subscribe to raw multi-rate sensors.
 
 ```mermaid
 flowchart TD
-  gz["Gazebo or D435 driver"] --> adapter["Backend adapter: canonical topics"]
+  gz["Gazebo or D555 driver"] --> adapter["Backend adapter: canonical topics"]
   adapter --> pre
   rgb["Colour image"] --> pre
   depth["Aligned depth 16UC1 mm"] --> pre
@@ -48,9 +49,9 @@ Backend bindings are configuration, never algorithm constants:
 | Backend | Colour | Canonical depth | Optical frame |
 |---|---|---|---|
 | Gazebo | `/camera/color/image_raw` | `/camera/depth/image_raw` | configured common optical frame |
-| D455 | `/camera/d455/color/image_raw` | `/camera/d555/aligned_depth_to_color/image_raw` | `d555_color_optical_frame` |
+| D555 live | `/camera/d555/color/image_raw/compressed` | `/camera/d555/aligned_depth_to_color/image_raw/compressed` (lossless PNG) | `d555_color_optical_frame` |
 
-Native D455 depth and `/camera/d555/depth/color/points` are not legal
+Native D555 depth and `/camera/d555/depth/color/points` are not legal
 canonical inputs.
 
 ## Payload ownership and copy semantics (PF-R9 g2)
@@ -78,6 +79,16 @@ structures. Rules:
   masks, instance maps, sparse results, and post-join working sets are new
   products outside this identity requirement.
 
+The live D555 LAN path is the one explicit full-frame exception. The vendor
+driver remains raw-only because compressed image_transport crashed on the
+site D555. A bounded backend adapter encodes colour once as JPEG and aligned
+`16UC1` depth once as lossless PNG. The receiving preprocessor decodes each
+accepted transport message exactly once, then uses the same bounded rings and
+shared core as raw simulation. Decode necessarily materializes an image and
+raw ROS republish may serialize it again; therefore the raw-input
+payload-identity claim does not apply to compressed input. No downstream node
+may decode the compressed source again or subscribe around the preprocessor.
+
 `SyncedObservation` remains the preprocessor's **internal** copy-out object.
 It is not a ROS message and not a cross-process API. The node publishes a
 synchronised set of standard messages (`Image`, `CameraInfo`) plus a JSON
@@ -86,6 +97,15 @@ pairing, frame validation, motion gating, and payload-identical republish.
 It does **not** run detection, RANSAC, planning, or point-cloud transport.
 Single-stream adapters (depth metre-to-millimetre) stay upstream of it.
 
+The D555 adapter maps device acquisition stamps into host ROS time; it must
+not replace them with callback receipt `now()`. Equal device stamps map to
+equal host stamps, acquisition intervals are preserved, offset correction is
+bounded, and a device-clock rollback starts a new warm-up epoch. Per-frame
+mapping evidence carries `device_stamp_ns`, `mapped_host_stamp_ns`,
+`receipt_host_stamp_ns`, epoch, and quality on `/clock_sync/d555`. Canonical
+images are withheld while mapping quality is warming. Receipt time remains a
+diagnostic only and is never a geometry/TF stamp.
+
 ## Sensor registry
 
 Frames, rates, and units as actually produced in this workspace. Trust this
@@ -93,10 +113,12 @@ table over message headers where the two disagree.
 
 | Stream | Topic | Type | Header frame | Data really in | Rate | Units |
 |---|---|---|---|---|---|---|
-| Colour | `/camera/color/image_raw` | `Image` | `camera_depth_optical_frame` | optical | 30 Hz | RGB8 |
+| Colour (sim) | `/camera/color/image_raw` | `Image` | `camera_depth_optical_frame` | optical | 30 Hz | RGB8 |
 | Depth (gz native) | `/camera/depth/image_meters` | `Image` | `camera_depth_optical_frame` | optical | 30 Hz | 32FC1 metres, misses are `inf` |
 | Depth (D435-like) | `/camera/depth/image_raw` | `Image` | `camera_depth_optical_frame` | optical | 30 Hz | 16UC1 millimetres |
 | Camera info | `/camera/depth/camera_info` | `CameraInfo` | `camera_depth_optical_frame` | optical | 30 Hz | pixels |
+| D555 colour transport | `/camera/d555/color/image_raw/compressed` | `CompressedImage` | `d555_color_optical_frame` | optical | 15 Hz | JPEG RGB |
+| D555 aligned depth transport | `/camera/d555/aligned_depth_to_color/image_raw/compressed` | `CompressedImage` | `d555_color_optical_frame` | optical | 15 Hz | lossless 16UC1 PNG, millimetres |
 | Camera points (legacy, unconsumed) | `/camera/depth/points` | `PointCloud2` | `camera_depth_optical_frame` (wrong) | **`camera_link`** (+X forward) | 30 Hz | metres, misses are `inf` |
 | Cargo points | `/luggage/semantic/cargo_points` | `PointCloud2` | declared by producer | declared by producer | on demand | metres |
 | Lidar | `/livox/lidar` | `PointCloud2` or Livox `CustomMsg` | `livox_frame` | sensor | ~10 Hz | metres, per-point time |

@@ -2,11 +2,9 @@
 """Thin ROS 2 node around SensorPreprocessor (depth-primary, PF-R9 g2).
 
 Subscribes the canonical colour-aligned RGBD set plus /joint_states, pairs
-them by exact payload stamp, and republishes **the original source
-payloads** under the accepted acquisition's primary stamp — no Python-owned
-full-frame materialisation anywhere on the receive->republish path. The
-camera point cloud is not subscribed, waited for, transformed, or
-published.
+them by exact payload stamp, and republishes them under the accepted
+acquisition's primary stamp. Raw Image input retains payload identity;
+compressed hardware transport is decoded exactly once at this boundary.
 """
 
 from __future__ import division
@@ -27,7 +25,7 @@ import time as _time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import CameraInfo, Image, JointState
+from sensor_msgs.msg import CameraInfo, CompressedImage, Image, JointState
 from std_msgs.msg import String
 import tf2_ros
 
@@ -83,6 +81,8 @@ class SensorPreprocessorNode(Node):
         self._cb_counts = {
             "rgb": 0, "depth": 0, "info": 0, "joints": 0,
         }
+        self._use_compressed = bool(
+            self.get_parameter("input.use_compressed").value)
         # PF-R9 g2: complete-path stage timing (D1 instrument, retained as
         # diagnostics): receive->view, core, emit-queue wait, output
         # construction, per-product publish.
@@ -96,9 +96,17 @@ class SensorPreprocessorNode(Node):
         self._emit_drops = 0
         self._seen_epoch = 0
 
+        reliability_name = str(
+            self.get_parameter("camera_input_qos_reliability").value
+        ).strip().lower()
+        if reliability_name not in ("reliable", "best_effort"):
+            raise ValueError(
+                "camera_input_qos_reliability must be reliable or best_effort")
         input_qos = QoSProfile(
             depth=5,
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=(ReliabilityPolicy.BEST_EFFORT
+                         if reliability_name == "best_effort"
+                         else ReliabilityPolicy.RELIABLE),
             history=HistoryPolicy.KEEP_LAST,
         )
         sensor_qos = QoSProfile(
@@ -135,11 +143,12 @@ class SensorPreprocessorNode(Node):
         self._pub_status = self.create_publisher(
             String, self.get_parameter("output.status").value, status_qos)
 
+        image_type = CompressedImage if self._use_compressed else Image
         self.create_subscription(
-            Image, self.get_parameter("input.color_image").value,
+            image_type, self.get_parameter("input.color_image").value,
             self._on_color, input_qos)
         self.create_subscription(
-            Image, self.get_parameter("input.depth_image").value,
+            image_type, self.get_parameter("input.depth_image").value,
             self._on_depth, input_qos)
         self.create_subscription(
             CameraInfo, self.get_parameter("input.camera_info").value,
@@ -155,12 +164,14 @@ class SensorPreprocessorNode(Node):
 
         self.get_logger().info(
             "sensor_preprocessor ready (depth-primary): frame=%s "
-            "pair_tolerance=%.3fs wait_deadline=%.3fs maxlen=%d/%.1fs"
+            "pair_tolerance=%.3fs wait_deadline=%.3fs maxlen=%d/%.1fs "
+            "compressed=%s input_qos=%s"
             % (self.get_parameter("output_cloud_frame").value,
                self._core.camera_pair_tolerance_sec,
                self._core.camera_wait_deadline_sec,
                int(self.get_parameter("camera_maxlen").value),
-               float(self.get_parameter("camera_horizon_sec").value))
+               float(self.get_parameter("camera_horizon_sec").value),
+               self._use_compressed, reliability_name)
         )
 
     def _declare_params(self):
@@ -170,6 +181,7 @@ class SensorPreprocessorNode(Node):
             "input.camera_info": "/camera/depth/camera_info",
             "input.color_camera_info": "",
             "input.joint_states": "/joint_states",
+            "input.use_compressed": False,
             "output.color_image": "/luggage/preprocessed/camera/color/image",
             "output.color_info": "/luggage/preprocessed/camera/color/camera_info",
             "output.depth_image": "/luggage/preprocessed/camera/depth/image",
@@ -185,6 +197,7 @@ class SensorPreprocessorNode(Node):
             "camera_pair_tolerance_sec": 0.005,
             "camera_wait_deadline_sec": 0.060,
             "camera_info_max_age_sec": 1.0,
+            "camera_input_qos_reliability": "reliable",
             # PF-R9 g2 fixed camera cache contract.
             "camera_maxlen": 15,
             "camera_horizon_sec": 1.0,
@@ -212,13 +225,19 @@ class SensorPreprocessorNode(Node):
     def _on_color(self, msg):
         t0 = _time.monotonic()
         self._cb_counts["rgb"] += 1
-        frame = adapters.rgb_frame_from_msg(msg)
+        if self._use_compressed:
+            self._d1_bytes["compressed_color_input"] += len(msg.data)
+            frame = adapters.rgb_frame_from_compressed_msg(msg)
+            layout = "format %s" % getattr(msg, "format", "")
+        else:
+            frame = adapters.rgb_frame_from_msg(msg)
+            layout = "encoding %s" % getattr(msg, "encoding", "")
         t1 = _time.monotonic()
         self._d1_note("rgb_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
                 "dropping colour image with unsupported/truncated layout "
-                "(%s)" % msg.encoding)
+                "(%s)" % layout)
             return
         observation = self._core.update_rgb(frame)
         t2 = _time.monotonic()
@@ -228,13 +247,19 @@ class SensorPreprocessorNode(Node):
     def _on_depth(self, msg):
         t0 = _time.monotonic()
         self._cb_counts["depth"] += 1
-        frame = adapters.depth_frame_from_msg(msg)
+        if self._use_compressed:
+            self._d1_bytes["compressed_depth_input"] += len(msg.data)
+            frame = adapters.depth_frame_from_compressed_msg(msg)
+            layout = "format %s" % getattr(msg, "format", "")
+        else:
+            frame = adapters.depth_frame_from_msg(msg)
+            layout = "encoding %s" % getattr(msg, "encoding", "")
         t1 = _time.monotonic()
         self._d1_note("depth_view_ms", t1 - t0)
         if frame is None:
             self._warn_throttled(
                 "dropping depth image with unsupported/truncated layout "
-                "(%s)" % msg.encoding)
+                "(%s)" % layout)
             return
         observation = self._core.update_depth(frame)
         t2 = _time.monotonic()

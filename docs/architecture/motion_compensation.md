@@ -109,6 +109,14 @@ interpolating across rows would be guessing at the sensor's internals.
 
 ## TF lookups
 
+Hardware camera stamps are mapped acquisition times, not callback receipt
+times. The D555 backend preserves the original device stamp and receipt stamp
+as clock-mapping diagnostics, while the image header carries the mapped host
+acquisition time. Mapping must retain device intervals, map equal RGB/depth
+device stamps identically, warm up fail-closed, and reset its epoch on device
+clock rollback. Using a fresh host `now()` for each callback is forbidden:
+that converts network/codec jitter directly into eye-in-hand pose error.
+
 Always look up transforms at the data stamp:
 
 ```python

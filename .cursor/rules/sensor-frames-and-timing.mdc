@@ -23,6 +23,9 @@ tf = buffer.lookup_transform(target, source, stamp, Duration(seconds=0.2))
 
 A failed stamped lookup drops the frame. It never falls back to latest.
 Accumulating multiple frames means transforming each with its own stamp.
+For hardware cameras, the stamp is mapped device acquisition time. Receipt
+`now()` is diagnostic only; equal RGB/depth device stamps map identically and
+clock mapping warms up fail-closed after rollback.
 
 ## Frames and units
 

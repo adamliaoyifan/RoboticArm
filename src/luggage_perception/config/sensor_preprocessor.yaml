@@ -14,6 +14,7 @@ sensor_preprocessor:
     input.camera_info: /camera/depth/camera_info
     input.color_camera_info: ""
     input.joint_states: /joint_states
+    input.use_compressed: false
     output.color_image: /luggage/preprocessed/camera/color/image
     output.color_info: /luggage/preprocessed/camera/color/camera_info
     output.depth_image: /luggage/preprocessed/camera/depth/image
@@ -33,6 +34,7 @@ sensor_preprocessor:
     camera_pair_tolerance_sec: 0.005
     camera_wait_deadline_sec: 0.060
     camera_info_max_age_sec: 1.0
+    camera_input_qos_reliability: reliable
     # PF-R9 g2 fixed camera cache contract: 15 entries / 1.0 second on
     # the camera clock (23.0 MB payload ceiling at 640x480).
     camera_maxlen: 15
