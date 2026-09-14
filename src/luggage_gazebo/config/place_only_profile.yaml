@@ -22,6 +22,16 @@ sim_world:
   # Retain enough feasible candidates for the driver's pre-execution
   # rejection/retry loop (default 24 is visualization-sized).
   last_result_max_candidates: 200
+  # P0-P2 finding (2026-09-14 dry-run): after greedy P0(carryon)+P1(standard)
+  # floor placements, the large box has no reachable slot — the aperture
+  # y-shadow leaves a 0.433 m free band (needs 0.50) and everything deeper
+  # than container x~0.0 is atlas/IK unreachable. The only physically
+  # placeable option is stacking on the mixed-height P0+P1 tops, whose
+  # window support is 0.5625; the production default 0.6 rejects it. The
+  # eval accepts mixed-height stacked support at 0.55 — the physical
+  # outcome is still gated by the roll/pitch <2 deg, drift <20 mm, and
+  # inside-hull acceptance checks. Flagged for reviews in the POS-1 thread.
+  min_support_ratio: 0.55
   visual_kind: mesh
   size_mode: catalog
   yaw_mode: discrete

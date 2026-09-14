@@ -1222,10 +1222,30 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         tried = []
         candidates = [c for c in (last_dump.get("candidates") or [])
                       if c.get("feasible")]
-        size_default = self._catalog_sizes[case.cargo_id]
-        for cand in candidates[:8]:
+        # Score-sorted candidates come in homogeneous (x, yaw) families;
+        # probe one representative per family so a single unreachable
+        # family cannot exhaust the retry budget.
+        families = []
+        seen = set()
+        for cand in candidates:
             center = cand.get("center_local") or (
                 cand.get("center_base") or [0.0, 0.0, 0.0])
+            yaw = float(cand.get("yaw") or 0.0)
+            key = (round(float(center[0]), 2), round(yaw, 2))
+            if key in seen:
+                continue
+            seen.add(key)
+            families.append(cand)
+            if len(families) >= 8:
+                break
+        size_default = self._catalog_sizes[case.cargo_id]
+        for cand in families:
+            center = cand.get("center_local") or (
+                cand.get("center_base") or [0.0, 0.0, 0.0])
+            # Solver candidates are volume-centre-relative (floor at
+            # -inner_h/2); the fixture geometry is floor-relative.
+            center = [float(center[0]), float(center[1]),
+                      float(center[2]) + self._ctx["inner_h"] * 0.5]
             yaw = float(cand.get("yaw") or 0.0)
             size = [float(v) for v in (cand.get("size") or size_default)]
             traverse_z = fx.corridor_traverse_z(
@@ -1572,6 +1592,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         blocked_deep = 0
         for cand in deep:
             center = cand.get("center_local") or [0.0, 0.0, 0.0]
+            center = [float(center[0]), float(center[1]),
+                      float(center[2]) + self._ctx["inner_h"] * 0.5]
             yaw = float(cand.get("yaw") or 0.0)
             size = [float(v) for v in (cand.get("size")
                                        or fx.CATALOG_SIZES["standard"])]
@@ -1604,6 +1626,12 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 "seed": int(self._args.seed),
                 "geometry_hash": self._ctx["geometry_hash"],
                 "git_head": _git_head(),
+                "profile": {
+                    "hull_margin": 0.01,
+                    "min_support_ratio": 0.55,
+                    "last_result_max_candidates": 200,
+                    "lateral_margin": self._ctx["lateral_margin"],
+                },
                 "catalog_sizes": {k: list(v)
                                   for k, v in self._catalog_sizes.items()},
                 "started_at": time.strftime("%Y-%m-%dT%H:%M:%S"),

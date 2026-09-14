@@ -71,6 +71,7 @@ def _default_launch_values():
         "use_rviz": "true",
         "use_perception": "true",
         "hull_margin": "0.0",
+        "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
         "use_packing": "false",
@@ -791,6 +792,7 @@ def _launch_setup(context):
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
                 "hull_margin": float(cfg["hull_margin"]),
+                "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
             }],
@@ -885,6 +887,10 @@ def generate_launch_description():
                 "hull_margin",
                 "Placement planner inward hull clearance in metres "
                 "(default 0 = flush-wall, historical behavior)."),
+            profile_arg(
+                "min_support_ratio",
+                "Placement planner stacking support ratio "
+                "(default 0.6)."),
             profile_arg(
                 "last_result_max_candidates",
                 "Candidates kept in the placement last_result dump "
