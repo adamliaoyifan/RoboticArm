@@ -494,7 +494,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             "source": "compute_placement",
         }
 
-    def _slot_world_msg(self, slot, slot_meta, unique_col):
+    def _slot_world_msg(self, slot, slot_meta, unique_col=None):
+        if unique_col is None:
+            # The base place chain calls this without a column; give each
+            # committed box a unique scene-object id (ComputePlacement
+            # returns 0/0/0 for every slot, which would make later boxes
+            # overwrite earlier collision objects).
+            unique_col = self._commit_seq + 1
         out = SlotSpec()
         out.layer, out.row, out.col = 0, 0, int(unique_col)
         out.width, out.depth, out.height = (
