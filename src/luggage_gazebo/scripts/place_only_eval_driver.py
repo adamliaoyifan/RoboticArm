@@ -1422,7 +1422,10 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         record = {
             "trial": trial_to_dict(result),
             "place_ok": bool(place_ok(result)),
-            "fail_code": result.fail_code or "",
+            # GOTO_FAILED after HOME is not a place failure (closed-loop
+            # plan rule); the placement and commit still count.
+            "fail_code": ("" if place_ok(result)
+                          else (result.fail_code or "")),
             "checks": {
                 "insert_fraction_ge_095": bool(
                     insert_fraction is not None
