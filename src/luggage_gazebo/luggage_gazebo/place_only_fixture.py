@@ -544,11 +544,11 @@ def gt_footprint_cells(surface, center_local, size, yaw):
     """Independent rasterization of the oriented footprint at map resolution.
 
     Re-implements the cargo mapper's rasterization *contract* (not its
-    code): a uniform sample grid of ``ceil(extent/res)+1`` points per axis
-    over the box, each sample marking the half-open cell that contains it.
-    Boundary-aligned boxes therefore rasterize to the same cell set as the
-    production commit path, which center-inside or cell-overlap geometry
-    approximations do not.
+    code): an interior sample grid (``ceil(extent/res)+1`` strata, samples
+    at stratum centers, spacing below one cell), each sample marking the
+    half-open cell that contains it. This marks exactly the cells the box
+    covers with positive measure, including for boundary-aligned and
+    rotated footprints.
     """
     res, nx, ny, inner_l, inner_w = _cell_grid(surface)
     half_l = inner_l * 0.5
@@ -560,9 +560,9 @@ def gt_footprint_cells(surface, center_local, size, yaw):
     cx, cy = float(center_local[0]), float(center_local[1])
     cells = set()
     for ix in range(sx):
-        lx = (ix / float(sx - 1) - 0.5) * w
+        lx = ((ix + 0.5) / float(sx) - 0.5) * w
         for iy in range(sy):
-            ly = (iy / float(sy - 1) - 0.5) * d
+            ly = ((iy + 0.5) / float(sy) - 0.5) * d
             px = cx + cos_y * lx - sin_y * ly
             py = cy + sin_y * lx + cos_y * ly
             gx = int(math.floor((px + half_l) / res))
