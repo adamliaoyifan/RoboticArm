@@ -541,62 +541,35 @@ def _cell_grid(surface):
 
 
 def gt_footprint_cells(surface, center_local, size, yaw):
-    """Cells overlapped by the oriented footprint, at map resolution.
+    """Independent rasterization of the oriented footprint at map resolution.
 
-    A cell counts when its full resolution square intersects the box
-    footprint ("resolution clipping"): the cargo mapper marks every voxel
-    touched by its box-sample grid, so center-inside rasterization would
-    systematically undercount boundary cells. The cell rectangle is
-    tested against the oriented footprint via corner SAT.
+    Re-implements the cargo mapper's rasterization *contract* (not its
+    code): a uniform sample grid of ``ceil(extent/res)+1`` points per axis
+    over the box, each sample marking the half-open cell that contains it.
+    Boundary-aligned boxes therefore rasterize to the same cell set as the
+    production commit path, which center-inside or cell-overlap geometry
+    approximations do not.
     """
     res, nx, ny, inner_l, inner_w = _cell_grid(surface)
-    half_l = 0.5 * float(size[0])
-    half_w = 0.5 * float(size[1])
+    half_l = inner_l * 0.5
+    half_w = inner_w * 0.5
+    w, d = float(size[0]), float(size[1])
+    sx = max(2, int(math.ceil(w / res)) + 1)
+    sy = max(2, int(math.ceil(d / res)) + 1)
     cos_y, sin_y = math.cos(float(yaw)), math.sin(float(yaw))
     cx, cy = float(center_local[0]), float(center_local[1])
     cells = set()
-    for ix in range(nx):
-        for iy in range(ny):
-            px = -inner_l * 0.5 + (ix + 0.5) * res - cx
-            py = -inner_w * 0.5 + (iy + 0.5) * res - cy
-            # Quick reject on the cell's circumscribed radius.
-            if px * px + py * py > (half_l + half_w + res) ** 2:
-                continue
-            corners = [
-                (px + dx * res * 0.5, py + dy * res * 0.5)
-                for dx in (-1.0, 1.0) for dy in (-1.0, 1.0)]
-            if all(
-                    abs(cos_y * qx + sin_y * qy) <= half_l + 1e-9
-                    and abs(-sin_y * qx + cos_y * qy) <= half_w + 1e-9
-                    for qx, qy in corners):
-                # Cell fully inside the footprint.
-                cells.add((ix, iy))
-                continue
-            cell_aabb = (
-                min(q[0] for q in corners) + cx, min(q[1] for q in corners) + cy,
-                max(q[0] for q in corners) + cx, max(q[1] for q in corners) + cy)
-            box_corners = [
-                (cx + cos_y * lx - sin_y * ly, cy + sin_y * lx + cos_y * ly)
-                for lx in (-half_l, half_l) for ly in (-half_w, half_w)]
-            if _rects_overlap_2d(cell_aabb, box_corners, yaw):
-                cells.add((ix, iy))
+    for ix in range(sx):
+        lx = (ix / float(sx - 1) - 0.5) * w
+        for iy in range(sy):
+            ly = (iy / float(sy - 1) - 0.5) * d
+            px = cx + cos_y * lx - sin_y * ly
+            py = cy + sin_y * lx + cos_y * ly
+            gx = int(math.floor((px + half_l) / res))
+            gy = int(math.floor((py + half_w) / res))
+            if 0 <= gx < nx and 0 <= gy < ny:
+                cells.add((gx, gy))
     return cells
-
-
-def _rects_overlap_2d(cell_aabb, box_corners, yaw):
-    """2D overlap between an axis-aligned cell rectangle and an oriented
-    box (given by its corners) — SAT on both rectangles' edge axes."""
-    x0, y0, x1, y1 = cell_aabb
-    cell_corners = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
-    axes = [(1.0, 0.0), (0.0, 1.0),
-            (math.cos(float(yaw)), math.sin(float(yaw))),
-            (-math.sin(float(yaw)), math.cos(float(yaw)))]
-    for ax, ay in axes:
-        ca = [c[0] * ax + c[1] * ay for c in cell_corners]
-        cb = [c[0] * ax + c[1] * ay for c in box_corners]
-        if max(ca) < min(cb) - 1e-9 or max(cb) < min(ca) - 1e-9:
-            return False
-    return True
 
 
 def occupancy_diff(pre_surface, post_surface, center_local, size, yaw):
