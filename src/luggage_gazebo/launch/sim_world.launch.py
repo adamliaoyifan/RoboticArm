@@ -79,6 +79,8 @@ def _default_launch_values():
         "use_motion": "false",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
+        "velocity_scaling": "0.3",
+        "acceleration_scaling": "0.3",
         "use_semantic": "false",
         "semantic_require_backend": "",
         "visual_kind": "mesh",
@@ -727,6 +729,8 @@ def _launch_setup(context):
                 "robot_poses_config": poses_path,
                 "named_pose_duration": float(cfg["named_pose_duration"]),
                 "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
+                "velocity_scaling": float(cfg["velocity_scaling"]),
+                "acceleration_scaling": float(cfg["acceleration_scaling"]),
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -873,6 +877,16 @@ def generate_launch_description():
                 "named_pose_max_vel",
                 "GoToRobotPose nominal joint speed in rad/s "
                 "(joint_limits max is 1.57).",
+            ),
+            profile_arg(
+                "velocity_scaling",
+                "Motion planning trajectory velocity scaling factor "
+                "(default 0.3).",
+            ),
+            profile_arg(
+                "acceleration_scaling",
+                "Motion planning trajectory acceleration scaling factor "
+                "(default 0.3).",
             ),
             profile_arg(
                 "use_semantic",

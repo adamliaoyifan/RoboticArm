@@ -87,7 +87,9 @@ class MotionExecutor:
                  cartesian_max_step=0.01,
                  cartesian_min_fraction=0.95,
                  cartesian_avoid_collisions=True,
-                 tool_down_abs_tol=0.05):
+                 tool_down_abs_tol=0.05,
+                 velocity_scaling=_VEL_SCALE,
+                 acceleration_scaling=_ACC_SCALE):
         self._node = node
         self._group = str(group_name)
         self._link = str(link_name)
@@ -98,6 +100,8 @@ class MotionExecutor:
         self._max_step = float(cartesian_max_step)
         self._min_fraction = float(cartesian_min_fraction)
         self._avoid_collisions = bool(cartesian_avoid_collisions)
+        self._vel_scale = float(velocity_scaling)
+        self._acc_scale = float(acceleration_scaling)
         self._tool_down_abs_tol = float(tool_down_abs_tol)
 
         import rclpy
@@ -249,7 +253,7 @@ class MotionExecutor:
         goal.request.allowed_planning_time = self._planning_time
         goal.request.planner_id = self._planner_id
         goal.request.start_state.is_diff = True
-        goal.request.max_velocity_scaling_factor = _VEL_SCALE
+        goal.request.max_velocity_scaling_factor = self._vel_scale
         goal.request.max_acceleration_scaling_factor = _ACC_SCALE
         ik_joints = self._ik_joints(segment_msg.target_pose, current_joints)
         if ik_joints is not None:
@@ -307,7 +311,7 @@ class MotionExecutor:
         goal.request.allowed_planning_time = self._planning_time
         goal.request.planner_id = self._planner_id
         goal.request.start_state.is_diff = True
-        goal.request.max_velocity_scaling_factor = _VEL_SCALE
+        goal.request.max_velocity_scaling_factor = self._vel_scale
         goal.request.max_acceleration_scaling_factor = _ACC_SCALE
         goal.request.goal_constraints = [self._joint_constraints(positions)]
         goal.planning_options.plan_only = False

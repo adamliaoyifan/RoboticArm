@@ -41,3 +41,9 @@ sim_world:
   random_seed: 20260914
   spawn_at_observe: true
   observe_pose_name: pickup_observe
+  # Carried-payload execution stability: the standard box's traverse froze
+  # the controller at 0.3 scaling (goal_time violations with joints locked
+  # mid-path); halve the commanded trajectory rates for the place-only
+  # stack. Production default stays 0.3.
+  velocity_scaling: 0.15
+  acceleration_scaling: 0.15
