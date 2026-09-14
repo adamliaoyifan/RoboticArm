@@ -46,6 +46,7 @@ install(PROGRAMS
   scripts/handeye_capture.py
   scripts/handeye_solve.py
   scripts/pendant_bag_replay_eval.py
+  scripts/export_lidar_camera_calib.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

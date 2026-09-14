@@ -27,18 +27,34 @@ from luggage_perception.ros_message_adapters import (
 )
 
 # Explicit topic registry: only these are deserialized. Everything else
-# (/livox/imu at 200 Hz, /elfin/cps_*, livox CustomMsg, ...) is skipped and
-# only counted, so a 60k-message bag decodes just the ~8k payloads needed.
+# (/livox/imu at 200 Hz, /elfin/cps_*, ...) is skipped and only counted.
+# /livox/lidar is PointCloud2 (xfer_format 0) or Livox CustomMsg
+# (xfer_format 1); CustomMsg is decoded from CDR without livox_ros_driver2.
+COLOR_TOPIC = "/camera/d555/color/image_raw"
+DEPTH_TOPIC = "/camera/d555/aligned_depth_to_color/image_raw"
+COLOR_COMPRESSED_TOPIC = "/camera/d555/color/image_raw/compressed"
+DEPTH_COMPRESSED_TOPIC = "/camera/d555/aligned_depth_to_color/image_raw/compressed"
+COLOR_INFO_TOPIC = "/camera/d555/color/camera_info"
+DEPTH_INFO_TOPIC = "/camera/d555/aligned_depth_to_color/camera_info"
+JOINT_TOPIC = "/joint_states"
+TCP_TOPIC = "/elfin/tcp_pose"
+LIDAR_TOPIC = "/livox/lidar"
+TF_TOPIC = "/tf"
+TF_STATIC_TOPIC = "/tf_static"
+LIVOX_CUSTOM_SCHEMA = "livox_ros_driver2/msg/CustomMsg"
+
 TOPIC_TYPES = {
-    "/camera/d555/color/image_raw": "sensor_msgs/msg/Image",
-    "/camera/d555/aligned_depth_to_color/image_raw": "sensor_msgs/msg/Image",
-    "/camera/d555/color/camera_info": "sensor_msgs/msg/CameraInfo",
-    "/camera/d555/aligned_depth_to_color/camera_info": "sensor_msgs/msg/CameraInfo",
-    "/joint_states": "sensor_msgs/msg/JointState",
-    "/elfin/tcp_pose": "geometry_msgs/msg/PoseStamped",
-    "/livox/lidar": "sensor_msgs/msg/PointCloud2",
-    "/tf": "tf2_msgs/msg/TFMessage",
-    "/tf_static": "tf2_msgs/msg/TFMessage",
+    COLOR_TOPIC: "sensor_msgs/msg/Image",
+    DEPTH_TOPIC: "sensor_msgs/msg/Image",
+    COLOR_COMPRESSED_TOPIC: "sensor_msgs/msg/CompressedImage",
+    DEPTH_COMPRESSED_TOPIC: "sensor_msgs/msg/CompressedImage",
+    COLOR_INFO_TOPIC: "sensor_msgs/msg/CameraInfo",
+    DEPTH_INFO_TOPIC: "sensor_msgs/msg/CameraInfo",
+    JOINT_TOPIC: "sensor_msgs/msg/JointState",
+    TCP_TOPIC: "geometry_msgs/msg/PoseStamped",
+    LIDAR_TOPIC: "sensor_msgs/msg/PointCloud2",
+    TF_TOPIC: "tf2_msgs/msg/TFMessage",
+    TF_STATIC_TOPIC: "tf2_msgs/msg/TFMessage",
 }
 
 _MSG_CLASS_CACHE = {}
@@ -58,6 +74,99 @@ def _msg_class(schema_name):
             cls = None
     _MSG_CLASS_CACHE[schema_name] = cls
     return cls
+
+
+@dataclass
+class LivoxCustomScan(object):
+    """Decoded Livox CustomMsg. ``points`` uses ``LIDAR_SCAN_FIELDS``."""
+
+    header_stamp_ns: int
+    frame_id: str
+    timebase: int
+    lidar_id: int
+    point_num: int
+    points: object
+
+
+def _cdr_align(off, align, origin=4):
+    """Pad ``off`` so (off - origin) is a multiple of ``align``."""
+    payload = int(off) - int(origin)
+    return int(off) + ((int(align) - (payload % int(align))) % int(align))
+
+
+def decode_livox_custom_cdr(data):
+    """Parse a ROS 2 CDR ``livox_ros_driver2/msg/CustomMsg`` payload.
+
+    Alignment is relative to the byte after the 4-byte encapsulation
+    header. CustomPoint is 19 payload bytes plus 1 padding byte; a
+    truncated final pad byte is tolerated.
+    """
+    import struct
+
+    data = bytes(data)
+    if len(data) < 24 or data[0] != 0x00 or data[1] != 0x01:
+        return None
+    off = 4
+    sec, nsec = struct.unpack_from("<iI", data, off)
+    off += 8
+    slen = struct.unpack_from("<I", data, off)[0]
+    off += 4
+    if slen < 1 or off + slen > len(data):
+        return None
+    frame = data[off:off + slen - 1].decode("utf-8", errors="replace")
+    off += slen
+    off = _cdr_align(off, 8)
+    if off + 16 > len(data):
+        return None
+    timebase = struct.unpack_from("<Q", data, off)[0]
+    off += 8
+    point_num = struct.unpack_from("<I", data, off)[0]
+    off += 4
+    lidar_id = struct.unpack_from("<B", data, off)[0]
+    off += 1 + 3  # lidar_id + rsvd[3]
+    off = _cdr_align(off, 4)
+    if off + 4 > len(data):
+        return None
+    nseq = struct.unpack_from("<I", data, off)[0]
+    off += 4
+    n = int(nseq)
+    if n < 0 or n > 2_000_000:
+        return None
+    need = n * 20
+    remain = len(data) - off
+    if remain < max(0, n * 19):
+        return None
+    padded = data[off:off + need]
+    if len(padded) < need:
+        padded = padded + (b"\x00" * (need - len(padded)))
+    raw_dtype = np.dtype({
+        "names": ["offset_time", "x", "y", "z", "reflectivity",
+                  "tag", "line", "_pad"],
+        "formats": ["<u4", "<f4", "<f4", "<f4", "u1", "u1", "u1", "u1"],
+        "offsets": [0, 4, 8, 12, 16, 17, 18, 19],
+        "itemsize": 20,
+    })
+    raw = np.frombuffer(padded, dtype=raw_dtype, count=n)
+    out = np.empty(n, dtype=np.dtype([
+        ("x", "f4"), ("y", "f4"), ("z", "f4"), ("intensity", "f4"),
+        ("tag", "u1"), ("line", "u1"), ("timestamp", "f8"),
+    ]))
+    out["x"] = raw["x"]
+    out["y"] = raw["y"]
+    out["z"] = raw["z"]
+    out["intensity"] = raw["reflectivity"].astype(np.float32)
+    out["tag"] = raw["tag"]
+    out["line"] = raw["line"]
+    out["timestamp"] = np.float64(timebase) + raw["offset_time"].astype(
+        np.float64)
+    return LivoxCustomScan(
+        header_stamp_ns=int(sec) * 1_000_000_000 + int(nsec),
+        frame_id=frame,
+        timebase=int(timebase),
+        lidar_id=int(lidar_id),
+        point_num=int(point_num),
+        points=out,
+    )
 
 
 @dataclass
@@ -147,6 +256,19 @@ def iter_bag_messages(bag_path, topics=None):
         for _schema, channel, message in reader.iter_messages(
                 topics=requested):
             _topic, schema_name = channel_types[channel.id]
+            if schema_name == LIVOX_CUSTOM_SCHEMA or (
+                    channel.topic == LIDAR_TOPIC
+                    and str(schema_name).endswith("CustomMsg")):
+                scan = decode_livox_custom_cdr(message.data)
+                if scan is None:
+                    continue
+                yield BagMessage(
+                    topic=channel.topic,
+                    header_stamp_ns=int(scan.header_stamp_ns),
+                    log_time_ns=int(message.log_time),
+                    message=scan,
+                )
+                continue
             cls = _msg_class(schema_name or TOPIC_TYPES.get(channel.topic, ""))
             if cls is None:
                 continue
@@ -177,10 +299,79 @@ def decode_color_rgb(msg):
     return rgb
 
 
+def decode_compressed_color_rgb(msg):
+    """Decode ``sensor_msgs/CompressedImage`` JPEG/PNG to HxWx3 RGB."""
+    import cv2
+    buf = np.frombuffer(msg.data, dtype=np.uint8)
+    if buf.size == 0:
+        return None
+    bgr = cv2.imdecode(buf, cv2.IMREAD_COLOR)
+    if bgr is None or bgr.ndim != 3:
+        return None
+    return np.ascontiguousarray(bgr[:, :, ::-1])
+
+
 def decode_depth_mm(msg):
     """HxW uint16-family millimetre array (endian-preserving view), or
     None for an unsupported layout."""
     return depth_array_from_msg(msg)
+
+
+def decode_compressed_depth_mm(msg):
+    """Decode compressed aligned depth (16-bit PNG) to HxW millimetres."""
+    import cv2
+    buf = np.frombuffer(msg.data, dtype=np.uint8)
+    if buf.size == 0:
+        return None
+    img = cv2.imdecode(buf, cv2.IMREAD_UNCHANGED)
+    if img is None or img.ndim != 2:
+        return None
+    return np.ascontiguousarray(img)
+
+
+def decode_color_message(msg):
+    """Image or CompressedImage -> RGB uint8, or None."""
+    if hasattr(msg, "encoding"):
+        return decode_color_rgb(msg)
+    if hasattr(msg, "format"):
+        return decode_compressed_color_rgb(msg)
+    return None
+
+
+def decode_depth_message(msg):
+    """Image or CompressedImage -> millimetre depth, or None."""
+    if hasattr(msg, "encoding"):
+        return decode_depth_mm(msg)
+    if hasattr(msg, "format"):
+        return decode_compressed_depth_mm(msg)
+    return None
+
+
+def select_image_topics(scan):
+    """Prefer raw Image topics; fall back to the site compressed pair.
+
+    Returns ``(color_topic, depth_topic)``. Raises if neither layout is
+    present. Raw wins when a bag has both so Humble Image decoders stay
+    on the uncompressed path.
+    """
+    topics = set(scan.topics)
+    if COLOR_TOPIC in topics:
+        color = COLOR_TOPIC
+    elif COLOR_COMPRESSED_TOPIC in topics:
+        color = COLOR_COMPRESSED_TOPIC
+    else:
+        color = None
+    if DEPTH_TOPIC in topics:
+        depth = DEPTH_TOPIC
+    elif DEPTH_COMPRESSED_TOPIC in topics:
+        depth = DEPTH_COMPRESSED_TOPIC
+    else:
+        depth = None
+    if color is None or depth is None:
+        raise ValueError(
+            "bag has no colour/depth pair (raw or compressed): %s"
+            % sorted(topics))
+    return color, depth
 
 
 def decode_cloud_xyz(msg):
@@ -202,11 +393,16 @@ LIDAR_SCAN_FIELDS = (
 def decode_lidar_scan(msg):
     """Structured (N,) array with all seven livox scan fields, or None.
 
-    The dtype is built from the message's own field offsets (offset-
-    aware, packed into ``point_step``); a layout missing any field or
-    carrying a different datatype is rejected rather than misread.
-    Access columns by name: ``pts['x']``, ``pts['timestamp']``, ...
+    Accepts PointCloud2 PointXYZRTLT (xfer_format 0) or a decoded
+    ``LivoxCustomScan`` (xfer_format 1). Access columns by name:
+    ``pts['x']``, ``pts['timestamp']``, ...
     """
+    if isinstance(msg, LivoxCustomScan):
+        pts = getattr(msg, "points", None)
+        if pts is None or getattr(pts, "size", 0) == 0:
+            return None
+        return pts
+
     import numpy as _np
     from sensor_msgs.msg import PointField
 
