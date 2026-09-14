@@ -193,7 +193,8 @@ class MotionPlannerNode(Node):
                 segment, feedback_cb=feedback,
                 execute_timeout=float(
                     self.get_parameter("execute_timeout").value),
-                current_joints=self._joint_positions()[0])
+                current_joints=self._joint_positions()[0],
+                cancel_check=lambda: goal_handle.is_cancel_requested)
         except Exception as exc:  # noqa: BLE001 - action boundary
             self.get_logger().error("segment %s raised: %s" % (name, exc))
             goal_handle.abort()

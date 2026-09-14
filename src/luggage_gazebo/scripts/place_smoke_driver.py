@@ -188,9 +188,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         transit.name = "place_exit"
         transit.type = "cartesian"
         transit.allow_ompl_fallback = True
+        # The exit reverse-traverse passes near a wrist singularity: its
+        # joint-space path is long, and at profile scaling 0.15 the retimed
+        # trajectory ran past the 60 s plan timeout (streak 2 P3) while the
+        # controller was still grinding. Give the exit room to complete;
+        # cancellation (driver side) plus the setup settle are backstops.
         ok, message, _result = self.send_action(
             self._plan, PlanMotion.Goal(segment=transit),
-            timeout=self._args.plan_timeout, name="PlanMotion:place_exit")
+            timeout=max(self._args.plan_timeout, 150.0),
+            name="PlanMotion:place_exit")
         return ok, message
 
     def _home_arm(self):

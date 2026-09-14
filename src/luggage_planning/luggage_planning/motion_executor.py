@@ -107,6 +107,12 @@ class MotionExecutor:
         self._vel_scale = float(velocity_scaling)
         self._acc_scale = float(acceleration_scaling)
         self._tool_down_abs_tol = float(tool_down_abs_tol)
+        # Set per execute_segment call (goals are serialized: the stack
+        # never runs two motion segments at once, move_group would refuse
+        # the second). When the outer action goal is cancelled, inner
+        # action handles are cancelled so the controller stops instead of
+        # grinding on past the caller's timeout.
+        self._cancel_check = None
 
         import rclpy
         self._rclpy = rclpy
@@ -138,12 +144,24 @@ class MotionExecutor:
     # ------------------------------------------------------------------
 
     def execute_segment(self, segment_msg, feedback_cb=None,
-                        execute_timeout=45.0, current_joints=None):
+                        execute_timeout=45.0, current_joints=None,
+                        cancel_check=None):
         """Execute one luggage_msgs/MotionSegment.
 
         Returns ``SegmentExecResult``. ``fraction`` is 1.0 for pose-target
         paths and the computed Cartesian fraction otherwise.
+        ``cancel_check`` is polled while inner action goals run; a True
+        return cancels the inner goal so the controller stops.
         """
+        self._cancel_check = cancel_check
+        try:
+            return self._execute_segment_inner(
+                segment_msg, feedback_cb, execute_timeout, current_joints)
+        finally:
+            self._cancel_check = None
+
+    def _execute_segment_inner(self, segment_msg, feedback_cb,
+                               execute_timeout, current_joints):
         seg_type = str(segment_msg.type)
         if seg_type == "pose_target":
             return self._run_pose_target(segment_msg, feedback_cb,
@@ -536,8 +554,25 @@ class MotionExecutor:
         event = threading.Event()
         future = handle.get_result_async()
         future.add_done_callback(lambda _f: event.set())
+        watcher = None
+        if self._cancel_check is not None:
+            def _watch():
+                while not event.wait(0.2):
+                    try:
+                        if self._cancel_check():
+                            handle.cancel_goal()
+                            return
+                    except Exception:  # noqa: BLE001 - watcher must not leak
+                        return
+            watcher = threading.Thread(target=_watch, daemon=True)
+            watcher.start()
         reached, _reason = wait_event(
             event, timeout_sec, clock=self._node.get_clock())
         if not reached:
+            if watcher is not None and watcher.is_alive():
+                try:
+                    handle.cancel_goal()
+                except Exception:  # noqa: BLE001 - best-effort cancel
+                    pass
             return None
         return future.result()

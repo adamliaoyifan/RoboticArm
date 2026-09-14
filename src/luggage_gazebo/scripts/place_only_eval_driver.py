@@ -965,6 +965,12 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             (box_xy[0], box_xy[1], box_top_z + 0.30), box_yaw)
         attach = self._tool_down_pose(
             (box_xy[0], box_xy[1], box_top_z), box_yaw)
+        # A post-place exit/goto trajectory cancelled or still decelerating
+        # (streak 2 P3: place_exit ground a near-singular 73-point path
+        # past the 60 s driver timeout; setup_pre then raced it, move_group
+        # refused the new trajectory) must settle before setup plans from
+        # the moving arm.
+        self._wait_arm_settle(first_code="setup", timeout=20.0)
         ok, message = self._send_setup_segment(
             "setup_pre_over_box", pre, cartesian=False)
         if not ok:
