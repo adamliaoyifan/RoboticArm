@@ -1,0 +1,27 @@
+# POS-1 place-only perfect-geometry eval profile (docs/plans/
+# place_only_perfect_geometry_sim.md).
+#
+# Eval-only: production defaults in sim_world.launch.py are unchanged. This
+# profile starts the place/map chain without any perception node (asserted
+# by the driver's graph check), with a deterministic pickup fixture (no
+# jitter, no yaw spread, fixed seed, fixed catalog sequence in P0-P4 case
+# order: carryon, standard, large, carryon, standard).
+sim_world:
+  gui: false
+  use_rviz: false
+  use_perception: false
+  use_semantic: false
+  use_moveit: true
+  use_motion: true
+  use_vacuum: true
+  use_cargo_map: true
+  use_packing: true
+  visual_kind: mesh
+  size_mode: catalog
+  yaw_mode: discrete
+  yaw_range: "0.0,0.0"
+  xy_jitter_range: "0.0,0.0"
+  sequence_ids: [carryon, standard, large, carryon, standard]
+  random_seed: 20260914
+  spawn_at_observe: true
+  observe_pose_name: pickup_observe

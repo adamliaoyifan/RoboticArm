@@ -69,6 +69,7 @@ def _default_launch_values():
         "use_moveit": "true",
         "gui": "true",
         "use_rviz": "true",
+        "use_perception": "true",
         "use_cargo_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
@@ -83,6 +84,7 @@ def _default_launch_values():
         "yaw_range": "0.0,0.0",
         "xy_jitter_range": "0.0,0.0",
         "sequence_ids": "",
+        "random_seed": "-1",
         "spawn_at_observe": "true",
         "observe_pose_name": "observe",
         "robot_poses_config": os.path.join(
@@ -475,6 +477,7 @@ def _launch_setup(context):
         output="screen",
         arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
     )
+    use_perception_cond = IfCondition(_bool_text(cfg["use_perception"]))
 
     # D435 + Mid-360S -> ROS names the rest of the stack consumes.
     # Keep both in this one process: eval graph_error treats >3
@@ -502,6 +505,7 @@ def _launch_setup(context):
             ("/livox/scan/points", "/livox/lidar"),
         ],
         parameters=[{"use_sim_time": True}],
+        condition=use_perception_cond,
     )
 
     depth_republisher = Node(
@@ -510,6 +514,7 @@ def _launch_setup(context):
         name="depth_image_republisher",
         output="screen",
         parameters=[{"use_sim_time": True}],
+        condition=use_perception_cond,
     )
 
     # PF-R10: per-thread glibc arenas ratcheted transient geometry
@@ -534,6 +539,7 @@ def _launch_setup(context):
         executable="sensor_preprocessor_node.py",
         name="sensor_preprocessor",
         output="screen",
+        condition=use_perception_cond,
         additional_env=_arena_env,
         parameters=[
             os.path.join(
@@ -584,6 +590,7 @@ def _launch_setup(context):
             "xy_jitter_range": _csv_floats(
                 cfg["xy_jitter_range"], (0.0, 0.0)),
             "sequence_ids": _csv_strings(cfg["sequence_ids"]),
+            "random_seed": int(float(cfg["random_seed"])),
         }],
     )
 
@@ -593,6 +600,9 @@ def _launch_setup(context):
         package="luggage_perception",
         executable="luggage_detector_node.py",
         output="screen",
+        # Place-only / planning-only stacks start with use_perception:=false
+        # so acceptance can assert perception nodes are absent.
+        condition=IfCondition(_bool_text(cfg["use_perception"])),
         # OPENBLAS 1: the support transform is a small-matrix matmul; the
         # full-core BLAS spin both burns CPU and fans allocations across
         # the OpenBLAS pool's threads.
@@ -858,6 +868,11 @@ def generate_launch_description():
                 "Start the YOLO semantic chain (segmenter + point "
                 "filter) and feed the detector the cargo cloud."),
             profile_arg(
+                "use_perception",
+                "Start the perception stack (preprocessor, camera "
+                "bridge, depth republisher, detector). Place-only eval "
+                "profiles set false so perception nodes are absent."),
+            profile_arg(
                 "semantic_require_backend",
                 "If set, segmenter startup fails unless "
                 "stats['backend'] starts with this prefix "
@@ -883,6 +898,10 @@ def generate_launch_description():
                 "sequence_ids",
                 "Comma-separated catalog ids for SpawnNextBox "
                 "(e.g. carryon,standard). Empty = weighted random."),
+            profile_arg(
+                "random_seed",
+                "Pickup spawner RNG seed (-1 = entropy). Fixed seeds "
+                "make catalog mass sampling deterministic."),
             profile_arg(
                 "spawn_at_observe",
                 "Spawn gz_ros2_control at the named observe pose.",
