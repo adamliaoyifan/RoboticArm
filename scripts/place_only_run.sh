@@ -116,7 +116,10 @@ run_driver() {
   if [[ "$MODE" == "dry-run" ]]; then
     driver_args+=(--dry-run)
   fi
-  ros2 run luggage_gazebo place_only_eval_driver.py "${driver_args[@]}"
+  # setsid: the driver gets its own process group so stray group-directed
+  # signals (task teardowns, cleanup sweeps) cannot SIGKILL it mid-case.
+  setsid ros2 run luggage_gazebo place_only_eval_driver.py \
+    "${driver_args[@]}"
 }
 
 mkdir -p "$OUT"
