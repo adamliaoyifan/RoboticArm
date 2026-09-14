@@ -334,7 +334,11 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                     "t": round(self.ros_now_sec(), 3),
                     "suction": [round(v, 4) for v in suction]
                     if suction else None,
-                    "box_gz": self._gz_box_pose(),
+                    # No gz CLI queries here: each `ign model --pose` is a
+                    # subprocess whose cost at 10 Hz starves the vacuum
+                    # follow's set_pose service (observed: attach lost to
+                    # "set_pose timeout"). Box poses stay at the
+                    # before/after segment samples.
                     "joints": [round(v, 4) for v in (sink.get("joints") or [])],
                 }
                 self._segment_samples.append(sample)
