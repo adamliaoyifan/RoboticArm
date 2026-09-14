@@ -379,6 +379,18 @@ def test_capacity_positive_control_empty_container(ctx):
         first["center"], first["footprint"] + (0.25,), first["yaw"])
 
 
+def test_support_touching_neighbours_are_not_overlap():
+    # P0/P1 dry-run geometry: carryon top edge exactly at the standard's
+    # bottom edge. Face contact must not read as footprint overlap.
+    carryon = fx.FixtureBox((-0.42, -0.685, 0.125), (0.55, 0.40, 0.25))
+    touching = (-0.345, -0.26, 0.14)
+    assert fx.box_overlaps_aabb(
+        touching, (0.70, 0.45, 0.28), 0.0, carryon.aabb()) is False
+    intruding = (-0.345, -0.255, 0.14)   # 5 mm into the carryon's Y span
+    assert fx.box_overlaps_aabb(
+        intruding, (0.70, 0.45, 0.28), 0.0, carryon.aabb()) is True
+
+
 def test_capacity_matches_matrix_manifest_sizes(ctx):
     for cargo in ("carryon", "standard", "large"):
         fits, _ = fx.geometric_capacity(

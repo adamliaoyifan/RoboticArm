@@ -404,7 +404,13 @@ def _cross(a, b):
 
 
 def _corners_overlap(corners_a, corners_b):
-    """SAT overlap test between two oriented (possibly rotated) boxes."""
+    """SAT overlap test between two oriented (possibly rotated) boxes.
+
+    Face contact is NOT overlap: an axis whose projections merely touch
+    (gap within epsilon) separates the boxes, matching the placement
+    solver's positive-volume overlap semantics so support-touching
+    neighbours are legal placements.
+    """
     axes = []
     for corners in (corners_a, corners_b):
         edges = _box_edge_axes(corners)
@@ -417,19 +423,19 @@ def _corners_overlap(corners_a, corners_b):
     for axis in axes:
         pa = [sum(c[k] * axis[k] for k in range(3)) for c in corners_a]
         pb = [sum(c[k] * axis[k] for k in range(3)) for c in corners_b]
-        if (max(pa) < min(pb) - 1e-9 or max(pb) < min(pa) - 1e-9):
+        if (max(pa) <= min(pb) + 1e-9 or max(pb) <= min(pa) + 1e-9):
             return False
     return True
 
 
 def box_overlaps_aabb(center, size, yaw, aabb):
-    """Oriented box vs axis-aligned box overlap (corner SAT + AABB axes)."""
+    """Positive-measure overlap between an oriented box and an AABB."""
     corners = _oriented_corners(center, size, yaw)
     lo = [min(c[k] for c in corners) for k in range(3)]
     hi = [max(c[k] for c in corners) for k in range(3)]
     other_lo = [aabb[0], aabb[1], aabb[2]]
     other_hi = [aabb[3], aabb[4], aabb[5]]
-    if any(hi[k] < other_lo[k] - 1e-9 or lo[k] > other_hi[k] + 1e-9
+    if any(hi[k] <= other_lo[k] + 1e-9 or lo[k] >= other_hi[k] - 1e-9
            for k in range(3)):
         return False
     aabb_corners = [
