@@ -346,7 +346,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
     def _set_place_touch(self, allowed):
         request = SetBool.Request()
         request.data = bool(allowed)
-        return self.call_srv(self._place_touch, request, timeout=10.0)
+        resp = self.call_srv(self._place_touch, request, timeout=10.0)
+        if resp is None or not resp.success:
+            # A loaded stack can stall this ACM round-trip past the first
+            # 10 s call (streak 2 P2: the touch, clear, build, and vacuum
+            # services all timed out in the same window while the sim
+            # itself kept running). Idempotent: one settle-and-retry
+            # before the descend branch fails the case on it.
+            time.sleep(2.0)
+            resp = self.call_srv(self._place_touch, request, timeout=20.0)
+        return resp
 
     def _check_i1(self):
         if not getattr(self._args, "use_vacuum", False):
