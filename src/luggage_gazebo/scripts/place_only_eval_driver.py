@@ -209,7 +209,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             callback_group=self._group)
         self._map_reset = self.create_client(
             ResetCargoMap, "/cargo_map/reset", callback_group=self._group)
-        self._map_stats = self.create_client(
+        self._map_stats_cli = self.create_client(
             GetCargoMapStats, "/cargo_map/get_stats",
             callback_group=self._group)
         self._gz_create = self.create_client(
@@ -252,7 +252,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             case.case_id: case for case in fx.case_matrix(self._catalog_sizes)}
 
         # Guards and bookkeeping.
-        self._guards = {
+        self._pos_guards = {
             "detect_calls": 0,
             "setup_goals": [],
             "executed_goals": [],
@@ -304,13 +304,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
     def call_srv(self, client, request, timeout):
         # Detect guard: any DetectLuggage call is an isolation violation.
         if isinstance(request, DetectLuggage.Request):
-            self._guards["detect_calls"] += 1
+            self._pos_guards["detect_calls"] += 1
         return super().call_srv(client, request, timeout)
 
     def _execute_segment(self, segment, trial):
         # Motion guard: record every executed segment name; pick-phase
         # names must never appear.
-        self._guards["executed_goals"].append(
+        self._pos_guards["executed_goals"].append(
             {"case": self._current_case_id, "name": str(segment.name),
              "scored": bool(self._scoring_active)})
         return super()._execute_segment(segment, trial)
@@ -374,7 +374,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _sample_clock_guard(self):
         count = self._clock_publishers()
-        self._guards["clock_publisher_samples"].append(
+        self._pos_guards["clock_publisher_samples"].append(
             {"t_wall": time.time(), "count": count})
         return count
 
@@ -415,13 +415,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 except OSError:
                     continue
             sample["rss_mib"][label] = round(total, 1)
-        self._guards["rss_mib_trace"].append(sample)
+        self._pos_guards["rss_mib_trace"].append(sample)
         return sample
 
     def _rtf_tick(self, stage):
         rtf = self._sample_rtf()
         if rtf is not None:
-            self._guards["rtf_trace"].append(
+            self._pos_guards["rtf_trace"].append(
                 {"t_wall": time.time(), "stage": stage, "rtf": rtf})
         return rtf
 
@@ -505,7 +505,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _map_stats(self):
         resp = self._call(
-            self._map_stats, GetCargoMapStats.Request(), timeout=10.0)
+            self._map_stats_cli, GetCargoMapStats.Request(), timeout=10.0)
         if resp is None:
             return None
         committed = 0
@@ -731,12 +731,12 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         segment.type = "cartesian" if cartesian else "pose_target"
         segment.target_pose = target_pose
         segment.allow_ompl_fallback = True
-        self._guards["setup_goals"].append(
+        self._pos_guards["setup_goals"].append(
             {"case": self._current_case_id, "name": name})
         ok, message, _result = self.send_action(
             self._plan, PlanMotion.Goal(segment=segment),
             timeout=self._args.plan_timeout, name="PlanMotion:%s" % name)
-        self._guards["setup_goals"][-1].update(
+        self._pos_guards["setup_goals"][-1].update(
             {"ok": bool(ok), "message": message})
         self._t1("setup_segment", name=name, ok=bool(ok), message=message)
         return ok, message
@@ -1075,7 +1075,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             and post["stats"]["map_revision"]
             == pre_map["stats"]["map_revision"])
         record["checks"]["zero_motion_goals"] = (
-            len([g for g in self._guards["executed_goals"]
+            len([g for g in self._pos_guards["executed_goals"]
                  if g["case"] == case.case_id and g["scored"]]) == 0)
         self._dump_json("p4_rejection.json", {
             "validation": validation,
@@ -1096,7 +1096,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         record["checks"]["capacity_independently_confirmed"] = bool(
             verdict["capacity_confirmed"])
         record["checks"]["zero_motion_goals"] = (
-            len([g for g in self._guards["executed_goals"]
+            len([g for g in self._pos_guards["executed_goals"]
                  if g["case"] == case.case_id and g["scored"]]) == 0)
         post = self._map_snapshot()
         record["checks"]["map_digest_preserved"] = bool(
@@ -1381,7 +1381,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _finish_case(self, record, case, slug, t0):
         clock = self._sample_clock_guard()
-        self._guards_snapshot(case)
+        self._pos_guards_snapshot(case)
         self._flush_t1()
         record["wall_time_sec"] = round(time.time() - t0, 2)
         self._dump_json("case_record.json", record)
@@ -1409,14 +1409,14 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
     def _guards_snapshot(self, case):
         self._dump_json("guards.json", {
-            "detect_calls": self._guards["detect_calls"],
-            "executed_goals": [g for g in self._guards["executed_goals"]
+            "detect_calls": self._pos_guards["detect_calls"],
+            "executed_goals": [g for g in self._pos_guards["executed_goals"]
                                if g["case"] == case.case_id],
-            "setup_goals": [g for g in self._guards["setup_goals"]
+            "setup_goals": [g for g in self._pos_guards["setup_goals"]
                             if g.get("case") == case.case_id],
-            "clock_publishers": self._guards["clock_publisher_samples"][-1],
-            "rtf_last": self._guards["rtf_trace"][-3:],
-            "rss_last": self._guards["rss_mib_trace"][-1],
+            "clock_publishers": self._pos_guards["clock_publisher_samples"][-1],
+            "rtf_last": self._pos_guards["rtf_trace"][-3:],
+            "rss_last": self._pos_guards["rss_mib_trace"][-1],
         })
 
     # ------------------------------------------------------------------
@@ -1514,20 +1514,20 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             handle.write("\n")
 
     def _write_streak_summary(self, results):
-        rtf_trace = self._guards["rtf_trace"]
+        rtf_trace = self._pos_guards["rtf_trace"]
         rtf_violations = _rtf_violation_windows(rtf_trace)
         unexpected_goals = fx.unexpected_segment_names(
-            [g["name"] for g in self._guards["executed_goals"]])
+            [g["name"] for g in self._pos_guards["executed_goals"]])
         guards = {
-            "detect_calls_total": self._guards["detect_calls"],
+            "detect_calls_total": self._pos_guards["detect_calls"],
             "unexpected_segment_names": unexpected_goals,
             "clock_publisher_counts": sorted({
                 s["count"] for s
-                in self._guards["clock_publisher_samples"]}),
+                in self._pos_guards["clock_publisher_samples"]}),
             "rtf_min": min((s["rtf"] for s in rtf_trace), default=None),
             "rtf_violation_windows": rtf_violations,
-            "rss_final_mib": (self._guards["rss_mib_trace"][-1]
-                              if self._guards["rss_mib_trace"] else None),
+            "rss_final_mib": (self._pos_guards["rss_mib_trace"][-1]
+                              if self._pos_guards["rss_mib_trace"] else None),
         }
         expected_cases = [c.strip() for c in self._args.cases.split(",")
                           if c.strip()]
@@ -1561,8 +1561,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             json.dump({
                 "rtf_trace": rtf_trace,
                 "clock_publisher_samples":
-                    self._guards["clock_publisher_samples"],
-                "rss_mib_trace": self._guards["rss_mib_trace"],
+                    self._pos_guards["clock_publisher_samples"],
+                "rss_mib_trace": self._pos_guards["rss_mib_trace"],
             }, handle, indent=2, sort_keys=True, default=str)
             handle.write("\n")
         print(json.dumps(summary, indent=2, sort_keys=True), flush=True)

@@ -41,8 +41,11 @@ export ROS_DOMAIN_ID=7
 PIDFILE="${ELFIN_SIM_PIDFILE:-/tmp/elfin_humble_sim.pid}"
 
 residual_count() {
-  pgrep -af 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/parameter_bridge|clock_bridge|camera_bridge|moveit_ros_move_group/move_group|place_only_eval_driver' \
-    | wc -l | tr -d ' '
+  # Sim/bridge/MoveIt stack only. Do NOT match the driver name: monitoring
+  # shells (this script's own logs, agent polls) carry it in their command
+  # line and would self-count as residuals.
+  pgrep -af 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/parameter_bridge|clock_bridge|camera_bridge|moveit_ros_move_group/move_group' \
+    | grep -v 'bash -c' | wc -l | tr -d ' '
 }
 
 wait_for_slot() {
