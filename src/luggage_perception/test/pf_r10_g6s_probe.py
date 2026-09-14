@@ -56,11 +56,14 @@ RSS_NODES = {
 }
 
 # Buffers whose occupancy is pending work (backlog risk), per C2: the
-# filter's and detector's exact-join sides. Camera ring buffers are
-# deliberate history and only carry the peak <= maxlen rule.
+# filter's exact-join sides. Camera ring buffers and the detector's 1 s
+# aligned-depth history ring (maxlen 15) are deliberate history: they
+# sit near maxlen at 20 Hz and only carry the peak <= maxlen rule.
+# g5 occupancy gating was "peaks did not fail"; treating the history
+# ring as pending work makes C2 fail on a healthy full-rate camera.
 PENDING_WORK_BUFFERS = (
     "filter.depth", "filter.mask", "filter.instance",
-    "filter.exact_join_candidates", "detector.raw_buffer",
+    "filter.exact_join_candidates",
 )
 
 CATALOG_SIZE_IDS = ("carryon", "standard", "large")

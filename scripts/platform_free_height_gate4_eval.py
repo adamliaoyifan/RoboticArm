@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -77,6 +78,9 @@ from luggage_perception.sensor_preprocessor import transform_points
 
 WARMUP_FRAMES = 5  # support-stability window after an instance change
 GAP_SEC = 2.0      # orchestration gap threshold for active-window Hz
+# Eval-only YOLO floor for SIM_TEXTURE_LOW_CONFIDENCE proof. Production
+# predict(conf=0.2) never emits the 0.07-0.11 GT matches.
+EVAL_YOLO_CONF = 0.01
 
 _PCA_CLOUD_KEYS = (
     "cargo_world",
@@ -197,8 +201,91 @@ class Gate4Eval(Node):
         self._camera_info = None
         self._tf_buffer = None
         self._trial_samples = []
+        self._eval_yolo = None
+        self._eval_yolo_prompts = []
+        self._eval_yolo_labels = []
         if self._dump_enabled:
             self._enable_dump_subs()
+
+    def _ensure_eval_yolo(self):
+        """Lazy eval-only YOLO-World copy. Never published."""
+        if self._eval_yolo is not None:
+            return self._eval_yolo
+        import yaml
+        from ament_index_python.packages import get_package_share_directory
+        from luggage_perception.semantic_segmenter import _setup_clip_vendor
+        from ultralytics import YOLOWorld
+
+        _setup_clip_vendor()
+        share = get_package_share_directory("luggage_perception")
+        cfg_path = os.path.join(share, "config", "semantic_segmenter.yaml")
+        params = yaml.safe_load(open(cfg_path))["semantic_segmenter"][
+            "ros__parameters"]
+        prompts = [str(p) for p in (params.get("prompts") or [])]
+        labels = [int(v) for v in (params.get("class_mapping_labels") or [])]
+        model_name = os.path.join(share, "models", "yolov8s-world.pt")
+        if not os.path.isfile(model_name):
+            model_name = str(params.get("model_name") or "yolov8s-world.pt")
+        model = YOLOWorld(model_name)
+        if prompts:
+            model.set_classes(prompts)
+        self._eval_yolo = model
+        self._eval_yolo_prompts = prompts
+        self._eval_yolo_labels = labels
+        return model
+
+    def _eval_low_conf_proposals(self, rgb):
+        """Cargo proposals at EVAL_YOLO_CONF. Empty on any load/predict miss."""
+        if rgb is None:
+            return []
+        try:
+            model = self._ensure_eval_yolo()
+            results = model.predict(
+                np.asarray(rgb), conf=EVAL_YOLO_CONF, device="cuda",
+                verbose=False)
+        except Exception as exc:  # noqa: BLE001 - waiver proof, never crash
+            self.get_logger().warning("eval low-conf YOLO failed: %s" % exc)
+            return []
+        if not results:
+            return []
+        result = results[0]
+        boxes = getattr(result.boxes, "xyxy", None)
+        classes = getattr(result.boxes, "cls", None)
+        confs = getattr(result.boxes, "conf", None)
+        if boxes is None or classes is None or len(boxes) == 0:
+            return []
+        boxes = boxes.cpu().numpy()
+        classes = classes.cpu().numpy()
+        confs = (
+            confs.cpu().numpy() if confs is not None
+            else np.zeros(len(boxes)))
+        height, width = np.asarray(rgb).shape[:2]
+        prompts = self._eval_yolo_prompts
+        labels = self._eval_yolo_labels
+        out = []
+        for idx in range(len(boxes)):
+            cls_idx = int(classes[idx])
+            prompt = prompts[cls_idx] if 0 <= cls_idx < len(prompts) else ""
+            label = labels[cls_idx] if 0 <= cls_idx < len(labels) else 2
+            if int(label) != 2:
+                continue
+            x1, y1, x2, y2 = boxes[idx]
+            bbox = [
+                max(0, int(round(x1))), max(0, int(round(y1))),
+                min(width, int(round(x2))), min(height, int(round(y2))),
+            ]
+            if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+                continue
+            out.append({
+                "label": 2,
+                "prompt": prompt,
+                "confidence": float(confs[idx]),
+                "bbox": bbox,
+                "accepted": False,
+                "accept_reason": "eval_low_conf",
+                "eval_only": True,
+            })
+        return out
 
     def _on_frame(self, msg):
         self._frames.append((time.monotonic(), msg))
@@ -374,8 +461,9 @@ class Gate4Eval(Node):
             "frame_id": "world",
         }
 
-    def _snapshot_from_key(self, key):
-        snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
+    def _snapshot_from_key(self, key, snaps=None):
+        if snaps is None:
+            snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
         color = _decode_dump_image((snaps.get("color") or {}).get(key))
         overlay = _decode_dump_image(self._nearest_msg(snaps, "overlay", key))
         depth_m = _decode_depth_m((snaps.get("depth") or {}).get(key))
@@ -461,7 +549,7 @@ class Gate4Eval(Node):
             if not color_keys:
                 return None
             key = max(color_keys)
-        images, arrays, extras, clouds = self._snapshot_from_key(key)
+        images, arrays, extras, clouds = self._snapshot_from_key(key, snaps)
         extras["captured_monotonic"] = time.monotonic()
         return {
             "images": images, "arrays": arrays, "extras": extras,
@@ -513,6 +601,13 @@ class Gate4Eval(Node):
                     str(dest / label / "pca_replay"),
                     _pca_replay_clouds(sample.get("clouds")),
                     workspace=workspace)
+                seg_stats = extras.get("seg_stats") or {}
+                if int(seg_stats.get("accepted_cargo_count") or 0) == 0:
+                    rgb = (sample.get("images") or {}).get("color")
+                    eval_dets = self._eval_low_conf_proposals(rgb)
+                    extras["eval_low_conf_detections"] = eval_dets
+                    sample.setdefault("extras", {})[
+                        "eval_low_conf_detections"] = eval_dets
                 write_snapshot_dir(
                     str(dest / label),
                     images=sample.get("images"),
@@ -696,9 +791,29 @@ def _detections_from_sample(sample):
     extras = (sample or {}).get("extras") or {}
     stats = extras.get("seg_stats") or {}
     dets = list(stats.get("detections") or [])
-    if dets:
-        return dets
-    return list(extras.get("detections") or [])
+    if not dets:
+        dets = list(extras.get("detections") or [])
+    dets.extend(extras.get("eval_low_conf_detections") or [])
+    return dets
+
+
+def _merge_sample_detections(samples):
+    """Union of live + eval-only boxes across early/mid/late snapshots."""
+    out = []
+    seen = set()
+    for sample in samples or []:
+        for det in _detections_from_sample(sample):
+            bbox = tuple(int(v) for v in (det.get("bbox") or [])[:4])
+            key = (
+                bbox,
+                round(float(det.get("confidence") or 0.0), 4),
+                int(det.get("label") or -1),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(det)
+    return out
 
 
 def _intrinsics_xy(camera_info):
@@ -723,9 +838,10 @@ def _write_exclude_generations(path, generations):
 
 def _classify_trial_inputs(node, gt, recovery, settled, dumped, spawn_message,
                            workspace):
-    sample = (node._trial_samples or [None])[-1] if node._trial_samples else None
+    samples = list(node._trial_samples or [])
+    sample = samples[-1] if samples else None
     extras = (sample or {}).get("extras") or {}
-    detections = _detections_from_sample(sample)
+    detections = _merge_sample_detections(samples)
     current = extras.get("current_box") or {}
     if isinstance(current, str):
         try:

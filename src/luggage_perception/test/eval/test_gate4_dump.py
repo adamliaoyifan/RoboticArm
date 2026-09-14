@@ -12,6 +12,7 @@ from luggage_perception.eval.gate4_dump import (
     cargo_summary,
     crop_workspace_xy,
     deproject_labelled_clouds,
+    ensure_dump_overlay,
     extract_top_ransac,
     parse_gz_pose_info,
     select_dump_stamps,
@@ -213,6 +214,32 @@ class TestDeprojectAndPcaReplay(unittest.TestCase):
                 os.path.join(dest, "mask_cargo_world", "top_inliers.ply")))
             payload = json.loads(open(os.path.join(dest, "pca_replay.json")).read())
             self.assertIn("n_input", payload["mask_cargo_world"])
+
+
+class TestDumpOverlay(unittest.TestCase):
+    def test_synthesizes_overlay_from_color_when_topic_missing(self):
+        color = np.zeros((48, 64, 3), dtype=np.uint8)
+        color[:] = (10, 20, 30)
+        images = ensure_dump_overlay({"color": color}, [{
+            "label": 2, "prompt": "suitcase", "confidence": 0.07,
+            "bbox": [8, 8, 40, 32],
+        }])
+        self.assertIn("overlay", images)
+        self.assertEqual(images["overlay"].shape, color.shape)
+
+    def test_write_snapshot_writes_overlay_png(self):
+        color = np.zeros((32, 48, 3), dtype=np.uint8)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = os.path.join(tmp, "late")
+            write_snapshot_dir(
+                dest,
+                images={"color": color},
+                arrays={"depth": np.ones((32, 48), dtype=np.float32)},
+                extras={"seg_stats": {"detections": []}},
+                clouds={},
+            )
+            self.assertTrue(os.path.isfile(os.path.join(dest, "color.png")))
+            self.assertTrue(os.path.isfile(os.path.join(dest, "overlay.png")))
 
 
 class TestGzPose(unittest.TestCase):

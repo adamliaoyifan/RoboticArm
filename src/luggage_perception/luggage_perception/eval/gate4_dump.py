@@ -399,10 +399,38 @@ def trial_folder_name(trial, recovery, box_id, settled=None):
     return "trial_%02d_%s_%s_%s" % (int(trial), kind, slug or "na", ident)
 
 
+def ensure_dump_overlay(images, detections=None):
+    """Guarantee overlay.png payload even when the overlay topic was dropped.
+
+    The overlay Image is ~3x a mask and rides BEST_EFFORT; dumps still
+    need every proposal+confidence. Draw from color + detections, or
+    copy color if cv2 is missing.
+    """
+    images = dict(images or {})
+    if images.get("overlay") is not None or images.get("color") is None:
+        return images
+    color = np.asarray(images["color"])
+    dets = list(detections or [])
+    try:
+        from luggage_perception.semantic_segmenter import (
+            draw_detections_overlay)
+        bgr = draw_detections_overlay(color, dets)
+        images["overlay"] = np.asarray(bgr)[:, :, ::-1].copy()
+    except Exception:  # noqa: BLE001 - dump must still write a frame
+        images["overlay"] = color.copy()
+    return images
+
+
 def write_snapshot_dir(dest, images=None, arrays=None, extras=None,
                        clouds=None):
     """Write one joined camera/cloud snapshot. Returns dest."""
     os.makedirs(dest, exist_ok=True)
+    extras = extras or {}
+    detections = list(extras.get("detections") or [])
+    if not detections:
+        detections = list((extras.get("seg_stats") or {}).get("detections") or [])
+    detections.extend(extras.get("eval_low_conf_detections") or [])
+    images = ensure_dump_overlay(images, detections)
     for name, arr in (images or {}).items():
         if arr is None:
             continue

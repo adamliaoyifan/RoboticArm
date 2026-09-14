@@ -7,11 +7,13 @@ import unittest
 
 from pf_r10_g6s_probe import (
     CurrentBoxLabeler,
+    c2_resource_failures,
     coverage_scorable,
     drop_generations,
     fit_samples,
     fit_size_adjusted_beta,
     luggage_size_label,
+    occupancy_verdicts,
     rss_verdicts,
 )
 
@@ -155,6 +157,33 @@ class TestSizeAdjustedBeta(unittest.TestCase):
         # Mixed carryon-to-large order makes the unadjusted slope look like
         # growth even though the size-controlled coefficient does not.
         self.assertGreater(verdict["slope_mib_per_min"], 2.0)
+
+
+class _OccupancyProbe(object):
+    def __init__(self, series, maxlen):
+        self._occupancy = {"detector.raw_buffer": list(series)}
+        self._maxlens = {"detector.raw_buffer_maxlen": maxlen}
+
+
+class TestC2HistoryRingOccupancy(unittest.TestCase):
+
+    def test_full_depth_history_ring_is_not_pending_work_fail(self):
+        series = [(float(i), 15) for i in range(40)]
+        occupancy = occupancy_verdicts(_OccupancyProbe(series, 15))
+        entry = occupancy["detector.raw_buffer"]
+        self.assertTrue(entry["peak_within_maxlen"])
+        self.assertNotIn("q4_mean_within_half", entry)
+        summary = {
+            "executor_lag_sec": {
+                "n": 40, "q4_mean_ok": True, "ratio_ok": True,
+            },
+            "occupancy": occupancy,
+            "rss": {"luggage_detector": {"pass": True}},
+            "active_rates_hz": {"frame": 19.0},
+        }
+        failures = c2_resource_failures(summary)
+        self.assertFalse(
+            any("raw_buffer" in item for item in failures), failures)
 
 
 if __name__ == "__main__":

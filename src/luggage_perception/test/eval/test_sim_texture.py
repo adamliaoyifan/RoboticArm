@@ -178,6 +178,17 @@ class TestTextureWaiver(unittest.TestCase):
         self.assertEqual(classified["trial_class"], CLASS_FAIL)
         self.assertIn("edge_fp_accepted", classified["reasons"])
 
+    def test_eval_only_low_conf_match_waives_when_live_box_is_edge_strip(self):
+        classified = classify_trial(_texture_record(
+            detections=[
+                _det([607, 115, 640, 300], 0.218, accepted=False,
+                     reason="outside_workspace"),
+                _det([168, 100, 420, 300], 0.070, accepted=False,
+                     reason="eval_low_conf"),
+            ],
+        ))
+        self.assertEqual(classified["trial_class"], CLASS_TEXTURE)
+
 
 class TestDumpHealth(unittest.TestCase):
     def test_missing_late_snapshot_is_incomplete(self):
