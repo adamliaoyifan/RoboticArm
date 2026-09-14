@@ -873,22 +873,37 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         return [tuple(box.aabb()) for box
                 in self._placed_local_boxes + self._blind_obstacles]
 
-    def _probe_candidate_reach(self, center_local, size, yaw_local,
-                                traverse_contact_z):
-        """Pre-execution IK probe of the candidate's traverse pose (the
-        reachability gate the Humble chain lacks; production ROS 1 had a
-        placement motion filter). Returns the probe record."""
-        world = self._local_to_world([
-            float(center_local[0]), float(center_local[1]),
-            float(traverse_contact_z)])
-        seg = MotionSegment()
-        seg.name = "validate_traverse"
-        seg.type = "cartesian"
-        seg.target_pose = self._tool_down_pose(
-            world, yaw_local + self._container_yaw())
-        return self._probe.probe_segment(seg, start_joints=None)
+    def _probe_candidate_chain(self, pick_msg, slot):
+        """Pre-execution reachability probe of a candidate's full place
+        sequence: BuildMotionSequence + sequential segment probes with
+        propagated IK seeds (the same semantics as the plan-only probe the
+        driver executes; a single-pose IK probe from the observe seed is
+        pessimistic because transit is a free-space plan)."""
+        from luggage_msgs.srv import BuildMotionSequence
+        request = BuildMotionSequence.Request()
+        request.phase = "place"
+        request.pick = pick_msg
+        request.place_slot = slot
+        built = self._call(self._build, request, timeout=15.0)
+        if built is None or not built.success:
+            return {"ok": False, "reason": "build:%s" % (
+                built.message if built else "timeout"), "segments": []}
+        joints = None
+        segments = []
+        for segment in built.segments:
+            record = self._probe.probe_segment(segment, start_joints=joints)
+            if record.get("ik_joints"):
+                joints = record["ik_joints"]
+            segments.append({
+                "name": record["name"], "ik_ok": record["ik_ok"],
+                "fraction": record["fraction"],
+                "cartesian_ok": record["cartesian_ok"]})
+            if not record["ik_ok"] or record.get("cartesian_ok") is False:
+                return {"ok": False, "reason": "segment:%s" % record["name"],
+                        "segments": segments}
+        return {"ok": True, "reason": "probed", "segments": segments}
 
-    def _validate_selected(self, slot):
+    def _validate_selected(self, slot, pick_msg):
         """Independent acceptance-B checks on the selected candidate."""
         center, yaw, size = self._slot_local(slot)
         checks = {}
@@ -914,8 +929,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             self._ctx, center, size, yaw, self._all_obstacle_aabbs_local(),
             traverse_contact_z=traverse_z)
         checks["swept_collision_free"] = not blocked
-        reach = self._probe_candidate_reach(center, size, yaw, traverse_z)
-        checks["ik_traverse_reachable"] = bool(reach.get("ik_ok"))
+        reach = self._probe_candidate_chain(pick_msg, slot)
+        checks["chain_reachable"] = bool(reach.get("ok"))
         return {
             "center_local": center,
             "yaw_local": yaw,
@@ -923,8 +938,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             "traverse_contact_z": traverse_z,
             "checks": checks,
             "swept_hits": hits,
-            "reach_probe": {k: v for k, v in reach.items()
-                            if k != "ik_joints"},
+            "reach_probe": reach,
         }
 
     def _compute_placement(self, pick_msg):
@@ -1041,7 +1055,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         revision_ok = (last_dump.get("map_revision")
                        == pre_map["stats"]["map_revision"])
         slot_meta = self._slot_meta(slot)
-        validation = self._validate_selected(slot)
+        validation = self._validate_selected(slot, pick_msg)
         validation["request_revision_matches_snapshot"] = bool(revision_ok)
         self._dump_json("slot_validation.json", validation)
         if case.case_id == "P4":
@@ -1066,7 +1080,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             record["fail_code"] = "FIXTURE_SETUP_FAILED:p4_property_unproven"
         elif not (validation["checks"]["footprint_overlap_free"]
                   and validation["checks"]["swept_collision_free"]
-                  and validation["checks"]["ik_traverse_reachable"]):
+                  and validation["checks"]["chain_reachable"]):
             # The selected candidate is rejected before execution (blind
             # obstacle, overlap, or unreachable traverse pose). Try the
             # retained next-best candidates; P4 may also close as a
@@ -1077,7 +1091,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 else "SWEPT_PATH_BLOCKED"
                 if not validation["checks"]["swept_collision_free"]
                 else "PLACE_SLOT_UNREACHABLE")
-            alt = self._try_alternative_candidates(case, last_dump)
+            alt = self._try_alternative_candidates(case, last_dump, pick_msg)
             record["alternative_candidates"] = alt
             if alt.get("slot") is not None:
                 slot = alt["slot"]
@@ -1189,9 +1203,22 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         if not self._args.dry_run:
             self._recover_carried("planning_failed_%s" % case.case_id)
 
-    def _try_alternative_candidates(self, case, last_dump):
-        """Pick the next retained feasible candidate whose swept path is
-        collision-free (P4 'different collision-free candidate succeeds')."""
+    def _candidate_slot(self, cand, size):
+        slot = SlotSpec()
+        base = cand.get("center_base_link") or [0.0, 0.0, 0.0]
+        slot.place_pose.position.x = float(base[0])
+        slot.place_pose.position.y = float(base[1])
+        slot.place_pose.position.z = float(base[2])
+        slot.place_pose.orientation = _yaw_quat(
+            float(cand.get("yaw_base_link") or 0.0))
+        slot.width, slot.depth, slot.height = (
+            float(size[0]), float(size[1]), float(size[2]))
+        return slot
+
+    def _try_alternative_candidates(self, case, last_dump, pick_msg):
+        """Pick the next retained feasible candidate that is overlap-free,
+        sweep-free, and chain-reachable ('different collision-free
+        candidate succeeds')."""
         tried = []
         candidates = [c for c in (last_dump.get("candidates") or [])
                       if c.get("feasible")]
@@ -1212,25 +1239,19 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             if overlap:
                 blocked = True
                 hits = [{"stage": "footprint_overlap"}]
-            reach = self._probe_candidate_reach(center, size, yaw, traverse_z)
-            if not reach.get("ik_ok"):
+            slot = self._candidate_slot(cand, size)
+            reach = self._probe_candidate_chain(pick_msg, slot)
+            if not reach.get("ok"):
                 blocked = True
-                hits = [{"stage": "ik_unreachable"}]
+                hits = hits[:0] + [{"stage": "chain_unreachable:%s" % (
+                    reach.get("reason", "?"))}]
             tried.append({
                 "center_local": [round(float(v), 4) for v in center],
                 "yaw": round(yaw, 4), "blocked": bool(blocked),
                 "hits": hits[:4]})
             if blocked:
                 continue
-            slot = SlotSpec()
-            base = cand.get("center_base_link") or [0.0, 0.0, 0.0]
-            slot.place_pose.position.x = float(base[0])
-            slot.place_pose.position.y = float(base[1])
-            slot.place_pose.position.z = float(base[2])
-            slot.place_pose.orientation = _yaw_quat(
-                float(cand.get("yaw_base_link") or 0.0))
-            slot.width, slot.depth, slot.height = (size[0], size[1], size[2])
-            return {"slot": slot, "tried": tried}
+            return {"slot": slot, "tried": tried, "reach": reach}
         return {"slot": None, "tried": tried}
 
     def _execute_place_chain(self, case, pick_msg, slot, slot_meta):
