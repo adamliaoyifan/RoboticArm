@@ -346,6 +346,53 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         finally:
             self.destroy_subscription(sub)
 
+    def _wait_arm_settle(self, first_code="", timeout=3.0, still_eps=0.005,
+                         quiet_sec=0.4):
+        """Block until /joint_states positions stop changing, bounded.
+
+        A goal-time abort still has the arm decelerating when the driver
+        regains control: the immediate replanned retry in attempt 200026
+        planned traverse cartesian 0.000 from the moving, rim-grazing
+        state (start in collision, OMPL path invalid), while the same
+        cartesian planned 100% 0.4 s later from the settled arm. Waiting
+        for positional stillness closes that window; a retry that still
+        fails after settling is a hard block and aborts with evidence as
+        before.
+        """
+        import rclpy
+        from sensor_msgs.msg import JointState
+        latest = {}
+        sub = self.create_subscription(
+            JointState, "/joint_states",
+            lambda m: latest.__setitem__(
+                "row", (self.ros_now_sec(), list(m.position) or [])),
+            10, callback_group=self._group)
+        t0 = time.time()
+        last_pos = None
+        still_since = None
+        try:
+            deadline = t0 + float(timeout)
+            while time.time() < deadline and rclpy.ok():
+                row = latest.get("row")
+                if row and len(row[1]) >= 2:
+                    if (last_pos is not None
+                            and len(last_pos) == len(row[1])
+                            and max(abs(a - b)
+                                    for a, b in zip(row[1], last_pos))
+                            <= still_eps):
+                        if still_since is None:
+                            still_since = time.time()
+                        if time.time() - still_since >= quiet_sec:
+                            break
+                    else:
+                        still_since = None
+                    last_pos = row[1]
+                time.sleep(0.05)
+        finally:
+            self.destroy_subscription(sub)
+        self._t1("arm_settle", segment_retry=True, first_code=str(first_code),
+                 settle_sec=round(time.time() - t0, 3))
+
     def _execute_segment(self, segment, trial):
         # Motion guard: record every executed segment name; pick-phase
         # names must never appear.
@@ -383,6 +430,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         # stall with the tool 0.25 m short of the traverse target). A hard
         # block fails the retry identically and the case aborts with
         # evidence; the retry is recorded in the segments log.
+        self._wait_arm_settle(first_code=code)
         retry_ok, retry_code, retry_rec = super()._execute_segment(
             segment, trial)
         if retry_rec is not None:
