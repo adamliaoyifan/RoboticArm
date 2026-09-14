@@ -873,6 +873,21 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         return [tuple(box.aabb()) for box
                 in self._placed_local_boxes + self._blind_obstacles]
 
+    def _probe_candidate_reach(self, center_local, size, yaw_local,
+                                traverse_contact_z):
+        """Pre-execution IK probe of the candidate's traverse pose (the
+        reachability gate the Humble chain lacks; production ROS 1 had a
+        placement motion filter). Returns the probe record."""
+        world = self._local_to_world([
+            float(center_local[0]), float(center_local[1]),
+            float(traverse_contact_z)])
+        seg = MotionSegment()
+        seg.name = "validate_traverse"
+        seg.type = "cartesian"
+        seg.target_pose = self._tool_down_pose(
+            world, yaw_local + self._container_yaw())
+        return self._probe.probe_segment(seg, start_joints=None)
+
     def _validate_selected(self, slot):
         """Independent acceptance-B checks on the selected candidate."""
         center, yaw, size = self._slot_local(slot)
@@ -899,6 +914,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             self._ctx, center, size, yaw, self._all_obstacle_aabbs_local(),
             traverse_contact_z=traverse_z)
         checks["swept_collision_free"] = not blocked
+        reach = self._probe_candidate_reach(center, size, yaw, traverse_z)
+        checks["ik_traverse_reachable"] = bool(reach.get("ik_ok"))
         return {
             "center_local": center,
             "yaw_local": yaw,
@@ -906,6 +923,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             "traverse_contact_z": traverse_z,
             "checks": checks,
             "swept_hits": hits,
+            "reach_probe": {k: v for k, v in reach.items()
+                            if k != "ik_joints"},
         }
 
     def _compute_placement(self, pick_msg):
@@ -1046,25 +1065,30 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 "p4_fixture_property_proven"):
             record["fail_code"] = "FIXTURE_SETUP_FAILED:p4_property_unproven"
         elif not (validation["checks"]["footprint_overlap_free"]
-                  and validation["checks"]["swept_collision_free"]):
-            # P4: the tempting candidate is rejected (blind obstacle in its
-            # path or footprint); try retained alternatives before failing.
-            # Elsewhere a blocked or overlapping candidate is a hard defect.
-            if case.case_id != "P4":
-                record["fail_code"] = (
-                    "FOOTPRINT_OVERLAP"
-                    if not validation["checks"]["footprint_overlap_free"]
-                    else "SWEPT_PATH_BLOCKED")
+                  and validation["checks"]["swept_collision_free"]
+                  and validation["checks"]["ik_traverse_reachable"]):
+            # The selected candidate is rejected before execution (blind
+            # obstacle, overlap, or unreachable traverse pose). Try the
+            # retained next-best candidates; P4 may also close as a
+            # zero-motion rejection when nothing validates.
+            reason = (
+                "FOOTPRINT_OVERLAP"
+                if not validation["checks"]["footprint_overlap_free"]
+                else "SWEPT_PATH_BLOCKED"
+                if not validation["checks"]["swept_collision_free"]
+                else "PLACE_SLOT_UNREACHABLE")
+            alt = self._try_alternative_candidates(case, last_dump)
+            record["alternative_candidates"] = alt
+            if alt.get("slot") is not None:
+                slot = alt["slot"]
+                slot_meta = self._slot_meta(slot)
+                record["checks"]["alternative_collision_free"] = True
+                record["rejected_first_candidate"] = reason
+            elif case.case_id == "P4":
+                return self._p4_reject_before_execution(
+                    record, case, pre_map, validation, t0)
             else:
-                alt = self._try_alternative_candidates(case, last_dump)
-                record["alternative_candidates"] = alt
-                if alt.get("slot") is not None:
-                    slot = alt["slot"]
-                    slot_meta = self._slot_meta(slot)
-                    record["checks"]["alternative_collision_free"] = True
-                else:
-                    return self._p4_reject_before_execution(
-                        record, case, pre_map, validation, t0)
+                record["fail_code"] = reason
 
         # --- execute production place chain ----------------------------
         if not record["fail_code"]:
@@ -1172,7 +1196,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         candidates = [c for c in (last_dump.get("candidates") or [])
                       if c.get("feasible")]
         size_default = self._catalog_sizes[case.cargo_id]
-        for cand in candidates[:3]:
+        for cand in candidates[:8]:
             center = cand.get("center_local") or (
                 cand.get("center_base") or [0.0, 0.0, 0.0])
             yaw = float(cand.get("yaw") or 0.0)
@@ -1188,6 +1212,10 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             if overlap:
                 blocked = True
                 hits = [{"stage": "footprint_overlap"}]
+            reach = self._probe_candidate_reach(center, size, yaw, traverse_z)
+            if not reach.get("ik_ok"):
+                blocked = True
+                hits = [{"stage": "ik_unreachable"}]
             tried.append({
                 "center_local": [round(float(v), 4) for v in center],
                 "yaw": round(yaw, 4), "blocked": bool(blocked),
