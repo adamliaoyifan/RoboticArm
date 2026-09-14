@@ -57,7 +57,6 @@ from luggage_description.scene_tf_config_utils import (
     container_opening_aperture_corners_in_container,
     load_scene_tf_config,
     origin_in_world,
-    point_inside_container_inner_hull_container,
     resolve_scene_tf_config_path,
     yaw_base_link_to_world,
     yaw_world_to_base_link,
@@ -65,6 +64,10 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_packing.placement_solver import (
     placement_constraint_reason,
     solve_placement,
+)
+from luggage_description.container_geometry import (
+    descriptor_from_scene_config,
+    y_max_at_z,
 )
 
 
@@ -132,6 +135,7 @@ class PlacementPlannerNode(Node):
         self._aperture_y = self._aperture_bounds()
         self._smallest_box = self._smallest_box_size()
         self._surface = None
+        self._hull = descriptor_from_scene_config(self._scene)
 
         map_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -149,6 +153,10 @@ class PlacementPlannerNode(Node):
         self.get_logger().info(
             "placement_planner ready (aperture_y=%s, smallest=%s)"
             % (self._aperture_y, self._smallest_box))
+
+    def _hull_geometry(self):
+        """Authoritative kernel hull (cached; config is immutable here)."""
+        return self._hull
 
     # ------------------------------------------------------------------
     # Scene-derived bounds
@@ -296,11 +304,22 @@ class PlacementPlannerNode(Node):
 
     def _constraint_reason(self, candidate, placed_aabbs):
         hull_margin = float(self.get_parameter("hull_margin").value)
+        hull = self._hull_geometry()
 
         def hull_contains_floor_relative(point):
-            return point_inside_container_inner_hull_container(
-                [point[0], point[1], point[2] + self._floor_z], self._scene,
-                margin=hull_margin)
+            # Lateral clearance only: a floor-resting box touches the floor
+            # by design, so the margin applies to the x walls, the -y wall,
+            # the chamfer plane, and the ceiling — never the floor.
+            x, y, z_rel = point
+            z = z_rel + self._floor_z
+            if not (float(hull.floor_z) - 1e-9 <= z
+                    <= float(hull.ceiling_z) - hull_margin):
+                return False
+            if not (-hull.half_x + hull_margin <= x <= hull.half_x - hull_margin):
+                return False
+            if y < -hull.half_y + hull_margin:
+                return False
+            return y <= y_max_at_z(hull, z, margin=hull_margin) + 1e-9
 
         return placement_constraint_reason(
             candidate,

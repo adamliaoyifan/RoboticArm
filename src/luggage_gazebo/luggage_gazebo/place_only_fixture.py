@@ -163,9 +163,40 @@ def hull_context(hull, floor_z):
             (float(size[0]), float(size[1]), float(size[2])),
             float(yaw), margin=margin)
 
+    def contains_floor_box_lateral(center, size, yaw, margin=0.010):
+        """Hull containment with LATERAL clearance only.
+
+        A floor-resting box touches the floor by design (contact, not
+        clearance), so the margin applies to the x walls, the -y wall, the
+        chamfer plane, and the ceiling — never the floor. The kernel's
+        isotropic margin would reject every legal floor placement.
+        """
+        from luggage_description.container_geometry import oriented_box_corners
+        corners = oriented_box_corners(
+            (float(center[0]), float(center[1]),
+             float(floor_z) + float(center[2])),
+            (float(size[0]), float(size[1]), float(size[2])),
+            float(yaw))
+        for corner in corners:
+            x, y, z = corner
+            if not (float(hull.floor_z) - 1e-9 <= z
+                    <= float(hull.ceiling_z) - margin):
+                return False
+            if not (-hull.half_x + margin <= x <= hull.half_x - margin):
+                return False
+            if y < -hull.half_y + margin:
+                return False
+            if y > y_max_at_z(hull, z, margin=margin) + 1e-9:
+                return False
+        return True
+
     ctx["y_max_at_z"] = y_max_floor
     ctx["contains_floor_box"] = contains_floor_box
+    ctx["contains_floor_box_lateral"] = contains_floor_box_lateral
     ctx["contains_floor_sweep"] = contains_floor_sweep
+    # Lateral clearance the independent enumeration must agree on with the
+    # production planner's hull_margin (0 = strict, matching the kernel).
+    ctx["lateral_margin"] = 0.0
     return ctx
 
 
@@ -289,8 +320,9 @@ def enumerate_footprints(ctx, size, placed_aabbs, resolution=0.05,
                     if inner_h - (peak + box_h) < clearance_margin:
                         cand["reason"] = "insufficient_clearance"
                         continue
-                    if not ctx["contains_floor_box"](
-                            center, (foot_l, foot_w, box_h), yaw):
+                    if not ctx["contains_floor_box_lateral"](
+                            center, (foot_l, foot_w, box_h), yaw,
+                            margin=float(ctx.get("lateral_margin", 0.0))):
                         cand["reason"] = "outside_hull"
                         continue
                     box = (cx - foot_l * 0.5, cy - foot_w * 0.5, peak,

@@ -140,6 +140,27 @@ def test_hull_clearance_rejects_tight_candidates(ctx):
     assert ctx["contains_floor_box"]((0.0, 0.0, 0.125), wide, 0.0) is False
 
 
+def test_lateral_hull_margin_allows_floor_contact_but_not_wall_contact(ctx):
+    size = fx.CATALOG_SIZES["carryon"]
+    center = (-0.465, -0.50, 0.125)  # 5 mm off the -X wall, on the floor
+    # Strict containment passes (inside the hull at all).
+    assert ctx["contains_floor_box"](center, size, 0.0) is True
+    # Isotropic kernel margin would fail it for touching the FLOOR; the
+    # lateral check only fails it for being <10 mm from the -X wall.
+    assert ctx["contains_floor_box_lateral"](center, size, 0.0,
+                                             margin=0.010) is False
+    deep = (-0.455, -0.50, 0.125)    # 15 mm off the -X wall
+    assert ctx["contains_floor_box_lateral"](deep, size, 0.0,
+                                             margin=0.010) is True
+    # Enumeration honors the configured lateral margin.
+    ctx_strict = fx.hull_context(ctx["hull"], ctx["floor_z"])
+    ctx_strict["lateral_margin"] = 0.010
+    aabbs = [box.aabb() for box in fx.saturated_fixture_boxes(
+        ctx_strict, size)]
+    fits, _first = fx.geometric_capacity(ctx_strict, size, aabbs)
+    assert fits is False
+
+
 # ---------------------------------------------------------------------------
 # Perfect descriptor isolation
 # ---------------------------------------------------------------------------

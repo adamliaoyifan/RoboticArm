@@ -246,6 +246,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         self._hull = fx.hull_from_scene_config(scene)
         self._floor_z = container_inner_floor_z(scene)
         self._ctx = fx.hull_context(self._hull, self._floor_z)
+        # Match the place-only profile's planner hull_margin (lateral only).
+        self._ctx["lateral_margin"] = 0.010
         catalog = load_box_catalog(box_catalog_path_from_scene(scene))
         self._catalog_sizes = {
             str(entry["id"]): tuple(float(v) for v in entry["size"])
@@ -853,7 +855,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         """Independent acceptance-B checks on the selected candidate."""
         center, yaw, size = self._slot_local(slot)
         checks = {}
-        checks["inside_hull_10mm"] = self._ctx["contains_floor_box"](
+        checks["inside_hull_10mm"] = self._ctx["contains_floor_box_lateral"](
             center, size, yaw, margin=0.010)
         placed_aabbs = self._planned_aabbs_local()
         checks["footprint_overlap_free"] = not any(
