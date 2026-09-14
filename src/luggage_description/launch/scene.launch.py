@@ -1,4 +1,4 @@
-"""Scene static TF plus robot_state_publisher for S20 + suction + D435."""
+"""Scene static TF plus robot_state_publisher for S20 + suction + D555."""
 
 import os
 

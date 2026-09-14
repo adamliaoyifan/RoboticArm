@@ -21,10 +21,10 @@
     <origin xyz="${adapter_mount_xyz}" rpy="${adapter_mount_rpy}"/>
   </xacro:eef_sensor_mount>
 
-  <!-- Include the RealSense D435 macro -->
+  <!-- Historical macro name; its body and collision are the locked D555 PoE. -->
   <xacro:include filename="$(find luggage_description)/urdf/realsense_d435.urdf.xacro"/>
 
-  <!-- Mount params from config/camera_mount_origin.xacro (tuned via camera_mount_tune_gui) -->
+  <!-- Locked ChArUco Layer 3 from config/camera_mount_origin.xacro. -->
   <xacro:include filename="$(find luggage_description)/config/camera_mount_origin.xacro"/>
 
   <xacro:realsense_d435 parent="${cam_mount_parent}">

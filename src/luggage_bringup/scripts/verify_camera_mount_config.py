@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify D435 mount: tune joints vs production fixed mount, and observe-pose constraints."""
+"""Verify the locked D555 mount against the full production EEF TF chain."""
 
 import math
 import os
@@ -75,6 +75,7 @@ OPTICAL_IN_CAMERA_RPY = (-math.pi / 2, 0.0, -math.pi / 2)  # optical +Z = camera
 
 LENS_DOWN_DOT = -0.95
 LONG_EDGE_Z_MAX = 0.1
+END_LINK_RPY = (0.0, 0.0, math.pi)
 
 
 def _parse_xacro_mount(path):
@@ -89,6 +90,14 @@ def _parse_xacro_mount(path):
         [float(v) for v in xyz.group(1).split()],
         [float(v) for v in rpy.group(1).split()],
     )
+
+
+def _parse_xacro_rpy(path, property_name):
+    text = open(path, "r").read()
+    match = re.search(r'%s" value="([^"]+)"' % re.escape(property_name), text)
+    if not match:
+        raise ValueError("missing %s in %s" % (property_name, path))
+    return [float(v) for v in match.group(1).split()]
 
 
 def _load_observe_joints():
@@ -123,7 +132,7 @@ def _rotation_from_rpy(roll, pitch, yaw):
 
 
 def _check_body_frame():
-    """Optical +Z aligns with camera +X (Intel D435 camera_link forward)."""
+    """Optical +Z aligns with the D555 camera_link +X forward axis."""
     r_opt = _rotation_from_rpy(*OPTICAL_IN_CAMERA_RPY)
     opt_z_in_cam = _apply_rot(r_opt, [0.0, 0.0, 1.0])
     ok = (
@@ -134,14 +143,24 @@ def _check_body_frame():
     return ok, opt_z_in_cam
 
 
-def _check_observe_pose(mount_rpy):
-    """At observe FK: lens/camera +X ~ world -Z, camera +Y long edge horizontal."""
+def _compose_rotations(*rotations):
+    result = rotations[0]
+    for rotation in rotations[1:]:
+        if hasattr(result, "__array__"):
+            result = result @ rotation
+        else:
+            result = _matmul(result, rotation)
+    return result
+
+
+def _check_observe_pose(suction_rpy, adapter_rpy, mount_rpy):
+    """At observe FK, evaluate the complete link6-to-D555 fixed chain."""
     r_w6 = _fk_rotation_world_link6(_load_observe_joints())
+    r_6e = _rotation_from_rpy(*END_LINK_RPY)
+    r_es = _rotation_from_rpy(*suction_rpy)
+    r_sa = _rotation_from_rpy(*adapter_rpy)
     r_mount = _rotation_from_rpy(*mount_rpy)
-    if hasattr(r_w6, "__array__"):
-        r_wc = r_w6 @ r_mount
-    else:
-        r_wc = _matmul(r_w6, r_mount)
+    r_wc = _compose_rotations(r_w6, r_6e, r_es, r_sa, r_mount)
 
     lens_world = _apply_rot(r_wc, [1.0, 0.0, 0.0])
     long_world = _apply_rot(r_wc, [0.0, 1.0, 0.0])
@@ -175,9 +194,15 @@ def main():
     pkg = os.path.join(os.path.dirname(__file__), "..", "..", "luggage_description", "config")
     xacro_path = os.path.join(pkg, "camera_mount_origin.xacro")
     parent, xyz, rpy = _parse_xacro_mount(xacro_path)
+    suction_rpy = _parse_xacro_rpy(
+        os.path.join(pkg, "suction_flange_origin.xacro"), "suction_flange_rpy"
+    )
+    adapter_rpy = _parse_xacro_rpy(
+        os.path.join(pkg, "eef_mount_adapter_origin.xacro"), "adapter_mount_rpy"
+    )
     mount = _load_mount_yaml()
 
-    print("=== D435 mount verify ===")
+    print("=== Locked D555 mount verify ===")
     print("parent:", parent)
 
     if mount is not None:
@@ -187,7 +212,7 @@ def main():
         if ok_sync:
             print("OK: tune_joints and fixed mount are equivalent")
         else:
-            print("FAIL: tune_joints do not match fixed mount — run sync_camera_mount_config.py or Save in tune GUI")
+            print("FAIL: compatibility YAML tune_joints do not match its fixed mount")
             print("  suggested fixed xyz:", [round(v, 6) for v in computed_xyz])
             print("  suggested fixed rpy:", [round(v, 6) for v in computed_rpy])
             sys.exit(1)
@@ -206,12 +231,14 @@ def main():
     ok_body, opt_z_cam = _check_body_frame()
     print("\nBody frame (optical +Z in camera_link):", [round(v, 4) for v in opt_z_cam])
     if ok_body:
-        print("OK: optical +Z = camera +X (Intel D435 forward axis)")
+        print("OK: optical +Z = camera +X (D555 forward axis)")
     else:
         print("FAIL: expected optical +Z ~ camera +X [1,0,0]")
         sys.exit(1)
 
-    ok_obs, lens_w, long_w, cost = _check_observe_pose(rpy)
+    ok_obs, lens_w, long_w, cost = _check_observe_pose(
+        suction_rpy, adapter_rpy, rpy
+    )
     print("\nObserve FK (world frame):")
     print("  lens direction (camera +X):", [round(v, 4) for v in lens_w])
     print("  long axis (camera +Y):", [round(v, 4) for v in long_w])

@@ -3,22 +3,24 @@ camera:
   type: depth_rgb
   mount:
     parent_link: eef_mount_adapter
+    # Canonical D555 Layer 3. The historical D435 filename is retained for
+    # compatibility; do not regenerate these values with the mount-tuning GUI.
     tune_joints:
-      tx: -0.028833
-      ty: 0.107910
-      tz: -0.077120
-      rx: -0.01784105
-      ry: 1.39066481
-      rz: 1.56765511
+      tx: -0.023249
+      ty: 0.099580
+      tz: -0.052059
+      rx: 0.02901151
+      ry: 1.32524323
+      rz: 1.59953586
     fixed:
       xyz: &id001
-      - -0.028833
-      - 0.107910
-      - -0.077120
+      - -0.023249
+      - 0.099580
+      - -0.052059
       rpy: &id002
-      - -0.01784105
-      - 1.39066481
-      - 1.56765511
+      - 0.02901151
+      - 1.32524323
+      - 1.59953586
     xyz: *id001
     rpy: *id002
   # Color and depth share one Gazebo Fortress rgbd_camera
@@ -97,3 +99,6 @@ simulation:
 meta:
   name: realsense_d435_sim
   version: 1.3.0
+  hardware: d555_poe
+  mount_revision: 2026-09-14_xy_balanced_corners_edges
+  locked: true
