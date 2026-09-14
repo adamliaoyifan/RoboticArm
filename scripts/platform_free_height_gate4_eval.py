@@ -559,7 +559,7 @@ class Gate4Eval(Node):
 
     def write_trial_dump(self, dump_root, trial, recovery, box_id, rows,
                          min_stamp_sec, workspace, world_name,
-                         dump_pass_trials=True):
+                         dump_pass_trials=True, eval_low_conf=False):
         if not self._dump_enabled or not dump_root:
             return None
         failed = trial_is_failure(recovery, rows)
@@ -579,6 +579,15 @@ class Gate4Eval(Node):
                 ("early", "mid", "late") if len(idxs) >= 3
                 else (("late",) if len(idxs) == 1
                       else ("early", "late")[:len(idxs)]))
+            eval_dets = []
+            if eval_low_conf:
+                late = samples[idxs[-1]]
+                late_stats = ((late.get("extras") or {}).get("seg_stats") or {})
+                if int(late_stats.get("accepted_cargo_count") or 0) == 0:
+                    eval_dets = self._eval_low_conf_proposals(
+                        (late.get("images") or {}).get("color"))
+                    late.setdefault("extras", {})[
+                        "eval_low_conf_detections"] = eval_dets
             for label, idx in zip(labels, idxs):
                 sample = samples[idx]
                 extras = dict(sample.get("extras") or {})
@@ -602,13 +611,8 @@ class Gate4Eval(Node):
                     str(dest / label / "pca_replay"),
                     _pca_replay_clouds(sample.get("clouds")),
                     workspace=workspace)
-                seg_stats = extras.get("seg_stats") or {}
-                if int(seg_stats.get("accepted_cargo_count") or 0) == 0:
-                    rgb = (sample.get("images") or {}).get("color")
-                    eval_dets = self._eval_low_conf_proposals(rgb)
+                if eval_dets:
                     extras["eval_low_conf_detections"] = eval_dets
-                    sample.setdefault("extras", {})[
-                        "eval_low_conf_detections"] = eval_dets
                 write_snapshot_dir(
                     str(dest / label),
                     images=sample.get("images"),
@@ -1170,7 +1174,8 @@ def main():
                 dumped = node.write_trial_dump(
                     dump_root, trial, recovery, expected_instance,
                     owned, min(stamps) if stamps else None,
-                    workspace, args.world_name)
+                    workspace, args.world_name,
+                    eval_low_conf=bool(score_c1))
             except Exception as exc:  # noqa: BLE001
                 node.get_logger().error("trial dump failed: %s" % exc)
                 dumped = None
