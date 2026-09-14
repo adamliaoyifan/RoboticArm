@@ -16,10 +16,12 @@ class TestLivoxUrdfFrames(unittest.TestCase):
         self.assertIn('name="livox_optical_xyz" value="0.000 0.000 0.047"', text)
         self.assertIn('name="livox_imu_xyz" value="0.01100 0.02329 -0.04412"', text)
         self.assertIn(
-            'name="mid360_mount_rpy" value="0 1.57079633 1.57079633"', text
+            'name="mid360_mount_xyz" value="0.010000 0.130000 0.015000"',
+            text,
         )
         self.assertIn(
-            'name="mid360_mount_xyz" value="0.022 0.103 0.038"', text
+            'name="mid360_mount_rpy" value="0.16221799 1.63740799 1.77427038"',
+            text,
         )
 
     def test_mount_declares_livox_chain(self):
