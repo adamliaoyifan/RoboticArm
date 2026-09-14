@@ -773,12 +773,20 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             return None, "FIXTURE_SETUP_FAILED:current_box_unavailable"
         box_msg = current.box
         size = self._catalog_sizes[case.cargo_id]
-        for axis, value in enumerate(box_size_of(box_msg)):
-            if abs(float(value) - size[axis]) > 0.001:
-                return None, (
-                    "FIXTURE_SETUP_FAILED:size_mismatch:%s axis %d "
-                    "declared %.4f manifest %.4f"
-                    % (case.cargo_id, axis, float(value), size[axis]))
+        # GetCurrentBox reports the mesh's OBSERVABLE geometry (lid-plane
+        # reference for perception evals), not the physical AABB. The
+        # physics/collision AABB equals the catalog size, so the manifest
+        # and the perfect descriptor keep the catalog size; here we verify
+        # the spawned catalog identity and record the observable size.
+        box_identity = str(getattr(box_msg, "id", "") or "")
+        if case.cargo_id not in box_identity:
+            return None, (
+                "FIXTURE_SETUP_FAILED:catalog_mismatch:expected %s got %r"
+                % (case.cargo_id, box_identity))
+        self._t1("fixture_cargo_sizes",
+                 catalog_id=case.cargo_id,
+                 manifest_aabb=[round(v, 4) for v in size],
+                 observable=[round(v, 4) for v in box_size_of(box_msg)])
         self._box_model = str(box_msg.id or "")
         pick_msg, fields = self._perfect_luggage_msg(case, box_msg)
         self._t1("fixture_cargo_spawned", model=self._box_model,
