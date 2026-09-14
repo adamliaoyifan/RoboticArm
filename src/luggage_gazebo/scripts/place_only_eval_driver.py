@@ -764,8 +764,10 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 spawn_req.entity_factory.pose = pose
                 gz_resp = self._call(self._gz_create, spawn_req, timeout=15.0)
                 record["gz_model"] = model
+                # SpawnEntity.Response carries only `success`.
                 record["gz_message"] = (
-                    gz_resp.message if gz_resp else "timeout")
+                    "spawned" if (gz_resp and gz_resp.success)
+                    else ("timeout" if gz_resp is None else "spawn_failed"))
                 record["ok"] = bool(gz_resp and gz_resp.success)
                 if record["ok"]:
                     self._fixture_models.append(model)
