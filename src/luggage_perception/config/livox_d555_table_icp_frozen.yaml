@@ -1,0 +1,34 @@
+# Frozen Livox Mid-360S vs D555 table-patch ICP.
+# Eval-only. Does not write URDF. Do not retune these knobs for this bag.
+revision: 2026-09-14_br_corner_and_sides
+status: accepted
+applied_to_urdf: false
+common_frame: elfin_base_link
+bag: record_site_pendant_20260911_220406
+icp:
+  mode: br_corner_and_sides
+  cell_m: 0.04
+  z_band_m: 0.03
+  xy_margin_m: 0.08
+  z_margin_m: 0.04
+  near_radius_m: 0.12
+  inlier_radius_m: 0.02
+  hull_band_m: 0.01
+  interior_w: 1.0
+  edge_w: 12.0
+  corner_w: 400.0
+  anchor_radius_m: 0.025
+  corners_only: false
+accepted_tf:
+  # Maps Livox table points onto D555 table points in elfin_base_link.
+  # Not a mount xyz/rpy. Applying to mid360_origin.xacro needs conjugate_se3
+  # through T_elfin_base_link_eef_mount_adapter from this bag.
+  translation_m: 0.03120826114916461
+  rotation_deg: 2.432757850849486
+  br_corner_before_m: 0.010214072793500532
+  br_corner_after_m: 0.0035817429107670275
+  T_livox_to_camera:
+    - [0.9990987251385403, 0.04244687770070764, 0.0, 0.013292688847106516]
+    - [-0.04244687770070772, 0.9990987251385409, 0.0, 0.028229033332821382]
+    - [0.0, 0.0, 1.0, -0.0006177898209960516]
+    - [0.0, 0.0, 0.0, 1.0]

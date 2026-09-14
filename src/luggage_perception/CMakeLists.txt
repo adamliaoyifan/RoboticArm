@@ -47,6 +47,7 @@ install(PROGRAMS
   scripts/handeye_solve.py
   scripts/pendant_bag_replay_eval.py
   scripts/export_lidar_camera_calib.py
+  scripts/table_patch_icp.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
