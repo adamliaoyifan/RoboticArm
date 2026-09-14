@@ -1409,7 +1409,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             "wall_time_sec": record["wall_time_sec"],
         }, sort_keys=True), flush=True)
 
-    def _guards_snapshot(self, case):
+    def _pos_guards_snapshot(self, case):
         self._dump_json("guards.json", {
             "detect_calls": self._pos_guards["detect_calls"],
             "executed_goals": [g for g in self._pos_guards["executed_goals"]
