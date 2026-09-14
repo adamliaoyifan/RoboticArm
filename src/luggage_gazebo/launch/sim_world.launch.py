@@ -70,6 +70,7 @@ def _default_launch_values():
         "gui": "true",
         "use_rviz": "true",
         "use_perception": "true",
+        "hull_margin": "0.0",
         "use_cargo_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
@@ -784,7 +785,12 @@ def _launch_setup(context):
             executable="placement_planner_node.py",
             name="placement_planner",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{
+                "use_sim_time": True,
+                # 0 keeps the historical flush-wall hull gate; the
+                # place-only profile configures 0.01 (>=10 mm clearance).
+                "hull_margin": float(cfg["hull_margin"]),
+            }],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
         Node(
@@ -872,6 +878,10 @@ def generate_launch_description():
                 "Start the perception stack (preprocessor, camera "
                 "bridge, depth republisher, detector). Place-only eval "
                 "profiles set false so perception nodes are absent."),
+            profile_arg(
+                "hull_margin",
+                "Placement planner inward hull clearance in metres "
+                "(default 0 = flush-wall, historical behavior)."),
             profile_arg(
                 "semantic_require_backend",
                 "If set, segmenter startup fails unless "

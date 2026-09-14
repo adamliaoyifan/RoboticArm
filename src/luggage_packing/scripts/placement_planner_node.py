@@ -101,6 +101,10 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("min_support_ratio", 0.6)
         self.declare_parameter("top_n", 2000)
         self.declare_parameter("aperture_margin", 0.0)
+        # Inward clearance kept between the candidate box and the seven-face
+        # hull. Default 0 preserves the historical flush-wall behavior; eval
+        # profiles configure 0.01 (plan acceptance: >=10 mm).
+        self.declare_parameter("hull_margin", 0.0)
         self.declare_parameter("floor_prior_resolution", 0.05)
 
         config_path = str(self.get_parameter("scene_tf_config").value)
@@ -291,9 +295,12 @@ class PlacementPlannerNode(Node):
         return aabbs
 
     def _constraint_reason(self, candidate, placed_aabbs):
+        hull_margin = float(self.get_parameter("hull_margin").value)
+
         def hull_contains_floor_relative(point):
             return point_inside_container_inner_hull_container(
-                [point[0], point[1], point[2] + self._floor_z], self._scene)
+                [point[0], point[1], point[2] + self._floor_z], self._scene,
+                margin=hull_margin)
 
         return placement_constraint_reason(
             candidate,

@@ -862,11 +862,14 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         traverse_z = fx.corridor_traverse_z(
             self._ctx, center, size, self._placed_local_boxes)
         carry_center = [center[0], center[1], traverse_z - size[2] * 0.5]
-        portal = [-self._ctx["inner_l"] * 0.5, center[1],
-                  traverse_z - size[2] * 0.5]
+        # Sweep the intra-container portion only: the payload is partially
+        # outside the hull while passing the aperture plane, so start where
+        # it is fully inside.
+        entry_x = -self._ctx["inner_l"] * 0.5 + 0.5 * float(size[0])
+        entry_center = [entry_x, center[1], traverse_z - size[2] * 0.5]
         checks["swept_inside_hull"] = bool(
             self._ctx["contains_floor_sweep"](
-                portal, carry_center, size, yaw, margin=0.0)
+                entry_center, carry_center, size, yaw, margin=0.0)
             and self._ctx["contains_floor_sweep"](
                 carry_center, center, size, yaw, margin=0.0))
         blocked, hits = fx.swept_path_blocked(

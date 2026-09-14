@@ -16,6 +16,9 @@ sim_world:
   use_vacuum: true
   use_cargo_map: true
   use_packing: true
+  # Plan acceptance B: selected box keeps >=10 mm inward clearance from the
+  # seven-face hull (production default stays 0 = flush-wall).
+  hull_margin: 0.01
   visual_kind: mesh
   size_mode: catalog
   yaw_mode: discrete
