@@ -102,7 +102,9 @@ PERCEPTION_NODES = (
 REQUIRED_NODES = (
     "pickup_box_spawner", "waypoint_generator", "motion_planner",
     "move_group", "scene_manager", "cargo_volume_mapper",
-    "placement_planner", "vacuum_controller", "observe_pose_hold",
+    "placement_planner", "vacuum_controller",
+    # observe_pose_hold is a one-shot: it publishes the initial arm pose and
+    # exits, so it must not be a graph-presence requirement.
 )
 
 # Dedicated model prefix so fixture teardown never touches pickup cargo.
