@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<!-- Saved by eof_mount_stack_tune_gui.py -->
+<!-- 2026-09-14: elfin_base_link<-livox is planar full-table then balanced corners+edges XY ICP plus mean-z (revision 2026-09-14_xy_balanced_corners_edges). CAD square pocket seats livox on the mounter; this joint is solved so that chain realizes T_icp. Camera Layer 3 re-expressed so T_end_optical stays CC600. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:property name="adapter_mount_parent" value="suction_panel"/>
-  <xacro:property name="adapter_mount_xyz" value="0.016800 -0.015600 0.070200"/>
-  <xacro:property name="adapter_mount_rpy" value="1.57707939 -0.00003948 -3.13530959"/>
+  <xacro:property name="adapter_mount_xyz" value="0.021734 -0.033926 0.082591"/>
+  <xacro:property name="adapter_mount_rpy" value="1.51187936 -0.01424906 3.13751341"/>
 </robot>

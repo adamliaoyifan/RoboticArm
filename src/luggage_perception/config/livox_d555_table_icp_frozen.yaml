@@ -1,12 +1,25 @@
 # Frozen Livox Mid-360S vs D555 table-patch ICP.
-# Eval-only. Does not write URDF. Do not retune these knobs for this bag.
-revision: 2026-09-14_br_corner_and_sides
+# Reference 4x4 in elfin_base_link. Do not retune these knobs for this bag.
+# locked: true. Production xacro is the canonical EEF tree.
+# elfin_base_link<-livox is accepted_tf.T_elfin_base_link_from_livox.
+# CAD square pocket is mounter<-livox. suction_panel->eef_mount_adapter is
+# solved to close both. Camera Layer 3 re-expressed; T_end_optical stays
+# CC600. joints: flange CAD, solved adapter, CAD pocket, handbook 47 mm.
+#
+# T_livox_to_camera = T_delta @ T_old. Previous T_old is revision
+# 2026-09-14_xy_full_edges_mean_z. T_delta is planar XY ICP on all cropped
+# table Livox vs all cropped D555 depth, then corners+edges XY ICP with
+# Livox per-corner weights raised so corner mass equals edge mass, then
+# tz = mean(camera_z) - mean(livox_z). T_delta was measured on clouds
+# already in the previous URDF.
+revision: 2026-09-14_xy_balanced_corners_edges
 status: accepted
-applied_to_urdf: false
+locked: true
+applied_to_urdf: true
 common_frame: elfin_base_link
 bag: record_site_pendant_20260911_220406
 icp:
-  mode: br_corner_and_sides
+  mode: xy_full_balanced_corners_edges_mean_z
   cell_m: 0.04
   z_band_m: 0.03
   xy_margin_m: 0.08
@@ -15,20 +28,88 @@ icp:
   inlier_radius_m: 0.02
   hull_band_m: 0.01
   interior_w: 1.0
-  edge_w: 12.0
-  corner_w: 400.0
+  edge_w: 1.0
+  corner_w: 1.0
+  balance_corners_edges: true
   anchor_radius_m: 0.025
   corners_only: false
-accepted_tf:
-  # Maps Livox table points onto D555 table points in elfin_base_link.
-  # Not a mount xyz/rpy. Applying to mid360_origin.xacro needs conjugate_se3
-  # through T_elfin_base_link_eef_mount_adapter from this bag.
-  translation_m: 0.03120826114916461
-  rotation_deg: 2.432757850849486
-  br_corner_before_m: 0.010214072793500532
-  br_corner_after_m: 0.0035817429107670275
-  T_livox_to_camera:
-    - [0.9990987251385403, 0.04244687770070764, 0.0, 0.013292688847106516]
-    - [-0.04244687770070772, 0.9990987251385409, 0.0, 0.028229033332821382]
-    - [0.0, 0.0, 1.0, -0.0006177898209960516]
+  full_voxel_m: 0.015
+  edge_voxel_m: 0.01
+urdf_fold:
+  mode: cad_pocket_on_icp_livox
+  backup: src/luggage_description/config/backups/20260914_livox_pocket_adapter
+  previous_urdf_backup: src/luggage_description/config/backups/20260914_xy_full_edges_mean_z
+  bag_stamp_ns: 1789135452968955822
+  restored_mid360_mount: cad_square_pocket
+  cad_mid360_mount_xyz: [0.022, 0.103, 0.038]
+  cad_mid360_mount_rpy: [0.0, 1.57079633, 1.57079633]
+  adapter_delta_translation_m: 0.02266525644072174
+  adapter_delta_rotation_deg: 3.873243696045982
+  # elfin_base_link <- eef_mount_adapter at bag_stamp, original GUI adapter.
+  T_base_adapter_before:
+    - [-0.9998667137059826, -0.008387739764444188, -0.014007164040037705, 0.48043071171580276]
+    - [0.008636429817751562, -0.9998044554581972, -0.017789404878818024, -0.19704330987960006]
+    - [-0.013855212116875716, -0.017908005684146352, 0.9997436353533906, 0.3103171679434079]
     - [0.0, 0.0, 0.0, 1.0]
+accepted_tf:
+  # Maps original Livox table points onto D555 table points in elfin_base_link.
+  # Realized by adapter + CAD mid360_mount; optical stays handbook 47 mm.
+  translation_m: 0.025316739165882264
+  rotation_deg: 1.5663107209479015
+  previous_revision: 2026-09-14_xy_full_edges_mean_z
+  delta_translation_m: 0.00794800122337526
+  delta_rotation_deg: 1.376322477146395
+  w_corner: 10.817073170731707
+  w_edge: 1.0
+  xy_rmse_all_before_m: 0.0005433159481794528
+  xy_rmse_all_after_m: 0.0005104696234415745
+  xy_rmse_corners_before_m: 0.0018415384346370364
+  xy_rmse_corners_after_m: 0.0006466678013310517
+  xy_rmse_edges_before_m: 0.002120056008608214
+  xy_rmse_edges_after_m: 0.0024381627538298824
+  br_corner_before_m: 0.007466852215915129
+  br_corner_after_m: 0.002150880701165755
+  mean_z_shift_m: -0.00018846129694798097
+  T_delta:
+    - [0.9997115010338208, 0.024019048705272376, 0.0, 0.003595859116256088]
+    - [-0.024019048705272508, 0.9997115010338203, 0.0, 0.007085548885045202]
+    - [0.0, 0.0, 1.0, -0.00018846129694798097]
+    - [0.0, 0.0, 0.0, 1.0]
+  T_livox_to_camera:
+    - [0.999626359853393, 0.027333874336576316, 0.0, 0.003894566325727892]
+    - [-0.027333874336576493, 0.999626359853395, 0.0, 0.024945188668209013]
+    - [0.0, 0.0, 1.0, -0.0018727513009686885]
+    - [0.0, 0.0, 0.0, 1.0]
+  # Realized pose at bag_stamp after folding T_icp into the EEF chain.
+  T_elfin_base_link_from_livox:
+    - [0.003343696832779216, 0.9999756988863336, 0.006117297464850101, 0.4641947248656744]
+    - [0.08298224125320461, 0.005818769091665, -0.9965340383362984, -0.3617912048666564]
+    - [-0.9965454165907772, 0.0038397347617876365, -0.08296076849254536, 0.31707482219348265]
+    - [0.0, 0.0, 0.0, 1.0]
+  elfin_base_link_from_livox_xyz_m: [0.464195, -0.361791, 0.317075]
+  elfin_base_link_from_livox_rpy: [3.09534192, 1.48765098, 1.53052399]
+joints:
+  elfin_end_link_to_suction_panel:
+    source: suction_flange_origin.xacro
+    xyz: [0.000600, 0.000000, 0.000000]
+    rpy: [-1.56451314, 0.00000000, 3.14159265]
+  suction_panel_to_eef_mount_adapter:
+    source: solved_to_realize_T_icp
+    xyz: [0.021734, -0.033926, 0.082591]
+    rpy: [1.51187936, -0.01424906, 3.13751341]
+  eef_mount_adapter_to_mid360_mount_frame:
+    source: cad_square_pocket
+    xyz: [0.022000, 0.103000, 0.038000]
+    rpy: [0.00000000, 1.57079633, 1.57079633]
+  mid360_mount_frame_to_livox_frame:
+    source: handbook_optical
+    xyz: [0.000, 0.000, 0.047]
+    rpy: [0.0, 0.0, 0.0]
+  suction_panel_to_livox_frame:
+    source: composed
+    xyz: [0.002021, -0.004744, 0.234866]
+    rpy: [-0.01427383, 0.05891098, -1.57571602]
+  eef_mount_adapter_to_camera_link:
+    source: layer3_reexpressed
+    xyz: [-0.023249, 0.099580, -0.052059]
+    rpy: [0.02901151, 1.32524323, 1.59953586]

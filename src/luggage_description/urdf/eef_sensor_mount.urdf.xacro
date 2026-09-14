@@ -2,9 +2,10 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="eef_sensor_mount">
 
   <!--
-    3D-printed sensor mount adapter that bolts onto elfin_link6 (EOF).
-    Hosts the RealSense D435 camera and the Mid-360S lidar frames.
+    3D-printed sensor mount adapter on suction_panel (EOF flange CAD).
+    Hosts the RealSense D555 PoE and the Mid-360S lidar frames.
     STL is in millimetres; scale 0.001 converts to metres for URDF.
+    Canonical joints: docs/architecture/eef_sensor_frames.md.
   -->
   <xacro:include filename="$(find luggage_description)/config/mid360_origin.xacro"/>
 
@@ -45,8 +46,8 @@
     </joint>
 
     <!-- Mid-360S: mechanical mount plus optical and IMU frames.
-         Origins come from config/mid360_origin.xacro (handbook optical/IMU;
-         xyz/rpy are the camera-tower +Y pad, not jointly calibrated). -->
+         Origins come from config/mid360_origin.xacro (CAD square pocket on
+         the +Y face of arm_realsense_v1.3; handbook optical/IMU). -->
 
     <link name="mid360_mount_frame">
       <!-- Housing 65 x 65 x 60 mm, origin at base centre, +Z through the dome.

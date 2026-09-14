@@ -2,49 +2,50 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="realsense_d435">
 
   <!--
-    Intel RealSense D435 nominal frame convention:
-      camera_link +X = depth/camera forward
-      camera_link +Y = 90 mm long axis / stereo baseline axis
-      camera_link +Z = 25 mm height axis
-    Dimensions/extrinsics follow realsense2_description _d435.urdf.xacro.
-    Observe pose (world): optical +Z ~ [0,0,-1], camera +Y horizontal.
+    Hardware is D555 PoE in a D555-sized printed pocket (not a D435 90 mm
+    pocket). camera_link +X = forward; +Y = stereo baseline / long axis;
+    +Z = height. Visual/collision use D555 Datasheet v1.1 envelope
+    167 x 42 x 48 mm (L x H x D). camera_link is left IR (d555_link identity).
+    Front face at camera_link +X = 0; body extends -X into the mount.
+    Y offset 47.5 mm is half of the 95 mm stereo baseline.
+    cam_mount_* (ChArUco Layer 3) is the optical/body pose and is not this box.
   -->
   <xacro:macro name="realsense_d435" params="parent *origin depth_near:=0.105 depth_far:=3.0">
     <xacro:property name="d435_cam_depth_to_color_offset" value="0.015"/>
-    <xacro:property name="d435_cam_depth" value="0.02505"/>
-    <xacro:property name="d435_cam_width" value="0.090"/>
-    <xacro:property name="d435_cam_height" value="0.025"/>
-    <xacro:property name="d435_cam_depth_py" value="0.0175"/>
+    <xacro:property name="d555_cam_depth" value="0.048"/>
+    <xacro:property name="d555_cam_length" value="0.167"/>
+    <xacro:property name="d555_cam_height" value="0.042"/>
+    <xacro:property name="d555_cam_py" value="0.0475"/>
 
     <link name="camera_link">
       <visual>
-        <origin xyz="0 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <origin xyz="${-d555_cam_depth/2} ${-d555_cam_py} 0" rpy="0 0 0"/>
         <geometry>
-          <box size="${d435_cam_depth} ${d435_cam_width} ${d435_cam_height}"/>
+          <box size="${d555_cam_depth} ${d555_cam_length} ${d555_cam_height}"/>
         </geometry>
         <material name="camera_grey">
           <color rgba="0.3 0.3 0.3 1"/>
         </material>
       </visual>
-      <!-- Lens/front marker on +X face (90 x 25 mm), matching official camera_link +X forward. -->
+      <!-- Lens/front marker on +X face (167 x ~42 mm). -->
       <visual name="camera_lens_marker">
-        <origin xyz="0.013025 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <origin xyz="0.0005 ${-d555_cam_py} 0" rpy="0 0 0"/>
         <geometry>
-          <box size="0.001 0.09 0.022"/>
+          <box size="0.001 ${d555_cam_length} 0.038"/>
         </geometry>
         <material name="camera_lens_dark">
           <color rgba="0.05 0.05 0.15 1"/>
         </material>
       </visual>
       <collision>
-        <origin xyz="0 ${-d435_cam_depth_py} 0" rpy="0 0 0"/>
+        <origin xyz="${-d555_cam_depth/2} ${-d555_cam_py} 0" rpy="0 0 0"/>
         <geometry>
-          <box size="${d435_cam_depth} ${d435_cam_width} ${d435_cam_height}"/>
+          <box size="${d555_cam_depth} ${d555_cam_length} ${d555_cam_height}"/>
         </geometry>
       </collision>
       <inertial>
-        <!-- Intel's URDF notes these inertias are nominal visual-model values. -->
-        <mass value="0.072"/>
+        <!-- D555 datasheet mass is 337 g; tensor is still a nominal visual-model value. -->
+        <mass value="0.337"/>
         <inertia ixx="0.003881243" ixy="0.0" ixz="0.0"
                  iyy="0.000498940" iyz="0.0"
                  izz="0.003879257"/>
@@ -57,9 +58,9 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <!-- D555 (PoE) sits in the same printed pocket as this D435. Body pose
-         is camera_link (cam_mount_*). Driver publishes d555_* optical frames
-         from d555_link; do not duplicate those here. -->
+    <!-- D555 (PoE) in the printed D555 pocket. Body pose is camera_link
+         (cam_mount_*, ChArUco Layer 3). Driver publishes d555_* optical
+         frames from d555_link; do not duplicate those here. -->
     <link name="d555_link"/>
     <joint name="d555_body_joint" type="fixed">
       <parent link="camera_link"/>

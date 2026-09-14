@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
-<!-- 2026-09-14: elfin_base_link<-livox is planar full-table then balanced corners+edges XY ICP plus mean-z (revision 2026-09-14_xy_balanced_corners_edges). CAD square pocket seats livox on the mounter; this joint is solved so that chain realizes T_icp. Camera Layer 3 re-expressed so T_end_optical stays CC600. -->
+<!-- 2026-09-14: elfin_base_link<-livox is planar full-table + edges XY ICP plus mean-z (revision 2026-09-14_xy_full_edges_mean_z). CAD square pocket seats livox on the mounter; this joint is solved so that chain realizes T_icp. Camera Layer 3 re-expressed so T_end_optical stays CC600. -->
 <!-- mid360_mount_frame is the CAD square pocket on the adapter mesh
      (0.022 0.103 0.038 / 0 pi/2 pi/2). 2026-09-14: groove-to-livox is
      this CAD seating. elfin_base_link<-livox is frozen table ICP
-     (balanced corners+edges + mean-z). eef_mount_adapter vs EOF is
+     (xy full-table + edges + mean-z). eef_mount_adapter vs EOF is
      solved to close both. Optical/IMU stay handbook. -->
 <!-- Mid-360S frames (Livox Mid-360 / Mid-360S user manual).
 

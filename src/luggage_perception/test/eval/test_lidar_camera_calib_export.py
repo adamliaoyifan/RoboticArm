@@ -94,8 +94,58 @@ class TestCalibExportSmoke(unittest.TestCase):
         summary = export_lidar_camera_calib(
             bag, out, camera_stride=1, apply_xacro=False, extra_frames=())
         self.assertTrue(os.path.isfile(os.path.join(out, "summary.json")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "tf_tree.txt")))
         self.assertGreaterEqual(summary["n_camera"], 1)
         self.assertGreaterEqual(summary["n_lidar"], 1)
+
+    def test_lookup_via_eof_mounter_matches_named_chain(self):
+        buf = BagTfBuffer()
+
+        def edge(parent, child, dx):
+            mat = np.eye(4)
+            mat[0, 3] = dx
+            buf.set_static(parent, child, mat)
+
+        edge("elfin_base_link", "elfin_link1", 0.10)
+        edge("elfin_link1", "elfin_end_link", 0.20)
+        edge("elfin_end_link", "suction_panel", 0.01)
+        edge("suction_panel", "eef_mount_adapter", 0.03)
+        edge("eef_mount_adapter", "mid360_mount_frame", 0.04)
+        edge("mid360_mount_frame", "livox_frame", 0.047)
+        edge("eef_mount_adapter", "camera_link", 0.05)
+        got = buf.lookup_via_eof_mounter(
+            "elfin_base_link", "livox_frame", 0)
+        generic = buf.lookup_matrix("elfin_base_link", "livox_frame", 0)
+        self.assertIsNotNone(got)
+        np.testing.assert_allclose(got, generic)
+        self.assertAlmostEqual(float(got[0, 3]), 0.427)
+        named = buf.lookup_via_named_chain(
+            ["elfin_base_link", "elfin_end_link", "suction_panel",
+             "eef_mount_adapter", "mid360_mount_frame", "livox_frame"], 0)
+        np.testing.assert_allclose(got, named)
+        hops = buf.path_from_to("elfin_end_link", "livox_frame", 0)
+        self.assertEqual(
+            [row[1] for row in hops],
+            ["suction_panel", "eef_mount_adapter", "mid360_mount_frame",
+             "livox_frame"],
+        )
+
+    def test_lookup_via_eof_mounter_requires_suction_panel(self):
+        buf = BagTfBuffer()
+
+        def edge(parent, child, dx):
+            mat = np.eye(4)
+            mat[0, 3] = dx
+            buf.set_static(parent, child, mat)
+
+        edge("elfin_base_link", "elfin_end_link", 0.20)
+        edge("elfin_end_link", "eef_mount_adapter", 0.03)
+        edge("eef_mount_adapter", "livox_frame", 0.047)
+        self.assertIsNone(buf.lookup_via_eof_mounter(
+            "elfin_base_link", "livox_frame", 0))
+        generic = buf.lookup_matrix("elfin_base_link", "livox_frame", 0)
+        self.assertIsNotNone(generic)
+        self.assertAlmostEqual(float(generic[0, 3]), 0.277)
 
     def test_ransac_plane_recovers_z_plane(self):
         rng = np.random.RandomState(1)

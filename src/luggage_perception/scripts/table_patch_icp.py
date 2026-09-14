@@ -13,7 +13,8 @@ import json
 import os
 import sys
 
-from luggage_perception.eval.table_patch_icp import dump_table_patch_icp, load_frozen_table_icp
+from luggage_perception.eval.table_patch_icp import (
+    dump_table_patch_icp, dump_xy_full_edges_mean_z, load_frozen_table_icp)
 
 
 def _parse_args(argv):
@@ -42,6 +43,12 @@ def _parse_args(argv):
     parser.add_argument("--br-sides", dest="corners_only",
                         action="store_false",
                         help="ICP on BR corner plus bottom and right edges (default)")
+    parser.add_argument(
+        "--mode", default="xy_full_edges_mean_z",
+        choices=("xy_full_edges_mean_z", "br_corner_and_sides"),
+        help="xy_full_edges_mean_z is planar full-cloud then balanced "
+             "corners+edges + mean z; br_corner_and_sides keeps the old "
+             "weighted BR ICP")
     return parser.parse_args(argv)
 
 
@@ -54,21 +61,37 @@ def main(argv=None):
     else:
         out_dir = os.path.join(os.path.dirname(cam), "..", "table_icp")
         out_dir = os.path.abspath(out_dir)
-    report = dump_table_patch_icp(
-        cam, lid, out_dir,
-        cell=args.cell,
-        z_band=args.z_band,
-        xy_margin=args.xy_margin,
-        z_margin=args.z_margin,
-        near_radius=args.near_radius,
-        inlier_radius=args.inlier_radius,
-        hull_band=args.hull_band,
-        interior_w=args.interior_w,
-        edge_w=args.edge_w,
-        corner_w=args.corner_w,
-        anchor_radius=args.anchor_radius,
-        corners_only=args.corners_only,
-    )
+    if args.mode == "xy_full_edges_mean_z":
+        report = dump_xy_full_edges_mean_z(
+            cam, lid, out_dir,
+            cell=args.cell,
+            z_band=args.z_band,
+            xy_margin=args.xy_margin,
+            z_margin=args.z_margin,
+            near_radius=args.near_radius,
+            inlier_radius=args.inlier_radius,
+            hull_band=args.hull_band,
+            interior_w=args.interior_w,
+            edge_w=args.edge_w,
+            corner_w=args.corner_w,
+            anchor_radius=args.anchor_radius,
+        )
+    else:
+        report = dump_table_patch_icp(
+            cam, lid, out_dir,
+            cell=args.cell,
+            z_band=args.z_band,
+            xy_margin=args.xy_margin,
+            z_margin=args.z_margin,
+            near_radius=args.near_radius,
+            inlier_radius=args.inlier_radius,
+            hull_band=args.hull_band,
+            interior_w=args.interior_w,
+            edge_w=args.edge_w,
+            corner_w=args.corner_w,
+            anchor_radius=args.anchor_radius,
+            corners_only=args.corners_only,
+        )
     printable = dict(report)
     print(json.dumps(printable, indent=2))
     if not report.get("ok"):

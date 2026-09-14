@@ -1,7 +1,15 @@
-"""Align Mid-360S to D555: camera Layer 3 is the reference.
+"""Align Mid-360S to D555.
 
-CAD ``mid360_mount_*`` on eef_mount_adapter is the only joint we freeze.
-Handbook ``livox_optical_*`` (47 mm) and IMU stay untouched.
+Two references for the EEF Livox chain:
+1. ``elfin_base_link <- livox_frame`` is the frozen table ICP pose
+   (revision ``2026-09-14_xy_balanced_corners_edges``).
+2. ``eef_mount_adapter <- livox_frame`` is the CAD square pocket plus
+   handbook 47 mm optical.
+
+``suction_panel -> eef_mount_adapter`` is solved so those two constraints
+close. ``elfin_end_link -> suction_panel`` stays the flange CAD joint.
+Camera Layer 3 is re-expressed so ``T_end_optical`` stays the
+hand-eye result. Do not dump cloud ICP into ``mid360_mount_frame``.
 """
 
 from __future__ import division
@@ -13,7 +21,9 @@ import re
 import numpy as np
 from scipy.spatial import cKDTree
 
-from luggage_description.handeye_layer3 import R_to_rpy, T_xyz_rpy, parse_xacro_xyz_rpy, rpy_to_R
+from luggage_description.handeye_layer3 import (
+    R_to_rpy, T_xyz_rpy, layer3_xyz_rpy, parse_xacro_xyz_rpy, rpy_to_R)
+
 
 _CONFIG = os.path.join(os.path.dirname(__file__), "..", "config")
 HANDBOOK_OPTICAL_XYZ = (0.0, 0.0, 0.047)
@@ -238,6 +248,132 @@ def apply_cloud_correction(T_adapter_livox, T_corr_adapter):
     )
 
 
+def seat_cad_pocket_under_fixed_livox(
+    T_panel_adapter,
+    T_adapter_livox_current,
+    T_adapter_livox_cad,
+    T_adapter_camera,
+):
+    """Keep Livox vs suction_panel; slide the CAD groove under it.
+
+    Used as a building block. Production URDF also applies frozen table
+    ICP so ``elfin_base_link <- livox`` is T_icp, not the pre-ICP pose.
+    """
+    T_panel_new = np.asarray(T_panel_adapter, dtype=np.float64).dot(
+        np.asarray(T_adapter_livox_current, dtype=np.float64)).dot(
+        invert_T(T_adapter_livox_cad))
+    T_cam_new = invert_T(T_panel_new).dot(
+        np.asarray(T_panel_adapter, dtype=np.float64)).dot(
+        np.asarray(T_adapter_camera, dtype=np.float64))
+    return {
+        "T_panel_adapter_new": T_panel_new,
+        "T_adapter_camera_new": T_cam_new,
+    }
+
+
+def fold_base_livox_correction_into_adapter(
+    T_corr_base,
+    T_base_adapter,
+    T_panel_adapter,
+    T_adapter_livox_current,
+    T_adapter_livox_cad,
+    T_adapter_camera,
+):
+    """Seat CAD pocket under T_icp Livox; re-express camera vs EOF.
+
+    ``T_corr_base`` is frozen table ICP: maps original Livox points onto
+    D555 points in ``elfin_base_link``. Production URDF uses this so
+    ``elfin_base_link <- livox`` equals T_icp and the mounter groove is CAD.
+    """
+    T_corr_adapter = conjugate_se3(invert_T(T_base_adapter), T_corr_base)
+    T_al_aligned = apply_cloud_correction(
+        T_adapter_livox_current, T_corr_adapter)
+    seated = seat_cad_pocket_under_fixed_livox(
+        T_panel_adapter, T_al_aligned, T_adapter_livox_cad, T_adapter_camera)
+    seated["T_corr_adapter"] = T_corr_adapter
+    seated["T_adapter_livox_aligned"] = T_al_aligned
+    return seated
+
+
+def livox_pose_after_frozen_icp(T_corr_base, T_base_livox_before):
+    """``elfin_base_link`` Livox pose after applying frozen T_livox_to_camera."""
+    return np.asarray(T_corr_base, dtype=np.float64).dot(
+        np.asarray(T_base_livox_before, dtype=np.float64)
+    )
+
+
+def locked_eef_livox_tree(frozen, config_dir=None, backup_dir=None):
+    """Solve panel/mounter/livox so ``elfin_base_link <- livox`` is T_icp.
+
+    Keeps ``elfin_end_link -> suction_panel`` (flange) and
+    ``eef_mount_adapter -> livox`` (CAD pocket + 47 mm). Solves
+    ``suction_panel -> eef_mount_adapter``. Re-expresses camera vs the
+    mounter so ``suction_panel -> camera`` stays Layer 3.
+    """
+    cfg = config_dir or _CONFIG
+    backup = backup_dir or os.path.join(
+        cfg, "backups", "20260914_livox_pocket_adapter")
+    T_icp = np.asarray(
+        frozen["accepted_tf"]["T_livox_to_camera"], dtype=np.float64)
+    T_base_adp0 = np.asarray(
+        frozen["urdf_fold"]["T_base_adapter_before"], dtype=np.float64)
+    ax0, ar0 = parse_xacro_xyz_rpy(
+        os.path.join(backup, "eef_mount_adapter_origin.xacro"),
+        "adapter_mount_xyz", "adapter_mount_rpy")
+    mx0, mr0 = parse_xacro_xyz_rpy(
+        os.path.join(backup, "mid360_origin.xacro"),
+        "mid360_mount_xyz", "mid360_mount_rpy")
+    cx0, cr0 = parse_xacro_xyz_rpy(
+        os.path.join(backup, "camera_mount_origin.xacro"),
+        "cam_mount_xyz", "cam_mount_rpy")
+    fx, fr = parse_xacro_xyz_rpy(
+        os.path.join(cfg, "suction_flange_origin.xacro"),
+        "suction_flange_xyz", "suction_flange_rpy")
+    T_eof_panel = T_xyz_rpy(fx, fr)
+    T_panel_adp0 = T_xyz_rpy(ax0, ar0)
+    T_al0 = T_xyz_rpy(mx0, mr0).dot(T_handbook_optical())
+    T_al_cad = T_xyz_rpy(CAD_MOUNT_XYZ, CAD_MOUNT_RPY).dot(
+        T_handbook_optical())
+    T_cam0 = T_xyz_rpy(cx0, cr0)
+    T_base_panel = T_base_adp0.dot(invert_T(T_panel_adp0))
+    T_base_liv0 = T_base_adp0.dot(T_al0)
+    T_base_liv = livox_pose_after_frozen_icp(T_icp, T_base_liv0)
+    T_panel_adp = invert_T(T_base_panel).dot(T_base_liv).dot(invert_T(T_al_cad))
+    T_panel_cam = T_panel_adp0.dot(T_cam0)
+    T_adp_cam = invert_T(T_panel_adp).dot(T_panel_cam)
+    ax, ar = layer3_xyz_rpy(T_panel_adp)
+    cx, cr = layer3_xyz_rpy(T_adp_cam)
+    pl_xyz, pl_rpy = layer3_xyz_rpy(T_panel_adp.dot(T_al_cad))
+    bl_xyz, bl_rpy = layer3_xyz_rpy(T_base_liv)
+    return {
+        "T_base_livox": T_base_liv,
+        "T_eof_panel": T_eof_panel,
+        "T_panel_adapter": T_panel_adp,
+        "T_adapter_livox": T_al_cad,
+        "T_panel_livox": T_panel_adp.dot(T_al_cad),
+        "T_adapter_camera": T_adp_cam,
+        "flange_xyz": [float(v) for v in fx],
+        "flange_rpy": [float(v) for v in fr],
+        "adapter_xyz": [float(v) for v in ax],
+        "adapter_rpy": [float(v) for v in ar],
+        "camera_xyz": [float(v) for v in cx],
+        "camera_rpy": [float(v) for v in cr],
+        "cad_mid360_xyz": [float(v) for v in CAD_MOUNT_XYZ],
+        "cad_mid360_rpy": [float(v) for v in CAD_MOUNT_RPY],
+        "panel_livox_xyz": [float(v) for v in pl_xyz],
+        "panel_livox_rpy": [float(v) for v in pl_rpy],
+        "base_livox_xyz": [float(v) for v in bl_xyz],
+        "base_livox_rpy": [float(v) for v in bl_rpy],
+    }
+
+
+def mid360_mount_to_realize_base_livox(T_base_livox, T_base_adapter, rpy_seed=None):
+    """Undo adapter and handbook optical so URDF stores mid360_mount_*."""
+    T_al = invert_T(T_base_adapter).dot(
+        np.asarray(T_base_livox, dtype=np.float64))
+    return mount_from_adapter_livox(T_al, rpy_seed=rpy_seed)
+
+
 def rotation_deg(T):
     rot = np.asarray(T[:3, :3], dtype=np.float64)
     tr = float(np.clip((np.trace(rot) - 1.0) * 0.5, -1.0, 1.0))
@@ -345,3 +481,66 @@ def replace_mid360_mount(text, xyz, rpy, note):
     if note and banner.strip() not in out:
         out = out.replace('<?xml version="1.0"?>\n', '<?xml version="1.0"?>\n' + banner, 1)
     return out
+
+
+def adapter_mount_xacro_text(xyz, rpy, note):
+    return (
+        '<?xml version="1.0"?>\n'
+        "<!-- %s -->\n"
+        '<robot xmlns:xacro="http://www.ros.org/wiki/xacro">\n'
+        '  <xacro:property name="adapter_mount_parent" value="suction_panel"/>\n'
+        '  <xacro:property name="adapter_mount_xyz" value="%.6f %.6f %.6f"/>\n'
+        '  <xacro:property name="adapter_mount_rpy" value="%.8f %.8f %.8f"/>\n'
+        "</robot>\n"
+        % (note, xyz[0], xyz[1], xyz[2], rpy[0], rpy[1], rpy[2])
+    )
+
+
+def write_cad_pocket_on_table_icp(
+    T_corr_base,
+    T_base_adapter_before,
+    backup_dir,
+    dest_dir,
+    note,
+):
+    """Seat CAD pocket under T_corr Livox; re-express camera vs EOF."""
+    from luggage_description.handeye_layer3 import (
+        T_xyz_rpy, camera_mount_xacro_text, layer3_xyz_rpy,
+        parse_xacro_xyz_rpy,
+    )
+    ax0, ar0 = parse_xacro_xyz_rpy(
+        os.path.join(backup_dir, "eef_mount_adapter_origin.xacro"),
+        "adapter_mount_xyz", "adapter_mount_rpy")
+    mx0, mr0 = parse_xacro_xyz_rpy(
+        os.path.join(backup_dir, "mid360_origin.xacro"),
+        "mid360_mount_xyz", "mid360_mount_rpy")
+    cx0, cr0 = parse_xacro_xyz_rpy(
+        os.path.join(backup_dir, "camera_mount_origin.xacro"),
+        "cam_mount_xyz", "cam_mount_rpy")
+    T_panel = T_xyz_rpy(ax0, ar0)
+    T_al_cur = T_xyz_rpy(mx0, mr0).dot(T_handbook_optical())
+    T_al_cad = T_xyz_rpy(CAD_MOUNT_XYZ, CAD_MOUNT_RPY).dot(T_handbook_optical())
+    T_cam = T_xyz_rpy(cx0, cr0)
+    seated = fold_base_livox_correction_into_adapter(
+        T_corr_base, T_base_adapter_before, T_panel, T_al_cur, T_al_cad, T_cam)
+    ax1, ar1 = layer3_xyz_rpy(seated["T_panel_adapter_new"])
+    cx1, cr1 = layer3_xyz_rpy(seated["T_adapter_camera_new"])
+    with open(os.path.join(dest_dir, "eef_mount_adapter_origin.xacro"), "w",
+              encoding="utf-8") as handle:
+        handle.write(adapter_mount_xacro_text(ax1, ar1, note))
+    with open(os.path.join(dest_dir, "camera_mount_origin.xacro"), "w",
+              encoding="utf-8") as handle:
+        handle.write(camera_mount_xacro_text(cx1, cr1, note))
+    mid_path = os.path.join(dest_dir, "mid360_origin.xacro")
+    with open(mid_path, encoding="utf-8") as handle:
+        mid_text = handle.read()
+    with open(mid_path, "w", encoding="utf-8") as handle:
+        handle.write(replace_mid360_mount(
+            mid_text, CAD_MOUNT_XYZ, CAD_MOUNT_RPY, note))
+    seated["adapter_xyz"] = ax1
+    seated["adapter_rpy"] = ar1
+    seated["camera_xyz"] = cx1
+    seated["camera_rpy"] = cr1
+    seated["mid360_xyz"] = [float(v) for v in CAD_MOUNT_XYZ]
+    seated["mid360_rpy"] = [float(v) for v in CAD_MOUNT_RPY]
+    return seated

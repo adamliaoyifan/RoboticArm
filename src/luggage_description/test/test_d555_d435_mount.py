@@ -18,16 +18,30 @@ class TestD555UsesD435Extrinsics(unittest.TestCase):
         self.assertIn('<child link="d555_link"/>', text)
         self.assertIn('<origin xyz="0 0 0" rpy="0 0 0"/>', text)
 
+    def test_visual_uses_d555_datasheet_envelope(self):
+        with open(D435, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn('name="d555_cam_depth" value="0.048"', text)
+        self.assertIn('name="d555_cam_length" value="0.167"', text)
+        self.assertIn('name="d555_cam_height" value="0.042"', text)
+        self.assertIn('name="d555_cam_py" value="0.0475"', text)
+        self.assertIn(
+            'size="${d555_cam_depth} ${d555_cam_length} ${d555_cam_height}"',
+            text,
+        )
+        self.assertNotIn('name="d435_cam_width" value="0.090"', text)
+        self.assertNotIn('name="d435_cam_depth" value="0.02505"', text)
+
     def test_mount_origin_unchanged(self):
         with open(CAM, encoding="utf-8") as handle:
             text = handle.read()
         self.assertIn('name="cam_mount_parent" value="eef_mount_adapter"', text)
         self.assertIn(
-            'name="cam_mount_xyz" value="-0.028833 0.107910 -0.077120"',
+            'name="cam_mount_xyz" value="-0.023249 0.099580 -0.052059"',
             text,
         )
         self.assertIn(
-            'name="cam_mount_rpy" value="-0.01784105 1.39066481 1.56765511"',
+            'name="cam_mount_rpy" value="0.02901151 1.32524323 1.59953586"',
             text,
         )
 

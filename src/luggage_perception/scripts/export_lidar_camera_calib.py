@@ -41,7 +41,7 @@ def main(argv=None):
         name = os.path.basename(os.path.normpath(bag))
         if name.endswith(".mcap"):
             name = name[:-len(".mcap")]
-        suffix = "bag_tf" if args.bag_tf_only else "xacro"
+        suffix = "bag_tf" if args.bag_tf_only else "eof_mounter"
         out_dir = os.path.join(DEFAULT_OUT, name + "_" + suffix)
     summary = export_lidar_camera_calib(
         bag, out_dir,
@@ -55,6 +55,15 @@ def main(argv=None):
         "n_lidar": summary["n_lidar"],
         "apply_xacro": summary.get("apply_xacro"),
         "xacro": summary.get("xacro"),
+        "tf_tree": os.path.join(summary["out_dir"], "tf_tree.txt"),
+        "livox_in_elfin_base_link": os.path.join(
+            summary["out_dir"], "fused", "livox_in_elfin_base_link.ply"),
+        "camera_depth_in_elfin_base_link": os.path.join(
+            summary["out_dir"], "fused", "camera_depth_in_elfin_base_link.ply"),
+        "features": os.path.join(summary["out_dir"], "features"),
+        "corners": os.path.join(summary["out_dir"], "features", "corners", "overlay.html"),
+        "edges": os.path.join(summary["out_dir"], "features", "edges", "overlay.html"),
+        "table_features": summary.get("table_features"),
         "corner_check": summary.get("corner_check"),
         "overlay": os.path.join(summary["out_dir"], summary["preview"]),
         "extra_frames": summary.get("extra_frames"),

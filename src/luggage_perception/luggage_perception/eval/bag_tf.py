@@ -144,6 +144,65 @@ class BagTfBuffer(object):
             mat = edge.dot(mat)
         return mat, root
 
+    def path_from_to(self, ancestor, descendant, stamp_ns):
+        """Parent→child hops from *ancestor* down to *descendant*, or None."""
+        ancestor = str(ancestor)
+        descendant = str(descendant)
+        if not ancestor or not descendant:
+            return None
+        if ancestor == descendant:
+            return []
+        hops_up = []
+        chain, _root = self._chain_to_root(descendant, stamp_ns)
+        for child, parent, mat in chain:
+            hops_up.append((parent, child, np.asarray(mat, dtype=np.float64)))
+            if parent == ancestor:
+                hops_up.reverse()
+                return hops_up
+        return None
+
+    def lookup_via_named_chain(self, frames, stamp_ns):
+        """Compose T taking last-frame points into first frame via named hops.
+
+        Each consecutive pair must be ancestor→descendant. Missing hop → None.
+        """
+        frames = [str(f) for f in frames]
+        if len(frames) < 2:
+            return None
+        composed = np.eye(4, dtype=np.float64)
+        for parent, child in zip(frames[:-1], frames[1:]):
+            hops = self.path_from_to(parent, child, stamp_ns)
+            if hops is None:
+                return None
+            for _parent, _child, edge in hops:
+                composed = composed.dot(np.asarray(edge, dtype=np.float64))
+        return composed
+
+    def lookup_via_eof_mounter(
+            self, target_frame, source_frame, stamp_ns,
+            eof_frame="elfin_end_link", mounter_frame="eef_mount_adapter",
+            panel_frame="suction_panel"):
+        """Source → adapter → suction_panel → EOF → target.
+
+        Requires the panel hop. Fails if any named hop is missing.
+        """
+        target = str(target_frame)
+        source = str(source_frame)
+        eof = str(eof_frame)
+        mounter = str(mounter_frame)
+        panel = str(panel_frame)
+        hops_sensor = self.path_from_to(mounter, source, stamp_ns)
+        hops_adapter = self.path_from_to(panel, mounter, stamp_ns)
+        hops_panel = self.path_from_to(eof, panel, stamp_ns)
+        t_tgt_eof = self.lookup_matrix(target, eof, stamp_ns)
+        if (hops_sensor is None or hops_adapter is None or hops_panel is None
+                or t_tgt_eof is None):
+            return None
+        t_eof_src = np.eye(4, dtype=np.float64)
+        for _parent, _child, edge in hops_panel + hops_adapter + hops_sensor:
+            t_eof_src = t_eof_src.dot(edge)
+        return t_tgt_eof.dot(t_eof_src)
+
     def lookup_matrix(self, target_frame, source_frame, stamp_ns):
         """4x4 taking *source* points into *target*, or None."""
         target = str(target_frame)

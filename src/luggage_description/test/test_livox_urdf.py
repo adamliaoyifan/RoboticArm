@@ -7,6 +7,7 @@ import unittest
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 MOUNT = os.path.join(ROOT, "urdf", "eef_sensor_mount.urdf.xacro")
 ORIGIN = os.path.join(ROOT, "config", "mid360_origin.xacro")
+ADAPTER = os.path.join(ROOT, "config", "eef_mount_adapter_origin.xacro")
 
 
 class TestLivoxUrdfFrames(unittest.TestCase):
@@ -16,11 +17,23 @@ class TestLivoxUrdfFrames(unittest.TestCase):
         self.assertIn('name="livox_optical_xyz" value="0.000 0.000 0.047"', text)
         self.assertIn('name="livox_imu_xyz" value="0.01100 0.02329 -0.04412"', text)
         self.assertIn(
-            'name="mid360_mount_xyz" value="0.010000 0.130000 0.015000"',
+            'name="mid360_mount_xyz" value="0.022000 0.103000 0.038000"',
             text,
         )
         self.assertIn(
-            'name="mid360_mount_rpy" value="0.16221799 1.63740799 1.77427038"',
+            'name="mid360_mount_rpy" value="0.00000000 1.57079633 1.57079633"',
+            text,
+        )
+
+    def test_adapter_origin_realizes_icp_livox(self):
+        with open(ADAPTER, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn(
+            'name="adapter_mount_xyz" value="0.021734 -0.033926 0.082591"',
+            text,
+        )
+        self.assertIn(
+            'name="adapter_mount_rpy" value="1.51187936 -0.01424906 3.13751341"',
             text,
         )
 

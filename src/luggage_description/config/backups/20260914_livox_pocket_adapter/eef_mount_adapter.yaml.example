@@ -3,13 +3,13 @@ mount:
   child_link: eef_mount_adapter
   fixed:
     xyz:
-    - 0.021734
-    - -0.033926
-    - 0.082591
+    - 0.0168
+    - -0.0156
+    - 0.0702
     rpy:
-    - 1.51187936
-    - -0.01424906
-    - 3.13751341
+    - 1.57707939
+    - 0.00
+    - -3.1415926
 mesh:
   file: package://luggage_gazebo/models/arm_realsense/arm_realsense_v1.3.stl
   scale:

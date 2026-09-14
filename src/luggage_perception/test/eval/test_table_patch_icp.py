@@ -17,13 +17,19 @@ from luggage_perception.eval.table_patch_icp import (
     LABEL_RIGHT_EDGE,
     bottom_right_table_corner,
     classify_table_features,
+    dump_projected_table_features,
     dump_table_patch_icp,
+    dump_xy_full_edges_mean_z,
+    edge_mask,
     focus_anchor_corners,
+    icp_balanced_corners_edges,
+    livox_balanced_corner_edge_weights,
     highest_mean_height_patch,
     label_br_incident_edges,
     load_frozen_table_icp,
     reject_livox_outliers,
     run_table_patch_icp,
+    run_xy_full_edges_mean_z_icp,
     visible_table_corner,
 )
 
@@ -193,26 +199,168 @@ class TestTablePatchIcp(unittest.TestCase):
             cam_path, lid_path, out, cell=0.05, min_cell_n=8, near_radius=0.08)
         self.assertTrue(os.path.isfile(os.path.join(out, "table_camera.ply")))
         self.assertTrue(os.path.isfile(os.path.join(out, "table_livox_before.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "table_camera_bottom_edge.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "table_camera_right_edge.ply")))
         self.assertTrue(os.path.isfile(os.path.join(out, "table_icp.json")))
         self.assertTrue(report["ok"])
         self.assertEqual(report["frozen_revision"], FROZEN_REVISION)
+
+    def test_dump_projected_writes_corners_and_edges_separately(self):
+        rng = np.random.RandomState(6)
+        table, floor = _table_and_floor(rng)
+        cam = np.vstack([table, floor])
+        rgb = np.full((len(cam), 3), 200, dtype=np.uint8)
+        lid = table + np.array([0.008, -0.004, 0.0])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cam_path = os.path.join(tmp.name, "cam.ply")
+        lid_path = os.path.join(tmp.name, "lid.ply")
+        out = os.path.join(tmp.name, "features")
+        write_ply_xyzrgb(cam_path, cam, rgb)
+        write_ply_xyz(lid_path, lid)
+        report = dump_projected_table_features(
+            cam_path, lid_path, out, cell=0.05, min_cell_n=8, near_radius=0.08)
+        self.assertTrue(report["ok"])
+        self.assertFalse(report["applied_extra_icp"])
+        self.assertTrue(os.path.isfile(os.path.join(out, "corners", "overlay.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "corners", "overlay.html")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "camera_bottom.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "camera_right.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "livox_bottom.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "livox_right.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "overlay.html")))
+        self.assertFalse(os.path.isfile(os.path.join(out, "overlay_after_icp.ply")))
+        self.assertGreater(int(report["n_camera_corner"]), 0)
+        self.assertGreater(int(report["n_livox_corner"]), 0)
+        self.assertGreater(int(report["n_camera_bottom_edge"]), 0)
+        self.assertGreater(int(report["n_camera_right_edge"]), 0)
+        self.assertIsNotNone(report["br_corner_residual_m"])
+
+    def test_edge_mask_includes_bottom_and_right(self):
+        labels = np.array([0, LABEL_EDGE, LABEL_BOTTOM_EDGE, LABEL_RIGHT_EDGE, LABEL_CORNER])
+        mask = edge_mask(labels)
+        self.assertEqual(list(mask.astype(int)), [0, 1, 1, 1, 0])
+
+    def test_xy_full_edges_mean_z_recovers_offset(self):
+        rng = np.random.RandomState(7)
+        table, floor = _table_and_floor(rng)
+        cam = np.vstack([table, floor])
+        yaw = 0.03
+        c, s = np.cos(yaw), np.sin(yaw)
+        mid = np.array([0.45, -0.30])
+        xy = table[:, :2] - mid
+        lid_table = table.copy()
+        lid_table[:, 0] = c * xy[:, 0] - s * xy[:, 1] + mid[0] + 0.012
+        lid_table[:, 1] = s * xy[:, 0] + c * xy[:, 1] + mid[1] - 0.008
+        lid_table[:, 2] += 0.006
+        lid = np.vstack([lid_table, floor])
+        report = run_xy_full_edges_mean_z_icp(
+            cam, lid, cell=0.05, min_cell_n=8, near_radius=0.10,
+            inlier_radius=0.04, hull_band=0.03)
+        self.assertTrue(report["ok"])
+        self.assertEqual(
+            report["icp_mode"], "xy_full_balanced_corners_edges_mean_z")
+        T = np.asarray(report["T_livox_to_camera"])
+        recovered = transform_points(T, lid_table)
+        delta = recovered.mean(axis=0) - table.mean(axis=0)
+        self.assertLess(float(np.linalg.norm(delta[:2])), 0.015)
+        self.assertLess(abs(float(delta[2])), 0.005)
+        self.assertLess(
+            report["xy_rmse_all_after_m"], report["xy_rmse_all_before_m"])
+        self.assertGreater(float(report["w_corner"]), float(report["w_edge"]))
+        self.assertAlmostEqual(
+            float(report["corner_mass"]), float(report["edge_mass"]), places=5)
+
+    def test_dump_xy_full_edges_writes_after_ply(self):
+        rng = np.random.RandomState(8)
+        table, floor = _table_and_floor(rng)
+        cam = np.vstack([table, floor])
+        rgb = np.full((len(cam), 3), 200, dtype=np.uint8)
+        lid = table + np.array([0.01, -0.006, 0.004])
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        cam_path = os.path.join(tmp.name, "cam.ply")
+        lid_path = os.path.join(tmp.name, "lid.ply")
+        out = os.path.join(tmp.name, "out")
+        write_ply_xyzrgb(cam_path, cam, rgb)
+        write_ply_xyz(lid_path, lid)
+        report = dump_xy_full_edges_mean_z(
+            cam_path, lid_path, out, cell=0.05, min_cell_n=8, near_radius=0.08)
+        self.assertTrue(report["ok"])
+        self.assertTrue(os.path.isfile(os.path.join(out, "table_livox_after_icp.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "table_xy_after_icp.png")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "overlay_after_icp.ply")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "table_icp.json")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "corners", "xy.png")))
+        self.assertTrue(os.path.isfile(os.path.join(out, "edges", "xy.png")))
+
+    def test_livox_corner_weight_balances_edge_mass(self):
+        labels = np.array(
+            [LABEL_CORNER] * 4
+            + [LABEL_BOTTOM_EDGE] * 12
+            + [LABEL_EDGE] * 8)
+        w, info = livox_balanced_corner_edge_weights(labels)
+        self.assertEqual(info["n_livox_corner"], 4)
+        self.assertEqual(info["n_livox_edge"], 20)
+        self.assertAlmostEqual(info["w_corner"], 5.0)
+        self.assertAlmostEqual(info["corner_mass"], info["edge_mass"])
+        self.assertTrue(np.allclose(w[:4], 5.0))
+        self.assertTrue(np.allclose(w[4:], 1.0))
+
+    def test_balanced_icp_does_not_ignore_sparse_corners(self):
+        cam_c = np.column_stack(
+            [np.full(8, 0.50), np.full(8, -0.36), np.zeros(8)])
+        cam_e = np.column_stack(
+            [np.linspace(0.30, 0.48, 80), np.full(80, -0.36), np.zeros(80)])
+        lid_c = cam_c + np.array([0.020, 0.0, 0.0])
+        lid_e = cam_e.copy()
+        cam = np.vstack([cam_c, cam_e])
+        lid = np.vstack([lid_c, lid_e])
+        labs = np.array([LABEL_CORNER] * 8 + [LABEL_BOTTOM_EDGE] * 80)
+        T, stats = icp_balanced_corners_edges(
+            lid, labs, cam, labs, voxel=0.0, min_pairs=4, max_dist=0.08,
+            allow_yaw=False)
+        self.assertAlmostEqual(float(stats["w_corner"]), 10.0, places=5)
+        self.assertAlmostEqual(float(stats["corner_mass"]), float(stats["edge_mass"]))
+        self.assertLess(float(T[0, 3]), -0.006)
 
     def test_frozen_yaml_is_accepted_revision(self):
         frozen = load_frozen_table_icp()
         self.assertEqual(frozen["revision"], FROZEN_REVISION)
         self.assertEqual(frozen["status"], "accepted")
-        self.assertFalse(frozen["applied_to_urdf"])
+        self.assertTrue(frozen["locked"])
+        self.assertTrue(frozen["applied_to_urdf"])
+        self.assertEqual(frozen["urdf_fold"]["mode"],
+                         "cad_pocket_on_icp_livox")
+        self.assertEqual(frozen["urdf_fold"]["restored_mid360_mount"],
+                         "cad_square_pocket")
+        self.assertEqual(len(frozen["urdf_fold"]["T_base_adapter_before"]), 4)
         icp = frozen["icp"]
-        self.assertEqual(icp["mode"], "br_corner_and_sides")
+        self.assertEqual(icp["mode"], "xy_full_balanced_corners_edges_mean_z")
         self.assertFalse(icp["corners_only"])
         self.assertAlmostEqual(float(icp["inlier_radius_m"]), 0.02)
         self.assertAlmostEqual(float(icp["hull_band_m"]), 0.01)
         self.assertAlmostEqual(float(icp["anchor_radius_m"]), 0.025)
-        self.assertAlmostEqual(float(icp["corner_w"]), 400.0)
+        self.assertTrue(bool(icp.get("balance_corners_edges", True)))
         tf = frozen["accepted_tf"]
-        self.assertAlmostEqual(float(tf["translation_m"]), 0.031208, places=5)
-        self.assertAlmostEqual(float(tf["rotation_deg"]), 2.432758, places=5)
+        self.assertAlmostEqual(float(tf["translation_m"]), 0.025317, places=5)
+        self.assertAlmostEqual(float(tf["rotation_deg"]), 1.566311, places=5)
         self.assertEqual(len(tf["T_livox_to_camera"]), 4)
+        self.assertEqual(len(tf["T_delta"]), 4)
+        self.assertAlmostEqual(float(tf["w_corner"]), 10.817073, places=5)
+        self.assertEqual(len(tf["T_elfin_base_link_from_livox"]), 4)
+        self.assertAlmostEqual(
+            float(tf["elfin_base_link_from_livox_xyz_m"][0]), 0.464195, places=6)
+        joints = frozen["joints"]
+        self.assertEqual(
+            joints["eef_mount_adapter_to_mid360_mount_frame"]["source"],
+            "cad_square_pocket")
+        self.assertEqual(
+            joints["suction_panel_to_eef_mount_adapter"]["source"],
+            "solved_to_realize_T_icp")
+        self.assertAlmostEqual(
+            float(joints["mid360_mount_frame_to_livox_frame"]["xyz"][2]),
+            0.047, places=6)
 
 
 if __name__ == "__main__":

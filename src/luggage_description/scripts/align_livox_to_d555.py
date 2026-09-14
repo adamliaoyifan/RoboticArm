@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""One-shot: ICP Livox onto D555 in the camera optical frame, freeze mount xacro.
+"""One-shot: ICP Livox onto D555 in the camera optical frame (eval print).
 
-Camera Layer 3 stays the reference. Do not edit Layers 1-2 or livox_optical.
+Mid-360 seating is the CAD square pocket on the mounter. Do not write that
+joint. Camera Layer 3 / optical stay the hand-eye + handbook values.
 
   ros2 run luggage_description align_livox_to_d555.py
-  ros2 run luggage_description align_livox_to_d555.py --write
 """
 
 from __future__ import division
@@ -12,7 +12,6 @@ from __future__ import division
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 
@@ -38,7 +37,6 @@ from luggage_description.livox_d555_align import (  # noqa: E402
     invert_T,
     mount_from_adapter_livox,
     nn_rmse,
-    replace_mid360_mount,
     rotation_deg,
     set_origin_height,
     transform_points,
@@ -279,36 +277,13 @@ def align(args):
                 file=sys.stderr,
             )
         if args.write:
-            origin = os.path.join(_PKG, "config", "mid360_origin.xacro")
-            if args.backup_dir:
-                os.makedirs(args.backup_dir, exist_ok=True)
-                shutil.copy2(
-                    origin, os.path.join(args.backup_dir, "mid360_origin.xacro")
-                )
-                with open(
-                    os.path.join(args.backup_dir, "livox_d555_icp.json"),
-                    "w",
-                    encoding="utf-8",
-                ) as handle:
-                    json.dump(result, handle, indent=2)
-                    handle.write("\n")
-            note = (
-                "mid360_mount from D555-referenced ICP %s. "
-                "Camera Layer 3 is the reference. livox_optical/IMU stay handbook. "
-                "CAD pad was 0.022 0.103 0.038 / 0 pi/2 pi/2."
-                % time.strftime("%Y-%m-%d")
+            print(
+                "refusing --write: mid360_mount_frame is the CAD square "
+                "pocket. Realize T_icp by moving eef_mount_adapter vs EOF; "
+                "do not dump cloud ICP into the pocket joint.",
+                file=sys.stderr,
             )
-            if args.livox_height_m is not None:
-                note += " Livox origin height locked to %.3f m above D555 floor." % (
-                    args.livox_height_m,
-                )
-            text = open(origin, encoding="utf-8").read()
-            text = replace_mid360_mount(text, xyz, rpy, note)
-            if "0.000 0.000 0.047" not in text:
-                raise RuntimeError("refusing to write: handbook optical 47 mm missing")
-            with open(origin, "w", encoding="utf-8") as handle:
-                handle.write(text)
-            print("wrote", origin)
+            return 5
         return 0
     finally:
         node.destroy_node()

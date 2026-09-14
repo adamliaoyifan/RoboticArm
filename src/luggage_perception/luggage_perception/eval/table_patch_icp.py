@@ -1,10 +1,15 @@
 """Eval-only table-patch crop + ICP between D555 depth and Livox.
 
 Frozen revision: ``config/livox_d555_table_icp_frozen.yaml``
-(``2026-09-14_br_corner_and_sides``). In one common frame: take the
+(``2026-09-14_xy_balanced_corners_edges``). In one common frame: take the
 highest-mean-height camera patch (the table), keep Livox points near that
-patch, then yaw+translation ICP Livox onto D555 using the BR corner plus
-the bottom and right edges. Does not write URDF or touch online nodes.
+patch, then planar XY ICP of all table Livox onto all table D555 depth,
+then planar XY ICP of labeled corners+edges with Livox per-corner weights
+raised so total corner mass equals total edge mass, then set z from the
+Livox vs camera mean height. The frozen 4x4 is T_icp for
+``elfin_base_link <- livox``. The 2026-09-14 URDF seats the CAD pocket
+on that T_icp Livox by solving eef_mount_adapter vs EOF.
+
 """
 from __future__ import division
 
@@ -30,7 +35,7 @@ from luggage_perception.eval.lidar_camera_calib_export import (
 FROZEN_TABLE_ICP_YAML = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "..", "..", "config", "livox_d555_table_icp_frozen.yaml"))
-FROZEN_REVISION = "2026-09-14_br_corner_and_sides"
+FROZEN_REVISION = "2026-09-14_xy_balanced_corners_edges"
 
 
 def load_frozen_table_icp(path=None):
@@ -114,6 +119,45 @@ LABEL_CORNER = 2
 LABEL_BOTTOM_EDGE = 3
 LABEL_RIGHT_EDGE = 4
 ICP_CHANNELS = (LABEL_CORNER, LABEL_BOTTOM_EDGE, LABEL_RIGHT_EDGE)
+EDGE_LABELS = (LABEL_EDGE, LABEL_BOTTOM_EDGE, LABEL_RIGHT_EDGE)
+
+
+def edge_mask(labels):
+    """True on occupancy, bottom, or right edge labels."""
+    return np.isin(np.asarray(labels, dtype=np.int32), EDGE_LABELS)
+
+
+def _xyz_mean(points):
+    pts = np.asarray(points, dtype=np.float64).reshape(-1, 3)
+    if len(pts) == 0:
+        return None
+    return [float(v) for v in pts.mean(axis=0)]
+
+
+def _xy_nn_gap(src, dst):
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    if len(src) == 0 or len(dst) == 0:
+        return None
+    dist, _ = cKDTree(dst[:, :2]).query(src[:, :2], k=1)
+    return float(np.median(dist))
+
+
+def frozen_table_feature_kwargs():
+    frozen = load_frozen_table_icp()["icp"]
+    return {
+        "cell": float(frozen["cell_m"]),
+        "z_band": float(frozen["z_band_m"]),
+        "xy_margin": float(frozen["xy_margin_m"]),
+        "z_margin": float(frozen["z_margin_m"]),
+        "near_radius": float(frozen["near_radius_m"]),
+        "inlier_radius": float(frozen["inlier_radius_m"]),
+        "hull_band": float(frozen["hull_band_m"]),
+        "interior_w": float(frozen["interior_w"]),
+        "edge_w": float(frozen["edge_w"]),
+        "corner_w": float(frozen["corner_w"]),
+        "anchor_radius": float(frozen["anchor_radius_m"]),
+    }
 
 
 def voxel_downsample_weighted(points, weights, voxel):
@@ -137,14 +181,14 @@ def voxel_downsample_weighted(points, weights, voxel):
     return pts[idx], w[idx]
 
 
-def _se2_weighted(p, q, weights, allow_yaw=True):
+def _se2_weighted(p, q, weights, allow_yaw=True, allow_z=True):
     """Yaw+XY from weighted 2D correspondences. p,q are Nx3."""
     w = np.asarray(weights, dtype=np.float64).reshape(-1)
     w = np.maximum(w, 1e-9)
     w = w / w.sum()
     pc = (w[:, None] * p[:, :2]).sum(axis=0)
     qc = (w[:, None] * q[:, :2]).sum(axis=0)
-    tz = float(np.sum(w * (q[:, 2] - p[:, 2])))
+    tz = float(np.sum(w * (q[:, 2] - p[:, 2]))) if allow_z else 0.0
     step = np.eye(4)
     if not allow_yaw:
         t2 = qc - pc
@@ -170,8 +214,8 @@ def _se2_weighted(p, q, weights, allow_yaw=True):
 
 def icp_xy_yaw(source, target, max_iter=40, max_dist=0.10, voxel=0.015,
                min_pairs=25, src_weight=None, dst_weight=None,
-               corner_w=400.0, allow_yaw=False):
-    """ICP with yaw + XYZ translation. Feature weights raise edge/corner score."""
+               corner_w=400.0, allow_yaw=False, allow_z=True):
+    """ICP with yaw + XY translation. *allow_z* also estimates tz."""
     src_all = np.asarray(source, dtype=np.float64).reshape(-1, 3)
     dst_all = np.asarray(target, dtype=np.float64).reshape(-1, 3)
     if src_weight is None:
@@ -190,9 +234,11 @@ def icp_xy_yaw(source, target, max_iter=40, max_dist=0.10, voxel=0.015,
             "not enough overlap for ICP (src=%d dst=%d)"
             % (src0.shape[0], dst.shape[0]))
     tree = cKDTree(dst[:, :2])
-    dst_corner = dst[dw >= 0.5 * float(corner_w)]
+    use_corners = float(corner_w) >= 2.0
+    dst_corner = dst[dw >= 0.5 * float(corner_w)] if use_corners else dst[:0]
     tree_c = cKDTree(dst_corner[:, :2]) if len(dst_corner) >= 2 else None
-    corner_src = sw >= 0.5 * float(corner_w)
+    corner_src = (sw >= 0.5 * float(corner_w)) if use_corners else np.zeros(
+        len(sw), dtype=bool)
     T = np.eye(4)
     last = None
     thresh = float(max_dist)
@@ -220,7 +266,8 @@ def icp_xy_yaw(source, target, max_iter=40, max_dist=0.10, voxel=0.015,
         p = src[keep]
         q = dst[idx[keep]]
         pair_w = sw[keep] * dw[idx[keep]]
-        step, t2, r2, tz = _se2_weighted(p, q, pair_w, allow_yaw=allow_yaw)
+        step, t2, r2, tz = _se2_weighted(
+            p, q, pair_w, allow_yaw=allow_yaw, allow_z=allow_z)
         T = step.dot(T)
         rmse = float(np.sqrt(np.average(dist[keep] ** 2, weights=pair_w)))
         last = {
@@ -241,6 +288,369 @@ def icp_xy_yaw(source, target, max_iter=40, max_dist=0.10, voxel=0.015,
     if last is None:
         raise RuntimeError("ICP found no correspondences")
     return T, last
+
+
+def xy_nn_rmse(src, dst, max_dist=0.08):
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    if len(src) == 0 or len(dst) == 0:
+        return float("nan"), 0
+    dist, _ = cKDTree(dst[:, :2]).query(src[:, :2], k=1)
+    keep = dist < float(max_dist)
+    if int(keep.sum()) < 1:
+        return float("nan"), 0
+    return float(np.sqrt(np.mean(dist[keep] ** 2))), int(keep.sum())
+
+
+def mean_height_shift(src, dst):
+    """tz that matches source mean z to destination mean z."""
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    if len(src) == 0 or len(dst) == 0:
+        return 0.0
+    return float(dst[:, 2].mean() - src[:, 2].mean())
+
+
+def livox_balanced_corner_edge_weights(labels):
+    """Per-point weights so Livox corner mass equals Livox edge mass.
+
+    Edges outnumber corners, so each corner gets ``n_edge / n_corner``.
+    Interior stays 1. Corners are not counted as edges.
+    """
+    lab = np.asarray(labels, dtype=np.int32).reshape(-1)
+    is_c = lab == LABEL_CORNER
+    is_e = edge_mask(lab)
+    n_c = int(is_c.sum())
+    n_e = int(is_e.sum())
+    w_e = 1.0
+    w_c = (float(n_e) / float(n_c)) if n_c > 0 and n_e > 0 else 1.0
+    w = np.ones(len(lab), dtype=np.float64)
+    w[is_e] = w_e
+    w[is_c] = w_c
+    return w, {
+        "n_livox_corner": n_c,
+        "n_livox_edge": n_e,
+        "w_corner": w_c,
+        "w_edge": w_e,
+        "corner_mass": float(n_c) * w_c,
+        "edge_mass": float(n_e) * w_e,
+    }
+
+
+def xy_weighted_sse(src, dst, weights, max_dist=0.08):
+    """Weighted sum of squared XY NN residuals."""
+    src = np.asarray(src, dtype=np.float64).reshape(-1, 3)
+    dst = np.asarray(dst, dtype=np.float64).reshape(-1, 3)
+    w = np.asarray(weights, dtype=np.float64).reshape(-1)
+    if len(src) == 0 or len(dst) == 0 or len(w) != len(src):
+        return float("nan"), 0
+    dist, _ = cKDTree(dst[:, :2]).query(src[:, :2], k=1)
+    keep = dist < float(max_dist)
+    if int(keep.sum()) < 1:
+        return float("nan"), 0
+    sse = float(np.sum(w[keep] * dist[keep] ** 2))
+    return sse, int(keep.sum())
+
+
+def icp_balanced_corners_edges(
+    source, src_labels, target, dst_labels,
+    max_iter=50, max_dist=0.08, voxel=0.01, min_pairs=8,
+    allow_yaw=True, allow_z=False,
+):
+    """Planar ICP: corners match corners, edges match edges.
+
+    Livox per-corner weight is raised so voxelized corner mass equals
+    voxelized edge mass. Camera points stay weight 1; they only define
+    the target cloud for each class.
+    """
+    src_all = np.asarray(source, dtype=np.float64).reshape(-1, 3)
+    dst_all = np.asarray(target, dtype=np.float64).reshape(-1, 3)
+    src_lab = np.asarray(src_labels, dtype=np.int32).reshape(-1)
+    dst_lab = np.asarray(dst_labels, dtype=np.int32).reshape(-1)
+    raw_w, raw_balance = livox_balanced_corner_edge_weights(src_lab)
+    channels = (
+        (LABEL_CORNER, src_lab == LABEL_CORNER, dst_lab == LABEL_CORNER),
+        (LABEL_EDGE, edge_mask(src_lab), edge_mask(dst_lab)),
+    )
+    src_chunks, sl_chunks = [], []
+    dst_chunks, dl_chunks = [], []
+    for ch, sm, dm in channels:
+        if int(sm.sum()) == 0 or int(dm.sum()) == 0:
+            continue
+        spts, _ = voxel_downsample_weighted(
+            src_all[sm], np.ones(int(sm.sum()), dtype=np.float64), voxel)
+        dpts, _ = voxel_downsample_weighted(
+            dst_all[dm], np.ones(int(dm.sum()), dtype=np.float64), voxel)
+        if len(spts) == 0 or len(dpts) == 0:
+            continue
+        src_chunks.append(spts)
+        sl_chunks.append(np.full(len(spts), ch, dtype=np.int32))
+        dst_chunks.append(dpts)
+        dl_chunks.append(np.full(len(dpts), ch, dtype=np.int32))
+    if not src_chunks or not dst_chunks:
+        raise RuntimeError("not enough labeled corners/edges for ICP")
+    src0 = np.concatenate(src_chunks, axis=0)
+    sl = np.concatenate(sl_chunks, axis=0)
+    dst = np.concatenate(dst_chunks, axis=0)
+    dl = np.concatenate(dl_chunks, axis=0)
+    n_c = int((sl == LABEL_CORNER).sum())
+    n_e = int((sl == LABEL_EDGE).sum())
+    w_c = (float(n_e) / float(n_c)) if n_c > 0 and n_e > 0 else 1.0
+    sw = np.ones(len(sl), dtype=np.float64)
+    sw[sl == LABEL_CORNER] = w_c
+    dw = np.ones(len(dl), dtype=np.float64)
+    trees = {}
+    for ch in (LABEL_CORNER, LABEL_EDGE):
+        rows = np.flatnonzero(dl == ch)
+        if len(rows) >= 1:
+            trees[ch] = (cKDTree(dst[rows, :2]), rows)
+    T = np.eye(4)
+    last = None
+    thresh = float(max_dist)
+    for it in range(int(max_iter)):
+        src = transform_points(T, src0)
+        dist = np.full(len(src), np.inf)
+        idx = np.zeros(len(src), dtype=np.int64)
+        for ch, (tree, rows) in trees.items():
+            sel = sl == ch
+            if not np.any(sel):
+                continue
+            d, j = tree.query(src[sel, :2], k=1)
+            dist[sel] = d
+            idx[sel] = rows[np.asarray(j, dtype=np.int64)]
+        keep = dist < thresh
+        if int(keep.sum()) < min_pairs:
+            thresh *= 1.4
+            if thresh > 0.25:
+                break
+            continue
+        p = src[keep]
+        q = dst[idx[keep]]
+        pair_w = sw[keep] * dw[idx[keep]]
+        step, t2, r2, tz = _se2_weighted(
+            p, q, pair_w, allow_yaw=allow_yaw, allow_z=allow_z)
+        T = step.dot(T)
+        rmse = float(np.sqrt(np.average(dist[keep] ** 2, weights=pair_w)))
+        last = {
+            "iter": it + 1,
+            "pairs": int(keep.sum()),
+            "rmse": rmse,
+            "median": float(np.median(dist[keep])),
+            "T": T,
+            "n_src": int(src0.shape[0]),
+            "n_dst": int(dst.shape[0]),
+            "n_src_corner": n_c,
+            "n_src_edge": n_e,
+            "n_dst_corner": int((dl == LABEL_CORNER).sum()),
+            "n_dst_edge": int((dl == LABEL_EDGE).sum()),
+            "w_corner": w_c,
+            "w_edge": 1.0,
+            "corner_mass": float(n_c) * w_c,
+            "edge_mass": float(n_e),
+            "raw_balance": raw_balance,
+        }
+        yaw = float(np.arctan2(r2[1, 0], r2[0, 0]))
+        if np.linalg.norm(t2) < 1e-5 and abs(yaw) < 1e-5 and abs(tz) < 1e-5:
+            break
+        thresh = max(0.025, 0.75 * thresh)
+    if last is None:
+        raise RuntimeError("ICP found no corner/edge correspondences")
+    last["src_raw_weights"] = raw_w
+    return T, last
+
+
+def _feature_residual_shares(cam, lid, cam_labels, lid_labels):
+    """Corner vs edge weighted SSE share using Livox count-balanced weights."""
+    cam_lab = np.asarray(cam_labels, dtype=np.int32)
+    lid_lab = np.asarray(lid_labels, dtype=np.int32)
+    w, balance = livox_balanced_corner_edge_weights(lid_lab)
+    cam_c = cam[cam_lab == LABEL_CORNER]
+    lid_c = lid[lid_lab == LABEL_CORNER]
+    cam_e = cam[edge_mask(cam_lab)]
+    lid_e = lid[edge_mask(lid_lab)]
+    sse_c, n_c = xy_weighted_sse(lid_c, cam_c, w[lid_lab == LABEL_CORNER])
+    sse_e, n_e = xy_weighted_sse(lid_e, cam_e, w[edge_mask(lid_lab)])
+    total = sse_c + sse_e
+    share_c = (sse_c / total) if total > 0 and np.isfinite(total) else float("nan")
+    share_e = (sse_e / total) if total > 0 and np.isfinite(total) else float("nan")
+    rmse_c, _ = xy_nn_rmse(lid_c, cam_c)
+    rmse_e, _ = xy_nn_rmse(lid_e, cam_e)
+    out = dict(balance)
+    out.update({
+        "corner_sse": sse_c,
+        "edge_sse": sse_e,
+        "corner_share": share_c,
+        "edge_share": share_e,
+        "xy_rmse_corners_m": rmse_c,
+        "xy_rmse_edges_m": rmse_e,
+        "n_corner_pairs": n_c,
+        "n_edge_pairs": n_e,
+    })
+    return out
+
+
+def compose_xy_full_edges_mean_z(
+    cam_pts, lid_pts, cam_labels=None, lid_labels=None,
+    full_voxel=0.015, edge_voxel=0.01,
+    full_max_dist=0.12, edge_max_dist=0.08,
+    full_min_pairs=25, edge_min_pairs=8,
+):
+    """Planar ICP: all table points, then balanced corners+edges, then mean-z.
+
+    T maps Livox table points onto camera table points in the same frame.
+    XY/yaw come from ICP score; z is the Livox vs camera mean-height gap.
+    Stage 2 matches corners to corners and edges to edges. Each Livox corner
+    is weighted so ``n_corner * w_corner == n_edge * w_edge``.
+    """
+    cam = np.asarray(cam_pts, dtype=np.float64).reshape(-1, 3)
+    lid = np.asarray(lid_pts, dtype=np.float64).reshape(-1, 3)
+    T_full, stats_full = icp_xy_yaw(
+        lid, cam, max_iter=50, max_dist=full_max_dist, voxel=full_voxel,
+        min_pairs=full_min_pairs, corner_w=1.0, allow_yaw=True, allow_z=False)
+    lid_full = transform_points(T_full, lid)
+    T_feat = np.eye(4)
+    stats_feat = {"skipped": True}
+    if cam_labels is not None and lid_labels is not None:
+        n_src = int(
+            ((np.asarray(lid_labels) == LABEL_CORNER) | edge_mask(lid_labels)).sum())
+        n_dst = int(
+            ((np.asarray(cam_labels) == LABEL_CORNER) | edge_mask(cam_labels)).sum())
+        if n_src >= edge_min_pairs and n_dst >= edge_min_pairs:
+            T_feat, stats_feat = icp_balanced_corners_edges(
+                lid_full, lid_labels, cam, cam_labels,
+                max_iter=50, max_dist=edge_max_dist, voxel=edge_voxel,
+                min_pairs=edge_min_pairs, allow_yaw=True, allow_z=False)
+            stats_feat["skipped"] = False
+    T_xy = T_feat.dot(T_full)
+    lid_xy = transform_points(T_xy, lid)
+    tz = mean_height_shift(lid_xy, cam)
+    T_z = np.eye(4)
+    T_z[2, 3] = tz
+    T = T_z.dot(T_xy)
+    lid_after = transform_points(T, lid)
+    full_score_before, full_n_before = xy_nn_rmse(lid, cam)
+    full_score_after, full_n_after = xy_nn_rmse(lid_after, cam)
+    edge_score_before, edge_score_after = None, None
+    corner_score_before, corner_score_after = None, None
+    shares_before, shares_after = None, None
+    if cam_labels is not None and lid_labels is not None:
+        cam_e = cam[edge_mask(cam_labels)]
+        lid_e0 = lid[edge_mask(lid_labels)]
+        lid_e1 = lid_after[edge_mask(lid_labels)]
+        if len(cam_e) and len(lid_e0):
+            edge_score_before, _ = xy_nn_rmse(lid_e0, cam_e)
+            edge_score_after, _ = xy_nn_rmse(lid_e1, cam_e)
+        cam_c = cam[np.asarray(cam_labels) == LABEL_CORNER]
+        lid_c0 = lid[np.asarray(lid_labels) == LABEL_CORNER]
+        lid_c1 = lid_after[np.asarray(lid_labels) == LABEL_CORNER]
+        if len(cam_c) and len(lid_c0):
+            corner_score_before, _ = xy_nn_rmse(lid_c0, cam_c)
+            corner_score_after, _ = xy_nn_rmse(lid_c1, cam_c)
+        shares_before = _feature_residual_shares(cam, lid, cam_labels, lid_labels)
+        shares_after = _feature_residual_shares(
+            cam, lid_after, cam_labels, lid_labels)
+    stats_feat_out = dict(stats_feat)
+    stats_feat_out.pop("src_raw_weights", None)
+    stats_feat_out.pop("T", None)
+    return T, {
+        "mode": "xy_full_balanced_corners_edges_mean_z",
+        "full": stats_full,
+        "features": stats_feat_out,
+        "mean_z_shift_m": tz,
+        "camera_mean_z_m": float(cam[:, 2].mean()),
+        "livox_mean_z_before_m": float(lid[:, 2].mean()),
+        "livox_mean_z_after_m": float(lid_after[:, 2].mean()),
+        "xy_rmse_all_before_m": full_score_before,
+        "xy_rmse_all_after_m": full_score_after,
+        "xy_pairs_all_before": full_n_before,
+        "xy_pairs_all_after": full_n_after,
+        "xy_rmse_edges_before_m": edge_score_before,
+        "xy_rmse_edges_after_m": edge_score_after,
+        "xy_rmse_corners_before_m": corner_score_before,
+        "xy_rmse_corners_after_m": corner_score_after,
+        "residual_share_before": shares_before,
+        "residual_share_after": shares_after,
+        "T_full": T_full,
+        "T_feat": T_feat,
+        "T_xy": T_xy,
+        "T": T,
+    }
+
+
+def run_xy_full_edges_mean_z_icp(cam_pts, lid_pts, cam_rgb=None, **kwargs):
+    """Crop table, then planar full-cloud + balanced corner/edge ICP and mean-z."""
+    icp_keys = (
+        "full_voxel", "edge_voxel", "full_max_dist", "edge_max_dist",
+        "full_min_pairs", "edge_min_pairs",
+    )
+    icp_kw = {k: kwargs.pop(k) for k in list(kwargs) if k in icp_keys}
+    prep = prepare_table_features(
+        cam_pts, lid_pts, cam_rgb=cam_rgb, **kwargs)
+    if not prep.get("ok"):
+        return prep
+    T, icp = compose_xy_full_edges_mean_z(
+        prep["cam_near"], prep["lid_near"],
+        cam_labels=prep["cam_labels"], lid_labels=prep["lid_labels"],
+        **icp_kw)
+    lid_after = transform_points(T, prep["lid_near"])
+    after_edges = table_edge_report(
+        prep["cam_near"], lid_after,
+        cam_labels=prep["cam_labels"], lid_labels=prep["lid_labels"])
+    before_edges = prep["before_edges"]
+    br_before = (before_edges.get("br_corner") or {}).get("residual_m")
+    br_after = (after_edges.get("br_corner") or {}).get("residual_m")
+    share_after = icp.get("residual_share_after") or {}
+    return {
+        "ok": True,
+        "stage": "xy_full_balanced_corners_edges_mean_z",
+        "icp_mode": "xy_full_balanced_corners_edges_mean_z",
+        "applied_extra_icp": True,
+        "patch": prep["patch"],
+        "plane": prep["plane"],
+        "outlier": prep["outlier"],
+        "n_camera_near": prep["n_camera_near"],
+        "n_livox_near": prep["n_livox_near"],
+        "n_camera_corner": prep["n_camera_corner"],
+        "n_livox_corner": prep["n_livox_corner"],
+        "n_camera_bottom_edge": prep["n_camera_bottom_edge"],
+        "n_livox_bottom_edge": prep["n_livox_bottom_edge"],
+        "n_camera_right_edge": prep["n_camera_right_edge"],
+        "n_livox_right_edge": prep["n_livox_right_edge"],
+        "br_corner_before_m": br_before,
+        "br_corner_after_m": br_after,
+        "w_corner": share_after.get("w_corner"),
+        "w_edge": share_after.get("w_edge"),
+        "corner_mass": share_after.get("corner_mass"),
+        "edge_mass": share_after.get("edge_mass"),
+        "corner_share_after": share_after.get("corner_share"),
+        "edge_share_after": share_after.get("edge_share"),
+        "icp": {
+            k: (v.tolist() if hasattr(v, "tolist") else v)
+            for k, v in icp.items()
+            if k not in ("T", "T_full", "T_feat", "T_edge", "T_xy")
+        },
+        "T_livox_to_camera": T.tolist(),
+        "icp_translation_m": translation_m(T),
+        "icp_rotation_deg": rotation_deg(T),
+        "xy_rmse_all_before_m": icp["xy_rmse_all_before_m"],
+        "xy_rmse_all_after_m": icp["xy_rmse_all_after_m"],
+        "xy_rmse_edges_before_m": icp["xy_rmse_edges_before_m"],
+        "xy_rmse_edges_after_m": icp["xy_rmse_edges_after_m"],
+        "xy_rmse_corners_before_m": icp["xy_rmse_corners_before_m"],
+        "xy_rmse_corners_after_m": icp["xy_rmse_corners_after_m"],
+        "mean_z_shift_m": icp["mean_z_shift_m"],
+        "before": {"edges": before_edges},
+        "after": {"edges": after_edges},
+        "clouds": {
+            "camera_table": prep["cam_near"],
+            "camera_rgb": prep["cam_near_rgb"],
+            "camera_labels": prep["cam_labels"],
+            "livox_table": prep["lid_near"],
+            "livox_icp": lid_after,
+            "livox_labels": prep["lid_labels"],
+            "livox_outliers": prep["lid_rejected"],
+        },
+    }
 
 
 def hull_sharp_corners(points, min_turn_deg=50.0, max_keep=6):
@@ -1207,7 +1617,7 @@ def _write_xy_png(path, cam_pts, lid_pts, title, cam_labels=None, lid_labels=Non
     return True
 
 
-def run_table_patch_icp(
+def prepare_table_features(
     cam_pts,
     lid_pts,
     cam_rgb=None,
@@ -1219,15 +1629,16 @@ def run_table_patch_icp(
     near_radius=0.12,
     inlier_radius=0.02,
     hull_band=0.01,
-    icp_max_dist=0.12,
-    icp_voxel=0.015,
     interior_w=1.0,
     edge_w=12.0,
     corner_w=400.0,
     anchor_radius=0.025,
-    corners_only=False,
 ):
-    """Crop highest camera table + nearby Livox, then ICP Livox onto D555."""
+    """Crop highest camera table + nearby Livox; label BR corner and sides.
+
+    Does not run ICP. Points stay in the caller's frame.
+    """
+    del interior_w, edge_w, corner_w
     cam_pts = np.asarray(cam_pts, dtype=np.float64).reshape(-1, 3)
     lid_pts = np.asarray(lid_pts, dtype=np.float64).reshape(-1, 3)
     if cam_rgb is not None:
@@ -1276,8 +1687,8 @@ def run_table_patch_icp(
     lid_dense, lid_dense_mask = densest_xy_component(lid_near, cell=min(cell, 0.02))
     cam_labels = np.zeros((len(cam_near),), dtype=np.int32)
     lid_labels = np.zeros((len(lid_near),), dtype=np.int32)
-    cam_sub, cam_corners = classify_table_features(cam_dense)
-    lid_sub, lid_corners_local = classify_table_features(lid_dense)
+    cam_sub, _cam_corners_local = classify_table_features(cam_dense)
+    lid_sub, _lid_corners_local = classify_table_features(lid_dense)
     cam_labels[cam_dense_mask] = cam_sub
     cam_labels = demote_interior_corners(cam_near, cam_labels)
     cam_br = bottom_right_table_corner(cam_near, cam_labels)
@@ -1317,14 +1728,107 @@ def run_table_patch_icp(
     lid_corners = lid_near[lid_labels == LABEL_CORNER] if len(lid_near) else lid_near
     cam_corners = cam_near[cam_labels == LABEL_CORNER] if len(cam_near) else cam_near
     outlier_info["n_rejected"] = int(len(lid_rejected))
-    cam_w = _channel_weights(cam_labels)
-    lid_w = _channel_weights(lid_labels)
-
     before_edges = table_edge_report(
         cam_near, lid_near, cam_labels=cam_labels, lid_labels=lid_labels)
     before_rmse, before_pairs = (
         nn_rmse(lid_near, cam_near, max_dist=0.08)
         if len(cam_near) and len(lid_near) else (float("nan"), 0))
+    cam_bottom = cam_near[cam_labels == LABEL_BOTTOM_EDGE] if len(cam_near) else cam_near
+    cam_right = cam_near[cam_labels == LABEL_RIGHT_EDGE] if len(cam_near) else cam_near
+    lid_bottom = lid_near[lid_labels == LABEL_BOTTOM_EDGE] if len(lid_near) else lid_near
+    lid_right = lid_near[lid_labels == LABEL_RIGHT_EDGE] if len(lid_near) else lid_near
+    return {
+        "ok": True,
+        "stage": "features",
+        "patch": {
+            "n_cells": patch["n_cells"],
+            "max_mean_z": patch["max_mean_z"],
+            "patch_mean_z": patch["patch_mean_z"],
+            "n_table_before_plane": int(patch["n_points"]),
+        },
+        "plane": plane,
+        "outlier": outlier_info,
+        "cam_near": cam_near,
+        "cam_near_rgb": cam_near_rgb,
+        "lid_near": lid_near,
+        "lid_rejected": lid_rejected,
+        "cam_labels": cam_labels,
+        "lid_labels": lid_labels,
+        "cam_corners": cam_corners,
+        "lid_corners": lid_corners,
+        "cam_bottom": cam_bottom,
+        "cam_right": cam_right,
+        "lid_bottom": lid_bottom,
+        "lid_right": lid_right,
+        "cam_br": None if cam_br is None else [float(v) for v in cam_br],
+        "lid_br": None if lid_br is None else [float(v) for v in lid_br],
+        "before_edges": before_edges,
+        "before_rmse": before_rmse,
+        "before_pairs": before_pairs,
+        "n_camera_table": int(len(table_cam)),
+        "n_livox_aabb": int(len(lid_aabb)),
+        "n_camera_near": int(len(cam_near)),
+        "n_livox_near": int(len(lid_near)),
+        "n_livox_rejected": int(len(lid_rejected)),
+        "n_camera_edge": int((cam_labels == LABEL_EDGE).sum()),
+        "n_camera_bottom_edge": int((cam_labels == LABEL_BOTTOM_EDGE).sum()),
+        "n_camera_right_edge": int((cam_labels == LABEL_RIGHT_EDGE).sum()),
+        "n_camera_corner": int((cam_labels == LABEL_CORNER).sum()),
+        "n_livox_edge": int((lid_labels == LABEL_EDGE).sum()),
+        "n_livox_bottom_edge": int((lid_labels == LABEL_BOTTOM_EDGE).sum()),
+        "n_livox_right_edge": int((lid_labels == LABEL_RIGHT_EDGE).sum()),
+        "n_livox_corner": int((lid_labels == LABEL_CORNER).sum()),
+        "bottom_edge_gap_m": _xy_nn_gap(lid_bottom, cam_bottom),
+        "right_edge_gap_m": _xy_nn_gap(lid_right, cam_right),
+        "anchor_radius_m": float(anchor_radius),
+    }
+
+
+def run_table_patch_icp(
+    cam_pts,
+    lid_pts,
+    cam_rgb=None,
+    cell=0.04,
+    z_band=0.03,
+    min_cell_n=15,
+    xy_margin=0.08,
+    z_margin=0.04,
+    near_radius=0.12,
+    inlier_radius=0.02,
+    hull_band=0.01,
+    icp_max_dist=0.12,
+    icp_voxel=0.015,
+    interior_w=1.0,
+    edge_w=12.0,
+    corner_w=400.0,
+    anchor_radius=0.025,
+    corners_only=False,
+):
+    """Crop highest camera table + nearby Livox, then ICP Livox onto D555."""
+    prep = prepare_table_features(
+        cam_pts, lid_pts, cam_rgb=cam_rgb, cell=cell, z_band=z_band,
+        min_cell_n=min_cell_n, xy_margin=xy_margin, z_margin=z_margin,
+        near_radius=near_radius, inlier_radius=inlier_radius,
+        hull_band=hull_band, interior_w=interior_w, edge_w=edge_w,
+        corner_w=corner_w, anchor_radius=anchor_radius)
+    if not prep.get("ok"):
+        return prep
+    cam_near = prep["cam_near"]
+    cam_near_rgb = prep["cam_near_rgb"]
+    lid_near = prep["lid_near"]
+    lid_rejected = prep["lid_rejected"]
+    cam_labels = prep["cam_labels"]
+    lid_labels = prep["lid_labels"]
+    cam_corners = prep["cam_corners"]
+    lid_corners = prep["lid_corners"]
+    cam_w = _channel_weights(cam_labels)
+    lid_w = _channel_weights(lid_labels)
+    before_edges = prep["before_edges"]
+    before_rmse = prep["before_rmse"]
+    before_pairs = prep["before_pairs"]
+    outlier_info = prep["outlier"]
+    plane = prep["plane"]
+    patch = prep["patch"]
 
     icp = None
     T = np.eye(4)
@@ -1383,15 +1887,10 @@ def run_table_patch_icp(
     return {
         "ok": icp is not None and "error" not in icp,
         "stage": "icp" if (icp is None or "error" not in icp) else "icp_failed",
-        "patch": {
-            "n_cells": patch["n_cells"],
-            "max_mean_z": patch["max_mean_z"],
-            "patch_mean_z": patch["patch_mean_z"],
-            "n_table_before_plane": int(patch["n_points"]),
-        },
+        "patch": patch,
         "plane": plane,
-        "n_camera_table": int(len(table_cam)),
-        "n_livox_aabb": int(len(lid_aabb)),
+        "n_camera_table": int(prep["n_camera_table"]),
+        "n_livox_aabb": int(prep["n_livox_aabb"]),
         "n_camera_near": int(len(cam_near)),
         "n_livox_near": int(len(lid_near)),
         "n_livox_rejected": int(len(lid_rejected)),
@@ -1451,6 +1950,235 @@ def run_table_patch_icp(
     }
 
 
+def _write_xy_html(path, cam_pts, lid_pts, title, cam_labels=None, lid_labels=None,
+                   cam_corner=None, lid_corner=None):
+    cam = np.asarray(cam_pts).reshape(-1, 3) if len(cam_pts) else np.zeros((0, 3))
+    lid = np.asarray(lid_pts).reshape(-1, 3) if len(lid_pts) else np.zeros((0, 3))
+    traces = []
+
+    def _trace(pts, name, color, size=4, symbol="circle"):
+        pts = np.asarray(pts).reshape(-1, 3)
+        if len(pts) == 0:
+            return
+        traces.append({
+            "type": "scatter", "mode": "markers", "name": name,
+            "x": [float(v) for v in pts[:, 0]],
+            "y": [float(v) for v in pts[:, 1]],
+            "marker": {"size": size, "color": color, "symbol": symbol},
+        })
+
+    if cam_labels is None:
+        _trace(cam, "D555", "#7ec8ff", 3)
+    else:
+        lab = np.asarray(cam_labels)
+        _trace(cam[lab == LABEL_INTERIOR], "D555 interior", "#355a73", 2)
+        _trace(cam[lab == LABEL_EDGE], "D555 other edge", "#ffd24a", 6)
+        _trace(cam[lab == LABEL_BOTTOM_EDGE], "D555 bottom", "#ff7828", 8)
+        _trace(cam[lab == LABEL_RIGHT_EDGE], "D555 right", "#50ff78", 8)
+        _trace(cam[lab == LABEL_CORNER], "D555 corner", "#00e5ff", 10)
+    if lid_labels is None:
+        _trace(lid, "Livox", "#e040a0", 3, "x")
+    else:
+        lab = np.asarray(lid_labels)
+        _trace(lid[lab == LABEL_INTERIOR], "Livox interior", "#7a3060", 2, "x")
+        _trace(lid[lab == LABEL_EDGE], "Livox other edge", "#ff7ad9", 6, "x")
+        _trace(lid[lab == LABEL_BOTTOM_EDGE], "Livox bottom", "#ff9a40", 8, "x")
+        _trace(lid[lab == LABEL_RIGHT_EDGE], "Livox right", "#7cff9a", 8, "x")
+        _trace(lid[lab == LABEL_CORNER], "Livox corner", "#ff2d6a", 10, "x")
+    if cam_corner is not None:
+        _trace([cam_corner], "camera BR", "cyan", 14, "star")
+    if lid_corner is not None:
+        _trace([lid_corner], "livox BR", "lime", 14, "star")
+    html = (
+        "<!DOCTYPE html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\"/>"
+        "<title>%s</title>"
+        "<script src=\"https://cdn.plot.ly/plotly-2.27.0.min.js\"></script>"
+        "<style>body{margin:12px;background:#111;color:#eee;font-family:sans-serif}</style>"
+        "</head><body><h1>%s</h1><div id=\"xy\" style=\"height:640px\"></div>"
+        "<script>Plotly.newPlot('xy', %s, {title:%s,xaxis:{title:'x (m)'},"
+        "yaxis:{title:'y (m)',scaleanchor:'x'},plot_bgcolor:'#111',"
+        "paper_bgcolor:'#111',font:{color:'#eee'}}, {responsive:true});"
+        "</script></body></html>\n"
+    ) % (
+        title, title, json.dumps(traces), json.dumps(title),
+    )
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(html)
+    return True
+
+
+def dump_projected_table_features(cam_ply, lid_ply, out_dir, **kwargs):
+    """Label BR corner + bottom/right edges on already-projected clouds.
+
+    Does not apply a second ICP. Writes corners/ and edges/ separately.
+    """
+    frozen = frozen_table_feature_kwargs()
+    frozen.update(kwargs)
+    projection = frozen.pop(
+        "projection",
+        "elfin_base_link <- elfin_end_link <- suction_panel <- "
+        "eef_mount_adapter <- sensor")
+    common_frame = frozen.pop("common_frame", "elfin_base_link")
+    cam_pts, cam_rgb = read_ply_points(cam_ply)
+    lid_pts, _lid_rgb = read_ply_points(lid_ply)
+    prep = prepare_table_features(cam_pts, lid_pts, cam_rgb=cam_rgb, **frozen)
+    os.makedirs(out_dir, exist_ok=True)
+    corner_dir = os.path.join(out_dir, "corners")
+    edge_dir = os.path.join(out_dir, "edges")
+    os.makedirs(corner_dir, exist_ok=True)
+    os.makedirs(edge_dir, exist_ok=True)
+    if not prep.get("ok"):
+        serial = {
+            "ok": False,
+            "applied_extra_icp": False,
+            "common_frame": common_frame,
+            "projection": projection,
+            "reason": prep.get("stage") or "prepare_failed",
+            "prepare": _jsonable(prep),
+        }
+        with open(os.path.join(out_dir, "features.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(serial, handle, indent=2)
+            handle.write("\n")
+        return serial
+
+    cam_t = prep["cam_near"]
+    cam_c = prep["cam_near_rgb"]
+    lid_t = prep["lid_near"]
+    cam_lab = prep["cam_labels"]
+    lid_lab = prep["lid_labels"]
+    cam_corners = prep["cam_corners"]
+    lid_corners = prep["lid_corners"]
+    cam_bottom = prep["cam_bottom"]
+    cam_right = prep["cam_right"]
+    lid_bottom = prep["lid_bottom"]
+    lid_right = prep["lid_right"]
+    cam_other = cam_t[cam_lab == LABEL_EDGE] if len(cam_t) else cam_t
+    lid_other = lid_t[lid_lab == LABEL_EDGE] if len(lid_t) else lid_t
+    cam_edges = cam_t[edge_mask(cam_lab)] if len(cam_t) else cam_t
+    lid_edges = lid_t[edge_mask(lid_lab)] if len(lid_t) else lid_t
+    br = (prep.get("before_edges") or {}).get("br_corner") or {}
+
+    if cam_c is None:
+        write_ply_xyz(os.path.join(out_dir, "table_camera.ply"), cam_t)
+    else:
+        write_ply_xyzrgb(os.path.join(out_dir, "table_camera.ply"), cam_t, cam_c)
+    write_ply_xyz(os.path.join(out_dir, "table_livox.ply"), lid_t)
+    if len(cam_t) and len(lid_t):
+        pts, cols = _overlay_colors(cam_t, cam_c, lid_t)
+        write_ply_xyzrgb(os.path.join(out_dir, "overlay_table.ply"), pts, cols)
+
+    write_ply_xyz(os.path.join(corner_dir, "camera.ply"), cam_corners)
+    write_ply_xyz(os.path.join(corner_dir, "livox.ply"), lid_corners)
+    if len(cam_corners) or len(lid_corners):
+        pts, cols = _overlay_colors(
+            cam_corners, None, lid_corners, lid_rgb=(255, 45, 106))
+        write_ply_xyzrgb(os.path.join(corner_dir, "overlay.ply"), pts, cols)
+    _write_xy_png(
+        os.path.join(corner_dir, "xy.png"), cam_corners, lid_corners,
+        "BR corners only (no extra ICP)",
+        cam_labels=np.full(len(cam_corners), LABEL_CORNER, dtype=np.int32),
+        lid_labels=np.full(len(lid_corners), LABEL_CORNER, dtype=np.int32),
+        cam_corner=br.get("camera_xyz"), lid_corner=br.get("livox_xyz"))
+    _write_xy_html(
+        os.path.join(corner_dir, "overlay.html"), cam_corners, lid_corners,
+        "BR corners only (no extra ICP)",
+        cam_labels=np.full(len(cam_corners), LABEL_CORNER, dtype=np.int32),
+        lid_labels=np.full(len(lid_corners), LABEL_CORNER, dtype=np.int32),
+        cam_corner=br.get("camera_xyz"), lid_corner=br.get("livox_xyz"))
+
+    write_ply_xyz(os.path.join(edge_dir, "camera_bottom.ply"), cam_bottom)
+    write_ply_xyz(os.path.join(edge_dir, "camera_right.ply"), cam_right)
+    write_ply_xyz(os.path.join(edge_dir, "camera_other.ply"), cam_other)
+    write_ply_xyz(os.path.join(edge_dir, "livox_bottom.ply"), lid_bottom)
+    write_ply_xyz(os.path.join(edge_dir, "livox_right.ply"), lid_right)
+    write_ply_xyz(os.path.join(edge_dir, "livox_other.ply"), lid_other)
+    if len(cam_edges) or len(lid_edges):
+        cam_edge_lab = cam_lab[edge_mask(cam_lab)] if len(cam_t) else cam_lab
+        lid_edge_lab = lid_lab[edge_mask(lid_lab)] if len(lid_t) else lid_lab
+        write_ply_xyzrgb(
+            os.path.join(edge_dir, "overlay.ply"),
+            *_overlay_colors(
+                cam_edges, _label_colors(cam_edge_lab) if len(cam_edges) else None,
+                lid_edges, lid_rgb=(255, 80, 200)))
+        _write_xy_png(
+            os.path.join(edge_dir, "xy.png"), cam_edges, lid_edges,
+            "Bottom / right / other edges (no extra ICP)",
+            cam_labels=cam_edge_lab, lid_labels=lid_edge_lab)
+        _write_xy_html(
+            os.path.join(edge_dir, "overlay.html"), cam_edges, lid_edges,
+            "Bottom / right / other edges (no extra ICP)",
+            cam_labels=cam_edge_lab, lid_labels=lid_edge_lab)
+
+    serial = {
+        "ok": True,
+        "applied_extra_icp": False,
+        "common_frame": common_frame,
+        "projection": projection,
+        "frozen_revision": FROZEN_REVISION,
+        "camera_ply": os.path.abspath(cam_ply),
+        "livox_ply": os.path.abspath(lid_ply),
+        "out_dir": os.path.abspath(out_dir),
+        "n_camera_near": prep["n_camera_near"],
+        "n_livox_near": prep["n_livox_near"],
+        "n_camera_corner": prep["n_camera_corner"],
+        "n_livox_corner": prep["n_livox_corner"],
+        "n_camera_bottom_edge": prep["n_camera_bottom_edge"],
+        "n_livox_bottom_edge": prep["n_livox_bottom_edge"],
+        "n_camera_right_edge": prep["n_camera_right_edge"],
+        "n_livox_right_edge": prep["n_livox_right_edge"],
+        "n_camera_other_edge": prep["n_camera_edge"],
+        "n_livox_other_edge": prep["n_livox_edge"],
+        "camera_br_xyz": prep.get("cam_br"),
+        "livox_br_xyz": prep.get("lid_br"),
+        "camera_corner_centroid_xyz": _xyz_mean(cam_corners),
+        "livox_corner_centroid_xyz": _xyz_mean(lid_corners),
+        "camera_bottom_centroid_xyz": _xyz_mean(cam_bottom),
+        "livox_bottom_centroid_xyz": _xyz_mean(lid_bottom),
+        "camera_right_centroid_xyz": _xyz_mean(cam_right),
+        "livox_right_centroid_xyz": _xyz_mean(lid_right),
+        "br_corner_residual_m": br.get("residual_m"),
+        "bottom_edge_gap_m": prep.get("bottom_edge_gap_m"),
+        "right_edge_gap_m": prep.get("right_edge_gap_m"),
+        "edges": prep.get("before_edges"),
+        "files": {
+            "corners_html": "corners/overlay.html",
+            "corners_png": "corners/xy.png",
+            "corners_overlay_ply": "corners/overlay.ply",
+            "edges_html": "edges/overlay.html",
+            "edges_png": "edges/xy.png",
+            "edges_overlay_ply": "edges/overlay.ply",
+        },
+    }
+    with open(os.path.join(out_dir, "features.json"), "w", encoding="utf-8") as handle:
+        json.dump(_jsonable(serial), handle, indent=2)
+        handle.write("\n")
+    md = [
+        "# Projected table corners and edges (no extra ICP)",
+        "",
+        "- Common frame: `%s`" % common_frame,
+        "- Projection: `%s`" % projection,
+        "- Applied extra ICP: `false`",
+        "- Camera / Livox table points: `%s` / `%s`" % (
+            serial["n_camera_near"], serial["n_livox_near"]),
+        "- Corners (camera / livox): `%s` / `%s`" % (
+            serial["n_camera_corner"], serial["n_livox_corner"]),
+        "- Bottom edge (camera / livox): `%s` / `%s`" % (
+            serial["n_camera_bottom_edge"], serial["n_livox_bottom_edge"]),
+        "- Right edge (camera / livox): `%s` / `%s`" % (
+            serial["n_camera_right_edge"], serial["n_livox_right_edge"]),
+        "- BR corner residual: `%s` m" % serial["br_corner_residual_m"],
+        "- Bottom / right edge NN gap: `%s` / `%s` m" % (
+            serial["bottom_edge_gap_m"], serial["right_edge_gap_m"]),
+        "- Corners: `corners/overlay.html` `corners/xy.png` `corners/overlay.ply`",
+        "- Edges: `edges/overlay.html` `edges/xy.png` `edges/overlay.ply`",
+        "",
+    ]
+    with open(os.path.join(out_dir, "INDEX.md"), "w", encoding="utf-8") as handle:
+        handle.write("\n".join(md) + "\n")
+    return _jsonable(serial)
+
+
 def dump_table_patch_icp(cam_ply, lid_ply, out_dir, **kwargs):
     cam_pts, cam_rgb = read_ply_points(cam_ply)
     lid_pts, _lid_rgb = read_ply_points(lid_ply)
@@ -1483,7 +2211,13 @@ def dump_table_patch_icp(cam_ply, lid_ply, out_dir, **kwargs):
             cam_t[np.asarray(cam_lab) == LABEL_CORNER])
         write_ply_xyz(
             os.path.join(out_dir, "table_camera_edges.ply"),
-            cam_t[np.asarray(cam_lab) == LABEL_EDGE])
+            cam_t[edge_mask(cam_lab)])
+        write_ply_xyz(
+            os.path.join(out_dir, "table_camera_bottom_edge.ply"),
+            cam_t[np.asarray(cam_lab) == LABEL_BOTTOM_EDGE])
+        write_ply_xyz(
+            os.path.join(out_dir, "table_camera_right_edge.ply"),
+            cam_t[np.asarray(cam_lab) == LABEL_RIGHT_EDGE])
     if lid_lab is not None and len(lid_t):
         write_ply_xyzrgb(
             os.path.join(out_dir, "table_livox_features_before.ply"),
@@ -1493,7 +2227,13 @@ def dump_table_patch_icp(cam_ply, lid_ply, out_dir, **kwargs):
             lid_t[np.asarray(lid_lab) == LABEL_CORNER])
         write_ply_xyz(
             os.path.join(out_dir, "table_livox_edges_before.ply"),
-            lid_t[np.asarray(lid_lab) == LABEL_EDGE])
+            lid_t[edge_mask(lid_lab)])
+        write_ply_xyz(
+            os.path.join(out_dir, "table_livox_bottom_edge_before.ply"),
+            lid_t[np.asarray(lid_lab) == LABEL_BOTTOM_EDGE])
+        write_ply_xyz(
+            os.path.join(out_dir, "table_livox_right_edge_before.ply"),
+            lid_t[np.asarray(lid_lab) == LABEL_RIGHT_EDGE])
     if lid_lab is not None and len(lid_i):
         write_ply_xyzrgb(
             os.path.join(out_dir, "table_livox_features_after_icp.ply"),
@@ -1542,6 +2282,105 @@ def dump_table_patch_icp(cam_ply, lid_ply, out_dir, **kwargs):
         "- After edge gap: `%s` m" % (
             (report.get("after", {}).get("edges") or {}).get("edge_gap_m")),
         "- Coincide corner+edge: `%s`" % report.get("coincide_table_corner_and_edge"),
+        "",
+    ]
+    with open(os.path.join(out_dir, "INDEX.md"), "w", encoding="utf-8") as handle:
+        handle.write("\n".join(md) + "\n")
+    return _jsonable(serial)
+
+
+def dump_xy_full_edges_mean_z(cam_ply, lid_ply, out_dir, **kwargs):
+    """Dump planar full-cloud + edge ICP with mean-z. Does not write URDF."""
+    frozen = frozen_table_feature_kwargs()
+    for key, val in list(frozen.items()):
+        kwargs.setdefault(key, val)
+    cam_pts, cam_rgb = read_ply_points(cam_ply)
+    lid_pts, _lid_rgb = read_ply_points(lid_ply)
+    report = run_xy_full_edges_mean_z_icp(
+        cam_pts, lid_pts, cam_rgb=cam_rgb, **kwargs)
+    os.makedirs(out_dir, exist_ok=True)
+    clouds = report.pop("clouds", {})
+    cam_t = clouds.get("camera_table", np.zeros((0, 3)))
+    cam_c = clouds.get("camera_rgb")
+    lid_t = clouds.get("livox_table", np.zeros((0, 3)))
+    lid_i = clouds.get("livox_icp", np.zeros((0, 3)))
+    cam_lab = clouds.get("camera_labels")
+    lid_lab = clouds.get("livox_labels")
+    vis_b = (report.get("before", {}).get("edges") or {}).get("br_corner") or {}
+    vis_a = (report.get("after", {}).get("edges") or {}).get("br_corner") or {}
+    if cam_c is None:
+        write_ply_xyz(os.path.join(out_dir, "table_camera.ply"), cam_t)
+    else:
+        write_ply_xyzrgb(os.path.join(out_dir, "table_camera.ply"), cam_t, cam_c)
+    write_ply_xyz(os.path.join(out_dir, "table_livox_before.ply"), lid_t)
+    write_ply_xyz(os.path.join(out_dir, "table_livox_after_icp.ply"), lid_i)
+    if len(cam_t) and len(lid_t):
+        pts, cols = _overlay_colors(cam_t, cam_c, lid_t)
+        write_ply_xyzrgb(os.path.join(out_dir, "overlay_before.ply"), pts, cols)
+    if len(cam_t) and len(lid_i):
+        pts, cols = _overlay_colors(cam_t, cam_c, lid_i, lid_rgb=(80, 255, 120))
+        write_ply_xyzrgb(os.path.join(out_dir, "overlay_after_icp.ply"), pts, cols)
+    _write_xy_png(
+        os.path.join(out_dir, "table_xy_before.png"), cam_t, lid_t,
+        "All table points before XY ICP",
+        cam_labels=cam_lab, lid_labels=lid_lab,
+        cam_corner=vis_b.get("camera_xyz"), lid_corner=vis_b.get("livox_xyz"))
+    _write_xy_png(
+        os.path.join(out_dir, "table_xy_after_icp.png"), cam_t, lid_i,
+        "All table + balanced corners/edges XY ICP, mean-z",
+        cam_labels=cam_lab, lid_labels=lid_lab,
+        cam_corner=vis_a.get("camera_xyz"), lid_corner=vis_a.get("livox_xyz"))
+    corner_dir = os.path.join(out_dir, "corners")
+    edge_dir = os.path.join(out_dir, "edges")
+    os.makedirs(corner_dir, exist_ok=True)
+    os.makedirs(edge_dir, exist_ok=True)
+    if cam_lab is not None and lid_lab is not None and len(cam_t) and len(lid_i):
+        cam_corners = cam_t[np.asarray(cam_lab) == LABEL_CORNER]
+        lid_corners = lid_i[np.asarray(lid_lab) == LABEL_CORNER]
+        cam_edges = cam_t[edge_mask(cam_lab)]
+        lid_edges = lid_i[edge_mask(lid_lab)]
+        cam_edge_lab = cam_lab[edge_mask(cam_lab)]
+        lid_edge_lab = lid_lab[edge_mask(lid_lab)]
+        _write_xy_png(
+            os.path.join(corner_dir, "xy.png"), cam_corners, lid_corners,
+            "BR corners after balanced corner/edge ICP",
+            cam_labels=np.full(len(cam_corners), LABEL_CORNER, dtype=np.int32),
+            lid_labels=np.full(len(lid_corners), LABEL_CORNER, dtype=np.int32),
+            cam_corner=vis_a.get("camera_xyz"), lid_corner=vis_a.get("livox_xyz"))
+        _write_xy_png(
+            os.path.join(edge_dir, "xy.png"), cam_edges, lid_edges,
+            "Bottom / right / other edges after balanced corner/edge ICP",
+            cam_labels=cam_edge_lab, lid_labels=lid_edge_lab)
+    serial = dict(report)
+    serial["frozen_revision"] = FROZEN_REVISION
+    serial["camera_ply"] = os.path.abspath(cam_ply)
+    serial["livox_ply"] = os.path.abspath(lid_ply)
+    serial["out_dir"] = os.path.abspath(out_dir)
+    with open(os.path.join(out_dir, "table_icp.json"), "w", encoding="utf-8") as handle:
+        json.dump(_jsonable(serial), handle, indent=2)
+        handle.write("\n")
+    md = [
+        "# Planar full-cloud + balanced corner/edge ICP, mean-z",
+        "",
+        "- Mode: `xy_full_balanced_corners_edges_mean_z`",
+        "- Livox corner/edge weight: `%s` / `%s` (mass `%s` / `%s`)" % (
+            report.get("w_corner"), report.get("w_edge"),
+            report.get("corner_mass"), report.get("edge_mass")),
+        "- Weighted residual share corner/edge after: `%s` / `%s`" % (
+            report.get("corner_share_after"), report.get("edge_share_after")),
+        "- XY RMSE all before/after: `%s` / `%s` m" % (
+            report.get("xy_rmse_all_before_m"), report.get("xy_rmse_all_after_m")),
+        "- XY RMSE corners before/after: `%s` / `%s` m" % (
+            report.get("xy_rmse_corners_before_m"), report.get("xy_rmse_corners_after_m")),
+        "- XY RMSE edges before/after: `%s` / `%s` m" % (
+            report.get("xy_rmse_edges_before_m"), report.get("xy_rmse_edges_after_m")),
+        "- Mean z shift: `%s` m" % report.get("mean_z_shift_m"),
+        "- BR corner residual before/after: `%s` / `%s` m" % (
+            report.get("br_corner_before_m"), report.get("br_corner_after_m")),
+        "- Translation: `%s` m  rotation: `%s` deg" % (
+            report.get("icp_translation_m"), report.get("icp_rotation_deg")),
+        "- Corners PNG: `corners/xy.png`",
+        "- Edges PNG: `edges/xy.png`",
         "",
     ]
     with open(os.path.join(out_dir, "INDEX.md"), "w", encoding="utf-8") as handle:

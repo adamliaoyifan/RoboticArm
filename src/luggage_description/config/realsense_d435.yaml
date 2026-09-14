@@ -72,13 +72,13 @@ camera:
       - 0.0
   physical:
     body_size:
-    - 0.02505
-    - 0.09
-    - 0.025
+    - 0.048
+    - 0.167
+    - 0.042
     long_axis: camera_link_y
     lens_face: camera_link_plus_x
-    mass: 0.072
-    baseline: 0.05
+    mass: 0.337
+    baseline: 0.095
   topics:
     color_image: /camera/color/image_raw
     color_info: /camera/color/camera_info

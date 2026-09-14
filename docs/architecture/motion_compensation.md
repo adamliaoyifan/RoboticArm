@@ -1,7 +1,8 @@
 # Motion compensation
 
-Both the RealSense D435 and the planned Livox Mid-360 are mounted on the
+Both the RealSense D555 PoE and the Livox Mid-360S are mounted on the
 end-effector adapter, so every arm motion moves them with 6 degrees of freedom.
+The locked joints and D555 housing are in [eef_sensor_frames.md](eef_sensor_frames.md).
 This document fixes how that motion is compensated before any geometry is
 estimated.
 
@@ -31,7 +32,8 @@ T_world_sensor(t) = FK(q(t)) * T_flange_sensor
 
 - `q(t)` comes from `/joint_states`, published at 50 Hz by the joint state
   broadcaster ([elfin_controllers_sim.yaml](../../src/elfin_control/config/elfin_controllers_sim.yaml)).
-- `T_flange_sensor` is a constant from the URDF, via `eef_mount_adapter`.
+- `T_flange_sensor` is the locked URDF chain through `eef_mount_adapter`
+  ([eef_sensor_frames.md](eef_sensor_frames.md)).
 - Interpolate **positions**. Do not integrate the reported `velocity` field;
   the settle tests already document that it is unreliable on this arm.
 

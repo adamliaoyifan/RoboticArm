@@ -1,8 +1,9 @@
-"""Eval-only Mid-360 vs D555 dump for mount-TF ICP.
+"""Eval-only Mid-360 vs D555 dump for mount-TF inspection.
 
-Offline mcap: no ROS graph. Camera TF and mounter TF are recorded as
-fixed; the adjustable edge is ``eef_mount_adapter -> mid360_mount_frame``.
-Does not run ICP and does not change online nodes or URDF.
+Offline mcap: no ROS graph. Projects Livox and D555 depth through
+``elfin_end_link (EOF) -> suction_panel -> eef_mount_adapter (mounter)``
+then the sensor branch. Writes the TF tree and ``elfin_base_link`` clouds.
+Does not run ICP.
 """
 from __future__ import division
 
@@ -42,15 +43,27 @@ from luggage_perception.eval.gate4_dump import write_ply_xyz
 from luggage_perception.ros_message_adapters import camera_info_frame_from_msg
 
 NS_PER_MS = 1_000_000
+EOF_FRAME = "elfin_end_link"
+PANEL_FRAME = "suction_panel"
 MOUNTER_FRAME = "eef_mount_adapter"
 LIVOX_FRAME = "livox_frame"
 MID360_MOUNT_FRAME = "mid360_mount_frame"
 CAMERA_LINK = "camera_link"
+BASE_FRAME = "elfin_base_link"
+
+LIVOX_FROM_EOF = (
+    EOF_FRAME, "suction_panel", MOUNTER_FRAME, MID360_MOUNT_FRAME, LIVOX_FRAME,
+)
+CAMERA_FROM_EOF = (
+    EOF_FRAME, "suction_panel", MOUNTER_FRAME, CAMERA_LINK, "d555_link",
+    "d555_color_frame", "d555_color_optical_frame",
+)
 
 _ADJUST_EDGE = (MOUNTER_FRAME, MID360_MOUNT_FRAME)
 _FIXED_EDGES = (
-    (MOUNTER_FRAME, CAMERA_LINK),
+    (EOF_FRAME, "suction_panel"),
     ("suction_panel", MOUNTER_FRAME),
+    (MOUNTER_FRAME, CAMERA_LINK),
     (MID360_MOUNT_FRAME, LIVOX_FRAME),
     (CAMERA_LINK, "d555_link"),
     ("d555_link", "d555_color_frame"),
@@ -122,6 +135,11 @@ def write_ply_xyzrgb(path, points, colors):
 
 
 def _desc_config(name):
+    src = os.path.abspath(os.path.join(
+        os.path.dirname(__file__), "..", "..", "..", "luggage_description",
+        "config", name))
+    if os.path.isfile(src):
+        return src
     try:
         from ament_index_python.packages import get_package_share_directory
         path = os.path.join(
@@ -130,14 +148,15 @@ def _desc_config(name):
             return path
     except Exception:
         pass
-    return os.path.abspath(os.path.join(
-        os.path.dirname(__file__), "..", "..", "..", "luggage_description",
-        "config", name))
+    return src
 
 
 def apply_current_xacro_mounts(tf_buffer):
-    """Overwrite bag static sensor-mount edges with current URDF xacro."""
+    """Overwrite bag static EEF sensor-mount edges with current URDF xacro."""
     from luggage_description.handeye_layer3 import T_xyz_rpy, parse_xacro_xyz_rpy
+    fl_xyz, fl_rpy = parse_xacro_xyz_rpy(
+        _desc_config("suction_flange_origin.xacro"),
+        "suction_flange_xyz", "suction_flange_rpy")
     cam_xyz, cam_rpy = parse_xacro_xyz_rpy(
         _desc_config("camera_mount_origin.xacro"),
         "cam_mount_xyz", "cam_mount_rpy")
@@ -151,22 +170,217 @@ def apply_current_xacro_mounts(tf_buffer):
         _desc_config("eef_mount_adapter_origin.xacro"),
         "adapter_mount_xyz", "adapter_mount_rpy")
     used = {
+        "suction_flange_xyz": [float(v) for v in fl_xyz],
+        "suction_flange_rpy": [float(v) for v in fl_rpy],
         "camera_mount_xyz": [float(v) for v in cam_xyz],
         "camera_mount_rpy": [float(v) for v in cam_rpy],
         "mid360_mount_xyz": [float(v) for v in mid_xyz],
         "mid360_mount_rpy": [float(v) for v in mid_rpy],
         "livox_optical_xyz": [float(v) for v in opt_xyz],
         "adapter_mount_xyz": [float(v) for v in adp_xyz],
+        "adapter_mount_rpy": [float(v) for v in adp_rpy],
     }
     tf_buffer.set_static(
-        "eef_mount_adapter", "camera_link", T_xyz_rpy(cam_xyz, cam_rpy))
+        EOF_FRAME, "suction_panel", T_xyz_rpy(fl_xyz, fl_rpy))
     tf_buffer.set_static(
-        "eef_mount_adapter", "mid360_mount_frame", T_xyz_rpy(mid_xyz, mid_rpy))
+        "suction_panel", MOUNTER_FRAME, T_xyz_rpy(adp_xyz, adp_rpy))
     tf_buffer.set_static(
-        "mid360_mount_frame", "livox_frame", T_xyz_rpy(opt_xyz, opt_rpy))
+        MOUNTER_FRAME, CAMERA_LINK, T_xyz_rpy(cam_xyz, cam_rpy))
     tf_buffer.set_static(
-        "suction_panel", "eef_mount_adapter", T_xyz_rpy(adp_xyz, adp_rpy))
+        MOUNTER_FRAME, MID360_MOUNT_FRAME, T_xyz_rpy(mid_xyz, mid_rpy))
+    tf_buffer.set_static(
+        MID360_MOUNT_FRAME, LIVOX_FRAME, T_xyz_rpy(opt_xyz, opt_rpy))
     return used
+
+
+def _xyz_rpy_from_T(mat):
+    from luggage_description.handeye_layer3 import R_to_rpy
+    xyz = [float(v) for v in np.asarray(mat)[:3, 3]]
+    rpy = [float(v) for v in R_to_rpy(np.asarray(mat)[:3, :3])]
+    return xyz, rpy
+
+
+def _hop_dict(parent, child, mat):
+    xyz, rpy = _xyz_rpy_from_T(mat)
+    return {
+        "parent": parent,
+        "child": child,
+        "xyz": xyz,
+        "rpy": rpy,
+        "matrix": np.asarray(mat, dtype=np.float64).tolist(),
+    }
+
+
+def describe_path(tf_buffer, ancestor, descendant, stamp_ns):
+    """Actual parent→child hops from ancestor down to descendant."""
+    hops = tf_buffer.path_from_to(ancestor, descendant, stamp_ns)
+    if hops is None:
+        return {
+            "frames": [str(ancestor), str(descendant)],
+            "ok": False,
+            "hops": [],
+            "T_first_from_last": None,
+        }
+    blob_hops = [_hop_dict(p, c, m) for p, c, m in hops]
+    composed = np.eye(4, dtype=np.float64)
+    for _p, _c, mat in hops:
+        composed = composed.dot(mat)
+    frames = [str(ancestor)] + [c for _p, c, _m in hops]
+    return {
+        "frames": frames,
+        "ok": True,
+        "hops": blob_hops,
+        "T_first_from_last": composed.tolist(),
+    }
+
+
+def describe_chain(tf_buffer, frames, stamp_ns):
+    """Named parent→child hops. Missing edge stops the chain."""
+    frames = [str(f) for f in frames]
+    hops = []
+    ok = True
+    for parent, child in zip(frames[:-1], frames[1:]):
+        mat = tf_buffer.lookup_matrix(parent, child, stamp_ns)
+        if mat is None:
+            hops.append({"parent": parent, "child": child, "missing": True})
+            ok = False
+            break
+        hops.append(_hop_dict(parent, child, mat))
+    composed = None
+    if ok and hops:
+        composed = np.eye(4, dtype=np.float64)
+        for hop in hops:
+            composed = composed.dot(np.asarray(hop["matrix"], dtype=np.float64))
+    return {
+        "frames": frames,
+        "ok": ok,
+        "hops": hops,
+        "T_first_from_last": None if composed is None else composed.tolist(),
+    }
+
+
+def lookup_sensor_to_frame(tf_buffer, target, source, stamp_ns,
+                           eof_frame=EOF_FRAME, mounter_frame=MOUNTER_FRAME,
+                           panel_frame=PANEL_FRAME):
+    """Project sensor points into *target* via EOF → panel → adapter → sensor."""
+    return tf_buffer.lookup_via_eof_mounter(
+        target, source, stamp_ns,
+        eof_frame=eof_frame, mounter_frame=mounter_frame,
+        panel_frame=panel_frame)
+
+
+def format_tf_tree_text(tree):
+    lines = [
+        "TF tree used for Mid-360 / D555 projection",
+        "stamp_ns: %s" % tree.get("stamp_ns"),
+        "EOF: %s" % tree.get("eof_frame"),
+        "panel: %s" % tree.get("panel_frame"),
+        "mounter: %s" % tree.get("mounter_frame"),
+        "base: %s" % tree.get("base_frame"),
+        "",
+        "elfin_end_link  [EOF]",
+        "└── suction_panel",
+        "    └── eef_mount_adapter  [mounter]",
+        "        ├── mid360_mount_frame",
+        "        │   └── livox_frame",
+        "        └── camera_link",
+        "            └── d555_link",
+        "                └── d555_color_frame",
+        "                    └── d555_color_optical_frame",
+        "",
+    ]
+
+    def _dump_chain(title, blob):
+        lines.append(title)
+        if not blob:
+            lines.append("  (missing)")
+            lines.append("")
+            return
+        lines.append("  ok: %s" % blob.get("ok"))
+        for hop in blob.get("hops") or []:
+            if hop.get("missing"):
+                lines.append("  MISSING  %s -> %s" % (
+                    hop.get("parent"), hop.get("child")))
+                continue
+            lines.append(
+                "  %s -> %s" % (hop["parent"], hop["child"]))
+            lines.append(
+                "    xyz_m  %.6f %.6f %.6f" % tuple(hop["xyz"]))
+            lines.append(
+                "    rpy    %.8f %.8f %.8f" % tuple(hop["rpy"]))
+        composed = blob.get("T_first_from_last")
+        if composed:
+            xyz, rpy = _xyz_rpy_from_T(np.asarray(composed))
+            lines.append("  composed xyz_m  %.6f %.6f %.6f" % tuple(xyz))
+            lines.append("  composed rpy    %.8f %.8f %.8f" % tuple(rpy))
+        lines.append("")
+
+    _dump_chain("arm: elfin_base_link -> elfin_end_link (bag FK)",
+                tree.get("arm_base_to_eof"))
+    _dump_chain(
+        "projection: elfin_base_link -> EOF -> suction_panel -> adapter -> Mid-360",
+        tree.get("base_to_livox"))
+    _dump_chain(
+        "projection: elfin_base_link -> EOF -> suction_panel -> adapter -> camera",
+        tree.get("base_to_optical"))
+    _dump_chain("EOF -> suction_panel -> adapter -> Mid-360 (livox_frame)",
+                tree.get("eof_to_livox"))
+    _dump_chain("EOF -> suction_panel -> adapter -> camera (optical)",
+                tree.get("eof_to_optical"))
+    base_liv = tree.get("T_elfin_base_link_from_livox_frame")
+    base_opt = tree.get("T_elfin_base_link_from_optical")
+    if base_liv:
+        xyz, rpy = _xyz_rpy_from_T(np.asarray(base_liv))
+        lines.append("elfin_base_link <- livox_frame")
+        lines.append("  xyz_m  %.6f %.6f %.6f" % tuple(xyz))
+        lines.append("  rpy    %.8f %.8f %.8f" % tuple(rpy))
+        lines.append("")
+    if base_opt:
+        xyz, rpy = _xyz_rpy_from_T(np.asarray(base_opt))
+        lines.append("elfin_base_link <- %s" % tree.get("optical_frame"))
+        lines.append("  xyz_m  %.6f %.6f %.6f" % tuple(xyz))
+        lines.append("  rpy    %.8f %.8f %.8f" % tuple(rpy))
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
+def build_tf_tree(tf_buffer, stamp_ns, optical_frame,
+                  eof_frame=EOF_FRAME, mounter_frame=MOUNTER_FRAME,
+                  base_frame=BASE_FRAME):
+    optical = str(optical_frame or CAMERA_FROM_EOF[-1])
+    cam_frames = CAMERA_FROM_EOF[:-1] + (optical,)
+    arm = describe_path(tf_buffer, base_frame, eof_frame, stamp_ns)
+    eof_livox = describe_chain(tf_buffer, LIVOX_FROM_EOF, stamp_ns)
+    eof_cam = describe_chain(tf_buffer, cam_frames, stamp_ns)
+    base_livox = describe_chain(
+        tf_buffer, (base_frame,) + LIVOX_FROM_EOF, stamp_ns)
+    base_cam = describe_chain(
+        tf_buffer, (base_frame,) + cam_frames, stamp_ns)
+    t_base_liv = lookup_sensor_to_frame(
+        tf_buffer, base_frame, LIVOX_FRAME, stamp_ns, eof_frame, mounter_frame)
+    t_base_opt = lookup_sensor_to_frame(
+        tf_buffer, base_frame, optical, stamp_ns, eof_frame, mounter_frame)
+    return {
+        "stamp_ns": int(stamp_ns),
+        "eof_frame": eof_frame,
+        "panel_frame": PANEL_FRAME,
+        "mounter_frame": mounter_frame,
+        "base_frame": base_frame,
+        "optical_frame": optical,
+        "arm_base_to_eof": arm,
+        "base_to_livox": base_livox,
+        "base_to_optical": base_cam,
+        "eof_to_livox": eof_livox,
+        "eof_to_optical": eof_cam,
+        "T_elfin_base_link_from_livox_frame":
+            None if t_base_liv is None else t_base_liv.tolist(),
+        "T_elfin_base_link_from_optical":
+            None if t_base_opt is None else t_base_opt.tolist(),
+        "projection": (
+            "elfin_base_link <- elfin_end_link <- suction_panel <- "
+            "eef_mount_adapter <- (mid360_mount_frame/livox_frame | camera)"
+        ),
+    }
 
 
 def ransac_plane(points, n_iter=80, thresh=0.012, rng_seed=0):
@@ -438,8 +652,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
                               join_tolerance_ms=30.0, lidar_slop_ms=80.0,
                               camera_stride=2, html_cap=8000,
                               source_iter=None, apply_xacro=True,
-                              extra_frames=("elfin_base_link", "world")):
-    """Dump RGB-D, CustomMsg lidar, TF, and mounter-frame overlay clouds."""
+                              extra_frames=(BASE_FRAME, "world")):
+    """Dump RGB-D, CustomMsg lidar, EOF→mounter TF tree, and base-frame clouds."""
     scan = scan_bag(bag_path)
     color_topic, depth_topic = select_image_topics(scan)
     mcap_path = find_mcap_file(bag_path)
@@ -544,8 +758,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
                 d16 = np.clip(d16, 0, 65535).astype(np.uint16)
             cv2.imwrite(os.path.join(depth_dir, "%06d.png" % idx), d16)
             pts_opt, cols = _deproject_rgb(depth, rgb, cam, camera_stride)
-            mat = tf_buffer.lookup_matrix(
-                mounter_frame, optical_frame, pair.stamp_ns)
+            mat = lookup_sensor_to_frame(
+                tf_buffer, mounter_frame, optical_frame, pair.stamp_ns)
             pts_m = None if mat is None else apply_matrix(mat, pts_opt)
             camera_clouds.append({
                 "index": idx,
@@ -579,7 +793,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
             write_ply_xyz(os.path.join(lidar_dir, "%06d.ply" % i), xyz)
             np.save(os.path.join(lidar_dir, "%06d.npy" % i), pts)
         src = row["frame_id"] or LIVOX_FRAME
-        mat = tf_buffer.lookup_matrix(mounter_frame, src, row["stamp_ns"])
+        mat = lookup_sensor_to_frame(
+            tf_buffer, mounter_frame, src, row["stamp_ns"])
         xyz_m = None if mat is None else apply_matrix(mat, xyz)
         if xyz_m is not None and len(xyz_m):
             lidar_mounter_chunks.append(xyz_m)
@@ -636,7 +851,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
             xyz = np.column_stack(
                 [pts["x"], pts["y"], pts["z"]]).astype(np.float64)
             src = row["frame_id"] or LIVOX_FRAME
-            mat = tf_buffer.lookup_matrix(frame, src, row["stamp_ns"])
+            mat = lookup_sensor_to_frame(
+                tf_buffer, frame, src, row["stamp_ns"])
             if mat is None:
                 continue
             chunks.append(apply_matrix(mat, xyz))
@@ -650,8 +866,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
         cols_f = np.zeros((0, 3), dtype=np.uint8)
         tf_ok = False
         if rep is not None:
-            mat = tf_buffer.lookup_matrix(
-                frame_name, optical_frame, rep["stamp_ns"])
+            mat = lookup_sensor_to_frame(
+                tf_buffer, frame_name, optical_frame, rep["stamp_ns"])
             tf_ok = mat is not None
             if mat is not None:
                 cam_f = apply_matrix(mat, rep["points_optical"])
@@ -671,6 +887,20 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
         }
         corner_by_frame[frame_name] = check
 
+    feat_report = None
+    base_cam_ply = os.path.join(fused_dir, "camera_depth_in_elfin_base_link.ply")
+    base_lid_ply = os.path.join(fused_dir, "livox_in_elfin_base_link.ply")
+    if os.path.isfile(base_cam_ply) and os.path.isfile(base_lid_ply):
+        from luggage_perception.eval.table_patch_icp import (
+            dump_projected_table_features)
+        feat_report = dump_projected_table_features(
+            base_cam_ply, base_lid_ply,
+            os.path.join(out_dir, "features"),
+            projection=(
+                "elfin_base_link <- elfin_end_link <- suction_panel <- "
+                "eef_mount_adapter <- sensor"),
+            common_frame=BASE_FRAME)
+
     _write_json(os.path.join(out_dir, "xacro_used.json"), xacro_used or {})
     _write_json(os.path.join(out_dir, "corner_check.json"), corner_by_frame)
 
@@ -679,8 +909,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
     html_cam, html_lid = cam_m, lidar_mounter
     html_cols = cam_c
     if html_frame in extra_dumps and extra_dumps[html_frame]["tf_ok"] and rep is not None:
-        mat = tf_buffer.lookup_matrix(
-            html_frame, optical_frame, rep["stamp_ns"])
+        mat = lookup_sensor_to_frame(
+            tf_buffer, html_frame, optical_frame, rep["stamp_ns"])
         if mat is not None:
             html_cam = apply_matrix(mat, rep["points_optical"])
             html_cols = np.asarray(rep["colors"])
@@ -721,14 +951,21 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
     }
     stamp_rep = rep["stamp_ns"] if rep is not None else (
         camera_clouds[0]["stamp_ns"] if camera_clouds else 0)
-    mat_opt = tf_buffer.lookup_matrix(
-        mounter_frame, optical_frame, stamp_rep)
-    mat_livox = tf_buffer.lookup_matrix(
-        mounter_frame, LIVOX_FRAME, stamp_rep)
+    mat_opt = lookup_sensor_to_frame(
+        tf_buffer, mounter_frame, optical_frame, stamp_rep)
+    mat_livox = lookup_sensor_to_frame(
+        tf_buffer, mounter_frame, LIVOX_FRAME, stamp_rep)
     if mat_opt is not None:
         tf_focus["optical_to_mounter"] = mat_opt.tolist()
     if mat_livox is not None:
         tf_focus["livox_to_mounter"] = mat_livox.tolist()
+
+    tf_tree = build_tf_tree(tf_buffer, stamp_rep, optical_frame)
+    tf_tree_txt = format_tf_tree_text(tf_tree)
+    tf_tree_path = os.path.join(out_dir, "tf_tree.txt")
+    with open(tf_tree_path, "w", encoding="utf-8") as handle:
+        handle.write(tf_tree_txt)
+    _write_json(os.path.join(out_dir, "tf_tree.json"), tf_tree)
 
     _write_json(os.path.join(out_dir, "tf_static.json"), tf_static_rows)
     _write_json(os.path.join(out_dir, "tf_focus.json"), tf_focus)
@@ -769,6 +1006,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
             world_check.get("corner_residual_m"),
             world_check.get("coincide_table_corner")),
         "PLY: fused/camera_depth_in_elfin_base_link.ply + livox_in_elfin_base_link.ply",
+        "corners/edges: features/corners/overlay.html + features/edges/overlay.html",
+        "TF tree: tf_tree.txt  (elfin_base_link -> EOF -> suction_panel -> adapter -> sensor)",
     ]
     html = _HTML.replace("__DATA__", json.dumps({
         "meta": "\n".join(meta_lines),
@@ -786,6 +1025,8 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
         "mcap": os.path.abspath(scan.mcap_path),
         "out_dir": os.path.abspath(out_dir),
         "mounter_frame": mounter_frame,
+        "eof_frame": EOF_FRAME,
+        "panel_frame": PANEL_FRAME,
         "optical_frame": optical_frame,
         "n_camera": len(camera_clouds),
         "n_lidar": len(lidar_rows),
@@ -796,6 +1037,11 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
         "adjust_xyzw": adjust.get("xyzw"),
         "preview": "overlay.html",
         "overlay_ply": "fused/overlay_in_%s.ply" % html_frame,
+        "tf_tree": "tf_tree.txt",
+        "tf_tree_json": "tf_tree.json",
+        "livox_in_elfin_base_link": "fused/livox_in_elfin_base_link.ply",
+        "camera_depth_in_elfin_base_link": "fused/camera_depth_in_elfin_base_link.ply",
+        "table_features": feat_report,
         "apply_xacro": bool(xacro_used),
         "xacro": xacro_used,
         "extra_frames": extra_dumps,
@@ -817,7 +1063,11 @@ def export_lidar_camera_calib(bag_path, out_dir, mounter_frame=MOUNTER_FRAME,
         "- `world` corner residual: `%s` m coincide `%s`" % (
             world_check.get("corner_residual_m"),
             world_check.get("coincide_table_corner")),
+        "- Projection: `elfin_base_link -> elfin_end_link (EOF) -> suction_panel -> eef_mount_adapter -> Mid-360 | camera`",
+        "- TF tree: `tf_tree.txt`",
         "- PLY: `fused/camera_depth_in_elfin_base_link.ply`, `fused/livox_in_elfin_base_link.ply`",
+        "- Corners (no extra ICP): `features/corners/overlay.html`",
+        "- Edges (no extra ICP): `features/edges/overlay.html`",
         "- Overlay: `overlay.html`",
         "",
     ]

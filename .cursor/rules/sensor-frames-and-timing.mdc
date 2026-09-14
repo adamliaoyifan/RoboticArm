@@ -6,7 +6,8 @@ alwaysApply: false
 
 # Sensor frames and timing
 
-Full contract: `docs/architecture/motion_compensation.md`.
+Full contract: `docs/architecture/motion_compensation.md` and
+`docs/architecture/eef_sensor_frames.md`.
 
 Camera and Mid-360 are mounted on the end-effector, so every arm motion moves
 them with 6 DOF.
@@ -26,6 +27,15 @@ Accumulating multiple frames means transforming each with its own stamp.
 For hardware cameras, the stamp is mapped device acquisition time. Receipt
 `now()` is diagnostic only; equal RGB/depth device stamps map identically and
 clock mapping warms up fail-closed after rollback.
+
+## Canonical EEF tree
+
+Wrist camera is D555 PoE. Visual/collision envelope is 167×42×48 mm, not a
+D435 90×25×25 mm box. `camera_link` → `d555_link` is identity.
+
+Do not move `elfin_end_link` → `suction_panel`. Do not write table ICP into
+`mid360_mount_frame`. `cam_mount_*` is ChArUco Layer 3 (`T_end_optical`
+unchanged). Groove → Livox stays the CAD pocket plus handbook +47 mm.
 
 ## Frames and units
 

@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
-<!-- Layer 3 from CC600 ChArUco eye-in-hand 2026-09-11 poses 21-38 (TSAI/PARK/DANIILIDIS mean). Do not edit Layers 1-2. -->
+<!-- Layer 3 from CC600 ChArUco eye-in-hand 2026-09-11 poses 21-38 (TSAI/PARK/DANIILIDIS mean), re-expressed 2026-09-14 after seating CAD Mid-360 pocket under T_icp livox (revision 2026-09-14_xy_balanced_corners_edges). T_end_optical unchanged. Do not edit Layers 1-2. -->
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro">
   <xacro:property name="cam_mount_parent" value="eef_mount_adapter"/>
-  <xacro:property name="cam_mount_xyz" value="-0.028833 0.107910 -0.077120"/>
-  <xacro:property name="cam_mount_rpy" value="-0.01784105 1.39066481 1.56765511"/>
+  <xacro:property name="cam_mount_xyz" value="-0.023249 0.099580 -0.052059"/>
+  <xacro:property name="cam_mount_rpy" value="0.02901151 1.32524323 1.59953586"/>
 </robot>

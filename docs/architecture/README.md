@@ -9,6 +9,8 @@ preference.
   classes versus ROS nodes, state ownership, output contracts.
 - [Sensor data pipeline](sensor_data_pipeline.md): per-frame data structures,
   multi-rate alignment, buffering, the `SyncedObservation` snapshot.
+- [EEF sensor frames](eef_sensor_frames.md): canonical D555 + Mid-360S TF
+  tree, locked joints, and D555 167×42×48 mm housing.
 - [Motion compensation](motion_compensation.md): eye-in-hand 6DOF deskew for
   depth and Livox Mid-360 point clouds.
 - [Container geometry](container_geometry.md): authoritative usable-space hull,
@@ -26,7 +28,7 @@ injected into every agent session:
 |---|---|---|
 | `ros2-node-structure.mdc` | `src/**/*.py` | [perception_architecture.md](perception_architecture.md) |
 | `perception-data-pipeline.mdc` | `luggage_perception`, `luggage_planning` | [sensor_data_pipeline.md](sensor_data_pipeline.md) |
-| `sensor-frames-and-timing.mdc` | perception, description, gazebo | [motion_compensation.md](motion_compensation.md) |
+| `sensor-frames-and-timing.mdc` | perception, description, gazebo | [motion_compensation.md](motion_compensation.md), [eef_sensor_frames.md](eef_sensor_frames.md) |
 | `container-geometry.mdc` | description, perception, packing, planning, bringup, gazebo | [container_geometry.md](container_geometry.md) |
 | `production-orchestration.mdc` | planning, bringup, msgs, gazebo | [production_orchestration.md](production_orchestration.md) |
 
@@ -51,6 +53,7 @@ touches these files should move them toward compliance.
 |---|---|---|
 | `SemanticSegmenter.segment()` takes no stamp, returns no frame, and exposes `instance_map` as an internal reference | [semantic_segmenter.py](../../src/luggage_perception/luggage_perception/semantic_segmenter.py) | `update(rgb, stamp, frame_id)` + `copy_output()` |
 | Mid-360 URDF has `livox_frame` / `livox_imu_frame`; sim publishes a raster `gpu_lidar` on `/livox/lidar` with no per-point times (`deskewed=false`). Real driver is `mid360.launch.py`. Preprocessor still does not attach lidar until deskew exists. | [eef_sensor_mount.urdf.xacro](../../src/luggage_description/urdf/eef_sensor_mount.urdf.xacro) | per-point deskew, then `enable_lidar_output` |
+| Wrist camera visual/collision is D555 167×42×48 mm, but Gazebo still uses the historical D435 `rgbd_camera` FOV plugin on `camera_link`. | [realsense_d435.urdf.xacro](../../src/luggage_description/urdf/realsense_d435.urdf.xacro) | D555 sim camera, or keep the deviation explicit |
 | Algorithm class imports `rospy` and implements a latest-TF fallback, both forbidden | [robot_self_point_filter.py](../../src/luggage_perception/luggage_perception/robot_self_point_filter.py) `_lookup_transform` | node resolves transforms at the data stamp and passes them in; delete `allow_latest_tf_fallback` |
 | Algorithm class builds `Marker` / `ColorRGBA` via deferred imports | [cargo_volume_mapper.py](../../src/luggage_perception/luggage_perception/cargo_volume_mapper.py) | return geometry; assemble messages in the node |
 | Planning utilities build `geometry_msgs` types via deferred imports | `vacuum_attach_utils.py`, `container_aim_utils.py` in `luggage_planning` | return tuples; convert in the node |
