@@ -815,17 +815,26 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 scene.get("attached"),)
         return (pick_msg, fields, errors), ""
 
-    def _recover_carried(self, note):
-        """Explicit recovery for a still-attached payload: keep vacuum until
-        the arm is home, then release and clear the cargo."""
-        recovered = {"note": note}
+    def _recover_carried(self, note, release_in_place=False):
+        """Explicit recovery for a still-attached payload.
+
+        ``release_in_place`` releases while the box still rests on the
+        pickup platform (planning failed before any place motion), so the
+        box is never lifted and dropped. Otherwise keep vacuum until the arm
+        is home, then release and clear.
+        """
+        recovered = {"note": note, "release_in_place": bool(release_in_place)}
+        if release_in_place:
+            vac_ok, vac_msg = self.vacuum_command(False)
+            recovered["vacuum_off"] = "%s:%s" % (int(bool(vac_ok)), vac_msg)
         try:
             goto_ok, goto_msg, _ = self._home_arm()
             recovered["home"] = goto_msg
         except Exception as exc:  # noqa: BLE001 - recovery boundary
             recovered["home_error"] = str(exc)
-        vac_ok, vac_msg = self.vacuum_command(False)
-        recovered["vacuum_off"] = "%s:%s" % (int(bool(vac_ok)), vac_msg)
+        if not release_in_place:
+            vac_ok, vac_msg = self.vacuum_command(False)
+            recovered["vacuum_off"] = "%s:%s" % (int(bool(vac_ok)), vac_msg)
         cleared = self._call(
             self._clear, ClearCurrentBox.Request(), timeout=15.0)
         recovered["clear"] = cleared.message if cleared else "timeout"
@@ -1056,7 +1065,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         record["fail_code"] = ""
         record["checks"]["rejected_before_execution"] = True
         if not self._args.dry_run:
-            self._recover_carried("p4_rejected_%s" % case.case_id)
+            self._recover_carried("p4_rejected_%s" % case.case_id,
+                                  release_in_place=True)
         post = self._map_snapshot()
         record["checks"]["map_digest_preserved"] = bool(
             post["digest"] == pre_map["digest"])
@@ -1111,8 +1121,10 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             record["outcome"] = "PASS_FAIL_CLOSED"
             record["fail_code"] = ""
             if not self._args.dry_run:
+                # No place motion ran: release in place on the platform.
                 self._recover_carried(
-                    "planning_fail_closed_%s" % case.case_id)
+                    "planning_fail_closed_%s" % case.case_id,
+                    release_in_place=True)
             return
         record["fail_code"] = "PLACEMENT_UNEXPECTED_FAILURE:%s" % (
             placement.message)
