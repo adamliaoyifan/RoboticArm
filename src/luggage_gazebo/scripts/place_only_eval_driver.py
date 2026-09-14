@@ -865,14 +865,30 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         """Spawn cargo, park the suction frame on the box top centre
         (<=5 mm per axis), enable vacuum, verify simulator attachment plus
         exactly one matching PlanningScene attached object."""
-        spawn = self._call(self._spawn, SpawnNextBox.Request(), timeout=30.0)
-        if spawn is None or not spawn.success:
-            return None, "FIXTURE_SETUP_FAILED:spawn:%s" % (
-                spawn.message if spawn else "timeout")
+        # Reuse a matching box already on the platform (a failed setup
+        # attempt must not consume another sequence slot).
         current = self._call(
             self._current, GetCurrentBox.Request(), timeout=10.0)
-        if current is None or not current.success:
-            return None, "FIXTURE_SETUP_FAILED:current_box_unavailable"
+        existing_ok = False
+        if current is not None and current.success:
+            identity = str(getattr(current.box, "id", "") or "")
+            if case.cargo_id in identity:
+                existing_ok = True
+        if not existing_ok:
+            if (current is not None and current.success
+                    and str(getattr(current.box, "id", "") or "")):
+                # A stale non-matching box occupies the slot; clear it.
+                self._call(self._clear, ClearCurrentBox.Request(),
+                           timeout=15.0)
+            spawn = self._call(
+                self._spawn, SpawnNextBox.Request(), timeout=30.0)
+            if spawn is None or not spawn.success:
+                return None, "FIXTURE_SETUP_FAILED:spawn:%s" % (
+                    spawn.message if spawn else "timeout")
+            current = self._call(
+                self._current, GetCurrentBox.Request(), timeout=10.0)
+            if current is None or not current.success:
+                return None, "FIXTURE_SETUP_FAILED:current_box_unavailable"
         box_msg = current.box
         size = self._catalog_sizes[case.cargo_id]
         # GetCurrentBox reports the mesh's OBSERVABLE geometry (lid-plane
@@ -943,15 +959,18 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 scene.get("attached"),)
         return (pick_msg, fields, errors), ""
 
-    def _recover_carried(self, note, release_in_place=False):
+    def _recover_carried(self, note, release_in_place=False, keep_box=False):
         """Explicit recovery for a still-attached payload.
 
         ``release_in_place`` releases while the box still rests on the
         pickup platform (planning failed before any place motion), so the
-        box is never lifted and dropped. Otherwise keep vacuum until the arm
-        is home, then release and clear.
+        box is never lifted and dropped. ``keep_box`` leaves an unattached
+        platform box in place so a replacement attempt can reuse it instead
+        of consuming another sequence slot.
         """
         recovered = {"note": note, "release_in_place": bool(release_in_place)}
+        vacuum = dict(self._vacuum_state or {})
+        was_attached = bool(vacuum.get("attached"))
         if release_in_place:
             vac_ok, vac_msg = self.vacuum_command(False)
             recovered["vacuum_off"] = "%s:%s" % (int(bool(vac_ok)), vac_msg)
@@ -963,9 +982,12 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         if not release_in_place:
             vac_ok, vac_msg = self.vacuum_command(False)
             recovered["vacuum_off"] = "%s:%s" % (int(bool(vac_ok)), vac_msg)
-        cleared = self._call(
-            self._clear, ClearCurrentBox.Request(), timeout=15.0)
-        recovered["clear"] = cleared.message if cleared else "timeout"
+        if keep_box and not was_attached:
+            recovered["clear"] = "kept for replacement attempt"
+        else:
+            cleared = self._call(
+                self._clear, ClearCurrentBox.Request(), timeout=15.0)
+            recovered["clear"] = cleared.message if cleared else "timeout"
         self._t1("carrying_recovery", **recovered)
         return recovered
 
@@ -1126,7 +1148,7 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             if setup is None:
                 record["fail_code"] = setup_err
                 self._recover_carried(
-                    "setup_failed_%s" % case.case_id)
+                    "setup_failed_%s" % case.case_id, keep_box=True)
                 self._finish_case(record, case, slug, t0)
                 return record
             pick_msg, fields, tool_errors = setup
