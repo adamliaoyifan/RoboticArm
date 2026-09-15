@@ -96,8 +96,8 @@ semantic_segmenter:
     # input; unlimited processing would pile callbacks up.
     max_rate_hz: 0.0
     # PF-R9 g2: the overlay is a debug viz product; per-frame cv2 drawing
-    # cost is not paid by the online graph (resource hygiene only, no D3
-    # credit claimed).
+    # cost is not paid by the online sim-eval graph. hardware_pick.launch.py
+    # overrides this to true so site bags have /luggage/semantic/overlay.
     publish_overlay: false
 
     # YOLO is per-frame; a miss used to publish an empty mask and drop cargo.
@@ -109,17 +109,10 @@ semantic_segmenter:
     temporal_scene_change_mad: 10.0
     temporal_bbox_iou_reset: 0.3
 
-    # Accepted-detection predicate (PF-R8 A1). Backprojects each cargo
-    # bbox centre onto the pickup-platform ground plane and accepts the
-    # detection when it lands within max(half_extents)+margin of the
-    # workspace centre. Measured static geometry (scene_tf.yaml
-    # pickup_platform/pickup_source: platform top z=0.86 at world XY
-    # (-1.0, 0.0), 1.0 x 1.0 m) — the same kind of static workspace input
-    # the detector already uses for its point crop; per-trial spawner
-    # geometry stays forbidden. Rejects the static robot-pedestal false
-    # positive at the image border (centre ray lands ~0.95 m off the
-    # workspace centre) while a legitimately edge-clipped suitcase whose
-    # visible centre still projects onto the platform is accepted.
+    # Sim/eval FP gate (PF-R8 A1): backproject bbox centre onto the
+    # pickup-platform plane and keep boxes that land in the scene_tf
+    # square. hardware_pick.launch.py sets this false: site crop is the
+    # YOLO RGB bbox projected through aligned depth, not that square.
     # Missing camera_info or stamped TF still accepts a compact suitcase
     # with reason predicate_unavailable (flagged, never faked) but rejects
     # an edge-strip bbox (predicate_unavailable_edge_strip).

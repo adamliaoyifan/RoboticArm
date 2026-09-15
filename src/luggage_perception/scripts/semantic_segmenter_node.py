@@ -50,6 +50,7 @@ from luggage_perception.detect_overlay import (
 from luggage_perception.semantic_segmenter import (
     LIVE_CONFIDENCE_PARAMS,
     WorkspaceAcceptanceContext,
+    backend_matches_require,
     build_segmenter,
     confidence_floors,
     draw_detections_overlay,
@@ -181,7 +182,7 @@ class SemanticSegmenterNode(Node):
             self.get_parameter("workspace_world_frame").value)
         backend = self._segmenter.last_stats["backend"]
         require = str(self.get_parameter("require_backend").value)
-        if require and not backend.startswith(require):
+        if not backend_matches_require(backend, require):
             raise RuntimeError(
                 "semantic backend %r does not match require_backend %r"
                 % (backend, require))
@@ -251,10 +252,12 @@ class SemanticSegmenterNode(Node):
         floors = confidence_floors(self._segmenter)
         self.get_logger().info(
             "semantic_segmenter ready (backend=%s, prompts=%d, self_body=%s, "
-            "temporal_window=%s, confidence_threshold=%.3f, "
-            "cargo_min_confidence=%.3f, robot_arm_confidence_threshold=%.3f)"
+            "temporal_window=%s, publish_overlay=%s, "
+            "confidence_threshold=%.3f, cargo_min_confidence=%.3f, "
+            "robot_arm_confidence_threshold=%.3f)"
             % (backend, len(prompts), self._self_body_source,
                getattr(self._segmenter.temporal_gate, "window_size", 0),
+               self._overlay_ok,
                floors["confidence_threshold"],
                floors["cargo_min_confidence"],
                floors["robot_arm_confidence_threshold"]))

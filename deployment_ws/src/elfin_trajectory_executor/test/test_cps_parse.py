@@ -22,6 +22,7 @@ from elfin_trajectory_executor.huayan_interface import (
     already_motion_ready,
     connect2box_allow_refuse,
     cps_step_ok,
+    decimate_joint_waypoints,
     electrify_allow_refuse,
     hrif_waypoint_joint,
 )
@@ -169,6 +170,28 @@ class CpsParseTest(unittest.TestCase):
                 *joints,
                 "TCP", "Base", 15.0, 60.0, 0.0, 1, 0, 0, 0, "1",
             )
+
+    def test_decimate_drops_totg_chatter_keeps_goal(self):
+        start = [0.0] * 6
+        chatter = []
+        for d in (0.0, 0.3, -0.2, 0.4, 0.1):
+            q = [0.0] * 6
+            q[1] = d
+            chatter.append(q)
+        goal = [0.0] * 6
+        goal[1] = 25.0
+        chatter.append(goal)
+        kept = decimate_joint_waypoints(chatter, min_delta_deg=2.0, start_deg=start)
+        self.assertEqual(kept, [len(chatter) - 1])
+
+    def test_decimate_keeps_real_via_and_last(self):
+        pts = []
+        for j2 in (0.0, 0.4, 12.0, 12.3, 40.0):
+            q = [0.0] * 6
+            q[1] = j2
+            pts.append(q)
+        kept = decimate_joint_waypoints(pts, min_delta_deg=2.0, start_deg=[0.0] * 6)
+        self.assertEqual(kept, [2, 4])
 
 
 if __name__ == "__main__":

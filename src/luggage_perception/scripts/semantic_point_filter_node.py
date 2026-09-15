@@ -151,7 +151,10 @@ class SemanticPointFilterNode(Node):
         # dedicated executor. That cannot be *this* node (main() also adds it
         # to MultiThreadedExecutor → "Node already added to an executor").
         # A sidecar node is the Humble-equivalent of the plan's spin_thread.
-        self._tf_node = Node("semantic_point_filter_tf")
+        # use_global_arguments=False: launch -r __node:=... must not rename
+        # this sidecar, or ros2 node list reports a duplicate name.
+        self._tf_node = Node(
+            "semantic_point_filter_tf", use_global_arguments=False)
         self._tf_listener = TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
         self._last_depth_stamp = None

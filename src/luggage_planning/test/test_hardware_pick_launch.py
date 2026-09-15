@@ -22,6 +22,19 @@ class HardwarePickLaunchTest(unittest.TestCase):
             src,
         )
 
+    def test_site_launch_enables_semantic_overlay(self):
+        src = LAUNCH.read_text(encoding="utf-8")
+        self.assertIn('DeclareLaunchArgument(\n                "publish_overlay"', src)
+        self.assertIn('default_value="true"', src)
+        self.assertIn(
+            '"publish_overlay": ParameterValue(',
+            src,
+        )
+        self.assertIn(
+            'LaunchConfiguration("publish_overlay")',
+            src,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

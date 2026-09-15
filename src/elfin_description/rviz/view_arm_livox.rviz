@@ -60,7 +60,7 @@ Visualization Manager:
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
-        Reliability Policy: Reliable
+        Reliability Policy: Best Effort
         Value: /livox/lidar
       Use Fixed Frame: true
       Use rainbow: true
@@ -89,6 +89,27 @@ Visualization Manager:
       Use Fixed Frame: true
       Use rainbow: false
       Value: true
+    - Class: rviz_default_plugins/Camera
+      Enabled: true
+      Far Plane Distance: 8
+      Image Rendering: background
+      Name: D555 Color
+      Overlay Alpha: 0.55
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Best Effort
+        Value: /camera/d555/color/image_raw
+      Value: true
+      Visibility:
+        Container: false
+        D555: true
+        Grid: false
+        Livox: true
+        RobotModel: false
+        TF: false
+      Zoom Factor: 1
   Global Options:
     Background Color: 48; 48; 48
     Fixed Frame: world
@@ -109,5 +130,9 @@ Visualization Manager:
       Pitch: 0.5
       Yaw: 0.8
 Window Geometry:
+  D555 Color:
+    collapsed: false
+  Displays:
+    collapsed: false
   Height: 800
   Width: 1200

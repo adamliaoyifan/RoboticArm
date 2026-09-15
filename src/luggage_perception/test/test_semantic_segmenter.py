@@ -18,6 +18,7 @@ from luggage_perception.semantic_segmenter import (  # noqa: E402
     StubSegmenter,
     apply_self_body_mask,
     apply_wrist_self_body,
+    backend_matches_require,
     bbox_mask_overlap,
     build_segmenter,
     colorize_label_map,
@@ -86,6 +87,18 @@ class TestBuildSegmenter(unittest.TestCase):
     def test_build_unknown_backend_raises(self):
         with self.assertRaises(ValueError):
             build_segmenter({"backend": "nonsense", "prompts": []})
+
+    def test_require_backend_aliases_bbox_fill_and_yolo_world(self):
+        live = "bbox_fill:/share/luggage_perception/models/yolov8s-world.pt"
+        self.assertTrue(backend_matches_require(live, "yolo_world"))
+        self.assertTrue(backend_matches_require(live, "bbox_fill"))
+        self.assertTrue(backend_matches_require(live, ""))
+        self.assertFalse(backend_matches_require(live, "yolo_world_sam2"))
+        self.assertFalse(
+            backend_matches_require("stub(fallback:yolo_world:ultralytics)",
+                                    "yolo_world"))
+        self.assertFalse(
+            backend_matches_require("yolo_world_sam2:weights", "yolo_world"))
 
     def test_build_yolo_world_falls_back_when_deps_missing(self):
         # Simulate ultralytics being unavailable so the bbox_fill backend

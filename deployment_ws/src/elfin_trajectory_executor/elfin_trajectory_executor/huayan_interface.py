@@ -81,7 +81,14 @@ BLEND_RADIUS_MM = 5.0           # blending on intermediate waypoints
 FINAL_BLEND_RADIUS_MM = 0.0     # exact stop at last waypoint
 DEFAULT_VELOCITY_DEG = 30.0
 DEFAULT_ACCEL_DEG = 60.0        # must be > velocity per HuayanRobot constraint
+MAX_ACCEL_DEG = 80.0            # CPS 40083 above this
 MAX_VELOCITY_DEG = 60.0
+HUAYAN_MIN_VELOCITY_DEG = 1.0   # CPS 20070 below ~1 deg/s
+# MoveIt TOTG densifies OMPL paths to sub-degree samples. Each sample is a
+# full HRIF_WayPoint MoveJ; blasting those at default_vel looks like the
+# arm is jumping back and forth. Keep only real via points.
+WAYPOINT_MIN_DELTA_DEG = 2.0
+BLEND_START_TIMEOUT_S = 0.4     # IsBlendingDone is true while idle
 STATE_REFUSE = 20018  # command prohibited in current FSM
 FSM_BOX_DISCONNECT = 2
 FSM_BOX_CONNECTING = 3
@@ -153,6 +160,48 @@ def hrif_waypoint_joint(
         0,
         str(cmd_id),
     )
+
+
+def _max_joint_delta_deg(a: List[float], b: List[float]) -> float:
+    n = min(6, len(a), len(b))
+    if n <= 0:
+        return 0.0
+    return max(abs(float(a[i]) - float(b[i])) for i in range(n))
+
+
+def decimate_joint_waypoints(
+    joints_deg: List[List[float]],
+    *,
+    min_delta_deg: float = WAYPOINT_MIN_DELTA_DEG,
+    start_deg: Optional[List[float]] = None,
+) -> List[int]:
+    """Keep last pose plus via points that actually move the arm.
+
+    TOTG samples closer than ``min_delta_deg`` to the last kept pose (or to
+    ``start_deg``) are dropped so Huayan does not MoveJ-chatter.
+    """
+    n = len(joints_deg)
+    if n == 0:
+        return []
+    kept: List[int] = []
+    ref = list(start_deg) if start_deg is not None and len(start_deg) >= 6 else None
+    for i in range(n - 1):
+        q = joints_deg[i]
+        if ref is None:
+            kept.append(i)
+            ref = list(q)
+            continue
+        if _max_joint_delta_deg(q, ref) >= min_delta_deg:
+            kept.append(i)
+            ref = list(q)
+    last_q = joints_deg[-1]
+    if not kept:
+        kept.append(n - 1)
+    elif _max_joint_delta_deg(last_q, joints_deg[kept[-1]]) > 1e-6:
+        kept.append(n - 1)
+    else:
+        kept[-1] = n - 1
+    return kept
 
 
 class ConnectionState(Enum):
@@ -502,26 +551,51 @@ class HuayanInterface:
 
         # Convert trajectory times to seconds for velocity estimation.
         times_s = [_duration_to_sec(pt.time_from_start) for pt in points]
+        all_deg = [
+            [math.degrees(a) for a in pt.positions] for pt in points
+        ]
+        self._refresh_positions()
+        start_deg = list(self._current_positions_deg)
+        kept = decimate_joint_waypoints(
+            all_deg, min_delta_deg=WAYPOINT_MIN_DELTA_DEG, start_deg=start_deg,
+        )
+        self._node.get_logger().info(
+            '[huayan] MoveJ %s/%s TOTG points (min Δ=%.1f°)'
+            % (len(kept), len(points), WAYPOINT_MIN_DELTA_DEG)
+        )
 
         try:
-            for i, pt in enumerate(points):
+            for k, i in enumerate(kept):
                 if cancel_flag.is_set():
                     self._node.get_logger().info('[huayan] Trajectory preempted.')
                     self._safe_stop()
                     return RESULT_PREEMPTED
 
-                is_last = (i == len(points) - 1)
-                joints_deg = [math.degrees(a) for a in pt.positions]
-
-                # --- Velocity estimation ---
-                vel_deg = self._estimate_velocity(
-                    i, points, times_s, joints_deg
+                is_last = (k == len(kept) - 1)
+                pt = points[i]
+                joints_deg = all_deg[i]
+                next_i = kept[k + 1] if not is_last else None
+                next_deg = all_deg[next_i] if next_i is not None else None
+                dt = (
+                    times_s[next_i] - times_s[i]
+                    if next_i is not None else None
                 )
-                accel_deg = max(DEFAULT_ACCEL_DEG, vel_deg * 2.0)
+
+                vel_deg = self._estimate_velocity(
+                    pt, joints_deg, next_deg, dt,
+                )
+                # Acc must exceed speed, but vel*2 at 54°/s was 108 and
+                # Huayan 40083 (acceleration exceeds maximum).
+                accel_deg = min(
+                    MAX_ACCEL_DEG,
+                    max(DEFAULT_ACCEL_DEG, vel_deg * 1.5),
+                )
+                if accel_deg <= vel_deg:
+                    vel_deg = max(HUAYAN_MIN_VELOCITY_DEG, accel_deg - 1.0)
                 radius = FINAL_BLEND_RADIUS_MM if is_last else BLEND_RADIUS_MM
 
-                self._node.get_logger().debug(
-                    f'[huayan] WP {i}/{len(points)-1}  '
+                self._node.get_logger().info(
+                    f'[huayan] WP {k+1}/{len(kept)} (totg {i})  '
                     f'J={[f"{d:.1f}" for d in joints_deg]}°  '
                     f'vel={vel_deg:.1f}°/s  r={radius}mm'
                 )
@@ -779,7 +853,13 @@ class HuayanInterface:
         For intermediate points we check HRIF_IsBlendingDone (waypoint queue
         consumed) since the robot keeps moving during blending.
         For the last point we wait for HRIF_IsMotionDone (full stop).
+
+        IsBlendingDone is true while idle. Wait until it goes false (motion
+        started) before treating true as "this waypoint consumed"; otherwise
+        every TOTG sample is queued immediately and the arm chatters.
         """
+        saw_busy = False
+        busy_deadline = time.monotonic() + BLEND_START_TIMEOUT_S
         while True:
             if cancel_flag.is_set():
                 self._safe_stop()
@@ -792,12 +872,17 @@ class HuayanInterface:
             if is_last:
                 nRet = self._cps.HRIF_IsMotionDone(BOX_ID, RBT_ID, result)
                 done = (nRet == 0 and result and result[0] is True)
+                if done:
+                    return RESULT_SUCCESSFUL
             else:
                 nRet = self._cps.HRIF_IsBlendingDone(BOX_ID, RBT_ID, result)
-                done = (nRet == 0 and result and result[0] is True)
-
-            if done:
-                return RESULT_SUCCESSFUL
+                blending_done = (nRet == 0 and result and result[0] is True)
+                if not blending_done:
+                    saw_busy = True
+                elif saw_busy:
+                    return RESULT_SUCCESSFUL
+                elif time.monotonic() >= busy_deadline:
+                    return RESULT_SUCCESSFUL
 
             time.sleep(POLL_INTERVAL_S)
 
@@ -936,43 +1021,35 @@ class HuayanInterface:
 
     def _estimate_velocity(
         self,
-        idx: int,
-        points,
-        times_s: List[float],
+        pt,
         joints_deg: List[float],
+        next_joints_deg: Optional[List[float]],
+        dt: Optional[float],
     ) -> float:
+        """Velocity for one MoveJ after TOTG decimation.
+
+        Dense TOTG sample speeds are often << 1 deg/s (Huayan 20070). Flooring
+        every sample to default_vel made the arm reverse between nearby
+        points. After decimation each MoveJ is a real via, so use at least
+        default_vel and never below Huayan's 1 deg/s floor.
         """
-        Estimate the velocity for waypoint idx.
+        hi = float(self._max_vel)
+        fallback = max(HUAYAN_MIN_VELOCITY_DEG, float(self._default_vel))
 
-        Strategy (in priority order):
-        1. Use trajectory.points[idx].velocities if provided and non-zero.
-        2. Compute from position delta / time delta to next waypoint.
-        3. Fall back to default_velocity_deg.
+        def _clamp(vel):
+            return max(fallback, min(float(vel), hi))
 
-        The result is clamped to [1.0, max_velocity_deg].
-        """
-        pt = points[idx]
-
-        # 1) Use provided velocities.
         if pt.velocities:
             max_vel = max(abs(math.degrees(v)) for v in pt.velocities)
             if max_vel > 0.0:
-                return min(max_vel, self._max_vel)
+                return _clamp(max_vel)
 
-        # 2) Derive from position delta / time delta.
-        if idx + 1 < len(points):
-            next_joints_deg = [math.degrees(a) for a in points[idx + 1].positions]
-            dt = times_s[idx + 1] - times_s[idx]
-            if dt > 1e-6:
-                max_delta = max(
-                    abs(next_joints_deg[j] - joints_deg[j]) for j in range(6)
-                )
-                vel = max_delta / dt
-                if vel > 0.0:
-                    return min(vel, self._max_vel)
+        if next_joints_deg is not None and dt is not None and dt > 1e-6:
+            vel = _max_joint_delta_deg(next_joints_deg, joints_deg) / dt
+            if vel > 0.0:
+                return _clamp(vel)
 
-        # 3) Default.
-        return min(self._default_vel, self._max_vel)
+        return fallback
 
     @staticmethod
     def _import_cps():

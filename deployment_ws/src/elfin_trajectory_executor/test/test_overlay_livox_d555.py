@@ -74,6 +74,14 @@ class OverlayLivoxD555Test(unittest.TestCase):
         self.assertIn("Color Transformer: FlatColor", src)
         self.assertNotIn("/luggage/preprocessed/", src)
 
+    def test_rviz_camera_projects_livox_and_d555_onto_image(self):
+        src = RVIZ.read_text()
+        self.assertIn("rviz_default_plugins/Camera", src)
+        self.assertIn("Image Rendering: background", src)
+        self.assertIn("Livox Mid-360S: true", src)
+        self.assertIn("D555: true", src)
+        self.assertNotIn("rviz_default_plugins/Image", src)
+
     def test_livox_host_ip_from_site_json(self):
         import importlib.util
 

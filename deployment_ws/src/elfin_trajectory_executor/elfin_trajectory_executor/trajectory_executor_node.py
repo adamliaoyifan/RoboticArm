@@ -216,7 +216,7 @@ class TrajectoryExecutorNode(Node):
         self._cancel_flag.set()
         return CancelResponse.ACCEPT
 
-    async def _execute_callback(self, goal_handle) -> FollowJointTrajectory.Result:
+    def _execute_callback(self, goal_handle) -> FollowJointTrajectory.Result:
         """
         Main execution callback.  Runs in a separate thread (MultiThreadedExecutor).
 

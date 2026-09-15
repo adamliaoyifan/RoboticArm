@@ -1189,6 +1189,34 @@ _BACKENDS = {
     "yolo_world_sam2": YoloWorldSam2Segmenter,
 }
 
+# Launch/eval still pass require_backend:=yolo_world. The working
+# implementation is BboxFillSegmenter, which reports bbox_fill:<weights>.
+_BACKEND_ALIASES = {
+    "bbox_fill": "bbox_fill",
+    "yolo_world": "bbox_fill",
+}
+
+
+def backend_kind(backend):
+    """Prefix of stats['backend'], e.g. bbox_fill:weights -> bbox_fill."""
+    return str(backend or "").split(":")[0].split("(")[0].strip()
+
+
+def backend_matches_require(backend, require):
+    """Whether a live backend string satisfies require_backend.
+
+    Empty require disables the guard. Stub fallbacks never match. yolo_world
+    and bbox_fill are the same YOLO-World box-fill backend; yolo_world_sam2
+    is a different backend and does not satisfy yolo_world.
+    """
+    want = str(require or "").strip()
+    if not want:
+        return True
+    kind = backend_kind(backend)
+    if not kind or kind.startswith("stub"):
+        return False
+    return _BACKEND_ALIASES.get(kind, kind) == _BACKEND_ALIASES.get(want, want)
+
 
 def build_segmenter(config):
     """Construct a segmenter from a config dict.

@@ -93,21 +93,34 @@ if [[ ! -f "$HUMBLE_WS/install/setup.bash" ]]; then
   exit 1
 fi
 
+LIVOX_ENV="${LIVOX_WS:-$DEPLOY/livox_ws}/env.sh"
+if [[ ! -f "$LIVOX_ENV" ]]; then
+  echo "missing Livox overlay: $LIVOX_ENV" >&2
+  echo "  Mid-360 is required. From deployment_ws:" >&2
+  echo "  ./scripts/setup_livox_driver.sh" >&2
+  exit 1
+fi
+
+unset PYTHONPATH COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH
 set +u
 # shellcheck disable=SC1091
 source /opt/ros/jazzy/setup.bash
+# local_setup only — setup.bash chains elfin_humble_ws and shadows master.
 # shellcheck disable=SC1091
-source "$DEPLOY/livox_ws/env.sh"
+source "$HUMBLE_WS/install/local_setup.bash"
 # shellcheck disable=SC1091
-source "$HUMBLE_WS/install/setup.bash"
+source "$DEPLOY/livox_ws/install/local_setup.bash"
 # shellcheck disable=SC1091
-source "$DEPLOY/install/setup.bash"
+source "$DEPLOY/install/local_setup.bash"
 set -u
 
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"
 unset ROS_LOCALHOST_ONLY
 export PYTHONPATH="${SDK}${PYTHONPATH:+:${PYTHONPATH}}"
 export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [[ -d "$DEPLOY/livox_ws/sdk_prefix/lib" ]]; then
+  export LD_LIBRARY_PATH="$DEPLOY/livox_ws/sdk_prefix/lib:${LD_LIBRARY_PATH}"
+fi
 
 pkill -f livox_ros_driver2_node >/dev/null 2>&1 || true
 sleep 0.3

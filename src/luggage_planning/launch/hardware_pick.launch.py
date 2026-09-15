@@ -154,6 +154,14 @@ def generate_launch_description():
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
             DeclareLaunchArgument(
+                "start_scene",
+                default_value="true",
+                description=(
+                    "scene_hardware (RSP + container TF). Set false when "
+                    "record_site already publishes the same tree."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "preprocessor_config",
                 default_value=live_pp,
                 description=(
@@ -163,6 +171,15 @@ def generate_launch_description():
                     "preprocessor_config:=%s. Do not use "
                     "preprocessor_d555_replay.yaml for live pick "
                     "(use_sim_time true)." % site_pp
+                ),
+            ),
+            DeclareLaunchArgument(
+                "publish_overlay",
+                default_value="true",
+                description=(
+                    "Publish /luggage/semantic/overlay. semantic_segmenter.yaml "
+                    "sets this false for sim-eval CPU hygiene; site detect "
+                    "needs the image. Pass publish_overlay:=false to drop it."
                 ),
             ),
             DeclareLaunchArgument("semantic_device", default_value="cuda"),
@@ -192,8 +209,10 @@ def generate_launch_description():
                 launch_arguments={
                     "robot_ip": LaunchConfiguration("robot_ip"),
                     "robot_port": LaunchConfiguration("robot_port"),
-                    "default_velocity_deg": "10.0",
-                    "max_velocity_deg": "20.0",
+                    # Huayan WayPoint min ~1 deg/s. 10/20 made MoveIt TOTG
+                    # crawl and still hit 20070; site Gate 5 uses 30/60.
+                    "default_velocity_deg": "30.0",
+                    "max_velocity_deg": "60.0",
                 }.items(),
                 condition=IfCondition(LaunchConfiguration("start_executor")),
             ),
@@ -206,6 +225,7 @@ def generate_launch_description():
                     "use_rviz": LaunchConfiguration("use_rviz"),
                     "use_sim_time": "false",
                 }.items(),
+                condition=IfCondition(LaunchConfiguration("start_scene")),
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -240,6 +260,15 @@ def generate_launch_description():
                         "device": LaunchConfiguration("semantic_device"),
                         "self_body_camera_frame": "d555_color_optical_frame",
                         "require_backend": "yolo_world",
+                        # yaml default true is a sim FP gate against the
+                        # scene_tf pickup square. Site crop is YOLO bbox
+                        # → depth, not that square.
+                        "workspace_accept_enabled": False,
+                        # After yaml: yaml publish_overlay is false (eval).
+                        "publish_overlay": ParameterValue(
+                            LaunchConfiguration("publish_overlay"),
+                            value_type=bool,
+                        ),
                         # D555 is 15 Hz; CPU YOLO cannot keep that queue.
                         # Unbounded processing leaves DetectionFrame stamps
                         # older than cloud_max_age (DETECT_STALE_CLOUD).
@@ -270,6 +299,7 @@ def generate_launch_description():
                     "support_mode": "auto",
                     "platform_z": "",
                     "suitcase_update_timeout_sec": 0.0,
+                    "crop_to_workspace": False,
                 }],
             ),
             Node(
@@ -307,7 +337,9 @@ def generate_launch_description():
                     "use_sim_time": False,
                     "robot_poses_config": LaunchConfiguration("robot_poses_config"),
                     "named_pose_duration": 8.0,
-                    "named_pose_max_vel": 0.25,
+                    "named_pose_max_vel": 1.0,
+                    "velocity_scaling": 0.6,
+                    "acceleration_scaling": 0.6,
                     "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
                 }],
             ),

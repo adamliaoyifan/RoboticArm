@@ -25,6 +25,7 @@ Hard rules:
 - Semantic: `semantic_device:=cpu`. Launch default is cuda; `hardware_pick.sh` injects cpu when `nvidia-smi` fails. YOLO is capped at `max_rate_hz:=2.0`, `cloud_max_age_sec:=8.0`.
 - Preprocessor A: `src/luggage_perception/config/preprocessor_d555_live.yaml` (motion gate on, 5 ms).
 - Preprocessor B: `src/luggage_perception/config/preprocessor_d555_site.yaml` (gate off, 50 ms, `use_sim_time` false).
+- Numeric gates for this cell (frame rate, YOLO 2 Hz cap, RSS): [site_preprocessor_ab_accept.md](site_preprocessor_ab_accept.md).
 - Do **not** pass `preprocessor_d555_replay.yaml` into live pick (`use_sim_time` true).
 - Do **not** run place. Stop at sealed pick.
 - Already done on this cell (smoke only): D555 HB-1/2/3, Livox overlay, pendant bags, vacuum pin map, CC600 hand-eye. Do not rerun the full HB plan.

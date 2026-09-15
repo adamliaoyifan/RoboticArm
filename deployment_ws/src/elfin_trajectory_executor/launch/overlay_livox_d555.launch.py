@@ -12,9 +12,9 @@ Same ROS_DOMAIN_ID everywhere. Do not set ROS_LOCALHOST_ONLY.
 enp0s31f6 MTU 9000. Livox JSON host_ip (192.168.1.5) must be on that NIC.
 
   source /opt/ros/jazzy/setup.bash
-  source /home/adamliao/work/elfin_humble_ws/deployment_ws/livox_ws/env.sh
-  source /home/adamliao/work/elfin_humble_ws/install/setup.bash
-  source /home/adamliao/work/elfin_humble_ws/deployment_ws/install/setup.bash
+  source /home/adamliao/work/RoboticArm-master/deployment_ws/livox_ws/env.sh
+  source /home/adamliao/work/RoboticArm-master/install/setup.bash
+  source /home/adamliao/work/RoboticArm-master/deployment_ws/install/setup.bash
   unset ROS_LOCALHOST_ONLY
   export ROS_DOMAIN_ID=7
   ros2 launch elfin_trajectory_executor overlay_livox_d555.launch.py

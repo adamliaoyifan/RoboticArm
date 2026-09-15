@@ -13,8 +13,13 @@
 # preprocessor_d555_site.yaml. Do not pass preprocessor_d555_replay.yaml
 # into this live graph (use_sim_time true).
 #
-# Other terminal, same ROS_DOMAIN_ID:
+# Overlay is on by default (publish_overlay:=true). yaml keeps it off for
+# sim-eval; this launch overrides so /luggage/semantic/overlay is recorded.
+#
+# --skip-observe / --detect-only are driver flags, not launch args. Other
+# terminal, same ROS_DOMAIN_ID:
 #   ros2 run luggage_planning hardware_pick_driver.py --detect-only
+#   ros2 run luggage_planning hardware_pick_driver.py --detect-only --skip-observe
 #   ros2 run luggage_planning hardware_pick_driver.py --plan-only
 #   ros2 run luggage_planning hardware_pick_driver.py
 #   ros2 run luggage_planning hardware_pick_driver.py --release
@@ -41,24 +46,34 @@ if [[ ! -f "$HUMBLE_WS/install/setup.bash" ]]; then
   echo "missing ${HUMBLE_WS}/install/setup.bash" >&2
   exit 1
 fi
+if [[ ! -f "$DEPLOY/livox_ws/env.sh" ]]; then
+  echo "missing Livox overlay: $DEPLOY/livox_ws/env.sh" >&2
+  echo "  Mid-360 is required. From deployment_ws:" >&2
+  echo "  ./scripts/setup_livox_driver.sh" >&2
+  exit 1
+fi
 
+unset PYTHONPATH COLCON_PREFIX_PATH AMENT_PREFIX_PATH CMAKE_PREFIX_PATH
 set +u
 # shellcheck disable=SC1091
 source /opt/ros/jazzy/setup.bash
-if [[ -f "$DEPLOY/livox_ws/env.sh" ]]; then
-  # shellcheck disable=SC1091
-  source "$DEPLOY/livox_ws/env.sh"
-fi
+# local_setup only — setup.bash chains elfin_humble_ws and shadows master.
 # shellcheck disable=SC1091
-source "$HUMBLE_WS/install/setup.bash"
+source "$HUMBLE_WS/install/local_setup.bash"
 # shellcheck disable=SC1091
-source "$DEPLOY/install/setup.bash"
+source "$DEPLOY/livox_ws/install/local_setup.bash"
+# shellcheck disable=SC1091
+source "$DEPLOY/install/local_setup.bash"
 set -u
 
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"
 unset ROS_LOCALHOST_ONLY
 export PYTHONPATH="${SDK}${PYTHONPATH:+:${PYTHONPATH}}"
 export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+if [[ -d "$DEPLOY/livox_ws/sdk_prefix/lib" ]]; then
+  export LD_LIBRARY_PATH="$DEPLOY/livox_ws/sdk_prefix/lib:${LD_LIBRARY_PATH}"
+fi
+
 
 if ! python3 -c "import moveit_msgs" >/dev/null 2>&1; then
   echo "WARNING: MoveIt not installed. --detect-only works; plan/pick need:" >&2
@@ -75,6 +90,8 @@ _has_nvidia_gpu() {
 }
 
 # ros2 launch wants foo:=bar, not --foo:=bar. A lone "--" is also dropped.
+# Driver-only flags (skip-observe, detect-only, plan-only) are not launch
+# arguments; passing them used to look like a silent no-op.
 launch_args=()
 has_semantic_device=false
 for arg in "$@"; do
@@ -83,6 +100,13 @@ for arg in "$@"; do
   elif [[ "$arg" == --*:=* ]]; then
     arg="${arg#--}"
   fi
+  case "$arg" in
+    skip-observe|skip-observe:=*|detect-only|detect-only:=*|plan-only|plan-only:=*|--skip-observe|--detect-only|--plan-only)
+      echo "WARNING: '$arg' is a hardware_pick_driver.py flag, not a launch argument." >&2
+      echo "  Other terminal: ros2 run luggage_planning hardware_pick_driver.py --detect-only --skip-observe" >&2
+      continue
+      ;;
+  esac
   launch_args+=("$arg")
   if [[ "$arg" == semantic_device:=* ]]; then
     has_semantic_device=true
