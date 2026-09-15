@@ -55,7 +55,6 @@ from luggage_description.box_catalog_utils import (
 )
 from luggage_description.scene_tf_config_utils import (
     load_scene_tf_config,
-    pickup_source_in_world,
     resolve_scene_tf_config_path,
 )
 from luggage_perception.detection_temporal_gate import (
@@ -83,6 +82,57 @@ from luggage_perception.top_support_estimator import (
     GEOMETRY_TOP_ONLY,
     TopSupportConfig,
 )
+# DYNAMIC-SUCTION ST-1: dynamic instance-derived top surface. The node
+# layer owns every ROS/TF interaction; the algorithm modules receive
+# plain arrays plus the acquisition-stamp transform matrix.
+from luggage_perception.instance_depth_component import (
+    ComponentConfig,
+    isolate_depth_component,
+)
+from luggage_perception.dynamic_top_surface import (
+    DynamicTopConfig,
+    estimate_dynamic_top_surface,
+)
+
+
+def _lookup_transform_matrix(tf_buffer, source_frame, target_frame, stamp,
+                             wall_timeout_sec=0.5, poll_sec=0.02):
+    """Acquisition-stamp 4x4 transform (plain numbers for the algorithms).
+
+    Same zero-timeout lookup with a *wall-clock* retry deadline as
+    :func:`_transform_points_to_world` — no latest-TF fallback: a missing
+    or stale transform fails closed upstream.
+    """
+    deadline = time.monotonic() + float(wall_timeout_sec)
+    tf_msg = None
+    err = None
+    while True:
+        try:
+            tf_msg = tf_buffer.lookup_transform(
+                target_frame, source_frame, stamp,
+                rclpy.duration.Duration(seconds=0))
+            break
+        except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                tf2_ros.ExtrapolationException) as exc:
+            err = str(exc)
+            exc.__traceback__ = None
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(poll_sec)
+    if tf_msg is None:
+        return None, err
+    t = tf_msg.transform.translation
+    r = tf_msg.transform.rotation
+    qx, qy, qz, qw = r.x, r.y, r.z, r.w
+    rot = np.array([
+        [1 - 2*(qy*qy + qz*qz), 2*(qx*qy - qz*qw), 2*(qx*qz + qy*qw)],
+        [2*(qx*qy + qz*qw), 1 - 2*(qx*qx + qz*qz), 2*(qy*qz - qx*qw)],
+        [2*(qx*qz - qy*qw), 2*(qy*qz + qx*qw), 1 - 2*(qx*qx + qy*qy)],
+    ])
+    mat = np.eye(4)
+    mat[:3, :3] = rot
+    mat[0, 3], mat[1, 3], mat[2, 3] = t.x, t.y, t.z
+    return mat, None
 
 
 def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
@@ -159,6 +209,14 @@ class LuggageDetector(Node):
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
         self.declare_parameter("use_semantic", False)
+        # DYNAMIC-SUCTION ST-1: "dynamic" derives the top from the YOLO
+        # instance ROI + aligned-depth component (plan design decision A);
+        # "legacy" keeps the cargo-cloud RANSAC/PCA path. scene_tf never
+        # influences either top path.
+        self.declare_parameter("top_surface_mode", "legacy")
+        self.declare_parameter(
+            "instance_mask_topic", "/luggage/semantic/instance_mask")
+        self.declare_parameter("use_instance_mask", True)
         self.declare_parameter("roi_margin", 0.5)
         # Scene_tf pickup square is NOT the detect ROI. Cargo is YOLO bbox
         # → aligned depth. Opt in only for sim/eval FP gates.
@@ -236,11 +294,15 @@ class LuggageDetector(Node):
         self.declare_parameter("stream_stats_topic", "~/stream_stats_json")
         self.declare_parameter("join_buffer_maxlen", 10)
 
+        # DYNAMIC-SUCTION ST-1: scene_tf no longer enters the detection
+        # path. The scene config is read ONLY as the box-catalog source
+        # (height prior); pickup_source pose, workspace extents, platform
+        # geometry are never read here. Crop windows come exclusively from
+        # explicit workspace parameters.
         scene_cfg_path = self.get_parameter("scene_tf_config").value
         if not scene_cfg_path:
             scene_cfg_path = resolve_scene_tf_config_path()
         scene_config = load_scene_tf_config(scene_cfg_path)
-        self._source_xyz, _ = pickup_source_in_world(scene_config)
 
         catalog_config = load_box_catalog(scene_config=scene_config)
         self._catalog_entries = box_catalog_entries(catalog_config)
@@ -273,7 +335,9 @@ class LuggageDetector(Node):
         # Platform-free geometry pipeline (E2). Default crop is the YOLO
         # RGB bbox projected through depth (semantic cargo cloud). A
         # scene_tf pickup square is optional sim/eval geometry, not the
-        # site detect ROI. pickup_source.z never enters.
+        # site detect ROI. ST-1: crop windows never derive from scene_tf
+        # anymore — crop_to_workspace without an explicit center fails
+        # closed at startup instead of silently importing pickup geometry.
         def _ws_param(name):
             try:
                 return list(self.get_parameter(name).value or [])
@@ -282,16 +346,16 @@ class LuggageDetector(Node):
         crop_ws = bool(self.get_parameter("crop_to_workspace").value)
         ws_center = _ws_param("workspace_center_xy")
         ws_half = _ws_param("workspace_half_extents")
-        if crop_ws:
-            if not ws_center:
-                ws_center = [self._source_xyz[0], self._source_xyz[1]]
-            if not ws_half:
-                ws_half = [self._roi_margin, self._roi_margin]
-        else:
-            if not ws_center:
-                ws_center = [0.0, 0.0]
-            if not ws_half:
-                ws_half = [self._roi_margin, self._roi_margin]
+        if crop_ws and not ws_center:
+            raise RuntimeError(
+                "DETECT_CONFIG_WORKSPACE_CENTER_REQUIRED: "
+                "crop_to_workspace=true requires an explicit "
+                "workspace_center_xy parameter (scene_tf pickup_source "
+                "is no longer a detection input)")
+        if not ws_center:
+            ws_center = [0.0, 0.0]
+        if not ws_half:
+            ws_half = [self._roi_margin, self._roi_margin]
         platform_z_raw = str(self.get_parameter("platform_z").value).strip()
         try:
             self._platform_z = (
@@ -337,6 +401,29 @@ class LuggageDetector(Node):
         # holds 15 entries / 1.0 s (raw_evicted ~= raw_received with the
         # old depth-4 window, starving lazy lookups).
         self._raw_buffer_maxlen = 15
+        # DYNAMIC-SUCTION ST-1: instance-mask buffer under the identical
+        # 15 entries / 1.0 s contract (exact (sec, nanosec) keys, camera
+        # clock only). Empty when the backend publishes no pixel masks
+        # (bbox_fill) — the bbox path runs instead; never a cross-stamp
+        # fallback.
+        self._instance_mask_buffer = OrderedDict()
+        self._instance_mask_counts = {
+            "instance_mask_received": 0,
+            "instance_mask_evicted": 0,
+            "instance_mask_horizon_evicted": 0,
+            "instance_mask_lookup_hit": 0,
+            "instance_mask_lookup_miss": 0,
+        }
+        self._top_surface_mode = str(
+            self.get_parameter("top_surface_mode").value)
+        if self._top_surface_mode not in ("legacy", "dynamic"):
+            raise RuntimeError(
+                "top_surface_mode must be 'legacy' or 'dynamic', got %r"
+                % (self._top_surface_mode,))
+        self._use_instance_mask = bool(
+            self.get_parameter("use_instance_mask").value)
+        self._component_config = ComponentConfig()
+        self._dynamic_config = DynamicTopConfig()
         self._pending_joins = OrderedDict()
         self._ready_joins = deque()
         self._support_wait_timeout = float(
@@ -432,6 +519,14 @@ class LuggageDetector(Node):
         self.create_subscription(
             CameraInfo, self.get_parameter("support_camera_info_topic").value,
             self._support_info_cb, stream_qos, callback_group=self._group)
+        if self._use_instance_mask:
+            # Pixel instance masks (SAM2-class backends) join the dynamic
+            # top path by the exact acquisition stamp, same contract as the
+            # depth buffer.
+            self.create_subscription(
+                Image, self.get_parameter("instance_mask_topic").value,
+                self._instance_mask_cb, support_qos,
+                callback_group=self._group)
         self._frame_pub = self.create_publisher(
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
@@ -589,6 +684,132 @@ class LuggageDetector(Node):
                     self._raw_counts["raw_horizon_evicted"] += 1
         self._drain_pending_joins(new_key=key)
 
+    def _instance_mask_cb(self, msg):
+        """Buffer the mono16 instance-id map by exact stamp (ST-1).
+
+        Same 15 entries / 1.0 s camera-clock contract as the depth buffer;
+        entries are decoded lazily on the exact-stamp lookup only.
+        """
+        key = stamp_key(msg.header.stamp)
+        if key is None:
+            return
+        with self._raw_lock:
+            self._instance_mask_counts["instance_mask_received"] += 1
+            self._instance_mask_buffer[key] = msg
+            while len(self._instance_mask_buffer) > self._raw_buffer_maxlen:
+                self._instance_mask_buffer.popitem(last=False)
+                self._instance_mask_counts["instance_mask_evicted"] += 1
+            if len(self._instance_mask_buffer) > 1:
+                newest = next(reversed(self._instance_mask_buffer))
+                cutoff = (newest[0] - 1, newest[1])
+                stale = [k for k in self._instance_mask_buffer if k < cutoff]
+                for k in stale:
+                    del self._instance_mask_buffer[k]
+                    self._instance_mask_counts[
+                        "instance_mask_horizon_evicted"] += 1
+
+    def _peek_instance_mask(self, key):
+        """Exact-stamp instance mask as a bool HxW array, or None.
+
+        ``None`` (no mask at this stamp — bbox_fill backend, or the mask
+        stream lagged) selects the bbox component path. A *different*
+        stamp is never substituted.
+        """
+        with self._raw_lock:
+            msg = self._instance_mask_buffer.get(key)
+            if msg is not None:
+                self._instance_mask_counts["instance_mask_lookup_hit"] += 1
+            else:
+                self._instance_mask_counts["instance_mask_lookup_miss"] += 1
+        if msg is None:
+            return None
+        arr = adapters.mono16_array_from_msg(msg)
+        if arr is None:
+            return None
+        nonzero = arr[arr > 0]
+        if nonzero.size == 0:
+            return None
+        # Dominant nonzero instance id (deterministic: bincount argmax).
+        dominant = int(np.bincount(nonzero.ravel()).argmax())
+        return arr == dominant
+
+    def _pop_raw_depth(self, key):
+        """Exact-stamp aligned-depth decode for the dynamic top path.
+
+        Peek-only (the support fit reuses the buffered entry): returns
+        ``(depth_array, msg)`` or ``(None, status)``.
+        """
+        with self._raw_lock:
+            msg = self._raw_buffer.get(key)
+        if msg is None:
+            return None, "miss"
+        depth = adapters.depth_array_from_msg(msg)
+        if depth is None:
+            return None, "decode_fail"
+        with self._support_info_lock:
+            intr = self._support_intrinsics
+        if intr is None:
+            return None, "no_intrinsics"
+        return (depth, msg), intr
+
+    def _select_instance_bbox(self, yolo_msg):
+        """Deterministic instance ROI: highest confidence, then area."""
+        best_key = None
+        best_bbox = None
+        for det in yolo_msg.detections:
+            x0, y0, x1, y1 = (int(v) for v in det.bbox)
+            area = max(0, x1 - x0) * max(0, y1 - y0)
+            key = (float(det.confidence), area)
+            if best_key is None or key > best_key:
+                best_key = key
+                best_bbox = (x0, y0, x1, y1)
+        return best_bbox
+
+    def _estimate_dynamic_top(self, cloud_msg, yolo_msg, stamp_time,
+                              cloud_stamp_sec):
+        """Dynamic instance-derived top for one joined acquisition.
+
+        Returns a ``DynamicTopResult`` or a fail-closed reason ``str``.
+        No legacy fallback: a dynamic-mode failure must surface its own
+        reason (a fallback would mask exactly the stale-fusion bugs the
+        A0 gate hunts).
+        """
+        _t0 = time.monotonic()
+        if yolo_msg is None or not yolo_msg.detections:
+            return "DETECT_DYNAMIC_TOP_NO_INSTANCE"
+        key = stamp_key(cloud_msg.header.stamp)
+        pair, intr = self._pop_raw_depth(key)
+        if pair is None:
+            return "DETECT_DYNAMIC_TOP_INPUT_STAMP_MISS"
+        depth, depth_msg = pair
+        mask = self._peek_instance_mask(key)
+        bbox = self._select_instance_bbox(yolo_msg)
+        component = isolate_depth_component(
+            depth, bbox=bbox, mask=mask, config=self._component_config)
+        if not component.ok:
+            return "DETECT_" + component.reason
+        mat4, _err = _lookup_transform_matrix(
+            self._tf_buffer, depth_msg.header.frame_id,
+            self._world_frame, stamp_time)
+        if mat4 is None:
+            return "DETECT_TF_FAILED"
+        if mask is not None:
+            instance_region = mask
+        else:
+            x0, y0, x1, y1 = bbox
+            instance_region = np.zeros(depth.shape, dtype=bool)
+            instance_region[max(0, y0):max(0, y1),
+                            max(0, x0):max(0, x1)] = True
+        result = estimate_dynamic_top_surface(
+            depth, component.mask, intr, mat4,
+            stamp=cloud_stamp_sec, frame=self._world_frame,
+            instance_region=instance_region, config=self._dynamic_config,
+            timing=self._timing)
+        self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
+        if result.reason != "ok":
+            return result.reason
+        return result
+
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
         k = msg.k
@@ -735,6 +956,7 @@ class LuggageDetector(Node):
         self._frame_window.clear()
         with self._raw_lock:
             self._raw_buffer.clear()
+            self._instance_mask_buffer.clear()
         # New luggage instance on the same platform: carry the support-Z
         # window (PF-R10 epoch_carry) — the platform surface is static
         # across spawns and the 0.015 m spread gate still validates every
@@ -1017,11 +1239,15 @@ class LuggageDetector(Node):
         msg.height_source = int(result.height_source)
         return msg
 
-    def _pca_from_cloud_msg(self, cloud_msg):
+    def _pca_from_cloud_msg(self, cloud_msg, yolo_msg=None):
         """Platform-free fit from one cargo/depth acquisition.
 
         Returns ``(pca_fields, DetectedLuggage or None, support_fields)``.
         Always returns fields so the stream can publish invalid frames.
+        In ``top_surface_mode=dynamic`` the top comes from the YOLO
+        instance ROI + aligned-depth component (``yolo_msg`` required;
+        DYNAMIC-SUCTION ST-1); the support fit and box composition are
+        unchanged.
         """
         stamp = cloud_msg.header.stamp
         frame = cloud_msg.header.frame_id
@@ -1065,6 +1291,16 @@ class LuggageDetector(Node):
         # its own machine reason — never a measured height.
         geometry_ok, geometry_gate_reason = self._evaluate_geometry_gate(stamp)
         cloud_stamp_sec = float(adapters.stamp_to_sec(stamp))
+        dynamic_top = None
+        if self._top_surface_mode == "dynamic":
+            # ST-1: fail-closed dynamic estimation; never falls back to
+            # the legacy top when the dynamic path rejects.
+            dynamic_top = self._estimate_dynamic_top(
+                cloud_msg, yolo_msg, stamp_time, cloud_stamp_sec)
+            if isinstance(dynamic_top, str):
+                return (pca_fields_from_failure(
+                    dynamic_top, n_points, source, centroid),
+                    None, self._support_fields_empty())
         _t0 = time.monotonic()
         result = self._pipeline.update(
             pts_world, raw_world,
@@ -1073,7 +1309,8 @@ class LuggageDetector(Node):
             geometry_gate_reason=geometry_gate_reason or None,
             platform_z=self._platform_z,
             stamp_sec=cloud_stamp_sec,
-            cargo_segmented=self._use_semantic)
+            cargo_segmented=self._use_semantic,
+            top_surface=dynamic_top)
         self._timing["geometry_ms"] = (time.monotonic() - _t0) * 1000.0
         self._timing["pipeline"] = dict(result.timing)
         support_fields = self._support_fields(result)
@@ -1171,7 +1408,8 @@ class LuggageDetector(Node):
         return msg
 
     def _emit_joined(self, yolo_msg, cloud_msg):
-        fields, box, support = self._pca_from_cloud_msg(cloud_msg)
+        fields, box, support = self._pca_from_cloud_msg(
+            cloud_msg, yolo_msg=yolo_msg)
         if not fields["pca_valid"]:
             reason = fields["pca_reason"]
             if reason in (
