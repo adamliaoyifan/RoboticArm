@@ -264,13 +264,17 @@ def annotate_support_history(rows, instance_id, generation=None,
 
 def first_support_ready_stamp(rows, instance_id, generation=None,
                               window_size=SUPPORT_WINDOW_SIZE):
-    """ROS stamp of the first row with history occupancy == window size.
+    """ROS stamp of the first *readiness-eligible* 5/5 history row.
 
-    Independent of whether that row is FULL_3D.
+    Occupancy leftover from a previous box (PF-R10 epoch carry) is not
+    ready. The row must also be admitted into the filter. Independent of
+    whether that row is FULL_3D.
     """
     window_size = int(window_size)
     for row in rows or []:
         if not row_matches_barrier(row, instance_id, generation):
+            continue
+        if not reconstruct_support_admitted(row):
             continue
         count = _as_int(row.get("support_window_count"))
         size = _as_int(row.get("support_window_size")) or window_size

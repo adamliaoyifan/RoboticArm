@@ -102,6 +102,7 @@ EVALUATOR_PATHS = (
     "src/luggage_perception/test/eval/test_pf_r7_g4_steady_window.py",
     "src/luggage_perception/test/eval/pf_r7_fixtures.py",
     "src/luggage_perception/test/eval/data/pfr7_g3_carryon00_scores.jsonl",
+    "src/luggage_perception/test/eval/data/pfr7_g4_standard00_scores.jsonl",
     "src/luggage_perception/test/test_platform_free_pipeline.py",
 )
 

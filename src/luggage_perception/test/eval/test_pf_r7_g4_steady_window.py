@@ -21,18 +21,31 @@ from pf_r7_fixtures import pass_record
 _CARRYON = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "data", "pfr7_g3_carryon00_scores.jsonl")
+_STANDARD = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "data", "pfr7_g4_standard00_scores.jsonl")
 INSTANCE = "pickup_box_0001_carryon"
 GEN = 2
+STANDARD_INSTANCE = "pickup_box_0002_standard"
+STANDARD_GEN = 4
 
 
-def _load_carryon00():
+def _load_jsonl(path):
     rows = []
-    with open(_CARRYON, "r", encoding="utf-8") as handle:
+    with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if line:
                 rows.append(json.loads(line))
     return rows
+
+
+def _load_carryon00():
+    return _load_jsonl(_CARRYON)
+
+
+def _load_standard00():
+    return _load_jsonl(_STANDARD)
 
 
 def _ok_row(**over):
@@ -113,9 +126,10 @@ def _window_rows(t_steady, n, dt=0.08, mutate=None):
     return rows
 
 
-def _split(rows, clock_end_sec=None, drain_rows=None):
+def _split(rows, clock_end_sec=None, drain_rows=None,
+           instance_id=INSTANCE, generation=GEN):
     return scoring.split_steady_windows(
-        rows, INSTANCE, GEN, drain_rows=drain_rows or [],
+        rows, instance_id, generation, drain_rows=drain_rows or [],
         clock_end_sec=clock_end_sec)
 
 
@@ -188,6 +202,61 @@ class TestCarryon00Boundary(unittest.TestCase):
             any("window_complete" in item or "clock_did_not" in item
                 for item in classified["reasons"]),
             classified["reasons"])
+
+
+class TestLeftoverOccupancyIsNotReady(unittest.TestCase):
+    def test_leftover_count5_without_admit_does_not_start_window(self):
+        leftover = []
+        for i in range(10):
+            stamp = 10.0 + 0.05 * i
+            leftover.append(_hold_track(
+                stamp_sec=stamp, monotonic_sec=stamp, pca_source="empty",
+                support_sample_admitted=False, support_window_count=5,
+                support_window_size=5))
+        t_steady = 10.6
+        ready = []
+        for i in range(40):
+            stamp = t_steady + 0.08 * i
+            ready.append(_ok_row(
+                stamp_sec=stamp, monotonic_sec=stamp,
+                support_sample_admitted=True, support_window_count=5,
+                support_window_size=5))
+        end = t_steady + 8.0
+        rows = leftover + ready + [_ok_row(
+            stamp_sec=end, monotonic_sec=end,
+            support_sample_admitted=True, support_window_count=5,
+            support_window_size=5)]
+        windows = _split(rows, clock_end_sec=end)
+        self.assertAlmostEqual(windows["t_steady"], t_steady, places=6)
+        self.assertEqual(windows["n_transition"], 10)
+        self.assertTrue(all(
+            r.get("support_sample_admitted") is False
+            for r in windows["transition"]))
+        self.assertTrue(windows["window_complete"])
+        classified = classify_attempt(_g4_record(windows, 10.0, t_full=0.6))
+        self.assertEqual(
+            classified["attempt_class"], CLASS_ELIGIBLE_PASS, classified)
+
+    def test_standard00_dump_selects_45_937(self):
+        rows = _load_standard00()
+        self.assertEqual(len(rows), 136)
+        self.assertEqual(rows[0].get("support_window_count"), 5)
+        self.assertFalse(bool(rows[0].get("support_sample_admitted")))
+        windows = _split(
+            rows, instance_id=STANDARD_INSTANCE, generation=STANDARD_GEN)
+        self.assertAlmostEqual(windows["t_steady"], 45.937, places=3)
+        self.assertEqual(windows["n_transition"], 10)
+        self.assertTrue(all(
+            str(r.get("pca_source") or "") != "measure"
+            for r in windows["transition"]))
+        self.assertGreaterEqual(windows["n_settled"], 30)
+        summary = scoring.aggregate([{
+            "warmup": [],
+            "settled": windows["settled"],
+            "instance_id": STANDARD_INSTANCE,
+        }])
+        self.assertGreaterEqual(summary["full3d_rate"], 0.95)
+        self.assertNotAlmostEqual(summary["full3d_rate"], 0.903, places=3)
 
 
 class TestHalfOpenBoundary(unittest.TestCase):
