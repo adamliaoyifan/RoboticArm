@@ -1,0 +1,86 @@
+# ACTIVE-VIEW-1 detector-miss recovery policy configuration example.
+# Copy to active_view_recovery.yaml and tune for the calibrated rig.
+# The ROS-free policy consumes a plain mapping of these keys
+# (ActiveViewConfig.from_mapping); it never reads YAML at runtime.
+
+active_view_recovery:
+  # Diagnostic presence-hint floor. Hints in [0.05, 0.20) carry no mask,
+  # cargo cloud, pick proposal, or success authority. The production
+  # acceptance floor stays 0.20.
+  hint_min_confidence: 0.05
+  production_min_confidence: 0.20
+
+  # Hint admissibility: bbox side, image-area fraction, and cross-frame
+  # association IoU for the two agreeing frames.
+  hint_min_side_px: 16
+  area_fraction_min: 0.005
+  area_fraction_max: 0.80
+  association_iou_min: 0.30
+
+  # Depth-foreground component evidence inside the pickup workspace.
+  foreground_min_pixels: 500
+  foreground_height_min_m: 0.03
+  foreground_height_max_m: 0.80
+
+  # Incomplete-observation defects on an accepted detection.
+  border_margin_min_px: 8
+  valid_depth_ratio_min: 0.80
+  cargo_cloud_min_points: 500
+
+  # Recovery budget: at most three executed recovery views or 15.0 s from
+  # the first recovery decision (measured acquisition stamps only).
+  max_recovery_views: 3
+  max_elapsed_sec: 15.0
+
+  # Two consecutive integrated views each improving best cargo confidence
+  # by < 0.02 and bbox valid-depth ratio by < 0.05 stop recovery.
+  no_gain_confidence_delta: 0.02
+  no_gain_ratio_delta: 0.05
+  no_gain_streak: 2
+
+  # Healthy window: exactly three settled frames, strictly increasing
+  # stamps, spanning at most 0.50 s.
+  window_max_stamp_span_sec: 0.50
+
+  # Pickup workspace (base frame, measured static rig geometry) and the
+  # calibrated pickup_observe camera pose (robot_poses.yaml.example:
+  # camera_depth_optical_frame at world (-1.0, 0.0, 1.9), optical +Z down).
+  workspace_center_xy: [-1.0, 0.0]
+  workspace_half_xy: [0.5, 0.5]
+  workspace_margin_m: 0.10
+  workspace_plane_z: 0.97
+  nominal_camera_xyz: [-1.0, 0.0, 1.9]
+
+  # Camera envelope for candidate admissibility.
+  camera_z_max: 2.05
+  camera_xy_radius_max: 1.20
+
+  # Coverage ranking (constrained_view_planner) and score weights
+  # (cargo_nbv_planner composition: coverage*w + gain*w - path*w
+  # - smooth*w - 0.01 * library index).
+  coverage_radius: 0.9
+  alignment_min: 0.2
+  coverage_weight: 1.0
+  gain_weight: 1.0
+  path_weight: 2.0
+  smooth_weight: 0.0
+
+  # Default candidate library relative to the calibrated pickup_observe
+  # camera pose and the measured look-at point. Look yaw orbits the look
+  # ray about the world Z axis through the camera.
+  candidates:
+    - candidate_id: lateral_left
+      camera_offset_xyz: [0.0, 0.10, 0.0]
+      look_yaw_deg: 0.0
+    - candidate_id: lateral_right
+      camera_offset_xyz: [0.0, -0.10, 0.0]
+      look_yaw_deg: 0.0
+    - candidate_id: raised_center
+      camera_offset_xyz: [0.0, 0.0, 0.08]
+      look_yaw_deg: 0.0
+    - candidate_id: yaw_left
+      camera_offset_xyz: [0.0, 0.0, 0.0]
+      look_yaw_deg: 12.0
+    - candidate_id: yaw_right
+      camera_offset_xyz: [0.0, 0.0, 0.0]
+      look_yaw_deg: -12.0
