@@ -449,20 +449,28 @@ class CargoVolumeMapper:
         } for record in self._placed_boxes]
 
     def _rasterize_placed_box(self, center, size, yaw=0.0):
-        """Rasterize a committed box without changing history/revision."""
+        """Rasterize a committed box without changing history/revision.
+
+        Samples sit strictly inside the box faces ((i+0.5)/n positions, one
+        extra column over the extent so spacing stays under one cell).
+        Edge-inclusive sampling marked measure-zero boundary cells as
+        occupied, over-reserving a one-cell skirt around every committed
+        footprint; interior samples mark exactly the cells the box covers
+        with positive measure.
+        """
         w, d, h = size
         sx = max(2, int(math.ceil(w / self.resolution)) + 1)
         sy = max(2, int(math.ceil(d / self.resolution)) + 1)
         sz = max(2, int(math.ceil(h / self.resolution)) + 1)
         cos_y, sin_y = math.cos(yaw), math.sin(yaw)
         for ix in range(sx):
-            lx = (ix / float(sx - 1) - 0.5) * w
+            lx = ((ix + 0.5) / float(sx) - 0.5) * w
             for iy in range(sy):
-                ly = (iy / float(sy - 1) - 0.5) * d
+                ly = ((iy + 0.5) / float(sy) - 0.5) * d
                 rx = cos_y * lx - sin_y * ly
                 ry = sin_y * lx + cos_y * ly
                 for iz in range(sz):
-                    lz = (iz / float(sz - 1) - 0.5) * h
+                    lz = ((iz + 0.5) / float(sz) - 0.5) * h
                     self.mark_occupied_world(
                         center[0] + rx, center[1] + ry, center[2] + lz,
                         source=SOURCE_GEOMETRY,

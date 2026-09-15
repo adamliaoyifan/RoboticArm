@@ -56,6 +56,8 @@ class MotionPlannerNode(Node):
         self.declare_parameter("planner_id", "RRTConnect")
         self.declare_parameter("cartesian_max_step", 0.01)
         self.declare_parameter("cartesian_min_fraction", 0.95)
+        self.declare_parameter("velocity_scaling", 0.3)
+        self.declare_parameter("acceleration_scaling", 0.3)
         # Settle gate between segments.
         self.declare_parameter("settle_vel_tol", 0.02)
         self.declare_parameter("settle_hold_time", 0.5)
@@ -83,6 +85,10 @@ class MotionPlannerNode(Node):
             planner_id=str(self.get_parameter("planner_id").value),
             cartesian_max_step=float(
                 self.get_parameter("cartesian_max_step").value),
+            velocity_scaling=float(
+                self.get_parameter("velocity_scaling").value),
+            acceleration_scaling=float(
+                self.get_parameter("acceleration_scaling").value),
             cartesian_min_fraction=float(
                 self.get_parameter("cartesian_min_fraction").value),
         )
@@ -187,7 +193,8 @@ class MotionPlannerNode(Node):
                 segment, feedback_cb=feedback,
                 execute_timeout=float(
                     self.get_parameter("execute_timeout").value),
-                current_joints=self._joint_positions()[0])
+                current_joints=self._joint_positions()[0],
+                cancel_check=lambda: goal_handle.is_cancel_requested)
         except Exception as exc:  # noqa: BLE001 - action boundary
             self.get_logger().error("segment %s raised: %s" % (name, exc))
             goal_handle.abort()

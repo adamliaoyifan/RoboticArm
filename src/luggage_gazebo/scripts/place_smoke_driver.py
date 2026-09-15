@@ -188,9 +188,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         transit.name = "place_exit"
         transit.type = "cartesian"
         transit.allow_ompl_fallback = True
+        # The exit reverse-traverse passes near a wrist singularity: its
+        # joint-space path is long, and at profile scaling 0.15 the retimed
+        # trajectory ran past the 60 s plan timeout (streak 2 P3) while the
+        # controller was still grinding. Give the exit room to complete;
+        # cancellation (driver side) plus the setup settle are backstops.
         ok, message, _result = self.send_action(
             self._plan, PlanMotion.Goal(segment=transit),
-            timeout=self._args.plan_timeout, name="PlanMotion:place_exit")
+            timeout=max(self._args.plan_timeout, 150.0),
+            name="PlanMotion:place_exit")
         return ok, message
 
     def _home_arm(self):
@@ -340,7 +346,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
     def _set_place_touch(self, allowed):
         request = SetBool.Request()
         request.data = bool(allowed)
-        return self.call_srv(self._place_touch, request, timeout=10.0)
+        resp = self.call_srv(self._place_touch, request, timeout=10.0)
+        if resp is None or not resp.success:
+            # A loaded stack can stall this ACM round-trip past the first
+            # 10 s call (streak 2 P2: the touch, clear, build, and vacuum
+            # services all timed out in the same window while the sim
+            # itself kept running). Idempotent: one settle-and-retry
+            # before the descend branch fails the case on it.
+            time.sleep(2.0)
+            resp = self.call_srv(self._place_touch, request, timeout=20.0)
+        return resp
 
     def _check_i1(self):
         if not getattr(self._args, "use_vacuum", False):

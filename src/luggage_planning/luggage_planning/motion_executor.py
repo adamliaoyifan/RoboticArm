@@ -51,6 +51,10 @@ JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
 _JOINT_LIMIT = 6.28
 _VEL_SCALE = 0.3
 _ACC_SCALE = 0.3
+# elfin joint limits are uniform (URDF velocity 1.57 rad/s, elfin_moveit_config
+# joint_limits.yaml acceleration 3.14 rad/s^2).
+_JOINT_VEL_LIMIT = 1.57
+_JOINT_ACC_LIMIT = 3.14
 
 
 @dataclass
@@ -87,7 +91,9 @@ class MotionExecutor:
                  cartesian_max_step=0.01,
                  cartesian_min_fraction=0.95,
                  cartesian_avoid_collisions=True,
-                 tool_down_abs_tol=0.05):
+                 tool_down_abs_tol=0.05,
+                 velocity_scaling=_VEL_SCALE,
+                 acceleration_scaling=_ACC_SCALE):
         self._node = node
         self._group = str(group_name)
         self._link = str(link_name)
@@ -98,7 +104,15 @@ class MotionExecutor:
         self._max_step = float(cartesian_max_step)
         self._min_fraction = float(cartesian_min_fraction)
         self._avoid_collisions = bool(cartesian_avoid_collisions)
+        self._vel_scale = float(velocity_scaling)
+        self._acc_scale = float(acceleration_scaling)
         self._tool_down_abs_tol = float(tool_down_abs_tol)
+        # Set per execute_segment call (goals are serialized: the stack
+        # never runs two motion segments at once, move_group would refuse
+        # the second). When the outer action goal is cancelled, inner
+        # action handles are cancelled so the controller stops instead of
+        # grinding on past the caller's timeout.
+        self._cancel_check = None
 
         import rclpy
         self._rclpy = rclpy
@@ -130,12 +144,24 @@ class MotionExecutor:
     # ------------------------------------------------------------------
 
     def execute_segment(self, segment_msg, feedback_cb=None,
-                        execute_timeout=45.0, current_joints=None):
+                        execute_timeout=45.0, current_joints=None,
+                        cancel_check=None):
         """Execute one luggage_msgs/MotionSegment.
 
         Returns ``SegmentExecResult``. ``fraction`` is 1.0 for pose-target
         paths and the computed Cartesian fraction otherwise.
+        ``cancel_check`` is polled while inner action goals run; a True
+        return cancels the inner goal so the controller stops.
         """
+        self._cancel_check = cancel_check
+        try:
+            return self._execute_segment_inner(
+                segment_msg, feedback_cb, execute_timeout, current_joints)
+        finally:
+            self._cancel_check = None
+
+    def _execute_segment_inner(self, segment_msg, feedback_cb,
+                               execute_timeout, current_joints):
         seg_type = str(segment_msg.type)
         if seg_type == "pose_target":
             return self._run_pose_target(segment_msg, feedback_cb,
@@ -249,8 +275,8 @@ class MotionExecutor:
         goal.request.allowed_planning_time = self._planning_time
         goal.request.planner_id = self._planner_id
         goal.request.start_state.is_diff = True
-        goal.request.max_velocity_scaling_factor = _VEL_SCALE
-        goal.request.max_acceleration_scaling_factor = _ACC_SCALE
+        goal.request.max_velocity_scaling_factor = self._vel_scale
+        goal.request.max_acceleration_scaling_factor = self._acc_scale
         ik_joints = self._ik_joints(segment_msg.target_pose, current_joints)
         if ik_joints is not None:
             note = "IK joint goal"
@@ -307,8 +333,8 @@ class MotionExecutor:
         goal.request.allowed_planning_time = self._planning_time
         goal.request.planner_id = self._planner_id
         goal.request.start_state.is_diff = True
-        goal.request.max_velocity_scaling_factor = _VEL_SCALE
-        goal.request.max_acceleration_scaling_factor = _ACC_SCALE
+        goal.request.max_velocity_scaling_factor = self._vel_scale
+        goal.request.max_acceleration_scaling_factor = self._acc_scale
         goal.request.goal_constraints = [self._joint_constraints(positions)]
         goal.planning_options.plan_only = False
         goal.planning_options.replan = False
@@ -411,11 +437,50 @@ class MotionExecutor:
             return 0.0, None
         return float(response.fraction), response
 
+    def _retime_cartesian_solution(self, plan_response):
+        """Time-parameterize a GetCartesianPath solution at scaled limits.
+
+        The Humble cartesian service interpolates the path at ``max_step``
+        but returns it without usable ``time_from_start`` values, so the
+        raw solution races the arm at full rate regardless of the
+        velocity/acceleration scaling that MoveGroup requests honor
+        (observed: ~0.75 m/s payload traverse with the base joint frozen
+        in a goal-time violation while the profile scaling was 0.15).
+        Linear timing bounded by the scaled per-joint velocity limit
+        restores that contract; the first and last steps double as a
+        ramp grace, matching the scalar named-pose timing idiom (no
+        acceleration modeling, limits are uniform).
+        """
+        trajectory = plan_response.solution.joint_trajectory
+        points = list(trajectory.points)
+        if len(points) < 2:
+            return plan_response
+        v_max = max(_JOINT_VEL_LIMIT * self._vel_scale, 1e-3)
+        points[0].time_from_start = DurationMsg(sec=0, nanosec=0)
+        elapsed = 0.0
+        prev = points[0].positions
+        for index in range(1, len(points)):
+            current = points[index].positions
+            delta = max(
+                (abs(float(b) - float(a))
+                 for a, b in zip(prev, current)),
+                default=0.0)
+            step = max(delta / v_max, 1e-3)
+            if index == 1 or index == len(points) - 1:
+                step = max(step, delta / v_max * 2.0)
+            elapsed += step
+            whole = int(elapsed)
+            points[index].time_from_start = DurationMsg(
+                sec=whole, nanosec=int((elapsed - whole) * 1e9))
+            prev = current
+        return plan_response
+
     def _execute_trajectory(self, plan_response, segment_msg, fraction,
                             feedback_cb, execute_timeout):
         self._notify(feedback_cb, "executing", segment_msg.name, fraction)
         goal = ExecuteTrajectory.Goal()
-        goal.trajectory = plan_response.solution
+        goal.trajectory = self._retime_cartesian_solution(
+            plan_response).solution
         if not self._execute.wait_for_server(timeout_sec=5.0):
             return SegmentExecResult(
                 False, "execute_trajectory server unavailable", fraction)
@@ -489,8 +554,25 @@ class MotionExecutor:
         event = threading.Event()
         future = handle.get_result_async()
         future.add_done_callback(lambda _f: event.set())
+        watcher = None
+        if self._cancel_check is not None:
+            def _watch():
+                while not event.wait(0.2):
+                    try:
+                        if self._cancel_check():
+                            handle.cancel_goal()
+                            return
+                    except Exception:  # noqa: BLE001 - watcher must not leak
+                        return
+            watcher = threading.Thread(target=_watch, daemon=True)
+            watcher.start()
         reached, _reason = wait_event(
             event, timeout_sec, clock=self._node.get_clock())
         if not reached:
+            if watcher is not None and watcher.is_alive():
+                try:
+                    handle.cancel_goal()
+                except Exception:  # noqa: BLE001 - best-effort cancel
+                    pass
             return None
         return future.result()

@@ -69,12 +69,18 @@ def _default_launch_values():
         "use_moveit": "true",
         "gui": "true",
         "use_rviz": "true",
+        "use_perception": "true",
+        "hull_margin": "0.0",
+        "min_support_ratio": "0.6",
+        "last_result_max_candidates": "24",
         "use_cargo_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
+        "velocity_scaling": "0.3",
+        "acceleration_scaling": "0.3",
         "use_semantic": "false",
         "semantic_require_backend": "",
         "visual_kind": "mesh",
@@ -83,6 +89,7 @@ def _default_launch_values():
         "yaw_range": "0.0,0.0",
         "xy_jitter_range": "0.0,0.0",
         "sequence_ids": "",
+        "random_seed": "-1",
         "spawn_at_observe": "true",
         "observe_pose_name": "observe",
         "robot_poses_config": os.path.join(
@@ -475,6 +482,7 @@ def _launch_setup(context):
         output="screen",
         arguments=["/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock"],
     )
+    use_perception_cond = IfCondition(_bool_text(cfg["use_perception"]))
 
     # D435 + Mid-360S -> ROS names the rest of the stack consumes.
     # Keep both in this one process: eval graph_error treats >3
@@ -502,6 +510,7 @@ def _launch_setup(context):
             ("/livox/scan/points", "/livox/lidar"),
         ],
         parameters=[{"use_sim_time": True}],
+        condition=use_perception_cond,
     )
 
     depth_republisher = Node(
@@ -510,6 +519,7 @@ def _launch_setup(context):
         name="depth_image_republisher",
         output="screen",
         parameters=[{"use_sim_time": True}],
+        condition=use_perception_cond,
     )
 
     # PF-R10: per-thread glibc arenas ratcheted transient geometry
@@ -534,6 +544,7 @@ def _launch_setup(context):
         executable="sensor_preprocessor_node.py",
         name="sensor_preprocessor",
         output="screen",
+        condition=use_perception_cond,
         additional_env=_arena_env,
         parameters=[
             os.path.join(
@@ -584,6 +595,7 @@ def _launch_setup(context):
             "xy_jitter_range": _csv_floats(
                 cfg["xy_jitter_range"], (0.0, 0.0)),
             "sequence_ids": _csv_strings(cfg["sequence_ids"]),
+            "random_seed": int(float(cfg["random_seed"])),
         }],
     )
 
@@ -593,6 +605,9 @@ def _launch_setup(context):
         package="luggage_perception",
         executable="luggage_detector_node.py",
         output="screen",
+        # Place-only / planning-only stacks start with use_perception:=false
+        # so acceptance can assert perception nodes are absent.
+        condition=IfCondition(_bool_text(cfg["use_perception"])),
         # OPENBLAS 1: the support transform is a small-matrix matmul; the
         # full-core BLAS spin both burns CPU and fans allocations across
         # the OpenBLAS pool's threads.
@@ -714,6 +729,8 @@ def _launch_setup(context):
                 "robot_poses_config": poses_path,
                 "named_pose_duration": float(cfg["named_pose_duration"]),
                 "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
+                "velocity_scaling": float(cfg["velocity_scaling"]),
+                "acceleration_scaling": float(cfg["acceleration_scaling"]),
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -774,7 +791,15 @@ def _launch_setup(context):
             executable="placement_planner_node.py",
             name="placement_planner",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{
+                "use_sim_time": True,
+                # 0 keeps the historical flush-wall hull gate; the
+                # place-only profile configures 0.01 (>=10 mm clearance).
+                "hull_margin": float(cfg["hull_margin"]),
+                "min_support_ratio": float(cfg["min_support_ratio"]),
+                "last_result_max_candidates": int(
+                    float(cfg["last_result_max_candidates"])),
+            }],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
         Node(
@@ -854,9 +879,36 @@ def generate_launch_description():
                 "(joint_limits max is 1.57).",
             ),
             profile_arg(
+                "velocity_scaling",
+                "Motion planning trajectory velocity scaling factor "
+                "(default 0.3).",
+            ),
+            profile_arg(
+                "acceleration_scaling",
+                "Motion planning trajectory acceleration scaling factor "
+                "(default 0.3).",
+            ),
+            profile_arg(
                 "use_semantic",
                 "Start the YOLO semantic chain (segmenter + point "
                 "filter) and feed the detector the cargo cloud."),
+            profile_arg(
+                "use_perception",
+                "Start the perception stack (preprocessor, camera "
+                "bridge, depth republisher, detector). Place-only eval "
+                "profiles set false so perception nodes are absent."),
+            profile_arg(
+                "hull_margin",
+                "Placement planner inward hull clearance in metres "
+                "(default 0 = flush-wall, historical behavior)."),
+            profile_arg(
+                "min_support_ratio",
+                "Placement planner stacking support ratio "
+                "(default 0.6)."),
+            profile_arg(
+                "last_result_max_candidates",
+                "Candidates kept in the placement last_result dump "
+                "(default 24)."),
             profile_arg(
                 "semantic_require_backend",
                 "If set, segmenter startup fails unless "
@@ -883,6 +935,10 @@ def generate_launch_description():
                 "sequence_ids",
                 "Comma-separated catalog ids for SpawnNextBox "
                 "(e.g. carryon,standard). Empty = weighted random."),
+            profile_arg(
+                "random_seed",
+                "Pickup spawner RNG seed (-1 = entropy). Fixed seeds "
+                "make catalog mass sampling deterministic."),
             profile_arg(
                 "spawn_at_observe",
                 "Spawn gz_ros2_control at the named observe pose.",
