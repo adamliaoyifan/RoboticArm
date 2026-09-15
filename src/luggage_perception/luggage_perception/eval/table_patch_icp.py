@@ -38,10 +38,41 @@ FROZEN_TABLE_ICP_YAML = os.path.normpath(os.path.join(
 FROZEN_REVISION = "2026-09-14_xy_balanced_corners_edges"
 
 
+def _frozen_table_icp_candidates():
+    """Yield candidate frozen-yaml paths, first match wins.
+
+    The source layout wins when the module runs from a checkout; the env
+    override and the ament share install cover install-tree imports —
+    dist-packages (where an install tree resolves this module) never
+    contains ``config/`` (CMake installs it to share/ only), which used to
+    turn the bare ``__file__``-relative default into a FileNotFoundError.
+    """
+    yield FROZEN_TABLE_ICP_YAML
+    env_path = os.environ.get("LUGGAGE_FROZEN_TABLE_ICP_YAML", "").strip()
+    if env_path:
+        yield env_path
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        yield os.path.join(
+            get_package_share_directory("luggage_perception"),
+            "config", "livox_d555_table_icp_frozen.yaml")
+    except Exception:  # noqa: BLE001 - share lookup is best-effort
+        pass
+
+
 def load_frozen_table_icp(path=None):
     """Load the frozen table-ICP knobs and accepted TF. Eval-only."""
     import yaml
-    cfg_path = path or FROZEN_TABLE_ICP_YAML
+    if path is not None:
+        cfg_path = path
+    else:
+        candidates = list(_frozen_table_icp_candidates())
+        cfg_path = next(
+            (c for c in candidates if os.path.isfile(c)), None)
+        if cfg_path is None:
+            raise FileNotFoundError(
+                "frozen table ICP yaml not found; tried: %s"
+                % ", ".join(candidates))
     with open(cfg_path, "r", encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     if not isinstance(data, dict) or data.get("revision") != FROZEN_REVISION:

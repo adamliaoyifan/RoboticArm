@@ -363,5 +363,28 @@ class TestTablePatchIcp(unittest.TestCase):
             0.047, places=6)
 
 
+class TestFrozenYamlLayoutFallback(unittest.TestCase):
+
+    def test_loader_env_fallback_when_source_layout_missing(self):
+        """Install-tree imports cannot see the source ``config/`` dir; the
+        env override must rescue them (dist-packages never contains the
+        yaml — CMake installs it to share/ only)."""
+        import luggage_perception.eval.table_patch_icp as tp
+        saved = tp.FROZEN_TABLE_ICP_YAML
+        saved_env = os.environ.get("LUGGAGE_FROZEN_TABLE_ICP_YAML")
+        try:
+            tp.FROZEN_TABLE_ICP_YAML = os.path.join(
+                tempfile.gettempdir(), "absent_frozen_table_icp.yaml")
+            os.environ["LUGGAGE_FROZEN_TABLE_ICP_YAML"] = saved
+            data = load_frozen_table_icp()
+            self.assertEqual(data["revision"], FROZEN_REVISION)
+        finally:
+            tp.FROZEN_TABLE_ICP_YAML = saved
+            if saved_env is None:
+                os.environ.pop("LUGGAGE_FROZEN_TABLE_ICP_YAML", None)
+            else:
+                os.environ["LUGGAGE_FROZEN_TABLE_ICP_YAML"] = saved_env
+
+
 if __name__ == "__main__":
     unittest.main()
