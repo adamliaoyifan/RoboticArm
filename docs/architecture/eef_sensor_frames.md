@@ -43,6 +43,21 @@ T_base ← sensor = T_base ← EOF  ·  (EOF → suction_panel → eef_mount_ada
 Do not dump cloud ICP into `mid360_mount_frame`. Do not retune
 `cam_mount_*` to “seat” a wrong housing; Layer 3 is optical, not the grey box.
 
+## `camera_link` and `d555_link` are the same pose
+
+`camera_link` and `d555_link` are two ROS names for one pose in this product
+tree. Their fixed joint is deliberately identity. `camera_link` is the robot
+model and ChArUco Layer-3 anchor; `d555_link` is the name expected at the root
+of the RealSense driver frame subtree. The driver owns the transforms from
+`d555_link` to its depth, colour, and optical frames.
+
+This identity is a frame-contract decision, not a claim that an arbitrary
+enclosure-CAD origin physically coincides with the left-IR centre. An
+authoritative enclosure-origin-to-left-IR offset would be useful only for a
+mechanical cross-check. It is not required by perception, planning, point-cloud
+projection, or the locked `T_end_optical`, and must not be inferred from the
+datasheet envelope or its visual/collision offset.
+
 ## Locked joints (metres, radians)
 
 | Joint | Source | xyz | rpy |
@@ -113,5 +128,7 @@ Calib dump with this tree applied (not in git):
 - Write table ICP into `mid360_mount_xyz` / `mid360_mount_rpy`.
 - Change `cam_mount_*` unless a new ChArUco `T_end_optical` is solved and
   Layer 3 is re-derived.
+- Introduce a non-identity `camera_link` → `d555_link` from enclosure CAD,
+  datasheet dimensions, or visual/collision placement.
 - Draw or collide a D435 90 × 25 × 25 mm housing for the wrist camera.
 - Play calib bags onto `ROS_DOMAIN_ID=7`.

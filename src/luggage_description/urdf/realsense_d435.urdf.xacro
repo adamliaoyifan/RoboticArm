@@ -58,9 +58,11 @@
       <xacro:insert_block name="origin"/>
     </joint>
 
-    <!-- D555 (PoE) in the printed D555 pocket. Body pose is camera_link
-         (cam_mount_*, ChArUco Layer 3). Driver publishes d555_* optical
-         frames from d555_link; do not duplicate those here. -->
+    <!-- D555 (PoE) in the printed D555 pocket. camera_link and d555_link are
+         two ROS names for the same pose by product contract; this identity is
+         not an enclosure-CAD-origin-to-left-IR measurement. cam_mount_* is
+         ChArUco Layer 3. The driver publishes d555_* child/optical frames from
+         d555_link; do not duplicate those here. -->
     <link name="d555_link"/>
     <joint name="d555_body_joint" type="fixed">
       <parent link="camera_link"/>

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""D555 body frame reuses the D435 camera_link mount (identity)."""
+"""The D555 driver root is an identity alias of the calibrated camera_link."""
 
 import os
 import unittest
@@ -16,7 +16,7 @@ LOCKED_XYZ = [-0.023249, 0.099580, -0.052059]
 LOCKED_RPY = [0.02901151, 1.32524323, 1.59953586]
 
 
-class TestD555UsesD435Extrinsics(unittest.TestCase):
+class TestD555FrameAlias(unittest.TestCase):
     def test_identity_on_camera_link(self):
         with open(D435, encoding="utf-8") as handle:
             text = handle.read()

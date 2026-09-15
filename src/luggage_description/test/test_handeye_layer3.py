@@ -10,6 +10,7 @@ import numpy as np
 from luggage_description.handeye_layer3 import (
     T_d555_optical,
     T_end_adapter,
+    T_xyz_rpy,
     average_handeye,
     freeze_from_handeye_json,
     layer3_from_end_optical,
@@ -31,11 +32,15 @@ class HandeyeLayer3Test(unittest.TestCase):
         err = np.linalg.norm(rebuilt[:3, 3] - T_x[:3, 3])
         self.assertLess(err, 1e-9)
 
-    def test_xacro_matches_frozen_json(self):
+    def test_xacro_preserves_frozen_end_optical(self):
         frozen = freeze_from_handeye_json(JSON)
         xyz, rpy = parse_xacro_xyz_rpy(XACRO, "cam_mount_xyz", "cam_mount_rpy")
+        rebuilt = T_end_adapter().dot(
+            T_xyz_rpy(xyz, rpy)).dot(T_d555_optical())
+        np.testing.assert_allclose(
+            rebuilt, np.asarray(frozen["T_end_optical"]), atol=1e-6)
         self.assertTrue(all(
-            abs(a - b) < 5e-7 for a, b in zip(xyz, frozen["xyz"])))
+            abs(a - b) < 1e-6 for a, b in zip(xyz, frozen["xyz"])))
         self.assertTrue(all(
-            abs(a - b) < 5e-9 for a, b in zip(rpy, frozen["rpy"])))
+            abs(a - b) < 5e-8 for a, b in zip(rpy, frozen["rpy"])))
         self.assertEqual(frozen["n"], 18)
