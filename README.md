@@ -151,8 +151,13 @@ Inside the container, source the workspace: `source /catkin_ws/devel/setup.bash`
 | `./docker/noetic/run.sh moveit` | MoveIt + RViz |
 | `./docker/noetic/run.sh sim-all` | Gazebo + MoveIt + RViz (S20, one launch) |
 | `./docker/noetic/run.sh api` | Elfin Control Panel |
+| `./docker/noetic/run.sh cps` | Python Huayan SDK FollowJointTrajectory executor |
+| `./docker/noetic/run.sh cpp-cps` | C++ Huayan SDK FollowJointTrajectory executor |
+| `./docker/noetic/run.sh hw-exec` | Real-robot execution only (`/execute_trajectory`, no MoveIt) |
 
-Set `ELFIN_MODEL=s05|s10|s30` to change robot variant (default `s20`). See [`docker/noetic/HARDWARE.md`](docker/noetic/HARDWARE.md) for real EtherCAT hardware.
+Set `ELFIN_MODEL=s05|s10|s30` to change robot variant (default `s20`). See [`docker/noetic/HARDWARE.md`](docker/noetic/HARDWARE.md) for EtherCAT and Huayan TCP.
+
+The Noetic TCP executor is [`deployment_ws/noetic/elfin_cps_executor`](deployment_ws/noetic/elfin_cps_executor). Huayan SDK trees used by the image: [`SDK_sample/`](SDK_sample/), [`third_party/huayan_python_sdk/`](third_party/huayan_python_sdk/). The ROS 2 site executor lives on `ros2_humble` (`deployment_ws/src/elfin_trajectory_executor`); this branch still has the older copy at `ros2_ws/`.
 
 ### Airport luggage loading (simulation)
 

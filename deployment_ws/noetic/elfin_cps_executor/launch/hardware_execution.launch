@@ -1,0 +1,45 @@
+<launch>
+  <!--
+    Real-robot execution stack only. Does not start MoveIt / Gazebo.
+
+    Planner interface (publish from any other node):
+      /execute_trajectory         trajectory_msgs/JointTrajectory
+      /execute_robot_trajectory   moveit_msgs/RobotTrajectory   (Plan.trajectory_)
+      /cancel_execution           std_msgs/Empty
+      /execute_status             std_msgs/String  (latched)
+
+    MoveIt result:
+      pub.publish(plan.trajectory_.joint_trajectory)
+
+    Example:
+      roslaunch elfin_cps_executor hardware_execution.launch robot_ip:=192.168.0.10
+  -->
+
+  <arg name="robot_ip" default="192.168.0.10"/>
+  <arg name="robot_port" default="10003"/>
+  <arg name="use_cpp" default="false"/>
+  <arg name="connect_on_start" default="true"/>
+  <arg name="publish_tf" default="true"/>
+
+  <param if="$(arg publish_tf)" name="robot_description"
+         command="xacro '$(find elfin_description)/urdf/S20.urdf.xacro'"/>
+  <node if="$(arg publish_tf)" pkg="robot_state_publisher" type="robot_state_publisher"
+        name="robot_state_publisher" output="screen"/>
+
+  <include file="$(find elfin_cps_executor)/launch/cps_executor.launch" unless="$(arg use_cpp)">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="robot_port" value="$(arg robot_port)"/>
+    <arg name="connect_on_start" value="$(arg connect_on_start)"/>
+  </include>
+
+  <include file="$(find elfin_cps_executor)/launch/cpp_cps_executor.launch" if="$(arg use_cpp)">
+    <arg name="robot_ip" value="$(arg robot_ip)"/>
+    <arg name="robot_port" value="$(arg robot_port)"/>
+    <arg name="connect_on_start" value="$(arg connect_on_start)"/>
+  </include>
+
+  <node pkg="elfin_cps_executor" type="trajectory_command_bridge.py"
+        name="trajectory_command_bridge" output="screen">
+    <param name="action_ns" value="/elfin_arm_controller/follow_joint_trajectory"/>
+  </node>
+</launch>

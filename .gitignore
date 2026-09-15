@@ -22,3 +22,10 @@ elfin_s20_visualization.html
 
 # Nested vendor clone metadata (flattened into monorepo)
 elfin_noetic_ws/src/elfin_s_robot/.git/
+
+# Docker bind-mount point for the Noetic TCP executor (source lives in deployment_ws)
+elfin_noetic_ws/src/elfin_cps_executor/
+
+# Nested clone metadata inside vendored SDK tree
+SDK_sample/.git/
+SDK_sample/CppLinux_SDK/bin/
