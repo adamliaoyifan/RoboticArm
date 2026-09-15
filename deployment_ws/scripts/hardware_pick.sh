@@ -6,6 +6,7 @@
 #   ./scripts/hardware_pick.sh
 #   ./scripts/hardware_pick.sh semantic_device:=cpu
 #   ./scripts/hardware_pick.sh use_rviz:=true semantic_device:=cpu
+#   ./scripts/hardware_pick.sh preprocessor_config:=src/elfin_trajectory_executor/config/preprocessor_d555_replay.yaml
 #
 # Other terminal, same ROS_DOMAIN_ID:
 #   ros2 run luggage_planning hardware_pick_driver.py --detect-only

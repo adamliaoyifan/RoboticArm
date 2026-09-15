@@ -1,5 +1,6 @@
-"""Scene TF + robot_state_publisher for the real arm.
+"""实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
 
+Scene TF + robot_state_publisher for the real arm.
 Uses executor /joint_states. Does not start Gazebo or zero_joint_state_publisher.
 Pass a measured scene_tf.yaml; the share example is simulation geometry.
 """
@@ -27,6 +28,7 @@ def generate_launch_description():
     )
     scene_tf_config = LaunchConfiguration("scene_tf_config")
     use_rviz = LaunchConfiguration("use_rviz")
+    use_sim_time = LaunchConfiguration("use_sim_time")
 
     helper = os.path.join(
         get_package_prefix("luggage_description"),
@@ -55,6 +57,7 @@ def generate_launch_description():
             {
                 "scene_tf_config": scene_tf_config,
                 "republish_period": 0.0,
+                "use_sim_time": use_sim_time,
             }
         ],
     )
@@ -66,7 +69,7 @@ def generate_launch_description():
         parameters=[
             {
                 "scene_tf_config": scene_tf_config,
-                "use_sim_time": False,
+                "use_sim_time": use_sim_time,
             }
         ],
     )
@@ -74,7 +77,7 @@ def generate_launch_description():
         package="robot_state_publisher",
         executable="robot_state_publisher",
         output="screen",
-        parameters=[robot_description, {"use_sim_time": False}],
+        parameters=[robot_description, {"use_sim_time": use_sim_time}],
     )
     rviz = Node(
         package="rviz2",
@@ -101,10 +104,15 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument("use_rviz", default_value="false"),
+            DeclareLaunchArgument(
+                "use_sim_time",
+                default_value="false",
+                description="True when replaying a bag with --clock.",
+            ),
             LogInfo(
                 msg=(
                     "[scene_hardware] No Gazebo, no zero joints. "
-                    "Expect /joint_states from jazzy_real.launch.py. "
+                    "Expect /joint_states from cps_telemetry or jazzy_real. "
                     "Publishes world→elfin_base_link (URDF) + container TF + "
                     "/luggage/debug/scene_assets. "
                     "Replace scene_tf.yaml with measured site values."
