@@ -30,6 +30,19 @@ CLASS_INFRA = "infrastructure_invalid"
 CLASS_FIXTURE = "fixture_invalid"
 CLASS_EVIDENCE = "evidence_invalid"
 
+SCAN_PROPOSAL_AVAILABLE = "proposal_available"
+SCAN_KNOWN_MISS_VALID = "known_detector_miss_valid"
+SCAN_FIXTURE = "fixture_invalid"
+SCAN_INFRA = "infrastructure_invalid"
+SCAN_EVIDENCE = "evidence_invalid"
+SCAN_CLASSES = (
+    SCAN_PROPOSAL_AVAILABLE,
+    SCAN_KNOWN_MISS_VALID,
+    SCAN_FIXTURE,
+    SCAN_INFRA,
+    SCAN_EVIDENCE,
+)
+
 TERMINAL_CLASSES = (
     CLASS_ELIGIBLE_PASS,
     CLASS_ELIGIBLE_FAIL,
@@ -89,6 +102,27 @@ def stops_campaign(attempt_class):
 def is_exclusion(attempt_class):
     return attempt_class in (
         CLASS_KNOWN_MISS, CLASS_INFRA, CLASS_FIXTURE, CLASS_EVIDENCE)
+
+
+def scan_availability_class(record, classified=None):
+    """Map a live/scripted record to one G5 detector-availability class.
+
+    Geometry eligible_fail after a production-accepted proposal is still
+    ``proposal_available``. Incomplete dumps are always ``evidence_invalid``.
+    """
+    classified = classified or classify_attempt(record)
+    attempt_class = classified.get("attempt_class")
+    if not dump_is_complete(record) or attempt_class == CLASS_EVIDENCE:
+        return SCAN_EVIDENCE, classified
+    if attempt_class == CLASS_INFRA:
+        return SCAN_INFRA, classified
+    if attempt_class == CLASS_FIXTURE:
+        return SCAN_FIXTURE, classified
+    if matching_accepted_proposal(record):
+        return SCAN_PROPOSAL_AVAILABLE, classified
+    if attempt_class == CLASS_KNOWN_MISS:
+        return SCAN_KNOWN_MISS_VALID, classified
+    return SCAN_EVIDENCE, classified
 
 
 def _as_int(value, default=0):

@@ -24,8 +24,11 @@ from luggage_perception.eval.pf_r7_classifier import (
     CLASS_ELIGIBLE_PASS,
     CLASS_INFRA,
     CLASS_KNOWN_MISS,
+    SCAN_EVIDENCE,
+    SCAN_PROPOSAL_AVAILABLE,
     classify_attempt,
     is_exclusion,
+    scan_availability_class,
     stops_campaign,
 )
 from luggage_perception.eval.sim_texture import CATALOG_SIZES
@@ -88,6 +91,68 @@ def default_seed_matrix():
                 "yaw": float(yaw),
             })
         matrix[size] = seeds
+    return matrix
+
+
+G4_IMPORTED_STANDARD = (
+    ("standard_00", SCAN_PROPOSAL_AVAILABLE),
+    ("standard_01", SCAN_PROPOSAL_AVAILABLE),
+    ("standard_02", SCAN_PROPOSAL_AVAILABLE),
+    ("standard_03", "known_detector_miss_valid"),
+    ("standard_04", "known_detector_miss_valid"),
+    ("standard_05", "known_detector_miss_valid"),
+)
+
+
+def g4_imported_standard_rows():
+    """Import G4 standard_00-05 classifications; do not rescan them."""
+    by_id = {
+        seed["seed_id"]: seed
+        for seed in default_seed_matrix()["standard"]
+    }
+    rows = []
+    for seed_id, scan_class in G4_IMPORTED_STANDARD:
+        seed = by_id[seed_id]
+        rows.append({
+            "seed_id": seed_id,
+            "size": "standard",
+            "xy": list(seed["xy"]),
+            "yaw": float(seed["yaw"]),
+            "scan_class": scan_class,
+            "imported": True,
+            "source": "g4_c086a39",
+        })
+    return rows
+
+
+def load_seed_matrix_json(path, base=None):
+    """Replace named sizes from JSON; unspecified sizes keep the G4 matrix."""
+    payload = json.loads(open(path, "r", encoding="utf-8").read())
+    return merge_seed_matrix(payload, base=base)
+
+
+def merge_seed_matrix(override, base=None):
+    matrix = default_seed_matrix() if base is None else {
+        size: [dict(seed) for seed in seeds]
+        for size, seeds in base.items()
+    }
+    if not override:
+        return matrix
+    for size in SIZES:
+        if size not in override:
+            continue
+        matrix[size] = [dict(seed) for seed in override[size]]
+    return matrix
+
+
+def live_seed_matrix_from_available(available_standard):
+    matrix = default_seed_matrix()
+    matrix["standard"] = [{
+        "seed_id": row["seed_id"],
+        "size": "standard",
+        "xy": list(row["xy"]),
+        "yaw": float(row["yaw"]),
+    } for row in available_standard]
     return matrix
 
 
@@ -404,6 +469,142 @@ class CampaignDriver(object):
             outcome_state = STATE_INCONCLUSIVE
             reason = reason or "slots_incomplete"
         return self._finish(outcome_state, reason)
+
+    def run_standard_scan(self, imported=None, scan_start="standard_06",
+                          stop_available=6, max_scan=24):
+        """Detector-availability scan. Does not score the G4 geometry window."""
+        os.makedirs(self.out_dir, exist_ok=True)
+        imported_rows = [dict(row) for row in (imported or [])]
+        atomic_write_json(
+            os.path.join(self.out_dir, "imported_g4.json"),
+            {"seeds": imported_rows})
+        atomic_write_json(os.path.join(self.out_dir, "scan_config.json"), {
+            "scan_start": scan_start,
+            "stop_available": int(stop_available),
+            "max_scan": int(max_scan),
+            "git_commit": self.git_commit,
+        })
+        if getattr(self.backend, "sim_busy", lambda: False)():
+            verdict = {
+                "outcome": "inconclusive",
+                "reason": "inconclusive/sim_slot_busy",
+                "n_available": 0,
+                "n_scanned": 0,
+            }
+            atomic_write_json(os.path.join(self.out_dir, "scan_verdict.json"),
+                              verdict)
+            return verdict
+
+        rows = list(imported_rows)
+        available = [
+            row for row in rows
+            if row.get("scan_class") == SCAN_PROPOSAL_AVAILABLE
+        ]
+        counted = len(rows)
+        standard_seeds = list(
+            (self.seed_matrix.get("standard")
+             or default_seed_matrix()["standard"]))
+        start_index = 0
+        for index, seed in enumerate(standard_seeds):
+            if seed.get("seed_id") == scan_start:
+                start_index = index
+                break
+        else:
+            if scan_start:
+                start_index = len(standard_seeds)
+
+        defect = None
+        scanned = []
+        slot_state = {
+            "attempts": 0,
+            "exclusions": 0,
+            "eligible": {size: 0 for size in SIZES},
+            "consecutive_excl": {size: 0 for size in SIZES},
+        }
+        for seed in standard_seeds[start_index:]:
+            if len(available) >= int(stop_available):
+                break
+            if counted >= int(max_scan):
+                break
+            case = dict(seed)
+            case["slot"] = 0
+            case["attempt"] = counted + 1
+            attempt = self._run_attempt(case, slot_state)
+            record = attempt.get("record") or {}
+            classified = attempt.get("classified") or classify_attempt(record)
+            scan_class, classified = scan_availability_class(
+                record, classified)
+            row = {
+                "seed_id": case.get("seed_id"),
+                "size": "standard",
+                "xy": list(case.get("xy") or []),
+                "yaw": case.get("yaw"),
+                "scan_class": scan_class,
+                "imported": False,
+                "attempt": self.campaign_attempts,
+                "attempt_class": classified.get("attempt_class"),
+                "reasons": classified.get("reasons") or [],
+                "dump": attempt.get("attempt_dir"),
+            }
+            rows.append(row)
+            scanned.append(row)
+            counted += 1
+            if scan_class == SCAN_PROPOSAL_AVAILABLE:
+                available.append(row)
+            if scan_class == SCAN_EVIDENCE:
+                defect = row
+                break
+            if attempt.get("needs_stack_reset"):
+                reset = self._stack_reset(case, classified.get("attempt_class"))
+                if not reset.get("ok"):
+                    defect = dict(row, scan_class=SCAN_EVIDENCE,
+                                  reasons=["stack_reset_failed"])
+                    row["scan_class"] = SCAN_EVIDENCE
+                    break
+
+        live_matrix = live_seed_matrix_from_available(
+            available[:int(stop_available)])
+        atomic_write_json(
+            os.path.join(self.out_dir, "available_standard_seeds.json"),
+            {"seeds": available[:int(stop_available)]})
+        atomic_write_json(
+            os.path.join(self.out_dir, "live_seed_matrix.json"), live_matrix)
+        atomic_write_json(
+            os.path.join(self.out_dir, "scan_ledger.json"), {"seeds": rows})
+        n_available = len(available)
+        if defect is not None:
+            reason = "evidence_invalid"
+            outcome = "fail"
+        elif n_available >= int(stop_available):
+            reason = "six_proposal_available"
+            outcome = "pass"
+        else:
+            reason = "inconclusive/perception_availability_blocked"
+            outcome = "inconclusive"
+        verdict = {
+            "outcome": outcome,
+            "reason": reason,
+            "n_available": n_available,
+            "n_imported": len(imported_rows),
+            "n_scanned": len(scanned),
+            "n_counted": counted,
+            "stop_available": int(stop_available),
+            "max_scan": int(max_scan),
+            "git_commit": self.git_commit,
+            "defect_seed": None if defect is None else defect.get("seed_id"),
+            "available_seed_ids": [
+                row["seed_id"] for row in available[:int(stop_available)]
+            ],
+        }
+        residuals = 0
+        result = self.backend.teardown() or {}
+        residuals = int(result.get("residuals") or 0)
+        if self.stop_sim_fn:
+            self.stop_sim_fn()
+        verdict["residuals"] = residuals
+        atomic_write_json(
+            os.path.join(self.out_dir, "scan_verdict.json"), verdict)
+        return verdict
 
     def _budget_reason(self, slot_state, size, t_campaign, t_slot):
         now = self.clock.monotonic()

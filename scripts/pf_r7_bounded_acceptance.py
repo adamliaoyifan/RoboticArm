@@ -67,6 +67,21 @@ def _parse_args(argv=None):
     parser.add_argument(
         "--observe-sec", type=float, default=20.0,
         help="campaign observe cap; backend also stops at ROS window end")
+    parser.add_argument(
+        "--seed-matrix-json", default="",
+        help="JSON seed matrix; omitted sizes keep the G4 default")
+    parser.add_argument(
+        "--scan-standard", action="store_true",
+        help="run the G5 standard detector-availability scan instead of live")
+    parser.add_argument("--scan-start", default="standard_06")
+    parser.add_argument("--stop-available", type=int, default=6)
+    parser.add_argument("--max-scan", type=int, default=24)
+    parser.add_argument(
+        "--import-scan", default="",
+        help="JSON with previously classified seeds (G4 00-05)")
+    parser.add_argument(
+        "--import-g4", action="store_true",
+        help="import built-in G4 standard_00-05 classifications")
     return parser.parse_args(argv)
 
 
@@ -96,10 +111,12 @@ EVALUATOR_PATHS = (
     "src/luggage_perception/luggage_perception/top_support_estimator.py",
     "scripts/pf_r7_generation3_live.sh",
     "scripts/pf_r7_generation4_live.sh",
+    "scripts/pf_r7_generation5_live.sh",
     "src/luggage_perception/test/eval/test_pf_r7_classifier.py",
     "src/luggage_perception/test/eval/test_pf_r7_campaign.py",
     "src/luggage_perception/test/eval/test_pf_r7_score_window.py",
     "src/luggage_perception/test/eval/test_pf_r7_g4_steady_window.py",
+    "src/luggage_perception/test/eval/test_pf_r7_g5_scan.py",
     "src/luggage_perception/test/eval/pf_r7_fixtures.py",
     "src/luggage_perception/test/eval/data/pfr7_g3_carryon00_scores.jsonl",
     "src/luggage_perception/test/eval/data/pfr7_g4_standard00_scores.jsonl",
@@ -192,10 +209,21 @@ def main(argv=None):
     from luggage_perception.eval.pf_r7_campaign import (
         CampaignDriver,
         ScriptedBackend,
+        g4_imported_standard_rows,
+        load_seed_matrix_json,
         sim_slot_busy,
     )
 
     git_commit = args.git_commit or _git_head(root)
+    seed_matrix = None
+    if args.seed_matrix_json:
+        seed_matrix = load_seed_matrix_json(args.seed_matrix_json)
+    imported = []
+    if args.import_g4:
+        imported = g4_imported_standard_rows()
+    if args.import_scan:
+        payload = json.loads(Path(args.import_scan).read_text(encoding="utf-8"))
+        imported = list(payload.get("seeds") or payload or [])
     budgets = {
         "slots": args.slots,
         "eligible_per_size": args.eligible_per_size,
@@ -216,10 +244,19 @@ def main(argv=None):
             backend=backend,
             budgets=budgets,
             deadlines=deadlines,
+            seed_matrix=seed_matrix,
             git_commit=git_commit,
             install_signals=True,
         )
-        verdict = driver.run()
+        if args.scan_standard:
+            verdict = driver.run_standard_scan(
+                imported=imported,
+                scan_start=args.scan_start,
+                stop_available=args.stop_available,
+                max_scan=args.max_scan,
+            )
+        else:
+            verdict = driver.run()
         print(json.dumps(verdict, sort_keys=True))
         if verdict.get("outcome") == "pass":
             return 0
@@ -276,17 +313,23 @@ def main(argv=None):
         print("sim still busy after stop_sim; refusing", file=sys.stderr)
         return 2
 
+    scan_mode = bool(args.scan_standard)
+    observe_sec = float(args.observe_sec)
+    if scan_mode and observe_sec >= 20.0:
+        observe_sec = 5.0
     backend = LiveTrialBackend(
         root=root,
         out_dir=out,
         overlay=args.overlay,
         pidfile=args.pidfile,
         domain=args.ros_domain_id,
-        observe_sec=float(args.observe_sec),
+        observe_sec=observe_sec,
         stop_sim=stop,
         steady_start=args.steady_start,
         steady_window_sec=float(args.steady_window_sec),
         recovery_limit_sec=float(args.recovery_limit_sec),
+        scan_mode=scan_mode,
+        wall_watchdog_sec=5.0 if scan_mode else None,
     )
     launched = backend.launch_stack(out / "launch.log")
     if not launched.get("ok"):
@@ -300,22 +343,38 @@ def main(argv=None):
         backend.teardown()
         return 1
     stop_file = "/tmp/pfr7_g3_probe_stop"
-    backend.start_probe(out / "g6s", stop_file)
-    time.sleep(20)
-    deadlines["observe_sec"] = max(20.0, float(args.observe_sec))
+    probe_started = False
+    if not scan_mode:
+        backend.start_probe(out / "g6s", stop_file)
+        probe_started = True
+        time.sleep(20)
+        deadlines["observe_sec"] = max(20.0, float(args.observe_sec))
+    else:
+        deadlines["observe_sec"] = max(5.0, observe_sec)
+        deadlines["no_progress_sec"] = 8.0
     driver = CampaignDriver(
         out_dir=str(out),
         backend=backend,
         budgets=budgets,
         deadlines=deadlines,
+        seed_matrix=seed_matrix,
         git_commit=git_commit or args.production_commit,
         stop_sim_fn=stop,
         install_signals=True,
     )
     try:
-        verdict = driver.run()
+        if scan_mode:
+            verdict = driver.run_standard_scan(
+                imported=imported,
+                scan_start=args.scan_start,
+                stop_available=args.stop_available,
+                max_scan=args.max_scan,
+            )
+        else:
+            verdict = driver.run()
     finally:
-        backend.stop_probe(stop_file)
+        if probe_started:
+            backend.stop_probe(stop_file)
         stop()
     verdict["production_commit"] = args.production_commit
     overlay_head, overlay_dirty_n = _overlay_revision(args.overlay)
@@ -323,7 +382,8 @@ def main(argv=None):
     verdict["production_overlay_dirty"] = overlay_dirty_n
     verdict["evaluator_commit"] = git_commit
     verdict["evaluator_dirty"] = 0
-    verdict = _merge_c2(out, verdict)
+    if not scan_mode:
+        verdict = _merge_c2(out, verdict)
     (out / "verdict.json").write_text(
         json.dumps(verdict, indent=2, sort_keys=True) + "\n")
     print(json.dumps(verdict, sort_keys=True))

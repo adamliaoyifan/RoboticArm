@@ -198,7 +198,7 @@ class LiveTrialBackend(object):
                  observe_sec=8.0, stop_sim=None,
                  steady_start=scoring.STEADY_START_SUPPORT_READY,
                  steady_window_sec=None, recovery_limit_sec=None,
-                 wall_watchdog_sec=None):
+                 wall_watchdog_sec=None, scan_mode=False):
         self.root = Path(root)
         self.out_dir = Path(out_dir)
         self.overlay = Path(overlay)
@@ -206,6 +206,7 @@ class LiveTrialBackend(object):
         self.domain = int(domain)
         self.observe_sec = float(observe_sec)
         self.stop_sim = stop_sim
+        self.scan_mode = bool(scan_mode)
         self.steady_start = str(
             steady_start or scoring.STEADY_START_SUPPORT_READY)
         self.steady_window_sec = float(
@@ -545,7 +546,13 @@ class LiveTrialBackend(object):
                 last_stamp - t_prop_stamp) > self.recovery_limit_sec
         watchdog = wall_elapsed >= self.wall_watchdog_sec
         observe_cap = observe_elapsed >= self.observe_sec
-        if not (window_done or watchdog or ready_deadline or observe_cap):
+        if self.scan_mode:
+            has_proposal = t_prop_stamp is not None
+            miss_deadline = observe_elapsed >= (
+                float(self.recovery_limit_sec) + 1.0)
+            if not (has_proposal or miss_deadline or watchdog or observe_cap):
+                return {"progress": True}
+        elif not (window_done or watchdog or ready_deadline or observe_cap):
             return {"progress": True}
         spawn_ok = bool(spawned.get("ok"))
         spawn_message = spawned.get("message") or ""
