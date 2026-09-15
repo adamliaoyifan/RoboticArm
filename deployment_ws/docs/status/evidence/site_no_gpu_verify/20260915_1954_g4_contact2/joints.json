@@ -1,0 +1,26 @@
+{
+  "before": {
+    "elfin_joint1": 0.16009905228543986,
+    "elfin_joint2": -2.731318106323486,
+    "elfin_joint3": -1.8398388309898226,
+    "elfin_joint4": -0.16074482410867777,
+    "elfin_joint5": 1.5794182532997485,
+    "elfin_joint6": 0.07192501847468633
+  },
+  "after": {
+    "elfin_joint1": 0.16009905228543986,
+    "elfin_joint2": -2.731300653030966,
+    "elfin_joint3": -1.8398039244047826,
+    "elfin_joint4": -0.16069246423111794,
+    "elfin_joint5": 1.5794357065922686,
+    "elfin_joint6": 0.07192501847468633
+  },
+  "before_deg": {
+    "elfin_joint1": 9.173,
+    "elfin_joint2": -156.493,
+    "elfin_joint3": -105.415,
+    "elfin_joint4": -9.21,
+    "elfin_joint5": 90.494,
+    "elfin_joint6": 4.121
+  }
+}

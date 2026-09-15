@@ -1,0 +1,55 @@
+===== humble /home/adamliao/work/RoboticArm =====
+ros2_humble
+3b83de25ea79bf7f7364175472da43ceb58e4d08
+
+## ros2_humble...origin/ros2_humble
+ M deployment_ws/README.md
+ M deployment_ws/scripts/hardware_pick.sh
+ M deployment_ws/scripts/record_site.sh
+ M elfin_humble_ws/src/luggage_description/config/scene_tf.yaml
+ M elfin_humble_ws/src/luggage_gazebo/scripts/pick_retreat_eval_driver.py
+ M elfin_humble_ws/src/luggage_perception/scripts/semantic_point_filter_node.py
+ M elfin_humble_ws/src/luggage_planning/scripts/vacuum_controller_node.py
+ M elfin_humble_ws/src/luggage_planning/scripts/waypoint_generator_node.py
+?? deployment_ws/SITE_EXECUTION_PLAN.txt
+?? deployment_ws/SITE_EXECUTION_README.md
+?? deployment_ws/docs/
+?? deployment_ws/scripts/site_env.sh
+?? elfin_humble_ws/src/luggage_description/config/backups/20260911_2127_livox_d555_icp/
+?? elfin_humble_ws/src/luggage_description/config/backups/20260911_2148_livox_mount_z/
+?? elfin_humble_ws/src/luggage_description/config/backups/20260911_2151_livox_mount_yz/
+?? elfin_humble_ws/src/luggage_description/config/backups/20260911_2153_livox_mount_yz/
+?? site/
+
+--- log -15 ---
+3b83de2 chore: drop Noetic Docker from ros2_humble
+48e034b fix(deploy): host-stamp D555 image_transport on the site LAN
+faf3807 feat(deploy): overlay Mid-360 and D555 clouds on the live arm
+d88807a feat(description): freeze D555 Layer 3 and Livox mount, add scene markers
+e44048a feat(perception): capture CC600 ChArUco and solve D555 eye-in-hand
+15ff231 Stop tracking agent notes, status evidence, and working plans.
+bcdbe10 Close agent archive intake mailbox
+6014137 Integrate archived agent work into ros2_humble workspace
+e25c7c9 Sync elfin_humble_ws agent integration snapshot
+66d705a docs(hardware): vendor the official Mid-360S manuals and CAD listed in SOURCES.md
+5bdb6a7 feat(perception): vendor CLIP tqdm and draw only cargo boxes on overlay
+b0ae5f7 feat(planning): add the real-cell pick graph with box vacuum and Jazzy OMPL
+7a697a2 feat(deploy): record compressed site bags and replay them with --clock
+d56b914 feat(perception): host-stamp D555 JPEG/PNG and unproject aligned depth
+3ea1ce8 feat(deploy): keep CPS powered on Ctrl+C and drive box vacuum IO
+
+--- diff --stat ---
+ deployment_ws/README.md                            | 24 ++++++++++---
+ deployment_ws/scripts/hardware_pick.sh             | 39 +++-------------------
+ deployment_ws/scripts/record_site.sh               | 38 ++++-----------------
+ .../src/luggage_description/config/scene_tf.yaml   | 15 ++++++---
+ .../scripts/pick_retreat_eval_driver.py            |  2 +-
+ .../scripts/semantic_point_filter_node.py          |  5 ++-
+ .../scripts/vacuum_controller_node.py              |  5 ++-
+ .../scripts/waypoint_generator_node.py             |  5 ++-
+ 8 files changed, 53 insertions(+), 80 deletions(-)
+
+--- stash ---
+stash@{0}: WIP on ros2_humble: 66d705a docs(hardware): vendor the official Mid-360S manuals and CAD listed in SOURCES.md
+
+--- ROS_DISTRO in this snapshot env (unset here) ---

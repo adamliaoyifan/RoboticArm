@@ -1,0 +1,21 @@
+Gate 2  2026-09-15 19:31–19:34 +08  ROS_DOMAIN_ID=7
+Tree: /home/adamliao/work/RoboticArm-master
+CPS: jazzy_real 192.168.0.10:10003  (telemetry killed first)
+
+## Observe pose (current joints, not sim pickup_observe)
+rad: [0.2897, -1.6766, -2.1953, -0.8581, 1.5819, 0.2015]
+deg: [16.60, -96.06, -125.78, -49.16, 90.64, 11.54]
+saved: site_observe_pose.yaml / site_observe_pose.json
+Later Gate 3: --skip-observe from this pose.
+
+## Motion
+First try: send_joint_trajectory --delta-deg 2 --and-back  (duration=3 default)
+FAIL 20070 Speed param below minimum limit  (2°/3s = 0.67°/s)
+
+Retry: --delta-deg 2 --and-back --duration 0.4
+PASS  out SUCCEEDED, back SUCCEEDED, READY_FOR_NEXT
+J1 0.2897 → 0.3246 → 0.2897 (back within 4e-5 rad)
+
+## After
+Independent jazzy_real stopped (Gate 3 hardware_pick starts its own).
+Velocity clamp [1.0, max] patched in huayan_interface.py (docstring already said so).

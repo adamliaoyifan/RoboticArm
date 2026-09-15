@@ -1,0 +1,6 @@
+cps_import: ok (CPSClient) sdk=/home/adamliao/work/RoboticArm-master/third_party/huayan_python_sdk
+fjt_action: /elfin_arm_controller/follow_joint_trajectory
+tcp 192.168.0.10:10003: open
+ping 192.168.0.10: ok
+gate1 software: PASS
+next: jazzy_real.launch.py then send_joint_trajectory --delta-deg 2 --and-back

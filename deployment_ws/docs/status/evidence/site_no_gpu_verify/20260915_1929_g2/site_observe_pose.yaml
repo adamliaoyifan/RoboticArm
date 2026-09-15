@@ -1,0 +1,24 @@
+# Site observe = Gate 2 start pose (current joints). Not sim pickup_observe.
+poses:
+  pickup_observe:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    values: [0.28970720253853877, -1.6765981860507928, -2.195275133158468, -0.8580736734504922, 1.5819140741301005, 0.20146335555770545]
+    tolerance: 0.15
+  observe:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    values: [0.28970720253853877, -1.6765981860507928, -2.195275133158468, -0.8580736734504922, 1.5819140741301005, 0.20146335555770545]
+    tolerance: 0.15

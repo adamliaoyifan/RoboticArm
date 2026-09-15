@@ -1,0 +1,12 @@
+Gate 5 trial 1 B  2026-09-15 20:15–20:18 +08  FAIL at pre_grasp
+
+Detect OK: xyz=(-0.046,1.244,0.114) 0.618x0.152x0.256 top_z=0.242 valid=True/True
+built 4 segments, scene pickup_box applied.
+pre_grasp pose_target xyz=(-0.046,1.244,0.542)
+
+MoveGroup planned OK then CONTROL_FAILED (-4).
+Executor: Goal accepted 12 waypoints → HRIF_WayPoint 20070 Speed below minimum.
+Cause: MoveIt TOTG velocities < ~1 deg/s; _estimate_velocity path-1 did not floor to 1.0
+(path-2 dt clamp was already patched). Vacuum never enabled.
+
+Fix: clamp provided velocities to [1.0, max] then restart executor.

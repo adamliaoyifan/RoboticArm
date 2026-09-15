@@ -1,0 +1,8 @@
+t=1.649  DO0=0 DO1=0 DI0=0  idle
+t=2.195  DO0=1 DO1=0 DI0=0  pump on (enable)
+t=10.011 DO0=0 DO1=0 DI0=0  pump off (timeout auto-release)
+t=10.060 DO0=0 DO1=1 DI0=0  blow-off pulse
+t=10.184 DO0=0 DO1=0 DI0=0  blow off
+t=10.203 DO0=0 DO1=1 DI0=0  explicit disable pulse
+t=10.393 DO0=0 DO1=0 DI0=0  idle
+pin11=0

@@ -1,0 +1,18 @@
+Gate 4 contact-seal (planar lid)  2026-09-15 19:57 +08  ROS_DOMAIN_ID=7
+User swapped to a flat surface. Same A hardware_pick stack.
+
+Pose deg: [5.62, -156.91, -108.49, -5.75, 90.42, 0.56]
+
+ENABLE  ok=true   sealed in 1.87s  (jsonl t_seal=1.74s, ≤8s, vs historical ~6.3s)
+HOLD 1s DI0=1 DO0=1 DO1=0
+DISABLE ok=true   released in 0.28s  (DI0 fall t_release=0.21s)
+n_pin11=0
+
+Timeline:
+  t=3.432  DO0=1 DO1=0 DI0=0  pump on
+  t=5.170  DO0=1 DO1=0 DI0=1  sealed
+  t=6.386  DO0=0 DO1=1        blow-off
+  t=6.600  DI0=0
+  t=6.603  idle 000
+
+PASS Gate 4 contact seal on planar lid.

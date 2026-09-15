@@ -1,0 +1,11 @@
+===== weight search =====
+/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/vendor/clip_models/ViT-B-32.pt
+/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+/home/adamliao/work/RoboticArm-master/src/luggage_perception/yolov8s-world.pt
+/home/adamliao/work/RoboticArm/elfin_humble_ws/install/luggage_perception/share/luggage_perception/vendor/clip_models/ViT-B-32.pt
+/home/adamliao/work/RoboticArm/elfin_humble_ws/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+/home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/vendor/clip_models/ViT-B-32.pt
+/home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/yolov8s-world.pt
+
+===== moveit_msgs =====
+moveit_msgs /opt/ros/jazzy/lib/python3.12/site-packages/moveit_msgs/__init__.py

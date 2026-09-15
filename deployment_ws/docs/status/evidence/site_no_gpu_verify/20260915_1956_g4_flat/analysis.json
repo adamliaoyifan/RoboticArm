@@ -1,0 +1,17 @@
+{
+  "enable_ok": true,
+  "enable_msg": "sealed in 1.87s",
+  "enable_dt_s": 3.703,
+  "disable_ok": true,
+  "disable_msg": "released",
+  "disable_dt_s": 0.28,
+  "hold_ok": true,
+  "n_samples": 550,
+  "n_pin11": 0,
+  "n_di0_1": 125,
+  "t_seal_s": 1.7378835689960397,
+  "t_release_s": 0.2145399319997523,
+  "pump_window_s": 2.953,
+  "contact_seal": true,
+  "note": "user swapped to planar surface"
+}

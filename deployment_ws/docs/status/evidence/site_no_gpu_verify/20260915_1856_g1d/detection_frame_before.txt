@@ -1,0 +1,77 @@
+header:
+  stamp:
+    sec: 1789469838
+    nanosec: 220512152
+  frame_id: world
+yolo_optical_frame: d555_color_optical_frame
+frame_seq: 448
+generation: 0
+instance_id: ''
+yolo:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.953063428401947
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: false
+pca_valid: false
+pca_reason: DETECT_TOP_UNOBSERVABLE
+pca_source: measure
+pca_confidence: 0.0
+n_cargo_points: 8676
+centroid:
+  x: -0.09563129316952802
+  y: 1.0130126091297558
+  z: 0.24010388941155159
+box:
+  id: ''
+  pose:
+    position:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+  width: 0.0
+  height: 0.0
+  depth: 0.0
+  yaw_valid: false
+  aspect_ratio: 0.0
+  header:
+    stamp:
+      sec: 0
+      nanosec: 0
+    frame_id: ''
+  top_surface_pose:
+    position:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+    orientation:
+      x: 0.0
+      y: 0.0
+      z: 0.0
+      w: 1.0
+  top_surface_valid: false
+  top_surface_confidence: 0.0
+  height_valid: false
+  height_confidence: 0.0
+  height_source: 0
+support_valid: false
+support_reason: DETECT_SUPPORT_UNOBSERVABLE
+support_z: .nan
+support_confidence: 0.0
+support_residual: .nan
+support_side_coverage: 0.0
+support_inliers: 0
+support_sample_admitted: false
+support_window_count: 0
+support_window_size: 5
+geometry_level: 0
+---

@@ -64,9 +64,12 @@ GEOMETRY_FULL_3D = 1
 class TopSupportConfig:
     """Deployment-neutral parameters (E3); no scene-truth values here."""
 
-    # Pickup workspace (world frame): center XY + half extents.
+    # Optional world-XY window. Default off: cargo points are already the
+    # YOLO RGB bbox projected through aligned depth. A scene_tf pickup
+    # square is measured cell geometry, not a detect ROI.
     workspace_center_xy: Sequence[float] = (0.0, 0.0)
     workspace_half_extents: Sequence[float] = (0.5, 0.5)
+    crop_to_workspace: bool = False
     # Plausible luggage height band [m]; support candidates must sit inside
     # top_z - max_height .. top_z - min_height.
     min_luggage_height: float = 0.15
@@ -148,11 +151,26 @@ def _crop_workspace(points, center_xy, half_extents):
     return points[mask]
 
 
+def _maybe_crop_workspace(points, workspace, config, timing, prefix):
+    """Apply the optional scene XY window; record timing either way."""
+    _t0 = time.monotonic()
+    cropped = bool(getattr(config, "crop_to_workspace", False))
+    if cropped and workspace is not None:
+        points = _crop_workspace(points, workspace[0], workspace[1])
+    if timing is not None:
+        timing["%s_crop_ms" % prefix] = (time.monotonic() - _t0) * 1000.0
+        timing["%s_cropped_points" % prefix] = int(len(points))
+        timing["%s_crop_workspace" % prefix] = cropped
+    return points
+
+
 def estimate_top_surface(cargo_points_world, workspace, config=None,
                          timing=None):
     """Fit the highest valid horizontal cargo plane + top rectangle.
 
-    ``workspace`` is ``(center_xy, half_extents)`` in the world frame.
+    ``cargo_points_world`` is already the YOLO bbox (mask) projected
+    through depth into the world frame. ``workspace`` is only applied
+    when ``config.crop_to_workspace`` is True (sim/eval opt-in).
     Returns :class:`TopSurfaceEstimate` or ``None`` with the reason in
     ``DETECT_TOP_UNOBSERVABLE`` semantics (caller logs).
     """
@@ -162,11 +180,8 @@ def estimate_top_surface(cargo_points_world, workspace, config=None,
     points = points[np.isfinite(points).all(axis=1)]
     if timing is not None:
         timing["top_input_points"] = int(len(points))
-    _t0 = time.monotonic()
-    points = _crop_workspace(points, workspace[0], workspace[1])
-    if timing is not None:
-        timing["top_crop_ms"] = (time.monotonic() - _t0) * 1000.0
-        timing["top_cropped_points"] = int(len(points))
+    points = _maybe_crop_workspace(
+        points, workspace, config, timing, "top")
     if len(points) < int(config.min_top_points):
         return None
     _t0 = time.monotonic()
@@ -294,7 +309,8 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
 
     Candidates: raw points in the outer annulus (footprint + inner margin
     .. + outer margin), below ``top_z`` by at least ``min_luggage_height``
-    and at most ``max_luggage_height``, inside the pickup workspace.
+    and at most ``max_luggage_height``. The annulus is centered on the
+    fitted top rectangle (YOLO-driven), not on a scene_tf pickup square.
     A larger floor below the plausible band is excluded by the band, not
     by trusting any configured platform height.
     """
@@ -304,11 +320,8 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     points = points[np.isfinite(points).all(axis=1)]
     if timing is not None:
         timing["support_input_points"] = int(len(points))
-    _t0 = time.monotonic()
-    points = _crop_workspace(points, workspace[0], workspace[1])
-    if timing is not None:
-        timing["support_crop_ms"] = (time.monotonic() - _t0) * 1000.0
-        timing["support_cropped_points"] = int(len(points))
+    points = _maybe_crop_workspace(
+        points, workspace, config, timing, "support")
     # PF-R6 opt 3: the height band needs only top_z (already known), so
     # apply it BEFORE the rectangle rotation/annulus math — on the raw
     # depth cloud most points sit far outside the plausible support band

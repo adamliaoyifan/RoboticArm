@@ -1,0 +1,2 @@
+data: '{"accept_reasons": {"predicate_unavailable": 1, "predicate_unavailable_edge_strip": 1}, "accepted_cargo_count": 1, "backend": "b...'
+---

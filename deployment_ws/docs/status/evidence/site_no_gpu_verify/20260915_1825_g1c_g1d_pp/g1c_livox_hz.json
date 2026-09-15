@@ -1,0 +1,9 @@
+{
+  "topic": "/livox/lidar",
+  "type": "sensor_msgs/msg/PointCloud2",
+  "n": 122,
+  "window_s": 12.098669052124023,
+  "mean_hz": 10.001100077926127,
+  "min_instant_hz": 9.874805767184307,
+  "asked_s": 12.0
+}

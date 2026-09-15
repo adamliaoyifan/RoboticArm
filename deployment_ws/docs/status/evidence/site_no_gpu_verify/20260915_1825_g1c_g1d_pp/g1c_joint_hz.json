@@ -1,0 +1,9 @@
+{
+  "topic": "/joint_states",
+  "type": "sensor_msgs/msg/JointState",
+  "n": 401,
+  "window_s": 8.000694751739502,
+  "mean_hz": 49.9956581786891,
+  "min_instant_hz": 35.669793429545784,
+  "asked_s": 8.0
+}

@@ -947,15 +947,22 @@ class HuayanInterface:
         2. Compute from position delta / time delta to next waypoint.
         3. Fall back to default_velocity_deg.
 
-        The result is clamped to [1.0, max_velocity_deg].
+        The result is clamped to [max(1.0, default_velocity_deg), max_velocity_deg].
+        MoveIt TOTG often emits well under 1 deg/s; Huayan 20070 rejects that,
+        and crawling at the 1 deg/s floor is too slow for pick.
         """
         pt = points[idx]
+        lo = max(1.0, float(self._default_vel))
+        hi = float(self._max_vel)
+
+        def _clamp(vel):
+            return max(lo, min(float(vel), hi))
 
         # 1) Use provided velocities.
         if pt.velocities:
             max_vel = max(abs(math.degrees(v)) for v in pt.velocities)
             if max_vel > 0.0:
-                return min(max_vel, self._max_vel)
+                return _clamp(max_vel)
 
         # 2) Derive from position delta / time delta.
         if idx + 1 < len(points):
@@ -967,10 +974,10 @@ class HuayanInterface:
                 )
                 vel = max_delta / dt
                 if vel > 0.0:
-                    return min(vel, self._max_vel)
+                    return _clamp(vel)
 
         # 3) Default.
-        return min(self._default_vel, self._max_vel)
+        return _clamp(self._default_vel)
 
     @staticmethod
     def _import_cps():

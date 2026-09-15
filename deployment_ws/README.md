@@ -1,5 +1,13 @@
 # Real-robot runtime nodes (`deployment_ws`)
 
+现场执行计划（master vs 当前 `ros2_humble`、闸门、采集数据、验收）：
+
+- [`SITE_EXECUTION_README.md`](SITE_EXECUTION_README.md) — 阅读用（开头是 **当前测试进度**）
+- [`SITE_EXECUTION_PLAN.txt`](SITE_EXECUTION_PLAN.txt) — 终端 `less` / 记事本
+- [`docs/status/evidence/site_no_gpu_verify/PROGRESS.md`](docs/status/evidence/site_no_gpu_verify/PROGRESS.md) — 2026-09-15 闸门索引
+
+**真空硬约束：** 杯口必须贴**无高低差的平面**，否则 DI0 不置 1，不能做 Gate 5。
+
 TCP execution for the real Elfin is kept here, separate from the closed-loop
 stack in `elfin_humble_ws`. The Noetic TCP executor and Docker image live on
 the `main` branch (`deployment_ws/noetic/elfin_cps_executor`, `docker/noetic/`).
@@ -12,15 +20,26 @@ This host currently has **Jazzy only** (`/opt/ros/jazzy`). Build and run
 the executor against Jazzy. Do not source Humble (or a Humble colcon
 overlay) in the same shell.
 
+Every new terminal, source the site env once, then set **your** domain:
+
+```bash
+source /home/adamliao/work/RoboticArm/deployment_ws/scripts/site_env.sh
+export ROS_DOMAIN_ID=7    # you choose; the env script does not set this
+```
+
+That pulls in Jazzy, the luggage overlay, `deployment_ws`, Livox (if built),
+the Huayan SDK on `PYTHONPATH`, and apt librealsense on `LD_LIBRARY_PATH`.
+It never writes `ROS_DOMAIN_ID`.
+
 Site worksheet: copy [`config/site_vars.yaml.example`](config/site_vars.yaml.example)
 to `config/site_vars.yaml` and fill measured IPs / geometry.
 
 ```bash
-source /opt/ros/jazzy/setup.bash
+source /home/adamliao/work/RoboticArm/deployment_ws/scripts/site_env.sh
 export ROS_DOMAIN_ID=7
 # FollowJointTrajectory lives here; required on a Jazzy-only host:
 #   sudo apt install ros-jazzy-control-msgs
-cd deployment_ws
+cd /home/adamliao/work/RoboticArm/deployment_ws
 python3 scripts/check_site.py --init
 python3 scripts/check_site.py          # Gate 0: NIC + ping
 eval "$(python3 scripts/check_site.py --export)"
@@ -28,12 +47,12 @@ python3 scripts/check_gate1.py         # CPS import + TCP port
 bash scripts/run_gate1_sim_handshake.sh  # 2° FJT + READY_FOR_NEXT, no Gazebo
 
 colcon build --packages-select elfin_trajectory_executor
-source install/setup.bash
+# site_env.sh already sourced install/setup.bash; re-source site_env after a rebuild
 
 # Real arm: no Gazebo. Only after ping succeeds and a person is on e-stop.
 ros2 launch elfin_trajectory_executor jazzy_real.launch.py
 
-# Other terminal, same ROS_DOMAIN_ID. Blocks until the arm finishes.
+# Other terminal: source site_env.sh, same ROS_DOMAIN_ID. Blocks until the arm finishes.
 ros2 run elfin_trajectory_executor send_joint_trajectory --delta-deg 2 --and-back
 ```
 

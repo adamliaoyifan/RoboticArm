@@ -1,0 +1,13 @@
+WARNING: topic [/luggage/semantic/yolo_detections] does not appear to be published yet
+average rate: 1.877
+	min: 0.517s max: 0.548s std dev: 0.01275s window: 3
+average rate: 1.852
+	min: 0.517s max: 0.561s std dev: 0.01458s window: 5
+average rate: 1.868
+	min: 0.500s max: 0.561s std dev: 0.01916s window: 7
+average rate: 1.861
+	min: 0.500s max: 0.563s std dev: 0.01942s window: 9
+average rate: 1.872
+	min: 0.500s max: 0.563s std dev: 0.01916s window: 11
+average rate: 1.876
+	min: 0.500s max: 0.563s std dev: 0.01803s window: 13

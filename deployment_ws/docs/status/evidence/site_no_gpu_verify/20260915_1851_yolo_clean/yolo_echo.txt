@@ -1,0 +1,419 @@
+header:
+  stamp:
+    sec: 1789469638
+    nanosec: 899922848
+  frame_id: d555_color_optical_frame
+frame_seq: 79
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.857851505279541
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 273
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469639
+    nanosec: 433891296
+  frame_id: d555_color_optical_frame
+frame_seq: 80
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.8934633731842041
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469639
+    nanosec: 966196299
+  frame_id: d555_color_optical_frame
+frame_seq: 81
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.930492639541626
+  bbox:
+  - 249
+  - 147
+  - 434
+  - 274
+  held: false
+- label: 2
+  prompt: temporal_hold
+  confidence: 0.800000011920929
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 274
+  held: true
+---
+header:
+  stamp:
+    sec: 1789469640
+    nanosec: 500804901
+  frame_id: d555_color_optical_frame
+frame_seq: 82
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9174498319625854
+  bbox:
+  - 250
+  - 146
+  - 435
+  - 273
+  held: false
+- label: 2
+  prompt: temporal_hold
+  confidence: 0.6000000238418579
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: true
+---
+header:
+  stamp:
+    sec: 1789469641
+    nanosec: 23290634
+  frame_id: d555_color_optical_frame
+frame_seq: 83
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.935214638710022
+  bbox:
+  - 249
+  - 146
+  - 433
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469641
+    nanosec: 559901953
+  frame_id: d555_color_optical_frame
+frame_seq: 84
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9287115931510925
+  bbox:
+  - 248
+  - 146
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469642
+    nanosec: 90415239
+  frame_id: d555_color_optical_frame
+frame_seq: 85
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9203999638557434
+  bbox:
+  - 250
+  - 147
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469642
+    nanosec: 632663488
+  frame_id: d555_color_optical_frame
+frame_seq: 86
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.879402220249176
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 273
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469643
+    nanosec: 160249949
+  frame_id: d555_color_optical_frame
+frame_seq: 87
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9037363529205322
+  bbox:
+  - 249
+  - 146
+  - 435
+  - 274
+  held: false
+- label: 2
+  prompt: box
+  confidence: 0.2065754532814026
+  bbox:
+  - 94
+  - 265
+  - 231
+  - 306
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469643
+    nanosec: 693671703
+  frame_id: d555_color_optical_frame
+frame_seq: 88
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9174706935882568
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469644
+    nanosec: 226286173
+  frame_id: d555_color_optical_frame
+frame_seq: 89
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.901583194732666
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 274
+  held: false
+- label: 2
+  prompt: temporal_hold
+  confidence: 0.800000011920929
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 274
+  held: true
+---
+header:
+  stamp:
+    sec: 1789469644
+    nanosec: 756884098
+  frame_id: d555_color_optical_frame
+frame_seq: 90
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9196417927742004
+  bbox:
+  - 251
+  - 146
+  - 435
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469645
+    nanosec: 300345659
+  frame_id: d555_color_optical_frame
+frame_seq: 91
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9260731935501099
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: false
+- label: 2
+  prompt: temporal_hold
+  confidence: 0.6000000238418579
+  bbox:
+  - 250
+  - 146
+  - 435
+  - 274
+  held: true
+---
+header:
+  stamp:
+    sec: 1789469645
+    nanosec: 832867146
+  frame_id: d555_color_optical_frame
+frame_seq: 92
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9321836829185486
+  bbox:
+  - 249
+  - 146
+  - 435
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469646
+    nanosec: 360119104
+  frame_id: d555_color_optical_frame
+frame_seq: 93
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9316278100013733
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469646
+    nanosec: 899223089
+  frame_id: d555_color_optical_frame
+frame_seq: 94
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9406712651252747
+  bbox:
+  - 249
+  - 146
+  - 434
+  - 274
+  held: false
+---
+header:
+  stamp:
+    sec: 1789469647
+    nanosec: 432922602
+  frame_id: d555_color_optical_frame
+frame_seq: 95
+generation: 0
+instance_id: ''
+image_width: 640
+image_height: 360
+backend: bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt
+detections:
+- label: 2
+  prompt: luggage on a platform viewed from directly above
+  confidence: 0.9348819851875305
+  bbox:
+  - 250
+  - 146
+  - 434
+  - 274
+  held: false
+---

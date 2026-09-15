@@ -1,0 +1,32 @@
+Gate 4  2026-09-15 19:49–19:51 +08  ROS_DOMAIN_ID=7
+Tree: /home/adamliao/work/RoboticArm-master
+Stack: Gate 3 A hardware_pick still up (executor owns CPS, vacuum backend=hardware)
+
+## Mode
+Airborne short test. Arm still at Gate 2/3 skip-observe pose (cup not on box).
+Joints unchanged through enable/disable (no FJT).
+SOP allows this: DI0 may stay 0; record VACUUM_SEAL_TIMEOUT separately from contact seal.
+
+## Path
+/vacuum/command enable → wait DI0 ≤ 8 s → disable
+Recorded /vacuum/io → vacuum_io.jsonl (897 samples). Never wrote DO0 and DO1 together.
+
+## Pins (box IO, matches 2026-09-09 map)
+Idle:     DI0=0 DO0=0 DO1=0
+Enable:   DO1=0 then DO0=1  (pump on, ~7.79 s). DI0 stayed 0.
+Timeout:  VACUUM_SEAL_TIMEOUT after 8.0s  (enable rc false, expected airborne)
+Release:  DO0=0 then DO1 pulse (~0.12–0.30 s) then DO1=0. DI0 stayed 0.
+Disable:  ok=true message=released; idle 000
+pin11 samples: 0
+
+Executor:
+  set DO1=0 → set DO0=1
+  (8 s)
+  set DO0=0 → set DO1=1 → set DO1=0
+  (explicit disable + finally: same pulse, never 11)
+
+## Verdict
+PASS Gate 4 pin map + no-11 + enable/release polarity.
+Contact seal NOT measured (t_seal=null, DI0 never 1). That is Gate 5 with cup on the lid.
+
+Next: Gate 5 sealed pick 5/5. A hardware_pick still running.

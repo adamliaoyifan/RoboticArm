@@ -1,0 +1,7 @@
+ok src/luggage_description/urdf/eef_sensor_mount.urdf.xacro
+ok src/luggage_description/config/mid360_origin.xacro
+ok src/luggage_description/config/MID360s_config.json.example
+livox overlay: not built (run scripts/setup_livox_driver.sh)
+livox sdk: missing
+livox_ros_driver2 share: /home/adamliao/work/RoboticArm/deployment_ws/livox_ws/install/livox_ros_driver2/share/livox_ros_driver2
+gate2: FAIL (overlay,sdk)

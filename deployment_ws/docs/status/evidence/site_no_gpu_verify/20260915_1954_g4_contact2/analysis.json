@@ -1,0 +1,17 @@
+{
+  "enable_ok": false,
+  "enable_msg": "VACUUM_SEAL_TIMEOUT after 8.0s",
+  "enable_dt_s": 8.196,
+  "disable_ok": true,
+  "disable_msg": "released",
+  "disable_dt_s": 0.127,
+  "hold_ok": null,
+  "n_samples": 869,
+  "n_pin11": 0,
+  "n_di0_1": 0,
+  "t_seal_s": null,
+  "t_release_s": null,
+  "pump_window_s": 8.179,
+  "contact_seal": false,
+  "note": "non-flat lid"
+}

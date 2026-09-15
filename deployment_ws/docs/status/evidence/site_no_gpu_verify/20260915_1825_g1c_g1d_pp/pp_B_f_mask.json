@@ -1,0 +1,9 @@
+{
+  "topic": "/luggage/semantic/mask",
+  "type": "sensor_msgs/msg/Image",
+  "n": 38,
+  "window_s": 19.731406927108765,
+  "mean_hz": 1.8751830590025542,
+  "min_instant_hz": 1.639320196532194,
+  "asked_s": 20.0
+}

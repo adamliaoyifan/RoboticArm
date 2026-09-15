@@ -1,0 +1,19 @@
+{
+  "enable_ok": false,
+  "enable_msg": "VACUUM_SEAL_TIMEOUT after 8.0s",
+  "enable_dt_s": 8.411,
+  "disable_ok": true,
+  "disable_msg": "released",
+  "disable_dt_s": 0.329,
+  "hold_ok": null,
+  "n_samples": 922,
+  "n_pin11": 0,
+  "n_pump": 805,
+  "n_di0_1": 0,
+  "n_blow": 37,
+  "t_seal_s": null,
+  "t_release_s": 0.0,
+  "pump_window_s": 8.072,
+  "contact_seal": false,
+  "seal_limit_s": 8.0
+}

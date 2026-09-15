@@ -1,0 +1,7 @@
+ok elfin_humble_ws/src/luggage_description/urdf/eef_sensor_mount.urdf.xacro
+ok elfin_humble_ws/src/luggage_description/config/mid360_origin.xacro
+ok elfin_humble_ws/src/luggage_description/config/MID360s_config.json.example
+livox overlay: /home/adamliao/work/RoboticArm/deployment_ws/livox_ws/install/setup.bash
+livox sdk: /home/adamliao/work/RoboticArm/deployment_ws/livox_ws/sdk_prefix/lib/liblivox_lidar_sdk_shared.so
+livox_ros_driver2 share: /home/adamliao/work/RoboticArm/deployment_ws/livox_ws/install/livox_ros_driver2/share/livox_ros_driver2
+gate2 software: PASS (live /livox/lidar still needs the Mid-360 on 192.168.1.0/24)

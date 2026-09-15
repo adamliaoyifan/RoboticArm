@@ -1,0 +1,19 @@
+Gate 5 C  2026-09-15 20:32–20:34 +08  FAIL at pre_grasp (driver)
+Arm DID move ~8 s after the driver already reported CONTROL_FAILED.
+
+Timeline:
+  20:34:07.713  MoveIt Goal request accepted (11 TOTG waypoints)
+  20:34:07.714  Controller "successfully finished" + status UNKNOWN
+  20:34:07.715  executor Goal accepted: 11 waypoints
+  20:34:07.721  MoveGroup CONTROL_FAILED  (driver exit 5)
+  20:34:15.980  executor Trajectory execution complete (arm still moving)
+
+Cause of back-and-forth:
+  pre_grasp is OMPL pose_target + TOTG. Each of 11 dense samples was a
+  HRIF_WayPoint MoveJ at >=30 deg/s. Nearby samples that reverse a joint
+  look like the arm jumping forward/back. IsBlendingDone is true while
+  idle, so points were also queued immediately.
+
+Also: rclpy async execute_callback let MoveIt see a SUCCESSFUL payload
+with ResultCode UNKNOWN in 1 ms, so the driver aborted while Huayan
+kept running.

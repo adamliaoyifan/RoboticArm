@@ -1,0 +1,7 @@
+===== weight sizes =====
+-rw-rw-r-- 2 adamliao adamliao 338M Sep  2 16:01 /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/vendor/clip_models/ViT-B-32.pt
+-rw-rw-r-- 1 adamliao adamliao  26M Sep  2 16:00 /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/yolov8s-world.pt
+lrwxrwxrwx 1 adamliao adamliao   77 Sep 15 16:54 /home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt -> /home/adamliao/work/RoboticArm-master/src/luggage_perception/yolov8s-world.pt
+lrwxrwxrwx 1 adamliao adamliao   91 Sep 15 16:54 /home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/vendor/clip_models/ViT-B-32.pt -> /home/adamliao/work/RoboticArm-master/src/luggage_perception/vendor/clip_models/ViT-B-32.pt
+-rw-rw-r-- 2 adamliao adamliao 338M Sep  2 16:01 /home/adamliao/work/RoboticArm-master/src/luggage_perception/vendor/clip_models/ViT-B-32.pt
+lrwxrwxrwx 1 adamliao adamliao   86 Sep 15 16:52 /home/adamliao/work/RoboticArm-master/src/luggage_perception/yolov8s-world.pt -> /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/yolov8s-world.pt

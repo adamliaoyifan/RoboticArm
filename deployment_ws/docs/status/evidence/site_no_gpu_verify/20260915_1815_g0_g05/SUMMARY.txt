@@ -1,0 +1,18 @@
+Gate 0 / 0.5 run 2026-09-15 18:16 +08
+Trees: master 8ac1fca (detached HEAD, dirty) ; ros2_humble 3b83de2 (dirty)
+ROS_DISTRO=jazzy  python=3.12.3  no nvidia-smi  moveit_msgs=installed
+
+Gate 0 check_site: PASS (jazzy + ping 192.168.0.10)
+Gate 1 software (CPS import + FJT name + TCP 10003): PASS
+Gate 2 Livox overlay: PASS on humble deployment_ws/livox_ws ; FAIL on master worktree (no livox_ws, gitignored — use site overlay)
+Gate 3 YOLO/CLIP: PASS  yolov8s-world.pt 25.9 MB  ViT-B-32.pt 337.6 MB (>=300)
+
+NIC enp0s31f6 UP mtu 9000
+  192.168.0.11/24  (CPS)     ping 192.168.0.10 OK
+  192.168.11.70/24 (D555)    ping 192.168.11.55 OK
+  192.168.1.5/24   (Livox)   ping 192.168.1.120 OK  host 192.168.1.5 OK
+d435_usb=false (expected; wrist is D555 PoE)
+scene.measured still false
+site_vars worksheet IPs still example (0.50 / 1.50) not the live addrs above
+
+Not done this run: copy dirty trees to site/unpushed-* ; Gate 1d detect ; Gate 2 2deg FJT

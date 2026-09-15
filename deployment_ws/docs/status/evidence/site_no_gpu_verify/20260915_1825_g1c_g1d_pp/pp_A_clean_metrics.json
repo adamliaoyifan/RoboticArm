@@ -1,0 +1,66 @@
+{
+  "rates": {
+    "f_rgb": {
+      "n": 0,
+      "mean_hz": 0,
+      "min_instant_hz": 0,
+      "window_s": 0
+    },
+    "f_d": {
+      "n": 0,
+      "mean_hz": 0,
+      "min_instant_hz": 0,
+      "window_s": 0
+    },
+    "f_pp": {
+      "n": 0,
+      "mean_hz": 0,
+      "min_instant_hz": 0,
+      "window_s": 0
+    },
+    "f_mask": {
+      "n": 0,
+      "mean_hz": 0,
+      "min_instant_hz": 0,
+      "window_s": 0
+    }
+  },
+  "status": {
+    "camera_pair_tolerance_sec": 0.005,
+    "last_rejection": "",
+    "depth_dt": 0.0,
+    "flags": {
+      "cloud_ok": false,
+      "color_info_ok": true,
+      "depth_info_ok": true,
+      "depth_ok": true,
+      "deskewed": false,
+      "geometry_ok": true,
+      "lidar_ok": false,
+      "motion_too_large": false,
+      "rgb_ok": true,
+      "stale": false
+    },
+    "motion_gate": {
+      "criterion": "displacement",
+      "displacement_tolerance": 0.01,
+      "enabled": true,
+      "excursion_joint": "elfin_joint4",
+      "max_velocity": 0.00034906585039886593,
+      "peak_excursion": 1.7453292520008823e-05,
+      "stable_since": 1789468693.96595,
+      "state": "stable",
+      "velocity_threshold": 0.02
+    },
+    "acquisition_mismatches": 0,
+    "depth_wait_skips": 0
+  },
+  "stats": {
+    "accepted_cargo_count": 1,
+    "backend": "bbox_fill:/home/adamliao/work/RoboticArm-master/install/luggage_perception/share/luggage_perception/models/yolov8s-world.pt",
+    "detections_dropped_self_body": [],
+    "inference_ms": 58.08758735656738,
+    "n_dropped_low_conf_robot_arm": 0,
+    "n_dropped_self_body": 0
+  }
+}

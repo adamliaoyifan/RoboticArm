@@ -1,0 +1,30 @@
+Gate 4 contact-seal retest  2026-09-15 19:53 +08  ROS_DOMAIN_ID=7
+Tree: /home/adamliao/work/RoboticArm-master
+Stack: same A hardware_pick (executor owns CPS, backend=hardware)
+
+## Pose
+User moved cup onto the box (not Gate 2 observe).
+rad: [0.2175, -2.7268, -1.8409, -0.1637, 1.5805, 0.1293]
+deg: [12.46, -156.23, -105.48, -9.38, 90.56, 7.41]
+vs Gate 2 observe: max |Δ| = 1.050 rad (60.2°, mostly J2)
+Joints unchanged during pump (no FJT).
+
+## Command
+/vacuum/command enable → wait DI0 ≤ 8.0 s → disable
+
+## Result
+FAIL contact seal. DI0 never rose.
+ENABLE ok=false  dt=8.41s  VACUUM_SEAL_TIMEOUT after 8.0s
+DISABLE ok=true  released
+t_seal = null   n_di0_1 = 0   n_pin11 = 0
+
+Pins still match the map:
+  t=1.871  DO0=1 DO1=0 DI0=0   pump on ~8.07 s
+  t=9.973  DO0=0 then DO1 pulse, back to 000
+
+Historical contact seal (2026-09-09) was ~6.3 s. This 8 s window would have caught that.
+
+## Note
+Pin polarity is fine (same as airborne Gate 4). The missing piece is DI0=1
+with the cup on the lid. Check cup full-face on the top (not rim/handle),
+leak, and pendant Box DI0 while the pump is on.

@@ -16,7 +16,11 @@
 # Pedestal disabled:
 #   URDF world_base joint carries robot.base_height; Gazebo spawn z = 0
 #
-# Container mesh rotation is baked in airport_container_real STL; container_link uses translation only.
+# Container mesh opening is baked in airport_container_real STL (door = -X).
+# world→container_link rotation_rpy is the cell placement (radians, ROS RPY).
+# Door-facing left/right flip about elfin_base_link XZ is not a mesh bake:
+#   base (0, -1.5, -0.86) yaw -π/2  →  (0, +1.5, -0.86) yaw +π/2
+#   which is world translation [-1.5, 0, 0], yaw π.
 # Container semantic bounds live here too; collision geometry comes from:
 #   luggage_gazebo/models/<gazebo.container_model>/meshes/container_collision.stl
 # inner.chamfer clips the usable AABB to the 7-face hull (two pentagonal
@@ -80,9 +84,10 @@ container:
 static_transforms:
   - parent: world
     child: container_link
-#    translation: [1.5, -0.8, 0.0]
-    translation: [1.5, 0.0, 0.0]
-    rotation_rpy: [0.0, 0.0, 0.0]
+    # Mirrored across elfin_base_link XZ (robot left/right). Parent stays world.
+    # Prior sim pose was translation [1.5, 0, 0], rotation_rpy [0, 0, 0].
+    translation: [-1.5, 0.0, 0.0]
+    rotation_rpy: [0.0, 0.0, 3.1416]  # 180 deg: opening -X still faces the arm
 
   - parent: container_link
     child: container_opening_frame
@@ -95,7 +100,7 @@ static_transforms:
 pickup_platform:
   enabled: true
   size: [1.0, 1.0, 0.86]
-  translation: [-1.0, 0.0, 0.0]
+  translation: [1.0, 0.0, 0.0]  # mirrored with container across elfin_base_link XZ
   rotation_rpy: [0.0, 0.0, 0.0]
   gazebo_model: pickup_platform
 

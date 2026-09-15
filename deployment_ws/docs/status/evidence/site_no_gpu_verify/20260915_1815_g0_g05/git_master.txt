@@ -1,0 +1,63 @@
+===== master /home/adamliao/work/RoboticArm-master =====
+HEAD
+8ac1fca259e58ec0378510fcb7591801c538767b
+
+## HEAD (no branch)
+ M deployment_ws/scripts/hardware_pick.sh
+ M deployment_ws/scripts/record_site.sh
+ M deployment_ws/src/elfin_trajectory_executor/test/test_hardware_pick_sh.py
+ M docs/status/site_no_gpu_verify.md
+ M src/luggage_gazebo/scripts/pick_retreat_eval_driver.py
+ M src/luggage_perception/config/semantic_segmenter.yaml
+ M src/luggage_perception/luggage_perception/semantic_segmenter.py
+ M src/luggage_perception/scripts/semantic_point_filter_node.py
+ M src/luggage_perception/scripts/semantic_segmenter_node.py
+ M src/luggage_perception/test/test_semantic_segmenter.py
+ M src/luggage_planning/launch/hardware_pick.launch.py
+ M src/luggage_planning/scripts/vacuum_controller_node.py
+ M src/luggage_planning/scripts/waypoint_generator_node.py
+ M src/luggage_planning/test/test_hardware_pick_launch.py
+?? deployment_ws/deployment.log
+?? deployment_ws/scripts/record_all_topics.sh
+?? src/luggage_perception/vendor/clip_models
+?? src/luggage_perception/vendor/clip_pkg
+?? src/luggage_perception/vendor/deps
+
+--- log -15 ---
+8ac1fca site: add no-GPU hardware pick verify SOP
+c086a39 fix(eval): require G4 t_steady on an admitted 5/5 sample
+b48a8ec fix(eval): keep G4 live dirty-check on the evaluator path set
+88cb3f5 fix(eval): score PF-R7 G4 from support-ready 8s ROS window
+74ff629 Merge branch 'feat/site-hardware-pick' into master
+1a49831 feat(planning): add site one-click hardware pick on master
+bcdfafb feat(deploy): import site runtime and Huayan SDK samples onto master
+5d782af Merge branch 'agent/eng/pos1-g1' into pos1-integration
+86e36c8 fix(eval): keep PF-R7 spawn param sets from stalling rclpy
+14fd2a9 docs(description): define D555 frame alias contract
+623395b POS-1: one settle-and-retry on the place support-touch ACM call
+3028aba fix(description): align locked D555 runtime config
+558697e POS-1: propagate PlanMotion cancel; settle before setup; roomier exit
+93a9a47 fix(eval): drain PF-R7 G3 score window before FULL_3D scoring
+81c0bb3 feat(perception): visualize locked EEF TF seating
+
+--- diff --stat ---
+ deployment_ws/scripts/hardware_pick.sh             | 16 ++++++++++++-
+ deployment_ws/scripts/record_site.sh               | 23 ++++++++++++++++--
+ .../test/test_hardware_pick_sh.py                  |  6 +++++
+ docs/status/site_no_gpu_verify.md                  |  1 +
+ .../scripts/pick_retreat_eval_driver.py            |  2 +-
+ .../config/semantic_segmenter.yaml                 |  4 ++--
+ .../luggage_perception/semantic_segmenter.py       | 28 ++++++++++++++++++++++
+ .../scripts/semantic_point_filter_node.py          |  5 +++-
+ .../scripts/semantic_segmenter_node.py             |  9 ++++---
+ .../test/test_semantic_segmenter.py                | 13 ++++++++++
+ .../launch/hardware_pick.launch.py                 | 14 +++++++++++
+ .../scripts/vacuum_controller_node.py              |  5 +++-
+ .../scripts/waypoint_generator_node.py             |  5 +++-
+ .../test/test_hardware_pick_launch.py              | 13 ++++++++++
+ 14 files changed, 132 insertions(+), 12 deletions(-)
+
+--- stash ---
+stash@{0}: WIP on ros2_humble: 66d705a docs(hardware): vendor the official Mid-360S manuals and CAD listed in SOURCES.md
+
+--- ROS_DISTRO in this snapshot env (unset here) ---

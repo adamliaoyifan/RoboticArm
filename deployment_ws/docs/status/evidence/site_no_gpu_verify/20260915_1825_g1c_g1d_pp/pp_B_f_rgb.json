@@ -1,0 +1,9 @@
+{
+  "topic": "/camera/d555/color/image_raw/compressed",
+  "type": "sensor_msgs/msg/CompressedImage",
+  "n": 300,
+  "window_s": 20.00427007675171,
+  "mean_hz": 14.946808798961765,
+  "min_instant_hz": 7.946812884499154,
+  "asked_s": 20.0
+}

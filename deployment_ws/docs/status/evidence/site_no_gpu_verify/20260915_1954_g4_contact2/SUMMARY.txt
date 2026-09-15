@@ -1,0 +1,13 @@
+Gate 4 contact-seal retry 2  2026-09-15 19:55 +08  ROS_DOMAIN_ID=7
+Non-flat lid (user). Same A hardware_pick stack.
+
+Pose deg: [9.17, -156.49, -105.42, -9.21, 90.49, 4.12]
+  (nudged vs retry 1: J1 12.46→9.17, J6 7.41→4.12)
+
+ENABLE ok=false  dt=8.20s  VACUUM_SEAL_TIMEOUT after 8.0s
+DISABLE ok=true  released  0.13s
+t_seal=null  n_di0_1=0  n_pin11=0
+pump DO0=1 DO1=0 for 8.18 s then blow-off to 000
+
+FAIL contact seal. Pin map still OK. DI0 never rose — consistent with leak
+on a non-planar lid (8 s gate, historical flat-lid seal ~6.3 s).

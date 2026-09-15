@@ -1,0 +1,9 @@
+{
+  "topic": "/luggage/preprocessed/camera/color/image",
+  "type": "sensor_msgs/msg/Image",
+  "n": 289,
+  "window_s": 19.99512243270874,
+  "mean_hz": 14.403512705122488,
+  "min_instant_hz": 2.47541233225487,
+  "asked_s": 20.0
+}

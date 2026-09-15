@@ -1,0 +1,9 @@
+{
+  "topic": "/luggage/semantic/yolo_detections",
+  "type": "luggage_msgs/msg/YoloDetections",
+  "n": 23,
+  "window_s": 11.91776180267334,
+  "mean_hz": 1.8459842010825436,
+  "min_instant_hz": 1.49913932621538,
+  "asked_s": 12.0
+}

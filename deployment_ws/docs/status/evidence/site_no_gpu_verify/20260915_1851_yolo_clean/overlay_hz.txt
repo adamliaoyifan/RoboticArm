@@ -1,0 +1,11 @@
+WARNING: topic [/luggage/semantic/overlay] does not appear to be published yet
+average rate: 1.417
+	min: 0.517s max: 1.060s std dev: 0.25077s window: 3
+average rate: 1.567
+	min: 0.517s max: 1.060s std dev: 0.21135s window: 5
+average rate: 1.634
+	min: 0.517s max: 1.060s std dev: 0.18359s window: 7
+average rate: 1.694
+	min: 0.511s max: 1.060s std dev: 0.16682s window: 9
+average rate: 1.723
+	min: 0.511s max: 1.060s std dev: 0.15235s window: 11

@@ -1,0 +1,12 @@
+yolov8s-world.pt: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/yolov8s-world.pt
+CLIP ViT-B-32.pt: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/vendor/clip_models/ViT-B-32.pt
+semantic_segmenter.real.yaml: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/config/semantic_segmenter.real.yaml
+dump_camera_frames.py: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/scripts/dump_camera_frames.py
+realsense_d435.launch.py: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_perception/launch/realsense_d435.launch.py
+scene_hardware.launch.py: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_description/launch/scene_hardware.launch.py
+scene_tf.yaml.example: /home/adamliao/work/RoboticArm/elfin_humble_ws/src/luggage_description/config/scene_tf.yaml.example
+CLIP size: 337.6 MB
+YOLO size: 25.9 MB
+realsense2_camera share: /opt/ros/jazzy/share/realsense2_camera
+gate3 assets: PASS
+hardware still needed: measured scene_tf.yaml, live D435, dump_camera_frames.py

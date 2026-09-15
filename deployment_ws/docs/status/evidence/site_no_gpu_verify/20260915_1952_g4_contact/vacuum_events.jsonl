@@ -1,0 +1,2 @@
+{"t": 10.236952640996606, "raw": "{\"event\": \"attach\", \"follow_skipped\": 0, \"message\": \"VACUUM_SEAL_TIMEOUT after 8.0s\", \"ok\": false}"}
+{"t": 10.566479487999459, "raw": "{\"event\": \"detach\", \"follow_skipped\": 0, \"message\": \"released\", \"ok\": true}"}

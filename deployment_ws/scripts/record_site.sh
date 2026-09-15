@@ -71,38 +71,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REPO="$(cd "$DEPLOY/.." && pwd)"
-HUMBLE_WS="${REPO}/elfin_humble_ws"
-SDK="${REPO}/third_party/huayan_python_sdk"
-
-if [[ ! -f /opt/ros/jazzy/setup.bash ]]; then
-  echo "need /opt/ros/jazzy" >&2
-  exit 1
-fi
-if [[ ! -f "$DEPLOY/install/setup.bash" ]]; then
-  echo "build deployment_ws first: colcon build --packages-select elfin_trajectory_executor" >&2
-  exit 1
-fi
-if [[ ! -f "$HUMBLE_WS/install/setup.bash" ]]; then
-  echo "missing ${HUMBLE_WS}/install/setup.bash" >&2
-  exit 1
-fi
-
-set +u
 # shellcheck disable=SC1091
-source /opt/ros/jazzy/setup.bash
-# shellcheck disable=SC1091
-source "$DEPLOY/livox_ws/env.sh"
-# shellcheck disable=SC1091
-source "$HUMBLE_WS/install/setup.bash"
-# shellcheck disable=SC1091
-source "$DEPLOY/install/setup.bash"
-set -u
-
-export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-7}"
-unset ROS_LOCALHOST_ONLY
-export PYTHONPATH="${SDK}${PYTHONPATH:+:${PYTHONPATH}}"
-export LD_LIBRARY_PATH="/lib/x86_64-linux-gnu${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+source "$DEPLOY/scripts/site_env.sh"
 
 pkill -f livox_ros_driver2_node >/dev/null 2>&1 || true
 sleep 0.3
@@ -119,7 +89,11 @@ if [[ -e "$BAG_PATH" ]]; then
 fi
 
 echo "record_mode=${MODE}"
-echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
+if [[ -n "${ROS_DOMAIN_ID-}" ]]; then
+  echo "ROS_DOMAIN_ID=${ROS_DOMAIN_ID}"
+else
+  echo "ROS_DOMAIN_ID unset (DDS default 0)"
+fi
 echo "bag -> ${BAG_PATH}"
 echo "Ctrl+C to stop"
 if [[ "$MODE" == "real" ]]; then

@@ -1,0 +1,9 @@
+{
+  "topic": "/camera/d555/color/image_raw",
+  "type": "sensor_msgs/msg/Image",
+  "n": 181,
+  "window_s": 12.002087354660034,
+  "mean_hz": 14.997391260455345,
+  "min_instant_hz": 14.270077537314194,
+  "asked_s": 12.0
+}

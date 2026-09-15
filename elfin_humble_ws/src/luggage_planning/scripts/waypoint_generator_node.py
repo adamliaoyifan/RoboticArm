@@ -161,7 +161,10 @@ class WaypointGeneratorNode(Node):
             self._on_committed, latch, callback_group=group)
 
         self._tf_buffer = tf2_ros.Buffer()
-        self._tf_node = Node("waypoint_generator_tf")
+        # use_global_arguments=False: launch -r __node:=... must not rename
+        # this sidecar, or ros2 node list reports a duplicate name.
+        self._tf_node = Node(
+            "waypoint_generator_tf", use_global_arguments=False)
         self._tf_listener = tf2_ros.TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
 

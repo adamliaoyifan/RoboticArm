@@ -1,0 +1,24 @@
+Gate 1d continue  2026-09-15 18:57–19:01 +08  ROS_DOMAIN_ID=7
+Live stack (not relaunched). B preprocessor. --detect-only --skip-observe.
+
+## First 3/3 (sim workspace)
+FAIL 0/3 DETECT_TOP_UNOBSERVABLE
+YOLO cargo ok: n_cargo_points≈8690, yolo_count=1, conf≈0.93
+Camera nadir: world t=(-0.049, 0.953, 1.177), optical Z world ≈ (0, -0.16, -0.987)
+Cargo centroid world XY = (-0.096, 1.013)
+Detector crop: scene_tf pickup_source (-1.0, 0.0) ± 0.5 m
+pipeline.top_cropped_points = 0  (all cargo outside sim square)
+
+## Workspace override (detector only)
+workspace_center_xy=[-0.10, 1.01]  half_extents=[0.80, 0.80]
+params: /tmp/g1d_detector_ws.yaml
+detection_frame: pca_valid=true top_surface_valid=true support_valid=true
+
+## Second 3/3
+PASS B 3/3
+1. id=detected_box xyz=(-0.229,0.966,0.099) 0.959x0.375x0.244 top_z=0.221 valid=True/True src=1
+2. id=detected_box xyz=(-0.228,0.970,0.099) 0.967x0.380x0.243 top_z=0.220 valid=True/True src=1
+3. id=detected_box xyz=(-0.222,0.972,0.099) 0.942x0.383x0.243 top_z=0.220 valid=True/True src=1
+
+A not re-run (same detector; A is preprocessor motion gate only).
+scene.measured still false; site pickup XY is not (-1,0).

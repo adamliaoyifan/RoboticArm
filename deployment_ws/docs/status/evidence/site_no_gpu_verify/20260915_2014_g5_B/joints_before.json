@@ -1,0 +1,18 @@
+{
+  "rad": {
+    "elfin_joint1": 0.27077038015440025,
+    "elfin_joint2": -2.4535315025760687,
+    "elfin_joint3": -1.8549882888971332,
+    "elfin_joint4": -0.4228583711731862,
+    "elfin_joint5": 1.5815999148647415,
+    "elfin_joint6": 0.18257889305112682
+  },
+  "deg": {
+    "elfin_joint1": 15.514,
+    "elfin_joint2": -140.577,
+    "elfin_joint3": -106.283,
+    "elfin_joint4": -24.228,
+    "elfin_joint5": 90.619,
+    "elfin_joint6": 10.461
+  }
+}

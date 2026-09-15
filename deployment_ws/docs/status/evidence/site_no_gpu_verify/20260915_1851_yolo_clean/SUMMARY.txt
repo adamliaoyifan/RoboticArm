@@ -1,0 +1,21 @@
+Clean stack + YOLO check  2026-09-15 18:53 +08  ROS_DOMAIN_ID=7
+
+## Cleanup
+Killed 22 leftovers: 6x (container_tf_publisher, scene_assets, robot_state_publisher)
+orphaned under systemd --user (previous hardware_pick pkill missed them),
+plus ros2 daemons on domains 0/7/11/88.
+Graph after clean: nodes empty, topics only /parameter_events /rosout.
+
+## Fresh graph (left running)
+cps_telemetry + hardware_pick start_executor:=false B yaml, overlay on.
+Single copy of each node. semantic_segmenter ready
+backend=bbox_fill:yolov8s-world.pt  max_rate ~2 Hz.
+
+## YOLO
+/luggage/semantic/yolo_detections  ~1.87 Hz  publisher=1
+/luggage/semantic/overlay          ~1.7 Hz
+/camera/d555/color/image_raw/compressed  ~15 Hz
+17 frames sampled: 0 empty.
+Every frame has cargo label 2 "luggage on a platform viewed from directly above"
+conf ~0.86–0.94, bbox ~[249,146,434,274] on 640x360 (on-screen, not edge).
+Some frames also temporal_hold / one "box".

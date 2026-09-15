@@ -1,0 +1,37 @@
+Gate 1c / preprocessor / 1d  2026-09-15 18:28–18:39 +08
+Tree: /home/adamliao/work/RoboticArm-master  ROS_DOMAIN_ID=7  no FJT
+
+## Gate 1c overlay (start_rviz:=false)
+PASS (software). RViz not opened; TF used instead of screenshot.
+- /livox/lidar PointCloud2  10.00 Hz  (min 9.87)
+- /joint_states             50.00 Hz
+- /camera/d555/color/image_raw  15.00 Hz  640x360
+- /camera/d555/depth/color/points  15.00 Hz
+- eef_mount_adapter -> livox_frame xyz=(0.022, 0.150, 0.038)  CAD pocket
+- eef_mount_adapter -> camera_link xyz=(-0.023, 0.100, -0.052)  master Layer 3
+- both on +Y of adapter, |t|<0.35 m  same wrist side
+D555 ROI option errors in log are non-fatal (node up).
+
+## Preprocessor
+B (preprocessor_d555_site.yaml, gate off, pair 50 ms)  LIVE rates 20 s:
+- f_rgb 14.95 Hz  (min instant 7.95 — short hitch, mean in 12–16)
+- f_d   14.91 Hz
+- f_pp  14.40 Hz  (>=8 PASS)
+- f_mask 1.88 Hz  (1.0–2.0 PASS)
+- max_rate_hz = 2.0
+- RSS: segmenter 1.48 GiB, perception sum 2.02 GiB, MemAvailable 23.9 GiB
+- backend bbox_fill:<yolov8s-world.pt>  (code alias of yolo_world, not stub)
+
+A (preprocessor_d555_live.yaml)  first live run CONTAMINATED (B nodes not killed).
+Clean A status:
+- pair_tol 0.005, depth_dt 0, acquisition_mismatches 0
+- motion_gate.enabled true, state=stable, geometry_ok true
+- backend bbox_fill, inference_ms ~58
+- RSS sum 2.00 GiB
+Bag replay earlier already showed A gates jogging / B 100% geometry_ok.
+
+## Gate 1d DetectLuggage --skip-observe
+FAIL 0/3 B and 0/3 A
+reason: DETECT_TOP_UNOBSERVABLE (current pose does not see a box top).
+Not DETECT_TF_FAILED (joints were present).
+Need: box in D555 FOV at current joints, or GoTo pickup_observe (Gate 3, needs executor).

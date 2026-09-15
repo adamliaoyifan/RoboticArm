@@ -1,0 +1,31 @@
+{
+  "rows": [
+    {
+      "pid": 131388,
+      "rss_mib": 135.1,
+      "cmd": "/opt/ros/jazzy/lib/realsense2_camera/realsense2_camera_node --ros-args -r __node:=d555 -r __ns:=/camera --params-file /t"
+    },
+    {
+      "pid": 131390,
+      "rss_mib": 130.4,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node"
+    },
+    {
+      "pid": 131391,
+      "rss_mib": 1456.1,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node."
+    },
+    {
+      "pid": 131392,
+      "rss_mib": 125.9,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_point_filter_no"
+    },
+    {
+      "pid": 131393,
+      "rss_mib": 152.6,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py"
+    }
+  ],
+  "sum_mib": 2000.1,
+  "mem_available_gib": 23.5
+}

@@ -1,0 +1,9 @@
+{
+  "topic": "/camera/d555/depth/color/points",
+  "type": "sensor_msgs/msg/PointCloud2",
+  "n": 121,
+  "window_s": 7.9988133907318115,
+  "mean_hz": 15.002225222436548,
+  "min_instant_hz": 14.411979562174217,
+  "asked_s": 8.0
+}

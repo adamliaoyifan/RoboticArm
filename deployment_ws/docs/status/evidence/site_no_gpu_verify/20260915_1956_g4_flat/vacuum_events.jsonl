@@ -1,0 +1,2 @@
+{"t": 5.26010387599672, "raw": "{\"event\": \"attach\", \"follow_skipped\": 0, \"message\": \"sealed in 1.87s\", \"ok\": true}"}
+{"t": 6.598992166000244, "raw": "{\"event\": \"detach\", \"follow_skipped\": 0, \"message\": \"released\", \"ok\": true}"}

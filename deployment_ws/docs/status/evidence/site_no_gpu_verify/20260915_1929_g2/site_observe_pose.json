@@ -1,0 +1,29 @@
+{
+  "note": "Gate 2 start pose treated as pickup_observe for later --skip-observe",
+  "frame": "joint_states from cps_telemetry before jazzy_real",
+  "joints": [
+    "elfin_joint1",
+    "elfin_joint2",
+    "elfin_joint3",
+    "elfin_joint4",
+    "elfin_joint5",
+    "elfin_joint6"
+  ],
+  "values_rad": [
+    0.28970720253853877,
+    -1.6765981860507928,
+    -2.195275133158468,
+    -0.8580736734504922,
+    1.5819140741301005,
+    0.20146335555770545
+  ],
+  "values_deg": [
+    16.599,
+    -96.062,
+    -125.78000000000003,
+    -49.16400000000001,
+    90.637,
+    11.543000000000001
+  ],
+  "stamp": "2026-09-15T19:30:36"
+}

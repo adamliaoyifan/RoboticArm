@@ -1,0 +1,12 @@
+{
+  "run_id": "20260915_1929_g2",
+  "branch": "master",
+  "tree": "/home/adamliao/work/RoboticArm-master",
+  "preprocessor": null,
+  "semantic_device": null,
+  "d555_profile": null,
+  "estop_person": true,
+  "result": "PASS",
+  "fail_reason": "",
+  "notes": "Current joints treated as pickup_observe for later --skip-observe. Default --duration 3s hit Huayan 20070 (2deg/3s=0.67deg/s). Retry --duration 0.4s (5deg/s) READY_FOR_NEXT. Velocity floor 1 deg/s patched in source, not rebuilt this run."
+}

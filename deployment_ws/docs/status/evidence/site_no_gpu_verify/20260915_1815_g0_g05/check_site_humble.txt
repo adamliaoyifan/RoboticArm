@@ -1,0 +1,13 @@
+site file: /home/adamliao/work/RoboticArm/deployment_ws/config/site_vars.yaml
+report:    /home/adamliao/work/RoboticArm/deployment_ws/config/site_check_report.yaml
+ROS_DISTRO=jazzy  python=3.12.3
+robot_ip=192.168.0.10  ping=True
+d435_usb=False  gpu=[Errno 2] No such file or directory: 'nvidia-smi'
+cps_import=ok CPSClient
+nics:
+lo               UNKNOWN        127.0.0.1/8 ::1/128 
+enp0s31f6        UP             192.168.0.11/24 192.168.11.70/24 192.168.1.5/24 fe80::5acc:22c:b76:8aee/64 
+wlp0s20f3        UP             192.168.3.122/24 fe80::8293:860f:f377:bd78/64 
+docker0          DOWN           172.17.0.1/16 
+Mihomo           UNKNOWN        198.18.0.1/30 fe80::4dbd:915b:efa6:2e87/64
+gate0: PASS (jazzy + ping ok)

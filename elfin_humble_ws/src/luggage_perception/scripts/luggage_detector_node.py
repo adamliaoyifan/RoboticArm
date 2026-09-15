@@ -160,15 +160,17 @@ class LuggageDetector(Node):
         self.declare_parameter("world_frame", "world")
         self.declare_parameter("use_semantic", False)
         self.declare_parameter("roi_margin", 0.5)
+        # Scene_tf pickup square is NOT the detect ROI. Cargo is YOLO bbox
+        # → aligned depth. Opt in only for sim/eval FP gates.
+        self.declare_parameter("crop_to_workspace", False)
         self.declare_parameter("cloud_max_age_sec", 1.0)
         self.declare_parameter("catalog_match_tolerance", 0.08)
         self.declare_parameter("min_points", 50)
         self.declare_parameter("min_confidence", 0.70)
         # --- Platform-free geometry (E2/E3) ---
-        # Pickup workspace center XY; empty (unset) -> scene_tf
-        # pickup_source XY (measured static workspace geometry, allowed).
-        # Declared as an empty DOUBLE_ARRAY so "unset" is distinct from
-        # the legitimate value [0.0, 0.0].
+        # Optional scene XY window used only when crop_to_workspace is
+        # true. Empty (unset) then falls back to scene_tf pickup_source
+        # XY. Declared as DOUBLE_ARRAY so "unset" is distinct from [0,0].
         self.declare_parameter("workspace_center_xy",
                                Parameter.Type.DOUBLE_ARRAY)
         self.declare_parameter("workspace_half_extents",
@@ -268,22 +270,28 @@ class LuggageDetector(Node):
         self._min_points = int(self.get_parameter("min_points").value)
         self._min_confidence = float(self.get_parameter("min_confidence").value)
 
-        # Platform-free geometry pipeline (E2). The pickup workspace
-        # defaults to the scene pickup XY (static workspace geometry) with
-        # the ROI margin as half extents; pickup_source.z never enters.
-        # Parameters declared as a bare DOUBLE_ARRAY start uninitialized,
-        # so reading .value raises until they are set.
+        # Platform-free geometry pipeline (E2). Default crop is the YOLO
+        # RGB bbox projected through depth (semantic cargo cloud). A
+        # scene_tf pickup square is optional sim/eval geometry, not the
+        # site detect ROI. pickup_source.z never enters.
         def _ws_param(name):
             try:
                 return list(self.get_parameter(name).value or [])
             except ParameterUninitializedException:
                 return []
+        crop_ws = bool(self.get_parameter("crop_to_workspace").value)
         ws_center = _ws_param("workspace_center_xy")
-        if not ws_center:
-            ws_center = [self._source_xyz[0], self._source_xyz[1]]
         ws_half = _ws_param("workspace_half_extents")
-        if not ws_half:
-            ws_half = [self._roi_margin, self._roi_margin]
+        if crop_ws:
+            if not ws_center:
+                ws_center = [self._source_xyz[0], self._source_xyz[1]]
+            if not ws_half:
+                ws_half = [self._roi_margin, self._roi_margin]
+        else:
+            if not ws_center:
+                ws_center = [0.0, 0.0]
+            if not ws_half:
+                ws_half = [self._roi_margin, self._roi_margin]
         platform_z_raw = str(self.get_parameter("platform_z").value).strip()
         try:
             self._platform_z = (
@@ -295,6 +303,7 @@ class LuggageDetector(Node):
             config=TopSupportConfig(
                 workspace_center_xy=ws_center,
                 workspace_half_extents=ws_half,
+                crop_to_workspace=crop_ws,
                 min_luggage_height=float(
                     self.get_parameter("min_luggage_height").value),
                 max_luggage_height=float(
@@ -470,11 +479,12 @@ class LuggageDetector(Node):
                 % self._support_mode)
         self.get_logger().info(
             "luggage_detector ready (platform-free, semantic=%s, "
-            "support_mode=%s, platform_z=%s, retries=%d period=%.2fs "
-            "suitcase_wait=%.1fs)"
+            "support_mode=%s, platform_z=%s, crop_to_workspace=%s, "
+            "retries=%d period=%.2fs suitcase_wait=%.1fs)"
             % (self._use_semantic, self._support_mode,
                ("%.3f" % self._platform_z) if self._platform_z is not None
                else "omitted",
+               crop_ws,
                self._estimate_retry_count,
                self._estimate_retry_period, self._suitcase_update_timeout))
 

@@ -1,0 +1,53 @@
+schema: robotarm_site_check/v1
+ok: true
+reason: jazzy + ping ok
+site_file: /home/adamliao/work/RoboticArm-master/deployment_ws/config/site_vars.yaml
+site:
+  schema: robotarm_site_vars/v1
+  ros_domain_id: 7
+  robot:
+    ip: 192.168.0.10
+    port: 10003
+    default_velocity_deg: 10.0
+    max_velocity_deg: 20.0
+    fjt_action: /elfin_arm_controller/follow_joint_trajectory
+  host:
+    robot_nic: enp0s31f6
+    robot_nic_address: 192.168.0.50/24
+    livox_nic: ''
+    livox_nic_address: 192.168.1.50/24
+  livox:
+    serial_suffix: ''
+    sensor_ip: ''
+    host_ip: 192.168.1.50
+    frame_id: livox_frame
+  camera:
+    serial: ''
+    align_depth: true
+  scene:
+    measured: false
+    pedestal_height_m: null
+    pedestal_yaw_rad: null
+    container_xyz: null
+    container_rpy: null
+    opening_xyz: null
+    pickup_platform_enabled: true
+    pickup_xyz: null
+  vacuum:
+    end_do_pin: null
+  notes: ''
+probed:
+  ros_distro: jazzy
+  python: 3.12.3
+  nics: "lo               UNKNOWN        127.0.0.1/8 ::1/128 \nenp0s31f6        UP\
+    \             192.168.0.11/24 192.168.11.70/24 192.168.1.5/24 fe80::5acc:22c:b76:8aee/64\
+    \ \nwlp0s20f3        UP             192.168.3.122/24 fe80::8293:860f:f377:bd78/64\
+    \ \ndocker0          DOWN           172.17.0.1/16 \nMihomo           UNKNOWN \
+    \       198.18.0.1/30 fe80::4dbd:915b:efa6:2e87/64"
+  robot_ip: 192.168.0.10
+  ping_robot: true
+  d435_usb: false
+  gpu: '[Errno 2] No such file or directory: ''nvidia-smi'''
+  cps_import: ok CPSClient
+  sdk_path: /home/adamliao/work/RoboticArm-master/third_party/huayan_python_sdk
+  robot_nic_up: true

@@ -1,0 +1,14 @@
+At time 1789469951.8747910
+- Translation: [-0.049, 0.953, 1.177]
+- Rotation: in Quaternion (xyzw) [0.995, 0.051, -0.012, -0.080]
+- Rotation: in RPY (radian) [-2.981, 0.016, 0.104]
+- Rotation: in RPY (degree) [-170.798, 0.919, 5.981]
+- Matrix:
+  0.994  0.100 -0.032 -0.049
+  0.104 -0.982  0.157  0.953
+ -0.016 -0.160 -0.987  1.177
+  0.000  0.000  0.000  1.000
+
+[INFO] [1789469947.076019083] [tf2_echo]: Waiting for transform world ->  d555_color_optical_frame: Invalid frame ID "world" passed to canTransform argument target_frame - frame does not exist
+[INFO] [1789469949.059951731] [tf2_echo]: Waiting for transform world ->  d555_color_optical_frame: Invalid frame ID "d555_color_optical_frame" passed to canTransform argument source_frame - frame does not exist
+[INFO] [1789469951.925144333] [rclcpp]: signal_handler(SIGINT/SIGTERM)

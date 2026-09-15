@@ -1,0 +1,61 @@
+{
+  "rows": [
+    {
+      "pid": 128561,
+      "comm": "python3",
+      "rss_mib": 132.7,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file "
+    },
+    {
+      "pid": 128562,
+      "comm": "python3",
+      "rss_mib": 1465.2,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /h"
+    },
+    {
+      "pid": 128563,
+      "comm": "python3",
+      "rss_mib": 132.9,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-f"
+    },
+    {
+      "pid": 128564,
+      "comm": "python3",
+      "rss_mib": 159.9,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args -r __node:=luggage_detector --params-file /tmp/l"
+    },
+    {
+      "pid": 129838,
+      "comm": "realsense2_came",
+      "rss_mib": 139.7,
+      "cmd": "/opt/ros/jazzy/lib/realsense2_camera/realsense2_camera_node --ros-args -r __node:=d555 -r __ns:=/camera --params-file /tmp/launch_params_rmpd9104 -r color/image_raw:=color/image_hw"
+    },
+    {
+      "pid": 129840,
+      "comm": "python3",
+      "rss_mib": 132.9,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file "
+    },
+    {
+      "pid": 129841,
+      "comm": "python3",
+      "rss_mib": 1465.4,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /h"
+    },
+    {
+      "pid": 129842,
+      "comm": "python3",
+      "rss_mib": 128.9,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-f"
+    },
+    {
+      "pid": 129843,
+      "comm": "python3",
+      "rss_mib": 159.3,
+      "cmd": "python3 /home/adamliao/work/RoboticArm-master/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args -r __node:=luggage_detector --params-file /tmp/l"
+    }
+  ],
+  "sum_mib": 3916.9,
+  "mem_available_gib": 21.75,
+  "mem_total_gib": 30.84
+}

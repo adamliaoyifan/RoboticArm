@@ -1,0 +1,12 @@
+Gate 5 D  2026-09-15 20:51–20:54 +08  FAIL at attach
+bag: /home/adamliao/robotarm_bags/g5_20260915_205125
+skip-observe from ~[13.7, -114.9, -120.1, -35.4, 90.3, 9.9] deg
+
+detect  xyz=(-0.050,1.117,0.111) top_z=0.240  OK
+pre_grasp  OK  (MoveJ 8/11 TOTG, ~4 s, no chatter)
+approach   OK  (MoveJ 2/5, cartesian 9 pts)
+attach     FAIL  HRIF_WayPoint 40083 acceleration exceeds maximum
+  WP2 vel=54.0°/s  accel=vel*2=108  > Huayan cap
+
+Arm left near approach (z~0.49), not observe.
+Executor must restart to pick up MAX_ACCEL_DEG=80 clamp (record_site owns it).

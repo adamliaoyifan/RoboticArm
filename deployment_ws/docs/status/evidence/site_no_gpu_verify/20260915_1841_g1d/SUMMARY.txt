@@ -1,0 +1,26 @@
+Gate 1d retest  2026-09-15 18:42:47–18:44:37 +08
+Tree: /home/adamliao/work/RoboticArm-master  ROS_DOMAIN_ID=7
+hardware_pick start_executor:=false use_moveit:=false use_rviz:=false
+driver: --detect-only --skip-observe  (3 calls × 5 internal retries)
+
+## Result
+FAIL
+- B (preprocessor_d555_site.yaml): 0/3  DETECT_TOP_UNOBSERVABLE
+- A (preprocessor_d555_live.yaml): 0/3  DETECT_TOP_UNOBSERVABLE
+Same code as 18:25 run. Not DETECT_TF_FAILED / DETECT_TOO_FEW_POINTS / DETECT_STALE.
+
+## Graph (both profiles)
+ready: /joint_states, /camera/d555/color/image_raw/compressed,
+       /luggage/preprocessed/status, /luggage_detector/detect_luggage,
+       /luggage/semantic/yolo_detections
+D555 640x360@15 host-stamp. YOLO backend bbox_fill:yolov8s-world.pt.
+Detector: platform-free, semantic=True, support_mode=auto.
+Workspace crop (unset params): scene_tf pickup_source XY = (-1.0, 0.0),
+half extents = roi_margin 0.5 m  →  x∈[-1.5,-0.5], y∈[-0.5, 0.5].
+Horizontal plane RANSAC: normal_tolerance_deg=5.
+
+## Blocker
+Current joints do not yield a horizontal box-top inside that workspace.
+Need pendant: camera optical +Z down onto the box top, box inside the
+1 m × 1 m pickup square around world (−1, 0). Then retest 1d.
+Going to pickup_observe with executor is Gate 3 (not this gate).

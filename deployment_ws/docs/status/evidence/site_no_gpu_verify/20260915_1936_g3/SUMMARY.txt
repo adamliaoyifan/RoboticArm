@@ -1,0 +1,53 @@
+Gate 3  2026-09-15 19:37–19:47 +08  ROS_DOMAIN_ID=7
+Tree: /home/adamliao/work/RoboticArm-master
+Launch: hardware_pick semantic_device:=cpu use_moveit:=false use_rviz:=false
+        start_executor default true (owns CPS 192.168.0.10:10003)
+
+## Observe
+--skip-observe  (written): arm stays at Gate 2 site pose, not sim pickup_observe.
+rad: [0.2897, -1.6766, -2.1953, -0.8581, 1.5819, 0.2015]
+Joints after B and A plan-only: still at this pose (no FJT). Arm did not move.
+
+crop_to_workspace=false  workspace_accept_enabled=false
+YOLO bbox → aligned depth (not scene_tf pickup square).
+
+## Detect-only B  preprocessor_d555_site.yaml (gate off, pair 50 ms)
+--skip-observe  3/3  top+height True/True
+1. xyz=(-0.223,0.961,0.099) 0.964x0.379x0.243 top_z=0.220 valid=True/True
+2. xyz=(-0.224,0.963,0.099) 0.960x0.382x0.243 top_z=0.220 valid=True/True
+3. xyz=(-0.215,0.961,0.099) 0.953x0.381x0.243 top_z=0.220 valid=True/True
+
+## Plan-only B  rc=0
+detect xyz=(-0.213,0.963,0.099) top_z=0.220 valid=True/True
+built 4 segments: ['pre_grasp', 'approach', 'attach', 'pick_retreat']
+  pre_grasp     pose_target  xyz=(-0.213,0.963,0.520)
+  approach      cartesian    xyz=(-0.213,0.963,0.470)
+  attach        cartesian    xyz=(-0.213,0.963,0.220)
+  pick_retreat  cartesian    xyz=(-0.213,0.963,0.570)
+No PlanMotion. No Goal accepted / HRIF_WayPoint after executor Ready. Zero FJT.
+
+## Detect-only A  preprocessor_d555_live.yaml (gate on, pair 5 ms)
+First burst: top_surface_valid 3/3; height_valid 2/3
+  A1 xyz=(-0.217,0.956,0.220) 0.956x0.379x0.000 top_z=0.220 valid=True/False src=0
+  A2 xyz=(-0.218,0.969,0.099) 0.927x0.379x0.243 top_z=0.220 valid=True/True
+  A3 xyz=(-0.230,0.971,0.099) 0.967x0.377x0.243 top_z=0.220 valid=True/True
+Immediate retest A4–A6: 3/3 True/True
+  A4 xyz=(-0.218,0.968,0.098) 0.961x0.387x0.243 top_z=0.220 valid=True/True
+  A5 xyz=(-0.225,0.973,0.099) 0.961x0.375x0.243 top_z=0.220 valid=True/True
+  A6 xyz=(-0.227,0.968,0.099) 0.981x0.381x0.243 top_z=0.220 valid=True/True
+
+## Plan-only A  rc=0
+detect xyz=(-0.212,0.979,0.099) top_z=0.220 valid=True/True
+built 4 segments: ['pre_grasp', 'approach', 'attach', 'pick_retreat']
+  pre_grasp     pose_target  xyz=(-0.212,0.979,0.520)
+  approach      cartesian    xyz=(-0.212,0.979,0.470)
+  attach        cartesian    xyz=(-0.212,0.979,0.220)
+  pick_retreat  cartesian    xyz=(-0.212,0.979,0.570)
+No PlanMotion. Zero FJT. pick_A.log has no Goal accepted / HRIF_WayPoint after Ready.
+
+## Verdict
+PASS Gate 3 detect+plan-only on A and B.
+CONDITIONAL vs full SOP only because observe used --skip-observe (Gate 2 current joints
+written as site observe; did not GoToRobotPose(pickup_observe)).
+
+Next: Gate 4 vacuum IO. A hardware_pick still running (CPS owned by executor).

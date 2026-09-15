@@ -1,0 +1,9 @@
+{
+  "topic": "/camera/d555/aligned_depth_to_color/image_raw/compressed",
+  "type": "sensor_msgs/msg/CompressedImage",
+  "n": 300,
+  "window_s": 20.060341596603394,
+  "mean_hz": 14.905030333612391,
+  "min_instant_hz": 2.9486581203491173,
+  "asked_s": 20.0
+}

@@ -161,8 +161,8 @@ def generate_launch_description():
                 launch_arguments={
                     "robot_ip": LaunchConfiguration("robot_ip"),
                     "robot_port": LaunchConfiguration("robot_port"),
-                    "default_velocity_deg": "10.0",
-                    "max_velocity_deg": "20.0",
+                    "default_velocity_deg": "30.0",
+                    "max_velocity_deg": "60.0",
                 }.items(),
                 condition=IfCondition(LaunchConfiguration("start_executor")),
             ),
@@ -219,6 +219,10 @@ def generate_launch_description():
                         "device": LaunchConfiguration("semantic_device"),
                         "self_body_camera_frame": "d555_color_optical_frame",
                         "require_backend": "yolo_world",
+                        # yaml default true is a sim FP gate against the
+                        # scene_tf pickup square. Site crop is YOLO bbox
+                        # → depth, not that square.
+                        "workspace_accept_enabled": False,
                         # D555 is 15 Hz; CPU YOLO cannot keep that queue.
                         # Unbounded processing leaves DetectionFrame stamps
                         # older than cloud_max_age (DETECT_STALE_CLOUD).
@@ -249,6 +253,7 @@ def generate_launch_description():
                     "support_mode": "auto",
                     "platform_z": "",
                     "suitcase_update_timeout_sec": 0.0,
+                    "crop_to_workspace": False,
                 }],
             ),
             Node(
@@ -286,7 +291,9 @@ def generate_launch_description():
                     "use_sim_time": False,
                     "robot_poses_config": LaunchConfiguration("robot_poses_config"),
                     "named_pose_duration": 8.0,
-                    "named_pose_max_vel": 0.25,
+                    "named_pose_max_vel": 1.0,
+                    "velocity_scaling": 0.6,
+                    "acceleration_scaling": 0.6,
                     "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
                 }],
             ),
