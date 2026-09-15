@@ -196,6 +196,10 @@ class PipelineResult:
     support_gate: str = ""        # why support fitting was skipped
     height_selected_by: str = ""  # mode fallback trace (auto_then_configured)
     timing: dict = field(default_factory=dict)
+    # Read-only PF-R7 G4 diagnostics; never change the filter decision.
+    support_sample_admitted: bool = False
+    support_window_count: int = 0
+    support_window_size: int = 5
 
 
 def _catalog_prior_height(width, depth, catalog_entries, tolerance):
@@ -232,6 +236,12 @@ class PlatformFreeDetector:
         self.catalog_tolerance = float(catalog_tolerance)
         self._stability = SupportStabilityFilter(
             window=stability_window, max_z_spread=stability_max_z_spread)
+
+    def _snapshot_history(self, result, admitted):
+        result.support_sample_admitted = bool(admitted)
+        result.support_window_count = int(self._stability.history_count())
+        result.support_window_size = int(self._stability.window_size())
+        return result
 
     def reset(self):
         """Drop temporal state (new luggage instance spawned)."""
@@ -281,7 +291,7 @@ class PlatformFreeDetector:
             result.top_reason = DETECT_CARGO_SEGMENTATION_REQUIRED
             result.support_gate = "cargo_unsegmented"
             self._stability.update(None)
-            return result
+            return self._snapshot_history(result, False)
 
         points = np.asarray(
             cargo_points_world if cargo_points_world is not None else [],
@@ -294,26 +304,27 @@ class PlatformFreeDetector:
             # every future sample is still spread-validated (PF-R10).
             # Clearing here turned every mid-trial YOLO flicker into a
             # 5-frame UNSTABLE refill on top of its own miss.
-            return result
+            return self._snapshot_history(result, False)
 
         top = estimate_top_surface(
             points, _workspace_pair(self.config), self.config,
             timing=timing)
         if top is None:
             result.top_reason = DETECT_TOP_UNOBSERVABLE
-            return result
+            return self._snapshot_history(result, False)
         top.stamp = float(stamp_sec)
         result.top_valid = True
         result.top_reason = "ok"
 
         _t0 = time.monotonic()
-        support, gate = self._fit_support(
+        support, gate, admitted = self._fit_support(
             top, raw_points_world, source, geometry_ok, raw_same_stamp,
             stamp_sec, geometry_gate_reason, timing=timing)
         timing["support_gate_total_ms"] = (
             time.monotonic() - _t0) * 1000.0
         result.support = support
         result.support_gate = gate
+        self._snapshot_history(result, admitted)
 
         _t0 = time.monotonic()
         box = self._compose(top, support, platform_z)
@@ -333,7 +344,7 @@ class PlatformFreeDetector:
     def _fit_support(self, top, raw_points_world, source, geometry_ok,
                      raw_same_stamp, stamp_sec, geometry_gate_reason=None,
                      timing=None):
-        """Gate + fit the local support plane. Returns (support, gate).
+        """Gate + fit the local support plane. Returns (support, gate, admitted).
 
         Stability-window policy (PF-R5 field evidence): only *positive
         motion evidence* (``geometry_not_settled``) and unusable fitted
@@ -347,22 +358,22 @@ class PlatformFreeDetector:
         """
         if self.support_mode == "top_only":
             self._stability.update(None)
-            return None, "mode_top_only"
+            return None, "mode_top_only", False
         if self.support_mode == "configured":
             self._stability.update(None)
-            return None, "mode_configured"
+            return None, "mode_configured", False
         if source != "measure":
             # hold_track cargo is an earlier acquisition; fusing it with a
             # new raw cloud would fake a measured height.
-            return None, "hold_track"
+            return None, "hold_track", False
         if geometry_gate_reason in ("status_missing", "status_malformed",
                                     "status_stale"):
             # PF-R3: status evidence does not cover this acquisition; the
             # frame stays TOP_ONLY with the distinct machine reason.
-            return None, geometry_gate_reason
+            return None, geometry_gate_reason, False
         if not geometry_ok:
             self._stability.update(None)
-            return None, "geometry_not_settled"
+            return None, "geometry_not_settled", False
         if raw_points_world is None or not raw_same_stamp:
             # No evidence about the support this frame (buffer race);
             # skip the window rather than reset it.
@@ -371,7 +382,7 @@ class PlatformFreeDetector:
                     support_z=float("nan"),
                     stamp=float(stamp_sec),
                     reason=DETECT_SUPPORT_STAMP_MISMATCH),
-                "raw_stamp_mismatch")
+                "raw_stamp_mismatch", False)
         support = estimate_local_support(
             np.asarray(raw_points_world, dtype=np.float64).reshape(-1, 3),
             top, _workspace_pair(self.config), self.config,
@@ -385,11 +396,11 @@ class PlatformFreeDetector:
             # 0.015 m spread gate still validates every later sample.
             # Clearing here turned each mid-trial detection flicker into
             # a five-frame UNSTABLE refill on top of its own miss.
-            return support, ""
+            return support, "", False
         filtered = self._stability.update(support)
         if filtered is not None:
             filtered.stamp = float(stamp_sec)
-        return (filtered if filtered is not None else support), ""
+        return (filtered if filtered is not None else support), "", True
 
     def _compose(self, top, support, platform_z):
         """Apply the support-mode fallback chain and catalog prior."""

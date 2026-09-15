@@ -24,6 +24,12 @@ float64 support_confidence
 float64 support_residual
 float64 support_side_coverage
 uint32 support_inliers
+# Read-only support-history diagnostics (PF-R7 G4). These do not change
+# the production filter decision; they prove when the 5-sample window
+# became ready.
+bool support_sample_admitted
+uint8 support_window_count
+uint8 support_window_size
 uint8 GEOMETRY_TOP_ONLY=0
 uint8 GEOMETRY_FULL_3D=1
 uint8 geometry_level

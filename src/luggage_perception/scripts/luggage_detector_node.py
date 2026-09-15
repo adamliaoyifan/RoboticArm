@@ -921,7 +921,7 @@ class LuggageDetector(Node):
         support = result.support
         if support is None:
             gate = result.support_gate or "no_top"
-            return {
+            fields = {
                 "support_valid": False,
                 "support_reason": GATE_SUPPORT_REASONS.get(
                     gate, "DETECT_SUPPORT_UNOBSERVABLE"),
@@ -932,16 +932,24 @@ class LuggageDetector(Node):
                 "support_side_coverage": 0.0,
                 "support_inliers": 0,
             }
-        return {
-            "support_valid": bool(support.reason == "ok"),
-            "support_reason": str(support.reason),
-            "support_gate": result.support_gate,
-            "support_z": float(support.support_z),
-            "support_confidence": float(support.confidence),
-            "support_residual": float(support.residual),
-            "support_side_coverage": float(support.side_coverage),
-            "support_inliers": int(support.inlier_count),
-        }
+        else:
+            fields = {
+                "support_valid": bool(support.reason == "ok"),
+                "support_reason": str(support.reason),
+                "support_gate": result.support_gate,
+                "support_z": float(support.support_z),
+                "support_confidence": float(support.confidence),
+                "support_residual": float(support.residual),
+                "support_side_coverage": float(support.side_coverage),
+                "support_inliers": int(support.inlier_count),
+            }
+        fields["support_sample_admitted"] = bool(
+            result.support_sample_admitted)
+        fields["support_window_count"] = int(result.support_window_count)
+        fields["support_window_size"] = int(result.support_window_size)
+        fields["support_history_instance_id"] = str(self._box_id or "")
+        fields["support_history_generation"] = int(self._box_generation or 0)
+        return fields
 
     def _detected_from_result(self, result, cloud_msg, confidence):
         """Build a DetectedLuggage honoring the E0 validity contract.
@@ -1086,6 +1094,13 @@ class LuggageDetector(Node):
                 support_fields)
 
     def _support_fields_empty(self):
+        count = 0
+        size = 5
+        try:
+            count = int(self._pipeline._stability.history_count())
+            size = int(self._pipeline._stability.window_size())
+        except Exception:
+            pass
         return {
             "support_valid": False,
             "support_reason": "DETECT_SUPPORT_UNOBSERVABLE",
@@ -1095,6 +1110,11 @@ class LuggageDetector(Node):
             "support_residual": float("nan"),
             "support_side_coverage": 0.0,
             "support_inliers": 0,
+            "support_sample_admitted": False,
+            "support_window_count": count,
+            "support_window_size": size,
+            "support_history_instance_id": str(self._box_id or ""),
+            "support_history_generation": int(self._box_generation or 0),
         }
 
     def _make_detection_frame(self, yolo_msg, cloud_msg, fields, box,
@@ -1125,6 +1145,13 @@ class LuggageDetector(Node):
         msg.support_residual = float(support["support_residual"])
         msg.support_side_coverage = float(support["support_side_coverage"])
         msg.support_inliers = int(support["support_inliers"])
+        if hasattr(msg, "support_sample_admitted"):
+            msg.support_sample_admitted = bool(
+                support.get("support_sample_admitted"))
+            msg.support_window_count = int(
+                support.get("support_window_count") or 0)
+            msg.support_window_size = int(
+                support.get("support_window_size") or 5)
         msg.geometry_level = int(
             GEOMETRY_FULL_3D if (
                 box is not None and box.height_valid)
@@ -1178,6 +1205,16 @@ class LuggageDetector(Node):
             "support_reason": str(support["support_reason"]),
             "support_gate": str(support["support_gate"]),
             "support_inliers": int(support["support_inliers"]),
+            "support_sample_admitted": bool(
+                support.get("support_sample_admitted")),
+            "support_window_count": int(
+                support.get("support_window_count") or 0),
+            "support_window_size": int(
+                support.get("support_window_size") or 5),
+            "support_history_instance_id": str(
+                support.get("support_history_instance_id") or frame.instance_id),
+            "support_history_generation": int(
+                support.get("support_history_generation") or frame.generation),
             "timing_ms": dict(self._timing),
             "raw_buffer_len": int(raw_buffer_len),
             "raw_buffer_maxlen": int(self._raw_buffer_maxlen),

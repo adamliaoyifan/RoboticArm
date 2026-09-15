@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""PF-R7 generation-3 bounded acceptance CLI.
+"""PF-R7 generation-4 bounded acceptance CLI.
 
 Default path is the live campaign. It never starts a second Gazebo world:
 an occupied sim slot exits 2. ``--fixture`` runs the ROS-free harness used
-by PF-R7-H1 tests.
+by PF-R7 tests. Live refuses unless the evaluator and overlay are the same
+clean commit.
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ def _workspace_root():
 
 def _parse_args(argv=None):
     parser = argparse.ArgumentParser(
-        description="PF-R7 generation-3 bounded conditional acceptance")
+        description="PF-R7 generation-4 steady-window bounded acceptance")
     parser.add_argument(
         "--out", required=True,
         help="evidence root, typically docs/status/evidence/platform_free_height/<run>/")
@@ -54,7 +55,18 @@ def _parse_args(argv=None):
         help="colcon overlay with production nodes at the PF-R10 revision")
     parser.add_argument(
         "--production-commit",
-        default="60dafb7deee50a6f3a76d48076b743bf3e3e1bc8")
+        default="60dafb7deee50a6f3a76d48076b743bf3e3e1bc8",
+        help="production acceptance anchor recorded in the verdict")
+    parser.add_argument(
+        "--steady-start", default="support-window-ready",
+        help="G4 rate-window start: support-window-ready")
+    parser.add_argument(
+        "--steady-window-sec", type=float, default=8.0)
+    parser.add_argument(
+        "--recovery-limit-sec", type=float, default=1.4)
+    parser.add_argument(
+        "--observe-sec", type=float, default=20.0,
+        help="campaign observe cap; backend also stops at ROS window end")
     return parser.parse_args(argv)
 
 
@@ -78,18 +90,27 @@ EVALUATOR_PATHS = (
     "src/luggage_perception/luggage_perception/eval/pf_r7_campaign.py",
     "src/luggage_perception/luggage_perception/eval/gate4_scoring.py",
     "src/luggage_gazebo/scripts/pickup_box_spawner_node.py",
+    "src/luggage_msgs/msg/DetectionFrame.msg",
+    "src/luggage_perception/scripts/luggage_detector_node.py",
+    "src/luggage_perception/luggage_perception/platform_free_pipeline.py",
+    "src/luggage_perception/luggage_perception/top_support_estimator.py",
     "scripts/pf_r7_generation3_live.sh",
+    "scripts/pf_r7_generation4_live.sh",
     "src/luggage_perception/test/eval/test_pf_r7_classifier.py",
     "src/luggage_perception/test/eval/test_pf_r7_campaign.py",
     "src/luggage_perception/test/eval/test_pf_r7_score_window.py",
+    "src/luggage_perception/test/eval/test_pf_r7_g4_steady_window.py",
     "src/luggage_perception/test/eval/pf_r7_fixtures.py",
+    "src/luggage_perception/test/eval/data/pfr7_g3_carryon00_scores.jsonl",
+    "src/luggage_perception/test/test_platform_free_pipeline.py",
 )
 
 
 def _git_dirty_paths(root, paths):
     try:
         proc = subprocess.run(
-            ["git", "-C", str(root), "status", "--porcelain", "--"] + list(paths),
+            ["git", "-C", str(root), "status", "--porcelain",
+             "--untracked-files=all", "--"] + list(paths),
             capture_output=True, text=True, check=False)
     except OSError:
         return ["git_status_unavailable"]
@@ -224,9 +245,21 @@ def main(argv=None):
 
     evaluator_dirty = _git_dirty_paths(root, EVALUATOR_PATHS)
     if evaluator_dirty:
-        print("evaluator dirty=1; commit H1 before live:", file=sys.stderr)
+        print("evaluator dirty=1; commit G4 before live:", file=sys.stderr)
         for line in evaluator_dirty:
             print("  %s" % line, file=sys.stderr)
+        return 4
+
+    overlay_head, overlay_dirty_n = _overlay_revision(args.overlay)
+    if overlay_dirty_n:
+        print("overlay dirty=%s; rebuild from evaluator HEAD" % overlay_dirty_n,
+              file=sys.stderr)
+        return 4
+    if overlay_head and git_commit and overlay_head != git_commit:
+        print(
+            "overlay HEAD %s != evaluator %s; same clean commit required"
+            % (overlay_head, git_commit),
+            file=sys.stderr)
         return 4
 
     os.environ["ROS_DOMAIN_ID"] = str(args.ros_domain_id)
@@ -248,8 +281,11 @@ def main(argv=None):
         overlay=args.overlay,
         pidfile=args.pidfile,
         domain=args.ros_domain_id,
-        observe_sec=8.0,
+        observe_sec=float(args.observe_sec),
         stop_sim=stop,
+        steady_start=args.steady_start,
+        steady_window_sec=float(args.steady_window_sec),
+        recovery_limit_sec=float(args.recovery_limit_sec),
     )
     launched = backend.launch_stack(out / "launch.log")
     if not launched.get("ok"):
@@ -265,7 +301,7 @@ def main(argv=None):
     stop_file = "/tmp/pfr7_g3_probe_stop"
     backend.start_probe(out / "g6s", stop_file)
     time.sleep(20)
-    deadlines["observe_sec"] = 16.0
+    deadlines["observe_sec"] = max(20.0, float(args.observe_sec))
     driver = CampaignDriver(
         out_dir=str(out),
         backend=backend,

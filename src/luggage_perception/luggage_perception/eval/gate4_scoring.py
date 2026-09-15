@@ -88,6 +88,12 @@ def split_warmup(rows, warmup_frames=5):
 # first; monotonic receipt is the fallback when stamps are missing.
 SCORE_DRAIN_SEC = 0.4
 SCORE_WARMUP_FRAMES = 5
+STEADY_WINDOW_SEC = 8.0
+SUPPORT_WINDOW_SIZE = 5
+STEADY_START_SUPPORT_READY = "support-window-ready"
+WALL_WATCHDOG_AFTER_PROPOSAL_SEC = 12.0
+OUTPUT_HZ_MIN = 4.0
+STAMP_EPS_SEC = 1e-9
 
 
 def row_time_sec(row):
@@ -157,7 +163,189 @@ def quarantine_record(row, reason, region):
         "support_n_candidates": row.get("support_n_candidates"),
         "pca_source": row.get("pca_source"),
         "pca_raw_source": row.get("pca_raw_source") or row.get("pca_source"),
+        "support_sample_admitted": row.get("support_sample_admitted"),
+        "support_window_count": row.get("support_window_count"),
+        "support_window_size": row.get("support_window_size"),
     }
+
+
+def _as_bool(value):
+    if value is None or value == "":
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in (0, 1):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in ("true", "1", "yes"):
+        return True
+    if text in ("false", "0", "no"):
+        return False
+    return None
+
+
+def _as_int(value):
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def reconstruct_support_admitted(row):
+    """Match production: only a finite local-support fit enters history."""
+    flagged = _as_bool(row.get("support_sample_admitted"))
+    if flagged is not None:
+        return flagged
+    if str(row.get("pca_source") or "") != "measure":
+        return False
+    if not row.get("top_surface_valid"):
+        return False
+    reason = str(row.get("support_reason") or "")
+    inliers = _as_int(row.get("support_inliers")) or 0
+    if reason == "ok":
+        return True
+    if reason == "DETECT_SUPPORT_UNSTABLE" and inliers > 0:
+        return True
+    return False
+
+
+def annotate_support_history(rows, instance_id, generation=None,
+                             window_size=SUPPORT_WINDOW_SIZE):
+    """Persist per-row history diagnostics without changing production.
+
+    If every row already has ``support_window_count``, keep those live
+    values. Otherwise reconstruct a zeroed window in chronological order.
+    """
+    rows = list(rows or [])
+    window_size = max(1, int(window_size))
+    have_live = True
+    for row in rows:
+        if not row_matches_barrier(row, instance_id, generation):
+            continue
+        if _as_int(row.get("support_window_count")) is None:
+            have_live = False
+            break
+    count = 0
+    for row in rows:
+        if not row_matches_barrier(row, instance_id, generation):
+            row["support_sample_admitted"] = False
+            if _as_int(row.get("support_window_count")) is None:
+                row["support_window_count"] = count
+            if _as_int(row.get("support_window_size")) is None:
+                row["support_window_size"] = window_size
+            continue
+        admitted = reconstruct_support_admitted(row)
+        reason = str(row.get("support_reason") or "")
+        inliers = _as_int(row.get("support_inliers")) or 0
+        # geometry_not_settled publishes UNSTABLE with no inliers and
+        # clears production history.
+        if (not admitted and reason == "DETECT_SUPPORT_UNSTABLE"
+                and inliers <= 0 and str(row.get("pca_source") or "") == "measure"):
+            count = 0
+        if admitted and not have_live:
+            count = min(window_size, count + 1)
+        if not have_live:
+            row["support_window_count"] = count
+        elif _as_int(row.get("support_window_count")) is not None:
+            count = _as_int(row["support_window_count"])
+        row["support_sample_admitted"] = bool(admitted)
+        row["support_window_size"] = (
+            _as_int(row.get("support_window_size")) or window_size)
+        row["support_history_instance_id"] = (
+            row.get("support_history_instance_id") or row.get("instance_id"))
+        row["support_history_generation"] = (
+            _as_int(row.get("support_history_generation"))
+            if row.get("support_history_generation") is not None
+            else row.get("generation"))
+    return rows
+
+
+def first_support_ready_stamp(rows, instance_id, generation=None,
+                              window_size=SUPPORT_WINDOW_SIZE):
+    """ROS stamp of the first row with history occupancy == window size.
+
+    Independent of whether that row is FULL_3D.
+    """
+    window_size = int(window_size)
+    for row in rows or []:
+        if not row_matches_barrier(row, instance_id, generation):
+            continue
+        count = _as_int(row.get("support_window_count"))
+        size = _as_int(row.get("support_window_size")) or window_size
+        if count is None:
+            continue
+        if count == size == window_size:
+            stamp = row_time_sec(row)
+            if stamp is None or not math.isfinite(float(stamp)):
+                return None, row
+            return float(stamp), row
+    return None, None
+
+
+def split_steady_windows(rows, instance_id, generation=None,
+                         drain_rows=None, window_sec=STEADY_WINDOW_SEC,
+                         window_size=SUPPORT_WINDOW_SIZE,
+                         clock_end_sec=None):
+    """G4: quarantine drain, start at 5/5 history, score [t, t+8)."""
+    bound = bind_collected_windows(
+        drain_rows or [], rows, instance_id, generation=generation)
+    owned = list(bound["owned_recovery"])
+    annotate_support_history(owned, instance_id, bound["generation"],
+                             window_size=window_size)
+    t_steady, ready_row = first_support_ready_stamp(
+        owned, instance_id, bound["generation"], window_size=window_size)
+    window_sec = float(window_sec)
+    transition = []
+    settled = []
+    missing_stamp = False
+    for row in owned:
+        stamp = row_time_sec(row)
+        if stamp is None or not math.isfinite(float(stamp)):
+            missing_stamp = True
+            continue
+        if t_steady is None or stamp < t_steady - STAMP_EPS_SEC:
+            transition.append(row)
+        elif stamp < t_steady + window_sec - STAMP_EPS_SEC:
+            settled.append(row)
+    last_stamp = None
+    for row in owned:
+        stamp = row_time_sec(row)
+        if stamp is None:
+            continue
+        last_stamp = stamp if last_stamp is None else max(last_stamp, stamp)
+    if clock_end_sec is None:
+        clock_end_sec = last_stamp
+    window_complete = (
+        t_steady is not None
+        and clock_end_sec is not None
+        and math.isfinite(float(clock_end_sec))
+        and float(clock_end_sec) + STAMP_EPS_SEC >= t_steady + window_sec
+        and not missing_stamp)
+    stale_scored = 0
+    for row in settled:
+        if not row_matches_barrier(row, instance_id, bound["generation"]):
+            stale_scored += 1
+            bound["quarantine"].append(quarantine_record(
+                row, "stale_scored_or_fused", "scored"))
+    bound.update({
+        "score_mode": STEADY_START_SUPPORT_READY,
+        "transition": transition,
+        "warmup": [],
+        "settled": settled,
+        "t_steady": t_steady,
+        "t_steady_end": None if t_steady is None else t_steady + window_sec,
+        "ready_row": ready_row,
+        "window_sec": window_sec,
+        "window_complete": window_complete,
+        "clock_end_sec": clock_end_sec,
+        "missing_stamp": missing_stamp,
+        "n_transition": len(transition),
+        "n_settled": len(settled),
+        "stale_scored_or_fused": stale_scored,
+    })
+    return bound
 
 
 def split_score_windows(rows, instance_id, generation=None,

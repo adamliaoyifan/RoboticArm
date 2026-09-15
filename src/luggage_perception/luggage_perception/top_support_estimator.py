@@ -480,6 +480,14 @@ class SupportStabilityFilter:
         self._history = deque(maxlen=self.window)
         self._output = None
 
+    def history_count(self):
+        """Read-only occupancy of the Z window (0..window)."""
+        return len(self._history)
+
+    def window_size(self):
+        """Configured window length; does not change filter decisions."""
+        return int(self.window)
+
     def update(self, support):
         """Feed a :class:`SupportPlaneEstimate` (or None). Copies stored.
 

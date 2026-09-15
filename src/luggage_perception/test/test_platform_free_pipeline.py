@@ -65,6 +65,8 @@ class TestPipelineStampAndState(unittest.TestCase):
         self.assertFalse(out.height_valid)
         self.assertNotEqual(out.height_source, HEIGHT_SOURCE_MEASURED_SUPPORT)
         self.assertEqual(out.support_gate, "hold_track")
+        self.assertFalse(out.support_sample_admitted)
+        self.assertEqual(out.support_window_count, 0)
 
     def test_geometry_not_settled_skips_support(self):
         cargo, raw, _, _, _ = _scene()

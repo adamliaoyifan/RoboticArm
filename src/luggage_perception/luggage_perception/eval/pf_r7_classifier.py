@@ -9,6 +9,8 @@ proposal followed by mask/cloud/TF/geometry/C2 failure is never a miss.
 
 from __future__ import division
 
+import math
+
 from luggage_perception.eval import gate4_scoring as scoring
 from luggage_perception.eval.sim_texture import (
     IMAGE_HEIGHT,
@@ -309,6 +311,50 @@ def c2_fail_reasons(record):
     return reasons
 
 
+def g4_evidence_reasons(record):
+    """Incomplete G4 capture cannot close PF-R7."""
+    if not _uses_g4_window(record):
+        return []
+    reasons = []
+    win = record.get("steady_window") or {}
+    settled = list(record.get("settled") or [])
+    for row in settled:
+        stamp = scoring.row_time_sec(row)
+        if stamp is None or not math.isfinite(float(stamp)):
+            reasons.append("missing_or_nonfinite_stamp")
+            break
+    if win.get("missing_stamp") or record.get("missing_stamp"):
+        if "missing_or_nonfinite_stamp" not in reasons:
+            reasons.append("missing_or_nonfinite_stamp")
+    t_steady = _as_float(
+        win.get("t_steady") if "t_steady" in win else record.get("t_steady"))
+    clock_end = _as_float(win.get("clock_end_sec") or record.get("clock_end_sec"))
+    window_sec = _as_float(win.get("window_sec")) or scoring.STEADY_WINDOW_SEC
+    # Incomplete capture is evidence only after t_steady is known. Missing
+    # readiness by 1.4 s is an eligible geometry failure, not an exclusion.
+    if t_steady is not None:
+        complete = win.get("window_complete")
+        if complete is None:
+            complete = record.get("window_complete")
+        if complete is False:
+            reasons.append("window_complete=false")
+        if (
+            clock_end is None
+            or not math.isfinite(float(clock_end))
+            or float(clock_end) + scoring.STAMP_EPS_SEC < t_steady + window_sec
+        ):
+            if "window_complete=false" not in reasons:
+                reasons.append("clock_did_not_reach_window_end")
+    return reasons
+
+
+def _uses_g4_window(record):
+    return (
+        record.get("score_mode") == scoring.STEADY_START_SUPPORT_READY
+        or record.get("steady_start") == scoring.STEADY_START_SUPPORT_READY
+    )
+
+
 def _recovery_times(record):
     t_valid = _as_float(record.get("t_first_valid_sec"))
     t_full = _as_float(record.get("t_first_full3d_sec"))
@@ -362,6 +408,26 @@ def geometry_fail_reasons(record):
         reasons.append("t_first_full3d %s > %.1f" % (
             t_full, PROPOSAL_DEADLINE_SEC))
     settled = list(record.get("settled") or [])
+    if _uses_g4_window(record):
+        win = record.get("steady_window") or {}
+        t_steady_dt = _as_float(record.get("t_steady_sec"))
+        t_steady = _as_float(win.get("t_steady") or record.get("t_steady"))
+        t_prop_stamp = _as_float(record.get("t_proposal_stamp"))
+        if t_steady_dt is None and t_steady is not None and t_prop_stamp is not None:
+            t_steady_dt = max(0.0, float(t_steady) - float(t_prop_stamp))
+        if t_steady is None or t_steady_dt is None or t_steady_dt > PROPOSAL_DEADLINE_SEC:
+            reasons.append("t_steady %s > %.1f" % (
+                t_steady_dt, PROPOSAL_DEADLINE_SEC))
+        window_sec = _as_float(win.get("window_sec")) or scoring.STEADY_WINDOW_SEC
+        if abs(float(window_sec) - scoring.STEADY_WINDOW_SEC) > scoring.STAMP_EPS_SEC:
+            reasons.append("steady_window_sec %s != %.3f" % (
+                window_sec, scoring.STEADY_WINDOW_SEC))
+        hz_n = len(settled)
+        min_hz_n = int(math.ceil(OUTPUT_HZ_MIN * scoring.STEADY_WINDOW_SEC))
+        if hz_n < min_hz_n:
+            reasons.append("output_hz %s < %.1f" % (
+                (hz_n / scoring.STEADY_WINDOW_SEC),
+                OUTPUT_HZ_MIN))
     if not settled:
         if n_settled < scoring.MIN_SETTLED_PER_TRIAL:
             return reasons
@@ -574,6 +640,7 @@ def classify_attempt(record):
         return _result(CLASS_ELIGIBLE_FAIL, reasons, extra)
 
     if matching_accepted_proposal(record):
+        evidence = g4_evidence_reasons(record)
         geom = geometry_fail_reasons(record)
         c2 = c2_fail_reasons(record)
         downstream = []
@@ -588,6 +655,15 @@ def classify_attempt(record):
         extra["t_proposal"] = record.get("t_proposal")
         extra["t_first_valid_sec"], extra["t_first_full3d_sec"] = (
             _recovery_times(record))
+        extra["t_steady"] = (record.get("steady_window") or {}).get("t_steady")
+        extra["window_complete"] = (record.get("steady_window") or {}).get(
+            "window_complete")
+        if evidence:
+            if not dump_ok:
+                return _result(
+                    CLASS_EVIDENCE, ["dump_incomplete"] + evidence + reasons,
+                    extra)
+            return _result(CLASS_EVIDENCE, evidence + reasons, extra)
         if reasons:
             if not dump_ok:
                 return _result(

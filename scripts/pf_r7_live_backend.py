@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PF-R7 generation-3 live Gazebo backend. Eval-only.
+"""PF-R7 generation-4 live Gazebo backend. Eval-only.
 
 Launches one headless sim_world, drives SpawnNextBox with a forced catalog
 id, builds classifier records from Gate4Eval dumps, and tears down through
@@ -195,7 +195,10 @@ def gate4_inputs_to_record(inputs, owned, t_placed, n_clock, spawn_ok,
 
 class LiveTrialBackend(object):
     def __init__(self, root, out_dir, overlay, pidfile, domain=7,
-                 observe_sec=8.0, stop_sim=None):
+                 observe_sec=8.0, stop_sim=None,
+                 steady_start=scoring.STEADY_START_SUPPORT_READY,
+                 steady_window_sec=None, recovery_limit_sec=None,
+                 wall_watchdog_sec=None):
         self.root = Path(root)
         self.out_dir = Path(out_dir)
         self.overlay = Path(overlay)
@@ -203,6 +206,17 @@ class LiveTrialBackend(object):
         self.domain = int(domain)
         self.observe_sec = float(observe_sec)
         self.stop_sim = stop_sim
+        self.steady_start = str(
+            steady_start or scoring.STEADY_START_SUPPORT_READY)
+        self.steady_window_sec = float(
+            scoring.STEADY_WINDOW_SEC if steady_window_sec is None
+            else steady_window_sec)
+        self.recovery_limit_sec = float(
+            scoring.RECOVERY_LIMIT_SEC if recovery_limit_sec is None
+            else recovery_limit_sec)
+        self.wall_watchdog_sec = float(
+            scoring.WALL_WATCHDOG_AFTER_PROPOSAL_SEC
+            if wall_watchdog_sec is None else wall_watchdog_sec)
         self.gate4 = _load_gate4(self.root)
         self.node = None
         self.launch_pid = None
@@ -484,16 +498,11 @@ class LiveTrialBackend(object):
                 "expected": expected,
             }
             return {"progress": True}
-        node.collect(0.4, record_dump_samples=True, reset_samples=False)
-        if time.monotonic() - self._obs["t0"] < self.observe_sec:
-            return {"progress": True}
+        node.collect(0.25, record_dump_samples=True, reset_samples=False)
         spawned = self._obs["spawned"]
-        spawn = spawned.get("box")
-        spawn_ok = bool(spawned.get("ok"))
-        spawn_message = spawned.get("message") or ""
         t_placed = spawned.get("t_placed") or self._obs["t0"]
-        gt = self._obs["gt"] or node.get_gt()
         expected = self._obs["expected"]
+        gt = self._obs["gt"] or node.get_gt()
         n0 = self._obs["n0"]
         n_score = self._obs["n_score"]
         drain_samples = list(node._frames[n0:n_score])
@@ -506,22 +515,67 @@ class LiveTrialBackend(object):
             self.gate4._row(fr, gt, case.get("attempt") or 0,
                             expected or "unknown", monotonic_sec=t)
             for t, fr in score_samples]
-        windows = scoring.bind_collected_windows(
-            drain_rows, score_rows, expected,
-            generation=scoring.infer_expected_generation(
-                drain_rows + score_rows, expected),
-            warmup_frames=scoring.SCORE_WARMUP_FRAMES)
+        generation = scoring.infer_expected_generation(
+            drain_rows + score_rows, expected)
+        last_stamp = None
+        for row in drain_rows + score_rows:
+            stamp = scoring.row_time_sec(row)
+            if stamp is None:
+                continue
+            last_stamp = stamp if last_stamp is None else max(last_stamp, stamp)
+        preview = scoring.split_steady_windows(
+            score_rows, expected, generation=generation,
+            drain_rows=drain_rows, window_sec=self.steady_window_sec,
+            clock_end_sec=last_stamp)
+        t_steady = preview.get("t_steady")
+        t_prop_stamp = None
+        for row in preview.get("owned_recovery") or []:
+            if row.get("top_surface_valid"):
+                t_prop_stamp = scoring.row_time_sec(row)
+                break
+        window_done = bool(preview.get("window_complete"))
+        ready_deadline = False
+        if t_prop_stamp is not None and "t_proposal_wall" not in self._obs:
+            self._obs["t_proposal_wall"] = time.monotonic()
+        t_prop_wall = self._obs.get("t_proposal_wall") or t_placed
+        wall_elapsed = time.monotonic() - float(t_prop_wall)
+        observe_elapsed = time.monotonic() - float(self._obs["t0"])
+        if t_prop_stamp is not None and t_steady is None and last_stamp is not None:
+            ready_deadline = (
+                last_stamp - t_prop_stamp) > self.recovery_limit_sec
+        watchdog = wall_elapsed >= self.wall_watchdog_sec
+        observe_cap = observe_elapsed >= self.observe_sec
+        if not (window_done or watchdog or ready_deadline or observe_cap):
+            return {"progress": True}
+        spawn_ok = bool(spawned.get("ok"))
+        spawn_message = spawned.get("message") or ""
+        windows = preview
         recovery_owned = windows["owned_recovery"]
         warmup = windows["warmup"]
         settled = windows["settled"]
+        t_valid_ros = t_full_ros = t_steady_dt = None
+        if t_prop_stamp is not None:
+            for row in recovery_owned:
+                stamp = scoring.row_time_sec(row)
+                if stamp is None:
+                    continue
+                dt = max(0.0, stamp - t_prop_stamp)
+                if t_valid_ros is None and row.get("top_surface_valid"):
+                    t_valid_ros = dt
+                if t_full_ros is None and row.get("height_valid") and int(
+                        row.get("geometry_level") or 0) == 1:
+                    t_full_ros = dt
+            if t_steady is not None:
+                t_steady_dt = max(0.0, t_steady - t_prop_stamp)
         t_valid_spawn, t_full_spawn = scoring.recovery_times(
             recovery_owned, t_placed)
         recovery = {
             "trial": case.get("attempt"),
             "spawn_ok": spawn_ok,
             "n_settled": len(settled),
-            "t_first_valid_sec": t_valid_spawn,
-            "t_first_full3d_sec": t_full_spawn,
+            "t_first_valid_sec": t_valid_ros if t_valid_ros is not None else t_valid_spawn,
+            "t_first_full3d_sec": t_full_ros if t_full_ros is not None else t_full_spawn,
+            "t_steady_sec": t_steady_dt,
         }
         dump_root = self.out_dir / "dumps"
         dump_root.mkdir(parents=True, exist_ok=True)
@@ -550,8 +604,24 @@ class LiveTrialBackend(object):
             inputs, recovery_owned, t_placed, n_clock, spawn_ok)
         record["warmup"] = warmup
         record["settled"] = settled
+        record["transition"] = windows.get("transition") or []
         record["n_settled"] = len(settled)
         record["recovery"] = recovery
+        record["score_mode"] = self.steady_start
+        record["steady_start"] = self.steady_start
+        record["t_proposal_stamp"] = t_prop_stamp
+        record["t_steady"] = t_steady
+        record["t_steady_sec"] = t_steady_dt
+        record["steady_window"] = {
+            "t_steady": t_steady,
+            "t_steady_end": windows.get("t_steady_end"),
+            "window_sec": windows.get("window_sec"),
+            "window_complete": windows.get("window_complete"),
+            "clock_end_sec": windows.get("clock_end_sec"),
+            "missing_stamp": windows.get("missing_stamp"),
+            "n_transition": windows.get("n_transition"),
+            "n_settled": windows.get("n_settled"),
+        }
         record["stale_pre_barrier_observed"] = windows[
             "stale_pre_barrier_observed"]
         record["stale_post_barrier_dropped"] = windows[

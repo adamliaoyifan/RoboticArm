@@ -738,6 +738,12 @@ def _row(frame, gt, trial, box_id, monotonic_sec=None):
             getattr(frame, "support_side_coverage", 0.0) or 0.0),
         "support_inliers": int(getattr(frame, "support_inliers", 0) or 0),
         "support_n_candidates": getattr(frame, "support_n_candidates", None),
+        "support_sample_admitted": getattr(
+            frame, "support_sample_admitted", None),
+        "support_window_count": getattr(frame, "support_window_count", None),
+        "support_window_size": getattr(frame, "support_window_size", None),
+        "support_history_instance_id": str(frame.instance_id),
+        "support_history_generation": int(frame.generation),
         "pca_raw_source": str(getattr(frame, "pca_source", "") or ""),
         "top_surface_valid": bool(box.top_surface_valid),
         "height_valid": bool(box.height_valid),
