@@ -377,24 +377,51 @@ class LiveTrialBackend(object):
             except Exception:
                 pass
 
+    def _param_set(self, name, value, timeout=15.0):
+        """Set a spawner param without blocking the eval executor.
+
+        A synchronous ``ros2 param set`` while this process holds an rclpy
+        node can stall DDS. The 2026-09-14 clean-room campaign died here on
+        ``next_yaw`` with an uncaught TimeoutExpired.
+        """
+        import threading
+        result = {}
+
+        def _run():
+            try:
+                result["proc"] = subprocess.run(
+                    ["ros2", "param", "set", "/pickup_box_spawner",
+                     name, str(value)],
+                    capture_output=True, check=False, text=True,
+                    env=self._env(), timeout=float(timeout))
+            except subprocess.TimeoutExpired as exc:
+                result["error"] = exc
+
+        worker = threading.Thread(target=_run)
+        worker.start()
+        t0 = time.monotonic()
+        while worker.is_alive() and (time.monotonic() - t0) < (
+                float(timeout) + 1.0):
+            if self.node is not None:
+                try:
+                    import rclpy
+                    rclpy.spin_once(self.node, timeout_sec=0.05)
+                except Exception:
+                    time.sleep(0.05)
+            else:
+                time.sleep(0.05)
+        worker.join(1.0)
+        return result.get("proc"), result.get("error")
+
     def _set_next_spawn(self, case):
         size = str(case.get("size") or "")
         yaw = case.get("yaw")
         xy = case.get("xy") or [0.0, 0.0]
-        env = self._env()
-        subprocess.run(
-            ["ros2", "param", "set", "/pickup_box_spawner",
-             "next_catalog_id", size],
-            capture_output=True, check=False, env=env, timeout=8)
+        self._param_set("next_catalog_id", size)
         if yaw is not None:
-            subprocess.run(
-                ["ros2", "param", "set", "/pickup_box_spawner",
-                 "next_yaw", str(float(yaw))],
-                capture_output=True, check=False, env=env, timeout=8)
-        subprocess.run(
-            ["ros2", "param", "set", "/pickup_box_spawner",
-             "next_xy_offset", "[%s, %s]" % (float(xy[0]), float(xy[1]))],
-            capture_output=True, check=False, env=env, timeout=8)
+            self._param_set("next_yaw", float(yaw))
+        self._param_set(
+            "next_xy_offset", "[%s, %s]" % (float(xy[0]), float(xy[1])))
 
     def precheck(self, case):
         clocks = count_clock_publishers()
