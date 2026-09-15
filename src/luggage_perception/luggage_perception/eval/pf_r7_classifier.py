@@ -107,12 +107,13 @@ def is_exclusion(attempt_class):
 def scan_availability_class(record, classified=None):
     """Map a live/scripted record to one G5 detector-availability class.
 
-    Geometry eligible_fail after a production-accepted proposal is still
-    ``proposal_available``. Incomplete dumps are always ``evidence_invalid``.
+    Geometry eligible_fail or G4 window-incomplete evidence after a
+    production-accepted proposal is still ``proposal_available`` when the
+    dump is replayable. Incomplete dumps are always ``evidence_invalid``.
     """
     classified = classified or classify_attempt(record)
     attempt_class = classified.get("attempt_class")
-    if not dump_is_complete(record) or attempt_class == CLASS_EVIDENCE:
+    if not dump_is_complete(record):
         return SCAN_EVIDENCE, classified
     if attempt_class == CLASS_INFRA:
         return SCAN_INFRA, classified

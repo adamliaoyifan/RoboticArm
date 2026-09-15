@@ -19,6 +19,7 @@ from luggage_perception.eval.pf_r7_campaign import (
 )
 from luggage_perception.eval.pf_r7_classifier import (
     CLASS_ELIGIBLE_FAIL,
+    CLASS_EVIDENCE,
     SCAN_EVIDENCE,
     SCAN_FIXTURE,
     SCAN_INFRA,
@@ -56,6 +57,38 @@ class TestScanAvailabilityClass(unittest.TestCase):
         record = pass_record(mask_join_failed=True)
         scan_class, classified = scan_availability_class(record)
         self.assertEqual(classified["attempt_class"], CLASS_ELIGIBLE_FAIL)
+        self.assertEqual(scan_class, SCAN_PROPOSAL_AVAILABLE)
+
+    def test_short_scan_window_with_proposal_is_available(self):
+        record = pass_record(
+            score_mode="support-window-ready",
+            steady_start="support-window-ready",
+            t_steady=9.142,
+            steady_window={
+                "t_steady": 9.142,
+                "window_complete": False,
+                "window_sec": 8.0,
+            },
+            n_settled=2,
+            settled=[{
+                "top_surface_valid": True,
+                "height_valid": True,
+                "geometry_level": 1,
+                "stamp_sec": 9.2,
+                "monotonic_sec": 9.2,
+                "n_cargo_points": 8000,
+            }] * 2,
+            c2={
+                "output_hz": 0.25,
+                "executor_lag_q4_sec": 0.09,
+                "executor_lag_q1_sec": 0.08,
+                "rss_beta": {"luggage_detector": 1.2},
+                "buffer_unbounded": False,
+                "residual_processes": 0,
+            },
+        )
+        scan_class, classified = scan_availability_class(record)
+        self.assertEqual(classified["attempt_class"], CLASS_EVIDENCE)
         self.assertEqual(scan_class, SCAN_PROPOSAL_AVAILABLE)
 
 
