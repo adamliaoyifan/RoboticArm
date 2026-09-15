@@ -4,6 +4,8 @@ Real-cell pick graph: D555 + CPS executor + detect + MoveIt + vacuum.
 No Gazebo. Person on e-stop. One CPS client (jazzy_real).
 
   ros2 launch luggage_planning hardware_pick.launch.py
+  # or: deployment_ws/scripts/hardware_pick.sh
+  # no GPU: script injects semantic_device:=cpu
 
 Then in another terminal:
 
@@ -141,7 +143,7 @@ def generate_launch_description():
     poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
-    site_pp = os.path.join(exec_share, "config", "preprocessor_d555_replay.yaml")
+    site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
 
     return LaunchDescription(
         [
@@ -155,9 +157,12 @@ def generate_launch_description():
                 "preprocessor_config",
                 default_value=live_pp,
                 description=(
-                    "实机 preprocessor A/B. Default is canonical "
-                    "preprocessor_d555_live.yaml. Pass the site host-stamp "
-                    "profile with preprocessor_config:=%s" % site_pp
+                    "实机 preprocessor A/B. Default A is canonical "
+                    "preprocessor_d555_live.yaml (motion_gate on). "
+                    "Pass B (humble site thresholds, wall clock) with "
+                    "preprocessor_config:=%s. Do not use "
+                    "preprocessor_d555_replay.yaml for live pick "
+                    "(use_sim_time true)." % site_pp
                 ),
             ),
             DeclareLaunchArgument("semantic_device", default_value="cuda"),

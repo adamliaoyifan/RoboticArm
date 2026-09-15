@@ -1,0 +1,25 @@
+# 实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
+# Live D555 profile B: origin/ros2_humble site thresholds, wall clock.
+#
+# A/B for hardware_pick (both use_sim_time false):
+#   A  preprocessor_d555_live.yaml   motion_gate on,  pair 5 ms
+#   B  this file                     motion_gate off, pair 50 ms
+# Do not pass preprocessor_d555_replay.yaml into a live pick graph:
+# that overlay sets use_sim_time true (bag replay only).
+sensor_preprocessor:
+  ros__parameters:
+    input.color_image: /camera/d555/color/image_raw/compressed
+    input.depth_image: /camera/d555/aligned_depth_to_color/image_raw/compressed
+    input.camera_info: /camera/d555/aligned_depth_to_color/camera_info
+    input.color_camera_info: /camera/d555/color/camera_info
+    input.use_compressed: true
+    input.joint_states: /joint_states
+    output_cloud_frame: d555_color_optical_frame
+    use_sim_time: false
+    camera_pair_tolerance_sec: 0.050
+    camera_wait_deadline_sec: 0.150
+    camera_emit_rgb_only: false
+    camera_input_qos_reliability: best_effort
+    enable_lidar_output: false
+    enable_imu: false
+    motion_gate.enabled: false

@@ -6,8 +6,16 @@ simulation stack. Do not treat it as a replacement for
 
 The site D555 launch (host-stamp JPEG/PNG) and
 `src/luggage_perception/config/preprocessor_d555_live.yaml` are two
-preprocessor setups. Keep both until a real-cell A/B decides which to
-standardize on.
+preprocessor setups. Live pick A/B is:
+
+- **A** `preprocessor_d555_live.yaml` — motion gate on, pair 5 ms
+- **B** `preprocessor_d555_site.yaml` — humble site thresholds, wall clock
+
+Do not pass `preprocessor_d555_replay.yaml` into a live pick graph
+(`use_sim_time` is true; bag replay only).
+
+No-GPU cell procedure: [`docs/status/site_no_gpu_verify.md`](../docs/status/site_no_gpu_verify.md).
+`hardware_pick.sh` defaults `semantic_device:=cpu` when `nvidia-smi` fails.
 
 TCP execution for the real Elfin lives here, as a sibling colcon
 workspace next to the luggage stack (`src/`). Build it from
