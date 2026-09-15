@@ -1,0 +1,7 @@
+# Local colcon / Livox overlay (实机 workspace)
+build/
+install/
+log/
+livox_ws/
+config/site_vars.yaml
+config/site_check_report.yaml

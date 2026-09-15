@@ -1,6 +1,9 @@
-# Live D555 backend. JPEG colour and lossless 16UC1 PNG depth are decoded
-# exactly once at the shared preprocessor boundary. The upstream adapter maps
-# the device acquisition clock; receipt time is retained only as diagnostics.
+# Canonical / simulation-oriented live D555 profile (motion gate on).
+# 实机对照: deployment_ws host-stamp launch + preprocessor_d555_replay.yaml.
+# Keep both until a real-cell A/B decides which preprocessor to standardize on.
+# JPEG colour and lossless 16UC1 PNG depth are decoded exactly once at the
+# shared preprocessor boundary. The upstream adapter maps the device
+# acquisition clock; receipt time is retained only as diagnostics.
 sensor_preprocessor:
   ros__parameters:
     input.color_image: /camera/d555/color/image_raw/compressed
