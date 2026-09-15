@@ -1,0 +1,54 @@
+# Site worksheet for real-robot gates. Copy to site_vars.yaml and fill
+# measured values. Launch files read ROBOT_IP from the environment; run
+#   source $(./scripts/check_site.py --export)
+# before jazzy_real.launch.py.
+#
+# Numbers already in the repo (scene_tf.yaml, pickup_observe) are SIMULATION
+# defaults. Do not copy them here unless you measured the same geometry.
+
+schema: robotarm_site_vars/v1
+ros_domain_id: 7
+
+# Huayan TCP (teach-pendant network page — do not guess).
+robot:
+  ip: "192.168.0.10"
+  port: 10003
+  default_velocity_deg: 10.0
+  max_velocity_deg: 20.0
+  fjt_action: "/elfin_arm_controller/follow_joint_trajectory"
+
+# Host NIC that must share 192.168.0.0/24 with the controller.
+# Example: enp0s31f6 with static 192.168.0.50/24.
+host:
+  robot_nic: "enp0s31f6"
+  robot_nic_address: "192.168.0.50/24"
+  livox_nic: ""
+  livox_nic_address: "192.168.1.50/24"
+
+# Livox Mid-360S. Default sensor IP is 192.168.1.1 + last two SN digits.
+livox:
+  serial_suffix: ""          # two digits from the body label
+  sensor_ip: ""              # e.g. 192.168.1.1XX
+  host_ip: "192.168.1.50"
+  frame_id: "livox_frame"
+
+# RealSense D435 on USB 3.
+camera:
+  serial: ""
+  align_depth: true
+
+# Measured scene (metres, world frame). Leave unset until taped.
+scene:
+  measured: false
+  pedestal_height_m: null
+  pedestal_yaw_rad: null
+  container_xyz: null        # world -> container_link
+  container_rpy: null
+  opening_xyz: null          # container_link -> container_opening_frame
+  pickup_platform_enabled: true
+  pickup_xyz: null
+
+vacuum:
+  end_do_pin: null           # record when known; not used in gates 0-3
+
+notes: ""
