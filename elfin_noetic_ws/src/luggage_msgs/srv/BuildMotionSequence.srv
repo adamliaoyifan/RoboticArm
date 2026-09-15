@@ -1,7 +1,0 @@
-DetectedLuggage pick
-SlotSpec place_slot
-string phase
----
-MotionSegment[] segments
-bool success
-string message

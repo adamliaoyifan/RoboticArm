@@ -1,16 +1,12 @@
 # Real-robot runtime nodes (`deployment_ws`)
 
-TCP execution for the real Elfin is kept here, separate from the Noetic
-simulation / luggage stack in `elfin_noetic_ws` and from the closed-loop
-stack in `elfin_humble_ws`.
+TCP execution for the real Elfin is kept here, separate from the closed-loop
+stack in `elfin_humble_ws`. The Noetic TCP executor and Docker image live on
+the `main` branch (`deployment_ws/noetic/elfin_cps_executor`, `docker/noetic/`).
 
 | Path | ROS | Build | Role |
 |---|---|---|---|
 | `src/elfin_trajectory_executor` | Humble or Jazzy | `colcon` | `FollowJointTrajectory` via Huayan CPS |
-| `noetic/elfin_cps_executor` | Noetic | catkin in Docker | Same TCP path, plus `/execute_trajectory` |
-
-The Noetic package is not under `src/` so `colcon build` does not touch it.
-The Noetic container bind-mounts it to `/catkin_ws/src/elfin_cps_executor`.
 
 This host currently has **Jazzy only** (`/opt/ros/jazzy`). Build and run
 the executor against Jazzy. Do not source Humble (or a Humble colcon
@@ -79,7 +75,7 @@ They conflict if mixed in one process or one DDS graph:
 - Do not `source /opt/ros/humble` then overlay Jazzy, or the reverse.
 - Do not run `luggage_gazebo/sim_world.launch.py` on Jazzy expecting the
   Humble Fortress launch to work.
-- Give Humble Docker / Noetic and this Jazzy executor **different
+- Give a Noetic Docker stack from `main` and this Jazzy executor **different
   `ROS_DOMAIN_ID`s** if both are up on the same LAN.
 - The executor package itself is distro-light (`rclpy` + `control_msgs`)
   and is the Jazzy real-robot target. Full luggage closed-loop on Jazzy

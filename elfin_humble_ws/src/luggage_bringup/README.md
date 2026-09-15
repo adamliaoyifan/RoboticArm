@@ -63,7 +63,7 @@ Modules communicate **only via ROS services** defined in `luggage_msgs`. The orc
 Inside the Noetic Docker container (or native Noetic):
 
 ```bash
-cd /catkin_ws   # or ~/RobotArm/elfin_noetic_ws mounted as /catkin_ws/src/...
+cd /colcon_ws   # or this repo's elfin_humble_ws
 source /opt/ros/noetic/setup.bash
 catkin_make
 source devel/setup.bash
@@ -202,7 +202,7 @@ The RealSense D435 is **side-mounted on `elfin_link6`**. **Body frame** (`camera
 
 **Observe acceptance** (world frame, rigid mount): optical axis ≈ **`[0,0,-1]`**; long edge **+Y** parallel to ground (horizontal).
 
-**Production** URDF: fixed `camera_mount_joint` from [`config/camera_mount_origin.xacro`](elfin_noetic_ws/src/luggage_description/config/camera_mount_origin.xacro). **Tune mode**: six actuated mount joints.
+**Production** URDF: fixed `camera_mount_joint` from [`config/camera_mount_origin.xacro`](../luggage_description/config/camera_mount_origin.xacro). **Tune mode**: six actuated mount joints.
 
 ```bash
 roslaunch luggage_bringup camera_mount_tune.launch
@@ -273,7 +273,7 @@ Orchestrator flow (`exploration_mode:=smart`):
 
 `ResetObserve → SyncScene → ExploreCargo → InspectContainer → Detect → ...`
 
-Static TF: `world → container_link → container_opening_frame` from [`scene_tf.yaml.example`](elfin_noetic_ws/src/luggage_description/config/scene_tf.yaml.example).
+Static TF: `world → container_link → container_opening_frame` from [`scene_tf.yaml.example`](../luggage_description/config/scene_tf.yaml.example).
 
 ## Run with Gazebo (legacy multi-terminal)
 

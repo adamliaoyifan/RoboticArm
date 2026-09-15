@@ -1,5 +1,4 @@
 # Draft ROS 2 Humble image for elfin_humble_ws.
-# Not yet the production Dockerfile (src/Dockerfile is still Noetic).
 # Interactive Gazebo / RViz2 / MuJoCo MUST be run with --gpus all.
 FROM osrf/ros:humble-desktop
 

@@ -29,9 +29,6 @@ elfin_humble_ws/docs/agents/
 elfin_humble_ws/docs/status/
 elfin_humble_ws/docs/plans/
 
-# Nested vendor clone metadata (flattened into monorepo)
-elfin_noetic_ws/src/elfin_s_robot/.git/
-
 # Raw CAD archives (keep extracted collision meshes)
 *.zip
 elfin_humble_ws/src/luggage_gazebo/models/suction_panel/V1.31*
@@ -42,9 +39,6 @@ elfin_humble_ws/src/luggage_perception/vendor/clip_pkg/
 elfin_humble_ws/src/luggage_perception/vendor/deps/
 elfin_humble_ws/src/luggage_perception/vendor/clip_models/
 elfin_humble_ws/src/luggage_perception/weights/
-
-# Docker bind-mount point for the Noetic TCP executor (source lives in deployment_ws)
-elfin_noetic_ws/src/elfin_cps_executor/
 
 # Site worksheet (keep the .example); Livox overlay workspace
 deployment_ws/config/site_vars.yaml

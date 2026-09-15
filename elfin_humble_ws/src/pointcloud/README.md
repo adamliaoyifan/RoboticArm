@@ -69,7 +69,7 @@ python3 scripts/generate_gazebo_model.py --install
 
 安装后：
 
-`elfin_noetic_ws/src/luggage_gazebo/models/airport_container_measured/`
+`elfin_humble_ws/src/luggage_gazebo/models/airport_container_measured/`
 
 ### Gazebo 使用
 
@@ -247,7 +247,7 @@ python3 scripts/generate_real_container_gazebo.py -c config/real_container_gazeb
 | `input_stl` | 源 STL 路径（默认 `./realcontainer.STL`） |
 | `collision_triangles` | 碰撞 mesh 目标三角数（默认 8000） |
 | `anchor_floor_z` | 若 `z_min < 0`，整体上移使底面贴地（`z_min = 0`） |
-| `install: true` | 安装到 `elfin_noetic_ws/src/luggage_gazebo/models/{model_name}/` |
+| `install: true` | 安装到 `elfin_humble_ws/src/luggage_gazebo/models/{model_name}/` |
 
 终端会打印 visual/collision 三角数、AABB、底面 Z 平移量；mesh 非 watertight 时会提示。
 

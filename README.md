@@ -104,69 +104,18 @@ openscad -o camera_mount.stl camera_mount.scad   # export STL
 
 ---
 
-## ROS Noetic simulation (Docker on Ubuntu 22.04)
+## ROS Noetic simulation (Docker)
 
-Run the official [elfin_s_robot noetic stack](https://github.com/huayan-robotics/elfin_s_robot/tree/noetic) in an Ubuntu 20.04 container — Gazebo, MoveIt, and RViz — without downgrading the host OS.
-
-**Prerequisites:** Docker, X11 (`xhost +local:docker`).
+Noetic Docker, `elfin_noetic_ws`, and the Noetic TCP executor live on the
+[`main`](https://github.com/adamliaoyifan/RoboticArm/tree/main) branch:
 
 ```bash
-# Workspace lives in this repo (or set ELFIN_WS)
-# git clone is already under elfin_noetic_ws/src/elfin_s_robot
-
-# Build image (~15–30 min first time)
+git fetch origin
+git checkout main
 ./docker/noetic/run.sh build
-
-# Start container
-./docker/noetic/run.sh start
-
-# Option A — two-step (recommended for trajectory execution)
-./docker/noetic/run.sh gazebo    # wait until Gazebo is fully up
-./docker/noetic/run.sh moveit
-./docker/noetic/run.sh api
-
-# Option B — single launch (S20)
-./docker/noetic/run.sh sim-all
-
-./docker/noetic/run.sh stop
 ```
 
-**Important:** `moveit_planning_execution.launch` expects `/robot_description` from Gazebo unless you pass `load_robot_description:=true`. The `run.sh moveit` command auto-loads the URDF when Gazebo is not running, but you still need Gazebo for simulated motion execution.
-
-If RViz/Gazebo show a black window or NVIDIA libGL errors, try:
-
-```bash
-LIBGL_ALWAYS_SOFTWARE=1 ./docker/noetic/run.sh moveit
-# or enable GPU passthrough:
-USE_GPU=1 ./docker/noetic/run.sh start
-```
-
-Inside the container, source the workspace: `source /catkin_ws/devel/setup.bash`
-
-| Command | Purpose |
-|---------|---------|
-| `./docker/noetic/run.sh sim` | Interactive shell (simulation) |
-| `./docker/noetic/run.sh hw` | Hardware profile (privileged + realtime caps) |
-| `./docker/noetic/run.sh gazebo` | Gazebo + S20 model |
-| `./docker/noetic/run.sh moveit` | MoveIt + RViz |
-| `./docker/noetic/run.sh sim-all` | Gazebo + MoveIt + RViz (S20, one launch) |
-| `./docker/noetic/run.sh api` | Elfin Control Panel |
-
-Set `ELFIN_MODEL=s05|s10|s30` to change robot variant (default `s20`). See [`docker/noetic/HARDWARE.md`](docker/noetic/HARDWARE.md) for real EtherCAT hardware.
-
-### Airport luggage loading (simulation)
-
-Catkin packages under [`elfin_noetic_ws/src/luggage_*`](elfin_noetic_ws/src/). Build inside the Noetic container, then:
-
-```bash
-source /catkin_ws/devel/setup.bash
-roslaunch luggage_bringup inspect_container.launch   # Gazebo + MoveIt + container aim/inspect
-roslaunch luggage_bringup active_loading.launch      # Runtime pickup box + active Cargo loading loop
-roslaunch luggage_bringup camera_view.launch         # RViz debug: robot + Cargo + OctoMap (needs active_loading)
-# roslaunch luggage_bringup sim_skeleton.launch    # Phase 0 stub only
-```
-
-See [`PROGRESS.md`](PROGRESS.md) for the full **development timeline** and milestone summary, [`CHANGELOG.md`](CHANGELOG.md) for release notes, and [`elfin_noetic_ws/src/luggage_bringup/README.md`](elfin_noetic_ws/src/luggage_bringup/README.md) for launch details.
+See `docker/noetic/HARDWARE.md` on `main` for EtherCAT and Huayan TCP.
 
 ---
 
@@ -188,8 +137,8 @@ Draft image: [`elfin_humble_ws/Dockerfile.humble`](elfin_humble_ws/Dockerfile.hu
 
 Real-robot TCP runtime lives in [`deployment_ws/`](deployment_ws/) (formerly `ros2_ws/`):
 
-- Humble: [`deployment_ws/src/elfin_trajectory_executor`](deployment_ws/src/elfin_trajectory_executor)
-- Noetic: [`deployment_ws/noetic/elfin_cps_executor`](deployment_ws/noetic/elfin_cps_executor)
+- Humble / Jazzy: [`deployment_ws/src/elfin_trajectory_executor`](deployment_ws/src/elfin_trajectory_executor)
+- Noetic: [`deployment_ws/noetic/elfin_cps_executor` on `main`](https://github.com/adamliaoyifan/RoboticArm/tree/main/deployment_ws/noetic/elfin_cps_executor)
 
 Huayan SDK sources used by those nodes: [`SDK_sample/`](SDK_sample/), [`third_party/`](third_party/).
 

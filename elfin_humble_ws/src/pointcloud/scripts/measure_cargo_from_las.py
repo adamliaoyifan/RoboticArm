@@ -100,7 +100,7 @@ def run(cfg: dict, only: str | None, install_gazebo: bool) -> int:
         if install_gazebo:
             install_dir = (
                 _robotarm_root()
-                / "elfin_noetic_ws"
+                / "elfin_humble_ws"
                 / "src"
                 / "luggage_gazebo"
                 / "models"

@@ -1,5 +1,5 @@
 schema_version: 1
-atlas: /home/adamliao/work/RobotArm/elfin_noetic_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz
+atlas: elfin_humble_ws/src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz
 seeds: 20
 length: 60
 scenarios:

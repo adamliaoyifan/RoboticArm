@@ -1,5 +1,5 @@
 schema_version: 1
-mesh_path: /home/adamliao/work/RobotArm/elfin_noetic_ws/src/luggage_gazebo/models/airport_container_real/meshes/container_collision.stl
+mesh_path: elfin_humble_ws/src/luggage_gazebo/models/airport_container_real/meshes/container_collision.stl
 mesh_sha256: ee2f32572a80f527d66cf03a01d3c93ed1353fbe58252021462e122970102c87
 triangle_count: 8000
 horizontal_cos_threshold: 0.995

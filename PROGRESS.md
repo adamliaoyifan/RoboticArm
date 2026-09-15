@@ -3,6 +3,8 @@
 Elfin S20 + RealSense D435 + 机场行李装箱仿真（ROS Noetic）。  
 仓库：[github.com/adamliaoyifan/RoboticArm](https://github.com/adamliaoyifan/RoboticArm)
 
+Noetic 源码与 Docker（`elfin_noetic_ws/`、`docker/noetic/`、`deployment_ws/noetic/`）已迁到 `main` 分支。本分支只保留 ROS 2 Humble / Jazzy 现场栈；下文路径以 `main` 为准。
+
 **当前状态（2026-06-04）**：Active Cargo Loading + Cargo 体素探索已落地；新增启动时 Initial Cargo Explore（`look_up/down/left/right` 四视角扫描、融合后回 `observe`）。Cargo 空间主表达为 3D 体素 occupancy grid，Cargo edge 以几何先验 + depth-observed edge metadata 输出。
 
 ---
@@ -51,7 +53,7 @@ timeline
 | 项 | 内容 |
 |---|---|
 | **目标** | 在 Ubuntu 22.04 宿主机用 Docker 跑 Noetic Gazebo + MoveIt |
-| **交付** | `docker/noetic/run.sh`；`elfin_noetic_ws/Dockerfile`；vendor [`elfin_s_robot`](elfin_noetic_ws/src/elfin_s_robot/) |
+| **交付** | `docker/noetic/run.sh`；`elfin_noetic_ws/Dockerfile`；vendor [`elfin_s_robot`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/elfin_s_robot/) |
 | **备注** | 修复 `elfin_ethercat_driver` 无效 `system_lib` CMake 警告 |
 | **Git** | `a4e147d` infra · `14f6e31` vendor |
 
@@ -76,7 +78,7 @@ timeline
 | **外参 v1** | 父 link：`elfin_link6` |
 | | xyz (m)：`[-0.017202, 0.129806, 0.101650]` |
 | | rpy (rad)：`[π/2, -π/2, 0]`（侧装） |
-| **配置** | [`camera_mount_origin.xacro`](elfin_noetic_ws/src/luggage_description/config/camera_mount_origin.xacro) |
+| **配置** | [`camera_mount_origin.xacro`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_description/config/camera_mount_origin.xacro) |
 | **URDF/SRDF** | `elfin_s20_with_camera.urdf.xacro` · `S20_with_camera.srdf` |
 | **坐标约定** | `camera_link` +X=镜头；规划 EE=`camera_depth_optical_frame`（+Z=视线） |
 | **Tune 流程** | 6-DOF Gazebo 调参链 · GUI Save · `mount_config_utils` tune↔fixed |
@@ -90,9 +92,9 @@ timeline
 | 项 | 内容 |
 |---|---|
 | **目标** | 从 observe 姿态微调臂，相机对准集装箱开口，检测箱内空余格位 |
-| **配置** | [`container.yaml.example`](elfin_noetic_ws/src/luggage_description/config/container.yaml.example) |
-| **TF** | `world → elfin_base_link → container_link → container_opening_frame`（[`container_tf_publisher.py`](elfin_noetic_ws/src/luggage_bringup/scripts/container_tf_publisher.py)） |
-| **Aim 数学** | [`container_aim_utils.py`](elfin_noetic_ws/src/luggage_planning/scripts/container_aim_utils.py)：look-at、多 seed IK、min Δq |
+| **配置** | [`container.yaml.example`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_description/config/container.yaml.example) |
+| **TF** | `world → elfin_base_link → container_link → container_opening_frame`（[`container_tf_publisher.py`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_bringup/scripts/container_tf_publisher.py)） |
+| **Aim 数学** | [`container_aim_utils.py`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_planning/scripts/container_aim_utils.py)：look-at、多 seed IK、min Δq |
 | **服务** | `/motion_planner/aim_camera_at_container` · `/container_inspector/inspect_container` |
 | **MoveIt** | EE=`camera_depth_optical_frame`；可选 `elfin_link6` XY 约束；三级规划回退 |
 | **感知** | Phase1：Gazebo GT 网格占用 → `free_slots` |
@@ -160,12 +162,12 @@ ea5c5bb feat(camera): add RealSense D435 mount v1 and MoveIt camera URDF
 | 项 | 内容 |
 |---|---|
 | **目标** | 装箱前用 eye-in-hand 深度多视点融合箱内占用，再 `inspect` / placement |
-| **Mapper** | [`cargo_volume_mapper.py`](elfin_noetic_ws/src/luggage_perception/scripts/cargo_volume_mapper.py) + `cargo_volume_mapper_node` — 订阅 `/camera/depth/points`，体素 unknown/free/occupied，**无 ROS topic 发布**（stats/frontier 走 service + rosparam） |
+| **Mapper** | [`cargo_volume_mapper.py`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_perception/scripts/cargo_volume_mapper.py) + `cargo_volume_mapper_node` — 订阅 `/camera/depth/points`，体素 unknown/free/occupied，**无 ROS topic 发布**（stats/frontier 走 service + rosparam） |
 | **服务** | `reset_cargo_map` · `integrate_cargo_view` · `get_cargo_map_stats` |
-| **Planner** | [`cargo_nbv_planner.py`](elfin_noetic_ws/src/luggage_planning/scripts/cargo_nbv_planner.py) + `cargo_exploration_planner_node` — `plan_next_cargo_view`（`initial_fixed_scan` / `fixed_scan` 顺序播放 / `nbv` 候选贪心） |
+| **Planner** | [`cargo_nbv_planner.py`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_planning/scripts/cargo_nbv_planner.py) + `cargo_exploration_planner_node` — `plan_next_cargo_view`（`initial_fixed_scan` / `fixed_scan` 顺序播放 / `nbv` 候选贪心） |
 | **编排** | `AimContainer` 后插入 **`ExploreCargo`**：reset → 动臂 → settle → integrate → 直至 `unknown_threshold` 或 `max_views` → `InspectContainer` |
 | **Inspector** | `inspect_mode:=fused` 读 mapper rosparam；`gazebo_gt` 保留作评估 |
-| **配置** | [`exploration.yaml.example`](elfin_noetic_ws/src/luggage_description/config/exploration.yaml.example) — `initial_scan_poses` / `fixed_scan_poses`（look_up/down/left/right）、体素分辨率、NBV 权重 |
+| **配置** | [`exploration.yaml.example`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_description/config/exploration.yaml.example) — `initial_scan_poses` / `fixed_scan_poses`（look_up/down/left/right）、体素分辨率、NBV 权重 |
 | **Edge** | `/luggage/cargo_map/edge_points` · `edge_boxes` · `observed_edge_points`（几何先验 + depth 验证，不污染内部 free/occupied 主图） |
 | **RViz** | `/luggage/cargo_map/octomap` · `/luggage/cargo_map/markers`；`camera_view.launch` 联调 |
 | **Launch** | `active_loading.launch` 默认 `run_initial_explore:=true`、`initial_exploration_mode:=initial_fixed_scan`、`exploration_mode:=fixed_scan`；`exploration_mode:=none` 可跳过每箱探索 |
@@ -278,4 +280,4 @@ flowchart LR
 |---|---|
 | [`README.md`](README.md) | 快速上手、Docker、launch 命令 |
 | [`CHANGELOG.md`](CHANGELOG.md) | 按版本/日期的变更摘要 |
-| [`elfin_noetic_ws/src/luggage_bringup/README.md`](elfin_noetic_ws/src/luggage_bringup/README.md) | Bringup 包细节 |
+| [`elfin_noetic_ws/src/luggage_bringup/README.md`](https://github.com/adamliaoyifan/RoboticArm/blob/main/elfin_noetic_ws/src/luggage_bringup/README.md) | Bringup 包细节（`main`） |

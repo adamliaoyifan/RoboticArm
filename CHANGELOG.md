@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-09-15 — Noetic Docker lives on `main`
+
+- Drop `docker/noetic/`, `elfin_noetic_ws/`, and `deployment_ws/noetic/` from
+  `ros2_humble`. Noetic TCP Docker and the CPS executor are on `main`.
+
 ## 2026-09-02 — Humble closed-loop pick / place / pack-eval
 
 Work since the 08-28 snapshot, on `ros2_humble` only (`elfin_humble_ws`).

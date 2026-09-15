@@ -142,7 +142,7 @@ def main() -> int:
             robotarm = pointcloud_dir.parent.parent.parent.parent
             install_dir = (
                 robotarm
-                / "elfin_noetic_ws"
+                / "elfin_humble_ws"
                 / "src"
                 / "luggage_gazebo"
                 / "models"
