@@ -18,12 +18,24 @@ overlay_dirty="$(git -C "$OVERLAY" status --porcelain --untracked-files=all | wc
 eval_dirty="$(git -C "$PRIMARY" status --porcelain --untracked-files=all -- \
   scripts/pf_r7_bounded_acceptance.py \
   scripts/pf_r7_live_backend.py \
-  src/luggage_perception/luggage_perception/eval \
+  scripts/platform_free_height_gate4_eval.py \
+  src/luggage_perception/luggage_perception/eval/pf_r7_classifier.py \
+  src/luggage_perception/luggage_perception/eval/pf_r7_campaign.py \
+  src/luggage_perception/luggage_perception/eval/gate4_scoring.py \
+  src/luggage_gazebo/scripts/pickup_box_spawner_node.py \
   src/luggage_msgs/msg/DetectionFrame.msg \
   src/luggage_perception/scripts/luggage_detector_node.py \
   src/luggage_perception/luggage_perception/platform_free_pipeline.py \
   src/luggage_perception/luggage_perception/top_support_estimator.py \
+  scripts/pf_r7_generation3_live.sh \
+  scripts/pf_r7_generation4_live.sh \
+  src/luggage_perception/test/eval/test_pf_r7_classifier.py \
+  src/luggage_perception/test/eval/test_pf_r7_campaign.py \
+  src/luggage_perception/test/eval/test_pf_r7_score_window.py \
   src/luggage_perception/test/eval/test_pf_r7_g4_steady_window.py \
+  src/luggage_perception/test/eval/pf_r7_fixtures.py \
+  src/luggage_perception/test/eval/data/pfr7_g3_carryon00_scores.jsonl \
+  src/luggage_perception/test/test_platform_free_pipeline.py \
   | wc -l)"
 
 {
