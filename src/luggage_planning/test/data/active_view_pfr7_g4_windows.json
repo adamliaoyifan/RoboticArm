@@ -1,0 +1,1184 @@
+{
+ "policy_id": "active-view-recovery-v1",
+ "provenance": {
+  "content_rule": "per-frame measured content associated from the mid snapshot meta.json; early/mid/late snapshots carry identical detection content",
+  "hint_landing_rule": "median valid depth_all.xyz point (raster, stride 2) inside the hint bbox, converted dump-world -> base with the mean rig offset",
+  "rig_offset_mean_dump_to_base_xy": [
+   1.0175,
+   -0.0151
+  ],
+  "rig_offset_per_trial_xy": {
+   "standard_00": [
+    1.0415,
+    -0.0071
+   ],
+   "standard_01": [
+    1.027,
+    0.0048
+   ],
+   "standard_02": [
+    0.984,
+    -0.0431
+   ]
+  },
+  "rig_offset_spread_xy": [
+   0.0575,
+   0.0479
+  ],
+  "settled_rule": "not prep_status.flags.stale and not prep_status.flags.motion_too_large",
+  "source_root": "/home/adamliao/work/elfin_humble_ws/docs/status/evidence/platform_free_height/2026-09-15_pfr7_g4/rev_c086a396b974311ce40a6f8a3ab26dc14e9341f2/live",
+  "source_rule": "immutable PF-R7 G4 bounded-acceptance evidence (rev c086a396b974311ce40a6f8a3ab26dc14e9341f2)",
+  "state_rule": "campaign detect phase: pre-pick, vacuum off, payload not attached",
+  "tf_rule": "tf_errors all null and raw_lookup_status == hit",
+  "window_rule": "three consecutive scores.jsonl rows nearest the mid snapshot stamp, strictly increasing, span <= 0.50 s (measured stamps)"
+ },
+ "schema_id": "active-view-pfr7-g4-window-v1",
+ "sessions": {
+  "standard_00": {
+   "expected": {
+    "attempt_class": "eligible_pass",
+    "expected_proposes_view": false,
+    "expected_reason": "RECOVERY_SUCCEEDED",
+    "harness_only": true,
+    "trial": 2
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 48.676,
+    "trial_dir": "dumps/trial_02_ok_ok_pickup_box_0002_standard",
+    "window_stamp_span_sec": 0.099,
+    "window_stamps_sec": [
+     48.609,
+     48.643,
+     48.708
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         174,
+         133,
+         503,
+         335
+        ],
+        "border_margin_px": 133,
+        "centre_world_xy": [
+         -1.0011,
+         -0.006
+        ],
+        "confidence": 0.36785751581192017,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 13645,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.004056,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 1246
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 4,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 609000000,
+       "sec": 48
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         174,
+         133,
+         503,
+         335
+        ],
+        "border_margin_px": 133,
+        "centre_world_xy": [
+         -1.0011,
+         -0.006
+        ],
+        "confidence": 0.36785751581192017,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 13645,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.004056,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 1246
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 4,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 643000000,
+       "sec": 48
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         174,
+         133,
+         503,
+         335
+        ],
+        "border_margin_px": 133,
+        "centre_world_xy": [
+         -1.0011,
+         -0.006
+        ],
+        "confidence": 0.36785751581192017,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 13645,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.004056,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 1246
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 4,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 708000000,
+       "sec": 48
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  },
+  "standard_01": {
+   "expected": {
+    "attempt_class": "eligible_pass",
+    "expected_proposes_view": false,
+    "expected_reason": "RECOVERY_SUCCEEDED",
+    "harness_only": true,
+    "trial": 5
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 101.74,
+    "trial_dir": "dumps/trial_05_ok_ok_pickup_box_0005_standard",
+    "window_stamp_span_sec": 0.131,
+    "window_stamps_sec": [
+     101.674,
+     101.74,
+     101.805
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         187,
+         122,
+         521,
+         357
+        ],
+        "border_margin_px": 118,
+        "centre_world_xy": [
+         -0.9495,
+         -0.0026
+        ],
+        "confidence": 0.9178352952003479,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10050,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.008535,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 2622
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 10,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 674000000,
+       "sec": 101
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         187,
+         122,
+         521,
+         357
+        ],
+        "border_margin_px": 118,
+        "centre_world_xy": [
+         -0.9495,
+         -0.0026
+        ],
+        "confidence": 0.9178352952003479,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10050,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.008535,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 2622
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 10,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 740000000,
+       "sec": 101
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         187,
+         122,
+         521,
+         357
+        ],
+        "border_margin_px": 118,
+        "centre_world_xy": [
+         -0.9495,
+         -0.0026
+        ],
+        "confidence": 0.9178352952003479,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10050,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.008535,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 2622
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 10,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 805000000,
+       "sec": 101
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  },
+  "standard_02": {
+   "expected": {
+    "attempt_class": "eligible_pass",
+    "expected_proposes_view": false,
+    "expected_reason": "RECOVERY_SUCCEEDED",
+    "harness_only": true,
+    "trial": 8
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 156.586,
+    "trial_dir": "dumps/trial_08_ok_ok_pickup_box_0008_standard",
+    "window_stamp_span_sec": 0.133,
+    "window_stamps_sec": [
+     156.519,
+     156.586,
+     156.652
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         136,
+         93,
+         480,
+         356
+        ],
+        "border_margin_px": 93,
+        "centre_world_xy": [
+         -1.0514,
+         -0.0031
+        ],
+        "confidence": 0.25637319684028625,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10087,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.013018,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 3999
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 16,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 519000000,
+       "sec": 156
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         136,
+         93,
+         480,
+         356
+        ],
+        "border_margin_px": 93,
+        "centre_world_xy": [
+         -1.0514,
+         -0.0031
+        ],
+        "confidence": 0.25637319684028625,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10087,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.013018,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 3999
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 16,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 586000000,
+       "sec": 156
+      }
+     },
+     {
+      "accepted_detections": [
+       {
+        "bbox": [
+         136,
+         93,
+         480,
+         356
+        ],
+        "border_margin_px": 93,
+        "centre_world_xy": [
+         -1.0514,
+         -0.0031
+        ],
+        "confidence": 0.25637319684028625,
+        "label": 2,
+        "valid_depth_ratio": null
+       }
+      ],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 10087,
+       "support_mode": "FULL_3D",
+       "top_surface_valid": true
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.013018,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 3999
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 16,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 652000000,
+       "sec": 156
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  },
+  "standard_03": {
+   "expected": {
+    "attempt_class": "known_detector_miss",
+    "expected_proposes_view": true,
+    "expected_reason": "",
+    "harness_only": true,
+    "trial": 11
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 211.728,
+    "trial_dir": "dumps/trial_11_fail_DETECT_NO_CLOUD_pickup_box_0011_standard",
+    "window_stamp_span_sec": 0.066,
+    "window_stamps_sec": [
+     211.696,
+     211.728,
+     211.762
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         162,
+         70,
+         523,
+         356
+        ],
+        "centre_world_xy": [
+         -0.9656,
+         -0.0482
+        ],
+        "confidence": 0.11596639454364777,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.017552,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 5392
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 22,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 696000000,
+       "sec": 211
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         162,
+         70,
+         523,
+         356
+        ],
+        "centre_world_xy": [
+         -0.9656,
+         -0.0482
+        ],
+        "confidence": 0.11596639454364777,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.017552,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 5392
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 22,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 728000000,
+       "sec": 211
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         162,
+         70,
+         523,
+         356
+        ],
+        "centre_world_xy": [
+         -0.9656,
+         -0.0482
+        ],
+        "confidence": 0.11596639454364777,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.017552,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 5392
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 22,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 762000000,
+       "sec": 211
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  },
+  "standard_04": {
+   "expected": {
+    "attempt_class": "known_detector_miss",
+    "expected_proposes_view": true,
+    "expected_reason": "",
+    "harness_only": true,
+    "trial": 12
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 250.9,
+    "trial_dir": "dumps/trial_12_fail_DETECT_NO_CLOUD_pickup_box_0012_standard",
+    "window_stamp_span_sec": 0.066,
+    "window_stamps_sec": [
+     250.867,
+     250.9,
+     250.933
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         150,
+         96,
+         504,
+         401
+        ],
+        "centre_world_xy": [
+         -1.0049,
+         0.0319
+        ],
+        "confidence": 0.05646127089858055,
+        "label": 2
+       },
+       {
+        "bbox": [
+         507,
+         62,
+         640,
+         419
+        ],
+        "centre_world_xy": [
+         -0.2718,
+         0.0209
+        ],
+        "confidence": 0.016971509903669357,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.02085,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6405
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 24,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 867000000,
+       "sec": 250
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         150,
+         96,
+         504,
+         401
+        ],
+        "centre_world_xy": [
+         -1.0049,
+         0.0319
+        ],
+        "confidence": 0.05646127089858055,
+        "label": 2
+       },
+       {
+        "bbox": [
+         507,
+         62,
+         640,
+         419
+        ],
+        "centre_world_xy": [
+         -0.2718,
+         0.0209
+        ],
+        "confidence": 0.016971509903669357,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.02085,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6405
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 24,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 900000000,
+       "sec": 250
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         150,
+         96,
+         504,
+         401
+        ],
+        "centre_world_xy": [
+         -1.0049,
+         0.0319
+        ],
+        "confidence": 0.05646127089858055,
+        "label": 2
+       },
+       {
+        "bbox": [
+         507,
+         62,
+         640,
+         419
+        ],
+        "centre_world_xy": [
+         -0.2718,
+         0.0209
+        ],
+        "confidence": 0.016971509903669357,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.02085,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6405
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 24,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 933000000,
+       "sec": 250
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  },
+  "standard_05": {
+   "expected": {
+    "attempt_class": "known_detector_miss",
+    "expected_proposes_view": true,
+    "expected_reason": "",
+    "harness_only": true,
+    "trial": 13
+   },
+   "session_provenance": {
+    "mid_snapshot_stamp_sec": 270.799,
+    "trial_dir": "dumps/trial_13_fail_DETECT_NO_CLOUD_pickup_box_0013_standard",
+    "window_stamp_span_sec": 0.065,
+    "window_stamps_sec": [
+     270.766,
+     270.799,
+     270.831
+    ]
+   },
+   "window": {
+    "cancel_requested": false,
+    "frames": [
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         196,
+         121,
+         522,
+         317
+        ],
+        "centre_world_xy": [
+         -0.9335,
+         -0.0359
+        ],
+        "confidence": 0.15295706689357758,
+        "label": 2
+       },
+       {
+        "bbox": [
+         166,
+         61,
+         631,
+         442
+        ],
+        "centre_world_xy": [
+         -0.8168,
+         0.0404
+        ],
+        "confidence": 0.046192701905965805,
+        "label": 2
+       },
+       {
+        "bbox": [
+         9,
+         0,
+         588,
+         368
+        ],
+        "centre_world_xy": [
+         -1.077,
+         -0.1378
+        ],
+        "confidence": 0.014429036527872086,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.022542,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6925
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 26,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 766000000,
+       "sec": 270
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         196,
+         121,
+         522,
+         317
+        ],
+        "centre_world_xy": [
+         -0.9335,
+         -0.0359
+        ],
+        "confidence": 0.15295706689357758,
+        "label": 2
+       },
+       {
+        "bbox": [
+         166,
+         61,
+         631,
+         442
+        ],
+        "centre_world_xy": [
+         -0.8168,
+         0.0404
+        ],
+        "confidence": 0.046192701905965805,
+        "label": 2
+       },
+       {
+        "bbox": [
+         9,
+         0,
+         588,
+         368
+        ],
+        "centre_world_xy": [
+         -1.077,
+         -0.1378
+        ],
+        "confidence": 0.014429036527872086,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.022542,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6925
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 26,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 799000000,
+       "sec": 270
+      }
+     },
+     {
+      "accepted_detections": [],
+      "aligned_depth_ok": true,
+      "camera_model_id": "D555-640x480",
+      "cargo_geometry": {
+       "point_count": 0,
+       "support_mode": "DETECT_NO_CLOUD",
+       "top_surface_valid": false
+      },
+      "depth_ok": true,
+      "diagnostic_hints": [
+       {
+        "bbox": [
+         196,
+         121,
+         522,
+         317
+        ],
+        "centre_world_xy": [
+         -0.9335,
+         -0.0359
+        ],
+        "confidence": 0.15295706689357758,
+        "label": 2
+       },
+       {
+        "bbox": [
+         166,
+         61,
+         631,
+         442
+        ],
+        "centre_world_xy": [
+         -0.8168,
+         0.0404
+        ],
+        "confidence": 0.046192701905965805,
+        "label": 2
+       },
+       {
+        "bbox": [
+         9,
+         0,
+         588,
+         368
+        ],
+        "centre_world_xy": [
+         -1.077,
+         -0.1378
+        ],
+        "confidence": 0.014429036527872086,
+        "label": 2
+       }
+      ],
+      "exact_tf_ok": true,
+      "foreground_components": [
+       {
+        "area_fraction": 0.022542,
+        "bbox": null,
+        "height_above_support_m": null,
+        "in_workspace": true,
+        "pixel_count": 6925
+       }
+      ],
+      "frame_id": "camera_depth_optical_frame",
+      "geometry_hash": "e679991fbe13",
+      "map_revision": 26,
+      "rgb_ok": true,
+      "robot_settled": true,
+      "stamp": {
+       "nanosec": 831000000,
+       "sec": 270
+      }
+     }
+    ],
+    "image_height": 480,
+    "image_width": 640,
+    "payload_attached": false,
+    "state": "pre_pick_detect",
+    "vacuum_commanded": false
+   }
+  }
+ }
+}
