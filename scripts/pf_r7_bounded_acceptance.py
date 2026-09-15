@@ -302,6 +302,8 @@ def main(argv=None):
 
     os.environ["ROS_DOMAIN_ID"] = str(args.ros_domain_id)
     os.environ["ELFIN_SIM_PIDFILE"] = args.pidfile
+    os.environ.setdefault("YOLO_OFFLINE", "1")
+    os.environ.setdefault("ULTRALYTICS_OFFLINE", "1")
     from pf_r7_live_backend import LiveTrialBackend
 
     def stop():

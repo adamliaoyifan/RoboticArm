@@ -11,6 +11,9 @@ EV="$PRIMARY/docs/status/evidence/platform_free_height/2026-09-15_pfr7_g5/rev_${
 export ROS_DOMAIN_ID=7
 export ELFIN_SIM_PIDFILE=/tmp/elfin_humble_sim.pid
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
+# Detector must not block the exclusive sim slot on Ultralytics CLIP auto-install.
+export YOLO_OFFLINE=1
+export ULTRALYTICS_OFFLINE=1
 
 mkdir -p "$EV/scan" "$EV/live"
 
@@ -98,9 +101,14 @@ export PYTHONPATH="$PRIMARY/src/luggage_perception:${PYTHONPATH:-}"
 set +e
 if [ "$MODE" = "scan" ]; then
   echo "==== G5 standard-seed scan ====" | tee "$EV/scan/start.txt"
+  SCAN_START="${SCAN_START:-standard_06}"
+  IMPORT_ARGS=(--import-g4)
+  if [ -n "${SCAN_IMPORT:-}" ]; then
+    IMPORT_ARGS=(--import-scan "$SCAN_IMPORT")
+  fi
   python3 "$PRIMARY/scripts/pf_r7_bounded_acceptance.py" \
-    --live --scan-standard --import-g4 \
-    --scan-start standard_06 --stop-available 6 --max-scan 24 \
+    --live --scan-standard "${IMPORT_ARGS[@]}" \
+    --scan-start "$SCAN_START" --stop-available 6 --max-scan 24 \
     --out "$EV/scan" \
     --steady-start support-window-ready --steady-window-sec 8.0 \
     --recovery-limit-sec 1.4 --observe-sec 5 \
