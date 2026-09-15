@@ -22,6 +22,12 @@ class HardwarePickShTest(unittest.TestCase):
         self.assertIn("preprocessor_d555_site.yaml", src)
         self.assertIn("Do not pass preprocessor_d555_replay.yaml", src)
 
+    def test_driver_flags_are_not_forwarded_to_launch(self):
+        src = SCRIPT.read_text(encoding="utf-8")
+        self.assertIn("hardware_pick_driver.py flag", src)
+        self.assertIn("skip-observe:=*", src)
+        self.assertIn("detect-only:=*", src)
+
 
 if __name__ == "__main__":
     unittest.main()

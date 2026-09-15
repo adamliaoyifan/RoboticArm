@@ -16,6 +16,8 @@ Do not pass `preprocessor_d555_replay.yaml` into a live pick graph
 
 No-GPU cell procedure: [`docs/status/site_no_gpu_verify.md`](../docs/status/site_no_gpu_verify.md).
 `hardware_pick.sh` defaults `semantic_device:=cpu` when `nvidia-smi` fails.
+Mid-360 overlay is required: `./scripts/setup_livox_driver.sh` then `source livox_ws/env.sh`
+(gitignored local build; `record_site.sh` / `hardware_pick.sh` refuse to start without it).
 
 TCP execution for the real Elfin lives here, as a sibling colcon
 workspace next to the luggage stack (`src/`). Build it from

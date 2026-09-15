@@ -8,11 +8,11 @@ Site recording graph: two replay-capable bag modes.
 Source (one shell, Jazzy only):
 
   source /opt/ros/jazzy/setup.bash
-  source /home/adamliao/work/elfin_humble_ws/deployment_ws/livox_ws/env.sh
-  source /home/adamliao/work/elfin_humble_ws/install/setup.bash
-  source /home/adamliao/work/elfin_humble_ws/deployment_ws/install/setup.bash
+  source /home/adamliao/work/RoboticArm-master/deployment_ws/livox_ws/env.sh
+  source /home/adamliao/work/RoboticArm-master/install/setup.bash
+  source /home/adamliao/work/RoboticArm-master/deployment_ws/install/setup.bash
   export ROS_DOMAIN_ID=7
-  export PYTHONPATH=/home/adamliao/work/elfin_humble_ws/third_party/huayan_python_sdk:${PYTHONPATH}
+  export PYTHONPATH=/home/adamliao/work/RoboticArm-master/third_party/huayan_python_sdk:${PYTHONPATH}
   export LD_LIBRARY_PATH=/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
 
 Ctrl+C the launch to stop. Do not start scene.launch.py (zero joints).
@@ -230,8 +230,8 @@ def _cps_or_executor(context, *args, **kwargs):
                         "use_sim_time": False,
                         "robot_ip": ip,
                         "robot_port": int(port),
-                        "default_velocity_deg": 10.0,
-                        "max_velocity_deg": 20.0,
+                        "default_velocity_deg": 30.0,
+                        "max_velocity_deg": 60.0,
                     },
                 ],
             ),

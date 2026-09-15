@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # 实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
 # Clone Livox-SDK2 + livox_ros_driver2 and build against Jazzy.
-# Overlay workspace is gitignored (deployment_ws/livox_ws).
+# Mid-360 overlay is required for site record/pick. The built tree
+# (deployment_ws/livox_ws) stays gitignored; re-run this script after clone.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

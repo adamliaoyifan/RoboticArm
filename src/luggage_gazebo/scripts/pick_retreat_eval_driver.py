@@ -400,7 +400,7 @@ class PickRetreatEvalDriver(Node):
         self._tf_buffer = Buffer()
         # Dedicated TF node so /tf does not starve camera_info on the driver
         # executor (early trials otherwise fail SPAWN_VISUAL_TF: no_camera_info).
-        self._tf_node = Node("pick_eval_tf")
+        self._tf_node = Node("pick_eval_tf", use_global_arguments=False)
         self._tf_listener = TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
         self._accuracy = DetectionAccuracy(

@@ -189,7 +189,10 @@ class VacuumControllerNode(Node):
         self._tf_buffer = tf2_ros.Buffer()
         # Humble TransformListener(spin_thread=True) add_node()s this node.
         # A sidecar keeps /tf off the command/follow executor.
-        self._tf_node = Node("vacuum_controller_tf")
+        # use_global_arguments=False: launch -r __node:=... must not rename
+        # this sidecar, or ros2 node list reports a duplicate name.
+        self._tf_node = Node(
+            "vacuum_controller_tf", use_global_arguments=False)
         self._tf_listener = tf2_ros.TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
         self._follow_lock = threading.Lock()

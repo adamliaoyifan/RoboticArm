@@ -209,12 +209,29 @@ class TestEstimateTopSurface(unittest.TestCase):
         self.assertIsNone(est)
 
     def test_workspace_crop(self):
-        """Points outside the pickup workspace are ignored."""
+        """Optional scene XY crop still drops points when explicitly on."""
+        w, d, h = SIZES[0]
+        cargo, raw, top_z = _full_scene(w, d, h, 0.0, 0.62, seed=5,
+                                        cx=5.0, cy=5.0)
+        cfg = TopSupportConfig(
+            workspace_center_xy=WORKSPACE[0],
+            workspace_half_extents=WORKSPACE[1],
+            min_top_points=40,
+            crop_to_workspace=True,
+        )
+        est = estimate_top_surface(cargo, WORKSPACE, cfg)
+        self.assertIsNone(est)
+
+    def test_yolo_bbox_crop_ignores_scene_workspace(self):
+        """YOLO bbox→depth cargo is the ROI; scene_tf square is not."""
         w, d, h = SIZES[0]
         cargo, raw, top_z = _full_scene(w, d, h, 0.0, 0.62, seed=5,
                                         cx=5.0, cy=5.0)
         est = estimate_top_surface(cargo, WORKSPACE, CONFIG)
-        self.assertIsNone(est)
+        self.assertIsNotNone(est)
+        self.assertAlmostEqual(float(est.center_xy[0]), 5.0, delta=0.08)
+        self.assertAlmostEqual(float(est.center_xy[1]), 5.0, delta=0.08)
+        self.assertAlmostEqual(float(est.top_z), top_z, delta=0.02)
 
 
 class TestEstimateLocalSupport(unittest.TestCase):
