@@ -2,6 +2,7 @@
 """PF-R10 g3: closed-loop Gazebo placement verify and retry exhaustion."""
 
 import importlib.util
+import json
 import math
 import os
 import random
@@ -186,7 +187,13 @@ class TestEnforceIntendedPose(unittest.TestCase):
 
 class TestSpawnNextFailClosedOnPlace(unittest.TestCase):
 
-    def test_place_verify_failure_deletes_and_does_not_publish(self):
+    def test_place_verify_failure_leaves_model_for_dump_and_next_clear_deletes(self):
+        """07d5e8d (PF-R10 G6) contract: a place-verify failure leaves the
+        unplaceable model in the world — registered as ``_current_model``
+        with the message carrying ``model=<name>`` — so gate4 can dump the
+        flip's RGB/depth (``platform_free_height_gate4_eval.py`` parses the
+        suffix and classifies the trial infrastructure_invalid); the next
+        ``handle_clear``/``handle_spawn_next`` deletes the leftover."""
         node = object.__new__(_mod.PickupBoxSpawner)
         node._visual_kind = "mesh"
         node._model_prefix = "pickup_box"
@@ -208,6 +215,8 @@ class TestSpawnNextFailClosedOnPlace(unittest.TestCase):
         node._size_eval_pub = _Pub()
         node._finalized_pub = _Pub()
         calls = {"clear": 0, "spawn": 0, "delete": 0}
+        deleted = []
+        real_clear = _mod.PickupBoxSpawner.handle_clear
 
         def _sample_box():
             return ({"id": "carryon"}, [0.55, 0.40, 0.25], 8.0, False,
@@ -229,6 +238,7 @@ class TestSpawnNextFailClosedOnPlace(unittest.TestCase):
 
         def _delete_model(*_a, **_k):
             calls["delete"] += 1
+            deleted.append(_a[0] if _a else "<unnamed>")
             return None
 
         def _enforce(_name, _pose):
@@ -246,12 +256,25 @@ class TestSpawnNextFailClosedOnPlace(unittest.TestCase):
         self.assertFalse(out.success)
         self.assertTrue(out.message.startswith("PLACE_VERIFY_FAILED"),
                         out.message)
-        self.assertEqual(calls["clear"], 1)
-        self.assertEqual(calls["spawn"], 1)
-        self.assertEqual(calls["delete"], 1)
+        self.assertIn("model=pickup_box_0042_carryon", out.message)
+        # Nothing deleted or published during the failed spawn: the model
+        # stays in the world for the eval dump.
+        self.assertEqual(calls, {"clear": 1, "spawn": 1, "delete": 0})
+        self.assertEqual(node._current_model, "pickup_box_0042_carryon")
         self.assertIsNone(node._current_box)
+        self.assertIsNone(node._current_ref)
         self.assertEqual(node._box_pub.published, [])
         self.assertEqual(node._size_eval_pub.published, [])
+
+        # The next clear deletes exactly the leftover and publishes the
+        # empty box state.
+        out2 = real_clear(node, None, None)
+        self.assertTrue(out2.success)
+        self.assertEqual(calls["delete"], 1)
+        self.assertEqual(deleted, ["pickup_box_0042_carryon"])
+        self.assertIsNone(node._current_model)
+        self.assertEqual(len(node._box_pub.published), 1)
+        self.assertEqual(json.loads(node._box_pub.published[0].data)["id"], "")
 
 
 if __name__ == "__main__":
