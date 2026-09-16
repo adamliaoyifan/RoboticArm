@@ -7,14 +7,16 @@ under one exact primary stamp, one width/height, and one truthful colour
 optical frame whose K/P describe the colour pixel grid. Aligned depth is
 the **mandatory** pair gate: an acquisition without it is never emitted.
 
-Only an exactly co-stamped set is a single exposure. When
-``camera_pair_tolerance_sec`` is above zero and colour is paired with a
-nearby depth frame instead, the set is emitted with ``paired_exact=False``
-and ``geometry_ok=False``, every product keeps its own stamp, and
-``tolerance_pairs`` counts it: two exposures may still feed 2D detection,
-but they never claim one acquisition's geometry. A ``CameraInfo`` slot is
-never filled from the other product unless ``camera_info_shared`` declares
-that one input describes both (single-info backends such as Gazebo).
+``paired_exact`` is co-stamp identity (depth_ns == rgb_ns), not geometry
+usability. When ``camera_pair_tolerance_sec`` is above zero and colour is
+paired with a nearby depth frame, the set is still emitted with each
+product's own stamp and ``tolerance_pairs`` counts it. ``geometry_ok``
+additionally requires the motion gate to accept and
+``depth_dt <= camera_geometry_max_depth_dt_sec`` (default 5 ms). A
+``CameraInfo`` is selected against the product it describes (colour info
+on the RGB stamp, depth info on the depth stamp) and is never filled from
+the other product unless ``camera_info_shared`` declares that one input
+describes both.
 
 The preprocessor never transports a camera point cloud. Frames own opaque
 immutable payload references (PF-R9 g2): buffering, pairing, copy-out,
@@ -28,6 +30,8 @@ accepted index, increments ``camera_epoch`` and ``rollback_events``.
 """
 
 from __future__ import division
+
+import math
 
 import numpy as np
 
@@ -85,6 +89,7 @@ class SensorPreprocessor(object):
         camera_wait_deadline_sec=0.060,
         camera_info_max_age_sec=1.0,
         camera_info_shared=False,
+        camera_geometry_max_depth_dt_sec=0.005,
         joint_horizon_sec=1.0,
         joint_maxlen=50,
         lidar_maxlen=4,
@@ -120,6 +125,12 @@ class SensorPreprocessor(object):
         # calibration for the other silently changes which pinhole
         # deprojects the pixels.
         self.camera_info_shared = bool(camera_info_shared)
+        geometry_dt_cap = float(camera_geometry_max_depth_dt_sec)
+        if not math.isfinite(geometry_dt_cap) or geometry_dt_cap < 0.0:
+            raise ValueError(
+                "camera_geometry_max_depth_dt_sec must be a finite "
+                "non-negative number (0.0 means exact-stamp geometry only)")
+        self.camera_geometry_max_depth_dt_sec = geometry_dt_cap
         self.output_cloud_frame = str(output_cloud_frame)
         self.enable_lidar_output = False
         self.stale_sec = float(stale_sec)
@@ -231,6 +242,8 @@ class SensorPreprocessor(object):
         return {
             "schema": "luggage.preprocessed.status.v2",
             "camera_pair_tolerance_sec": self.camera_pair_tolerance_sec,
+            "camera_geometry_max_depth_dt_sec": (
+                self.camera_geometry_max_depth_dt_sec),
             "camera_info_shared": self.camera_info_shared,
             "camera_wait_deadline_sec": self.camera_wait_deadline_sec,
             "camera_epoch": self.camera_epoch,
@@ -452,7 +465,7 @@ class SensorPreprocessor(object):
         depth_ns, depth = depth_hit
 
         color_info = self._nearest_info(self._color_info, rgb_ns)
-        depth_info = self._nearest_info(self._depth_info, rgb_ns)
+        depth_info = self._nearest_info(self._depth_info, depth_ns)
         info_aliased = False
         if self.camera_info_shared:
             # One declared input describes both products. The alias is
@@ -497,12 +510,12 @@ class SensorPreprocessor(object):
                 gate_state in ("unknown", "stale") or not self._joints):
             geometry_ok = False
         if not paired_exact:
-            # Two different exposures. The pixels and the depths describe
-            # different robot poses, so this set may feed detection but must
-            # never be scored as one acquisition's geometry.
             self.tolerance_pairs += 1
-            self._last_rejection = "paired_tolerance"
-            geometry_ok = False
+            if depth_dt > self.camera_geometry_max_depth_dt_sec:
+                # Still one honest pair for 2D detection; too far apart to
+                # score as geometry even if the wrist looks still.
+                self._last_rejection = "paired_tolerance"
+                geometry_ok = False
 
         flags = ObservationFlags(
             rgb_ok=True,

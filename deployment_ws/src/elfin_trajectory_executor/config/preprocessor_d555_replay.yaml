@@ -10,6 +10,7 @@ sensor_preprocessor:
     input.color_camera_info: /camera/d555/color/camera_info
     # Replay uses the live join: two real CameraInfo inputs, no borrowing.
     camera_info_shared: false
+    camera_geometry_max_depth_dt_sec: 0.005
     input.camera_points: ""
     input.use_compressed: true
     unproject_aligned_depth: true

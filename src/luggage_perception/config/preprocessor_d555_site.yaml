@@ -17,11 +17,13 @@ sensor_preprocessor:
     output_cloud_frame: d555_color_optical_frame
     use_sim_time: false
     # Declared degraded fallback: a pair inside this window that is not
-    # exactly co-stamped is still emitted for 2D detection, but it reports
-    # paired_exact=false, geometry_ok=false, and counts in tolerance_pairs.
+    # exactly co-stamped is still emitted with paired_exact=false. geometry_ok
+    # additionally requires depth_dt within camera_geometry_max_depth_dt_sec
+    # (pairs between that cap and 50 ms stay 2D-only).
     camera_pair_tolerance_sec: 0.050
     camera_wait_deadline_sec: 0.150
     camera_info_shared: false
+    camera_geometry_max_depth_dt_sec: 0.005
     camera_input_qos_reliability: best_effort
     enable_lidar_output: false
     enable_imu: false

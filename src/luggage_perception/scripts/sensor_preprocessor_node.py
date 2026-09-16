@@ -78,6 +78,9 @@ class SensorPreprocessorNode(Node):
             camera_info_max_age_sec=float(
                 self.get_parameter("camera_info_max_age_sec").value),
             camera_info_shared=self._camera_info_shared,
+            camera_geometry_max_depth_dt_sec=float(
+                self.get_parameter(
+                    "camera_geometry_max_depth_dt_sec").value),
             joint_horizon_sec=float(
                 self.get_parameter("joint_horizon_sec").value),
             output_cloud_frame=str(
@@ -199,9 +202,10 @@ class SensorPreprocessorNode(Node):
         if self._core.camera_pair_tolerance_sec > 0.0:
             self.get_logger().warning(
                 "camera_pair_tolerance_sec=%.3fs: a colour/depth pair that is "
-                "not exactly co-stamped is emitted with paired_exact=false "
-                "and geometry_ok=false"
-                % self._core.camera_pair_tolerance_sec)
+                "not exactly co-stamped is emitted with paired_exact=false; "
+                "geometry_ok still requires depth_dt<=%.3fs and the motion gate"
+                % (self._core.camera_pair_tolerance_sec,
+                   self._core.camera_geometry_max_depth_dt_sec))
 
     def _declare_params(self):
         defaults = {
@@ -229,6 +233,9 @@ class SensorPreprocessorNode(Node):
             # Declared, not inferred: true only for a backend that
             # publishes one CameraInfo for both products.
             "camera_info_shared": False,
+            # geometry_ok may be true for a non-exact pair when the motion
+            # gate accepts and |depth-rgb| is at most this (0.0 = exact only).
+            "camera_geometry_max_depth_dt_sec": 0.005,
             "camera_input_qos_reliability": "reliable",
             # PF-R9 g2 fixed camera cache contract.
             "camera_maxlen": 15,

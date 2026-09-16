@@ -17,6 +17,7 @@ def test_live_profile_enables_compressed_edge_and_motion_gate():
     assert params["enable_lidar_output"] is False
     assert params["camera_pair_tolerance_sec"] == 0.0
     assert params["camera_info_shared"] is False
+    assert params["camera_geometry_max_depth_dt_sec"] == 0.005
     assert params["input.depth_image"].endswith("/compressed")
     assert params["use_sim_time"] is False
 
@@ -30,6 +31,7 @@ def test_site_profile_b_is_humble_thresholds_on_wall_clock():
     assert params["camera_pair_tolerance_sec"] == 0.050
     assert params["camera_wait_deadline_sec"] == 0.150
     assert params["camera_info_shared"] is False
+    assert params["camera_geometry_max_depth_dt_sec"] == 0.005
     # Dead override: nothing reads it, so it must not look like a gate.
     assert "camera_emit_rgb_only" not in params
     assert params["input.use_compressed"] is True
@@ -47,6 +49,17 @@ def test_sim_profile_declares_its_single_shared_camera_info():
     assert params["camera_info_shared"] is True
     assert params["input.color_camera_info"] == ""
     assert params["camera_pair_tolerance_sec"] == 0.0
+    assert params["camera_geometry_max_depth_dt_sec"] == 0.005
+
+
+def test_replay_profile_declares_the_geometry_dt_cap():
+    replay = yaml.safe_load(
+        (PACKAGE.parents[1] / "deployment_ws" / "src"
+         / "elfin_trajectory_executor" / "config"
+         / "preprocessor_d555_replay.yaml").read_text())
+    params = replay["sensor_preprocessor"]["ros__parameters"]
+    assert params["camera_info_shared"] is False
+    assert params["camera_geometry_max_depth_dt_sec"] == 0.005
 
 
 def test_driver_is_raw_only_and_pointcloud_is_disabled():

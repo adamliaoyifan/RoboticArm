@@ -85,7 +85,7 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertTrue(obs.flags.color_info_ok)
         self.assertTrue(obs.flags.depth_info_ok)
         self.assertFalse(obs.flags.paired_exact)
-        self.assertFalse(obs.flags.geometry_ok)
+        self.assertTrue(obs.flags.geometry_ok)
         self.assertFalse(obs.flags.cloud_ok)
         self.assertAlmostEqual(obs.depth_dt, 0.001)
         # Both source stamps survive, so a consumer's exact join misses.
@@ -93,6 +93,55 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertEqual(obs.depth_stamp, 1.201)
         self.assertEqual(1, pre.tolerance_pairs)
         self.assertEqual("tolerance", pre.diagnostics()["pair_mode"])
+
+    def test_depth_camera_info_follows_depth_stamp_not_rgb(self):
+        """Line review 5587311: two-info D555 must not pick the RGB-neighbour."""
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020, motion_gate=_stable_gate(),
+            joint_names=["j1"])
+        _hold_stable(pre)
+        pre.update_camera_info(_info(1.200), slots=("color",))
+        pre.update_camera_info(_info(1.199), slots=("depth",))
+        pre.update_camera_info(_info(1.201), slots=("depth",))
+        pre.update_depth(_depth(1.201))
+        obs = pre.update_rgb(_rgb(1.200))
+        self.assertIsNotNone(obs)
+        self.assertEqual(obs.depth_stamp, 1.201)
+        self.assertEqual(obs.depth_info_stamp, 1.201)
+        self.assertEqual(obs.color_info_stamp, 1.200)
+        self.assertFalse(obs.flags.paired_exact)
+        self.assertTrue(obs.flags.geometry_ok)
+
+    def test_geometry_cap_zero_rejects_non_exact_pairs(self):
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020,
+            camera_geometry_max_depth_dt_sec=0.0,
+            motion_gate=_stable_gate(), joint_names=["j1"])
+        _hold_stable(pre)
+        pre.update_camera_info(_info(1.200))
+        pre.update_depth(_depth(1.201))
+        obs = pre.update_rgb(_rgb(1.200))
+        self.assertIsNotNone(obs)
+        self.assertFalse(obs.flags.paired_exact)
+        self.assertFalse(obs.flags.geometry_ok)
+        self.assertEqual("paired_tolerance", pre.last_rejection_reason())
+
+    def test_geometry_cap_can_admit_a_10ms_pair(self):
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020,
+            camera_geometry_max_depth_dt_sec=0.020,
+            motion_gate=_stable_gate(), joint_names=["j1"])
+        _hold_stable(pre, t0=16.0)
+        pre.update_camera_info(_info(16.20))
+        self.assertIsNone(pre.update_rgb(_rgb(16.20)))
+        obs = pre.update_depth(_depth(16.210))
+        self.assertIsNotNone(obs)
+        self.assertFalse(obs.flags.paired_exact)
+        self.assertTrue(obs.flags.geometry_ok)
+
+    def test_negative_geometry_cap_is_rejected(self):
+        with self.assertRaises(ValueError):
+            SensorPreprocessor(camera_geometry_max_depth_dt_sec=-0.001)
 
     def test_exact_pair_keeps_geometry_and_one_stamp(self):
         pre = SensorPreprocessor(
@@ -391,7 +440,8 @@ class TestSensorPreprocessor(unittest.TestCase):
         obs = pre.update_depth(_depth(16.210))
         self.assertIsNotNone(obs)
         self.assertTrue(obs.flags.depth_ok)
-        # Late depth from a different exposure: emitted, not geometry.
+        # 10 ms is inside pair tolerance but outside the default 5 ms
+        # geometry cap: 2D pair, not geometry.
         self.assertFalse(obs.flags.paired_exact)
         self.assertFalse(obs.flags.geometry_ok)
 

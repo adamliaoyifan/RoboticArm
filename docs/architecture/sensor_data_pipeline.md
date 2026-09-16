@@ -215,13 +215,17 @@ Rules:
   zero-filled image. Silently substituting empty data turns a sensor dropout
   into a confident wrong answer. An acquisition without aligned depth is not
   emitted (mandatory pair gate, PF-R9 g2).
-- Only an exactly co-stamped set is one exposure. When a profile keeps a
-  non-zero `camera_pair_tolerance_sec` and colour is paired with a nearby
-  depth frame instead, the set is published with `paired_exact=false`,
-  `geometry_ok=false`, its two original stamps, and a `tolerance_pairs`
-  count. It may feed 2D detection; it must never be scored as one
-  acquisition's geometry, and a consumer's exact join will simply not match
-  it. Relabelling such a pair to a single stamp is a defect.
+- `paired_exact` is co-stamp identity (`depth_ns == rgb_ns`), not geometry
+  usability. When a profile keeps a non-zero `camera_pair_tolerance_sec` and
+  colour is paired with a nearby depth frame, the set is published with
+  `paired_exact=false`, both original stamps, and a `tolerance_pairs` count.
+  `geometry_ok` additionally requires the motion gate to accept and
+  `depth_dt` within `camera_geometry_max_depth_dt_sec` (default 5 ms; 0.0
+  means exact-stamp geometry only). A consumer's exact join still will not
+  match a non-exact pair. Relabelling such a pair to a single stamp is a
+  defect. Each product's `CameraInfo` is selected and published against
+  **that product's** stamp (colour info on `rgb_stamp`, depth info on
+  `depth_stamp`), not against the RGB clock for both.
 - A `CameraInfo` slot is never filled from the other product. A backend that
   publishes only one info (the Gazebo `rgbd_camera`) declares
   `camera_info_shared: true`, and the resulting observation reports

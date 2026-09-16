@@ -38,6 +38,9 @@ sensor_preprocessor:
     # grid, so the declared alias fills the colour slot and every
     # observation reports info_aliased.
     camera_info_shared: true
+    # Non-exact pairs may still be geometry_ok when |depth-rgb| is at most
+    # this and the motion gate accepts. 0.0 means exact-stamp geometry only.
+    camera_geometry_max_depth_dt_sec: 0.005
     camera_input_qos_reliability: reliable
     # PF-R9 g2 fixed camera cache contract: 15 entries / 1.0 second on
     # the camera clock (23.0 MB payload ceiling at 640x480).
