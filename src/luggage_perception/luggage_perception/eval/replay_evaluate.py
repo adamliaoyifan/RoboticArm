@@ -30,12 +30,13 @@ from luggage_perception.eval.bag_frame_join import (
 )
 from luggage_perception.eval.bag_mcap_source import (
     TOPIC_TYPES,
-    decode_color_rgb,
-    decode_depth_mm,
+    decode_color_message,
+    decode_depth_message,
     decode_lidar_scan,
     find_mcap_file,
     iter_bag_messages,
     scan_bag,
+    select_image_topics,
 )
 from luggage_perception.eval.detection_gate_sampling import (
     colorize_mask_rgb,
@@ -47,7 +48,12 @@ from luggage_perception.ros_message_adapters import (
     camera_info_frame_from_msg,
     joint_sample_from_msg,
 )
-from luggage_perception.semantic_segmenter import draw_detections_overlay
+from luggage_perception.semantic_segmenter import (
+    DEFAULT_CARGO_MIN_CONFIDENCE,
+    DEFAULT_ROBOT_ARM_CONFIDENCE_THRESHOLD,
+    DEFAULT_YOLO_CONFIDENCE_THRESHOLD,
+    draw_detections_overlay,
+)
 
 COLOR_TOPIC = "/camera/d555/color/image_raw"
 DEPTH_TOPIC = "/camera/d555/aligned_depth_to_color/image_raw"
@@ -237,7 +243,14 @@ def load_segmenter_config(cfg):
         "class_mapping": dict(zip(prompts, [int(v) for v in labels])),
         "confidence_threshold": float(
             cfg.confidence if cfg.confidence is not None else
-            section.get("confidence_threshold", 0.005)),
+            section.get("confidence_threshold",
+                        DEFAULT_YOLO_CONFIDENCE_THRESHOLD)),
+        "robot_arm_confidence_threshold": float(
+            section.get("robot_arm_confidence_threshold",
+                        DEFAULT_ROBOT_ARM_CONFIDENCE_THRESHOLD)),
+        "cargo_min_confidence": float(
+            section.get("cargo_min_confidence",
+                        DEFAULT_CARGO_MIN_CONFIDENCE)),
         "model_name": resolve_model_path(cfg.model_path),
         "device": str(cfg.device),
     }
@@ -287,11 +300,14 @@ def _camera_info_payload(frame):
 
 
 def write_join_report(bag_out, scan, plan, duplicates, aux_stats,
-                      known_limitations=None):
+                      known_limitations=None, color_topic=None,
+                      depth_topic=None):
     report = {
         "bag_path": scan.bag_path,
         "topics": scan.topics,
         "skipped_topics": scan.skipped_topics,
+        "color_topic": color_topic,
+        "depth_topic": depth_topic,
         "join": plan.stats,
         "color_orphans": plan.color_orphans,
         "depth_orphans": plan.depth_orphans,
@@ -403,11 +419,12 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     os.makedirs(frames_root, exist_ok=True)
 
     scan = scan_bag(bag_path)
+    color_topic, depth_topic = select_image_topics(scan)
     mcap_path = find_mcap_file(bag_path)
     stream = source_iter or (lambda topics: iter_bag_messages(
         mcap_path, topics=topics))
 
-    index_topics = [COLOR_TOPIC, DEPTH_TOPIC, COLOR_INFO_TOPIC,
+    index_topics = [color_topic, depth_topic, COLOR_INFO_TOPIC,
                     DEPTH_INFO_TOPIC, JOINT_TOPIC, TCP_TOPIC,
                     TF_STATIC_TOPIC]
     if cfg.with_lidar or cfg.archive_lidar:
@@ -431,9 +448,9 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     for rec in stream(index_topics):
         topic = rec.topic
         stamp = rec.header_stamp_ns
-        if topic == COLOR_TOPIC:
+        if topic == color_topic:
             color_entries.append((stamp, rec.log_time_ns, None))
-        elif topic == DEPTH_TOPIC:
+        elif topic == depth_topic:
             depth_entries.append((stamp, rec.log_time_ns, None))
         elif topic == JOINT_TOPIC:
             payload = _joint_payload(rec.message)
@@ -539,10 +556,13 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
 
     report = write_join_report(
         bag_out, scan, plan,
-        {"color": len(color_dup), "depth": len(depth_dup)}, aux_stats)
+        {"color": len(color_dup), "depth": len(depth_dup)}, aux_stats,
+        color_topic=color_topic, depth_topic=depth_topic)
 
     summary = {
         "bag": bag_name, "bag_path": scan.bag_path,
+        "color_topic": color_topic,
+        "depth_topic": depth_topic,
         "frames_planned": len(pairs),
         "join": plan.stats,
         "backend": None, "device": cfg.device,
@@ -615,14 +635,18 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
             else:
                 return
 
-    for rec in stream([COLOR_TOPIC, DEPTH_TOPIC]):
+    for rec in stream([color_topic, depth_topic]):
         stamp = rec.header_stamp_ns
-        if rec.topic == COLOR_TOPIC:
+        if rec.topic == color_topic:
             if stamp in planned_by_color and stamp not in pending["color"]:
-                pending["color"][stamp] = decode_color_rgb(rec.message)
-        else:
+                rgb = decode_color_message(rec.message)
+                if rgb is not None:
+                    pending["color"][stamp] = rgb
+        elif rec.topic == depth_topic:
             if stamp in planned_depths and stamp not in pending["depth"]:
-                pending["depth"][stamp] = decode_depth_mm(rec.message)
+                depth = decode_depth_message(rec.message)
+                if depth is not None:
+                    pending["depth"][stamp] = depth
         _flush_ready_pairs()
         # Bound the pending window (planned entries only ever enter; the
         # colour stream arrives first, so >64 pending means a dropped side).

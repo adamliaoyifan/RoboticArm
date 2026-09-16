@@ -48,7 +48,9 @@ class TestLoadSegmenterConfig(unittest.TestCase):
         self.assertEqual(len(config["prompts"]), 8)
         self.assertEqual(config["class_mapping"]["suitcase"], 2)
         self.assertEqual(config["class_mapping"]["floor"], 0)
-        self.assertAlmostEqual(config["confidence_threshold"], 0.005)
+        self.assertAlmostEqual(config["confidence_threshold"], 0.2)
+        self.assertAlmostEqual(config["robot_arm_confidence_threshold"], 0.5)
+        self.assertAlmostEqual(config["cargo_min_confidence"], 0.2)
 
     def test_prompts_override(self):
         cfg = _stub_cfg(prompts=["suitcase", "container"],
@@ -73,6 +75,10 @@ class TestLoadSegmenterConfig(unittest.TestCase):
         self.assertGreater(len(config["prompts"]), 0)
         self.assertEqual(
             len(config["class_mapping"]), len(config["prompts"]))
+        self.assertAlmostEqual(
+            config["robot_arm_confidence_threshold"], 0.5)
+        self.assertAlmostEqual(config["confidence_threshold"], 0.2)
+        self.assertAlmostEqual(config["cargo_min_confidence"], 0.2)
 
 
 class TestEvaluateBagStub(unittest.TestCase):
@@ -127,6 +133,11 @@ class TestEvaluateBagStub(unittest.TestCase):
         self.assertEqual(
             report["depth_orphans"], sorted([T2 + 5_000_000, T3]))
         self.assertEqual(report["duplicates"], {"color": 1, "depth": 0})
+        self.assertEqual(
+            report["color_topic"], "/camera/d555/color/image_raw")
+        self.assertEqual(
+            report["depth_topic"],
+            "/camera/d555/aligned_depth_to_color/image_raw")
 
     def test_jsonl_rows(self):
         det_lines = open(os.path.join(
