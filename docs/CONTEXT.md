@@ -162,7 +162,6 @@ Common live endpoints:
 |---|---|---|
 | `/luggage/preprocessed/camera/color/image` | `sensor_msgs/Image` | preprocessor |
 | `/luggage/preprocessed/camera/depth/image` | `sensor_msgs/Image` | preprocessor |
-| `/luggage/preprocessed/camera/depth/points` | `sensor_msgs/PointCloud2` | preprocessor |
 | `/luggage/preprocessed/status` | JSON `std_msgs/String` | preprocessor |
 | `/luggage/semantic/mask` | image | semantic segmenter |
 | `/luggage/semantic/overlay` | image | semantic segmenter |

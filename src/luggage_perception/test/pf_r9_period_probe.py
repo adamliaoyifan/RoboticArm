@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """PF-R9 B1: per-topic period + matched-header receipt-lag probe.
 
-Records, for /camera/color/image_raw and /camera/depth/points:
+Records, for /camera/color/image_raw and /camera/depth/image_raw:
 
 - header-stamp period series (sim /clock domain, from message headers);
 - arrival-time period series (wall clock, monotonic receipt);
-- the matched-header cloud-vs-RGB receipt lag: for every header stamp
-  present on BOTH topics, |cloud_arrival_wall - rgb_arrival_wall| plus the
+- the matched-header depth-vs-RGB receipt lag: for every header stamp
+  present on BOTH topics, |depth_arrival_wall - rgb_arrival_wall| plus the
   signed value, p50/p95/max;
 - the fraction of RGB header stamps with no same-stamp cloud at all
   (unmatched fraction);
@@ -33,7 +33,7 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image
 
 
 def _pct(values, q):
@@ -55,8 +55,8 @@ class PeriodProbe(Node):
         for key, msg_type, topic, reliability, group in (
             ("rgb_be", Image, "/camera/color/image_raw", be, groups[0]),
             ("rgb_rel", Image, "/camera/color/image_raw", rel, groups[1]),
-            ("cloud_be", PointCloud2, "/camera/depth/points", be, groups[2]),
-            ("cloud_rel", PointCloud2, "/camera/depth/points", rel, groups[3]),
+            ("depth_be", Image, "/camera/depth/image_raw", be, groups[2]),
+            ("depth_rel", Image, "/camera/depth/image_raw", rel, groups[3]),
         ):
             rec = {"stamps": [], "arrivals": []}
             self.streams[key] = rec
@@ -96,16 +96,16 @@ def summarize(probe, duration):
                 if arrival_deltas else None,
             },
         }
-    # Matched-header receipt lag: rgb_rel vs cloud_rel (the live path).
+    # Matched-header receipt lag: rgb_rel vs depth_rel (the live path).
     rgb = probe.streams["rgb_rel"]
-    cloud = probe.streams["cloud_rel"]
+    depth = probe.streams["depth_rel"]
     rgb_by_stamp = {}
     for stamp, arrival in zip(rgb["stamps"], rgb["arrivals"]):
         rgb_by_stamp.setdefault(stamp, arrival)
     lags = []
     signed = []
     matched = 0
-    for stamp, arrival in zip(cloud["stamps"], cloud["arrivals"]):
+    for stamp, arrival in zip(depth["stamps"], depth["arrivals"]):
         rgb_arrival = rgb_by_stamp.get(stamp)
         if rgb_arrival is None:
             continue
@@ -115,11 +115,11 @@ def summarize(probe, duration):
         lags.append(abs(delta))
     unmatched = len(rgb_by_stamp) - matched
     out["matched_header"] = {
-        "clock_domain": "receipt lag = wall(monotonic) cloud arrival minus "
+        "clock_domain": "receipt lag = wall(monotonic) depth arrival minus "
                         "wall(monotonic) rgb arrival of the same header "
                         "stamp; header stamps themselves are sim /clock",
         "rgb_unique": len(rgb_by_stamp),
-        "cloud_unique": len(set(cloud["stamps"])),
+        "depth_unique": len(set(depth["stamps"])),
         "matched": matched,
         "unmatched_rgb": unmatched,
         "unmatched_fraction": (
@@ -127,7 +127,7 @@ def summarize(probe, duration):
         "abs_receipt_lag_sec": {
             "p50": _pct(lags, 0.5), "p95": _pct(lags, 0.95),
             "max": _pct(lags, 1.0)},
-        "signed_cloud_minus_rgb_sec": {
+        "signed_depth_minus_rgb_sec": {
             "p50": _pct(signed, 0.5), "p95": _pct(signed, 0.95),
             "max": _pct(signed, 1.0)},
     }

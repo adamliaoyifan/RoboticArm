@@ -12,8 +12,8 @@ computed on that window:
 - B3 latency: raw_img -> pre_rgb per stamp = wall arrival of the
   preprocessed RGB minus wall arrival of the raw RGB with the same header
   stamp (both wall-monotonic; same clock domain); bar p50 <= 60 ms.
-- B4 cloud_ok: unique primary stamps that also appeared on
-  /luggage/preprocessed/camera/depth/points / emitted; bar >= 0.95.
+- B4 depth_ok: unique primary stamps that also appeared on
+  /luggage/preprocessed/camera/depth/image / emitted; bar >= 0.95.
 - B4 filter exact-join and stale-drop ratios from
   /semantic_point_filter/stats_json cumulative counters, scored as
   counter deltas across the window: joined/cloud >= 0.95 and
@@ -32,7 +32,7 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 
@@ -50,7 +50,7 @@ class B34Probe(Node):
         groups = [MutuallyExclusiveCallbackGroup() for _ in range(4)]
         self.raw_rgb = {}      # header stamp -> arrival wall
         self.pre_rgb = {}      # header stamp -> arrival wall
-        self.pre_cloud = set()  # header stamps
+        self.pre_depth = set()  # header stamps
         self.stats_first = None
         self.stats_last = None
         be = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT)
@@ -64,8 +64,8 @@ class B34Probe(Node):
             Image, "/luggage/preprocessed/camera/color/image",
             self._on_pre, be, callback_group=groups[1])
         self.create_subscription(
-            PointCloud2, "/luggage/preprocessed/camera/depth/points",
-            self._on_cloud, be, callback_group=groups[2])
+            Image, "/luggage/preprocessed/camera/depth/image",
+            self._on_depth, be, callback_group=groups[2])
         self.create_subscription(
             String, "/semantic_point_filter/stats_json",
             self._on_stats, stats_qos, callback_group=groups[3])
@@ -80,8 +80,8 @@ class B34Probe(Node):
     def _on_pre(self, msg):
         self.pre_rgb.setdefault(self._stamp(msg), time.monotonic())
 
-    def _on_cloud(self, msg):
-        self.pre_cloud.add(self._stamp(msg))
+    def _on_depth(self, msg):
+        self.pre_depth.add(self._stamp(msg))
 
     def _on_stats(self, msg):
         try:
@@ -106,7 +106,7 @@ def score(probe, window_start, window_end, duration):
         if raw_arrival is not None:
             lags.append(max(0.0, pre_arrival - raw_arrival))
     emitted = set(pre_in_window)
-    with_cloud = {s for s in emitted if s in probe.pre_cloud}
+    with_depth = {s for s in emitted if s in probe.pre_depth}
     out = {
         "duration_sec": duration,
         "rgb_unique_in_window": len(raw_in_window),
@@ -116,8 +116,8 @@ def score(probe, window_start, window_end, duration):
         "b3_raw_to_pre_rgb_sec": {
             "n": len(lags), "p50": _pct(lags, 0.5),
             "p95": _pct(lags, 0.95), "max": _pct(lags, 1.0)},
-        "b4_cloud_ok_fraction": (
-            len(with_cloud) / len(emitted)) if emitted else None,
+        "b4_depth_ok_fraction": (
+            len(with_depth) / len(emitted)) if emitted else None,
     }
     first, last = probe.stats_first, probe.stats_last
     if first is not None and last is not None:

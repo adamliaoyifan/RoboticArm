@@ -3,8 +3,7 @@
 
 Subscribes the full accepted subscriber graph plus the g2 target surface:
 raw colour, preprocessed colour, preprocessed depth (the aligned-depth
-reader generation 2's filter will become), preprocessed cloud (current
-graph), preprocessor status (1 Hz, carries d1_stage_ms and cumulative
+reader generation 2's filter will become), preprocessor status (1 Hz, carries d1_stage_ms and cumulative
 d1_bytes_total), and filter stats.
 
 Records, over the scored window:
@@ -26,7 +25,7 @@ import rclpy
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Image, PointCloud2
+from sensor_msgs.msg import Image
 from std_msgs.msg import String
 
 
@@ -41,7 +40,7 @@ def _pct(values, q):
 class D1Probe(Node):
     def __init__(self):
         super().__init__("pf_r9_g2_d1_probe")
-        groups = [MutuallyExclusiveCallbackGroup() for _ in range(6)]
+        groups = [MutuallyExclusiveCallbackGroup() for _ in range(5)]
         be = QoSProfile(depth=2, reliability=ReliabilityPolicy.BEST_EFFORT)
         rel = QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE)
         tl = QoSProfile(
@@ -50,7 +49,6 @@ class D1Probe(Node):
         self.raw_rgb = {}
         self.pre_rgb = {}
         self.pre_depth = {}
-        self.pre_cloud = set()
         self.status_first = None
         self.status_last = None
         self.filter_first = None
@@ -65,25 +63,16 @@ class D1Probe(Node):
             Image, "/luggage/preprocessed/camera/depth/image",
             self._on("pre_depth"), be, callback_group=groups[2])
         self.create_subscription(
-            PointCloud2, "/luggage/preprocessed/camera/depth/points",
-            self._on_set("pre_cloud"), be, callback_group=groups[3])
-        self.create_subscription(
             String, "/luggage/preprocessed/status",
-            self._status, tl, callback_group=groups[4])
+            self._status, tl, callback_group=groups[3])
         self.create_subscription(
             String, "/semantic_point_filter/stats_json",
-            self._filter, tl, callback_group=groups[5])
+            self._filter, tl, callback_group=groups[4])
 
     def _on(self, key):
         def cb(msg):
             stamp = msg.header.stamp.sec + 1e-9 * msg.header.stamp.nanosec
             getattr(self, key).setdefault(stamp, time.monotonic())
-        return cb
-
-    def _on_set(self, key):
-        def cb(msg):
-            stamp = msg.header.stamp.sec + 1e-9 * msg.header.stamp.nanosec
-            getattr(self, key).add(stamp)
         return cb
 
     def _status(self, msg):
@@ -117,7 +106,7 @@ def main():
     rclpy.init()
     probe = D1Probe()
     from rclpy.executors import MultiThreadedExecutor
-    ex = MultiThreadedExecutor(num_threads=6)
+    ex = MultiThreadedExecutor(num_threads=5)
     ex.add_node(probe)
     t0 = time.monotonic()
     window_start = t0 + args.warmup
@@ -140,7 +129,6 @@ def main():
         "raw_rgb_unique": len(raw),
         "pre_rgb_unique": len(pre),
         "pre_depth_unique": len(pre_d),
-        "pre_cloud_unique": len(probe.pre_cloud),
         "emission_over_rgb": len(pre) / len(raw) if raw else None,
         "raw_to_pre_rgb_sec": {
             "n": len(lags_rgb), "p50": _pct(lags_rgb, 0.5),

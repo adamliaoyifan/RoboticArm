@@ -3,17 +3,16 @@
 
 Runs alongside the live perception stack (accepted sim profile) and
 records, per detection frame, the *exact non-privileged inputs* the
-support estimator sees: the same-stamp raw depth cloud transformed to
-the world frame plus the detector's own top estimate. The spawner
+support estimator sees: the same-stamp aligned depth image deprojected
+and transformed to the world frame plus the detector's own top estimate. The spawner
 service drives carryon/standard/large trials; spawn responses provide
 eval-only GT.
 
 Nothing is published and no production node is modified. Comparators run
 offline (bench_offline.py) on the captured npz files.
 
-The cloud decoder below is a verbatim copy of the committed
-``ros_message_adapters.cloud_points_from_msg`` logic (offset-aware
-FLOAT32 XYZ decode) so the capture path matches production decoding.
+The depth decoder uses the production ``depth_array_from_msg`` plus
+``deproject_stride`` path so capture matches DSIM-1 consumers.
 
 Usage (after `source install/setup.bash`):
   ros2 run ... or: PYTHONPATH=research/pf_r6_ransac:$PYTHONPATH \
@@ -36,10 +35,11 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import PointCloud2
-from sensor_msgs.msg import PointField
+from sensor_msgs.msg import CameraInfo, Image
 from luggage_msgs.msg import DetectionFrame
 from luggage_msgs.srv import SpawnNextBox
+from luggage_perception.depth_deprojection import deproject_stride
+from luggage_perception.ros_message_adapters import depth_array_from_msg
 
 try:
     import tf2_ros
@@ -47,34 +47,12 @@ except ImportError:  # pragma: no cover - ROS env required
     tf2_ros = None
 
 
-def cloud_points_from_msg(msg):
-    """(N,3) float64 XYZ or None (committed adapter logic, verbatim)."""
-    if msg.point_step <= 0:
-        return None
-    fields = {field.name: field for field in msg.fields}
-    if not {"x", "y", "z"} <= set(fields):
-        return None
-    for name in ("x", "y", "z"):
-        field = fields[name]
-        if field.datatype != PointField.FLOAT32 or field.count != 1:
-            return None
-        if field.offset + 4 > msg.point_step:
-            return None
-    npoints = int(msg.width) * int(msg.height)
-    if npoints <= 0:
-        return np.zeros((0, 3), dtype=np.float64)
-    raw = np.frombuffer(msg.data, dtype=np.uint8)
-    npoints = min(npoints, raw.size // int(msg.point_step))
-    if npoints <= 0:
-        return np.zeros((0, 3), dtype=np.float64)
-    cloud = np.zeros((npoints, 3), dtype=np.float32)
-    for i, name in enumerate(("x", "y", "z")):
-        off = fields[name].offset
-        cloud[:, i] = np.frombuffer(
-            msg.data, dtype=np.float32, count=npoints,
-            offset=off)[0:npoints] if msg.point_step == 12 else \
-            raw[off::msg.point_step][:npoints].view(np.float32)
-    return cloud.astype(np.float64)
+class _K:
+    def __init__(self, info):
+        self.fx = float(info.k[0])
+        self.fy = float(info.k[4])
+        self.cx = float(info.k[2])
+        self.cy = float(info.k[5])
 
 
 class CaptureNode(Node):
@@ -85,6 +63,8 @@ class CaptureNode(Node):
         self.frame_seq = 0
         self.rows = []
         self.raw_buffer = OrderedDict()
+        self.info_buffer = OrderedDict()
+        self.last_info = None
         self.raw_lock = threading.Lock()
         self.det_frames = []
         self.det_lock = threading.Lock()
@@ -95,8 +75,11 @@ class CaptureNode(Node):
         stream_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         self.create_subscription(
-            PointCloud2, "/luggage/preprocessed/camera/depth/points",
-            self._cloud_cb, stream_qos)
+            Image, "/luggage/preprocessed/camera/depth/image",
+            self._depth_cb, stream_qos)
+        self.create_subscription(
+            CameraInfo, "/luggage/preprocessed/camera/depth/camera_info",
+            self._info_cb, stream_qos)
         self.create_subscription(
             DetectionFrame, "/luggage/perception/detection_frame",
             self._det_cb, stream_qos)
@@ -105,31 +88,44 @@ class CaptureNode(Node):
         self.workspace = (
             tuple(args.workspace_center), tuple(args.workspace_half))
 
-    def _cloud_cb(self, msg):
+    def _depth_cb(self, msg):
         key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
         with self.raw_lock:
             self.raw_buffer[key] = msg
             while len(self.raw_buffer) > 24:
                 self.raw_buffer.popitem(last=False)
 
+    def _info_cb(self, msg):
+        key = (msg.header.stamp.sec, msg.header.stamp.nanosec)
+        with self.raw_lock:
+            self.last_info = msg
+            self.info_buffer[key] = msg
+            while len(self.info_buffer) > 24:
+                self.info_buffer.popitem(last=False)
+
     def _det_cb(self, msg):
         with self.det_lock:
             self.det_frames.append(msg)
             self.det_frames = self.det_frames[-40:]
 
-    def _pop_cloud(self, key, attempts=6, period=0.05):
+    def _pop_depth(self, key, attempts=6, period=0.05):
         for _ in range(attempts):
             with self.raw_lock:
                 msg = self.raw_buffer.get(key)
-            if msg is not None:
-                return msg
+                info = self.info_buffer.get(key) or self.last_info
+            if msg is not None and info is not None:
+                return msg, info
             time.sleep(period)
-        return None
+        return None, None
 
-    def _cloud_world(self, msg):
-        pts = cloud_points_from_msg(msg)
-        if pts is None or not len(pts):
+    def _depth_world(self, msg, info):
+        depth = depth_array_from_msg(msg)
+        if depth is None:
             return None
+        pts, n = deproject_stride(depth, _K(info), stride=2)
+        if n == 0:
+            return None
+        pts = np.asarray(pts, dtype=np.float64)
         pts = pts[np.isfinite(pts).all(axis=1)]
         if not len(pts):
             return None
@@ -179,7 +175,7 @@ class CaptureNode(Node):
 
     def capture_frame(self, fr, trial, gt):
         key = (fr.header.stamp.sec, fr.header.stamp.nanosec)
-        cloud_msg = self._pop_cloud(key)
+        cloud_msg, info = self._pop_depth(key)
         row = {
             "frame_seq": int(fr.frame_seq),
             "trial": int(trial),
@@ -193,11 +189,11 @@ class CaptureNode(Node):
             "production_support_z": float(fr.support_z),
             "production_top_z": float(
                 fr.box.top_surface_pose.position.z),
-            "cloud_found": cloud_msg is not None,
+            "cloud_found": cloud_msg is not None and info is not None,
         }
         top = None
-        if cloud_msg is not None and fr.pca_valid:
-            world = self._cloud_world(cloud_msg)
+        if cloud_msg is not None and info is not None and fr.pca_valid:
+            world = self._depth_world(cloud_msg, info)
             if world is not None:
                 top = self._top_from_frame(fr)
                 row.update({

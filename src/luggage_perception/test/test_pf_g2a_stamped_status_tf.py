@@ -331,6 +331,41 @@ class TestSemanticStampedTfLookup(unittest.TestCase):
         self.assertTrue(all(ns == 1234567000000 for ns in buffer.calls))
         # And the retry is bounded (no infinite loop; we returned).
 
+    def test_newer_tf_present_exact_stamp_missing_has_no_fallback(self):
+        """DS3-C2: a newer TF must not rescue a missing exact-stamp lookup."""
+        from geometry_msgs.msg import TransformStamped
+        from tf2_ros import TransformException
+        import rclpy
+
+        class NewerOnlyBuffer(object):
+            def __init__(self):
+                self.calls = []
+
+            def lookup_transform(self, target, source, time,
+                                 timeout=None):
+                ns = int(time.nanoseconds)
+                self.calls.append(ns)
+                if ns == 0:
+                    msg = TransformStamped()
+                    msg.transform.rotation.w = 1.0
+                    return msg
+                raise TransformException(
+                    "exact stamp missing; newer TF exists")
+
+        buffer = NewerOnlyBuffer()
+        node, _ = self._node(buffer)
+
+        class FakeStamp(object):
+            sec, nanosec = 42, 100000000
+        result = node._lookup_rt("world", "camera_depth_optical_frame",
+                                 FakeStamp())
+        self.assertIsNone(result)
+        self.assertGreaterEqual(len(buffer.calls), 1)
+        self.assertNotIn(0, buffer.calls)
+        self.assertTrue(all(ns == 42100000000 for ns in buffer.calls))
+        self.assertIsInstance(
+            rclpy.time.Time(seconds=0, nanoseconds=0), rclpy.time.Time)
+
 
 if __name__ == "__main__":
     unittest.main()
