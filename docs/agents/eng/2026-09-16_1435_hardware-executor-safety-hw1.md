@@ -4,12 +4,12 @@
 - agent: codex
 - model: gpt-5
 - cli: codex
-- status: open
+- status: done
 - parent: HW-EXECUTOR-SAFETY-20260916
 - subtask: HW-1
 - base_revision: 558731137bf3f39a7d69bdae0f0cb42e7f01a7a8
 - started_at: 2026-09-16T14:13:44+08:00
-- completed_at: n/a
+- completed_at: 2026-09-16T14:50:36+08:00
 
 ## Summary
 
@@ -41,11 +41,18 @@ at 80 percent. Real-cell motion remains operator-gated and not evaluated.
 - `colcon build --packages-select elfin_trajectory_executor --symlink-install`:
   pass; setuptools reports the pre-existing `tests_require` warning.
 - `colcon test --packages-select elfin_trajectory_executor`: 61 passed.
-- Clean-commit verification: pending.
+- Clean worktree at `4d4491ca3ed365a1bb7f6399ca2619ee06aac58f`:
+  61 pytest cases passed, package build passed, package colcon test passed,
+  `git diff --check` passed, and the worktree stayed clean.
+- Real-cell qualification: `not_evaluated`; no CPS, Gazebo, or physical robot
+  process was started.
 
 ## Result
 
-- pending clean-commit verification and evidence.
+- pass for the authorized software-only scope at
+  `4d4491ca3ed365a1bb7f6399ca2619ee06aac58f`.
+- Evidence:
+  `docs/status/evidence/hardware_executor_safety/20260916_1447_clean_4d4491c/`.
 
 ## Pointers
 

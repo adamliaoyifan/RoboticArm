@@ -1,0 +1,40 @@
+{
+  "schema": "hardware_executor_safety_evidence/v1",
+  "case_id": "HW-EXECUTOR-SAFETY-20260916-HW-1-clean",
+  "stage": "offline executor safety verification",
+  "started_at": "2026-09-16T14:46:10+08:00",
+  "completed_at": "2026-09-16T14:47:35+08:00",
+  "git_commit": "4d4491ca3ed365a1bb7f6399ca2619ee06aac58f",
+  "dirty_count": 0,
+  "environment": {
+    "ros_distribution": "humble",
+    "workspace": "/tmp/elfin_hw1_clean_4d4491c",
+    "profile": "software-only; internal SimInterface; no Gazebo; no CPS; no real motion",
+    "ros_log_dir": "/tmp/elfin_hw1_clean_logs"
+  },
+  "results": {
+    "pytest": "61 passed",
+    "colcon_build": "pass",
+    "colcon_test": "61 passed",
+    "git_diff_check": "pass",
+    "real_cell": "not_evaluated"
+  },
+  "known_environment_messages": [
+    "setuptools warns that tests_require is an unknown distribution option",
+    "sandboxed DDS reports getifaddrs/socket permission messages while loopback ROS action tests still pass"
+  ],
+  "contract_check": {
+    "outcome": "pre_existing_repository_failure",
+    "primary_workspace_issue_count": 9,
+    "clean_worktree_note": "ignored agent coordination files are absent from the commit, so the clean checkout cannot run the full coordination checker"
+  },
+  "artifacts": [
+    "RESULT.md",
+    "dump_matrix.md",
+    "manifest.json"
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "missing_items": [],
+  "teardown_status": "all ROS test nodes and executors shut down; no Gazebo or hardware process started"
+}
