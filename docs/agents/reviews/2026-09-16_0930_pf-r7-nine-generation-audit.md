@@ -12,6 +12,29 @@
 - commits: `0ff903b` (launch fix and rehearsal tooling), `cbcdfe9` (generation 10 plan)
 - evidence: `docs/status/evidence/platform_free_height/2026-09-16_startup_rehearsal/RESULT.md`
 
+## Summary
+
+Nine PF-R7 generations found zero product defects. All three scored failures
+were defects in the measuring instrument; the other six stops were sample
+supply, environment contamination, or infrastructure. The three infrastructure
+generations shared one never-diagnosed fault: `gz_ros2_control` 0.7.21 loses
+its single non-retrying URDF parameter reply on roughly one launch in ten and
+then blocks forever. A ten-launch rehearsal locates the failure at
+`plugin_urdf_not_received` and shows `robot_state_publisher` answering within
+1.21 s every time, which refutes the premise all three generations were built
+on. The launch now bounds that race instead of reordering around it, and
+generation 10 redefines the acceptance aggregation, seed supply, C2 sampling
+and infrastructure budget while keeping every per-frame product threshold.
+
+## Pointers
+
+- `docs/plans/pf_r7_generation10_acceptance_redefinition.md`
+- `docs/agents/discuss/2026-09-16_0930_pf-r7-generation10-acceptance-redefinition.md`
+- `docs/status/evidence/platform_free_height/2026-09-16_startup_rehearsal/RESULT.md`
+- `scripts/sim_startup_rehearsal.sh`
+- `src/luggage_gazebo/test/test_startup_probe.py`
+- `.cursor/rules/sim-lifecycle.mdc`
+
 ## Finding 1: nine generations, zero product defects
 
 Between 2026-09-14 18:28 and 2026-09-16 09:13, PF-R7 ran nine generations and
