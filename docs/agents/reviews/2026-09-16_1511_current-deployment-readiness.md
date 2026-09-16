@@ -50,6 +50,7 @@ also remain unqualified.
 
 ## Pointers
 
+- `docs/status/20260916_current_repo_capabilities.md`
 - `docs/architecture/production_orchestration.md`
 - `docs/plans/sim_r1_production_orchestrator_exploration.md`
 - `docs/plans/elfin_real_trajectory_hardware_acceptance.md`
