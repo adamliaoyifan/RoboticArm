@@ -190,7 +190,7 @@ def test_baseline_failure_replays_as_plugin_urdf_not_received():
     """The stock-master failure: S20 spawned, plugin connected, then silence.
 
     Neither the success line nor the plugin's own retry line is present, which
-    is only reachable by blocking inside the discarded-wait_for get().
+    matches the plugin waiting indefinitely for its parameter future.
     """
     summary = json.loads((BASELINE / "rehearsal_summary.json").read_text())
     failures = [r for r in summary["iteration_records"] if not r["ok"]]

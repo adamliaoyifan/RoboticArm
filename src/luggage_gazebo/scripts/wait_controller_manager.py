@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """Bounded watchdog for the gz_ros2_control controller_manager.
 
-``gz_ros2_control`` 0.7.21 fetches the model URDF with a single
-``AsyncParametersClient::get_parameters`` call whose ``wait_for`` result is
-discarded before ``get()`` is called. When that ~22 KB reply is lost the
-plugin blocks forever: it logs ``connected to service!!`` and then neither
+The installed ``gz_ros2_control`` 0.7.20 fetches the model URDF with one
+``AsyncParametersClient::get_parameters`` call and then waits indefinitely on
+the returned future. In one of twenty measured launches that future did not
+complete: the plugin logged ``connected to service!!`` and then neither
 ``Received URDF from param server`` nor its own retry message, and the
-controller manager is never constructed. Measured on this workspace at roughly
-one launch in ten (see
+controller manager was never constructed. The transport/executor cause below
+that observed boundary was not isolated (see
 ``docs/status/evidence/platform_free_height/2026-09-16_startup_rehearsal/``).
 
 The plugin cannot be made to retry from here, so this watchdog makes the hang
