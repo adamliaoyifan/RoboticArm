@@ -13,6 +13,7 @@ install(DIRECTORY launch worlds models config rviz
 install(PROGRAMS
   scripts/pickup_box_spawner_node.py
   scripts/depth_image_republisher.py
+  scripts/camera_info_alias.py
   scripts/observe_pose_hold.py
   scripts/scene_viz_node.py
   scripts/pick_retreat_eval_driver.py
@@ -29,6 +30,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(place_metrics_pytest test/test_place_metrics.py)
   ament_add_pytest_test(place_gt_dump_pytest test/test_place_gt_dump.py)
   ament_add_pytest_test(sim_livox_bridge_pytest test/test_sim_livox_bridge.py)
+  ament_add_pytest_test(depth_image_republisher_pytest test/test_depth_image_republisher.py)
   ament_add_pytest_test(place_only_fixture_pytest test/test_place_only_fixture.py)
   ament_add_pytest_test(startup_probe_pytest test/test_startup_probe.py)
 endif()

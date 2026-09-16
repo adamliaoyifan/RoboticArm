@@ -19,6 +19,16 @@ class TestSimLivoxBridge(unittest.TestCase):
         )
         self.assertIn('("/livox/scan/points", "/livox/lidar")', text)
 
+    def test_camera_points_bridge_absent(self):
+        with open(LAUNCH, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertNotIn(
+            "/d435/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked",
+            text,
+        )
+        self.assertNotIn('("/d435/points", "/camera/depth/points")', text)
+        self.assertIn("camera_info_alias.py", text)
+
     def test_rviz_shows_livox_cloud(self):
         with open(RVIZ, encoding="utf-8") as handle:
             text = handle.read()
