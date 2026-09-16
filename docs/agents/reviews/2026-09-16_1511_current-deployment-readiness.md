@@ -25,11 +25,13 @@ The single-box pickup procedure is explicit but not a general autonomous pick
 selection policy: it uses the first detector result and its valid top surface.
 Its diagnostic driver releases vacuum on a later segment failure or process
 exit, which is incompatible with the production carry-fault invariant and must
-not be treated as the production orchestrator. Placement candidate generation,
-hard constraints, scoring, and deterministic ranking are substantially clear
-and have place-only simulation evidence, but real sensor/map integration,
-failure semantics, commit/verification, and hardware execution remain
-unqualified.
+not be treated as the production orchestrator. Placement candidate generation
+and hard constraints are substantially clear and have place-only simulation
+evidence, but the policy is not singular: the ROS 2 service calls
+`placement_solver.solve_placement`, while the offline path described as the
+production scorer calls `placement_scoring.score_candidates`. Real sensor/map
+integration, failure semantics, commit/verification, and hardware execution
+also remain unqualified.
 
 ## Risks
 
@@ -41,7 +43,8 @@ unqualified.
 - The current hardware pick driver is commissioning tooling, not a safe
   carrying-fault controller; automatic vacuum release can drop a payload.
 - Placement currently conflates invalid input/no feasible candidate with
-  `BIN_FULL`, and full geometry-hash/map-revision orchestration is incomplete.
+  `BIN_FULL`; the online and offline scoring paths differ; and full
+  geometry-hash/map-revision orchestration is incomplete.
 - Real Gate 5 remains unaccepted; the last recorded cell attempt failed at
   attach before vacuum enable.
 
