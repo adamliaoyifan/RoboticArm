@@ -312,7 +312,8 @@ def owner_message(row: dict[str, str], session: dict[str, str]) -> str:
             f"- thread: docs/agents/discuss/{row['thread']}",
             f"- request: {row['request']}",
             "",
-            "Read AGENTS.md, docs/agents/discuss/OPEN.md, and the thread. "
+            "Read docs/agents/INDEX.md, the assigned thread, and only its "
+            "indexed pointers; do not read the full OPEN.md. "
             "Run scripts/agent_start.sh before editing, then implement, test, "
             "repair failures, write evidence, and close with scripts/agent_complete.sh.",
             "",

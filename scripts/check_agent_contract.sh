@@ -31,6 +31,7 @@ check_required_files() {
   local file
   for file in \
     AGENTS.md \
+    docs/agents/INDEX.md \
     docs/agents/README.md \
     docs/agents/FORMAT.md \
     docs/agents/RUNTIME.md \

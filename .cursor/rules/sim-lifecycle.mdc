@@ -39,6 +39,82 @@ and evidence.
 - When several agents need sim time, serialize through the `discuss/` thread
   that owns the run; do not race on `OPEN.md` rows.
 
+## Clean-room gate before every experiment
+
+A stopped launch is not proof that the machine is clean. A visualization,
+replay, or prior eval can leave `clock_bridge` / `camera_bridge`
+(`ros_gz_bridge/parameter_bridge`) reparented to systemd. These processes are
+outside the launch tree and are not currently matched by `stop_sim.sh`. They
+can survive into the next run, publish a second `/clock`, double the camera
+traffic, and starve GPU inference without any model or weight failure.
+
+Before **each** scored run or streak slot:
+
+1. Stop the preceding test/replay driver, then run `scripts/stop_sim.sh` for
+   its launch tree. Do this between consecutive runs, not only at the end of
+   the streak.
+2. Inspect for residual sim and bridge processes with a bounded command such
+   as
+   `pgrep -af 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge|parameter_bridge|clock_bridge|camera_bridge'`.
+   A process reparented to PID 1/systemd is still a live residual. Gracefully
+   terminate only processes proven to belong to the completed repo eval; do
+   not kill a user's or another agent's stack.
+3. Before the next launch, require zero prior sim `/clock` publishers and no
+   prior eval process using GPU compute. After launch, require exactly one
+   `/clock` publisher. Also sanity-check the expected camera and inference
+   rates before accepting timing or performance evidence.
+4. If there are two `/clock` publishers, unexpectedly doubled camera rate, or
+   collapsed inference rate, stop and clean the stack. Mark that run
+   contaminated; do not diagnose weights, tune thresholds, or count it toward
+   a consecutive-pass gate.
+
+PF-R10 reference signature: orphan bridges produced two `/clock` publishers,
+about 50 Hz camera traffic, and about 1 Hz YOLO. With exclusive teardown the
+same workload held one `/clock` publisher and about 29 Hz YOLO, showing that
+the earlier slowdown was resource contention rather than lost weights.
+
+## Rehearse startup before spending a scored slot
+
+A launch that never reaches a ready stack has not tested the product. Treat
+startup as its own deterministic subsystem with its own loop.
+
+- Use `scripts/sim_startup_rehearsal.sh` to repeat launch, staged readiness and
+ teardown without scoring anything. It writes no campaign verdict, so it is
+ not bound by a one-scored-run budget.
+- Observe every stage with one persistent probe under one clock, measuring each
+ stage's deadline from the moment its predecessor completed. Two probes on two
+ clocks produce deadlines that expire against work the gate does not own.
+- Do not poll readiness with `ros2 param get` / `ros2 node list` in a loop.
+ Each call builds and destroys a node, costs seconds, and adds discovery churn
+ to the window a startup race is already losing in.
+- The installed `gz_ros2_control` 0.7.20 fetches the model URDF with one
+ parameter request and waits indefinitely for that future. One of twenty
+ measured launches left the future incomplete; the transport/executor cause
+ below that boundary was not isolated. The signature is
+ `connected to service!!` with neither `Received URDF from param server` nor
+ the plugin's own retry line. The launch aborts this as
+ `startup_failed: plugin_urdf_not_received` within
+ `startup_watchdog_sec`; relaunch, and do not rebuild the ordering again.
+ Evidence: `docs/status/evidence/platform_free_height/2026-09-16_startup_rehearsal/`.
+- Pre-scoring startup attempts are bounded by wall clock, not by a fixed
+ restart count, provided zero cases were attempted, hashes are unchanged, T2
+ for the failed startup is complete, and residuals are zero. After the first
+ scored case starts, no restart is permitted.
+
+## Preserve failed cases before teardown
+
+Teardown must not erase the only useful copy of a failure. Follow the shared
+tiered capture and perception/planning boundary rules in
+`.cursor/rules/debug-evidence.mdc`. Every scored sim plan must define its dump
+matrix before launch. On failure, freeze and flush the required trigger window
+under `docs/status/evidence/<topic>/<run>/` before stopping or replacing the
+stack.
+
+If only the final metric or `summary.json` was captured, mark the failure as
+incomplete evidence. Add the missing trigger/ring-buffer capture before
+rerunning the same gate; repeated uninstrumented failures waste the exclusive
+sim slot and are not acceptable diagnosis work.
+
 ## Do not
 
 - Stop a sim the user launched and is still using.

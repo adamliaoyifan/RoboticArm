@@ -88,3 +88,7 @@ spawn. Do not run G9 again; no higher generation is dispatched by this review.
   supersedes under user authority and is additionally permitted to redefine
   acceptance aggregation, seed supply, C2 sampling and the infrastructure
   budget; per-frame product thresholds stay unchanged. Do not run G9 again.
+## StopAck -- test/cursor -- 2026-09-16 10:18 -- cursor/grok-4.6
+
+- acknowledged_at: 2026-09-16T10:18:09+08:00
+- reason: G9 superseded by G10; StopAck before claiming Q-20260916-1. G9 will not be resumed or relaunched.

@@ -1,0 +1,123 @@
+---
+description: Tiered, replayable failure dumps for perception and planning
+alwaysApply: true
+---
+
+# Debug evidence and dump granularity
+
+The purpose of a dump is to locate the first divergent stage and reproduce the
+failed case without another blind experiment. Do not dump every internal value
+from every module. The default unit is:
+
+`case identity x pipeline stage boundary x bounded trigger window`.
+
+Stage boundaries are the inputs/outputs and join points between components.
+Module-internal dumps are an escalation after boundary evidence identifies a
+suspect module, not the default capture level.
+
+## Required capture tiers
+
+- **T0 -- manifest and result, every run:** commit and dirty count, case ID,
+  config and seed/generated parameters, environment/profile, commands,
+  start/end time, metric result, artifact inventory, and teardown status.
+- **T1 -- lightweight boundary trace, every scored case:** timestamp, frame and
+  request IDs, stage name, input/output identity, dimensions/counts, state and
+  reason code, latency/rate, drop/join/buffer counters, and resource summaries.
+  This trace must be cheap enough to remain enabled during scoring.
+- **T2 -- failure-triggered replay bundle:** keep a bounded ring buffer; on a
+  threshold failure, timeout, error reason, crash, or invariant violation,
+  freeze the failing stage plus the minimum upstream input and downstream
+  observation required to reproduce and localize it. Save a pre/post window
+  sized by the plan from measured pipeline latency; do not choose an arbitrary
+  whole-run dump.
+- **T3 -- focused internal dump:** only when T2 localizes but cannot explain the
+  fault. On the next instrumented attempt, enable internals for the named
+  suspect module and case, such as RANSAC candidates, mask components, IK
+  candidates, collision contacts, or planner search diagnostics. Record that
+  this run has debug overhead and do not compare its timing to a clean score.
+
+If the first failing stage is not yet known, T2 covers each stage boundary,
+not every internal variable. Once known, narrow subsequent capture to that
+stage, one upstream boundary, and the necessary downstream proof. A plan may
+reduce sampling rate, window length, or use compression/chunking to meet an
+explicit I/O and disk budget, but it may not omit replay-critical data.
+
+## Dump matrix required in every eval plan
+
+Before dispatch, the plan must state for every relevant boundary:
+
+| Boundary | T1 trace | Failure trigger | T2/T3 payload | Pre/post window | Format and size budget | Replay/inspection command |
+|---|---|---|---|---|---|---|
+
+The plan must also define maximum per-run and total retained size, compression,
+cleanup/retention policy, expected capture overhead, and a capture-health gate.
+A run is incomplete evidence if required artifacts are absent, truncated,
+unjoinable, or the manifest says replay is impossible.
+
+## Common bundle
+
+Every failure bundle under `docs/status/evidence/<topic>/<run>/` must include:
+
+- a manifest with exact case/stage, first observed failure, commit/dirty state,
+  config, seed or generated-case parameters, clock domain, artifact paths,
+  capture window, sizes, missing items, and `capture_complete` /
+  `replay_possible` status;
+- the exact boundary input or a lossless serialized equivalent, boundary
+  output, timestamps and join IDs, state/reason codes, relevant parameters,
+  logs, scored summary, and resource/timing trace;
+- enough upstream context to recreate the boundary input and enough downstream
+  evidence to prove the observed failure;
+- a bounded ROS/IPC capture when independent messages must be time-aligned.
+
+Write truth/reference data separately from online inputs so a replay cannot
+accidentally feed Gazebo or evaluation truth into production logic. Flush and
+verify the manifest before teardown, overwrite, or rerun.
+
+## Perception boundary payloads
+
+Use these boundaries unless the plan defines a more precise pipeline:
+
+1. sensor ingest;
+2. stamp synchronization, TF resolution, and motion compensation;
+3. RGB/depth preprocessing;
+4. segmentation;
+5. mask/cloud filtering and joins;
+6. support/top/3D geometry detection;
+7. published detection and consumer input.
+
+T2 normally preserves the bounded raw RGB, depth, camera info, point cloud and
+TF window; synchronized observations; masks and confidence/class metadata;
+filtered/cargo clouds; support and geometry candidates; final detection;
+per-stage stamps/frame IDs/generation IDs; queue occupancy, drops and reason
+codes. Save GT pose/size and errors in a separate reference record. T3 may add
+module internals only for the localized suspect, for example mask components,
+RANSAC samples/inliers, rejected clusters, or PCA inputs/eigenvalues.
+
+## Planning and execution boundary payloads
+
+Use these boundaries unless the plan defines a more precise pipeline:
+
+1. detected object and placement request;
+2. candidate/waypoint generation;
+3. TF, robot-state, and PlanningScene snapshot;
+4. IK, Cartesian path, collision checking, or MoveGroup request/response;
+5. selected and time-parameterized trajectory;
+6. controller execution and settling;
+7. attach/vacuum/release, placement commit, and orchestrator transition.
+
+T2 normally preserves the complete detected object; original and transformed
+targets/waypoints; joint state and IK seed; relevant TF at the request stamp;
+normalized container descriptor and `geometry_hash`; oriented payload and swept
+geometry; collision objects, attached objects, octomap/cargo map and Allowed
+Collision Matrix; every attempted placement candidate and rejection reason;
+exact MoveIt request/response, planner/group/end-effector IDs, constraints,
+tolerances, timeouts, error codes, Cartesian fraction and fallback decision;
+planned trajectory; controller goal/result and timestamped planned-versus-
+actual joint trace; final pose/settling error; request IDs, state transitions,
+vacuum/attachment state, and commit outcome. T3 may add only localized planner
+internals such as all IK candidates, collision contacts/distances, constraint
+evaluations, or search diagnostics.
+
+Do not classify `PLACE_CANDIDATE_EXHAUSTED` as `BIN_FULL`: retain every tried
+candidate so planning infeasibility remains distinguishable from packing
+capacity.
