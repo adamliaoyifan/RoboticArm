@@ -44,7 +44,7 @@ dynamic_top:
   min_plane_points_frac: 0.15
   min_plane_inliers: 80
   plane_group_tol_m: 0.008
-  refit_iterations: 3
+  refit_iterations: 8
   dedupe_angle_deg: 2.0
   dedupe_height_m: 0.009
   min_support_area_ratio: 0.60
@@ -104,6 +104,53 @@ matrices:
     pickup_xy_variants: [[0.0, 0.0], [-1.0, 0.0], [5.0, -3.0]]
     half_extent_variants: [0.1, 5.0]
     numeric_tolerance: 1.0e-9
+  b1:
+    footprints_m: [0.08, 0.12, 0.18]
+    tilts_deg: [0, 3, 6]
+    noise_sigma_mm: [0, 1, 2]
+    yaws_deg: [0, 30, 60]
+    seeds: [11, 29, 47]
+    thresholds:
+      present_rate_overall: 0.99
+      present_rate_low_noise: 1.00
+      on_surface_rate: 1.00
+      normal_p95_deg: 2.0
+      normal_max_deg: 4.0
+  b2:
+    steps_mm: [2, 4, 5, 6, 10, 20]
+    boundary_angles_deg: [0, 45, 90]
+    boundary_offsets_mm: [-40, 0, 40]
+    seeds: [11, 29, 47]
+    footprint_m: 0.18
+    thresholds:
+      unsafe_accept_count: 0
+  b3:
+    interior_positions: [[-1.0, 0.0], [-1.12, 0.08], [-0.88, 0.08],
+                         [-1.12, -0.08], [-0.88, -0.08]]
+    edge_position: [-1.20, 0.0]
+    yaws_deg: [0, 30, 60]
+    seeds: [11, 29, 47]
+    footprint_m: 0.18
+    thresholds:
+      interior_on_island: 36
+      edge_fail_closed: 9
+  b4:
+    kinds: [ridge, fold, seam, sparse, checkerboard, too_small]
+    seeds: [11, 29, 47, 53, 71]
+    footprint_m: 0.18
+    thresholds:
+      zero_candidate_cases: 30
+  b6:
+    repeat_count: 20
+    numeric_tolerance: 1.0e-12
+    max_accepted: 5
+    max_rejected: 64
+    evaluator_p95_ms: 50.0
+    soak_seconds: 1200
+    rss_slope_mib_per_min: 2.0
+  b7:
+    fixture: test/fixtures/suction_b7/golden.json
+    pixel_tolerance: 2.0
 
 pipeline:
   min_confidence: 0.70

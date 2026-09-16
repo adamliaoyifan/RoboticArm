@@ -138,6 +138,35 @@ class NadirRenderer(object):
             depth[missing] = 0.0
         return np.clip(np.round(depth), 0, 65535).astype(np.uint16)
 
+    def render_height_field(self, poly, z_func, noise_sigma_mm=2.0,
+                            missing_frac=0.05, outlier_frac=0.02, seed=0):
+        """Rasterize a deterministic height field z(x, y) over ``poly``.
+
+        The (x, y) used for the field sample are evaluated at the
+        reference plane through the field's mean height; the sub-mm
+        parallax of the field's own variation is scene texture, not
+        geometry (B3's bumpy base).
+        """
+        rng = np.random.default_rng(seed)
+        shape = (self.camera["height"], self.camera["width"])
+        z_ref = float(np.mean([
+            z_func(np.array([p[0]]), np.array([p[1]]))[0]
+            for p in poly]))
+        wx, wy = self.world_xy_at(z_ref)
+        z = z_func(wx, wy)
+        inside = self._inside(wx, wy, poly)
+        depth = np.zeros(shape, dtype=np.float64)
+        depth[inside] = (self.camera["optical_to_world"][2][3] - z[
+            inside]) * 1000.0
+        seen = depth > 0
+        if noise_sigma_mm > 0:
+            depth[seen] += rng.normal(0.0, noise_sigma_mm,
+                                      size=int(seen.sum()))
+        if missing_frac > 0:
+            missing = (rng.random(shape) < missing_frac) & seen
+            depth[missing] = 0.0
+        return np.clip(np.round(depth), 0, 65535).astype(np.uint16)
+
     @staticmethod
     def _inside(wx, wy, poly):
         inside_pos = np.ones(wx.shape, dtype=bool)
@@ -150,6 +179,60 @@ class NadirRenderer(object):
             inside_pos &= cross >= 0.0
             inside_neg &= cross <= 0.0
         return inside_pos | inside_neg
+
+    def render_planes(self, planes, noise_sigma_mm=2.0, missing_frac=0.05,
+                      outlier_frac=0.02, seed=0, hole_poly=None):
+        """Ray-cast arbitrary 3-D planes (B1 tilts, B2 steps).
+
+        ``planes``: list of ``(normal_world, d_world, poly)`` where the
+        plane is ``n . p + d = 0`` and ``poly`` bounds the patch in world
+        XY. Highest hit wins per pixel (nadir camera). The horizontal
+        special case reproduces :meth:`render` exactly (B-suite
+        cross-check).
+        """
+        cam = self.camera
+        origin = np.array([cam["optical_to_world"][0][3],
+                           cam["optical_to_world"][1][3],
+                           cam["optical_to_world"][2][3]])
+        uu, vu = np.meshgrid(np.arange(cam["width"]),
+                             np.arange(cam["height"]))
+        dx = (uu - cam["cx"]) / cam["fx"]
+        dy = (vu - cam["cy"]) / cam["fy"]
+        # optical (dx, dy, 1) -> world direction via the fixture rotation
+        # diag(1, -1, -1).
+        dirs = np.stack((dx, -dy, -np.ones_like(dx)), axis=-1)
+        rng = np.random.default_rng(seed)
+        shape = (cam["height"], cam["width"])
+        depth = np.zeros(shape, dtype=np.float64)
+        zbuffer = np.full(shape, np.inf)
+        for normal, d, poly in planes:
+            normal = np.asarray(normal, dtype=np.float64)
+            denom = dirs @ normal
+            with np.errstate(divide="ignore", invalid="ignore"):
+                t = -(origin @ normal + d) / denom
+            hit = origin[None, None, :] + t[..., None] * dirs
+            valid = np.isfinite(t) & (t > 0.0)
+            wx, wy = hit[..., 0], hit[..., 1]
+            valid &= self._inside(wx, wy, poly)
+            # The camera looks down: smaller optical depth t wins.
+            closer = valid & (t < zbuffer)
+            zbuffer = np.where(closer, t, zbuffer)
+            depth = np.where(closer, t, depth)
+        depth *= 1000.0
+        if hole_poly is not None:
+            wx, wy = self.world_xy_at(self.camera["platform_z"] + 0.30)
+            depth[self._inside(wx, wy, hole_poly)] = 0.0
+        seen = depth > 0
+        if noise_sigma_mm > 0:
+            depth[seen] += rng.normal(0.0, noise_sigma_mm,
+                                      size=int(seen.sum()))
+        if outlier_frac > 0:
+            out = (rng.random(shape) < outlier_frac) & seen
+            depth[out] += rng.uniform(-80.0, 80.0, size=int(out.sum()))
+        if missing_frac > 0:
+            missing = (rng.random(shape) < missing_frac) & seen
+            depth[missing] = 0.0
+        return np.clip(np.round(depth), 0, 65535).astype(np.uint16)
 
 
 def box_polygon(size_wh, center_xy, yaw_deg):
@@ -419,3 +502,217 @@ def cam_px(renderer, world_xy, z_world):
     oz = cam["optical_to_world"][2][3] - z_world
     return cam["fx"] * (world_xy[0] - cam["optical_to_world"][0][3]) \
         / oz + cam["cx"]
+
+
+def _clip_poly_halfplane(poly, a, b, c):
+    """Sutherland-Hodgman clip of a convex poly by a*x + b*y + c >= 0."""
+    out = []
+    n = len(poly)
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+        d0 = a * x0 + b * y0 + c
+        d1 = a * x1 + b * y1 + c
+        if d0 >= 0:
+            out.append((x0, y0))
+        if (d0 >= 0) != (d1 >= 0):
+            t = d0 / (d0 - d1)
+            out.append((x0 + t * (x1 - x0), y0 + t * (y1 - y0)))
+    return out
+
+
+def _surface_poly(center_xy, size_wh, yaw_deg):
+    return box_polygon(size_wh, center_xy, yaw_deg)
+
+
+def make_b1_case(renderer, tilt_deg, yaw_deg, noise_sigma_mm, seed, stamp,
+                 size_wh=(0.55, 0.40), height=0.25):
+    """Plan B1: uniformly planar (possibly tilted) box top.
+
+    Returns (SyntheticCase, gt_normal_world). The bbox stays the
+    true-projection +10% box; the footprint dimension is an evaluator
+    configuration, not part of the scene.
+    """
+    top_z = DEFAULT_CAMERA["platform_z"] + height
+    poly = _surface_poly((-1.0, 0.0), size_wh, yaw_deg)
+    tilt = math.radians(tilt_deg)
+    normal = np.array([0.0, -math.sin(tilt), math.cos(tilt)])
+    d = -float(normal @ np.array([-1.0, 0.0, top_z]))
+    depth = renderer.render_planes(
+        [((0.0, 0.0, 1.0), -DEFAULT_CAMERA["platform_z"],
+          [tuple(p) for p in DEFAULT_CAMERA["platform_poly"]]),
+         (tuple(normal), d, poly)],
+        noise_sigma_mm=noise_sigma_mm, seed=seed)
+    bbox = pixel_bbox(renderer, poly, top_z, expand_frac=0.05)
+    case = SyntheticCase(
+        case_id="b1_t%02d_y%02d_n%d_s%d" % (
+            int(tilt_deg), int(yaw_deg), int(noise_sigma_mm), seed),
+        gate="B1", depth_mm=depth, bbox=bbox, camera=renderer.camera,
+        gt_center_xy=(-1.0, 0.0), gt_top_z=top_z, gt_yaw_deg=float(yaw_deg),
+        gt_size_wh=tuple(size_wh), stamp=stamp, seed=seed,
+        meta={"tilt_deg": tilt_deg, "noise_sigma_mm": noise_sigma_mm})
+    return case, normal
+
+
+def make_b2_case(renderer, step_mm, boundary_angle_deg, boundary_offset_mm,
+                 seed, stamp, noise_sigma_mm=1.0):
+    """Plan B2: two parallel planes whose step crosses the surface.
+
+    The surface (0.55 x 0.40 at the platform, plus platform below) is
+    split by a boundary line at ``boundary_angle_deg`` through the box
+    centre offset by ``boundary_offset_mm`` along the line normal. The
+    far half sits ``step_mm`` higher. Returns (case, gt_step_mm).
+    """
+    top_z = DEFAULT_CAMERA["platform_z"] + 0.25
+    size_wh = (0.55, 0.40)
+    poly = _surface_poly((-1.0, 0.0), size_wh, 0.0)
+    ang = math.radians(boundary_angle_deg)
+    line_dir = np.array([math.cos(ang), math.sin(ang)])
+    line_nrm = np.array([-line_dir[1], line_dir[0]])
+    offset = boundary_offset_mm * 0.001
+    point = np.array([-1.0, 0.0]) + line_nrm * offset
+    c = -float(line_nrm @ point)
+    # half-plane n . p + c >= 0 keeps the "high" side
+    high = _clip_poly_halfplane(poly, line_nrm[0], line_nrm[1], c)
+    low = _clip_poly_halfplane(poly, -line_nrm[0], -line_nrm[1], -c)
+    planes = [((0.0, 0.0, 1.0), -DEFAULT_CAMERA["platform_z"],
+               [tuple(p) for p in DEFAULT_CAMERA["platform_poly"]]),
+              ((0.0, 0.0, 1.0), -top_z, low)]
+    if high:
+        planes.append(((0.0, 0.0, 1.0), -(top_z + step_mm * 0.001), high))
+    depth = renderer.render_planes(planes, noise_sigma_mm=noise_sigma_mm,
+                                   missing_frac=0.05, outlier_frac=0.02,
+                                   seed=seed)
+    bbox = pixel_bbox(renderer, poly, top_z, expand_frac=0.05)
+    case = SyntheticCase(
+        case_id="b2_s%02d_a%02d_o%+03d_%d" % (
+            int(step_mm), int(boundary_angle_deg),
+            int(boundary_offset_mm), seed),
+        gate="B2", depth_mm=depth, bbox=bbox, camera=renderer.camera,
+        gt_center_xy=(-1.0, 0.0), gt_top_z=top_z, gt_yaw_deg=0.0,
+        gt_size_wh=size_wh, stamp=stamp, seed=seed,
+        meta={"step_mm": step_mm, "boundary_angle_deg": boundary_angle_deg,
+              "boundary_offset_mm": boundary_offset_mm})
+    return case, float(step_mm)
+
+
+def make_b3_case(renderer, island_xy, yaw_deg, seed, stamp,
+                 island_size=0.32, bump_amplitude_m=0.004,
+                 bump_wavelength_m=0.15):
+    """Plan B3: uneven base with one flat island that fits the footprint
+    plus margin; ``island_xy`` near an edge makes the margin unavailable.
+
+    The base is a smooth deterministic bump field (amplitude 4 mm,
+    wavelength 0.15 m: any 0.18 m footprint spans a >=8 mm
+    peak-to-valley, so the base itself is never sealable) rendered as a
+    height field; the flat horizontal island floats 10 mm above the base
+    plane centre (beyond the 8 mm plane grouping tolerance, so it is its
+    own plane candidate).
+    """
+    base_z = DEFAULT_CAMERA["platform_z"] + 0.25
+    base_size = (0.55, 0.40)
+    poly = _surface_poly((-1.0, 0.0), base_size, 0.0)
+
+    def z_field(x, y):
+        return base_z + bump_amplitude_m * np.sin(
+            2.0 * math.pi * x / bump_wavelength_m) * np.sin(
+            2.0 * math.pi * y / (bump_wavelength_m * 0.8))
+
+    depth = renderer.render_height_field(
+        poly, z_field, noise_sigma_mm=1.0, seed=seed)
+    island = _surface_poly(island_xy, (island_size, island_size), yaw_deg)
+    island_z = base_z + 0.010
+    # No outlier injection on the island: 2-pixel cells take a median of
+    # only 2-3 samples, and one +-80 mm flyer shifts a cell by half its
+    # magnitude — a false 6 mm+ step on a flat surface.
+    depth_island = renderer.render(
+        [(island_z, island)], noise_sigma_mm=1.0, outlier_frac=0.0,
+        missing_frac=0.02, seed=seed + 1)
+    visible = (depth_island > 0) | (depth > 0)
+    depth = np.where(depth_island > 0, depth_island, depth)
+    del visible
+    bbox = pixel_bbox(renderer, poly, base_z, expand_frac=0.05)
+    return SyntheticCase(
+        case_id="b3_%+d%+d_%d_%d" % (round(island_xy[0] * 100),
+                                     round(island_xy[1] * 100),
+                                     int(yaw_deg), seed),
+        gate="B3", depth_mm=depth, bbox=bbox, camera=renderer.camera,
+        gt_center_xy=island_xy, gt_top_z=island_z,
+        gt_yaw_deg=float(yaw_deg), gt_size_wh=(island_size, island_size),
+        stamp=stamp, seed=seed,
+        meta={"island_xy": island_xy, "island_size": island_size,
+              "base": "bump field 4 mm / 0.15 m"})
+
+
+def make_b4_case(renderer, kind, seed, stamp):
+    """Plan B4: no-seal surfaces (ridge, fold, seam, sparse, checkerboard,
+    undersized). Every candidate must be rejected."""
+    base_z = DEFAULT_CAMERA["platform_z"] + 0.25
+    poly = _surface_poly((-1.0, 0.0), (0.55, 0.40), 0.0)
+    platform = ((0.0, 0.0, 1.0), -DEFAULT_CAMERA["platform_z"],
+                [tuple(p) for p in DEFAULT_CAMERA["platform_poly"]])
+    if kind in ("ridge", "fold"):
+        sign = 1.0 if kind == "ridge" else -1.0
+        # +-6 deg flanks: even after the 25 mm robust smoothing, a
+        # footprint straddling the apex carries ~8-9 mm residual
+        # peak-to-valley (4 deg flanks squeezed under the 6 mm gate).
+        tilt = math.radians(6.0) * sign
+        # A 0.26-wide surface: each flank (0.13 m) cannot host the
+        # footprint even with the coverage gates' slack, so no placement
+        # is sealable.
+        poly = _surface_poly((-1.0, 0.0), (0.26, 0.26), 0.0)
+        n_up = (0.0, -math.sin(tilt), math.cos(tilt))
+        n_dn = (0.0, math.sin(tilt), math.cos(tilt))
+        half_up = _clip_poly_halfplane(poly, 0.0, -1.0, 0.0)
+        half_dn = _clip_poly_halfplane(poly, 0.0, 1.0, 0.0)
+        planes = [platform,
+                  (n_up, -float(np.array(n_up)
+                               @ np.array([-1.0, 0.0, base_z])), half_up),
+                  (n_dn, -float(np.array(n_dn)
+                               @ np.array([-1.0, 0.0, base_z])), half_dn)]
+        depth = renderer.render_planes(planes, noise_sigma_mm=1.0,
+                                       seed=seed)
+    elif kind == "seam":
+        # A 6 mm seam across a 0.30 m surface: each side (0.15 m) cannot
+        # host the 0.18 footprint (0.15/0.18 < the 0.90 valid-cell
+        # slack), so the seam leaves no sealable placement.
+        poly = _surface_poly((-1.0, 0.0), (0.30, 0.30), 0.0)
+        half_up = _clip_poly_halfplane(poly, 0.0, -1.0, 0.0)
+        half_dn = _clip_poly_halfplane(poly, 0.0, 1.0, 0.0)
+        planes = [platform,
+                  ((0.0, 0.0, 1.0), -(base_z + 0.006), half_up),
+                  ((0.0, 0.0, 1.0), -base_z, half_dn)]
+        depth = renderer.render_planes(planes, noise_sigma_mm=1.0,
+                                       seed=seed)
+    elif kind == "sparse":
+        depth = renderer.render(
+            [(base_z, poly)], noise_sigma_mm=1.0, missing_frac=0.5,
+            seed=seed)
+    elif kind == "checkerboard":
+        planes = [platform]
+        cell = 0.03
+        n_cells = int(0.55 / cell)
+        m_cells = int(0.40 / cell)
+        for i in range(n_cells):
+            for j in range(m_cells):
+                x0 = -1.0 - 0.55 / 2 + i * cell
+                y0 = -0.40 / 2 + j * cell
+                sq = [(x0, y0), (x0 + cell, y0), (x0 + cell, y0 + cell),
+                      (x0, y0 + cell)]
+                z = base_z + (0.008 if (i + j) % 2 else 0.0)
+                planes.append(((0.0, 0.0, 1.0), -z, sq))
+        depth = renderer.render_planes(planes, noise_sigma_mm=1.0,
+                                       seed=seed)
+    elif kind == "too_small":
+        small = _surface_poly((-1.0, 0.0), (0.10, 0.10), 0.0)
+        depth = renderer.render([(base_z, small)], noise_sigma_mm=1.0,
+                                seed=seed)
+        poly = small
+    else:
+        raise ValueError("unknown B4 kind %r" % kind)
+    bbox = pixel_bbox(renderer, poly, base_z, expand_frac=0.05)
+    return SyntheticCase(
+        case_id="b4_%s_%d" % (kind, seed), gate="B4", depth_mm=depth,
+        bbox=bbox, camera=renderer.camera, gt_center_xy=(-1.0, 0.0),
+        gt_top_z=base_z, gt_yaw_deg=0.0, gt_size_wh=(0.55, 0.40),
+        stamp=stamp, seed=seed, meta={"kind": kind})

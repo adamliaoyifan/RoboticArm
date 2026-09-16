@@ -68,7 +68,11 @@ class DynamicTopConfig:
     min_plane_points_frac: float = 0.15
     min_plane_inliers: int = 80
     plane_group_tol_m: float = 0.008   # grouping tolerance only
-    refit_iterations: int = 3
+    #: LSQ refit iterations per z-cluster seed. 8 lets a seed band on a
+    #: 6 deg tilted top converge onto the full plane (3 iterations left
+    #: the labelled pixels short and downstream residual gates rejected
+    #: every footprint).
+    refit_iterations: int = 8
     #: plane candidates closer than this in angle and centroid height are
     #: the same physical surface (dedupe of z-cluster seeds). Surfaces
     #: further apart than the grouping tolerance stay distinct candidates.
@@ -116,6 +120,16 @@ class DynamicTopResult(TopSurfaceEstimate):
     component_coverage: float = 0.0
     top_source: str = "dynamic"
     pixel_count: int = 0
+    #: (H, W) uint8 per-pixel plane label, 0 = none, 1..N in candidate
+    #: order (first candidate wins overlaps). Consumed by the suction
+    #: patch evaluator (ST-2) so plane labelling is computed once.
+    plane_labels: object = None
+    #: index (1-based into plane_labels) of the winning plane.
+    winner_plane_id: int = 0
+    #: winning plane frame as ((u_axis, v_axis, normal), d): orthonormal
+    #: basis in plane coords plus the plane offset (p.n + d = height).
+    plane_basis: tuple = ()
+    plane_offset: float = 0.0
 
 
 def _identity_like(mat):
@@ -469,8 +483,12 @@ isolate_depth_component`.
             region = region_arr
     blob_masks, areas, mask_supports, inlier_fracs, rms_list, heights = \
         [], [], [], [], [], []
-    for cand in candidates:
+    plane_labels = np.zeros(shape, dtype=np.uint8)
+    for i, cand in enumerate(candidates):
         idx = cand["inlier_idx"]
+        lab_view = plane_labels[vu[idx], uu[idx]]
+        plane_labels[vu[idx], uu[idx]] = np.where(
+            lab_view == 0, i + 1, lab_view)
         blob, area = _connected_stats(shape, (vu[idx], uu[idx]))
         if area <= 0:
             blob_masks.append(blob)
@@ -569,7 +587,11 @@ isolate_depth_component`.
         aspect_ratio=float(aspect), reason="ok",
         plane_candidates=tuple(d for d in diag[:MAX_PLANE_DIAGNOSTICS]),
         pca_yaw=float(pca_yaw),
-        pixel_count=int(blob.sum()))
+        pixel_count=int(blob.sum()),
+        plane_labels=plane_labels,
+        winner_plane_id=int(winner) + 1,
+        plane_basis=(u_axis, v_axis, cand["normal"]),
+        plane_offset=float(cand["d"]))
 
 
 def _pca_yaw(points_2d):

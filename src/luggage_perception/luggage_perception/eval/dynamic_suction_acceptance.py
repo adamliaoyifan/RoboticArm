@@ -663,7 +663,7 @@ def _result_md(gate_results, passed, manifest):
     return "\n".join(lines)
 
 
-def run_acceptance(config_path, out_dir):
+def run_acceptance(config_path, out_dir, soak_seconds=None):
     cfg = _load_yaml(config_path)
     camera, component_cfg, dynamic_cfg = _configs_from_yaml(cfg)
     writer = EvidenceWriter(out_dir, config_path, cfg)
@@ -679,6 +679,23 @@ def run_acceptance(config_path, out_dir):
             cfg, camera, component_cfg, dynamic_cfg, writer))
         gate_results.append(gate_a4(
             cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b0(
+            cfg, camera, component_cfg, dynamic_cfg, writer, config_path))
+        gate_results.append(gate_b1(
+            cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b2(
+            cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b3(
+            cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b4(
+            cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b5(
+            cfg, camera, component_cfg, dynamic_cfg, writer))
+        gate_results.append(gate_b6(
+            cfg, camera, component_cfg, dynamic_cfg, writer,
+            soak_seconds=soak_seconds))
+        gate_results.append(gate_b7(
+            cfg, camera, component_cfg, dynamic_cfg, writer, config_path))
         gate_results.append({
             "gate": "A5", "pass": None, "status": "deferred",
             "reason": "real-cell RGB-D recording deferred by user "
@@ -763,10 +780,13 @@ def main(argv=None):
                         help="frozen T2 case directory to replay")
     parser.add_argument("--stage", default="top", choices=STAGES,
                         help="replay boundary stage")
+    parser.add_argument("--soak-seconds", type=float, default=None,
+                        help="override the B6 RSS soak duration")
     args = parser.parse_args(argv)
     if args.replay:
         return replay_case(args.config, args.replay, args.stage)
-    passed, gate_results = run_acceptance(args.config, args.out)
+    passed, gate_results = run_acceptance(
+        args.config, args.out, soak_seconds=args.soak_seconds)
     for g in gate_results:
         print("%s: %s" % (g.get("gate"),
                           "pass" if g.get("pass") else (
@@ -774,6 +794,583 @@ def main(argv=None):
                               "FAIL")))
     print("evidence: %s" % os.path.abspath(args.out))
     return 0 if passed else 1
+
+
+
+
+# --- ST-2 gates (B0-B7) ----------------------------------------------------
+
+def _model_from_cfg(cfg, footprint=None):
+    from luggage_description.suction_contact_model import (
+        ContactModel,
+        validate_contact_model_fields,
+    )
+    fields = {
+        "model_version": 1,
+        "contact_frame": "suction_contact_frame",
+        "footprint_type": "rectangle",
+        "boundary_margin_m": 0.015,
+        "cell_size_m": 0.005,
+        "candidate_grid_m": 0.010,
+        "min_valid_cell_fraction": 0.90,
+        "min_mask_coverage": 0.95,
+        "min_connected_plane_fraction": 0.90,
+        "max_rms_residual_m": 0.0025,
+        "max_p95_residual_m": 0.0040,
+        "max_peak_to_valley_m": 0.0060,
+        "max_normal_deviation_p95_deg": 5.0,
+        "max_adjacent_step_m": 0.0040,
+        "adjacent_step_distance_m": 0.010,
+        "bimodal_min_separation_m": 0.0050,
+        "bimodal_min_fraction": 0.15,
+        "max_normal_tilt_deg": 8.0,
+        "max_candidates": 5,
+        "min_candidate_separation_m": 0.050,
+        "max_candidate_iou": 0.25,
+        "max_rejected_diagnostics": 64,
+    }
+    size = footprint if footprint is not None else 0.18
+    fields["footprint_size_xy_m"] = [size, size]
+    return ContactModel(**validate_contact_model_fields(fields))
+
+
+def _run_suction(case, model, camera, component_cfg, dynamic_cfg,
+                 instance_id="box-1", generation=7):
+    """component -> dynamic top -> suction evaluation for one case."""
+    comp = isolate_depth_component(
+        case.depth_mm, bbox=case.bbox, config=component_cfg)
+    if not comp.ok:
+        return comp, None, None
+    x0, y0, x1, y1 = case.bbox
+    region = np.zeros(case.depth_mm.shape, dtype=bool)
+    region[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+    intr = _intrinsics(case.camera)
+    top = estimate_dynamic_top_surface(
+        case.depth_mm, comp.mask, intr, case.mat4, stamp=case.stamp,
+        frame=case.frame, instance_region=region, config=dynamic_cfg)
+    if top.reason != "ok":
+        return comp, top, None
+    from luggage_perception.suction_patch_evaluator import (
+        SuctionPatchEvaluator,
+    )
+    evaluator = SuctionPatchEvaluator(model)
+    evaluator.update(case.depth_mm, intr, case.mat4, top,
+                     instance_region=region, stamp=case.stamp,
+                     frame_id=case.frame, instance_id=instance_id,
+                     generation=generation)
+    return comp, top, evaluator.copy_output()
+
+
+def _polygon_region(case):
+    """Rasterize the case's true top polygon into an instance mask."""
+    from luggage_perception.eval.dynamic_suction_renderer import (
+        box_polygon,
+    )
+    meta = case.meta or {}
+    size = case.gt_size_wh
+    poly = box_polygon(size, case.gt_center_xy, case.gt_yaw_deg)
+    cam = case.camera
+    oz = cam["optical_to_world"][2][3] - case.gt_top_z
+    uu, vu = np.meshgrid(np.arange(cam["width"]),
+                         np.arange(cam["height"]))
+    wx = cam["optical_to_world"][0][3] + (uu - cam["cx"]) * oz / cam["fx"]
+    wy = cam["optical_to_world"][1][3] - (vu - cam["cy"]) * oz / cam["fy"]
+    region = np.zeros(case.depth_mm.shape, dtype=bool)
+    inside_pos = np.ones(region.shape, dtype=bool)
+    inside_neg = np.ones(region.shape, dtype=bool)
+    n = len(poly)
+    for i in range(n):
+        x0, y0 = poly[i]
+        x1, y1 = poly[(i + 1) % n]
+        cross = (x1 - x0) * (wy - y0) - (y1 - y0) * (wx - x0)
+        inside_pos &= cross >= 0.0
+        inside_neg &= cross <= 0.0
+    region |= inside_pos | inside_neg
+    del meta
+    return region
+
+
+def _run_suction_region(case, model, camera, component_cfg, dynamic_cfg,
+                        region, instance_id="box-1", generation=7):
+    """_run_suction with an explicit instance-region override."""
+    comp = isolate_depth_component(
+        case.depth_mm, bbox=case.bbox, config=component_cfg)
+    if not comp.ok:
+        return comp, None, None
+    intr = _intrinsics(case.camera)
+    top = estimate_dynamic_top_surface(
+        case.depth_mm, comp.mask, intr, case.mat4, stamp=case.stamp,
+        frame=case.frame, instance_region=region, config=dynamic_cfg)
+    if top.reason != "ok":
+        return comp, top, None
+    from luggage_perception.suction_patch_evaluator import (
+        SuctionPatchEvaluator,
+    )
+    evaluator = SuctionPatchEvaluator(model)
+    evaluator.update(case.depth_mm, intr, case.mat4, top,
+                     instance_region=region, stamp=case.stamp,
+                     frame_id=case.frame, instance_id=instance_id,
+                     generation=generation)
+    return comp, top, evaluator.copy_output()
+
+
+def gate_b0(cfg, camera, component_cfg, dynamic_cfg, writer, config_path):
+    """B0: schema rejections with stable reasons + shipped config load."""
+    from luggage_description.suction_contact_model import (
+        SuctionContactModelError,
+        load_suction_contact_model,
+    )
+    import tempfile
+    checks = {}
+    bad_yaml = {
+        "missing": "model_version: 1\ncontact_frame: f\n",
+        "dup": "model_version: 1\nmodel_version: 2\n",
+        "nan": "model_version: 1\ncontact_frame: f\n"
+               "footprint_type: rectangle\nfootprint_size_xy_m: "
+               "[.nan, .nan]\n",
+        "oversize": "model_version: 1\ncontact_frame: f\n"
+                    "footprint_type: rectangle\nfootprint_size_xy_m: "
+                    "[0.31, 0.31]\n",
+    }
+    for name, text in bad_yaml.items():
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml",
+                                         delete=False) as fh:
+            fh.write(text)
+            path = fh.name
+        try:
+            try:
+                load_suction_contact_model(path)
+                checks["reject_%s" % name] = False
+            except SuctionContactModelError:
+                checks["reject_%s" % name] = True
+        finally:
+            os.unlink(path)
+    shipped = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                           os.pardir, os.pardir, "luggage_description",
+                           "config", "suction_contact_model.yaml")
+    try:
+        model = load_suction_contact_model(shipped)
+        checks["shipped_loads"] = (
+            model.model_version == 1
+            and model.footprint_size_xy_m == (0.18, 0.18)
+            and len(model.identity_hash) == 64)
+    except (SuctionContactModelError, OSError):
+        checks["shipped_loads"] = False
+    writer.t1({"gate": "B0", "checks": checks})
+    return {"gate": "B0", "pass": all(checks.values()), "checks": checks}
+
+
+def gate_b1(cfg, camera, component_cfg, dynamic_cfg, writer):
+    """B1: 243-case uniformly planar matrix."""
+    spec = cfg["matrices"]["b1"]
+    th = spec["thresholds"]
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import make_b1_case
+    stamps = iter(_stamp_seq(5000.0))
+    rows = []
+    for fp in spec["footprints_m"]:
+        model = _model_from_cfg(cfg, footprint=fp)
+        for tilt in spec["tilts_deg"]:
+            for noise in spec["noise_sigma_mm"]:
+                for yaw in spec["yaws_deg"]:
+                    for seed in spec["seeds"]:
+                        case, gt_normal = make_b1_case(
+                            renderer, float(tilt), float(yaw),
+                            float(noise), int(seed), next(stamps))
+                        # B1 uses the true pixel instance mask (the
+                        # plan's preferred backend input), so mask
+                        # coverage forces the shrunk footprint inside
+                        # the true surface.
+                        t0 = time.monotonic()
+                        comp, top, out = _run_suction_region(
+                            case, model, camera, component_cfg, dynamic_cfg,
+                            region=_polygon_region(case))
+                        latency_ms = (time.monotonic() - t0) * 1000.0
+                        present = out is not None and len(out.accepted) >= 1
+                        row = {
+                            "case_id": case.case_id, "present": present,
+                            "latency_ms": latency_ms,
+                            "noise": float(noise), "tilt": float(tilt),
+                        }
+                        if present:
+                            rec = out.accepted[0]
+                            normal = np.asarray(rec.normal_world)
+                            err = math.degrees(math.acos(min(
+                                1.0, abs(float(normal @ gt_normal)))))
+                            row["normal_err_deg"] = err
+                            # Plan B1: the selected position lies inside
+                            # the true surface eroded by the physical
+                            # boundary margin (15 mm).
+                            row["on_surface"] = bool(
+                                abs(rec.center_world[0] + 1.0)
+                                <= 0.55 / 2 - 0.015
+                                and abs(rec.center_world[1])
+                                <= 0.40 / 2 - 0.015)
+                        else:
+                            writer.freeze_t2(
+                                case, comp, top, "b1_not_present")
+                        rows.append(row)
+                        writer.t1({"gate": "B1", **{
+                            k: v for k, v in row.items()}})
+    present_flags = [r["present"] for r in rows]
+    low_noise = [r["present"] for r in rows if r["noise"] <= 1.0]
+    normal_errs = [r["normal_err_deg"] for r in rows
+                   if "normal_err_deg" in r]
+    on_surface = [r.get("on_surface", False) for r in rows]
+    pass_all = (
+        len(rows) == 243
+        and (sum(present_flags) / len(rows)) >= float(
+            th["present_rate_overall"])
+        and (sum(low_noise) / max(1, len(low_noise)))
+        >= float(th["present_rate_low_noise"])
+        and all(on_surface)
+        and float(np.percentile(normal_errs, 95)) <= th["normal_p95_deg"]
+        and max(normal_errs) <= th["normal_max_deg"])
+    return {
+        "gate": "B1", "pass": bool(pass_all), "cases": len(rows),
+        "present_rate": sum(present_flags) / max(1, len(rows)),
+        "low_noise_present_rate": sum(low_noise) / max(1, len(low_noise)),
+        "on_surface_rate": sum(on_surface) / max(1, len(on_surface)),
+        "normal_p95_deg": float(np.percentile(normal_errs, 95)),
+        "normal_max_deg": float(max(normal_errs)),
+        "failures": [r["case_id"] for r in rows if not r["present"]],
+    }
+
+
+def gate_b2(cfg, camera, component_cfg, dynamic_cfg, writer):
+    """B2: 162-case cross-plane rejection matrix."""
+    spec = cfg["matrices"]["b2"]
+    th = spec["thresholds"]
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import make_b2_case
+    model = _model_from_cfg(cfg, footprint=float(spec["footprint_m"]))
+    half = float(spec["footprint_m"]) / 2.0
+    stamps = iter(_stamp_seq(6000.0))
+    unsafe = 0
+    rows = []
+    for step in spec["steps_mm"]:
+        for angle in spec["boundary_angles_deg"]:
+            for offset in spec["boundary_offsets_mm"]:
+                for seed in spec["seeds"]:
+                    case, _gt = make_b2_case(
+                        renderer, float(step), float(angle),
+                        float(offset), int(seed), next(stamps))
+                    comp, top, out = _run_suction(
+                        case, model, camera, component_cfg, dynamic_cfg)
+                    crossing_accepted = 0
+                    ang = math.radians(float(angle))
+                    # Same convention as the renderer: n = (-sin, cos),
+                    # boundary through centre + n * offset.
+                    line_nrm = np.array([-math.sin(ang), math.cos(ang)])
+                    c_line = float(offset) * 0.001
+                    # Plan B2: only a step >= 6 mm makes a crossing
+                    # unsafe; below-threshold crossings are diagnostics.
+                    if out is not None and float(step) >= 6.0:
+                        for rec in out.accepted:
+                            dist = abs(rec.center_world[0] * line_nrm[0]
+                                       + rec.center_world[1] * line_nrm[1]
+                                       - c_line)
+                            if dist < half - 1e-6:
+                                crossing_accepted += 1
+                    unsafe += crossing_accepted
+                    if crossing_accepted:
+                        writer.freeze_t2(
+                            case, comp, top, "b2_unsafe_accept")
+                    rows.append({
+                        "case_id": case.case_id,
+                        "unsafe": crossing_accepted,
+                        "step_mm": float(step)})
+                    writer.t1({"gate": "B2", **rows[-1]})
+    pass_all = len(rows) == 162 and unsafe == int(th["unsafe_accept_count"])
+    return {"gate": "B2", "pass": bool(pass_all), "cases": len(rows),
+            "unsafe_accept_count": unsafe,
+            "failures": [r["case_id"] for r in rows if r["unsafe"]]}
+
+
+def gate_b3(cfg, camera, component_cfg, dynamic_cfg, writer):
+    """B3: 45-case island matrix (36 interior + 9 edge)."""
+    spec = cfg["matrices"]["b3"]
+    th = spec["thresholds"]
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import make_b3_case
+    model = _model_from_cfg(cfg, footprint=float(spec["footprint_m"]))
+    stamps = iter(_stamp_seq(7000.0))
+    on_island = 0
+    edge_closed = 0
+    rows = []
+    for pos in spec["interior_positions"]:
+        for yaw in spec["yaws_deg"]:
+            for seed in spec["seeds"]:
+                case = make_b3_case(renderer, tuple(pos), float(yaw),
+                                    int(seed), next(stamps))
+                comp, top, out = _run_suction(
+                    case, model, camera, component_cfg, dynamic_cfg)
+                ok = out is not None and len(out.accepted) >= 1 and all(
+                    abs(rec.center_world[0] - pos[0]) <= 0.32 / 2 - 0.09
+                    + 0.01 and abs(rec.center_world[1] - pos[1])
+                    <= 0.32 / 2 - 0.09 + 0.01 for rec in out.accepted)
+                on_island += int(ok)
+                if not ok:
+                    writer.freeze_t2(case, comp, top, "b3_island_miss")
+                rows.append({"case_id": case.case_id, "ok": bool(ok),
+                             "kind": "interior"})
+    for yaw in spec["yaws_deg"]:
+        for seed in spec["seeds"]:
+            case = make_b3_case(renderer, tuple(spec["edge_position"]),
+                                float(yaw), int(seed), next(stamps),
+                                island_size=0.15)
+            comp, top, out = _run_suction(
+                case, model, camera, component_cfg, dynamic_cfg)
+            closed = out is None or len(out.accepted) == 0
+            edge_closed += int(closed)
+            if not closed:
+                writer.freeze_t2(case, comp, top, "b3_edge_accepted")
+            rows.append({"case_id": case.case_id, "ok": bool(closed),
+                         "kind": "edge"})
+    for row in rows:
+        writer.t1({"gate": "B3", **row})
+    pass_all = (
+        len(rows) == 45
+        and on_island >= int(th["interior_on_island"])
+        and edge_closed >= int(th["edge_fail_closed"]))
+    return {"gate": "B3", "pass": bool(pass_all), "cases": len(rows),
+            "interior_on_island": on_island, "edge_fail_closed": edge_closed,
+            "failures": [r["case_id"] for r in rows if not r["ok"]]}
+
+
+def gate_b4(cfg, camera, component_cfg, dynamic_cfg, writer):
+    """B4: 30-case no-seal matrix (zero candidates everywhere)."""
+    spec = cfg["matrices"]["b4"]
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import make_b4_case
+    model = _model_from_cfg(cfg, footprint=float(spec["footprint_m"]))
+    stamps = iter(_stamp_seq(8000.0))
+    zero = 0
+    rows = []
+    for kind in spec["kinds"]:
+        for seed in spec["seeds"]:
+            case = make_b4_case(renderer, kind, int(seed), next(stamps))
+            comp, top, out = _run_suction(
+                case, model, camera, component_cfg, dynamic_cfg)
+            n_acc = 0 if out is None else len(out.accepted)
+            zero += int(n_acc == 0)
+            if n_acc:
+                writer.freeze_t2(case, comp, top, "b4_candidate_leak")
+            rows.append({"case_id": case.case_id, "candidates": n_acc,
+                         "kind": kind})
+            writer.t1({"gate": "B4", **rows[-1]})
+    pass_all = (len(rows) == 30
+                and zero >= int(spec["thresholds"]["zero_candidate_cases"]))
+    return {"gate": "B4", "pass": bool(pass_all), "cases": len(rows),
+            "zero_candidate_cases": zero,
+            "failures": [r["case_id"] for r in rows if r["candidates"]]}
+
+
+def gate_b5(cfg, camera, component_cfg, dynamic_cfg, writer):
+    """B5: identity/time injection via the consumer-side gate."""
+    from luggage_perception.suction_patch_evaluator import (
+        suction_identity_mismatch,
+    )
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import make_b1_case
+    case, _n = make_b1_case(renderer, 3.0, 30.0, 1.0, 11, 9.0)
+    model = _model_from_cfg(cfg)
+    comp, top, out = _run_suction(case, model, camera, component_cfg,
+                                  dynamic_cfg, instance_id="obs-1",
+                                  generation=4)
+    if out is None or not out.accepted:
+        writer.freeze_t2(case, comp, top, "b5_reference_failed")
+        return {"gate": "B5", "pass": False,
+                "reason": "reference case produced no candidate"}
+    record = out.accepted[0]
+    base = dict(stamp=case.stamp, frame_id=case.frame,
+                instance_id="obs-1", generation=4)
+    mismatches = []
+    for name, override in (("stamp", {"stamp": case.stamp + 1.1}),
+                           ("frame", {"frame_id": "other"}),
+                           ("generation", {"generation": 5}),
+                           ("instance", {"instance_id": "obs-2"})):
+        fields = dict(base)
+        fields.update(override)
+        result = suction_identity_mismatch(record, **fields)
+        mismatches.append(result is not None
+                          and result[0] == "SUCTION_CANDIDATE_"
+                          "IDENTITY_MISMATCH")
+    clean = suction_identity_mismatch(record, **base) is None
+    pass_all = all(mismatches) and clean
+    writer.t1({"gate": "B5", "injections": mismatches, "clean": clean})
+    return {"gate": "B5", "pass": bool(pass_all),
+            "injection_rejections": sum(mismatches),
+            "clean_accept": clean}
+
+
+def gate_b6(cfg, camera, component_cfg, dynamic_cfg, writer,
+            soak_seconds=None):
+    """B6: determinism, bounds, latency, bounded RSS soak."""
+    spec = cfg["matrices"]["b6"]
+    renderer = NadirRenderer(camera)
+    from luggage_perception.eval.dynamic_suction_renderer import (
+        make_b1_case,
+        make_b4_case,
+    )
+    from luggage_perception.suction_patch_evaluator import (
+        SuctionPatchEvaluator,
+    )
+    model = _model_from_cfg(cfg)
+    cases = [make_b1_case(renderer, 0.0, 30.0, 2.0, 11, 10.0)[0],
+             make_b1_case(renderer, 6.0, 0.0, 1.0, 29, 10.1)[0],
+             make_b4_case(renderer, "ridge", 11, 10.2)]
+    repeats = int(spec["repeat_count"])
+    identical = True
+    bounds_ok = True
+    latencies = []
+    intr = _intrinsics(camera)
+    for case in cases:
+        comp, top, _first = _run_suction(
+            case, model, camera, component_cfg, dynamic_cfg)
+        if top is None or top.reason != "ok":
+            continue
+        x0, y0, x1, y1 = case.bbox
+        region = np.zeros(case.depth_mm.shape, dtype=bool)
+        region[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+        evaluator = SuctionPatchEvaluator(model)
+        signatures = []
+        for _ in range(repeats):
+            # Plan B6 measures the EVALUATOR (height map + candidates),
+            # not the upstream dynamic-top chain.
+            t0 = time.monotonic()
+            evaluator.update(
+                case.depth_mm, intr, case.mat4, top,
+                instance_region=region, stamp=case.stamp,
+                frame_id=case.frame, instance_id="b6", generation=1)
+            latencies.append((time.monotonic() - t0) * 1000.0)
+            out = evaluator.copy_output()
+            signatures.append((
+                tuple((c.candidate_id, c.rank) for c in out.accepted),
+                tuple((r[0], r[1]) for r in out.rejected)))
+            if (len(out.accepted) > int(spec["max_accepted"])
+                    or len(out.rejected) > int(spec["max_rejected"])):
+                bounds_ok = False
+        identical = identical and len(set(signatures)) == 1
+    p95_ms = float(np.percentile(latencies, 95)) if latencies else 0.0
+    # Bounded RSS soak: evaluate repeatedly and measure the slope.
+    soak = float(soak_seconds if soak_seconds is not None
+                 else spec.get("soak_seconds", 1200))
+    import resource
+    case = cases[0]
+    comp, top, _first = _run_suction(
+        case, model, camera, component_cfg, dynamic_cfg)
+    x0, y0, x1, y1 = case.bbox
+    region = np.zeros(case.depth_mm.shape, dtype=bool)
+    region[max(0, y0):max(0, y1), max(0, x0):max(0, x1)] = True
+    evaluator = SuctionPatchEvaluator(model)
+    start_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    start_t = time.monotonic()
+    runs = 0
+    while time.monotonic() - start_t < soak:
+        evaluator.update(
+            case.depth_mm, intr, case.mat4, top,
+            instance_region=region, stamp=case.stamp,
+            frame_id=case.frame, instance_id="b6", generation=1)
+        runs += 1
+    end_rss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    minutes = max(1e-6, (time.monotonic() - start_t) / 60.0)
+    slope = (end_rss - start_rss) / 1024.0 / minutes
+    pass_all = (identical and bounds_ok
+                and p95_ms <= float(spec["evaluator_p95_ms"])
+                and slope <= float(spec["rss_slope_mib_per_min"]))
+    result = {
+        "gate": "B6", "pass": bool(pass_all),
+        "determinism": bool(identical), "bounds_ok": bool(bounds_ok),
+        "evaluator_p95_ms": p95_ms,
+        "soak_seconds": soak, "soak_runs": runs,
+        "rss_slope_mib_per_min": slope,
+        "rss_note": "ru_maxrss high-water slope; %d s soak" % int(soak),
+    }
+    writer.t1({"gate": "B6", **{k: v for k, v in result.items()
+                                if k != "rss_note"}})
+    return result
+
+
+def gate_b7(cfg, camera, component_cfg, dynamic_cfg, writer,
+            config_path):
+    """B7: fixed 12-case overlay fixture vs golden JSON (2 px)."""
+    spec = cfg["matrices"]["b7"]
+    fixture_rel = spec["fixture"]
+    fixture = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                           os.pardir, "test", "fixtures",
+                           "suction_b7", "golden.json")
+    if not os.path.exists(fixture):
+        return {"gate": "B7", "pass": False,
+                "reason": "golden fixture missing at %s" % fixture}
+    with open(fixture) as fh:
+        golden = json.load(fh)
+    from luggage_perception.eval.suction_debug_overlay import (
+        overlay_for_case,
+    )
+    renderer = NadirRenderer(camera)
+    model = _model_from_cfg(cfg)
+    half = (model.footprint_size_xy_m[0] / 2.0,
+            model.footprint_size_xy_m[1] / 2.0)
+    tol = float(spec["pixel_tolerance"])
+    max_err = 0.0
+    ok = True
+    for entry in golden["cases"]:
+        case = _case_from_overlay_entry(renderer, entry)
+        comp, top, out = _run_suction(
+            case, model, camera, component_cfg, dynamic_cfg)
+        overlay = overlay_for_case(case, top, out, half)
+        got_by_id = {c["candidate_id"]: c
+                     for c in overlay["candidates"]}
+        for want in entry["expected"]:
+            got = got_by_id.get(want["candidate_id"])
+            if got is None or got["colour"] != want["colour"]:
+                ok = False
+                break
+            if want["corner_pixels"] is not None:
+                if got["corner_pixels"] is None:
+                    ok = False
+                    break
+                for got_p, want_p in zip(got["corner_pixels"],
+                                         want["corner_pixels"]):
+                    max_err = max(max_err, math.hypot(
+                        got_p[0] - want_p[0], got_p[1] - want_p[1]))
+        if not ok or max_err > tol:
+            writer.freeze_t2(case, comp, top, "b7_overlay_mismatch")
+            ok = ok and max_err <= tol
+            break
+    writer.t1({"gate": "B7", "cases": len(golden["cases"]),
+               "max_pixel_error": max_err, "pass": bool(ok)})
+    return {"gate": "B7", "pass": bool(ok),
+            "cases": len(golden["cases"]),
+            "max_pixel_error": max_err}
+
+
+def _case_from_overlay_entry(renderer, entry):
+    from luggage_perception.eval.dynamic_suction_renderer import (
+        SyntheticCase,
+        make_b1_case,
+        make_b2_case,
+        make_b3_case,
+    )
+    kind = entry["kind"]
+    if kind == "b1":
+        case, _ = make_b1_case(renderer, float(entry["tilt_deg"]),
+                               float(entry["yaw_deg"]),
+                               float(entry["noise_sigma_mm"]),
+                               int(entry["seed"]), float(entry["stamp"]))
+    elif kind == "b2":
+        case, _ = make_b2_case(renderer, float(entry["step_mm"]),
+                               float(entry["boundary_angle_deg"]),
+                               float(entry["boundary_offset_mm"]),
+                               int(entry["seed"]), float(entry["stamp"]))
+    else:
+        case = make_b3_case(renderer, tuple(entry["island_xy"]),
+                            float(entry.get("yaw_deg", 0.0)),
+                            int(entry["seed"]), float(entry["stamp"]),
+                            island_size=float(entry.get("island_size",
+                                                        0.32)))
+    return case
 
 
 if __name__ == "__main__":

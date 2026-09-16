@@ -9,6 +9,7 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedLuggage.msg"
+  "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"
   "msg/YoloDetections.msg"
   "msg/DetectionFrame.msg"

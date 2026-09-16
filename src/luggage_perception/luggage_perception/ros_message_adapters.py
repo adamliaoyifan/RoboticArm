@@ -490,3 +490,42 @@ def cloud_msg_from_points(points, stamp, frame_id):
     msg.is_dense = True
     msg.data = pts.tobytes()
     return msg
+
+
+def suction_candidate_msg_from_record(record, stamp, frame_id):
+    """SuctionCandidate message from a SuctionCandidateRecord.
+
+    ``luggage_msgs`` is imported lazily: this adapter module is node-layer,
+    but sensor-only environments run its byte-level tests without the
+    workspace messages installed.
+    """
+    from luggage_msgs.msg import SuctionCandidate
+    msg = SuctionCandidate()
+    msg.header = Header(stamp=stamp, frame_id=str(frame_id))
+    msg.instance_id = str(record.instance_id)
+    msg.generation = int(record.generation)
+    from geometry_msgs.msg import Pose, Point, Quaternion
+    msg.contact_pose = Pose(
+        position=Point(x=float(record.center_world[0]),
+                       y=float(record.center_world[1]),
+                       z=float(record.center_world[2])),
+        orientation=Quaternion(
+            x=float(record.quaternion_xyzw[0]),
+            y=float(record.quaternion_xyzw[1]),
+            z=float(record.quaternion_xyzw[2]),
+            w=float(record.quaternion_xyzw[3])))
+    msg.candidate_id = str(record.candidate_id)
+    msg.rank = int(record.rank)
+    msg.score = float(record.score)
+    msg.valid_coverage = float(record.valid_coverage)
+    msg.mask_coverage = float(record.mask_coverage)
+    msg.plane_coverage = float(record.plane_coverage)
+    msg.rms_residual = float(record.rms_residual)
+    msg.p95_residual = float(record.p95_residual)
+    msg.peak_to_valley = float(record.peak_to_valley)
+    msg.normal_deviation_p95 = float(record.normal_deviation_p95)
+    msg.max_adjacent_step = float(record.max_adjacent_step)
+    msg.boundary_clearance = float(record.boundary_clearance)
+    msg.model_version = int(record.model_version)
+    msg.model_hash = str(record.model_hash)
+    return msg

@@ -23,6 +23,7 @@ Platform-free height contract (docs/plans/platform_free_height_eng_todo.md):
 from __future__ import division
 
 import json
+import os
 import math
 import threading
 import time
@@ -92,6 +93,13 @@ from luggage_perception.instance_depth_component import (
 from luggage_perception.dynamic_top_surface import (
     DynamicTopConfig,
     estimate_dynamic_top_surface,
+)
+# DYNAMIC-SUCTION ST-2: sealable suction-patch candidates. The contact
+# model is a versioned hardware config (B0); the evaluator is ROS-free.
+from luggage_perception.suction_patch_evaluator import SuctionPatchEvaluator
+from luggage_description._share import description_config_path
+from luggage_description.suction_contact_model import (
+    load_suction_contact_model,
 )
 
 
@@ -424,6 +432,25 @@ class LuggageDetector(Node):
             self.get_parameter("use_instance_mask").value)
         self._component_config = ComponentConfig()
         self._dynamic_config = DynamicTopConfig()
+        # ST-2 B0: a dynamic-mode node requires a readable, versioned
+        # contact model at startup (missing/malformed/oversized geometry
+        # fails startup); the absolute path and SHA-256 are logged once.
+        self._suction_evaluator = None
+        self._last_suction_eval = None
+        if self._top_surface_mode == "dynamic":
+            self.declare_parameter("suction_contact_model_config", "")
+            model_path = str(
+                self.get_parameter("suction_contact_model_config").value
+            ) or description_config_path("suction_contact_model.yaml")
+            contact_model = load_suction_contact_model(model_path)
+            self._suction_evaluator = SuctionPatchEvaluator(contact_model)
+            self.get_logger().info(
+                "luggage_detector: suction contact model %s sha256=%s "
+                "version=%d footprint=%.3fx%.3f"
+                % (os.path.abspath(model_path), contact_model.identity_hash,
+                   contact_model.model_version,
+                   contact_model.footprint_size_xy_m[0],
+                   contact_model.footprint_size_xy_m[1]))
         self._pending_joins = OrderedDict()
         self._ready_joins = deque()
         self._support_wait_timeout = float(
@@ -767,12 +794,15 @@ class LuggageDetector(Node):
 
     def _estimate_dynamic_top(self, cloud_msg, yolo_msg, stamp_time,
                               cloud_stamp_sec):
-        """Dynamic instance-derived top for one joined acquisition.
+        """Dynamic instance-derived top + suction candidates for one
+        joined acquisition.
 
-        Returns a ``DynamicTopResult`` or a fail-closed reason ``str``.
-        No legacy fallback: a dynamic-mode failure must surface its own
-        reason (a fallback would mask exactly the stale-fusion bugs the
-        A0 gate hunts).
+        Returns ``(top_or_reason, suction_or_None)`` where
+        ``top_or_reason`` is a ``DynamicTopResult`` or a fail-closed
+        reason ``str``. No legacy fallback: a dynamic-mode failure must
+        surface its own reason (a fallback would mask exactly the
+        stale-fusion bugs the A0 gate hunts). The suction evaluation runs
+        only for a valid top and shares its acquisition identity.
         """
         _t0 = time.monotonic()
         if yolo_msg is None or not yolo_msg.detections:
@@ -780,19 +810,19 @@ class LuggageDetector(Node):
         key = stamp_key(cloud_msg.header.stamp)
         pair, intr = self._pop_raw_depth(key)
         if pair is None:
-            return "DETECT_DYNAMIC_TOP_INPUT_STAMP_MISS"
+            return "DETECT_DYNAMIC_TOP_INPUT_STAMP_MISS", None
         depth, depth_msg = pair
         mask = self._peek_instance_mask(key)
         bbox = self._select_instance_bbox(yolo_msg)
         component = isolate_depth_component(
             depth, bbox=bbox, mask=mask, config=self._component_config)
         if not component.ok:
-            return "DETECT_" + component.reason
+            return "DETECT_" + component.reason, None
         mat4, _err = _lookup_transform_matrix(
             self._tf_buffer, depth_msg.header.frame_id,
             self._world_frame, stamp_time)
         if mat4 is None:
-            return "DETECT_TF_FAILED"
+            return "DETECT_TF_FAILED", None
         if mask is not None:
             instance_region = mask
         else:
@@ -805,10 +835,23 @@ class LuggageDetector(Node):
             stamp=cloud_stamp_sec, frame=self._world_frame,
             instance_region=instance_region, config=self._dynamic_config,
             timing=self._timing)
-        self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
         if result.reason != "ok":
-            return result.reason
-        return result
+            return result.reason, None
+        suction = None
+        if self._suction_evaluator is not None:
+            # Same acquisition identity as the YOLO observation; the
+            # candidate records echo it for the consumer-side
+            # SUCTION_CANDIDATE_IDENTITY_MISMATCH gate.
+            self._suction_evaluator.update(
+                depth, intr, mat4, result,
+                instance_region=instance_region,
+                stamp=cloud_stamp_sec, frame_id=self._world_frame,
+                instance_id=str(getattr(yolo_msg, "instance_id", "")),
+                generation=int(getattr(yolo_msg, "generation", 0)),
+                timing=self._timing)
+            suction = self._suction_evaluator.copy_output()
+        self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
+        return result, suction
 
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
@@ -1237,6 +1280,15 @@ class LuggageDetector(Node):
             result.support.confidence if (
                 height_valid and result.support is not None) else 0.0)
         msg.height_source = int(result.height_source)
+        # ST-2: ranked sealable candidates share this observation's stamp
+        # and frame; planning layers must reject any candidate whose own
+        # identity differs (SUCTION_CANDIDATE_IDENTITY_MISMATCH).
+        suction = getattr(self, "_last_suction_eval", None)
+        if suction is not None and suction.ok:
+            msg.suction_candidates = [
+                adapters.suction_candidate_msg_from_record(
+                    record, cloud_msg.header.stamp, self._world_frame)
+                for record in suction.accepted]
         return msg
 
     def _pca_from_cloud_msg(self, cloud_msg, yolo_msg=None):
@@ -1292,11 +1344,13 @@ class LuggageDetector(Node):
         geometry_ok, geometry_gate_reason = self._evaluate_geometry_gate(stamp)
         cloud_stamp_sec = float(adapters.stamp_to_sec(stamp))
         dynamic_top = None
+        self._last_suction_eval = None
         if self._top_surface_mode == "dynamic":
             # ST-1: fail-closed dynamic estimation; never falls back to
             # the legacy top when the dynamic path rejects.
-            dynamic_top = self._estimate_dynamic_top(
+            dynamic_top, suction_eval = self._estimate_dynamic_top(
                 cloud_msg, yolo_msg, stamp_time, cloud_stamp_sec)
+            self._last_suction_eval = suction_eval
             if isinstance(dynamic_top, str):
                 return (pca_fields_from_failure(
                     dynamic_top, n_points, source, centroid),
@@ -1678,6 +1732,19 @@ class LuggageDetector(Node):
             return response
 
         if detected is not None:
+            if (self._top_surface_mode == "dynamic"
+                    and detected.top_surface_valid
+                    and not detected.suction_candidates):
+                # ST-2 plan section C: valid box geometry with no
+                # sealable patch never authorizes a pick.
+                self._last_failure_reason = "DETECT_NO_SEALABLE_PATCH"
+                self._publish_diagnostics(
+                    "perception", False, confidence,
+                    self._last_failure_reason, detected)
+                response.luggage = [detected]
+                response.success = False
+                response.message = self._last_failure_reason
+                return response
             self._publish_diagnostics(
                 "perception", True, confidence, "ok", detected)
             response.luggage = [detected]
