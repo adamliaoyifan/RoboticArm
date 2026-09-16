@@ -26,13 +26,17 @@ from ament_index_python.packages import get_package_prefix, get_package_share_di
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    EmitEvent,
+    ExecuteProcess,
     IncludeLaunchDescription,
+    LogInfo,
     OpaqueFunction,
     RegisterEventHandler,
     SetEnvironmentVariable,
 )
 from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
@@ -92,6 +96,10 @@ def _default_launch_values():
         "random_seed": "-1",
         "spawn_at_observe": "true",
         "observe_pose_name": "observe",
+        # Seconds to wait for /controller_manager after the S20 create before
+        # declaring the gz_ros2_control URDF fetch lost and shutting down.
+        # Successful startups build it in about 2-4 s; 0 disables the gate.
+        "startup_watchdog_sec": "45.0",
         "robot_poses_config": os.path.join(
             get_package_share_directory("luggage_description"),
             "config",
@@ -437,16 +445,75 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
     )
 
 
-def _spawn_scene_and_robot(scene_tf_config, initial_joint_args):
+#: Logged immediately before the S20 create action. Startup gates must take
+#: this marker as the authoritative stage boundary rather than running their
+#: own parameter probe on a separate clock, which is how PF-R7 generation 9
+#: expired a 2 s spawn deadline against a probe it did not own.
+SPAWN_ROBOT_MARKER = "spawn_robot: create S20"
+
+
+def _controller_manager_watchdog(timeout_sec):
+    """Fail fast when gz_ros2_control never builds the controller manager.
+
+    The plugin fetches the URDF with one non-retrying parameter call (see
+    scripts/wait_controller_manager.py). When that call is lost the plugin
+    blocks forever and the launch stays superficially alive while both
+    spawners burn their 60 s timeouts. Converting that into a named shutdown
+    within `timeout_sec` is what lets a caller simply relaunch.
+    """
+    return ExecuteProcess(
+        cmd=[
+            "python3",
+            os.path.join(
+                get_package_prefix("luggage_gazebo"),
+                "lib", "luggage_gazebo", "wait_controller_manager.py",
+            ),
+            "--timeout-sec", str(timeout_sec),
+        ],
+        name="wait_controller_manager",
+        output="screen",
+    )
+
+
+def _spawn_scene_and_robot(scene_tf_config, initial_joint_args,
+                           watchdog_sec=0.0):
     """Spawn pedestal/platform/container first, then the welded arm (Noetic order)."""
     scene_nodes = _scene_model_actions(scene_tf_config)
     robot = _robot_create_node(scene_tf_config, initial_joint_args)
+    spawn_actions = [LogInfo(msg=SPAWN_ROBOT_MARKER), robot]
+
+    watchdog = []
+    if watchdog_sec > 0:
+        cm_watchdog = _controller_manager_watchdog(watchdog_sec)
+        watchdog = [
+            RegisterEventHandler(
+                OnProcessExit(target_action=robot, on_exit=[cm_watchdog])
+            ),
+            RegisterEventHandler(
+                OnProcessExit(
+                    target_action=cm_watchdog,
+                    on_exit=_shutdown_unless_clean_exit,
+                )
+            ),
+        ]
+
     if not scene_nodes:
-        return [robot]
+        return spawn_actions + watchdog
     return scene_nodes + [
         RegisterEventHandler(
-            OnProcessExit(target_action=scene_nodes[0], on_exit=[robot])
+            OnProcessExit(target_action=scene_nodes[0], on_exit=spawn_actions)
         )
+    ] + watchdog
+
+
+def _shutdown_unless_clean_exit(event, context):
+    """Shut the launch down when the watchdog reports a startup failure."""
+    del context
+    if getattr(event, "returncode", 0) == 0:
+        return []
+    return [
+        LogInfo(msg="sim_world startup aborted: controller manager absent"),
+        EmitEvent(event=Shutdown(reason="plugin_urdf_not_received")),
     ]
 
 
@@ -811,7 +878,10 @@ def _launch_setup(context):
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(scene_tf_config, robot_description),
-        *_spawn_scene_and_robot(scene_tf_config, initial_joint_args),
+        *_spawn_scene_and_robot(
+            scene_tf_config, initial_joint_args,
+            watchdog_sec=float(cfg["startup_watchdog_sec"]),
+        ),
         jsb_spawner,
         RegisterEventHandler(
             OnProcessExit(target_action=jsb_spawner, on_exit=[arm_spawner])
@@ -849,6 +919,11 @@ def generate_launch_description():
                 "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
             profile_arg("gui", "Start Gazebo GUI."),
+            profile_arg(
+                "startup_watchdog_sec",
+                "Seconds to wait for /controller_manager after the S20 create "
+                "before aborting the launch; 0 disables the gate.",
+            ),
             profile_arg("use_rviz", "Start RViz."),
             profile_arg(
                 "use_cargo_map",

@@ -19,6 +19,7 @@ install(PROGRAMS
   scripts/place_smoke_driver.py
   scripts/pack_eval_driver.py
   scripts/place_only_eval_driver.py
+  scripts/wait_controller_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -29,6 +30,7 @@ if(BUILD_TESTING)
   ament_add_pytest_test(place_gt_dump_pytest test/test_place_gt_dump.py)
   ament_add_pytest_test(sim_livox_bridge_pytest test/test_sim_livox_bridge.py)
   ament_add_pytest_test(place_only_fixture_pytest test/test_place_only_fixture.py)
+  ament_add_pytest_test(startup_probe_pytest test/test_startup_probe.py)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and
