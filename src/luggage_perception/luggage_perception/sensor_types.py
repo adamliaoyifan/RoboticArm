@@ -315,6 +315,13 @@ class ObservationFlags(object):
     stale: bool = False
     motion_too_large: bool = False
     geometry_ok: bool = False
+    # False when colour and depth were paired inside the tolerance window
+    # rather than sharing one exact acquisition stamp. Such a set is not a
+    # single exposure, so it never claims geometry.
+    paired_exact: bool = False
+    # True when one declared CameraInfo input describes both products
+    # (single-info backends such as the Gazebo rgbd_camera).
+    info_aliased: bool = False
 
     def copy(self):
         return replace(self)
@@ -331,6 +338,8 @@ class ObservationFlags(object):
             "stale": self.stale,
             "motion_too_large": self.motion_too_large,
             "geometry_ok": self.geometry_ok,
+            "paired_exact": self.paired_exact,
+            "info_aliased": self.info_aliased,
         }
 
 
@@ -348,6 +357,8 @@ class SyncedObservation(object):
     depth_dt: float = -1.0
     rgb_stamp: float = 0.0
     depth_stamp: float = 0.0
+    color_info_stamp: float = 0.0
+    depth_info_stamp: float = 0.0
     stamp_key: tuple = None
     motion_score: float = 0.0
     units: str = "millimetres"

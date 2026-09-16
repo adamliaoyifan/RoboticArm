@@ -106,6 +106,12 @@ mapping evidence carries `device_stamp_ns`, `mapped_host_stamp_ns`,
 images are withheld while mapping quality is warming. Receipt time remains a
 diagnostic only and is never a geometry/TF stamp.
 
+An upstream restamper groups colour and aligned depth by **identical** device
+stamp and allocates one host stamp per group. It must not pair the two streams
+through a slop window: doing so hides a real synchronisation fault from the
+preprocessor, which can then no longer distinguish one exposure from two. An
+unmatched side expires and is counted (`unpaired_color` / `unpaired_depth`).
+
 ## Sensor registry
 
 Frames, rates, and units as actually produced in this workspace. Trust this
@@ -184,13 +190,16 @@ SyncedObservation:
     frame_id           # truthful colour optical frame of the acquisition
     lidar_dt           # abs(t_lidar - primary_stamp), seconds
     motion_score       # end-effector translation / rotation over the window
-    flags              # rgb_ok, depth_ok, lidar_ok, deskewed,
-                       # stale, motion_too_large, geometry_ok
+    flags              # rgb_ok, depth_ok, lidar_ok, deskewed, stale,
+                       # motion_too_large, geometry_ok, paired_exact,
+                       # info_aliased
 ```
 
-The ROS node rewrites every accepted output header to `primary_stamp` and
-publishes, assigning the **original source payloads** to the output `Image`
-fields (no pixel materialisation):
+The ROS node publishes each product under **its own** acquisition stamp,
+assigning the **original source payloads** to the output `Image` fields (no
+pixel materialisation). For an accepted exact set every stamp equals
+`primary_stamp`, so that is a no-op relabel; the node never overwrites a
+product's stamp to make two exposures look like one:
 
 | Topic | Type |
 |---|---|
@@ -206,6 +215,21 @@ Rules:
   zero-filled image. Silently substituting empty data turns a sensor dropout
   into a confident wrong answer. An acquisition without aligned depth is not
   emitted (mandatory pair gate, PF-R9 g2).
+- Only an exactly co-stamped set is one exposure. When a profile keeps a
+  non-zero `camera_pair_tolerance_sec` and colour is paired with a nearby
+  depth frame instead, the set is published with `paired_exact=false`,
+  `geometry_ok=false`, its two original stamps, and a `tolerance_pairs`
+  count. It may feed 2D detection; it must never be scored as one
+  acquisition's geometry, and a consumer's exact join will simply not match
+  it. Relabelling such a pair to a single stamp is a defect.
+- A `CameraInfo` slot is never filled from the other product. A backend that
+  publishes only one info (the Gazebo `rgbd_camera`) declares
+  `camera_info_shared: true`, and the resulting observation reports
+  `info_aliased`; otherwise a missing colour or depth info fails closed with
+  `missing_color_camera_info` / `missing_depth_camera_info`. Calibration is
+  bounded by age against the image it describes, not by stamp equality:
+  RealSense latches `CameraInfo`, so requiring equal stamps would reject
+  nearly every frame.
 - Independent algorithm nodes subscribe to the subset of **preprocessed**
   topics they need. They must not subscribe to raw D435 / Mid-360 / joints
   in order to invent their own alignment.

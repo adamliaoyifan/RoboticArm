@@ -16,9 +16,12 @@ sensor_preprocessor:
     input.joint_states: /joint_states
     output_cloud_frame: d555_color_optical_frame
     use_sim_time: false
+    # Declared degraded fallback: a pair inside this window that is not
+    # exactly co-stamped is still emitted for 2D detection, but it reports
+    # paired_exact=false, geometry_ok=false, and counts in tolerance_pairs.
     camera_pair_tolerance_sec: 0.050
     camera_wait_deadline_sec: 0.150
-    camera_emit_rgb_only: false
+    camera_info_shared: false
     camera_input_qos_reliability: best_effort
     enable_lidar_output: false
     enable_imu: false

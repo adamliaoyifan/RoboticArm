@@ -1,13 +1,15 @@
 # 实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
-# Remap D555 site topics onto the preprocessor. This is the site/replay
-# profile (use_sim_time true). Canonical live profile remains
-# src/luggage_perception/config/preprocessor_d555_live.yaml.
+# Bag replay overlay (use_sim_time true). Do not pass this file into
+# hardware_pick live graphs. Live A/B is preprocessor_d555_live.yaml vs
+# preprocessor_d555_site.yaml (both wall clock).
 sensor_preprocessor:
   ros__parameters:
     input.color_image: /camera/d555/color/image_raw/compressed
     input.depth_image: /camera/d555/aligned_depth_to_color/image_raw/compressed
     input.camera_info: /camera/d555/aligned_depth_to_color/camera_info
     input.color_camera_info: /camera/d555/color/camera_info
+    # Replay uses the live join: two real CameraInfo inputs, no borrowing.
+    camera_info_shared: false
     input.camera_points: ""
     input.use_compressed: true
     unproject_aligned_depth: true

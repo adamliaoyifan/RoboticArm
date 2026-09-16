@@ -7,8 +7,16 @@ from sensor_msgs.msg import CompressedImage, Image
 
 from elfin_trajectory_executor.d555_host_stamp_node import (
     CLOCK_MASTER_JSON,
+    ExactStampGrouper,
     apply_common_stamp,
 )
+
+
+def _img(sec, nanosec=0):
+    msg = Image()
+    msg.header.stamp.sec = sec
+    msg.header.stamp.nanosec = nanosec
+    return msg
 
 
 class HostStampTest(unittest.TestCase):
@@ -35,6 +43,77 @@ class HostStampTest(unittest.TestCase):
     def test_clock_master_names_host(self):
         self.assertIn("host_ros_system_time", CLOCK_MASTER_JSON)
         self.assertIn("receive_sync_group", CLOCK_MASTER_JSON)
+
+
+class ExactStampGrouperTest(unittest.TestCase):
+    """Colour and depth group only on an identical device stamp."""
+
+    def setUp(self):
+        self.stamps = []
+
+        def factory():
+            stamp = Time(sec=100 + len(self.stamps), nanosec=0)
+            self.stamps.append(stamp)
+            return stamp
+
+        self.factory = factory
+        self.grouper = ExactStampGrouper()
+
+    def test_equal_device_stamp_emits_one_group(self):
+        color, depth = _img(5, 7), _img(5, 7)
+        self.assertIsNone(
+            self.grouper.add("color", (5, 7), color, self.factory))
+        grouped = self.grouper.add("depth", (5, 7), depth, self.factory)
+        self.assertIsNotNone(grouped)
+        self.assertIs(grouped[0], color)
+        self.assertIs(grouped[1], depth)
+        self.assertEqual(1, self.grouper.groups)
+
+    def test_second_side_reuses_the_first_host_stamp(self):
+        self.grouper.add("depth", (5, 7), _img(5, 7), self.factory)
+        grouped = self.grouper.add("color", (5, 7), _img(5, 7), self.factory)
+        self.assertEqual(grouped[2], self.stamps[0])
+        self.assertEqual(1, len(self.stamps))
+
+    def test_near_miss_stamps_never_pair(self):
+        self.assertIsNone(
+            self.grouper.add("color", (5, 0), _img(5, 0), self.factory))
+        # 1 ms apart is a different exposure, not a pair.
+        self.assertIsNone(
+            self.grouper.add(
+                "depth", (5, 1000000), _img(5, 1000000), self.factory))
+        self.assertEqual(0, self.grouper.groups)
+
+    def test_duplicate_delivery_emits_once(self):
+        self.grouper.add("color", (5, 7), _img(5, 7), self.factory)
+        self.grouper.add("color", (5, 7), _img(5, 7), self.factory)
+        self.assertIsNotNone(
+            self.grouper.add("depth", (5, 7), _img(5, 7), self.factory))
+        self.assertIsNone(
+            self.grouper.add("depth", (5, 7), _img(5, 7), self.factory))
+        self.assertEqual(1, self.grouper.groups)
+        self.assertEqual(2, self.grouper.duplicates)
+
+    def test_unmatched_side_expires_and_is_counted(self):
+        self.grouper.add("color", (5, 0), _img(5, 0), self.factory)
+        for sec in range(6, 9):
+            self.grouper.add("color", (sec, 0), _img(sec, 0), self.factory)
+            self.grouper.add("depth", (sec, 0), _img(sec, 0), self.factory)
+        self.assertEqual(1, self.grouper.unpaired_color)
+        self.assertEqual(0, self.grouper.unpaired_depth)
+
+    def test_device_clock_rollback_drops_the_old_timeline(self):
+        self.grouper.add("color", (50, 0), _img(50, 0), self.factory)
+        self.assertIsNone(
+            self.grouper.add("depth", (2, 0), _img(2, 0), self.factory))
+        self.assertEqual(1, self.grouper.resets)
+        self.assertEqual(1, self.grouper.unpaired_color)
+
+    def test_counters_report_pending_depth(self):
+        self.grouper.add("color", (5, 0), _img(5, 0), self.factory)
+        counters = self.grouper.counters()
+        self.assertEqual(1, counters["pending"])
+        self.assertEqual(0, counters["groups"])
 
 
 class D555LaunchContractTest(unittest.TestCase):
@@ -71,6 +150,18 @@ class D555LaunchContractTest(unittest.TestCase):
         self.assertNotIn('executable="d555_host_stamp"', src)
         self.assertNotIn("image_hw", src)
         self.assertNotIn("enable_pub_plugins", src)
+
+    def test_rgbd_pairing_has_no_slop_window(self):
+        from pathlib import Path
+
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "elfin_trajectory_executor"
+            / "d555_host_stamp_node.py"
+        ).read_text()
+        self.assertNotIn("ApproximateTimeSynchronizer", src)
+        self.assertNotIn("message_filters", src)
+        self.assertIn("ExactStampGrouper", src)
 
     def test_image_hw_qos_matches_d555_image_transport(self):
         from pathlib import Path

@@ -24,16 +24,20 @@ sensor_preprocessor:
     output_cloud_frame: camera_depth_optical_frame
     enable_lidar_output: false
     enable_imu: false
-    # PF-R9 g2 split: pairing tolerance (~exact) and wait deadline on the
+    # PF-R9 g2 split: pairing tolerance (exact) and wait deadline on the
     # canonical camera clock. D1 measured the aligned streams exactly
     # co-stamped; the deadline only bounds tail waits and is never
     # advanced by /joint_states. After the deadline with no aligned depth
     # the stamp is skipped (depth_wait_timeout, counted) — a partial
     # acquisition is never emitted.
     camera_slop_sec: 0.005
-    camera_pair_tolerance_sec: 0.005
+    camera_pair_tolerance_sec: 0.0
     camera_wait_deadline_sec: 0.060
     camera_info_max_age_sec: 1.0
+    # gz rgbd_camera publishes one CameraInfo for the shared colour pixel
+    # grid, so the declared alias fills the colour slot and every
+    # observation reports info_aliased.
+    camera_info_shared: true
     camera_input_qos_reliability: reliable
     # PF-R9 g2 fixed camera cache contract: 15 entries / 1.0 second on
     # the camera clock (23.0 MB payload ceiling at 640x480).

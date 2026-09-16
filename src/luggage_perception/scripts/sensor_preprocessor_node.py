@@ -2,9 +2,10 @@
 """Thin ROS 2 node around SensorPreprocessor (depth-primary, PF-R9 g2).
 
 Subscribes the canonical colour-aligned RGBD set plus /joint_states, pairs
-them by exact payload stamp, and republishes them under the accepted
-acquisition's primary stamp. Raw Image input retains payload identity;
-compressed hardware transport is decoded exactly once at this boundary.
+them by exact payload stamp, and republishes each product under its own
+acquisition stamp (identical for an exactly co-stamped set). Raw Image input
+retains payload identity; compressed hardware transport is decoded exactly
+once at this boundary.
 """
 
 from __future__ import division
@@ -45,6 +46,23 @@ class SensorPreprocessorNode(Node):
                 "not implemented; refusing to publish uncompensated geometry"
             )
 
+        # CameraInfo provenance is declared, never inferred at runtime. A
+        # backend that publishes one info (Gazebo rgbd_camera) must say so;
+        # otherwise both products need their own topic and a missing slot
+        # fails closed instead of borrowing the other product's pinhole.
+        color_info_topic = str(
+            self.get_parameter("input.color_camera_info").value).strip()
+        self._camera_info_shared = bool(
+            self.get_parameter("camera_info_shared").value)
+        if color_info_topic and self._camera_info_shared:
+            raise RuntimeError(
+                "camera_info_shared is true but input.color_camera_info is "
+                "set: declare one shared info input or two real ones")
+        if not color_info_topic and not self._camera_info_shared:
+            raise RuntimeError(
+                "no input.color_camera_info and camera_info_shared is false: "
+                "the colour CameraInfo slot would never fill")
+
         joint_names = list(
             self.get_parameter("motion_gate.joint_names").value or []
         )
@@ -59,6 +77,7 @@ class SensorPreprocessorNode(Node):
                 self.get_parameter("camera_wait_deadline_sec").value),
             camera_info_max_age_sec=float(
                 self.get_parameter("camera_info_max_age_sec").value),
+            camera_info_shared=self._camera_info_shared,
             joint_horizon_sec=float(
                 self.get_parameter("joint_horizon_sec").value),
             output_cloud_frame=str(
@@ -153,8 +172,6 @@ class SensorPreprocessorNode(Node):
         self.create_subscription(
             CameraInfo, self.get_parameter("input.camera_info").value,
             self._on_camera_info, input_qos)
-        color_info_topic = str(
-            self.get_parameter("input.color_camera_info").value).strip()
         if color_info_topic:
             self.create_subscription(
                 CameraInfo, color_info_topic, self._on_color_info, input_qos)
@@ -165,14 +182,26 @@ class SensorPreprocessorNode(Node):
         self.get_logger().info(
             "sensor_preprocessor ready (depth-primary): frame=%s "
             "pair_tolerance=%.3fs wait_deadline=%.3fs maxlen=%d/%.1fs "
-            "compressed=%s input_qos=%s"
+            "compressed=%s input_qos=%s camera_info_shared=%s"
             % (self.get_parameter("output_cloud_frame").value,
                self._core.camera_pair_tolerance_sec,
                self._core.camera_wait_deadline_sec,
                int(self.get_parameter("camera_maxlen").value),
                float(self.get_parameter("camera_horizon_sec").value),
-               self._use_compressed, reliability_name)
+               self._use_compressed, reliability_name,
+               self._camera_info_shared)
         )
+        if self._camera_info_shared:
+            self.get_logger().warning(
+                "camera_info_shared: %s describes both colour and aligned "
+                "depth; observations are flagged info_aliased"
+                % self.get_parameter("input.camera_info").value)
+        if self._core.camera_pair_tolerance_sec > 0.0:
+            self.get_logger().warning(
+                "camera_pair_tolerance_sec=%.3fs: a colour/depth pair that is "
+                "not exactly co-stamped is emitted with paired_exact=false "
+                "and geometry_ok=false"
+                % self._core.camera_pair_tolerance_sec)
 
     def _declare_params(self):
         defaults = {
@@ -197,6 +226,9 @@ class SensorPreprocessorNode(Node):
             "camera_pair_tolerance_sec": 0.005,
             "camera_wait_deadline_sec": 0.060,
             "camera_info_max_age_sec": 1.0,
+            # Declared, not inferred: true only for a backend that
+            # publishes one CameraInfo for both products.
+            "camera_info_shared": False,
             "camera_input_qos_reliability": "reliable",
             # PF-R9 g2 fixed camera cache contract.
             "camera_maxlen": 15,
@@ -271,8 +303,10 @@ class SensorPreprocessorNode(Node):
         frame = adapters.camera_info_frame_from_msg(msg)
         if frame is None:
             return
-        self._handle(self._core.update_camera_info(
-            frame, slots=("depth", "color")))
+        # This topic owns the aligned-depth slot only. With
+        # camera_info_shared the core aliases it into the colour slot and
+        # marks the observation, instead of the node silently writing both.
+        self._handle(self._core.update_camera_info(frame, slots=("depth",)))
 
     def _on_color_info(self, msg):
         frame = adapters.camera_info_frame_from_msg(msg)
@@ -312,12 +346,19 @@ class SensorPreprocessorNode(Node):
         self._emit_queue.append((_time.monotonic(), observation))
 
     def _publish_observation(self, obs):
-        """Identity republish: headers/metadata rewritten, payloads shared."""
-        stamp = adapters.sec_to_stamp(obs.primary_stamp)
+        """Identity republish: payloads shared, each product keeps its stamp.
+
+        An accepted acquisition is exactly co-stamped, so colour and depth
+        both carry ``primary_stamp``. A tolerance pair keeps the two source
+        stamps, which is why a downstream exact-stamp join simply never
+        matches it: two exposures must not look like one.
+        """
+        color_stamp = adapters.sec_to_stamp(obs.rgb_stamp)
+        depth_stamp = adapters.sec_to_stamp(obs.depth_stamp)
         b0 = _time.monotonic()
         msgs = []
         if obs.rgb is not None and obs.flags.rgb_ok:
-            out = adapters.image_msg_from_frame(obs.rgb, stamp)
+            out = adapters.image_msg_from_frame(obs.rgb, color_stamp)
             self._d1_bytes["color"] += len(out.data)
             msgs.append((self._pub_color, out, "color"))
         # Publish-on-demand stays as idle/debug hygiene only (no D3
@@ -325,17 +366,19 @@ class SensorPreprocessorNode(Node):
         # subscribers.
         if (obs.depth is not None and obs.flags.depth_ok
                 and self._pub_depth.get_subscription_count() > 0):
-            out = adapters.depth_msg_from_frame(obs.depth, stamp)
+            out = adapters.depth_msg_from_frame(obs.depth, depth_stamp)
             self._d1_bytes["depth"] += len(out.data)
             msgs.append((self._pub_depth, out, "depth"))
+        # Each CameraInfo is dated by the image it describes, so a
+        # single-input consumer's age check stays meaningful.
         if obs.color_info is not None and obs.flags.color_info_ok:
             msgs.append((self._pub_color_info,
                          adapters.camera_info_msg_from_frame(
-                             obs.color_info, stamp), "info"))
+                             obs.color_info, color_stamp), "info"))
         if obs.depth_info is not None and obs.flags.depth_info_ok:
             msgs.append((self._pub_depth_info,
                          adapters.camera_info_msg_from_frame(
-                             obs.depth_info, stamp), "info"))
+                             obs.depth_info, depth_stamp), "info"))
         b1 = _time.monotonic()
         self._d1_note("build_total_ms", b1 - b0)
         for pub, msg, kind in msgs:

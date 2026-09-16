@@ -70,6 +70,7 @@ def _hold_stable(pre, t0=1.0):
 
 class TestSensorPreprocessor(unittest.TestCase):
     def test_pairs_rgb_primary_with_nearest_depth(self):
+        """A tolerance pair is emitted, but never as one acquisition."""
         pre = SensorPreprocessor(
             camera_pair_tolerance_sec=0.020, motion_gate=_stable_gate(),
             joint_names=["j1"])
@@ -83,9 +84,32 @@ class TestSensorPreprocessor(unittest.TestCase):
         self.assertTrue(obs.flags.depth_ok)
         self.assertTrue(obs.flags.color_info_ok)
         self.assertTrue(obs.flags.depth_info_ok)
-        self.assertTrue(obs.flags.geometry_ok)
+        self.assertFalse(obs.flags.paired_exact)
+        self.assertFalse(obs.flags.geometry_ok)
         self.assertFalse(obs.flags.cloud_ok)
         self.assertAlmostEqual(obs.depth_dt, 0.001)
+        # Both source stamps survive, so a consumer's exact join misses.
+        self.assertEqual(obs.rgb_stamp, 1.200)
+        self.assertEqual(obs.depth_stamp, 1.201)
+        self.assertEqual(1, pre.tolerance_pairs)
+        self.assertEqual("tolerance", pre.diagnostics()["pair_mode"])
+
+    def test_exact_pair_keeps_geometry_and_one_stamp(self):
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020, motion_gate=_stable_gate(),
+            joint_names=["j1"])
+        _hold_stable(pre)
+        pre.update_depth(_depth(1.200))
+        pre.update_camera_info(_info(1.200))
+        obs = pre.update_rgb(_rgb(1.200))
+        self.assertIsNotNone(obs)
+        self.assertTrue(obs.flags.paired_exact)
+        self.assertTrue(obs.flags.geometry_ok)
+        self.assertEqual(obs.rgb_stamp, obs.depth_stamp)
+        self.assertEqual(obs.rgb_stamp, obs.primary_stamp)
+        self.assertEqual(0.0, obs.depth_dt)
+        self.assertEqual(0, pre.tolerance_pairs)
+        self.assertEqual("exact", pre.diagnostics()["pair_mode"])
 
     def test_out_of_order_callbacks_still_pair(self):
         pre = SensorPreprocessor(
@@ -192,8 +216,38 @@ class TestSensorPreprocessor(unittest.TestCase):
         pre.update_depth(_depth(7.0))
         self.assertIsNone(pre.update_rgb(_rgb(7.0)))
         self.assertIsNone(pre.update_rgb(_rgb(7.21)))
-        self.assertEqual("missing_camera_info", pre.last_rejection_reason())
+        # Both slots are empty; the reason names the first one missing.
+        self.assertEqual("missing_color_camera_info",
+                         pre.last_rejection_reason())
         self.assertEqual(1, pre.info_wait_skips)
+
+    def test_missing_colour_info_is_not_borrowed_from_depth(self):
+        """Without a declared shared input, one product's K is never reused."""
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020,
+            camera_wait_deadline_sec=0.060)
+        pre.update_depth(_depth(7.0))
+        pre.update_camera_info(_info(7.0), slots=("depth",))
+        self.assertIsNone(pre.update_rgb(_rgb(7.0)))
+        self.assertIsNone(pre.update_rgb(_rgb(7.21)))
+        self.assertEqual("missing_color_camera_info",
+                         pre.last_rejection_reason())
+        self.assertEqual(1, pre.missing_color_camera_info)
+        self.assertEqual(0, pre.missing_depth_camera_info)
+
+    def test_shared_camera_info_fills_both_slots_and_is_flagged(self):
+        pre = SensorPreprocessor(
+            camera_pair_tolerance_sec=0.020, camera_info_shared=True,
+            motion_gate=_stable_gate(), joint_names=["j1"])
+        _hold_stable(pre)
+        pre.update_depth(_depth(1.200))
+        pre.update_camera_info(_info(1.200), slots=("depth",))
+        obs = pre.update_rgb(_rgb(1.200))
+        self.assertIsNotNone(obs)
+        self.assertTrue(obs.flags.color_info_ok)
+        self.assertTrue(obs.flags.info_aliased)
+        self.assertTrue(obs.flags.geometry_ok)
+        self.assertTrue(pre.diagnostics()["camera_info_shared"])
 
     def test_copy_output_shares_payload_and_isolates_metadata(self):
         pre = SensorPreprocessor(camera_pair_tolerance_sec=0.020)
@@ -337,7 +391,9 @@ class TestSensorPreprocessor(unittest.TestCase):
         obs = pre.update_depth(_depth(16.210))
         self.assertIsNotNone(obs)
         self.assertTrue(obs.flags.depth_ok)
-        self.assertTrue(obs.flags.geometry_ok)
+        # Late depth from a different exposure: emitted, not geometry.
+        self.assertFalse(obs.flags.paired_exact)
+        self.assertFalse(obs.flags.geometry_ok)
 
     def test_lidar_buffer_stays_bounded(self):
         pre = SensorPreprocessor(lidar_maxlen=4)

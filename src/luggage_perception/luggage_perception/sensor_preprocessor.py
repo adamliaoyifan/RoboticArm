@@ -7,6 +7,15 @@ under one exact primary stamp, one width/height, and one truthful colour
 optical frame whose K/P describe the colour pixel grid. Aligned depth is
 the **mandatory** pair gate: an acquisition without it is never emitted.
 
+Only an exactly co-stamped set is a single exposure. When
+``camera_pair_tolerance_sec`` is above zero and colour is paired with a
+nearby depth frame instead, the set is emitted with ``paired_exact=False``
+and ``geometry_ok=False``, every product keeps its own stamp, and
+``tolerance_pairs`` counts it: two exposures may still feed 2D detection,
+but they never claim one acquisition's geometry. A ``CameraInfo`` slot is
+never filled from the other product unless ``camera_info_shared`` declares
+that one input describes both (single-info backends such as Gazebo).
+
 The preprocessor never transports a camera point cloud. Frames own opaque
 immutable payload references (PF-R9 g2): buffering, pairing, copy-out,
 and emit-queueing share the payload; nothing on the receive->republish
@@ -75,6 +84,7 @@ class SensorPreprocessor(object):
         camera_pair_tolerance_sec=None,
         camera_wait_deadline_sec=0.060,
         camera_info_max_age_sec=1.0,
+        camera_info_shared=False,
         joint_horizon_sec=1.0,
         joint_maxlen=50,
         lidar_maxlen=4,
@@ -104,6 +114,12 @@ class SensorPreprocessor(object):
             else self.camera_slop_sec)
         self.camera_wait_deadline_sec = float(camera_wait_deadline_sec)
         self.camera_info_max_age_sec = float(camera_info_max_age_sec)
+        # A single declared CameraInfo input may legitimately describe both
+        # products when the backend publishes only one (Gazebo rgbd_camera).
+        # Anything else must supply its own slot: substituting one product's
+        # calibration for the other silently changes which pinhole
+        # deprojects the pixels.
+        self.camera_info_shared = bool(camera_info_shared)
         self.output_cloud_frame = str(output_cloud_frame)
         self.enable_lidar_output = False
         self.stale_sec = float(stale_sec)
@@ -136,6 +152,9 @@ class SensorPreprocessor(object):
         self.info_wait_skips = 0
         self.acquisition_mismatches = 0
         self.exact_lookup_misses = 0
+        self.tolerance_pairs = 0
+        self.missing_color_camera_info = 0
+        self.missing_depth_camera_info = 0
         self.payload_materialisations = 0
         self.payload_bytes_received = 0
         self._camera_rollback_marks = {
@@ -198,9 +217,21 @@ class SensorPreprocessor(object):
         primary = (
             self._output.primary_stamp if self._output is not None else 0.0)
         primary_sec, primary_nanosec = _stamp_int_parts(primary)
+        rgb_stamp = self._output.rgb_stamp if self._output is not None else 0.0
+        depth_stamp = (
+            self._output.depth_stamp if self._output is not None else 0.0)
+        color_info_stamp = (
+            self._output.color_info_stamp
+            if self._output is not None else 0.0)
+        depth_info_stamp = (
+            self._output.depth_info_stamp
+            if self._output is not None else 0.0)
+        rgb_sec, rgb_nanosec = _stamp_int_parts(rgb_stamp)
+        depth_sec, depth_nanosec = _stamp_int_parts(depth_stamp)
         return {
             "schema": "luggage.preprocessed.status.v2",
             "camera_pair_tolerance_sec": self.camera_pair_tolerance_sec,
+            "camera_info_shared": self.camera_info_shared,
             "camera_wait_deadline_sec": self.camera_wait_deadline_sec,
             "camera_epoch": self.camera_epoch,
             "rollback_events": self.rollback_events,
@@ -208,6 +239,9 @@ class SensorPreprocessor(object):
             "info_wait_skips": self.info_wait_skips,
             "acquisition_mismatches": self.acquisition_mismatches,
             "exact_lookup_misses": self.exact_lookup_misses,
+            "tolerance_pairs": self.tolerance_pairs,
+            "missing_color_camera_info": self.missing_color_camera_info,
+            "missing_depth_camera_info": self.missing_depth_camera_info,
             "payload_materialisations": self.payload_materialisations,
             "payload_bytes_buffered": self.payload_bytes_buffered(),
             "payload_bytes_received": self.payload_bytes_received,
@@ -220,6 +254,23 @@ class SensorPreprocessor(object):
             "primary_stamp": primary,
             "primary_stamp_sec": primary_sec,
             "primary_stamp_nanosec": primary_nanosec,
+            # Every product keeps its own acquisition stamp; these are the
+            # values actually published, not a single relabelled clock.
+            "pair_mode": (
+                "exact" if flags.get("paired_exact") else "tolerance"),
+            "rgb_stamp": rgb_stamp,
+            "rgb_stamp_sec": rgb_sec,
+            "rgb_stamp_nanosec": rgb_nanosec,
+            "depth_stamp": depth_stamp,
+            "depth_stamp_sec": depth_sec,
+            "depth_stamp_nanosec": depth_nanosec,
+            "color_info_stamp": color_info_stamp,
+            "depth_info_stamp": depth_info_stamp,
+            "color_info_dt": (
+                abs(color_info_stamp - rgb_stamp) if color_info_stamp else -1.0),
+            "depth_info_dt": (
+                abs(depth_info_stamp - depth_stamp)
+                if depth_info_stamp else -1.0),
             "last_geometry_ok_stamp": self._last_geometry_ok_stamp,
             "depth_dt": self._output.depth_dt if self._output is not None else -1.0,
             "units": "millimetres",
@@ -268,6 +319,14 @@ class SensorPreprocessor(object):
         return self._try_emit()
 
     def update_camera_info(self, frame, slots=("depth", "color")):
+        """Insert one CameraInfo into the named slots.
+
+        Naming both slots means the caller declares that this input is the
+        calibration of both products. The production node names one slot per
+        input topic and lets ``camera_info_shared`` decide whether an empty
+        slot may be aliased, so an absent info can never be papered over by
+        the other product's intrinsics.
+        """
         if not isinstance(frame, CameraInfoFrame) or frame.stamp <= 0.0:
             self._last_rejection = "invalid_camera_info_stamp"
             return None
@@ -394,15 +453,27 @@ class SensorPreprocessor(object):
 
         color_info = self._nearest_info(self._color_info, rgb_ns)
         depth_info = self._nearest_info(self._depth_info, rgb_ns)
-        if color_info is None:
-            color_info = depth_info
-        if depth_info is None:
-            depth_info = color_info
+        info_aliased = False
+        if self.camera_info_shared:
+            # One declared input describes both products. The alias is
+            # recorded so a consumer can tell it from two real calibrations.
+            if color_info is None and depth_info is not None:
+                color_info = depth_info
+                info_aliased = True
+            elif depth_info is None and color_info is not None:
+                depth_info = color_info
+                info_aliased = True
         if color_info is None or depth_info is None:
             # Incomplete acquisition: wait, then fail closed past the
-            # deadline. Camera infos never produce a partial emission.
+            # deadline. One product's calibration is never substituted for
+            # the other unless the profile declares a shared info input.
             if self._past_deadline_ns(rgb_ns):
-                self._last_rejection = "missing_camera_info"
+                if color_info is None:
+                    self.missing_color_camera_info += 1
+                    self._last_rejection = "missing_color_camera_info"
+                else:
+                    self.missing_depth_camera_info += 1
+                    self._last_rejection = "missing_depth_camera_info"
                 self.info_wait_skips += 1
                 self._emitted_ns.add(rgb_ns)
             return None
@@ -416,6 +487,7 @@ class SensorPreprocessor(object):
             return None
 
         depth_dt = abs(depth_ns - rgb_ns) / float(NS)
+        paired_exact = depth_ns == rgb_ns
 
         gate_state = self._gate.state(now=rgb.stamp)
         geometry_ok = bool(self._gate.accepts_cloud(rgb.stamp, now=rgb.stamp))
@@ -423,6 +495,13 @@ class SensorPreprocessor(object):
         motion_score = float(self._gate.peak_excursion or 0.0)
         if gate_state != "disabled" and (
                 gate_state in ("unknown", "stale") or not self._joints):
+            geometry_ok = False
+        if not paired_exact:
+            # Two different exposures. The pixels and the depths describe
+            # different robot poses, so this set may feed detection but must
+            # never be scored as one acquisition's geometry.
+            self.tolerance_pairs += 1
+            self._last_rejection = "paired_tolerance"
             geometry_ok = False
 
         flags = ObservationFlags(
@@ -437,6 +516,8 @@ class SensorPreprocessor(object):
                    > self.stale_sec) if self._camera_now_ns() else False,
             motion_too_large=motion_too_large,
             geometry_ok=geometry_ok,
+            paired_exact=paired_exact,
+            info_aliased=info_aliased,
         )
         return SyncedObservation(
             primary_stamp=rgb.stamp,
@@ -451,6 +532,8 @@ class SensorPreprocessor(object):
             depth_dt=depth_dt,
             rgb_stamp=rgb.stamp,
             depth_stamp=depth.stamp,
+            color_info_stamp=color_info.stamp,
+            depth_info_stamp=depth_info.stamp,
             stamp_key=(rgb_ns // NS, rgb_ns % NS),
             motion_score=motion_score,
             units="millimetres",
