@@ -1,6 +1,7 @@
 """实机代码 (site / real-cell). Not part of the Gazebo simulation stack."""
 
 import math
+import threading
 import unittest
 
 from elfin_trajectory_executor.cps_parse import (
@@ -19,12 +20,16 @@ from elfin_trajectory_executor.huayan_interface import (
     FSM_ENABLING,
     FSM_STANDBY,
     STATE_REFUSE,
+    HuayanInterface,
+    RESULT_INVALID_GOAL,
     already_motion_ready,
     connect2box_allow_refuse,
     cps_step_ok,
     decimate_joint_waypoints,
     electrify_allow_refuse,
     hrif_waypoint_joint,
+    read_positive_joint_limits,
+    safe_waypoint_profile,
 )
 from elfin_trajectory_executor.vacuum_io import snapshot as vacuum_snapshot
 
@@ -192,6 +197,115 @@ class CpsParseTest(unittest.TestCase):
             pts.append(q)
         kept = decimate_joint_waypoints(pts, min_delta_deg=2.0, start_deg=[0.0] * 6)
         self.assertEqual(kept, [2, 4])
+
+    def test_reads_positive_controller_joint_limits(self):
+        class _Cps:
+            def HRIF_ReadJointMaxAcc(self, box_id, robot_id, result):
+                result.extend(["80", "81", "82", "83", "84", "85"])
+                return 0
+
+        self.assertEqual(
+            read_positive_joint_limits(_Cps(), "HRIF_ReadJointMaxAcc"),
+            [80.0, 81.0, 82.0, 83.0, 84.0, 85.0],
+        )
+        self.assertIsNone(read_positive_joint_limits(_Cps(), "missing"))
+
+        class _BadCps:
+            def HRIF_ReadJointMaxAcc(self, box_id, robot_id, result):
+                result.extend([80, 80, 0, 80, 80, 80])
+                return 0
+
+        self.assertIsNone(
+            read_positive_joint_limits(_BadCps(), "HRIF_ReadJointMaxAcc")
+        )
+
+    def test_safe_waypoint_profile_uses_proven_acceleration_and_caps_velocity(self):
+        self.assertEqual(
+            safe_waypoint_profile(
+                54.0, 60.0, 60.0, [100.0] * 6, [100.0] * 6),
+            (54.0, 60.0),
+        )
+        self.assertEqual(
+            safe_waypoint_profile(
+                70.0, 60.0, 60.0, [100.0] * 6, [100.0] * 6),
+            (59.0, 60.0),
+        )
+        self.assertEqual(
+            safe_waypoint_profile(
+                54.0, 60.0, 60.0,
+                controller_max_velocity_deg=[20.0] * 6,
+                controller_max_acceleration_deg=[50.0] * 6,
+            ),
+            (16.0, 40.0),
+        )
+        with self.assertRaises(ValueError):
+            safe_waypoint_profile(
+                10.0, 0.5, 20.0, [100.0] * 6, [100.0] * 6)
+        with self.assertRaisesRegex(ValueError, "velocity limits are unavailable"):
+            safe_waypoint_profile(10.0, 60.0, 20.0, None, [100.0] * 6)
+        with self.assertRaisesRegex(ValueError, "exceeds safety maximum"):
+            safe_waypoint_profile(
+                10.0, 60.0, 20.0, [100.0] * 6, [100.0] * 6, 0.81)
+
+    def test_profile_preflight_rejects_before_first_waypoint(self):
+        class _Logger:
+            def info(self, message):
+                pass
+
+            def error(self, message):
+                pass
+
+        class _Node:
+            def get_logger(self):
+                return _Logger()
+
+        class _Cps:
+            def __init__(self):
+                self.waypoint_calls = 0
+
+            def HRIF_WayPoint(self, *args):
+                self.waypoint_calls += 1
+                return 0
+
+        class _Duration:
+            def __init__(self, seconds):
+                self.sec = int(seconds)
+                self.nanosec = int(round((seconds - self.sec) * 1e9))
+
+        class _Point:
+            def __init__(self, degrees, seconds):
+                self.positions = [math.radians(v) for v in degrees]
+                self.velocities = []
+                self.accelerations = []
+                self.time_from_start = _Duration(seconds)
+
+        class _Trajectory:
+            def __init__(self):
+                self.points = [
+                    _Point([0, 3, 0, 0, 0, 0], 0.2),
+                    _Point([0, 6, 0, 0, 0, 0], 0.4),
+                ]
+
+        iface = HuayanInterface.__new__(HuayanInterface)
+        iface._monitor_only = False
+        iface._node = _Node()
+        iface._cps = _Cps()
+        iface._current_positions_deg = [0.0] * 6
+        iface._default_vel = 10.0
+        iface._max_vel = 20.0
+        iface._command_accel = 0.5
+        iface._controller_max_velocity_deg = None
+        iface._controller_max_acceleration_deg = None
+        iface._controller_limit_fraction = 0.8
+        iface._ensure_connected = lambda: True
+        iface._refresh_positions = lambda: None
+        iface._set_state = lambda state: None
+
+        result = iface.execute(
+            _Trajectory(), lambda positions: None, threading.Event()
+        )
+        self.assertEqual(result, RESULT_INVALID_GOAL)
+        self.assertEqual(iface._cps.waypoint_calls, 0)
 
 
 if __name__ == "__main__":

@@ -32,6 +32,8 @@ def generate_launch_description() -> LaunchDescription:
     robot_port = LaunchConfiguration("robot_port")
     default_vel = LaunchConfiguration("default_velocity_deg")
     max_vel = LaunchConfiguration("max_velocity_deg")
+    command_accel = LaunchConfiguration("command_acceleration_deg")
+    controller_limit_fraction = LaunchConfiguration("controller_limit_fraction")
     action_name = LaunchConfiguration("action_name")
 
     executor_node = Node(
@@ -48,6 +50,8 @@ def generate_launch_description() -> LaunchDescription:
                 "robot_port": robot_port,
                 "default_velocity_deg": default_vel,
                 "max_velocity_deg": max_vel,
+                "command_acceleration_deg": command_accel,
+                "controller_limit_fraction": controller_limit_fraction,
                 "action_name": action_name,
             },
         ],
@@ -74,6 +78,22 @@ def generate_launch_description() -> LaunchDescription:
                 "max_velocity_deg",
                 default_value="20.0",
                 description="Hard clamp on waypoint speed (deg/s).",
+            ),
+            DeclareLaunchArgument(
+                "command_acceleration_deg",
+                default_value="60.0",
+                description=(
+                    "Scalar MoveJ acceleration (deg/s^2). Keep at the "
+                    "site-proven 60 until hardware qualification passes."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "controller_limit_fraction",
+                default_value="0.8",
+                description=(
+                    "Fraction of reported controller velocity/acceleration "
+                    "limits; safety maximum is 0.8."
+                ),
             ),
             DeclareLaunchArgument(
                 "action_name",

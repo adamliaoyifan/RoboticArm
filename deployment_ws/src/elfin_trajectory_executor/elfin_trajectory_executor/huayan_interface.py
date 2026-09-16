@@ -80,9 +80,10 @@ POLL_INTERVAL_S = 0.05          # 20 Hz feedback polling
 BLEND_RADIUS_MM = 5.0           # blending on intermediate waypoints
 FINAL_BLEND_RADIUS_MM = 0.0     # exact stop at last waypoint
 DEFAULT_VELOCITY_DEG = 30.0
-DEFAULT_ACCEL_DEG = 60.0        # must be > velocity per HuayanRobot constraint
-MAX_ACCEL_DEG = 80.0            # CPS 40083 above this
+DEFAULT_ACCEL_DEG = 60.0        # accepted on site; must exceed velocity
 MAX_VELOCITY_DEG = 60.0
+DEFAULT_CONTROLLER_LIMIT_FRACTION = 0.8
+MAX_CONTROLLER_LIMIT_FRACTION = 0.8
 HUAYAN_MIN_VELOCITY_DEG = 1.0   # CPS 20070 below ~1 deg/s
 # MoveIt TOTG densifies OMPL paths to sub-degree samples. Each sample is a
 # full HRIF_WayPoint MoveJ; blasting those at default_vel looks like the
@@ -169,6 +170,89 @@ def _max_joint_delta_deg(a: List[float], b: List[float]) -> float:
     return max(abs(float(a[i]) - float(b[i])) for i in range(n))
 
 
+def read_positive_joint_limits(cps, method_name: str) -> Optional[List[float]]:
+    """Read one six-axis CPS limit vector, returning ``None`` if unavailable."""
+    method = getattr(cps, method_name, None)
+    if not callable(method):
+        return None
+    result = []
+    try:
+        n_ret = method(BOX_ID, RBT_ID, result)
+    except Exception:
+        return None
+    values = as_float_list(result, 6) if n_ret == 0 else None
+    if values is None or not all(math.isfinite(v) and v > 0.0 for v in values):
+        return None
+    return values
+
+
+def _positive_joint_limit_minimum(
+    values: Optional[List[float]], field_name: str,
+) -> float:
+    parsed = as_float_list(values, 6)
+    if parsed is None or not all(
+        math.isfinite(value) and value > 0.0 for value in parsed
+    ):
+        raise ValueError("controller %s limits are unavailable" % field_name)
+    return min(parsed)
+
+
+def safe_waypoint_profile(
+    estimated_velocity_deg: float,
+    command_acceleration_deg: float,
+    configured_max_velocity_deg: float,
+    controller_max_velocity_deg: Optional[List[float]],
+    controller_max_acceleration_deg: Optional[List[float]],
+    controller_limit_fraction: float = DEFAULT_CONTROLLER_LIMIT_FRACTION,
+) -> Tuple[float, float]:
+    """Clamp one scalar MoveJ profile to configured and reported CPS limits.
+
+    Huayan rejects a waypoint unless acceleration is greater than velocity.
+    This helper is deliberately pure so the complete command list can be
+    validated before the first motion command is sent.
+    """
+    requested = [
+        float(estimated_velocity_deg),
+        float(command_acceleration_deg),
+        float(configured_max_velocity_deg),
+        float(controller_limit_fraction),
+    ]
+    if not all(math.isfinite(v) and v > 0.0 for v in requested):
+        raise ValueError(
+            "velocity, acceleration, and limit fraction must be finite and "
+            "positive"
+        )
+    limit_fraction = requested[3]
+    if limit_fraction > MAX_CONTROLLER_LIMIT_FRACTION:
+        raise ValueError(
+            "controller limit fraction %.3f exceeds safety maximum %.3f"
+            % (limit_fraction, MAX_CONTROLLER_LIMIT_FRACTION)
+        )
+    controller_velocity_min = _positive_joint_limit_minimum(
+        controller_max_velocity_deg, "velocity")
+    controller_acceleration_min = _positive_joint_limit_minimum(
+        controller_max_acceleration_deg, "acceleration")
+
+    velocity_cap = min(
+        requested[2], limit_fraction * controller_velocity_min)
+
+    acceleration = min(
+        requested[1], limit_fraction * controller_acceleration_min)
+
+    if acceleration <= HUAYAN_MIN_VELOCITY_DEG:
+        raise ValueError(
+            "controller acceleration limit %.3f leaves no valid Huayan velocity"
+            % acceleration
+        )
+    velocity = min(requested[0], velocity_cap, acceleration - 1.0)
+    if velocity < HUAYAN_MIN_VELOCITY_DEG:
+        raise ValueError(
+            "controller velocity limit %.3f is below Huayan minimum %.3f"
+            % (velocity, HUAYAN_MIN_VELOCITY_DEG)
+        )
+    return velocity, acceleration
+
+
 def decimate_joint_waypoints(
     joints_deg: List[List[float]],
     *,
@@ -228,6 +312,12 @@ class HuayanInterface:
         Fallback joint velocity in °/s when trajectory time hints are absent.
     max_velocity_deg : float
         Upper clamp on computed velocity.
+    command_acceleration_deg : float
+        Conservative scalar MoveJ acceleration. The site-proven default is
+        60 deg/s^2; reported controller limits may reduce it further.
+    controller_limit_fraction : float
+        Fraction of reported controller velocity/acceleration limits available
+        to generated commands. Values above 0.8 are rejected.
     power_off_on_disconnect : bool
         If True, HRIF_BlackOut on teardown (cuts 48 V). Default False.
     """
@@ -254,6 +344,8 @@ class HuayanInterface:
         robot_port: int = 10003,
         default_velocity_deg: float = DEFAULT_VELOCITY_DEG,
         max_velocity_deg: float = MAX_VELOCITY_DEG,
+        command_acceleration_deg: float = DEFAULT_ACCEL_DEG,
+        controller_limit_fraction: float = DEFAULT_CONTROLLER_LIMIT_FRACTION,
         power_off_on_disconnect: bool = False,
     ) -> None:
         self._node = node
@@ -261,6 +353,17 @@ class HuayanInterface:
         self._port = robot_port
         self._default_vel = default_velocity_deg
         self._max_vel = max_velocity_deg
+        self._command_accel = command_acceleration_deg
+        self._controller_limit_fraction = float(controller_limit_fraction)
+        if (
+            not math.isfinite(self._controller_limit_fraction)
+            or self._controller_limit_fraction <= 0.0
+            or self._controller_limit_fraction > MAX_CONTROLLER_LIMIT_FRACTION
+        ):
+            raise ValueError(
+                "controller_limit_fraction must be in (0, %.3f]"
+                % MAX_CONTROLLER_LIMIT_FRACTION
+            )
         self._power_off_on_disconnect = bool(power_off_on_disconnect)
 
         self._cps = None          # CPSClient instance (imported lazily)
@@ -293,6 +396,9 @@ class HuayanInterface:
         self._vacuum_do0: Optional[int] = None
         self._vacuum_do1: Optional[int] = None
         self._refresh_n: int = 0
+        self._controller_max_velocity_deg: Optional[List[float]] = None
+        self._controller_max_acceleration_deg: Optional[List[float]] = None
+        self._controller_max_jerk_deg: Optional[List[float]] = None
 
     # ------------------------------------------------------------------
     # State helpers
@@ -491,9 +597,39 @@ class HuayanInterface:
 
     def validate_trajectory(self, trajectory) -> Optional[str]:
         """Return error string or None if trajectory is valid."""
-        for pt in trajectory.points:
+        previous_time = -1.0
+        for point_index, pt in enumerate(trajectory.points):
+            if len(pt.positions) != len(self.JOINT_NAMES):
+                return (
+                    "Waypoint %s has %s positions; expected %s"
+                    % (point_index, len(pt.positions), len(self.JOINT_NAMES))
+                )
+            point_time = _duration_to_sec(pt.time_from_start)
+            if not math.isfinite(point_time) or point_time < 0.0:
+                return "Waypoint %s has invalid time_from_start" % point_index
+            if point_index > 0 and point_time <= previous_time:
+                return "Waypoint times must be strictly increasing"
+            previous_time = point_time
+            for field_name in ("velocities", "accelerations"):
+                values = getattr(pt, field_name)
+                if values and len(values) != len(self.JOINT_NAMES):
+                    return (
+                        "Waypoint %s has %s %s; expected 0 or %s"
+                        % (
+                            point_index,
+                            len(values),
+                            field_name,
+                            len(self.JOINT_NAMES),
+                        )
+                    )
+                if any(not math.isfinite(float(v)) for v in values):
+                    return "Waypoint %s has non-finite %s" % (
+                        point_index, field_name,
+                    )
             for idx, pos in enumerate(pt.positions):
                 pos_deg = math.degrees(pos)
+                if not math.isfinite(pos_deg):
+                    return "Waypoint %s has a non-finite position" % point_index
                 lo, hi = self.JOINT_LIMITS_DEG[idx]
                 if not (lo <= pos_deg <= hi):
                     return (
@@ -564,13 +700,12 @@ class HuayanInterface:
             % (len(kept), len(points), WAYPOINT_MIN_DELTA_DEG)
         )
 
+        # Build and validate the complete command list before sending the
+        # first waypoint. This prevents a later point from producing 40083
+        # after the robot has already moved partway through the goal.
+        commands = []
         try:
             for k, i in enumerate(kept):
-                if cancel_flag.is_set():
-                    self._node.get_logger().info('[huayan] Trajectory preempted.')
-                    self._safe_stop()
-                    return RESULT_PREEMPTED
-
                 is_last = (k == len(kept) - 1)
                 pt = points[i]
                 joints_deg = all_deg[i]
@@ -580,24 +715,43 @@ class HuayanInterface:
                     times_s[next_i] - times_s[i]
                     if next_i is not None else None
                 )
-
-                vel_deg = self._estimate_velocity(
+                estimated_velocity = self._estimate_velocity(
                     pt, joints_deg, next_deg, dt,
                 )
-                # Acc must exceed speed, but vel*2 at 54°/s was 108 and
-                # Huayan 40083 (acceleration exceeds maximum).
-                accel_deg = min(
-                    MAX_ACCEL_DEG,
-                    max(DEFAULT_ACCEL_DEG, vel_deg * 1.5),
+                velocity, acceleration = safe_waypoint_profile(
+                    estimated_velocity,
+                    self._command_accel,
+                    self._max_vel,
+                    self._controller_max_velocity_deg,
+                    self._controller_max_acceleration_deg,
+                    self._controller_limit_fraction,
                 )
-                if accel_deg <= vel_deg:
-                    vel_deg = max(HUAYAN_MIN_VELOCITY_DEG, accel_deg - 1.0)
                 radius = FINAL_BLEND_RADIUS_MM if is_last else BLEND_RADIUS_MM
+                commands.append(
+                    (i, is_last, joints_deg, velocity, acceleration, radius)
+                )
+        except (TypeError, ValueError) as exc:
+            self._node.get_logger().error(
+                '[huayan] Trajectory profile preflight failed before motion: %s'
+                % exc
+            )
+            self._set_state(ConnectionState.READY)
+            return RESULT_INVALID_GOAL
+
+        try:
+            for k, command in enumerate(commands):
+                if cancel_flag.is_set():
+                    self._node.get_logger().info('[huayan] Trajectory preempted.')
+                    self._safe_stop()
+                    return RESULT_PREEMPTED
+
+                i, is_last, joints_deg, vel_deg, accel_deg, radius = command
 
                 self._node.get_logger().info(
                     f'[huayan] WP {k+1}/{len(kept)} (totg {i})  '
                     f'J={[f"{d:.1f}" for d in joints_deg]}°  '
-                    f'vel={vel_deg:.1f}°/s  r={radius}mm'
+                    f'vel={vel_deg:.1f}°/s  acc={accel_deg:.1f}°/s²  '
+                    f'r={radius}mm'
                 )
 
                 nRet = hrif_waypoint_joint(
@@ -610,6 +764,7 @@ class HuayanInterface:
                         f'[huayan] HRIF_WayPoint failed (code {nRet}): {msg}'
                     )
                     self._safe_stop()
+                    self._set_state(ConnectionState.ERROR)
                     return RESULT_ERROR
 
                 # Poll for completion and publish feedback.
@@ -653,6 +808,7 @@ class HuayanInterface:
                 'continuing with TCP session only'
             )
         self._refresh_positions()
+        self._read_controller_motion_limits()
         log.info(
             '[huayan] Monitor ready. q_deg=%s'
             % [round(v, 2) for v in self._current_positions_deg]
@@ -740,7 +896,52 @@ class HuayanInterface:
             time.sleep(0.5)
 
         self._refresh_positions()
+        if not self._read_controller_motion_limits():
+            log.error(
+                '[huayan] Required controller motion limits unavailable; '
+                'refusing hardware readiness'
+            )
+            return False
         log.info('[huayan] Robot ready.')
+        return True
+
+    def _read_controller_motion_limits(self) -> bool:
+        """Cache limits and report whether motion-critical reads passed."""
+        self._controller_max_velocity_deg = read_positive_joint_limits(
+            self._cps, 'HRIF_ReadJointMaxVel',
+        )
+        self._controller_max_acceleration_deg = read_positive_joint_limits(
+            self._cps, 'HRIF_ReadJointMaxAcc',
+        )
+        self._controller_max_jerk_deg = read_positive_joint_limits(
+            self._cps, 'HRIF_ReadJointMaxJerk',
+        )
+        log = self._node.get_logger()
+        if (
+            self._controller_max_velocity_deg is None
+            or self._controller_max_acceleration_deg is None
+        ):
+            log.warn(
+                '[huayan] Required controller velocity/acceleration limits '
+                'unavailable; hardware motion is disabled'
+            )
+            return False
+        log.info(
+            '[huayan] Controller limits vel=%s deg/s acc=%s deg/s^2 jerk=%s '
+            'command_fraction=%.3f'
+            % (
+                [round(v, 3) for v in self._controller_max_velocity_deg],
+                [round(v, 3) for v in self._controller_max_acceleration_deg],
+                None if self._controller_max_jerk_deg is None else
+                [round(v, 3) for v in self._controller_max_jerk_deg],
+                self._controller_limit_fraction,
+            )
+        )
+        if self._controller_max_jerk_deg is None:
+            log.warn(
+                '[huayan] Controller jerk limits unavailable; continuing '
+                'because HRIF_WayPoint does not command jerk'
+            )
         return True
 
     def _cps_step(self, name, fn, allow_refuse: bool) -> bool:
@@ -871,12 +1072,26 @@ class HuayanInterface:
             result = []
             if is_last:
                 nRet = self._cps.HRIF_IsMotionDone(BOX_ID, RBT_ID, result)
-                done = (nRet == 0 and result and result[0] is True)
+                if (
+                    nRet != 0
+                    or len(result) != 1
+                    or not isinstance(result[0], bool)
+                ):
+                    return self._poll_failure(
+                        'HRIF_IsMotionDone', nRet, result)
+                done = result[0]
                 if done:
                     return RESULT_SUCCESSFUL
             else:
                 nRet = self._cps.HRIF_IsBlendingDone(BOX_ID, RBT_ID, result)
-                blending_done = (nRet == 0 and result and result[0] is True)
+                if (
+                    nRet != 0
+                    or len(result) != 1
+                    or not isinstance(result[0], bool)
+                ):
+                    return self._poll_failure(
+                        'HRIF_IsBlendingDone', nRet, result)
+                blending_done = result[0]
                 if not blending_done:
                     saw_busy = True
                 elif saw_busy:
@@ -885,6 +1100,18 @@ class HuayanInterface:
                     return RESULT_SUCCESSFUL
 
             time.sleep(POLL_INTERVAL_S)
+
+    def _poll_failure(self, method_name: str, n_ret: int, result) -> int:
+        """Stop and enter ERROR on a failed or malformed CPS completion poll."""
+        if n_ret != 0:
+            detail = 'code %s: %s' % (n_ret, self._get_error_str(n_ret))
+        else:
+            detail = 'malformed success payload %r' % (result,)
+        self._node.get_logger().error(
+            '[huayan] %s failed (%s)' % (method_name, detail))
+        self._safe_stop()
+        self._set_state(ConnectionState.ERROR)
+        return RESULT_ERROR
 
     def _refresh_positions(self) -> None:
         """One complete CPS snapshot. Never reuse a stale field under a new stamp.

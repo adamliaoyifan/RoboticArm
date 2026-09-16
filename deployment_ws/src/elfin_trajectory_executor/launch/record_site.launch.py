@@ -232,6 +232,8 @@ def _cps_or_executor(context, *args, **kwargs):
                         "robot_port": int(port),
                         "default_velocity_deg": 30.0,
                         "max_velocity_deg": 60.0,
+                        "command_acceleration_deg": 60.0,
+                        "controller_limit_fraction": 0.8,
                     },
                 ],
             ),

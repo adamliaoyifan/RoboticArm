@@ -15,7 +15,6 @@ would fight /joint_states.
 
 from __future__ import annotations
 
-import threading
 from typing import List, Optional
 
 import rclpy
@@ -46,6 +45,7 @@ from .execution_contract import (
     event_to_json,
     make_event,
 )
+from .goal_ownership import SingleGoalOwner
 from .huayan_interface import HuayanInterface, RESULT_ERROR
 from .sim_interface import (
     RESULT_INVALID_GOAL,
@@ -85,6 +85,8 @@ class TrajectoryExecutorNode(Node):
         self.declare_parameter('robot_port', 10003)
         self.declare_parameter('default_velocity_deg', 30.0)
         self.declare_parameter('max_velocity_deg', 60.0)
+        self.declare_parameter('command_acceleration_deg', 60.0)
+        self.declare_parameter('controller_limit_fraction', 0.8)
         self.declare_parameter('power_off_on_disconnect', False)
         self.declare_parameter('joint_names', self.JOINT_NAMES)
         self.declare_parameter('action_name', DEFAULT_ACTION_NAME)
@@ -95,6 +97,10 @@ class TrajectoryExecutorNode(Node):
         robot_port = self.get_parameter('robot_port').get_parameter_value().integer_value
         default_vel = self.get_parameter('default_velocity_deg').get_parameter_value().double_value
         max_vel = self.get_parameter('max_velocity_deg').get_parameter_value().double_value
+        command_accel = self.get_parameter(
+            'command_acceleration_deg').get_parameter_value().double_value
+        controller_limit_fraction = self.get_parameter(
+            'controller_limit_fraction').get_parameter_value().double_value
         power_off = self.get_parameter(
             'power_off_on_disconnect').get_parameter_value().bool_value
         self._joint_names: List[str] = (
@@ -122,6 +128,8 @@ class TrajectoryExecutorNode(Node):
                 robot_port=robot_port,
                 default_velocity_deg=default_vel,
                 max_velocity_deg=max_vel,
+                command_acceleration_deg=command_accel,
+                controller_limit_fraction=controller_limit_fraction,
                 power_off_on_disconnect=power_off,
             )
             apply_vacuum_io_params(self, self._iface)
@@ -138,6 +146,8 @@ class TrajectoryExecutorNode(Node):
         # ----------------------------------------------------------------
         # Reentrant callback group so action + timer can run concurrently.
         self._cb_group = ReentrantCallbackGroup()
+        # Reentrant callbacks share the server, but never hardware ownership.
+        self._goal_owner = SingleGoalOwner()
 
         self._js_pub = self.create_publisher(JointState, '/joint_states', 10)
         self._status_pub = self.create_publisher(String, STATUS_TOPIC, _LATCHED)
@@ -163,6 +173,7 @@ class TrajectoryExecutorNode(Node):
             goal_callback=self._goal_callback,
             cancel_callback=self._cancel_callback,
             execute_callback=self._execute_callback,
+            handle_accepted_callback=self._handle_accepted_callback,
             callback_group=self._cb_group,
         )
         if isinstance(self._iface, HuayanInterface):
@@ -174,9 +185,6 @@ class TrajectoryExecutorNode(Node):
                 SetBool, "/elfin/vacuum/set_do1",
                 lambda req, res: self._handle_set_do(1, req, res),
                 callback_group=self._cb_group)
-
-        # Cancel flag shared between the action server and the backend.
-        self._cancel_flag = threading.Event()
 
         self._publish_status('idle')
         self._publish_event(EVENT_IDLE)
@@ -197,23 +205,65 @@ class TrajectoryExecutorNode(Node):
             self._publish_event(EVENT_REJECTED, error_string=error)
             return GoalResponse.REJECT
 
-        if isinstance(self._iface, HuayanInterface) and not self._iface.is_ready:
+        # Reserve before checking/reconnecting hardware. EXECUTING is not READY;
+        # without this gate an overlapping request could reconnect the live CPS
+        # client while the owning callback is still moving the arm.
+        if not self._goal_owner.try_reserve():
+            error = 'executor busy'
+            self.get_logger().warn(f'[executor] Goal rejected: {error}.')
+            self._publish_event(EVENT_REJECTED, error_string=error)
+            return GoalResponse.REJECT
+
+        accepted = False
+        try:
+            if (
+                isinstance(self._iface, HuayanInterface)
+                and not self._iface.is_ready
+            ):
+                self.get_logger().warn(
+                    '[executor] Robot not ready; retrying connect before reject')
+                if not self._iface.connect():
+                    self.get_logger().warn(
+                        '[executor] Goal rejected: robot not ready.')
+                    self._publish_event(
+                        EVENT_REJECTED, error_string='robot not ready')
+                    return GoalResponse.REJECT
+
+            accepted = True
+            self.get_logger().info(
+                f'[executor] Goal accepted: {len(traj.points)} waypoints.'
+            )
+            return GoalResponse.ACCEPT
+        except Exception as exc:
+            error = f'goal admission error: {exc}'
+            self.get_logger().error(f'[executor] Goal rejected: {error}')
+            self._publish_event(EVENT_REJECTED, error_string=error)
+            return GoalResponse.REJECT
+        finally:
+            if not accepted:
+                self._goal_owner.release_pending()
+
+    def _handle_accepted_callback(self, goal_handle) -> None:
+        """Bind the admission reservation before scheduling execution."""
+        goal_id = _uuid_hex(goal_handle.goal_id)
+        if not self._goal_owner.bind(goal_id):
+            # This is an internal invariant failure. Execute the handle so the
+            # client receives an aborted result instead of waiting forever.
+            self.get_logger().error(
+                '[executor] Accepted goal has no ownership reservation: %s'
+                % goal_id
+            )
+        goal_handle.execute()
+
+    def _cancel_callback(self, goal_handle) -> CancelResponse:
+        """Accept cancellation only for the goal that owns the executor."""
+        goal_id = _uuid_hex(goal_handle.goal_id)
+        if not self._goal_owner.cancel(goal_id):
             self.get_logger().warn(
-                '[executor] Robot not ready; retrying connect before reject')
-            if not self._iface.connect():
-                self.get_logger().warn('[executor] Goal rejected: robot not ready.')
-                self._publish_event(EVENT_REJECTED, error_string='robot not ready')
-                return GoalResponse.REJECT
-
+                '[executor] Cancel rejected for non-owning goal %s' % goal_id)
+            return CancelResponse.REJECT
         self.get_logger().info(
-            f'[executor] Goal accepted: {len(traj.points)} waypoints.'
-        )
-        return GoalResponse.ACCEPT
-
-    def _cancel_callback(self, cancel_request) -> CancelResponse:
-        """Accept cancellation and set the cancel flag."""
-        self.get_logger().info('[executor] Cancel request received.')
-        self._cancel_flag.set()
+            '[executor] Cancel request received for goal %s.' % goal_id)
         return CancelResponse.ACCEPT
 
     def _execute_callback(self, goal_handle) -> FollowJointTrajectory.Result:
@@ -224,8 +274,23 @@ class TrajectoryExecutorNode(Node):
         2. Delegate to the backend.
         3. Map return code → action result.
         """
-        self._cancel_flag.clear()
         goal_id = _uuid_hex(goal_handle.goal_id)
+        cancel_flag = self._goal_owner.cancel_event(goal_id)
+        if cancel_flag is None:
+            result = FollowJointTrajectory.Result()
+            result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+            result.error_string = 'Internal executor ownership error.'
+            goal_handle.abort()
+            self._publish_status('error')
+            self._publish_event(
+                EVENT_ABORTED,
+                goal_id=goal_id,
+                error_code=result.error_code,
+                error_string=result.error_string,
+            )
+            self._goal_owner.release_pending()
+            return result
+
         self._publish_status('executing')
         self._publish_event(EVENT_ACCEPTED, goal_id=goal_id)
         self._publish_event(EVENT_EXECUTING, goal_id=goal_id)
@@ -242,56 +307,66 @@ class TrajectoryExecutorNode(Node):
                 fb.actual.time_from_start = self._ros_time_offset()
                 goal_handle.publish_feedback(fb)
 
-        ret = self._iface.execute(ordered_traj, feedback_fn, self._cancel_flag)
+        try:
+            ret = self._iface.execute(ordered_traj, feedback_fn, cancel_flag)
+        except Exception as exc:
+            self.get_logger().error(
+                '[executor] Backend execution exception: %s' % exc)
+            ret = RESULT_ERROR
 
         result = FollowJointTrajectory.Result()
+        try:
+            if ret == RESULT_SUCCESSFUL:
+                result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                result.error_string = ''
+                goal_handle.succeed()
+                self._publish_status('idle')
+                self._publish_event(EVENT_SUCCEEDED, goal_id=goal_id)
+                self.get_logger().info(
+                    '[executor] Goal succeeded. ready_for_next=true'
+                )
 
-        if ret == RESULT_SUCCESSFUL:
-            result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
-            result.error_string = ''
-            goal_handle.succeed()
-            self._publish_status('idle')
-            self._publish_event(EVENT_SUCCEEDED, goal_id=goal_id)
-            self.get_logger().info(
-                '[executor] Goal succeeded. ready_for_next=true'
-            )
+            elif ret == RESULT_PREEMPTED:
+                result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
+                result.error_string = 'Preempted by cancel request.'
+                goal_handle.canceled()
+                self._publish_status('idle')
+                self._publish_event(
+                    EVENT_CANCELED, goal_id=goal_id,
+                    error_string=result.error_string,
+                )
+                self.get_logger().info('[executor] Goal cancelled.')
 
-        elif ret == RESULT_PREEMPTED:
-            result.error_code = FollowJointTrajectory.Result.SUCCESSFUL
-            result.error_string = 'Preempted by cancel request.'
-            goal_handle.canceled()
-            self._publish_status('idle')
-            self._publish_event(
-                EVENT_CANCELED, goal_id=goal_id,
-                error_string=result.error_string,
-            )
-            self.get_logger().info('[executor] Goal cancelled.')
+            elif ret == RESULT_INVALID_GOAL:
+                result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+                result.error_string = (
+                    'Trajectory validation failed (check joint limits).')
+                goal_handle.abort()
+                self._publish_status('error')
+                self._publish_event(
+                    EVENT_ABORTED, goal_id=goal_id,
+                    error_code=result.error_code,
+                    error_string=result.error_string,
+                )
+                self.get_logger().error('[executor] Goal aborted: invalid goal.')
 
-        elif ret == RESULT_INVALID_GOAL:
-            result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
-            result.error_string = 'Trajectory validation failed (check joint limits).'
-            goal_handle.abort()
-            self._publish_status('error')
-            self._publish_event(
-                EVENT_ABORTED, goal_id=goal_id,
-                error_code=result.error_code,
-                error_string=result.error_string,
-            )
-            self.get_logger().error('[executor] Goal aborted: invalid goal.')
+            else:  # RESULT_ERROR
+                result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
+                result.error_string = 'Hardware execution error. Check robot logs.'
+                goal_handle.abort()
+                self._publish_status('error')
+                self._publish_event(
+                    EVENT_ABORTED, goal_id=goal_id,
+                    error_code=result.error_code,
+                    error_string=result.error_string,
+                )
+                self.get_logger().error('[executor] Goal aborted: hardware error.')
 
-        else:  # RESULT_ERROR
-            result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
-            result.error_string = 'Hardware execution error. Check robot logs.'
-            goal_handle.abort()
-            self._publish_status('error')
-            self._publish_event(
-                EVENT_ABORTED, goal_id=goal_id,
-                error_code=result.error_code,
-                error_string=result.error_string,
-            )
-            self.get_logger().error('[executor] Goal aborted: hardware error.')
-
-        return result
+            return result
+        finally:
+            if not self._goal_owner.release(goal_id):
+                self.get_logger().error(
+                    '[executor] Failed to release goal ownership for %s' % goal_id)
 
     # ------------------------------------------------------------------
     # Joint state publisher
