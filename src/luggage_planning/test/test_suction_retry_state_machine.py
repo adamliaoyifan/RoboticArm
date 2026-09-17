@@ -4,6 +4,9 @@ trace, recovery fault injection, and the pre/carry failure boundary —
 plus the reducer transition grid and the C7 dry-run protocol.
 """
 
+import json
+import os
+import tempfile
 import unittest
 
 from harness import suction_fakes as fakes
@@ -750,6 +753,96 @@ class TestDryRunSession(unittest.TestCase):
         self.assertEqual([record["payload"]["candidate_id"]
                           for record in printed[:2]],
                          ["C001_001", "C002_001"])
+
+
+class TestReplayCli(unittest.TestCase):
+    """`suction_retry_replay` re-derives the recorded decisions."""
+
+    def _write_case(self, trace, directory):
+        import json
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "events.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            for record in trace:
+                handle.write(json.dumps(record, default=str) + "\n")
+        return directory
+
+    def test_recorded_c4_trace_replays_to_same_state(self):
+        import tempfile
+        from luggage_planning.eval import suction_retry_replay
+
+        candidates = [fakes.make_candidate("C001_001", 1),
+                      fakes.make_candidate("C002_001", 2)]
+        _session, result, _ports = run_session(
+            candidates,
+            seal_delays={"C001_001": 99.0, "C002_001": 0.5})
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._write_case(result.trace, tmp)
+            self.assertEqual(
+                suction_retry_replay.main(["--case", case,
+                                           "--stage", "vacuum"]), 0)
+            with open(os.path.join(case, "replay_summary.json")) as handle:
+                summary = json.load(handle)
+            self.assertTrue(summary["valid"])
+            self.assertEqual(summary["final_state"], "COMPLETED")
+            self.assertEqual(summary["audit"], {
+                "order_violations": 0,
+                "lateral_before_release_confirmed": 0,
+                "vacuum_on_lateral_motion": 0,
+                "duplicate_scene_attach": 0,
+                "unauthorized_detect": 0,
+                "unauthorized_vacuum_during_recovery": 0,
+            })
+
+    def test_mutated_trace_is_rejected(self):
+        import tempfile
+        from luggage_planning.eval import suction_retry_replay
+
+        candidates = [fakes.make_candidate("C001_001", 1),
+                      fakes.make_candidate("C002_001", 2)]
+        _session, result, _ports = run_session(
+            candidates,
+            seal_delays={"C001_001": 99.0, "C002_001": 0.5})
+        # mutation: drop the final SEGMENT_SUCCEEDED (pick_retreat) event
+        # and the terminal state record, so replay ends non-terminal
+        trace = [record for record in result.trace
+                 if not (record.get("kind") == "state"
+                         and record.get("name") == "COMPLETED")]
+        indices = [i for i, record in enumerate(trace)
+                   if record.get("kind") == "retry_event"]
+        trace = trace[:indices[-1]]
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._write_case(trace, tmp)
+            self.assertNotEqual(
+                suction_retry_replay.main(["--case", case,
+                                           "--stage", "vacuum"]), 0)
+
+    def test_order_violating_trace_fails_audit(self):
+        import tempfile
+        from luggage_planning.eval import suction_retry_replay
+
+        records = [
+            {"t": 1.0, "kind": "retry_event", "name": "REQUEST_START",
+             "candidate_id": "", "segment": "", "ok": True,
+             "reason_code": "", "detail": "", "di0": None,
+             "fraction": -1.0, "ranked_ids": ["C001_001"]},
+            {"t": 1.1, "kind": "retry_event", "name": "CANDIDATE_SELECTED",
+             "candidate_id": "C001_001", "segment": "", "ok": True,
+             "reason_code": "", "detail": "", "di0": None,
+             "fraction": -1.0, "ranked_ids": []},
+            {"t": 1.2, "kind": "effect", "name": "PlanMotion",
+             "effect_type": "EXECUTE_SEGMENT", "lateral": True,
+             "detect": False, "payload": {"segment": "pre_grasp"}},
+            {"t": 1.3, "kind": "event", "name": "seal_timeout"},
+            {"t": 1.4, "kind": "effect", "name": "PlanMotion",
+             "effect_type": "EXECUTE_SEGMENT", "lateral": True,
+             "detect": False, "payload": {"segment": "pre_grasp"}},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            case = self._write_case(records, tmp)
+            self.assertNotEqual(
+                suction_retry_replay.main(["--case", case,
+                                           "--stage", "vacuum"]), 0)
 
 
 if __name__ == "__main__":

@@ -320,6 +320,23 @@ class PickSession:
     # -- reducer plumbing ------------------------------------------------------
 
     def _feed(self, event: RetryEvent):
+        # machine-readable event record: `suction_retry_replay` re-feeds
+        # these through the pure reducer and must reach the same state
+        record = {
+            "t": self._ports.now(),
+            "kind": "retry_event",
+            "name": event.event_type.value,
+            "candidate_id": event.candidate_id,
+            "segment": event.segment,
+            "ok": bool(event.ok),
+            "reason_code": event.reason_code,
+            "detail": event.detail,
+            "di0": event.di0,
+            "fraction": event.fraction,
+            "ranked_ids": list(event.ranked_ids),
+        }
+        self._trace.append(record)
+        self._ports.log_event(record)
         transition = reduce_retry_event(self._model, event)
         self._apply(transition)
         if (not is_terminal(self._model.state)
