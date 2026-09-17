@@ -132,6 +132,26 @@ _LABEL_CONTAINER_WALL = 1
 _LABEL_ROBOT_ARM = 3
 
 
+def primary_cargo_instance_id(instance_map, cargo_sel):
+    """YOLO instance id that owns the most cargo pixels, or None.
+
+    Instance 0 is background. A missing or all-zero map leaves cargo unbound
+    (stub / replay without ``instance_mask``).
+    """
+    if instance_map is None or cargo_sel is None:
+        return None
+    inst = np.asarray(instance_map)
+    sel = np.asarray(cargo_sel, dtype=bool)
+    if inst.ndim != 2 or sel.shape[:2] != inst.shape[:2]:
+        return None
+    ids = inst[sel]
+    ids = ids[ids > 0]
+    if ids.size == 0:
+        return None
+    values, counts = np.unique(ids, return_counts=True)
+    return int(values[int(np.argmax(counts))])
+
+
 def grow_cargo_sel_by_depth(depth_image, cargo_sel, blocked=None,
                              depth_tol_mm=30, max_pixels=60000,
                              max_radius_px=280, search_radius_px=0):
@@ -427,8 +447,9 @@ class SemanticPointFilter:
             depth_image: (H, W) uint16-family millimetre view (a
                 big-endian view is valid; reads convert per element).
             label_map: HxW uint8 label map aligned with the colour image.
-            instance_map: optional HxW uint16 (kept for interface parity;
-                instance ids are not consumed downstream).
+            instance_map: optional HxW uint16 YOLO instance ids (0 =
+                background). When present, cargo is bound to the primary
+                instance and depth-grow cannot leave that instance.
 
         Returns:
             (cargo_points, obstacle_points): (N, 3) float32 arrays in the
@@ -455,17 +476,49 @@ class SemanticPointFilter:
 
         excl = _sel(self.exclude_labels)
         cargo_sel = _sel(self.cargo_labels) & ~excl
+        inst_arr = None
+        primary_id = None
+        if instance_map is not None:
+            inst_arr = np.asarray(instance_map)
+            primary_id = primary_cargo_instance_id(inst_arr, cargo_sel)
+            if primary_id is not None:
+                cargo_sel = cargo_sel & (inst_arr == primary_id)
         blocked = excl | (label_arr == _LABEL_ROBOT_ARM) \
             | (label_arr == _LABEL_CONTAINER_WALL)
+        if primary_id is not None:
+            # search_radius otherwise jumps to a closer patch outside the
+            # YOLO box; clipping afterwards then drops every cargo pixel.
+            blocked = blocked | (inst_arr != primary_id)
+        seed_bound = cargo_sel.copy() if primary_id is not None else None
         cargo_sel, grow_stats = grow_cargo_sel_by_depth(
             depth, cargo_sel, blocked=blocked,
             depth_tol_mm=self.grow_depth_tol_mm,
             max_pixels=self.grow_max_pixels,
             max_radius_px=self.grow_max_radius_px,
             search_radius_px=self.grow_search_radius_px)
-        cargo_sel, raise_stats = drop_unraised_cargo_sel(
-            depth, cargo_sel, blocked=blocked,
-            raise_mm=self.grow_raise_mm)
+        grow_stats = dict(grow_stats)
+        grow_stats["cargo_grow_instance_fallback"] = 0
+        if primary_id is not None:
+            cargo_sel = cargo_sel & (inst_arr == primary_id)
+            if (not cargo_sel.any() and seed_bound is not None
+                    and seed_bound.any()):
+                cargo_sel = seed_bound
+                grow_stats["cargo_grow_instance_fallback"] = 1
+        # Floor suitcases sit at nearly the same depth as the surrounding
+        # floor. drop_unraised compares the cargo median to the whole-image
+        # p90 and clears a valid YOLO box. The instance map already chose
+        # the suitcase; skip that platform-FP gate when bound.
+        if primary_id is not None:
+            raise_stats = {
+                "cargo_unraised_drop": 0,
+                "cargo_unraised_skipped_instance": 1,
+            }
+        else:
+            cargo_sel, raise_stats = drop_unraised_cargo_sel(
+                depth, cargo_sel, blocked=blocked,
+                raise_mm=self.grow_raise_mm)
+            raise_stats = dict(raise_stats)
+            raise_stats["cargo_unraised_skipped_instance"] = 0
         obstacle_sel = _sel(self.obstacle_labels) & ~excl
         if self.cargo_labels & self.obstacle_labels:
             obstacle_sel = obstacle_sel | cargo_sel
@@ -508,6 +561,8 @@ class SemanticPointFilter:
         }
         self._last_stats.update(grow_stats)
         self._last_stats.update(raise_stats)
+        self._last_stats["cargo_instance_id"] = int(primary_id or 0)
+        self._last_stats["cargo_instance_bound"] = int(primary_id is not None)
         return cargo_pts, obstacle_pts
 
     def filter_points(self, points_depth, label_map, instance_map=None):

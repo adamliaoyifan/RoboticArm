@@ -485,6 +485,7 @@ class LuggageDetector(Node):
                 "geometry_status_buffer_maxlen").value)))
         self._last_failure_reason = "not_run"
         self._last_cloud_stamp_sec = None
+        self._last_cloud_age_sec = None
         self._status = {"payload": None}
         self._filter_stats = None
         self._box_epoch_seen = False
@@ -1538,14 +1539,32 @@ class LuggageDetector(Node):
                 return True
         return False
 
+    def _stamp_age_sec(self, stamp):
+        stamp_time = rclpy.time.Time.from_msg(stamp)
+        return (self.get_clock().now() - stamp_time).nanoseconds / 1e9
+
+    def _mark_stale_cloud(self, age):
+        self._last_cloud_age_sec = float(age)
+        self._last_failure_reason = "DETECT_STALE_CLOUD"
+        self._warn_throttled(
+            "luggage_detector: cloud too old (%.2fs, max %.1fs)"
+            % (age, self._cloud_max_age))
+
+    def _failure_message(self):
+        reason = str(self._last_failure_reason or "DETECT_FAILED")
+        if reason == "DETECT_STALE_CLOUD" and self._last_cloud_age_sec is not None:
+            return "DETECT_STALE_CLOUD (age=%.2fs max=%.1fs)" % (
+                self._last_cloud_age_sec, self._cloud_max_age)
+        return reason
+
     def _frame_to_detect(self, frame):
-        stamp_time = rclpy.time.Time.from_msg(frame.header.stamp)
-        age = (self.get_clock().now() - stamp_time).nanoseconds / 1e9
+        age = self._stamp_age_sec(frame.header.stamp)
         self._last_cloud_stamp_sec = (
             float(frame.header.stamp.sec)
             + 1e-9 * float(frame.header.stamp.nanosec))
+        self._last_cloud_age_sec = float(age)
         if age > self._cloud_max_age:
-            self._last_failure_reason = "DETECT_STALE_CLOUD"
+            self._mark_stale_cloud(age)
             return None, 0.0
         if self._use_semantic and self._box_epoch_seen:
             if int(frame.generation) != int(self._box_generation):
@@ -1600,12 +1619,10 @@ class LuggageDetector(Node):
             self._warn_throttled("luggage_detector: no point cloud received yet")
             return None, 0.0
 
-        stamp_time = rclpy.time.Time.from_msg(stamp)
-        age = (self.get_clock().now() - stamp_time).nanoseconds / 1e9
+        age = self._stamp_age_sec(stamp)
+        self._last_cloud_age_sec = float(age)
         if age > self._cloud_max_age:
-            self._last_failure_reason = "DETECT_STALE_CLOUD"
-            self._warn_throttled(
-                "luggage_detector: cloud too old (%.2fs)" % age)
+            self._mark_stale_cloud(age)
             return None, 0.0
 
         fields, box, support = self._pca_from_cloud_msg(cloud_msg)
@@ -1704,7 +1721,7 @@ class LuggageDetector(Node):
                     "perception", False, 0.0, self._last_failure_reason)
                 response.luggage = []
                 response.success = False
-                response.message = self._last_failure_reason
+                response.message = self._failure_message()
                 self.get_logger().warning(
                     "luggage_detector: suitcase RGB did not update "
                     "within %.1fs" % self._suitcase_update_timeout)
@@ -1716,7 +1733,7 @@ class LuggageDetector(Node):
                     "perception", False, 0.0, self._last_failure_reason)
                 response.luggage = []
                 response.success = False
-                response.message = self._last_failure_reason
+                response.message = self._failure_message()
                 self.get_logger().warning(
                     "luggage_detector: cargo instance not ready (%s)"
                     % self._last_failure_reason)
@@ -1761,7 +1778,7 @@ class LuggageDetector(Node):
             "perception", False, confidence, self._last_failure_reason)
         response.luggage = []
         response.success = False
-        response.message = self._last_failure_reason
+        response.message = self._failure_message()
         return response
 
 

@@ -156,6 +156,16 @@ class TestCompactDetections(unittest.TestCase):
         self.assertEqual(dets[0]["bbox"], [1, 3, 9, 11])
         json.dumps(dets)
 
+    def test_keeps_instance_id(self):
+        dets = compact_detections([{
+            "label": LABEL_CARGO,
+            "prompt": "box",
+            "confidence": 0.4,
+            "bbox": [1, 2, 9, 10],
+            "instance_id": 3,
+        }])
+        self.assertEqual(dets[0]["instance_id"], 3)
+
 
 class TestDrawOverlay(unittest.TestCase):
     def test_overlay_draws_bbox_and_mask(self):

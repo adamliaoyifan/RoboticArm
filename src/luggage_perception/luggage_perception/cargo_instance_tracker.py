@@ -105,6 +105,7 @@ class CargoInstanceTracker:
         self.cloud_stamp = 0.0
         self.source = SOURCE_EMPTY
         self.motion_weight = 1.0
+        self.yolo_instance_id = 0
         self._points_buffer = None
 
     def reserve_points(self, capacity):
@@ -133,6 +134,7 @@ class CargoInstanceTracker:
         self.n_points = 0
         self.cloud_stamp = 0.0
         self.source = SOURCE_EMPTY
+        self.yolo_instance_id = 0
 
     def set_epoch(self, generation, instance_id=""):
         """Bind a current_box generation. True when the epoch changed."""
@@ -166,13 +168,18 @@ class CargoInstanceTracker:
         self.source = source
         self.motion_weight = 1.0
 
-    def observe(self, stamp_sec, points_world):
+    def observe(self, stamp_sec, points_world, yolo_instance_id=0):
         """Ingest a world-frame measurement. Empty array is a YOLO miss.
+
+        ``yolo_instance_id`` is the bound mask id (0 = unbound). A new
+        nonzero id drops the previous geometric track so an unbound
+        grow-flood cannot be held against the suitcase AABB.
 
         Returns the source label for this tick (``empty``, ``measure``,
         ``hold_track``, or ``reject_clutter``).
         """
         stamp_sec = float(stamp_sec)
+        yolo_instance_id = int(yolo_instance_id or 0)
         pts = xyz_array(points_world)
         if pts.shape[0]:
             finite = np.isfinite(pts).all(axis=1)
@@ -183,6 +190,10 @@ class CargoInstanceTracker:
             self.cloud_stamp = stamp_sec
             self.source = SOURCE_EMPTY
             return self.source
+
+        if yolo_instance_id and yolo_instance_id != self.yolo_instance_id:
+            self.reset()
+            self.yolo_instance_id = yolo_instance_id
 
         if n == 0:
             self.cloud_stamp = stamp_sec
@@ -228,4 +239,5 @@ class CargoInstanceTracker:
             "centroid": centroid,
             "motion_weight": float(self.motion_weight),
             "associate_radius_m": float(self.associate_radius_m),
+            "yolo_instance_id": int(self.yolo_instance_id),
         }

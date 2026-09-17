@@ -512,6 +512,11 @@ def compact_detections(detections):
                 item["self_body_overlap"] = None
         if det.get("dropped"):
             item["dropped"] = str(det.get("dropped"))
+        if det.get("instance_id") not in (None, ""):
+            try:
+                item["instance_id"] = int(det["instance_id"])
+            except (TypeError, ValueError):
+                item["instance_id"] = str(det["instance_id"])
         out.append(item)
     return out
 
@@ -980,10 +985,12 @@ class BboxFillSegmenter(SemanticSegmenter):
 
         h, w = rgb_image.shape[:2]
         label_map = _np.zeros((h, w), dtype=_np.uint8)
+        instance_map = _np.zeros((h, w), dtype=_np.uint16)
         detections = []
         counts = {label: 0 for label in DEFAULT_LABEL_NAMES}
 
         if not results:
+            self._instance_map = instance_map
             self._last_stats = {
                 "backend": self._last_stats["backend"],
                 "inference_ms": inference_ms,
@@ -997,6 +1004,7 @@ class BboxFillSegmenter(SemanticSegmenter):
         classes = getattr(result.boxes, "cls", None)
         confs = getattr(result.boxes, "conf", None)
         if boxes is None or classes is None or len(boxes) == 0:
+            self._instance_map = instance_map
             self._last_stats = {
                 "backend": self._last_stats["backend"],
                 "inference_ms": inference_ms,
@@ -1009,6 +1017,7 @@ class BboxFillSegmenter(SemanticSegmenter):
         classes = classes.cpu().numpy()
         confs = confs.cpu().numpy() if confs is not None else _np.zeros(len(boxes))
 
+        instance_id = 0
         for idx in range(len(boxes)):
             cls_idx = int(classes[idx])
             if cls_idx < 0 or cls_idx >= len(self.prompts):
@@ -1025,17 +1034,21 @@ class BboxFillSegmenter(SemanticSegmenter):
             iy2 = min(h, int(round(y2)))
             if ix2 <= ix1 or iy2 <= iy1:
                 continue
+            instance_id += 1
             # Write label; later detections overwrite earlier ones on overlap.
             label_map[iy1:iy2, ix1:ix2] = label_id
+            instance_map[iy1:iy2, ix1:ix2] = instance_id
             detections.append({
                 "label": label_id,
                 "prompt": prompt,
                 "confidence": float(confs[idx]),
                 "bbox": [ix1, iy1, ix2, iy2],
+                "instance_id": instance_id,
             })
             counts[label_id] += int((ix2 - ix1) * (iy2 - iy1))
 
         counts[LABEL_BACKGROUND] = int((label_map == LABEL_BACKGROUND).sum())
+        self._instance_map = instance_map
         self._last_stats = {
             "backend": self._last_stats["backend"],
             "inference_ms": inference_ms,

@@ -121,14 +121,32 @@ class TestCargoInstanceTracker(unittest.TestCase):
         self.assertAlmostEqual(tracker.centroid[0], 0.40, places=6)
         self.assertAlmostEqual(tracker.cloud_stamp, 1.2)
 
-    def test_yolo_miss_holds_track(self):
+    def test_yolo_instance_switch_replaces_far_hold(self):
+        tracker = CargoInstanceTracker(associate_radius_m=0.15)
+        src = tracker.observe(1.0, _cloud(-0.85, 1.39, n=12), yolo_instance_id=0)
+        self.assertEqual(src, SOURCE_MEASURE)
+        src = tracker.observe(
+            1.1, _cloud(-0.10, 1.26, n=20), yolo_instance_id=2)
+        self.assertEqual(src, SOURCE_MEASURE)
+        self.assertEqual(tracker.yolo_instance_id, 2)
+        self.assertEqual(tracker.n_points, 20)
+        self.assertAlmostEqual(tracker.centroid[0], -0.10, places=6)
+
+    def test_yolo_miss_holds_same_instance(self):
         tracker = CargoInstanceTracker()
-        tracker.set_epoch(2, "box")
-        tracker.observe(1.0, _cloud(0.4, 0.2))
-        src = tracker.observe(1.3, np.zeros((0, 3)))
+        tracker.observe(1.0, _cloud(0.4, 0.2), yolo_instance_id=2)
+        src = tracker.observe(1.3, np.zeros((0, 3)), yolo_instance_id=2)
         self.assertEqual(src, SOURCE_HOLD_TRACK)
         self.assertEqual(tracker.n_points, 8)
-        self.assertAlmostEqual(tracker.cloud_stamp, 1.3)
+        self.assertEqual(tracker.yolo_instance_id, 2)
+
+    def test_bound_empty_drops_unbound_hold(self):
+        tracker = CargoInstanceTracker()
+        tracker.observe(1.0, _cloud(-0.85, 1.39, n=12), yolo_instance_id=0)
+        src = tracker.observe(1.2, np.zeros((0, 3)), yolo_instance_id=2)
+        self.assertEqual(src, SOURCE_EMPTY)
+        self.assertEqual(tracker.n_points, 0)
+        self.assertEqual(tracker.yolo_instance_id, 2)
 
     def test_epoch_wipe(self):
         tracker = CargoInstanceTracker()

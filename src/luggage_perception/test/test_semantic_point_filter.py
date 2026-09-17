@@ -21,6 +21,7 @@ from luggage_perception.semantic_point_filter import (  # noqa: E402
     JoinStampTracker,
     SemanticPointFilter,
     _project_to_color,
+    primary_cargo_instance_id,
 )
 
 
@@ -340,6 +341,92 @@ class TestGrowCargoSelByDepth(unittest.TestCase):
         cargo, _obs = filt.filter_depth(depth, labels, pixel_stride=1)
         self.assertGreater(int(filt.last_stats["cargo_pixels_grown"]), 0)
         self.assertGreaterEqual(cargo.shape[0], 16 * 16)
+        self.assertEqual(int(filt.last_stats["cargo_instance_bound"]), 0)
+
+    def test_instance_map_clips_grow_to_yolo_box(self):
+        from luggage_perception.semantic_point_filter import SemanticPointFilter
+        h, w = 32, 32
+        intr = _tiny_intrinsics(h, w)
+        filt = SemanticPointFilter(
+            intr, intr, DepthToColorExtrinsics.identity(),
+            cargo_labels=[2], obstacle_labels=[2, 4],
+            grow_depth_tol_mm=30, grow_max_pixels=2000)
+        depth = np.full((h, w), 500, dtype=np.uint16)
+        labels = np.zeros((h, w), dtype=np.uint8)
+        labels[14:18, 14:18] = 2
+        inst = np.zeros((h, w), dtype=np.uint16)
+        inst[14:18, 14:18] = 1
+        cargo, _obs = filt.filter_depth(depth, labels, inst, pixel_stride=1)
+        self.assertEqual(int(filt.last_stats["cargo_instance_id"]), 1)
+        self.assertEqual(int(filt.last_stats["cargo_instance_bound"]), 1)
+        self.assertEqual(int(cargo.shape[0]), 16)
+
+    def test_instance_bound_grow_does_not_jump_to_closer_outside(self):
+        from luggage_perception.semantic_point_filter import SemanticPointFilter
+        h, w = 64, 80
+        intr = _tiny_intrinsics(h, w)
+        filt = SemanticPointFilter(
+            intr, intr, DepthToColorExtrinsics.identity(),
+            cargo_labels=[2], obstacle_labels=[2, 4],
+            grow_depth_tol_mm=30, grow_max_pixels=8000,
+            grow_search_radius_px=24, grow_raise_mm=50)
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        depth[8:28, 8:40] = 500
+        labels = np.zeros((h, w), dtype=np.uint8)
+        labels[32:40, 48:60] = 2
+        inst = np.zeros((h, w), dtype=np.uint16)
+        inst[32:40, 48:60] = 2
+        cargo, _obs = filt.filter_depth(depth, labels, inst, pixel_stride=1)
+        self.assertEqual(int(filt.last_stats["cargo_instance_bound"]), 1)
+        self.assertEqual(int(filt.last_stats["cargo_grow_instance_fallback"]), 0)
+        self.assertEqual(int(cargo.shape[0]), 8 * 12)
+        zs = cargo[:, 2]
+        self.assertTrue(np.all(np.abs(zs - 0.800) < 0.02))
+
+    def test_instance_bound_floor_box_skips_unraised_drop(self):
+        from luggage_perception.semantic_point_filter import SemanticPointFilter
+        h, w = 32, 32
+        intr = _tiny_intrinsics(h, w)
+        filt = SemanticPointFilter(
+            intr, intr, DepthToColorExtrinsics.identity(),
+            cargo_labels=[2], obstacle_labels=[2, 4],
+            grow_depth_tol_mm=0, grow_max_pixels=2000, grow_raise_mm=50)
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        labels = np.zeros((h, w), dtype=np.uint8)
+        labels[14:18, 14:18] = 2
+        inst = np.zeros((h, w), dtype=np.uint16)
+        inst[14:18, 14:18] = 2
+        cargo, _obs = filt.filter_depth(depth, labels, inst, pixel_stride=1)
+        self.assertEqual(int(filt.last_stats["cargo_unraised_drop"]), 0)
+        self.assertEqual(int(filt.last_stats["cargo_unraised_skipped_instance"]), 1)
+        self.assertEqual(int(cargo.shape[0]), 16)
+
+    def test_unbound_floor_patch_still_drops_unraised(self):
+        from luggage_perception.semantic_point_filter import SemanticPointFilter
+        h, w = 32, 32
+        intr = _tiny_intrinsics(h, w)
+        filt = SemanticPointFilter(
+            intr, intr, DepthToColorExtrinsics.identity(),
+            cargo_labels=[2], obstacle_labels=[2, 4],
+            grow_depth_tol_mm=0, grow_max_pixels=2000, grow_raise_mm=50)
+        depth = np.full((h, w), 800, dtype=np.uint16)
+        labels = np.zeros((h, w), dtype=np.uint8)
+        labels[12:20, 12:20] = 2
+        cargo, _obs = filt.filter_depth(depth, labels, pixel_stride=1)
+        self.assertEqual(int(filt.last_stats["cargo_unraised_drop"]), 1)
+        self.assertEqual(int(filt.last_stats["cargo_unraised_skipped_instance"]), 0)
+        self.assertEqual(int(cargo.shape[0]), 0)
+
+    def test_primary_instance_ignores_unindexed_cargo(self):
+        sel = np.zeros((8, 8), dtype=bool)
+        sel[0:4, 0:4] = True
+        sel[4:8, 4:8] = True
+        inst = np.zeros((8, 8), dtype=np.uint16)
+        inst[0:4, 0:4] = 1
+        self.assertEqual(primary_cargo_instance_id(inst, sel), 1)
+        self.assertIsNone(primary_cargo_instance_id(None, sel))
+        self.assertIsNone(primary_cargo_instance_id(
+            np.zeros((8, 8), np.uint16), sel))
 
     def test_radius_cap_blocks_far_similar_depth(self):
         from luggage_perception.semantic_point_filter import (

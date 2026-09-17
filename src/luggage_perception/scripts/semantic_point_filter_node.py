@@ -426,9 +426,21 @@ class SemanticPointFilterNode(Node):
             self._join_stamps.note_join(
                 adapters.stamp_to_sec(stamp), n)
 
+    def _complete_join_keys(self):
+        """Exact-stamp keys that have depth+mask, and instance after it appears.
+
+        Stub segmenters never publish ``instance_mask``. Once the live
+        YOLO backend has published one, cargo must wait for the matching
+        instance map so points bind to that box.
+        """
+        keys = set(self._depths) & set(self._masks)
+        if self._counts["instance"] > 0:
+            keys &= set(self._instances)
+        return keys
+
     def _take_join(self, key):
         """Pop a stamp-matched pair. Caller holds ``_lock``. None if incomplete."""
-        if key not in self._depths or key not in self._masks:
+        if key not in self._complete_join_keys():
             return None
         self._counts["joined"] += 1
         return (
@@ -449,7 +461,7 @@ class SemanticPointFilterNode(Node):
         joined key are obsolete and retired by name; newer half-pairs
         survive to complete on their partner's arrival.
         """
-        keys = set(self._depths) & set(self._masks)
+        keys = self._complete_join_keys()
         if not keys:
             return None
         key = max(keys)
@@ -506,11 +518,11 @@ class SemanticPointFilterNode(Node):
                 self._publish_stats()
             return
 
-        # Instance ids are not consumed downstream; the 5-tuple Python loop
-        # over ~100k cargo points stalled the join callback for seconds.
-        del instance_msg
+        instance_map = None
+        if instance_msg is not None:
+            instance_map = adapters.mono16_array_from_msg(instance_msg)
         cargo, obstacle = filt.filter_depth(
-            depth, label_map, None, pixel_stride=self._pixel_stride)
+            depth, label_map, instance_map, pixel_stride=self._pixel_stride)
         after_filter = time.monotonic()
 
         stamp = depth_msg.header.stamp
@@ -523,6 +535,8 @@ class SemanticPointFilterNode(Node):
             world_pts = self._to_world(camera_pts, frame_id, stamp)
             tf_miss = world_pts is None
         after_tf = time.monotonic()
+        yolo_instance_id = int(
+            (filt.last_stats or {}).get("cargo_instance_id") or 0)
 
         with self._lock:
             self._counts["processed"] += 1
@@ -534,10 +548,12 @@ class SemanticPointFilterNode(Node):
                     adapters.stamp_to_sec(stamp))
             elif camera_pts.shape[0]:
                 source = self._tracker.observe(
-                    adapters.stamp_to_sec(stamp), world_pts)
+                    adapters.stamp_to_sec(stamp), world_pts,
+                    yolo_instance_id=yolo_instance_id)
             else:
                 source = self._tracker.observe(
-                    adapters.stamp_to_sec(stamp), camera_pts)
+                    adapters.stamp_to_sec(stamp), camera_pts,
+                    yolo_instance_id=yolo_instance_id)
             frozen_empty = (
                 self._tracker.generation > 0
                 and not self._tracker.instance_id)
@@ -618,7 +634,7 @@ class SemanticPointFilterNode(Node):
             "depth": len(self._depths),
             "mask": len(self._masks),
             "instance": len(self._instances),
-            "exact_join_candidates": len(set(self._depths) & set(self._masks)),
+            "exact_join_candidates": len(self._complete_join_keys()),
         }
         record["stage_ms"] = dict(self._last_stage_ms)
         now_sec = adapters.stamp_to_sec(self.get_clock().now().to_msg())

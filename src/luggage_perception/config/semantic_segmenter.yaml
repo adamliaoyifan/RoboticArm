@@ -166,9 +166,10 @@ semantic_point_filter:
     cargo_grow_max_pixels: 60000
     cargo_grow_max_radius_px: 400
     # Search this many pixels around a platform-level seed for a closer
-    # lid. 0 keeps the seed AABB only. A mask that is not at least
+    # lid. 0 keeps the seed AABB only. Unbound cargo that is not at least
     # cargo_grow_raise_mm closer than its surrounding ring is cleared so
-    # a platform patch cannot be reported as a valid top.
+    # a platform patch cannot be reported as a valid top. YOLO-bound
+    # cargo skips that gate (a floor suitcase is not raised vs the floor).
     cargo_grow_search_radius_px: 400
     cargo_grow_raise_mm: 50
     # PF-R9 B5: stats serialization on a timer instead of every cloud/mask
