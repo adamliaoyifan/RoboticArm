@@ -71,6 +71,8 @@ def _robot_description(scene_tf_config):
 
 
 def _move_group(context, *args, **kwargs):
+    if not _bool_text(LaunchConfiguration("start_planning").perform(context)):
+        return []
     if not _bool_text(LaunchConfiguration("use_moveit").perform(context)):
         return []
     try:
@@ -144,6 +146,11 @@ def generate_launch_description():
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
     site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
+    start_perception = IfCondition(LaunchConfiguration("start_perception"))
+    start_planning = IfCondition(LaunchConfiguration("start_planning"))
+    start_d555 = IfCondition(LaunchConfiguration("start_d555"))
+    start_executor = IfCondition(LaunchConfiguration("start_executor"))
+    start_scene = IfCondition(LaunchConfiguration("start_scene"))
 
     return LaunchDescription(
         [
@@ -151,6 +158,23 @@ def generate_launch_description():
             DeclareLaunchArgument("robot_poses_config", default_value=poses),
             DeclareLaunchArgument("use_rviz", default_value="false"),
             DeclareLaunchArgument("use_moveit", default_value="true"),
+            DeclareLaunchArgument(
+                "start_perception",
+                default_value="true",
+                description=(
+                    "Start the perception role: preprocessor, semantic "
+                    "segmenter, semantic point filter, and luggage detector."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "start_planning",
+                default_value="true",
+                description=(
+                    "Start the planning role: scene manager, waypoint "
+                    "generator, motion planner, vacuum controller, and "
+                    "MoveIt when use_moveit is true."
+                ),
+            ),
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
             DeclareLaunchArgument(
@@ -183,6 +207,14 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument("semantic_device", default_value="cuda"),
+            DeclareLaunchArgument(
+                "execution_backend",
+                default_value="waypoint",
+                description=(
+                    "Real executor backend. Production pick stays waypoint; "
+                    "servo_j is opt-in for hardware gates only."
+                ),
+            ),
             DeclareLaunchArgument("robot_ip", default_value="192.168.0.10"),
             DeclareLaunchArgument("robot_port", default_value="10003"),
             DeclareLaunchArgument(
@@ -213,8 +245,9 @@ def generate_launch_description():
                     # crawl and still hit 20070; site Gate 5 uses 30/60.
                     "default_velocity_deg": "30.0",
                     "max_velocity_deg": "60.0",
+                    "execution_backend": LaunchConfiguration("execution_backend"),
                 }.items(),
-                condition=IfCondition(LaunchConfiguration("start_executor")),
+                condition=start_executor,
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -225,7 +258,7 @@ def generate_launch_description():
                     "use_rviz": LaunchConfiguration("use_rviz"),
                     "use_sim_time": "false",
                 }.items(),
-                condition=IfCondition(LaunchConfiguration("start_scene")),
+                condition=start_scene,
             ),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
@@ -235,7 +268,7 @@ def generate_launch_description():
                     "color_profile": LaunchConfiguration("color_profile"),
                     "depth_profile": LaunchConfiguration("depth_profile"),
                 }.items(),
-                condition=IfCondition(LaunchConfiguration("start_d555")),
+                condition=start_d555,
             ),
             Node(
                 package="luggage_perception",
@@ -247,6 +280,7 @@ def generate_launch_description():
                     LaunchConfiguration("preprocessor_config"),
                     {"use_sim_time": False},
                 ],
+                condition=start_perception,
             ),
             Node(
                 package="luggage_perception",
@@ -275,6 +309,7 @@ def generate_launch_description():
                         "max_rate_hz": 2.0,
                     },
                 ],
+                condition=start_perception,
             ),
             Node(
                 package="luggage_perception",
@@ -282,6 +317,7 @@ def generate_launch_description():
                 name="semantic_point_filter",
                 output="screen",
                 parameters=[semantic, {"use_sim_time": False}],
+                condition=start_perception,
             ),
             Node(
                 package="luggage_perception",
@@ -301,6 +337,7 @@ def generate_launch_description():
                     "suitcase_update_timeout_sec": 0.0,
                     "crop_to_workspace": False,
                 }],
+                condition=start_perception,
             ),
             Node(
                 package="luggage_planning",
@@ -314,6 +351,7 @@ def generate_launch_description():
                     "pickup_object_id": "pickup_box",
                     "auto_sync": True,
                 }],
+                condition=start_planning,
             ),
             Node(
                 package="luggage_planning",
@@ -327,6 +365,7 @@ def generate_launch_description():
                     "place_slot_frame": "elfin_base_link",
                     "use_perception_approach": False,
                 }],
+                condition=start_planning,
             ),
             Node(
                 package="luggage_planning",
@@ -342,6 +381,7 @@ def generate_launch_description():
                     "acceleration_scaling": 0.6,
                     "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
                 }],
+                condition=start_planning,
             ),
             Node(
                 package="luggage_planning",
@@ -354,6 +394,7 @@ def generate_launch_description():
                     "seal_timeout_sec": 8.0,
                     "follow_rate_hz": 10.0,
                 }],
+                condition=start_planning,
             ),
             OpaqueFunction(function=_move_group),
         ]
