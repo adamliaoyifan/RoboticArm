@@ -66,6 +66,7 @@ def test_driver_is_raw_only_and_pointcloud_is_disabled():
     launch_source = (
         PACKAGE / "launch" / "d555_canonical_pipeline.launch.py").read_text()
     assert '"image_transport/raw"' in launch_source
+    assert "aligned_depth_to_color.image_hw" in launch_source
     assert '"pointcloud.enable": False' in launch_source
     assert '"enable_sync": True' in launch_source
     assert "d555_transport_adapter_node.py" in launch_source

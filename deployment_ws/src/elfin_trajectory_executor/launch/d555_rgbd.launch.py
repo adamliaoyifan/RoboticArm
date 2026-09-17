@@ -37,7 +37,17 @@ from launch.actions import DeclareLaunchArgument, LogInfo, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
-APT_LIBREALSENSE = "/lib/x86_64-linux-gnu"
+def _apt_librealsense() -> str:
+    """Apt librealsense first. ThinkPad uses /lib/x86_64-linux-gnu; Orin aarch64."""
+    for path in (
+        "/lib/x86_64-linux-gnu",
+        "/usr/lib/x86_64-linux-gnu",
+        "/usr/lib/aarch64-linux-gnu",
+        "/lib/aarch64-linux-gnu",
+    ):
+        if os.path.isdir(path):
+            return path
+    return "/lib/x86_64-linux-gnu"
 
 
 def _truthy(value: str) -> bool:
@@ -45,22 +55,51 @@ def _truthy(value: str) -> bool:
 
 
 def _ld_library_path():
-    """Apt librealsense 2.58.4 first. Jazzy's 2.58.1 has no DDS and wins via RPATH/ament."""
+    """Apt librealsense first. Distro librealsense without DDS can win via RPATH/ament."""
+    apt = _apt_librealsense()
     cur = os.environ.get("LD_LIBRARY_PATH", "")
     parts = [p for p in cur.split(os.pathsep) if p]
-    drop = {"/opt/ros/jazzy/lib/x86_64-linux-gnu"}
+    drop = {
+        "/opt/ros/jazzy/lib/x86_64-linux-gnu",
+        "/opt/ros/jazzy/lib/aarch64-linux-gnu",
+        "/opt/ros/humble/lib/x86_64-linux-gnu",
+        "/opt/ros/humble/lib/aarch64-linux-gnu",
+    }
     parts = [p for p in parts if p not in drop]
-    if APT_LIBREALSENSE in parts:
-        parts.remove(APT_LIBREALSENSE)
-    parts.insert(0, APT_LIBREALSENSE)
+    if apt in parts:
+        parts.remove(apt)
+    parts.insert(0, apt)
     return os.pathsep.join(parts)
 
 
-def _driver_transport_params() -> dict:
-    """Lock the wrapper on raw Image. Do not load compressed_pub here."""
-    return {
-        "image_transport.publisher.enable_pub_plugins": ["image_transport/raw"],
-    }
+def _driver_transport_params(camera_name: str) -> dict:
+    """Lock the wrapper on raw Image. Do not load compressed_pub here.
+
+    image_transport builds ``{resolved_topic}.enable_pub_plugins`` from the
+    expanded topic after remaps (``/`` → ``.``, strip the node namespace).
+    Colour and aligned depth are remapped to ``*_hw``, so an ``image_raw``
+    allowlist never matches and JPEG CompressedPublisher still encodes
+    16UC1. Canonical JPEG/PNG stays in d555_host_stamp. Do not set PNG
+    format params on this node: that SIGSEGV'd the site D555.
+    """
+    raw = ["image_transport/raw"]
+    streams = (
+        "color.image_raw",
+        "color.image_hw",
+        "aligned_depth_to_color.image_raw",
+        "aligned_depth_to_color.image_hw",
+        "depth.image_raw",
+        "depth.image_hw",
+        "aligned_depth_to_color1.image_raw",
+        "aligned_depth_to_color1.image_hw",
+        "infra1.image_rect_raw",
+        "infra2.image_rect_raw",
+    )
+    params = {}
+    for stream in streams:
+        params["%s.%s.enable_pub_plugins" % (camera_name, stream)] = raw
+        params["%s.enable_pub_plugins" % stream] = raw
+    return params
 
 
 def _prefixed_remaps(camera_name: str, pairs: list[tuple[str, str]]) -> list[tuple[str, str]]:
@@ -130,7 +169,7 @@ def _node(context, *args, **kwargs):
                     "depth_module.infra_profile": LaunchConfiguration(
                         "depth_profile").perform(context),
                 }
-    driver_params.update(_driver_transport_params())
+    driver_params.update(_driver_transport_params(name))
     return [
         LogInfo(
             msg=(

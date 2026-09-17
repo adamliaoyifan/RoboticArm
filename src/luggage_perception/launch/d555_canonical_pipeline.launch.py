@@ -26,6 +26,28 @@ def _prefixed_remaps(camera_name, pairs):
     return result
 
 
+def _driver_transport_params(camera_name):
+    """Raw Image only. JPEG CompressedPublisher cannot encode 16UC1.
+
+    image_transport names the allowlist from the remapped topic, so
+    colour/aligned depth use ``image_hw`` after the *_hw remaps.
+    """
+    raw = ["image_transport/raw"]
+    streams = (
+        "color.image_raw",
+        "color.image_hw",
+        "aligned_depth_to_color.image_raw",
+        "aligned_depth_to_color.image_hw",
+        "depth.image_raw",
+        "depth.image_hw",
+    )
+    params = {}
+    for stream in streams:
+        params["%s.%s.enable_pub_plugins" % (camera_name, stream)] = raw
+        params["%s.enable_pub_plugins" % stream] = raw
+    return params
+
+
 def _nodes(context):
     namespace = LaunchConfiguration("camera_namespace").perform(context)
     camera_name = LaunchConfiguration("camera_name").perform(context)
@@ -57,8 +79,8 @@ def _nodes(context):
         "rgb_camera.color_format": "RGB8",
         "rgb_camera.color_profile": profile,
         "depth_module.depth_profile": profile,
-        "image_transport.publisher.enable_pub_plugins": ["image_transport/raw"],
     }
+    driver_params.update(_driver_transport_params(camera_name))
     remaps = _prefixed_remaps(camera_name, [
         ("color/image_raw", "color/image_hw"),
         ("color/camera_info", "color/camera_info_hw"),

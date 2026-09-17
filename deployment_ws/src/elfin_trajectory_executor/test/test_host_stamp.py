@@ -129,6 +129,13 @@ class D555LaunchContractTest(unittest.TestCase):
         self.assertNotIn("image_transport/compressed", src)
         self.assertIn('"subscribe_compressed": False', src)
         self.assertIn("image_transport/raw", src)
+        self.assertIn("enable_pub_plugins", src)
+        self.assertIn("aligned_depth_to_color.image_hw", src)
+        self.assertIn("aligned_depth_to_color.image_raw", src)
+        self.assertIn("depth.image_raw", src)
+        self.assertIn("depth.image_hw", src)
+        self.assertNotIn(
+            "image_transport.publisher.enable_pub_plugins", src)
         self.assertIn("motion/sample", src)
         self.assertIn("motion/sample_hw", src)
         self.assertIn("_imu_remaps", src)
@@ -206,6 +213,30 @@ class D555LaunchContractTest(unittest.TestCase):
         self.assertIn(("motion/sample", "motion/sample_hw"), remaps)
         self.assertIn(("d555/motion/sample", "d555/motion/sample_hw"), remaps)
         self.assertIn(("d555/gyro/sample", "d555/gyro/sample_hw"), remaps)
+
+    def test_driver_allowlist_follows_image_hw_remap(self):
+        import importlib.util
+        from pathlib import Path
+
+        path = (
+            Path(__file__).resolve().parents[1] / "launch" / "d555_rgbd.launch.py"
+        )
+        spec = importlib.util.spec_from_file_location("d555_rgbd_launch", path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        params = mod._driver_transport_params("d555")
+        raw = ["image_transport/raw"]
+        for key in (
+            "d555.aligned_depth_to_color.image_hw.enable_pub_plugins",
+            "d555.aligned_depth_to_color.image_raw.enable_pub_plugins",
+            "d555.depth.image_raw.enable_pub_plugins",
+            "d555.depth.image_hw.enable_pub_plugins",
+            "d555.color.image_hw.enable_pub_plugins",
+            "aligned_depth_to_color.image_hw.enable_pub_plugins",
+        ):
+            self.assertEqual(params[key], raw)
+        self.assertNotIn(
+            "image_transport.publisher.enable_pub_plugins", params)
 
 
 class RecordRegexTest(unittest.TestCase):
