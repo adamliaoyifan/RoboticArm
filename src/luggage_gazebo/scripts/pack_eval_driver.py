@@ -2,9 +2,10 @@
 """Pack-to-full eval driver (Todo 5 slice D).
 
 Loops spawn -> pick(vacuum) -> ComputePlacement -> place -> commit until a
-stop condition (BIN_FULL / SPAWN_EXHAUSTED / MAX_BOXES / ABORT / TIMEOUT),
-writing the ledger-first evidence contract from
-docs/plans/packing_eval_metrics.md.
+stop condition (the planner's reason_code / SPAWN_EXHAUSTED / MAX_BOXES /
+ABORT / TIMEOUT), writing the ledger-first evidence contract from
+docs/plans/packing_eval_metrics.md. A placement failure terminates under the
+planner's own code, so only BIN_FULL counts as a capacity claim.
 
 Subclasses PlaceSmokeDriver for the pick+place state machine. This file owns
 the multi-box loop, placement service, cargo_map commit, FinalizeCurrentBox
@@ -298,17 +299,24 @@ class PackEvalDriver(PlaceSmokeDriver):
             if placement is None or not placement.success:
                 reason = (placement.message
                           if placement else "COMPUTE_TIMEOUT")
+                reason_code = (
+                    str(getattr(placement, "reason_code", "") or "")
+                    if placement else "COMPUTE_TIMEOUT")
                 last = dict(self._last_result or {})
                 self._last_rejected = {
                     "seq": seq,
                     "catalog_id": self._catalog_id(spawn),
                     "size_wdh": size,
+                    "reason_code": reason_code,
                     "n_candidates_total": last.get("n_candidates_total", -1),
                     "n_feasible": last.get("n_feasible", 0),
+                    "n_capacity_feasible": last.get("n_capacity_feasible", -1),
                     "reject_histogram": last.get("reject_histogram") or
                     self._parse_histogram(reason),
                 }
-                if args.skip_unplaceable and "no_candidate" in reason:
+                unplaceable = reason_code in (
+                    "PLACE_CANDIDATE_EXHAUSTED", "BOX_EXCEEDS_CONTAINER")
+                if args.skip_unplaceable and unplaceable:
                     dump_slug = "SKIP_NO_SLOT"
                     dump_path = self._box_dump_dir(seq, dump_slug)
                     self._dump_placement(dump_path, box, size, spawn)
@@ -323,8 +331,11 @@ class PackEvalDriver(PlaceSmokeDriver):
                                timeout=15.0)
                     seq += 1
                     continue
-                termination = "BIN_FULL"
-                dump_slug = "BIN_FULL"
+                # Terminate under the planner's own code. Only BIN_FULL is a
+                # capacity claim; candidate exhaustion, an oversized box, and
+                # a geometry mismatch each stop the run under their own name.
+                termination = reason_code or "PLACEMENT_FAILED"
+                dump_slug = termination
                 dump_path = self._box_dump_dir(seq, dump_slug)
                 self._dump_placement(dump_path, box, size, spawn)
                 self._dump_json(dump_path, "commit.json", {"committed": False})
@@ -333,7 +344,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                     "note": "suite writes final_layout/ on stop",
                 })
                 self._ledger_line(
-                    seq=seq, committed=False, fail_code="BIN_FULL",
+                    seq=seq, committed=False, fail_code=termination,
                     spawn_id=spawn.box.id,
                     catalog_id=self._catalog_id(spawn),
                     size_wdh=size, mass_kg=self._mass(spawn),
@@ -475,6 +486,10 @@ class PackEvalDriver(PlaceSmokeDriver):
         request = ComputePlacement.Request()
         request.box = box
         request.placed = list(self._placed_slots)
+        # Pin the hull this driver actually observed, so a planner loaded
+        # against a different scene config fails closed instead of answering.
+        request.geometry_hash = str(
+            (self._surface_2d or {}).get("geometry_hash") or "")
         return request
 
     @staticmethod

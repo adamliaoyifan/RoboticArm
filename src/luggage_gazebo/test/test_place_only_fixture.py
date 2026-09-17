@@ -69,8 +69,7 @@ def test_case_matrix_order_and_expectations():
         "empty", "carry", "carry", "saturated", "obstacle"]
     assert [by_id[i].expect_place for i in cases_ids()] == [
         True, True, True, False, True]
-    assert by_id["P3"].fail_closed_codes == (
-        fx.REASON_BIN_FULL, fx.REASON_NO_CANDIDATE)
+    assert by_id["P3"].fail_closed_codes == (fx.REASON_BIN_FULL,)
     assert by_id["P4"].expect_committed_after == 1
 
 
@@ -316,18 +315,42 @@ def test_gt_footprint_rotates_with_yaw():
 
 def test_bin_full_accepted_only_with_capacity_proof():
     message = "BIN_FULL no_candidate: overlap=210 insufficient_clearance=40"
-    verdict = fx.classify_placement_failure(message, False, {"overlap": 210})
+    verdict = fx.classify_placement_failure(
+        message, False, {"overlap": 210}, product_reason_code="BIN_FULL")
     assert verdict["ok"] is True
     assert verdict["code"] == fx.REASON_BIN_FULL
     assert verdict["capacity_confirmed"] is True
+    assert verdict["product_agrees"] is True
 
 
 def test_candidate_exhaustion_not_relabelled_bin_full():
-    message = "BIN_FULL no_candidate: outside_aperture=210"
-    verdict = fx.classify_placement_failure(message, True)
+    message = "PLACE_CANDIDATE_EXHAUSTED no_candidate: outside_aperture=210"
+    verdict = fx.classify_placement_failure(
+        message, True, product_reason_code="PLACE_CANDIDATE_EXHAUSTED")
     assert verdict["ok"] is False
     assert verdict["code"] == "PLACE_CANDIDATE_EXHAUSTED"
     assert verdict["bin_full_accepted"] is False
+    # The planner made the same call as the arbiter, but no capacity claim
+    # survives: the case is still not a pass.
+    assert verdict["product_agrees"] is True
+
+
+def test_product_bin_full_claim_contradicted_by_capacity_test():
+    message = "BIN_FULL no_candidate: overlap=210"
+    verdict = fx.classify_placement_failure(
+        message, True, product_reason_code="BIN_FULL")
+    assert verdict["product_agrees"] is False
+    assert verdict["ok"] is False
+
+
+def test_product_exhaustion_claim_contradicted_by_capacity_test():
+    message = "PLACE_CANDIDATE_EXHAUSTED no_candidate: outside_aperture=8"
+    verdict = fx.classify_placement_failure(
+        message, False, product_reason_code="PLACE_CANDIDATE_EXHAUSTED")
+    # The arbiter proved the container is full; the planner blamed policy
+    # gates. Disagreement must not pass as a fail-closed case.
+    assert verdict["product_agrees"] is False
+    assert verdict["ok"] is False
 
 
 def test_unexpected_failure_shape_rejected():

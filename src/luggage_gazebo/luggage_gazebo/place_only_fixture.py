@@ -122,8 +122,10 @@ def case_matrix(sizes=None):
                  note="non-overlapping placement, second commit"),
         CaseSpec("P2", "large", "carry", True, 3,
                  note="non-overlapping placement, third commit"),
+        # The slabs remove both the floor and stacking, so the only honest
+        # answer is a capacity claim the independent enumerator confirms.
         CaseSpec("P3", "carryon", "saturated", False, 0,
-                 fail_closed_codes=(REASON_BIN_FULL, REASON_NO_CANDIDATE),
+                 fail_closed_codes=(REASON_BIN_FULL,),
                  expected_reject_contains="no_candidate",
                  note="fail closed, zero motion, map digest preserved"),
         CaseSpec("P4", "standard", "obstacle", True, 1,
@@ -648,31 +650,47 @@ def occupancy_diff(pre_surface, post_surface, center_local, size, yaw):
 # Classification / ordering / idempotency guards
 # ---------------------------------------------------------------------------
 
-def classify_placement_failure(message, capacity_fits, reject_histogram=None):
+def classify_placement_failure(message, capacity_fits, reject_histogram=None,
+                               product_reason_code=None):
     """Fail-closed classification guard (debug-evidence rule).
 
     A ``BIN_FULL``/``no_candidate`` message may only be accepted as genuine
     packing capacity exhaustion when the independent geometric capacity test
     agrees. Otherwise the case is ``PLACE_CANDIDATE_EXHAUSTED`` — candidates
     were lost to other gates and must not be relabelled BIN_FULL.
+
+    ``product_reason_code`` is the planner's own claim. This arbiter keeps its
+    own enumerator (``geometric_capacity``) so the comparison stays
+    independent; ``product_agrees`` False is evidence, not a pass.
     """
     text = str(message or "")
     histogram = dict(reject_histogram or {})
     exhaustion = "no_candidate" in text or "invalid_size" in text
+    product_code = str(product_reason_code or "")
     if not exhaustion:
         return {
             "code": text.split(":")[0][:64] or "PLACEMENT_FAILED",
             "bin_full_accepted": False, "capacity_confirmed": False,
             "ok": False,
+            "product_reason_code": product_code,
+            "product_agrees": False,
             "reason": "unexpected placement failure shape: %s" % text,
         }
     code = REASON_BIN_FULL if "BIN_FULL" in text else REASON_NO_CANDIDATE
     accepted = bool(capacity_fits is False)
+    verdict_code = code if accepted else "PLACE_CANDIDATE_EXHAUSTED"
+    # The planner claims capacity exactly when it answers BIN_FULL; the
+    # arbiter claims it when no footprint of this size fits.
+    product_claims_capacity = product_code == REASON_BIN_FULL
+    product_agrees = (
+        product_claims_capacity == accepted if product_code else None)
     return {
-        "code": code if accepted else "PLACE_CANDIDATE_EXHAUSTED",
+        "code": verdict_code,
         "bin_full_accepted": accepted,
         "capacity_confirmed": accepted,
-        "ok": accepted,
+        "ok": accepted and product_agrees is not False,
+        "product_reason_code": product_code,
+        "product_agrees": product_agrees,
         "reason": (
             "independent capacity test agrees: no footprint fits"
             if accepted else

@@ -27,3 +27,46 @@ Hard rules:
 
 The kernel stays importable under plain Python with no ROS, TF, Gazebo, or
 message imports. ROS nodes and adapters translate descriptors at the boundary.
+
+## Identity propagation
+
+Every artifact that describes the interior of the container names the hull it
+was built for, so two independently-loaded scene configs cannot be joined
+silently:
+
+- `cargo_volume_mapper` stamps `geometry_hash` on `surface_map_2d`, on the
+  commit ledger, and on `GetCargoMapStats`.
+- `placement_planner` compares an incoming cargo map against its own kernel
+  hash and rejects the map on mismatch or absence. It does not answer from the
+  floor prior while a map it refused exists; that would be the silent fallback
+  this document forbids.
+- `ComputePlacement` carries `geometry_hash` in both directions. A non-empty
+  request hash that differs from the planner hull fails closed.
+- The floor prior is legal when no map has been published, but it is stamped
+  with the planner hash and flagged as `floor_prior` in the result dump.
+
+## Placement failure taxonomy
+
+`ComputePlacement` returns a `reason_code` from a fixed set. Capacity claims
+and planning infeasibility are different answers and must stay separable in
+evidence:
+
+| Code | Meaning |
+|---|---|
+| `INVALID_BOX_SIZE` | A requested dimension is not finite and positive. |
+| `BOX_EXCEEDS_CONTAINER` | No candidate could be enumerated; the box exceeds the container at every allowed yaw. |
+| `BIN_FULL` | Candidates were enumerated and none was capacity-feasible. |
+| `PLACE_CANDIDATE_EXHAUSTED` | At least one candidate was capacity-feasible and was rejected by a policy or observation gate. |
+| `CARGO_MAP_GEOMETRY_MISMATCH` | Geometry identity failed closed. |
+| `DETECT_FULL_GEOMETRY_REQUIRED` | The detection carries no measured height. |
+
+A candidate is capacity-feasible when no capacity gate rejected it. Capacity
+gates are overlap with a placed box, top clearance, and hull containment.
+Aperture, insertion corridor, unobserved support, and insufficient support
+ratio are policy or observation gates: they reject a slot the container may
+still have room for. Capacity gates are evaluated independently of the gate
+that happens to fire first, and the capacity count is taken over every
+enumerated candidate, not the retained `top_n` / `keep_rejected` subset.
+
+Every tried candidate keeps its reason, so `BIN_FULL` remains falsifiable from
+the dump alone.

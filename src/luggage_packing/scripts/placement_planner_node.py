@@ -8,13 +8,19 @@ No TF lookups inside the solver path; container-local math only.
 Subscribes ``/luggage/cargo_map/surface_2d`` (JSON from
 cargo_volume_mapper_node) with a floor-prior fallback when no map has been
 published yet (empty container): the floor's existence is geometric prior.
+A map whose ``geometry_hash`` is missing or differs from this node's kernel
+hull is rejected outright; the planner never reads a foreign map's
+``inner_size`` (docs/architecture/container_geometry.md).
 
 Service ``/placement_planner/compute_placement`` (luggage_msgs/ComputePlacement):
-  request  box (DetectedLuggage), placed (SlotSpec[] in elfin_base_link)
-  response slot (SlotSpec in elfin_base_link), success, message
-           message carries the reject histogram when no candidate survives
-           (BIN_FULL semantics), e.g. "BIN_FULL no_candidate: overlap=10
-           outside_aperture=6 corridor_blocked=2"
+  request  box (DetectedLuggage), placed (SlotSpec[] in elfin_base_link),
+           geometry_hash (optional pin on the container hull)
+  response slot (SlotSpec in elfin_base_link), success, message,
+           geometry_hash (hull the answer was computed against), reason_code
+           message carries the reject histogram when no candidate survives,
+           e.g. "PLACE_CANDIDATE_EXHAUSTED no_candidate: overlap=10
+           outside_aperture=6 corridor_blocked=2". Only reason_code=BIN_FULL
+           claims the container is physically full.
 
 Latched ``/placement_planner/last_result`` (std_msgs/String JSON) lists every
 candidate (feasible + rejected) for pack-eval dumps.
@@ -62,7 +68,9 @@ from luggage_description.scene_tf_config_utils import (
     yaw_world_to_base_link,
 )
 from luggage_packing.placement_solver import (
-    placement_constraint_reason,
+    CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+    CODE_DETECT_FULL_GEOMETRY_REQUIRED,
+    placement_constraint_verdict,
     solve_placement,
 )
 from luggage_description.container_geometry import (
@@ -140,6 +148,8 @@ class PlacementPlannerNode(Node):
         self._smallest_box = self._smallest_box_size()
         self._surface = None
         self._hull = descriptor_from_scene_config(self._scene)
+        self._geometry_hash = str(self._hull.geometry_hash)
+        self._rejected_maps = 0
 
         map_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -155,8 +165,9 @@ class PlacementPlannerNode(Node):
             self._handle, callback_group=group)
 
         self.get_logger().info(
-            "placement_planner ready (aperture_y=%s, smallest=%s)"
-            % (self._aperture_y, self._smallest_box))
+            "placement_planner ready (aperture_y=%s, smallest=%s, "
+            "geometry_hash=%s)"
+            % (self._aperture_y, self._smallest_box, self._geometry_hash))
 
     def _hull_geometry(self):
         """Authoritative kernel hull (cached; config is immutable here)."""
@@ -246,8 +257,20 @@ class PlacementPlannerNode(Node):
             surface = json.loads(msg.data)
         except ValueError:
             return
-        if isinstance(surface, dict) and "height" in surface:
-            self._surface = surface
+        if not isinstance(surface, dict) or "height" not in surface:
+            return
+        incoming = str(surface.get("geometry_hash") or "")
+        if incoming != self._geometry_hash:
+            # Fail closed: a map built for another hull must never be read
+            # for its inner_size or heights.
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected cargo map: geometry_hash %s != planner %s "
+                "(rejected=%d)"
+                % (incoming or "<missing>", self._geometry_hash,
+                   self._rejected_maps))
+            return
+        self._surface = surface
 
     def _floor_prior_surface(self):
         """Match cargo_volume_mapper.surface_map_2d: floor-relative height.
@@ -260,6 +283,7 @@ class PlacementPlannerNode(Node):
         nx = max(1, int(round(inner_l / res)))
         ny = max(1, int(round(inner_w / res)))
         return {
+            "geometry_hash": self._geometry_hash,
             "resolution": res,
             "nx": nx, "ny": ny,
             "inner_size": [inner_l, inner_w, inner_h],
@@ -306,7 +330,8 @@ class PlacementPlannerNode(Node):
             ))
         return aabbs
 
-    def _constraint_reason(self, candidate, placed_aabbs):
+    def _constraint_verdict(self, candidate, placed_aabbs):
+        """Return ``(reason, capacity_ok)`` for one candidate."""
         hull_margin = float(self.get_parameter("hull_margin").value)
         hull = self._hull_geometry()
 
@@ -325,7 +350,7 @@ class PlacementPlannerNode(Node):
                 return False
             return y <= y_max_at_z(hull, z, margin=hull_margin) + 1e-9
 
-        return placement_constraint_reason(
+        return placement_constraint_verdict(
             candidate,
             self._inner_size[2],
             placed_aabbs=placed_aabbs,
@@ -350,15 +375,51 @@ class PlacementPlannerNode(Node):
 
     def _handle(self, request, response):
         box = request.box
+        response.geometry_hash = self._geometry_hash
         # E0/E4 contract: packing needs measured full geometry. A top-only
         # detection (or a catalog prior with height_valid=false) must not
         # become a collision box inside the container.
         if not bool(getattr(box, "height_valid", False)):
             response.success = False
+            response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
             response.message = (
                 "DETECT_FULL_GEOMETRY_REQUIRED: ComputePlacement needs "
                 "height_valid=true (measured support or configured mode); "
                 "got height_source=%d" % int(getattr(box, "height_source", 0)))
+            return response
+        requested_hash = str(getattr(request, "geometry_hash", "") or "")
+        if requested_hash and requested_hash != self._geometry_hash:
+            response.success = False
+            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
+            response.message = (
+                "%s: request pinned %s, planner hull is %s"
+                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, requested_hash,
+                   self._geometry_hash))
+            return response
+        if self._surface is None and self._rejected_maps:
+            # A live mapper published a hull we refused. Answering from the
+            # floor prior here would be the silent fallback GEO-8 forbids.
+            response.success = False
+            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
+            response.message = (
+                "%s: %d cargo map(s) rejected, planner hull is %s"
+                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH, self._rejected_maps,
+                   self._geometry_hash))
+            self._publish_last({
+                "success": False,
+                "size_wdh": [max(0.0, float(box.width)),
+                             max(0.0, float(box.depth)),
+                             max(0.0, float(box.height))],
+                "n_candidates_total": 0,
+                "n_feasible": 0,
+                "reject_histogram": {},
+                "reason_code": response.reason_code,
+                "geometry_hash": self._geometry_hash,
+                "rejected_maps": self._rejected_maps,
+                "floor_prior": False,
+                "candidates": [],
+                "message": response.message,
+            })
             return response
         size = [max(0.0, float(box.width)),
                 max(0.0, float(box.depth)),
@@ -369,7 +430,7 @@ class PlacementPlannerNode(Node):
             surface, size,
             allowed_yaws=self._allowed_yaws,
             params=self._params,
-            candidate_validator=lambda candidate: self._constraint_reason(
+            candidate_validator=lambda candidate: self._constraint_verdict(
                 candidate, placed_aabbs),
         )
         candidates = result["candidates"]
@@ -382,7 +443,12 @@ class PlacementPlannerNode(Node):
             "size_wdh": size,
             "n_candidates_total": len(candidates),
             "n_feasible": len(feasible),
+            "n_capacity_feasible": result["capacity_feasible_count"],
             "reject_histogram": histogram,
+            "reason_code": result["reason_code"],
+            "geometry_hash": self._geometry_hash,
+            "map_geometry_hash": str(surface.get("geometry_hash") or ""),
+            "rejected_maps": self._rejected_maps,
             "map_revision": surface.get("map_revision"),
             "floor_prior": self._surface is None,
             "candidates": [jsonable_candidate(self._annotate_frames(dict(c)))
@@ -392,6 +458,7 @@ class PlacementPlannerNode(Node):
         if not result["success"]:
             response.slot = SlotSpec()
             response.success = False
+            response.reason_code = result["reason_code"]
             response.message = result["message"]
             dump["message"] = response.message
             self._publish_last(dump)
@@ -401,6 +468,7 @@ class PlacementPlannerNode(Node):
         slot, annotated = self._slot_from_candidate(best, size)
         response.slot = slot
         response.success = True
+        response.reason_code = ""
         response.message = result["message"]
         dump["message"] = response.message
         dump["selected"] = jsonable_candidate(annotated)

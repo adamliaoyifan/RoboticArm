@@ -1131,7 +1131,24 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         request = ComputePlacement.Request()
         request.box = pick_msg
         request.placed = list(self._placed_slots)
+        # Pin the hull the fixture was built against; a planner holding a
+        # different scene config must fail closed rather than answer.
+        request.geometry_hash = str(self._ctx["geometry_hash"])
         return self._call(self._compute_cli, request, timeout=30.0)
+
+    def _check_geometry_identity(self, record, placement):
+        """Every answer must name the hull the fixture and map agree on."""
+        expected = str(self._ctx["geometry_hash"])
+        response_hash = str(getattr(placement, "geometry_hash", "") or "")
+        map_hash = str((self._surface_2d or {}).get("geometry_hash") or "")
+        record["geometry_identity"] = {
+            "expected": expected,
+            "response": response_hash,
+            "cargo_map": map_hash,
+        }
+        ok = bool(response_hash == expected and map_hash == expected)
+        record["checks"]["geometry_hash_consistent"] = ok
+        return ok
 
     def run_case(self, case):
         """Run one P0-P4 case end to end. Returns a case record."""
@@ -1221,10 +1238,20 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             self._abort_case_recovery(record, case)
             self._finish_case(record, case, slug, t0)
             return record
+        geometry_ok = self._check_geometry_identity(record, placement)
         self._t1("compute_placement", success=bool(placement.success),
                  message=placement.message,
+                 reason_code=str(getattr(placement, "reason_code", "") or ""),
+                 geometry_hash_consistent=geometry_ok,
                  revision_in_dump=last_dump.get("map_revision"),
                  revision_snapshot=pre_map["stats"]["map_revision"])
+        if not geometry_ok:
+            record["fail_code"] = "GEOMETRY_HASH_INCONSISTENT"
+            self._dump_json("geometry_identity.json",
+                            record["geometry_identity"])
+            self._abort_case_recovery(record, case)
+            self._finish_case(record, case, "geometry_hash_inconsistent", t0)
+            return record
         if not placement.success:
             self._handle_placement_failure(
                 record, case, pre_map, placement, last_dump,
@@ -1348,11 +1375,15 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         placed_aabbs = self._planned_aabbs_local()
         fits, first_fit = fx.geometric_capacity(
             self._ctx, self._catalog_sizes[case.cargo_id], placed_aabbs)
+        product_code = str(getattr(placement, "reason_code", "") or "")
         verdict = fx.classify_placement_failure(
-            placement.message, fits, last_dump.get("reject_histogram"))
+            placement.message, fits, last_dump.get("reject_histogram"),
+            product_reason_code=product_code)
         record["classification"] = verdict
         record["checks"]["capacity_independently_confirmed"] = bool(
             verdict["capacity_confirmed"])
+        record["checks"]["product_reason_code_agrees"] = bool(
+            verdict["product_agrees"])
         record["checks"]["zero_motion_goals"] = (
             len([g for g in self._pos_guards["executed_goals"]
                  if g["case"] == case.case_id and g["scored"]]) == 0)

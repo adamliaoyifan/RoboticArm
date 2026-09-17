@@ -18,6 +18,10 @@ Topics:
       the commit ledger (center/size/yaw per box) - what ComputePlacement
       and the eval driver cross-check against their own bookkeeping (A4).
 
+Both topics and ``get_stats`` carry the kernel ``geometry_hash`` of the hull
+this map was built for, so a consumer loaded against a different scene config
+fails closed instead of reading the map's ``inner_size``.
+
 SOURCE_GEOMETRY only (fail-closed): this node never integrates sensor
 points; depth integration is deliberately deferred (slice B2 / Todo 6).
 """
@@ -48,6 +52,7 @@ from luggage_description.scene_tf_config_utils import (
     container_inner_ceiling_z,
     container_inner_dimensions,
     container_inner_floor_z,
+    container_inner_geometry_descriptor,
     load_scene_tf_config,
     resolve_scene_tf_config_path,
     static_transforms,
@@ -81,12 +86,15 @@ class CargoVolumeMapperNode(Node):
         # center_base). Floor origin would shift every slot by -inner_h/2.
         volume_center_z = floor_z + 0.5 * inner_h
 
+        descriptor = container_inner_geometry_descriptor(scene)
+        self._geometry_hash = str(descriptor["geometry_hash"])
         self._mapper = CargoVolumeMapper(
             (inner_l, inner_w, inner_h),
             (0.0, 0.0, volume_center_z),
             0.0,
             resolution=float(self.get_parameter("resolution").value),
             hull_local_inside=container_hull_local_inside_fn(scene),
+            geometry_descriptor=descriptor,
         )
         self._frame = "container_link"
         self._world_from_container = self._load_container_pose(scene)
@@ -114,9 +122,11 @@ class CargoVolumeMapperNode(Node):
 
         self._publish_all()
         self.get_logger().info(
-            "cargo_volume_mapper ready (inner %.2fx%.2fx%.2f m, res %.2f)"
+            "cargo_volume_mapper ready (inner %.2fx%.2fx%.2f m, res %.2f, "
+            "geometry_hash %s)"
             % (inner_l, inner_w, ceiling_z - floor_z,
-               float(self.get_parameter("resolution").value)))
+               float(self.get_parameter("resolution").value),
+               self._geometry_hash))
 
     # ------------------------------------------------------------------
     # Container pose (container_link in world) for world-frame commits.
@@ -218,6 +228,7 @@ class CargoVolumeMapperNode(Node):
         response.frontier_count = int(stats["frontier_count"])
         response.total_voxels = int(stats["total_voxels"])
         response.map_revision = int(stats["map_revision"])
+        response.geometry_hash = self._geometry_hash
         response.message = "committed=%d" % stats["committed_box_count"]
         return response
 
@@ -240,6 +251,7 @@ class CargoVolumeMapperNode(Node):
             "container_in_world": self._world_from_container,
             "boxes": self._mapper.commit_ledger(),
             "map_revision": self._mapper._revision,
+            "geometry_hash": self._geometry_hash,
         }, sort_keys=True)))
 
 

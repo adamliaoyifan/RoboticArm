@@ -1,6 +1,19 @@
+# Ask the placement planner for one slot inside the container.
+#
+# ``geometry_hash`` pins the container hull the caller reasoned about. Leave it
+# empty to accept the planner's own kernel geometry; a non-empty value that
+# differs from the planner hull fails closed with
+# ``reason_code=CARGO_MAP_GEOMETRY_MISMATCH``.
 DetectedLuggage box
 SlotSpec[] placed
+string geometry_hash
 ---
 SlotSpec slot
 bool success
 string message
+# Hull the answer was computed against (kernel geometry_hash).
+string geometry_hash
+# Stable failure taxonomy; empty on success. BIN_FULL is a capacity claim and
+# must never be used for candidates lost to aperture, corridor, support or
+# observation gates - those are PLACE_CANDIDATE_EXHAUSTED.
+string reason_code
