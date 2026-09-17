@@ -1,7 +1,12 @@
 # Real Deployment, Pickup XY, And Smooth Control
 
-This note is the current real-cell contract. It does not add Orin-specific
-scripts because the Orin environment is not fixed yet.
+This note is the current real-cell contract. Split Orin/laptop scripts:
+
+- Orin sensors + YOLO: `src/luggage_perception/scripts/perception_site.sh`
+- Laptop ServoJ: `deployment_ws/scripts/hardware_pick_servo_j.sh`
+- Previous waypoint all-in-one: `deployment_ws/scripts/hardware_pick.sh`
+
+Topic names are unchanged.
 
 ## Current ThinkPad All-In-One
 
@@ -34,41 +39,45 @@ ros2 run luggage_planning hardware_pick_driver.py --plan-only
 ros2 run luggage_planning hardware_pick_driver.py
 ```
 
-## Future Split Deployment
+## Split Deployment (Orin sensors + laptop planning)
 
-Both machines use native ROS 2 DDS on the same LAN:
+Both machines use native ROS 2 DDS on the same LAN (`ROS_DOMAIN_ID=7`).
+Do not rename topics. One owner each for D555, Mid-360, CPS, and scene TF.
+
+Orin (Mid-360 + D555 + YOLO + DetectLuggage):
 
 ```bash
 export ROS_DOMAIN_ID=7
+unset ROS_LOCALHOST_ONLY
+~/ros2_ws/src/luggage_perception/scripts/perception_site.sh
 ```
 
-Orin owns perception only:
+Lenovo waypoint pick (previous all-in-one test, local sensors):
 
 ```bash
-ros2 launch luggage_planning hardware_pick.launch.py \
-  start_d555:=true \
-  start_executor:=false \
-  start_scene:=false \
-  start_perception:=true \
-  start_planning:=false \
-  use_moveit:=false
+cd deployment_ws
+./scripts/hardware_pick.sh
 ```
 
-Lenovo owns planning and hardware execution:
+Lenovo ServoJ smooth control, subscribe Orin topics:
 
 ```bash
-ros2 launch luggage_planning hardware_pick.launch.py \
-  start_d555:=false \
-  start_executor:=true \
-  start_scene:=true \
-  start_perception:=false \
-  start_planning:=true \
-  use_moveit:=true
+cd deployment_ws
+./scripts/hardware_pick_servo_j.sh
 ```
 
-There must be exactly one owner for D555, one owner for CPS, and one owner for
-scene TF. The Lenovo graph consumes `/luggage/*` perception outputs published
-by Orin.
+Laptop-only ServoJ (no Orin): `./scripts/hardware_pick_servo_j.sh start_d555:=true start_perception:=true`
+
+Laptop subscribes the same names Orin publishes:
+
+- `/camera/d555/color/image_raw/compressed` + `camera_info`
+- `/camera/d555/aligned_depth_to_color/image_raw/compressed` + `camera_info`
+- `/livox/lidar`, `/livox/imu`
+- `/luggage/preprocessed/camera/{color,depth}/image` + camera_info
+- `/luggage/semantic/yolo_detections`, `/luggage/semantic/overlay`, mask, cargo_points
+- service `/luggage_detector/detect_luggage`
+
+Laptop still publishes `/joint_states`, `/tf`, `/tf_static` for Orin.
 
 ## Pickup XY Contract
 
