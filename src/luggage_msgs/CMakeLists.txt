@@ -29,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetNextSlot.srv"
   "srv/ComputePlacement.srv"
   "srv/VacuumCommand.srv"
+  "srv/ProbeMotionSegment.srv"
   "srv/SyncStaticScene.srv"
   "srv/SyncPickupBox.srv"
   "srv/AddPlacedBox.srv"

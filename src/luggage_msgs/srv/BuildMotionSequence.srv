@@ -1,6 +1,10 @@
 DetectedLuggage pick
 SlotSpec place_slot
 string phase
+# Non-empty: build the pick sequence for this suction candidate from the
+# observation (identity-gated; fails closed when absent or mismatched).
+# Empty: legacy box-centre path, unchanged.
+string suction_candidate_id
 ---
 MotionSegment[] segments
 bool success

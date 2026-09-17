@@ -1,7 +1,24 @@
 #!/usr/bin/env python3
 """实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
 
-Hardware pick: observe -> DetectLuggage -> BuildMotionSequence -> PlanMotion.
+Hardware pick: observe -> DetectLuggage -> candidate selection ->
+PlanMotion per candidate, with bounded vacuum retry (dynamic-suction
+plan section D).
+
+The pick flow lives in ``luggage_planning.suction_pick_session.PickSession``
+(pure, port-injected); this script only wires ROS clients into the
+session ports. Candidate contract: at most three candidates per request,
+one vacuum attempt per candidate; on VACUUM_SEAL_TIMEOUT the backend
+self-releases, DI0 must be observed low 0.5 s within 2.0 s, the arm
+reverses >= 80 mm along the candidate normal, and only then may it move
+laterally to the next candidate. ``top_surface_valid`` alone never
+authorizes motion.
+
+Exit codes: 1 graph, 2 observe, 3 detect/no-sealable-patch, 4 build/scene,
+5 segment, 6 legacy vacuum (unused by the candidate path), 7
+SUCTION_RETRY_RECOVERY_FAILED, 8 SUCTION_CANDIDATES_EXHAUSTED, 9 identity
+or contact-model mismatch, 10 carry fault (vacuum PRESERVED; explicit
+recovery required).
 
 Vacuum attach after the attach segment (box DO0/DO1, wait DI0). Default
 holds suction after retreat so you can see the box; Ctrl-C or --release
@@ -13,6 +30,7 @@ Typical order after hardware_pick.launch.py is up:
 
   ros2 run luggage_planning hardware_pick_driver.py --detect-only
   ros2 run luggage_planning hardware_pick_driver.py --plan-only
+  ros2 run luggage_planning hardware_pick_driver.py --dry-run   # C7 protocol
   ros2 run luggage_planning hardware_pick_driver.py
   ros2 run luggage_planning hardware_pick_driver.py --skip-observe
       # detect+pick from the current joints; do not drive pickup_observe
@@ -21,6 +39,7 @@ Typical order after hardware_pick.launch.py is up:
 from __future__ import division
 
 import argparse
+import json
 import signal
 import sys
 import threading
@@ -32,10 +51,151 @@ from rclpy.action import ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
 from luggage_msgs.action import GoToRobotPose, PlanMotion
 from luggage_msgs.msg import VacuumState
-from luggage_msgs.srv import BuildMotionSequence, DetectLuggage, VacuumCommand
+from luggage_msgs.srv import (BuildMotionSequence, DetectLuggage,
+                              ProbeMotionSegment, VacuumCommand)
+from std_msgs.msg import Bool, String
+
+from luggage_planning import ros_message_adapters as adapters
+from luggage_planning.suction_candidate_selection import rank_candidates
+from luggage_planning.suction_candidate_waypoints import (
+    build_candidate_pick_segments,
+)
+from luggage_planning.suction_pick_session import (
+    PickSession,
+    SegmentOutcome,
+    SessionConfig,
+)
+from luggage_planning.suction_pick_session import DetectionView
+
+
+class RosPickSessionPorts:
+    """PickSession ports over the driver's ROS clients."""
+
+    def __init__(self, node, driver, log_path=None):
+        self._node = node
+        self._driver = driver
+        self._di0_raw = None
+        self._current_box = None
+        self._trace_file = open(log_path, "w") if log_path else None
+        node.create_subscription(
+            Bool, "/vacuum/di0", self._on_di0, 10,
+            callback_group=driver._group)
+        node.create_subscription(
+            String, "/luggage/current_box", self._on_current_box,
+            QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                       reliability=ReliabilityPolicy.RELIABLE),
+            callback_group=driver._group)
+
+    def _on_di0(self, msg):
+        self._di0_raw = 1 if msg.data else 0
+
+    def _on_current_box(self, msg):
+        try:
+            from luggage_perception.cargo_instance_tracker import (
+                parse_current_box_payload,
+            )
+            box_id, generation = parse_current_box_payload(msg.data)
+            self._current_box = (str(box_id), int(generation))
+        except Exception as exc:  # noqa: BLE001 - passive subscription
+            self._node.get_logger().warn(
+                "current_box payload unreadable: %s" % exc)
+
+    # -- ports interface ----------------------------------------------------
+
+    def now(self):
+        return time.monotonic()
+
+    def sleep(self, dt):
+        time.sleep(max(0.0, dt))
+
+    def probe(self, segment, candidate_id):
+        request = ProbeMotionSegment.Request()
+        request.segment = adapters.segment_to_msg(segment)
+        response = self._driver._call_srv(
+            self._driver._probe, request, 15.0)
+        if response is None:
+            return {"ik_ok": False, "fraction": -1.0,
+                    "moveit_error_code": 0}
+        return {"ik_ok": bool(response.ik_ok),
+                "fraction": float(response.fraction),
+                "moveit_error_code": int(response.moveit_error_code)}
+
+    def execute_segment(self, segment, candidate_id):
+        goal = PlanMotion.Goal()
+        goal.segment = adapters.segment_to_msg(segment)
+        ok, message, result = self._driver._send_action(
+            self._driver._plan, goal, self._driver._args.plan_timeout,
+            "PlanMotion:%s" % segment.name)
+        return SegmentOutcome(
+            ok=ok, message=message,
+            fraction=float(getattr(result, "fraction", -1.0) or 0.0),
+            settle_json=str(getattr(result, "settle_json", "") or ""))
+
+    def vacuum_enable(self, candidate_id):
+        self._node.get_logger().info(
+            "vacuum attach: candidate=%s" % candidate_id)
+        ok, message = self._driver.vacuum(True, timeout=20.0)
+        return ok, message
+
+    def vacuum_release(self, candidate_id=""):
+        return self._driver.vacuum(False)
+
+    def di0(self):
+        if self._di0_raw is not None:
+            return self._di0_raw
+        state = self._driver._vacuum_state
+        if state.get("attached"):
+            return 1
+        if "attached" in state:
+            return 0
+        return None
+
+    def scene_add_box(self, detection):
+        ok, message = self._driver.add_scene_box_detection(detection)
+        return ok, message
+
+    def scene_attach(self):
+        return self._driver.attach_scene_box()
+
+    def scene_remove(self):
+        return self._driver.remove_scene_box()
+
+    def set_pickup_touch(self, allowed):
+        return self._driver.set_pickup_touch(allowed)
+
+    def identity_latest(self):
+        return self._current_box
+
+    def graph_health(self):
+        checks = (
+            (self._driver._plan.wait_for_server(timeout_sec=1.0),
+             "PlanMotion action missing"),
+            (self._driver._probe.wait_for_service(timeout_sec=1.0),
+             "ProbeMotionSegment missing"),
+            (self._driver._build.wait_for_service(timeout_sec=1.0),
+             "BuildMotionSequence missing"),
+        )
+        for ok, reason in checks:
+            if not ok:
+                return False, reason
+        return True, "ok"
+
+    def log_event(self, record):
+        line = json.dumps(record, default=str)
+        if self._trace_file is None:
+            self._node.get_logger().info("retry: %s" % line)
+            return
+        self._trace_file.write(line + "\n")
+        self._trace_file.flush()
+
+    def close(self):
+        if self._trace_file is not None:
+            self._trace_file.close()
+            self._trace_file = None
 
 
 class HardwarePickDriver(Node):
@@ -54,6 +214,9 @@ class HardwarePickDriver(Node):
             callback_group=self._group)
         self._build = self.create_client(
             BuildMotionSequence, "/waypoint_generator/build_motion_sequence",
+            callback_group=self._group)
+        self._probe = self.create_client(
+            ProbeMotionSegment, "/motion_planner/probe_motion_segment",
             callback_group=self._group)
         self._vacuum = self.create_client(
             VacuumCommand, "/vacuum/command", callback_group=self._group)
@@ -152,7 +315,8 @@ class HardwarePickDriver(Node):
         ]
         if (self._args.use_vacuum
                 and not self._args.detect_only
-                and not self._args.plan_only):
+                and not self._args.plan_only
+                and not self._args.dry_run):
             needed.append((self._vacuum, "VacuumCommand"))
         for client, name in needed:
             remain = max(0.5, deadline - time.monotonic())
@@ -162,11 +326,13 @@ class HardwarePickDriver(Node):
         if not self._args.skip_observe:
             if not self._goto.wait_for_server(timeout_sec=remain):
                 return False, "GoToRobotPose missing after %.0fs" % timeout
-        if self._args.detect_only or self._args.plan_only:
+        if self._args.detect_only or self._args.plan_only or self._args.dry_run:
             return True, "observe/detect graph ready"
         remain = max(0.5, deadline - time.monotonic())
         if not self._plan.wait_for_server(timeout_sec=remain):
             return False, "PlanMotion missing after %.0fs" % timeout
+        if not self._probe.wait_for_service(timeout_sec=1.0):
+            return False, "ProbeMotionSegment missing"
         return True, "pick graph ready"
 
     @staticmethod
@@ -185,6 +351,20 @@ class HardwarePickDriver(Node):
         ok, message = scene.add_pickup_box(xyz, quat, size)
         if ok:
             self._scene_box = (xyz, quat, size)
+        return ok, message
+
+    def add_scene_box_detection(self, detection):
+        """Scene add from a session DetectionView (world-frame geometry)."""
+        scene = self._scene_client()
+        if not scene.wait_ready(timeout_sec=5.0):
+            return False, "apply_planning_scene unavailable"
+        ok, message = scene.add_pickup_box(
+            list(detection.box_xyz), list(detection.box_quat),
+            list(detection.box_size))
+        if ok:
+            self._scene_box = (list(detection.box_xyz),
+                               list(detection.box_quat),
+                               list(detection.box_size))
         return ok, message
 
     def set_pickup_touch(self, allowed):
@@ -209,6 +389,81 @@ class HardwarePickDriver(Node):
         ok, message = self._scene_client().detach_and_remove()
         self._scene_box = None
         return ok, message
+
+    # ------------------------------------------------------------------
+    # candidate pick flow
+
+    def _load_contact_model(self):
+        from luggage_description._share import description_config_path
+        from luggage_description.suction_contact_model import (
+            load_suction_contact_model,
+        )
+        path = self._args.contact_model or description_config_path(
+            "suction_contact_model.yaml")
+        model = load_suction_contact_model(path)
+        self.get_logger().info(
+            "suction contact model %s sha256=%s version=%s footprint=%.3fx%.3f"
+            % (path, model.identity_hash, model.model_version,
+               model.footprint_size_xy_m[0], model.footprint_size_xy_m[1]))
+        return model
+
+    def _detection_view(self, box):
+        import math
+        orientation = box.pose.orientation
+        yaw = math.atan2(
+            2.0 * (orientation.w * orientation.z
+                   + orientation.x * orientation.y),
+            1.0 - 2.0 * (orientation.y * orientation.y
+                          + orientation.z * orientation.z))
+        stamp, frame = adapters.detected_observation_identity(box)
+        return DetectionView(
+            stamp=stamp,
+            frame=frame,
+            candidates=adapters.suction_candidates_from_detected(box),
+            top_surface_valid=bool(box.top_surface_valid),
+            detection_yaw=yaw,
+            yaw_valid=bool(getattr(box, "yaw_valid", True)),
+            box_xyz=[box.pose.position.x, box.pose.position.y,
+                     box.pose.position.z],
+            box_quat=[orientation.x, orientation.y, orientation.z,
+                      orientation.w],
+            box_size=[box.width, box.depth, box.height])
+
+    def _session_config(self, model):
+        return SessionConfig(
+            max_candidates=int(self._args.max_candidates),
+            release_low_hold_sec=float(self._args.release_low_hold_sec),
+            release_deadline_sec=float(self._args.release_deadline_sec),
+            reverse_min_m=float(self._args.reverse_min_m),
+            required_cartesian_fraction=float(
+                self._args.required_cartesian_fraction),
+            request_deadline_sec=float(self._args.request_deadline_sec),
+            use_scene=(not self._args.no_scene),
+            use_vacuum=bool(self._args.use_vacuum),
+            planning_frame="world",
+            contact_model_version=model.model_version,
+            contact_model_hash=model.identity_hash,
+            dry_run=bool(self._args.dry_run),
+            dry_run_count=int(self._args.dry_run_count),
+        )
+
+    def _log_detection(self, box, detection):
+        pos = box.pose.position
+        self.get_logger().info(
+            "detect id=%s xyz=(%.3f,%.3f,%.3f) size=%.3fx%.3fx%.3f "
+            "top_valid=%s candidates=%d"
+            % (box.id, pos.x, pos.y, pos.z, box.width, box.depth,
+               box.height, box.top_surface_valid,
+               len(detection.candidates)))
+        for view in rank_candidates(detection.candidates):
+            contact = view.contact.position
+            self.get_logger().info(
+                "  candidate %s rank=%d contact=(%.3f,%.3f,%.3f) "
+                "score=%.3f coverage=%.3f p95=%.4f model=%s/%s"
+                % (view.candidate_id, view.rank, contact.x, contact.y,
+                   contact.z, view.score, view.valid_coverage,
+                   view.p95_residual, view.model_version,
+                   view.model_hash[:12]))
 
     def run(self):
         self.get_logger().warn(
@@ -238,86 +493,72 @@ class HardwarePickDriver(Node):
             self.get_logger().error("detect failed: %s" % msg)
             return 3
         box = detect.luggage[0]
-        pos = box.pose.position
-        top = box.top_surface_pose.position
-        self.get_logger().info(
-            "detect id=%s xyz=(%.3f,%.3f,%.3f) size=%.3fx%.3fx%.3f "
-            "top_z=%.3f valid=%s/%s src=%s"
-            % (box.id, pos.x, pos.y, pos.z, box.width, box.depth, box.height,
-               top.z, box.top_surface_valid, box.height_valid, box.height_source))
+        detection = self._detection_view(box)
+        self._log_detection(box, detection)
         if self._args.detect_only:
             return 0
-        if not box.top_surface_valid:
-            self.get_logger().error("top_surface_valid=false; refusing motion")
-            return 3
 
-        req = BuildMotionSequence.Request()
-        req.phase = "pick"
-        req.pick = box
-        built = self._call_srv(self._build, req, 15.0)
-        if built is None or not built.success:
-            self.get_logger().error(
-                "build failed: %s" % (built.message if built else "timeout"))
-            return 4
-        self.get_logger().info(
-            "built %d segments: %s"
-            % (len(built.segments), [s.name for s in built.segments]))
-        for segment in built.segments:
-            p = segment.target_pose.position
-            self.get_logger().info(
-                "  %s type=%s xyz=(%.3f,%.3f,%.3f)"
-                % (segment.name, segment.type, p.x, p.y, p.z))
+        try:
+            model = self._load_contact_model()
+        except Exception as exc:  # noqa: BLE001 - fail closed at startup
+            self.get_logger().error("contact model unusable: %s" % exc)
+            return 9
+
+        if self._args.dry_run:
+            ports = RosPickSessionPorts(self, self)
+            try:
+                session = PickSession(
+                    ports, self._session_config(model))
+                result = session.run_dry_run()
+                self.get_logger().info(
+                    "dry run complete: %d detections, no motion/vacuum"
+                    % self._args.dry_run_count)
+                return result.exit_code
+            finally:
+                ports.close()
+
         if self._args.plan_only:
+            if not detection.candidates:
+                self.get_logger().error(
+                    "no sealable candidates: refusing to plan box-centre")
+                return 3
+            for view in rank_candidates(detection.candidates):
+                segments = build_candidate_pick_segments(
+                    view, detection_yaw=detection.detection_yaw,
+                    yaw_valid=detection.yaw_valid)
+                self.get_logger().info(
+                    "plan %s: %s" % (
+                        view.candidate_id,
+                        [(s.name, s.type, round(s.target_pose.position.z, 3))
+                         for s in segments]))
             return 0
 
-        if self._args.use_vacuum and not self._args.no_scene:
-            scene_ok, scene_msg = self.add_scene_box(box)
-            self.get_logger().info("scene add pickup_box: %s (%s)" % (
-                scene_ok, scene_msg))
-            if not scene_ok:
-                self.get_logger().error("refusing motion without pickup_box")
-                return 4
-
-        for segment in built.segments:
-            if (self._scene_box is not None
-                    and segment.name in ("approach", "attach", "pick_retreat")):
-                touch_ok, touch_msg = self.set_pickup_touch(True)
+        ports = RosPickSessionPorts(self, self,
+                                    log_path=self._args.trace_out or None)
+        try:
+            session = PickSession(ports, self._session_config(model))
+            result = session.run_request(detection)
+            self.get_logger().info(
+                "pick session: exit=%d reason=%s detail=%s candidate=%s"
+                % (result.exit_code, result.reason_code, result.detail,
+                   result.selected_candidate_id))
+            if result.completed and self._args.use_vacuum and self._args.release:
+                vac_ok, vac_msg = self.vacuum(False)
                 self.get_logger().info(
-                    "acm pickup touch: %s (%s)" % (touch_ok, touch_msg))
-            goal = PlanMotion.Goal()
-            goal.segment = segment
-            ok, message, _res = self._send_action(
-                self._plan, goal, self._args.plan_timeout,
-                "PlanMotion:%s" % segment.name)
-            if not ok:
-                self.get_logger().error(
-                    "segment %s failed: %s" % (segment.name, message))
-                if self._vacuum_state.get("vacuum_on") or self._vacuum_state.get("attached"):
-                    self.vacuum(False)
-                return 5
-            self.get_logger().info("segment %s ok: %s" % (segment.name, message))
-            if segment.name == "attach" and self._args.use_vacuum:
-                vac_ok, vac_msg = self.vacuum(True, timeout=20.0)
-                self.get_logger().info("vacuum attach: %s (%s)" % (vac_ok, vac_msg))
-                if not vac_ok:
-                    return 6
+                    "vacuum release: %s (%s)" % (vac_ok, vac_msg))
+                self.remove_scene_box()
+            elif (result.completed and self._args.use_vacuum):
                 self._release_on_exit = True
-                if self._scene_box is not None:
-                    att_ok, att_msg = self.attach_scene_box()
-                    self.get_logger().info(
-                        "scene attach pickup_box: %s (%s)" % (att_ok, att_msg))
-
-        state = dict(self._vacuum_state)
-        self.get_logger().info("after pick vacuum=%s" % state)
-        if self._args.use_vacuum and self._args.release:
-            vac_ok, vac_msg = self.vacuum(False)
-            self.get_logger().info("vacuum release: %s (%s)" % (vac_ok, vac_msg))
-            self._release_on_exit = False
-            self.remove_scene_box()
-        elif self._args.use_vacuum:
-            self.get_logger().warn(
-                "holding suction (DI0). rerun with --release or Ctrl-C to drop")
-        return 0
+                self.get_logger().warn(
+                    "holding suction (DI0). rerun with --release or Ctrl-C "
+                    "to drop")
+            elif result.exit_code == 10:
+                self.get_logger().error(
+                    "CARRY FAULT: vacuum preserved; explicit recovery "
+                    "required (DI0 still monitored)")
+            return result.exit_code
+        finally:
+            ports.close()
 
     def shutdown_vacuum(self):
         if self._release_on_exit:
@@ -336,7 +577,12 @@ def main(argv=None):
     parser.add_argument("--detect-only", action="store_true")
     parser.add_argument(
         "--plan-only", action="store_true",
-        help="Detect and print pick waypoints; do not execute PlanMotion.")
+        help="Detect and print per-candidate pick waypoints; no motion.")
+    parser.add_argument(
+        "--dry-run", action="store_true",
+        help="C7 no-motion protocol: N detections printing ranked "
+             "candidates; zero probe/motion/vacuum/scene calls.")
+    parser.add_argument("--dry-run-count", type=int, default=10)
     parser.add_argument("--no-vacuum", dest="use_vacuum", action="store_false")
     parser.add_argument(
         "--no-scene", action="store_true",
@@ -350,6 +596,20 @@ def main(argv=None):
     parser.add_argument("--detect-retries", type=int, default=5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=90.0)
+    parser.add_argument("--max-candidates", type=int, default=3)
+    parser.add_argument("--release-low-hold-sec", type=float, default=0.5)
+    parser.add_argument("--release-deadline-sec", type=float, default=2.0)
+    parser.add_argument("--reverse-min-m", type=float, default=0.08)
+    parser.add_argument("--required-cartesian-fraction", type=float,
+                        default=1.0)
+    parser.add_argument("--request-deadline-sec", type=float, default=180.0)
+    parser.add_argument(
+        "--contact-model", default="",
+        help="Suction contact model YAML (default: luggage_description "
+             "share suction_contact_model.yaml).")
+    parser.add_argument(
+        "--trace-out", default="",
+        help="Write the session JSONL trace to this path (evidence).")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
 

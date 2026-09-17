@@ -34,6 +34,7 @@ from sensor_msgs.msg import JointState
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from luggage_msgs.action import GoToRobotPose, PlanMotion
+from luggage_msgs.srv import ProbeMotionSegment
 
 from luggage_planning.motion_executor import MotionExecutor, _wrap_near
 from luggage_planning.ros_clock_wait import ClockTimeout, wait_event
@@ -109,6 +110,11 @@ class MotionPlannerNode(Node):
             goal_callback=self._accept_goal,
             cancel_callback=self._accept_cancel,
             callback_group=self._group)
+        # Plan-only reachability probe (candidate selection, gate C1):
+        # IK + raw Cartesian fraction; never moves the arm.
+        self._probe_service = self.create_service(
+            ProbeMotionSegment, "/motion_planner/probe_motion_segment",
+            self._handle_probe_segment, callback_group=self._group)
 
         # Do not wait_for_server here: __init__ runs before the executor
         # spins, so discovery of /move_action always times out and the
@@ -158,6 +164,27 @@ class MotionPlannerNode(Node):
         except KeyError as exc:
             raise RuntimeError("pose %r not found in %s (%s)"
                                % (pose_name, path, exc))
+
+    # ------------------------------------------------------------------
+    # ProbeMotionSegment (plan-only; no motion, no vacuum)
+
+    def _handle_probe_segment(self, request, response):
+        segment = request.segment
+        response.fraction = -1.0
+        response.moveit_error_code = 0
+        if not self._executor_client.wait_ready(15.0):
+            response.success = False
+            response.message = "move_group not ready"
+            return response
+        start = self._joint_positions()[0]
+        record = self._executor_client.probe_segment(segment, start)
+        response.ik_ok = bool(record.get("ik_ok"))
+        fraction = record.get("fraction")
+        response.fraction = -1.0 if fraction is None else float(fraction)
+        response.success = bool(response.ik_ok)
+        response.message = "ik_ok=%s fraction=%.3f" % (
+            response.ik_ok, response.fraction)
+        return response
 
     # ------------------------------------------------------------------
     # PlanMotion

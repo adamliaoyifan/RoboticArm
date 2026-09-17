@@ -12,3 +12,8 @@ bool lock_wrist
 # Permit Cartesian planning to fall back to OMPL pose planning.
 # Keep false for constrained insertion/probe segments.
 bool allow_ompl_fallback
+# Minimum Cartesian path fraction required before this segment may
+# execute (0.0 = executor default). Suction approach/attach/retry_reverse
+# carry 1.0 so a partial straight-line path is refused, not executed
+# (dynamic-suction plan, gate C1).
+float64 required_cartesian_fraction
