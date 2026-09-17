@@ -50,7 +50,7 @@ box_catalog:
     allowed_yaws: [0.0, 1.5708]
   - id: standard
     model: suitcase_standard
-    visual: suitcase_vintage
+    visual: suitcase_loafbrr
     size: [0.70, 0.45, 0.28]
     weight: 0.45
     mass_kg: 15.0

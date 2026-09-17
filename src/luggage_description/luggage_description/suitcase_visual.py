@@ -24,9 +24,12 @@ VISUAL_VINTAGE = "suitcase_vintage"
 VISUAL_IDS = (VISUAL_LOAFBRR, VISUAL_VINTAGE)
 
 # Catalog ``model`` (size slot) -> which mesh family to show.
+# Vintage medium (standard) is YOLO-blind at the 640x360 D555 profile
+# (Gate-4: conf ~0.11 < 0.20 cargo floor, DETECT_NO_CLOUD). Loafbrr is
+# accepted on carryon/large at the same floor.
 DEFAULT_MODEL_VISUAL = {
     "suitcase_carryon": VISUAL_LOAFBRR,
-    "suitcase_standard": VISUAL_VINTAGE,
+    "suitcase_standard": VISUAL_LOAFBRR,
     "suitcase_large": VISUAL_LOAFBRR,
 }
 

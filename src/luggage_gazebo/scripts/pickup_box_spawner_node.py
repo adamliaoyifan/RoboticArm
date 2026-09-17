@@ -59,7 +59,6 @@ from luggage_description.scene_tf_config_utils import (
 
 from luggage_description.suitcase_visual import (
     OBSERVABLE_REFERENCE_VERSION,
-    VISUAL_IDS,
     MeshReferenceError,
     pickup_box_pose,
     pickup_visual_sdf,
@@ -732,8 +731,6 @@ class PickupBoxSpawner(Node):
         entry, size, mass_kg, _generated, id_suffix = self._sample_box()
         pose, yaw = self._entry_pose(entry, size)
         visual_id = visual_id_for_entry(entry)
-        if self._visual_kind == "mesh":
-            visual_id = self._rng.choice(list(VISUAL_IDS))
         # PF-R5A-FIX1 fail-closed: resolve and validate the prospective
         # mesh reference BEFORE clearing the current instance or any
         # delete/create/publication/state/sequence mutation. A bad

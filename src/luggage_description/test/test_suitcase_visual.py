@@ -51,7 +51,7 @@ class TestVisualSelection(unittest.TestCase):
             os.path.join(PKG_ROOT, "config", "box_catalog.yaml.example"))
         by_id = {e["id"]: e for e in box_catalog_entries(catalog)}
         self.assertEqual(visual_id_for_entry(by_id["carryon"]), VISUAL_LOAFBRR)
-        self.assertEqual(visual_id_for_entry(by_id["standard"]), VISUAL_VINTAGE)
+        self.assertEqual(visual_id_for_entry(by_id["standard"]), VISUAL_LOAFBRR)
         self.assertEqual(visual_id_for_entry(by_id["large"]), VISUAL_LOAFBRR)
 
     def test_falls_back_from_model_name(self):

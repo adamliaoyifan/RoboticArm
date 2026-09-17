@@ -82,6 +82,15 @@ class TestC1Scoring(unittest.TestCase):
         payload = _ok_payload(detector_stream_stats=[])
         self.assertFalse(score_c1(payload)["pass"])
 
+    def test_preprocessed_color_rate_fallback(self):
+        payload = _ok_payload()
+        payload["rates"]["color"]["hz"] = 10.7
+        payload["rates"]["pre_color"] = {"hz": 14.98}
+        verdict = score_c1(payload)
+        self.assertTrue(verdict["pass"], verdict["failures"])
+        self.assertEqual(verdict["color_hz_source"], "preprocessed")
+        self.assertAlmostEqual(verdict["color_hz"], 14.98)
+
     def test_clock_count(self):
         self.assertEqual(parse_publisher_count("Publisher count: 2"), 2)
         payload = _ok_payload(clock_info="Publisher count: 2\n")

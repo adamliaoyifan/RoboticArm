@@ -48,6 +48,9 @@ class TestLivoxMetrics(unittest.TestCase):
         self.assertLess(rec["nn_spacing_m"]["mean"], 0.20)
         self.assertGreater(rec["dominant_plane"]["inlier_ratio"], 0.8)
         self.assertLess(rec["dominant_plane"]["residual_mean"], 0.01)
+        lite = livox.summarize_scan(xyz, heavy=False)
+        self.assertIsNone(lite["nn_spacing_m"])
+        self.assertIsNone(lite["dominant_plane"])
 
     def test_window_does_not_join_rgb(self):
         scans = [livox.summarize_scan(np.array([[1.0, 0.0, 0.0], [1.1, 0.0, 0.0]]))]

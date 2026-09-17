@@ -71,6 +71,7 @@ class C1Window(Node):
         self.emit_status_depth_ok = 0
         self.detector_stats = []
         self.livox_scans = []
+        self._livox_n = 0
         self.image_ring = deque(maxlen=60)
         self._window_start = 0.0
         self._window_end = float("inf")
@@ -132,7 +133,7 @@ class C1Window(Node):
                         "width": rec["width"],
                         "height": rec["height"],
                         "encoding": msg.encoding,
-                        "data": bytes(msg.data[: min(len(msg.data), 16)]),
+                        "data_hex": bytes(msg.data[: min(len(msg.data), 16)]).hex(),
                         "data_len": len(msg.data),
                     })
             elif typ is CameraInfo:
@@ -148,8 +149,10 @@ class C1Window(Node):
 
     def _on_livox(self, msg):
         xyz, intensity, n = decode_livox_msg(msg)
+        self._livox_n += 1
         rec = summarize_scan(
-            xyz, intensity=intensity, frame_id=msg.header.frame_id, n_raw=n)
+            xyz, intensity=intensity, frame_id=msg.header.frame_id, n_raw=n,
+            heavy=(self._livox_n % 20 == 0))
         rec["t"] = self.now()
         rec["stamp"] = _stamp_key(msg.header.stamp)
         rec["width"] = int(msg.width)
@@ -378,33 +381,17 @@ def main():
     verdict = score_c1(payload)
     livox_summary = summarize_window(
         livox_window, [s["t"] for s in livox_window])
-    t2 = None
-    if not verdict["pass"]:
-        t2_dir = os.path.join(args.out, "fail_t2")
-        os.makedirs(t2_dir, exist_ok=True)
-        ring = list(node.image_ring)
-        latest_t = ring[-1]["t"] if ring else 0.0
-        kept = [r for r in ring if r["t"] >= latest_t - 2.0]
-        t2_path = os.path.join(t2_dir, "rgbd_ring.json")
-        with open(t2_path, "w", encoding="utf-8") as handle:
-            json.dump(kept, handle, indent=1)
-        t2 = {"rgbd_ring": t2_path, "n": len(kept)}
-        if livox_window:
-            last = dict(livox_window[-1])
-            last.pop("nn_spacing_m", None)
-            livox_fail = os.path.join(t2_dir, "livox_last_scan.json")
-            with open(livox_fail, "w", encoding="utf-8") as handle:
-                json.dump(last, handle, indent=1)
     out = {
         "c1_verdict": verdict,
         "livox": livox_summary,
         "livox_scans_n": len(livox_window),
-        "t2": t2,
+        "t2": None,
         "payload_identity": identity,
         "d34": d34,
         "spawn": spawn_rec,
         "rates": {k: {"hz": v["hz"], "n": v["n"]} for k, v in rates.items()},
     }
+    os.makedirs(args.out, exist_ok=True)
     with open(os.path.join(args.out, "c1_verdict.json"), "w", encoding="utf-8") as handle:
         json.dump(out, handle, indent=2, default=str)
     with open(os.path.join(args.out, "c1_payload.json"), "w", encoding="utf-8") as handle:
@@ -416,9 +403,33 @@ def main():
     print(json.dumps({
         "c1_pass": verdict["pass"],
         "failures": verdict["failures"],
+        "spawn": spawn_rec,
+        "d34": d34,
+        "identity": identity,
+        "detector_n": len(node.detector_stats),
         "livox": livox_summary,
         "out": args.out,
-    }, indent=2, default=str))
+    }, indent=2, default=str), flush=True)
+    t2 = None
+    if not verdict["pass"]:
+        t2_dir = os.path.join(args.out, "fail_t2")
+        os.makedirs(t2_dir, exist_ok=True)
+        ring = list(node.image_ring)
+        latest_t = ring[-1]["t"] if ring else 0.0
+        kept = [r for r in ring if r["t"] >= latest_t - 2.0]
+        t2_path = os.path.join(t2_dir, "rgbd_ring.json")
+        with open(t2_path, "w", encoding="utf-8") as handle:
+            json.dump(kept, handle, indent=1, default=str)
+        t2 = {"rgbd_ring": t2_path, "n": len(kept)}
+        if livox_window:
+            last = dict(livox_window[-1])
+            last.pop("nn_spacing_m", None)
+            livox_fail = os.path.join(t2_dir, "livox_last_scan.json")
+            with open(livox_fail, "w", encoding="utf-8") as handle:
+                json.dump(last, handle, indent=1, default=str)
+        out["t2"] = t2
+        with open(os.path.join(args.out, "c1_verdict.json"), "w", encoding="utf-8") as handle:
+            json.dump(out, handle, indent=2, default=str)
     node.destroy_node()
     rclpy.shutdown()
     return 0 if verdict["pass"] else 1

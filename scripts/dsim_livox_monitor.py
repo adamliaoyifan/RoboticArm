@@ -62,14 +62,17 @@ class LivoxMonitor(Node):
             history=HistoryPolicy.KEEP_LAST,
         )
         self.scans = []
+        self._n = 0
         self._t0 = time.monotonic()
         self.create_subscription(PointCloud2, "/livox/lidar", self._on, be)
 
     def _on(self, msg):
         xyz, intensity, n = decode_livox_msg(msg)
+        self._n += 1
         rec = summarize_scan(
             xyz, intensity=intensity,
-            frame_id=msg.header.frame_id, n_raw=n)
+            frame_id=msg.header.frame_id, n_raw=n,
+            heavy=(self._n % 20 == 0))
         rec["t"] = time.monotonic() - self._t0
         rec["stamp"] = [int(msg.header.stamp.sec), int(msg.header.stamp.nanosec)]
         rec["width"] = int(msg.width)

@@ -186,18 +186,18 @@ def intensity_stats(values):
     }
 
 
-def summarize_scan(xyz, intensity=None, frame_id="", n_raw=None):
+def summarize_scan(xyz, intensity=None, frame_id="", n_raw=None, heavy=True):
     pts = np.asarray(xyz, dtype=np.float64).reshape(-1, 3)
     n_raw = int(n_raw if n_raw is not None else len(pts))
     finite = finite_xyz(pts)
-    return {
+    rec = {
         "frame_id": str(frame_id or ""),
         "n_raw": n_raw,
         "n_finite": int(len(finite)),
         "finite_ratio": (float(len(finite)) / n_raw) if n_raw else None,
         "range": range_stats(finite),
-        "nn_spacing_m": nearest_neighbor_spacing(finite),
-        "dominant_plane": dominant_plane_residuals(finite),
+        "nn_spacing_m": None,
+        "dominant_plane": None,
         "intensity": intensity_stats(intensity),
         "configured_grid": {
             "h_samples": CONFIGURED_H_SAMPLES,
@@ -206,7 +206,12 @@ def summarize_scan(xyz, intensity=None, frame_id="", n_raw=None):
             "update_hz": CONFIGURED_HZ,
         },
         "deskewed": DESKEWED,
+        "heavy": bool(heavy),
     }
+    if heavy:
+        rec["nn_spacing_m"] = nearest_neighbor_spacing(finite)
+        rec["dominant_plane"] = dominant_plane_residuals(finite)
+    return rec
 
 
 def summarize_window(scan_summaries, stamps_sec):

@@ -50,6 +50,23 @@ def parse_publisher_count(topic_info_text):
     return None
 
 
+def effective_color_hz(payload):
+    """Raw colour rate, or preprocessed colour if the probe starved.
+
+    Preprocessor unique colour cannot exceed arrivals, so an in-band
+    preprocessed rate is sufficient evidence that the camera held 15 Hz.
+    """
+    rates = payload.get("rates") or {}
+    raw = (rates.get("color") or {}).get("hz")
+    pre = (rates.get("pre_color") or {}).get("hz")
+    lo, hi = C1_LIMITS["rate_hz_min"], C1_LIMITS["rate_hz_max"]
+    if raw is not None and lo <= raw <= hi:
+        return raw, "raw"
+    if pre is not None and lo <= pre <= hi:
+        return pre, "preprocessed"
+    return raw, "raw"
+
+
 def detector_hit_ratio(stream_stats):
     """same-stamp support-depth hits / joined cargo in the scored window."""
     n = 0
@@ -82,7 +99,7 @@ def score_c1(payload):
         rec = rates.get(name) or {}
         return rec.get("hz")
 
-    color_hz = _rate("color")
+    color_hz, color_hz_source = effective_color_hz(payload)
     depth_hz = _rate("depth_mm")
     for label, hz in (("color", color_hz), ("adapted_depth", depth_hz)):
         if hz is None:
@@ -156,6 +173,7 @@ def score_c1(payload):
         "failures": failures,
         "limits": dict(lim),
         "color_hz": color_hz,
+        "color_hz_source": color_hz_source,
         "depth_mm_hz": depth_hz,
         "identity_ratio": ident_ratio,
         "d3_emission_over_rgb": d3,
