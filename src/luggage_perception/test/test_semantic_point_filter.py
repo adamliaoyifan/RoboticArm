@@ -213,13 +213,13 @@ class TestIntrinsicsFromConfig(unittest.TestCase):
     def test_intrinsics_load_from_realsense_yaml(self):
         color, depth, extr = _load_realsense_intrinsics()
         self.assertEqual(color.width, 640)
-        self.assertEqual(color.height, 480)
-        # Gazebo rgbd_camera K: fx = (W/2) / tan(1.5184/2), Intel D435 depth 87°.
-        expected_fx = (640.0 / 2.0) / math.tan(1.5184 / 2.0)
-        self.assertAlmostEqual(color.fx, expected_fx, places=9)
-        self.assertAlmostEqual(color.fy, expected_fx, places=9)
-        self.assertAlmostEqual(depth.fx, expected_fx, places=9)
-        self.assertAlmostEqual(depth.fy, expected_fx, places=9)
+        self.assertEqual(color.height, 360)
+        self.assertAlmostEqual(color.fx, 323.1775, places=4)
+        self.assertAlmostEqual(color.fy, 322.8994, places=4)
+        self.assertAlmostEqual(color.cx, 317.7526, places=4)
+        self.assertAlmostEqual(color.cy, 178.0294, places=4)
+        self.assertAlmostEqual(depth.fx, color.fx, places=4)
+        self.assertAlmostEqual(depth.fy, color.fy, places=4)
         # depth_to_color translation: 15mm along color-Y per realsense_d435.yaml
         self.assertAlmostEqual(extr.translation[1], 0.015, places=4)
 

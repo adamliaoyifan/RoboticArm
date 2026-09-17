@@ -309,7 +309,6 @@ class Gate4Eval(Node):
             "instance_mask": StampBuffer(maxlen=40),
             "cargo": StampBuffer(maxlen=40),
             "obstacle": StampBuffer(maxlen=40),
-            "depth_pts": StampBuffer(maxlen=40),
         }
         self._trial_samples = []
         for name, topic in (
@@ -324,8 +323,7 @@ class Gate4Eval(Node):
                 image_qos)
         for name, topic in (
                 ("cargo", "/luggage/semantic/cargo_points"),
-                ("obstacle", "/luggage/semantic/obstacle_points"),
-                ("depth_pts", "/luggage/preprocessed/camera/depth/points")):
+                ("obstacle", "/luggage/semantic/obstacle_points")):
             self.create_subscription(
                 PointCloud2, topic,
                 lambda m, stream=name: self._buffers[stream].push(m),
@@ -516,8 +514,7 @@ class Gate4Eval(Node):
             "camera_color_optical_frame")
         self._put_cloud(clouds, extras, "cargo_camera", cargo_pts, cargo_frame)
         for stream, name in (
-                ("obstacle", "filter_obstacle"),
-                ("depth_pts", "depth_topic")):
+                ("obstacle", "filter_obstacle"),):
             msg = self._nearest_msg(snaps, stream, key)
             pts = (
                 adapters.cloud_points_from_msg(msg)

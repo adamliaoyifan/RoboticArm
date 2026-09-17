@@ -194,7 +194,7 @@ def _inventory_table(vacuum_geom_lines, vacuum_gc_lines):
     """Source-to-consumer table required by PF-A1."""
     return [
         {
-            "input": "/luggage/preprocessed/camera/* and depth/points",
+            "input": "/luggage/preprocessed/camera/color+depth images",
             "class": CLASS_SENSOR,
             "sim_provider": "Gazebo rgbd_camera via ros_gz_bridge + preprocessor",
             "hardware_provider": "D435 (or equivalent) driver + preprocessor",

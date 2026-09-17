@@ -10,7 +10,7 @@
     Y offset 47.5 mm is half of the 95 mm stereo baseline.
     cam_mount_* (ChArUco Layer 3) is the optical/body pose and is not this box.
   -->
-  <xacro:macro name="realsense_d435" params="parent *origin depth_near:=0.105 depth_far:=3.0">
+  <xacro:macro name="realsense_d435" params="parent *origin depth_near:=0.26 depth_far:=3.0">
     <xacro:property name="d435_cam_depth_to_color_offset" value="0.015"/>
     <xacro:property name="d555_cam_depth" value="0.048"/>
     <xacro:property name="d555_cam_length" value="0.167"/>
@@ -106,27 +106,35 @@
     <gazebo reference="camera_link">
       <sensor name="d435" type="rgbd_camera">
         <always_on>true</always_on>
-        <update_rate>30.0</update_rate>
+        <update_rate>15.0</update_rate>
         <visualize>false</visualize>
         <topic>d435</topic>
         <gz_frame_id>camera_depth_optical_frame</gz_frame_id>
         <camera name="d435">
-          <!-- Intel D435 datasheet depth HFOV 87° ± 3°
-               (https://www.intelrealsense.com/depth-camera-d435/).
-               1.5184 rad = 87°. Official RGB is ~69°; this one rgbd_camera
-               uses the depth FOV for both streams. K in realsense_d435.yaml
-               is (W/2)/tan(hfov/2) so it matches live camera_info.
-               Depth range 0.105–3.0 m (nominal reliable 0.1–3 m). -->
-          <horizontal_fov>1.5184</horizontal_fov>
+          <!-- D555 colour-aligned sim profile (DSIM-1): 640x360 at 15 Hz.
+               HFOV 1.56005 rad so fx=(320)/tan(hfov/2) ≈ 323.18, matching
+               HB-1 colour K within 2%. One rgbd_camera models aligned
+               depth on the colour grid. Near clip 0.26 m is D555 VGA Min-Z.
+               Runtime CameraInfo is the acceptance source of truth. -->
+          <horizontal_fov>1.56005</horizontal_fov>
           <image>
             <width>640</width>
-            <height>480</height>
+            <height>360</height>
             <format>R8G8B8</format>
           </image>
           <clip>
             <near>${depth_near}</near>
             <far>${depth_far}</far>
           </clip>
+          <lens>
+            <intrinsics>
+              <fx>323.1775</fx>
+              <fy>322.8994</fy>
+              <cx>317.7526</cx>
+              <cy>178.0294</cy>
+              <s>0</s>
+            </intrinsics>
+          </lens>
           <depth_camera>
             <output>depths</output>
           </depth_camera>

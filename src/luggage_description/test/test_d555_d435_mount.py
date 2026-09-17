@@ -76,5 +76,31 @@ class TestD555FrameAlias(unittest.TestCase):
                 self.assertEqual(data["meta"]["hardware"], "d555_poe")
 
 
+class TestD555SimCameraProfile(unittest.TestCase):
+    def test_xacro_canonical_grid(self):
+        with open(D435, encoding="utf-8") as handle:
+            text = handle.read()
+        self.assertIn("depth_near:=0.26", text)
+        self.assertIn("<update_rate>15.0</update_rate>", text)
+        self.assertIn("<width>640</width>", text)
+        self.assertIn("<height>360</height>", text)
+        self.assertIn("<horizontal_fov>1.56005</horizontal_fov>", text)
+        self.assertNotIn("<height>480</height>", text)
+        self.assertNotIn("<update_rate>30.0</update_rate>", text)
+
+    def test_yaml_canonical_profile_without_camera_cloud(self):
+        with open(D435_CONFIG, encoding="utf-8") as handle:
+            data = yaml.safe_load(handle)
+        cam = data["camera"]
+        self.assertEqual(cam["color"]["width"], 640)
+        self.assertEqual(cam["color"]["height"], 360)
+        self.assertEqual(cam["color"]["fps"], 15)
+        self.assertEqual(cam["depth"]["width"], 640)
+        self.assertEqual(cam["depth"]["height"], 360)
+        self.assertAlmostEqual(cam["depth"]["range"]["min"], 0.26)
+        self.assertAlmostEqual(cam["color"]["intrinsics"]["fx"], 323.1775)
+        self.assertNotIn("point_cloud", cam.get("topics", {}))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -619,7 +619,7 @@ class PickRetreatEvalDriver(Node):
         # Process counts, not DDS names: Fast-DDS keeps ghost participants
         # for tens of seconds after SIGTERM, which would false-positive a
         # ros2-node-list uniqueness check without actually dual-feeding
-        # /camera/depth/points.
+        # the camera depth image.
         for label, pattern in DUPLICATE_PROCS:
             count = self._proc_count(pattern)
             if count > 1:
