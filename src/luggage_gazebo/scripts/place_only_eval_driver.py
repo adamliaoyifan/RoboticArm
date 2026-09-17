@@ -1319,8 +1319,12 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
 
         # --- execute production place chain ----------------------------
         if not record["fail_code"]:
-            record.update(self._execute_place_chain(case, pick_msg, slot,
-                                                    slot_meta))
+            chain = self._execute_place_chain(case, pick_msg, slot, slot_meta)
+            # Merge the chain's checks; a plain update would drop the checks
+            # already recorded for this case (geometry identity, P4 property).
+            chain_checks = dict(chain.pop("checks", {}) or {})
+            record.update(chain)
+            record["checks"].update(chain_checks)
         if record["fail_code"]:
             self._abort_case_recovery(record, case)
             slug = record["fail_code"]
