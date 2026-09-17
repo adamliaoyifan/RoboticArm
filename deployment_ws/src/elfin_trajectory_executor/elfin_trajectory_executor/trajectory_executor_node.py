@@ -48,6 +48,7 @@ from .execution_contract import (
 )
 from .goal_ownership import SingleGoalOwner
 from .huayan_interface import HuayanInterface, RESULT_ERROR
+from .servo_j import fjt_to_servo_j_deg
 from .sim_interface import (
     RESULT_INVALID_GOAL,
     RESULT_PREEMPTED,
@@ -124,6 +125,12 @@ class TrajectoryExecutorNode(Node):
             'servo_j_servo_time').get_parameter_value().double_value
         self._servo_j_lookahead_time = self.get_parameter(
             'servo_j_lookahead_time').get_parameter_value().double_value
+        if self._execution_backend == 'servo_esj':
+            self.get_logger().error(
+                "[executor] execution_backend=servo_esj rejected on this S20; "
+                "using waypoint"
+            )
+            self._execution_backend = 'waypoint'
         if self._execution_backend not in ('waypoint', 'servo_j'):
             raise ValueError(
                 "execution_backend must be 'waypoint' or 'servo_j'")
@@ -148,6 +155,7 @@ class TrajectoryExecutorNode(Node):
                 command_acceleration_deg=command_accel,
                 controller_limit_fraction=controller_limit_fraction,
                 power_off_on_disconnect=power_off,
+                execution_backend=self._execution_backend,
             )
             apply_vacuum_io_params(self, self._iface)
             if not self._iface.connect():
@@ -376,8 +384,9 @@ class TrajectoryExecutorNode(Node):
 
             elif ret == RESULT_INVALID_GOAL:
                 result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
-                result.error_string = (
-                    'Trajectory validation failed (check joint limits).')
+                result.error_string = getattr(
+                    self._iface, "last_error_string", ""
+                ) or 'Trajectory validation failed (check joint limits).'
                 goal_handle.abort()
                 self._publish_status('error')
                 self._publish_event(
@@ -389,7 +398,9 @@ class TrajectoryExecutorNode(Node):
 
             else:  # RESULT_ERROR
                 result.error_code = FollowJointTrajectory.Result.INVALID_GOAL
-                result.error_string = 'Hardware execution error. Check robot logs.'
+                result.error_string = getattr(
+                    self._iface, "last_error_string", ""
+                ) or 'Hardware execution error. Check robot logs.'
                 goal_handle.abort()
                 self._publish_status('error')
                 self._publish_event(
@@ -501,18 +512,22 @@ class TrajectoryExecutorNode(Node):
     def _servo_j_path_from_trajectory(
         self, traj: JointTrajectory, servo_time: float,
     ):
-        """Convert a fixed-grid FJT trajectory to absolute joint degrees."""
+        """Resample a MoveIt FJT onto the PushServoJ time grid (joint deg)."""
         servo_time = float(servo_time)
         if not math.isfinite(servo_time) or servo_time <= 0.0:
             return "servo_j_servo_time must be positive"
         if not traj.points:
             return []
-        path = []
+        positions_rad = []
+        times_s = []
+        velocities_rad = []
+        have_vel = True
         previous_t = None
+        n_joints = len(self._joint_names)
         for index, pt in enumerate(traj.points):
-            if len(pt.positions) != len(self._joint_names):
+            if len(pt.positions) != n_joints:
                 return "point %d has %d joints; expected %d" % (
-                    index, len(pt.positions), len(self._joint_names))
+                    index, len(pt.positions), n_joints)
             t = (
                 float(pt.time_from_start.sec)
                 + float(pt.time_from_start.nanosec) * 1e-9
@@ -520,20 +535,34 @@ class TrajectoryExecutorNode(Node):
             if index == 0:
                 if t < -1e-9:
                     return "first point time is negative"
-            else:
-                dt = t - float(previous_t)
-                if abs(dt - servo_time) > max(1e-4, 0.05 * servo_time):
-                    return (
-                        "point %d is not on the fixed ServoJ grid: "
-                        "dt=%.6f expected %.6f" % (index, dt, servo_time)
-                    )
+            elif previous_t is not None and t + 1e-9 < float(previous_t):
+                return "point %d time goes backwards" % index
             previous_t = t
-            try:
-                path.append([math.degrees(float(value)) for value in pt.positions])
-            except (TypeError, ValueError):
-                return "point %d has non-numeric positions" % index
-            if any(not math.isfinite(value) for value in path[-1]):
-                return "point %d has non-finite positions" % index
+            positions_rad.append(list(pt.positions))
+            times_s.append(t)
+            if pt.velocities and len(pt.velocities) == n_joints:
+                velocities_rad.append(list(pt.velocities))
+            else:
+                have_vel = False
+        path, reason = fjt_to_servo_j_deg(
+            positions_rad, times_s, dt_s=servo_time,
+            velocities_rad=velocities_rad if have_vel else None)
+        if reason:
+            return reason
+        if path is None:
+            return "ServoJ resample failed"
+        dt0 = None
+        if len(times_s) >= 2:
+            dt0 = times_s[1] - times_s[0]
+        self.get_logger().info(
+            "[executor] ServoJ resampled %d FJT knots%s -> %d points at %.3fs"
+            % (
+                len(times_s),
+                "" if dt0 is None else " (dt=%.3f)" % dt0,
+                len(path),
+                servo_time,
+            )
+        )
         return path
 
     def _publish_status(self, status: str) -> None:

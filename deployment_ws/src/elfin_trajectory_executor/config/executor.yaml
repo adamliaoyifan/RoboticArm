@@ -42,6 +42,9 @@ trajectory_executor:
     max_velocity_deg: 60.0
     command_acceleration_deg: 60.0
     controller_limit_fraction: 0.8
+    # Production pick stays on HRIF_WayPoint. servo_j is opt-in.
+    # servo_esj is rejected on this S20 (Push 20006/20007).
+    execution_backend: waypoint
 
     # Ctrl+C / launch teardown: disable servo + drop TCP. Do not BlackOut
     # (that cuts 48 V). Opt in only for an explicit power-down.

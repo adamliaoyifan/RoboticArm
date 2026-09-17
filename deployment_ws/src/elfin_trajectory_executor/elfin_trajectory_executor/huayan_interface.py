@@ -57,6 +57,7 @@ from .cps_parse import (
     joints_moved_deg,
     tcp_from_read_act_pos,
 )
+from .servo_j import densify_servo_j_path, servo_j_hold_count
 
 # ---------------------------------------------------------------------------
 # Result codes (mirrors control_msgs/action/FollowJointTrajectory constants)
@@ -85,6 +86,10 @@ MAX_VELOCITY_DEG = 60.0
 DEFAULT_CONTROLLER_LIMIT_FRACTION = 0.8
 MAX_CONTROLLER_LIMIT_FRACTION = 0.8
 HUAYAN_MIN_VELOCITY_DEG = 1.0   # CPS 20070 below ~1 deg/s
+BACKEND_WAYPOINT = "waypoint"
+BACKEND_SERVO_J = "servo_j"
+BACKEND_SERVO_ESJ = "servo_esj"  # rejected on this S20 (Push 20006/20007)
+PREFLIGHT_FAILED_LOG = "Trajectory profile preflight failed before motion"
 # MoveIt TOTG densifies OMPL paths to sub-degree samples. Each sample is a
 # full HRIF_WayPoint MoveJ; blasting those at default_vel looks like the
 # arm is jumping back and forth. Keep only real via points.
@@ -97,6 +102,7 @@ FSM_ESTOP = 5
 FSM_BLACKOUTING = 6
 FSM_BLACKOUT = 7
 FSM_ELECTRIFYING = 8
+FSM_COLLISION_STOP = 21
 FSM_ERROR = 22
 FSM_ENABLING = 23
 FSM_DISABLE = 24
@@ -370,6 +376,10 @@ class HuayanInterface:
         command_acceleration_deg: float = DEFAULT_ACCEL_DEG,
         controller_limit_fraction: float = DEFAULT_CONTROLLER_LIMIT_FRACTION,
         power_off_on_disconnect: bool = False,
+        execution_backend: str = BACKEND_WAYPOINT,
+        poll_interval_s: float = POLL_INTERVAL_S,
+        blend_start_timeout_s: float = BLEND_START_TIMEOUT_S,
+        stop_settle_s: float = 0.1,
     ) -> None:
         self._node = node
         self._ip = robot_ip
@@ -388,6 +398,25 @@ class HuayanInterface:
                 % MAX_CONTROLLER_LIMIT_FRACTION
             )
         self._power_off_on_disconnect = bool(power_off_on_disconnect)
+        backend = str(execution_backend or BACKEND_WAYPOINT).strip().lower()
+        if backend == BACKEND_SERVO_ESJ:
+            # PushServoEsJ: 6n → 20007; 7th=0 and 7th=0.02 → 20006.
+            node.get_logger().error(
+                "[huayan] execution_backend=%s rejected; this cell is waypoint-only"
+                % backend
+            )
+            backend = BACKEND_WAYPOINT
+        if backend not in (BACKEND_WAYPOINT, BACKEND_SERVO_J):
+            raise ValueError(
+                "execution_backend must be 'waypoint' or 'servo_j'"
+            )
+        self._execution_backend = backend
+        self._poll_interval_s = float(poll_interval_s)
+        self._blend_start_timeout_s = float(blend_start_timeout_s)
+        self._stop_settle_s = float(stop_settle_s)
+        self.last_error_string = ""
+        self.last_preflight_reason = ""
+        self.command_log: List[dict] = []
 
         self._cps = None          # CPSClient instance (imported lazily)
         self._state = ConnectionState.DISCONNECTED
@@ -634,7 +663,7 @@ class HuayanInterface:
                 return "Waypoint times must be strictly increasing"
             previous_time = point_time
             for field_name in ("velocities", "accelerations"):
-                values = getattr(pt, field_name)
+                values = getattr(pt, field_name, None) or []
                 if values and len(values) != len(self.JOINT_NAMES):
                     return (
                         "Waypoint %s has %s %s; expected 0 or %s"
@@ -719,7 +748,35 @@ class HuayanInterface:
         if error:
             self._node.get_logger().error(f'[huayan] {error}')
             return RESULT_INVALID_GOAL
+        max_vel = float(getattr(self, "_max_vel", 0.0) or 0.0)
+        frac = float(getattr(self, "_controller_limit_fraction", 1.0) or 1.0)
+        cap = max_vel * frac if max_vel > 0.0 and frac > 0.0 else 0.0
+        path = densify_servo_j_path(list(joint_path_deg), servo_time, cap)
+        if len(path) != len(joint_path_deg):
+            self._node.get_logger().info(
+                "[huayan] ServoJ densified %d -> %d points (cap %.1f deg/s)"
+                % (len(joint_path_deg), len(path), cap)
+            )
+        error = self.validate_servo_j_path(path)
+        if error:
+            self._node.get_logger().error(f'[huayan] {error}')
+            return RESULT_INVALID_GOAL
+        hold_n = servo_j_hold_count(lookahead_time, servo_time)
+        stream = list(path) + [list(path[-1])] * hold_n
         if not self._ensure_connected():
+            return RESULT_ERROR
+        fsm_id, fsm_desc = self._read_fsm()
+        if fsm_id == FSM_COLLISION_STOP:
+            self._node.get_logger().error(
+                "[huayan] refusing StartServo: FSM 21 RobotCollisionStop. "
+                "Clear the collision on the pendant (GrpReset) to StandBy 33."
+            )
+            return RESULT_ERROR
+        if fsm_id is not None and fsm_id < FSM_STANDBY:
+            self._node.get_logger().error(
+                "[huayan] refusing StartServo: FSM %s (%s); need StandBy 33"
+                % (fsm_id, fsm_desc)
+            )
             return RESULT_ERROR
 
         self._set_state(ConnectionState.EXECUTING)
@@ -733,12 +790,14 @@ class HuayanInterface:
                 msg = self._get_error_str(n_ret)
                 self._node.get_logger().error(
                     f'[huayan] HRIF_StartServo failed (code {n_ret}): {msg}')
-                self._safe_stop()
+                fsm_after, _ = self._read_fsm()
+                if fsm_after != FSM_COLLISION_STOP:
+                    self._safe_stop()
                 self._set_state(ConnectionState.ERROR)
                 return RESULT_ERROR
 
             next_push = time.monotonic()
-            for index, joints_deg in enumerate(joint_path_deg):
+            for index, joints_deg in enumerate(stream):
                 if cancel_flag.is_set():
                     self._node.get_logger().info('[huayan] ServoJ preempted.')
                     self._safe_stop()
@@ -764,7 +823,17 @@ class HuayanInterface:
             self._set_state(ConnectionState.ERROR)
             return RESULT_ERROR
 
-        self._node.get_logger().info('[huayan] ServoJ execution complete.')
+        fsm_id, fsm_desc = self._read_fsm()
+        if fsm_id == FSM_COLLISION_STOP:
+            self._node.get_logger().error(
+                "[huayan] ServoJ ended in FSM 21 RobotCollisionStop (%s)"
+                % fsm_desc
+            )
+            self._set_state(ConnectionState.ERROR)
+            return RESULT_ERROR
+        self._node.get_logger().info(
+            "[huayan] ServoJ execution complete (hold %d at goal)." % hold_n
+        )
         self._set_state(ConnectionState.READY)
         return RESULT_SUCCESSFUL
 
@@ -802,6 +871,7 @@ class HuayanInterface:
 
         error = self.validate_trajectory(trajectory)
         if error:
+            self.last_error_string = error
             self._node.get_logger().error(f'[huayan] {error}')
             return RESULT_INVALID_GOAL
 
@@ -861,9 +931,10 @@ class HuayanInterface:
                     (i, is_last, joints_deg, velocity, acceleration, radius)
                 )
         except (TypeError, ValueError) as exc:
+            self.last_preflight_reason = str(exc)
+            self.last_error_string = "%s: %s" % (PREFLIGHT_FAILED_LOG, exc)
             self._node.get_logger().error(
-                '[huayan] Trajectory profile preflight failed before motion: %s'
-                % exc
+                '[huayan] %s' % self.last_error_string
             )
             self._set_state(ConnectionState.READY)
             return RESULT_INVALID_GOAL
@@ -890,8 +961,11 @@ class HuayanInterface:
 
                 if nRet != 0:
                     msg = self._get_error_str(nRet)
+                    self.last_error_string = (
+                        'HRIF_WayPoint failed (code %s): %s' % (nRet, msg)
+                    )
                     self._node.get_logger().error(
-                        f'[huayan] HRIF_WayPoint failed (code {nRet}): {msg}'
+                        f'[huayan] {self.last_error_string}'
                     )
                     self._safe_stop()
                     self._set_state(ConnectionState.ERROR)
@@ -1037,6 +1111,14 @@ class HuayanInterface:
 
     def _read_controller_motion_limits(self) -> bool:
         """Cache limits and report whether motion-critical reads passed."""
+        log = self._node.get_logger()
+        version = []
+        try:
+            n_ver = self._cps.HRIF_ReadVersion(BOX_ID, RBT_ID, version)
+        except Exception:
+            n_ver = 1
+        if n_ver == 0 and version:
+            log.info('[huayan] CPS versions: %s' % list(version))
         self._controller_max_velocity_deg = read_positive_joint_limits(
             self._cps, 'HRIF_ReadJointMaxVel',
         )
@@ -1046,7 +1128,6 @@ class HuayanInterface:
         self._controller_max_jerk_deg = read_positive_joint_limits(
             self._cps, 'HRIF_ReadJointMaxJerk',
         )
-        log = self._node.get_logger()
         if (
             self._controller_max_velocity_deg is None
             or self._controller_max_acceleration_deg is None
@@ -1190,7 +1271,8 @@ class HuayanInterface:
         every TOTG sample is queued immediately and the arm chatters.
         """
         saw_busy = False
-        busy_deadline = time.monotonic() + BLEND_START_TIMEOUT_S
+        busy_deadline = time.monotonic() + getattr(
+            self, "_blend_start_timeout_s", BLEND_START_TIMEOUT_S)
         while True:
             if cancel_flag.is_set():
                 self._safe_stop()
@@ -1229,7 +1311,9 @@ class HuayanInterface:
                 elif time.monotonic() >= busy_deadline:
                     return RESULT_SUCCESSFUL
 
-            time.sleep(POLL_INTERVAL_S)
+            interval = getattr(self, "_poll_interval_s", POLL_INTERVAL_S)
+            if interval > 0.0:
+                time.sleep(interval)
 
     def _poll_failure(self, method_name: str, n_ret: int, result) -> int:
         """Stop and enter ERROR on a failed or malformed CPS completion poll."""
@@ -1356,7 +1440,9 @@ class HuayanInterface:
         try:
             if self._cps is not None:
                 self._cps.HRIF_GrpStop(BOX_ID, RBT_ID)
-                time.sleep(0.1)
+                settle = getattr(self, "_stop_settle_s", 0.1)
+                if settle > 0.0:
+                    time.sleep(settle)
                 self._cps.HRIF_GrpReset(BOX_ID, RBT_ID)
         except Exception as exc:
             self._node.get_logger().warn(f'[huayan] Stop error: {exc}')

@@ -176,6 +176,9 @@ class HardwareSafetyTest(unittest.TestCase):
         iface._ensure_connected = lambda: True
         iface._refresh_positions = lambda: None
         iface._current_positions_deg = [0.0] * 6
+        iface._max_vel = 0.0
+        iface._controller_limit_fraction = 0.8
+        iface._read_fsm = lambda: (33, "RobotStandBy")
 
         result = iface.execute_servo_j_path(
             [[0.0] * 6, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
@@ -187,15 +190,49 @@ class HardwareSafetyTest(unittest.TestCase):
 
         self.assertEqual(result, RESULT_SUCCESSFUL)
         self.assertEqual(iface._cps.calls[0][0], "StartServo")
-        self.assertEqual([call[0] for call in iface._cps.calls[1:]], [
-            "PushServoJ", "PushServoJ"])
+        push = [call for call in iface._cps.calls if call[0] == "PushServoJ"]
+        self.assertGreaterEqual(len(push), 2)
+        self.assertEqual(push[0][3], [0.0] * 6)
+        self.assertEqual(push[-1][3], [1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
         self.assertEqual(iface.states, [
             ConnectionState.EXECUTING, ConnectionState.READY])
+        self.assertGreaterEqual(len(push), 12)
+
+    def test_servo_j_refuses_start_when_collision_stopped(self):
+        class _Cps:
+            def __init__(self):
+                self.calls = []
+
+            def HRIF_StartServo(self, box, robot, servo_time, lookahead):
+                self.calls.append(
+                    ("StartServo", box, robot, servo_time, lookahead))
+                return 0
+
+        iface = _polling_interface(_Cps())
+        iface._monitor_only = False
+        iface._ensure_connected = lambda: True
+        iface._max_vel = 0.0
+        iface._read_fsm = lambda: (21, "RobotCollisionStop")
+
+        result = iface.execute_servo_j_path(
+            [[0.0] * 6],
+            feedback_fn=lambda _positions: None,
+            cancel_flag=threading.Event(),
+            servo_time=0.02,
+            lookahead_time=0.1,
+        )
+
+        self.assertEqual(result, RESULT_ERROR)
+        self.assertEqual(iface._cps.calls, [])
+        self.assertEqual(iface.stop_calls, 0)
+        self.assertEqual(iface.states, [])
+        self.assertIn("RobotCollisionStop", iface._node.logger.errors[0])
 
     def test_servo_j_cancel_calls_grp_stop_path(self):
         iface = _polling_interface(object())
         iface._monitor_only = False
         iface._ensure_connected = lambda: True
+        iface._read_fsm = lambda: (33, "RobotStandBy")
         cancel = threading.Event()
         cancel.set()
 

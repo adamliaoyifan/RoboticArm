@@ -106,7 +106,8 @@ def generate_launch_description() -> LaunchDescription:
                 default_value="waypoint",
                 description=(
                     "Execution backend: waypoint or servo_j. Keep waypoint "
-                    "for production pick until ServoJ gates S0-S3 pass."
+                    "for production pick until ServoJ gates S0-S3 pass. "
+                    "servo_esj is rejected on this S20."
                 ),
             ),
             DeclareLaunchArgument(
