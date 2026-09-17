@@ -171,8 +171,16 @@ class MotionExecutor:
             if plan is None:
                 return SegmentExecResult(
                     False, "compute_cartesian_path timeout", 0.0)
-            if fraction < self._min_fraction:
-                if segment_msg.allow_ompl_fallback:
+            # A segment may carry its own stricter fraction requirement
+            # (suction approach/attach/retry_reverse require 1.0): enforce
+            # it BEFORE execution so a partial path is never dispatched.
+            required = max(
+                self._min_fraction,
+                float(getattr(segment_msg,
+                              "required_cartesian_fraction", 0.0) or 0.0))
+            if fraction < required:
+                if (segment_msg.allow_ompl_fallback
+                        and required <= self._min_fraction):
                     self._notify(feedback_cb, "planning", segment_msg.name,
                                  fraction,
                                  "cartesian %.3f < %.3f; OMPL fallback"
@@ -188,7 +196,7 @@ class MotionExecutor:
                 return SegmentExecResult(
                     False,
                     "cartesian fraction %.3f below %.3f and no OMPL fallback"
-                    % (fraction, self._min_fraction),
+                    % (fraction, required),
                     fraction)
             return self._execute_trajectory(plan, segment_msg, fraction,
                                             feedback_cb, execute_timeout)

@@ -336,6 +336,12 @@ def generate_launch_description():
                     "platform_z": "",
                     "suitcase_update_timeout_sec": 0.0,
                     "crop_to_workspace": False,
+                    # DYNAMIC-SUCTION ST-1: hardware top surface comes from
+                    # the YOLO instance ROI + aligned-depth component; the
+                    # cargo-cloud RANSAC/PCA legacy path stays the default
+                    # everywhere else. scene_tf remains TF/collision/safety
+                    # authority only.
+                    "top_surface_mode": "dynamic",
                 }],
                 condition=start_perception,
             ),

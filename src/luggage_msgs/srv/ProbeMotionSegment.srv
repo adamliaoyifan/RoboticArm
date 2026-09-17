@@ -1,0 +1,10 @@
+# Plan-only reachability probe of one motion segment (no motion, no
+# vacuum): IK at the current joints plus the raw Cartesian fraction.
+luggage_msgs/MotionSegment segment
+---
+bool success
+string message
+bool ik_ok
+# Raw Cartesian path fraction; -1.0 when no Cartesian solution exists.
+float64 fraction
+int32 moveit_error_code

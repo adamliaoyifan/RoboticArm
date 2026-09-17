@@ -200,6 +200,10 @@ class PipelineResult:
     support_sample_admitted: bool = False
     support_window_count: int = 0
     support_window_size: int = 5
+    # "legacy" (estimate_top_surface inside update) or "dynamic"
+    # (DYNAMIC-SUCTION ST-1 top estimated by the node from the instance
+    # depth component and passed in as ``top_surface``).
+    top_source: str = "legacy"
 
 
 def _catalog_prior_height(width, depth, catalog_entries, tolerance):
@@ -264,7 +268,8 @@ class PlatformFreeDetector:
     def update(self, cargo_points_world, raw_points_world, *,
                source="measure", geometry_ok=True,
                raw_same_stamp=True, platform_z=None, stamp_sec=0.0,
-               cargo_segmented=True, geometry_gate_reason=None):
+               cargo_segmented=True, geometry_gate_reason=None,
+               top_surface=None):
         """Run one acquisition through the gate.
 
         ``raw_points_world`` is the preprocessed raw depth cloud decoded
@@ -306,13 +311,23 @@ class PlatformFreeDetector:
             # 5-frame UNSTABLE refill on top of its own miss.
             return self._snapshot_history(result, False)
 
-        top = estimate_top_surface(
-            points, _workspace_pair(self.config), self.config,
-            timing=timing)
-        if top is None:
-            result.top_reason = DETECT_TOP_UNOBSERVABLE
-            return self._snapshot_history(result, False)
-        top.stamp = float(stamp_sec)
+        if top_surface is not None:
+            # DYNAMIC-SUCTION ST-1: the node estimated this top from the
+            # instance depth component for the same acquisition stamp;
+            # legacy plane/PCA fitting is skipped, support/compose paths
+            # consume the rectangle exactly as before.
+            top = top_surface
+            top.stamp = float(stamp_sec)
+            result.top_source = "dynamic"
+        else:
+            top = estimate_top_surface(
+                points, _workspace_pair(self.config), self.config,
+                timing=timing)
+            if top is None:
+                result.top_reason = DETECT_TOP_UNOBSERVABLE
+                return self._snapshot_history(result, False)
+            top.stamp = float(stamp_sec)
+            result.top_source = "legacy"
         result.top_valid = True
         result.top_reason = "ok"
 

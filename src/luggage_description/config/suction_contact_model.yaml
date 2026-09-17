@@ -1,0 +1,43 @@
+# Suction contact model — versioned hardware safety geometry
+# (DYNAMIC-SUCTION plan section B; ST-2 gate B0).
+#
+# The 0.18 x 0.18 m footprint is the conservative URDF CAD envelope, NOT
+# measured sealing-ring geometry. Replacing it requires a versioned config
+# change and rerunning this plan's gates; no hidden smaller footprint is
+# allowed. Simulation and synthetic tests may inject smaller footprints
+# through the plain-object loader input, never by editing this file.
+#
+# Schema (enforced by luggage_description.suction_contact_model):
+#   missing keys, duplicate YAML keys, NaN values, non-positive
+#   dimensions and footprint dimensions above 0.30 m all fail closed.
+
+model_version: 1
+contact_frame: suction_contact_frame
+footprint_type: rectangle
+footprint_size_xy_m: [0.18, 0.18]
+boundary_margin_m: 0.015
+
+# Height map and candidate sampling (plan section B).
+cell_size_m: 0.005
+candidate_grid_m: 0.010
+
+# Candidate acceptance thresholds (plan section B; conservative software
+# thresholds, intentionally tighter than the visual RANSAC tolerance).
+min_valid_cell_fraction: 0.90
+min_mask_coverage: 0.95
+min_connected_plane_fraction: 0.90
+max_rms_residual_m: 0.0025
+max_p95_residual_m: 0.0040
+max_peak_to_valley_m: 0.0060
+max_normal_deviation_p95_deg: 5.0
+max_adjacent_step_m: 0.0040
+adjacent_step_distance_m: 0.010
+bimodal_min_separation_m: 0.0050
+bimodal_min_fraction: 0.15
+max_normal_tilt_deg: 8.0
+
+# Candidate set bounds.
+max_candidates: 5
+min_candidate_separation_m: 0.050
+max_candidate_iou: 0.25
+max_rejected_diagnostics: 64

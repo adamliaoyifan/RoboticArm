@@ -9,6 +9,7 @@ find_package(std_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedLuggage.msg"
+  "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"
   "msg/YoloDetections.msg"
   "msg/DetectionFrame.msg"
@@ -28,6 +29,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetNextSlot.srv"
   "srv/ComputePlacement.srv"
   "srv/VacuumCommand.srv"
+  "srv/ProbeMotionSegment.srv"
   "srv/SyncStaticScene.srv"
   "srv/SyncPickupBox.srv"
   "srv/AddPlacedBox.srv"

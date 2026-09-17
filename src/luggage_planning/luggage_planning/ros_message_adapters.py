@@ -53,6 +53,8 @@ def segment_to_msg(segment):
     out.keep_camera_down = bool(segment.keep_camera_down)
     out.lock_wrist = bool(segment.lock_wrist)
     out.allow_ompl_fallback = bool(segment.allow_ompl_fallback)
+    out.required_cartesian_fraction = float(
+        getattr(segment, "required_cartesian_fraction", 0.0))
     return out
 
 
@@ -67,6 +69,8 @@ def segment_from_msg(msg):
         keep_camera_down=bool(msg.keep_camera_down),
         lock_wrist=bool(msg.lock_wrist),
         allow_ompl_fallback=bool(msg.allow_ompl_fallback),
+        required_cartesian_fraction=float(
+            getattr(msg, "required_cartesian_fraction", 0.0)),
     )
 
 
@@ -113,7 +117,84 @@ def pick_from_detected(msg):
     )
 
 
+def _stamp_sec(stamp):
+    return float(stamp.sec) + 1e-9 * float(stamp.nanosec)
+
+
+def suction_candidates_from_detected(msg):
+    """luggage_msgs/DetectedLuggage -> tuple[SuctionCandidateView, ...].
+
+    The observation identity (header stamp/frame) is carried per
+    candidate from its own header; planning compares it against the
+    observation before building any waypoint (plan section C).
+    """
+    from luggage_planning.suction_candidate_selection import (
+        SuctionCandidateView,
+    )
+
+    views = []
+    for candidate in getattr(msg, "suction_candidates", ()) or ():
+        views.append(SuctionCandidateView(
+            candidate_id=str(candidate.candidate_id),
+            rank=int(candidate.rank),
+            stamp=_stamp_sec(candidate.header.stamp),
+            frame=str(candidate.header.frame_id or ""),
+            instance_id=str(candidate.instance_id),
+            generation=int(candidate.generation),
+            contact=pose_from_msg(candidate.contact_pose),
+            model_version=int(candidate.model_version),
+            model_hash=str(candidate.model_hash),
+            score=float(candidate.score),
+            valid_coverage=float(candidate.valid_coverage),
+            mask_coverage=float(candidate.mask_coverage),
+            plane_coverage=float(candidate.plane_coverage),
+            rms_residual=float(candidate.rms_residual),
+            p95_residual=float(candidate.p95_residual),
+            peak_to_valley=float(candidate.peak_to_valley),
+            normal_deviation_p95=float(candidate.normal_deviation_p95),
+            max_adjacent_step=float(candidate.max_adjacent_step),
+            boundary_clearance=float(candidate.boundary_clearance),
+        ))
+    return tuple(views)
+
+
+def suction_candidate_to_msg(view, stamp_sec, frame_id):
+    """SuctionCandidateView -> luggage_msgs/SuctionCandidate (debug/eval)."""
+    from luggage_msgs.msg import SuctionCandidate
+
+    out = SuctionCandidate()
+    out.header.stamp.sec = int(stamp_sec)
+    out.header.stamp.nanosec = int(round(1e9 * (stamp_sec % 1.0)))
+    out.header.frame_id = str(frame_id)
+    out.instance_id = str(view.instance_id)
+    out.generation = int(view.generation)
+    out.contact_pose = pose_to_msg(view.contact)
+    out.candidate_id = str(view.candidate_id)
+    out.rank = int(view.rank)
+    out.score = float(view.score)
+    out.valid_coverage = float(view.valid_coverage)
+    out.mask_coverage = float(view.mask_coverage)
+    out.plane_coverage = float(view.plane_coverage)
+    out.rms_residual = float(view.rms_residual)
+    out.p95_residual = float(view.p95_residual)
+    out.peak_to_valley = float(view.peak_to_valley)
+    out.normal_deviation_p95 = float(view.normal_deviation_p95)
+    out.max_adjacent_step = float(view.max_adjacent_step)
+    out.boundary_clearance = float(view.boundary_clearance)
+    out.model_version = int(view.model_version)
+    out.model_hash = str(view.model_hash)
+    return out
+
+
+def detected_observation_identity(msg):
+    """(stamp_sec, frame_id) of the DetectedLuggage observation header."""
+    return (_stamp_sec(msg.header.stamp),
+            str(msg.header.frame_id or ""))
+
+
 __all__ = [
     "pose_to_msg", "pose_from_msg", "segment_to_msg", "segment_from_msg",
-    "pick_from_detected", "SolidPrimitive",
+    "pick_from_detected", "suction_candidates_from_detected",
+    "suction_candidate_to_msg", "detected_observation_identity",
+    "SolidPrimitive",
 ]

@@ -1,0 +1,1823 @@
+{
+ "_comment": "Regenerated 2026-09-17T10:41:13+0800 from the ST-2 evaluator after B1-B6 verification; compare within 2.0 px.",
+ "cases": [
+  {
+   "expected": [
+    {
+     "candidate_id": "C082_058",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       333.17,
+       239.24
+      ],
+      [
+       388.86,
+       239.24
+      ],
+      [
+       388.86,
+       183.56
+      ],
+      [
+       333.17,
+       183.55
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C082_044",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       333.17,
+       260.9
+      ],
+      [
+       388.86,
+       260.9
+      ],
+      [
+       388.86,
+       205.21
+      ],
+      [
+       333.17,
+       205.21
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C072_056",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       317.7,
+       242.34
+      ],
+      [
+       373.39,
+       242.34
+      ],
+      [
+       373.39,
+       186.65
+      ],
+      [
+       317.7,
+       186.65
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C028_020",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       249.64,
+       298.03
+      ],
+      [
+       305.33,
+       298.02
+      ],
+      [
+       305.33,
+       242.34
+      ],
+      [
+       249.64,
+       242.34
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C092_056",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       348.64,
+       242.34
+      ],
+      [
+       404.33,
+       242.34
+      ],
+      [
+       404.33,
+       186.65
+      ],
+      [
+       348.64,
+       186.65
+      ]
+     ],
+     "rank": 5
+    }
+   ],
+   "kind": "b1",
+   "noise_sigma_mm": 1,
+   "seed": 11,
+   "stamp": 20.0,
+   "tilt_deg": 0,
+   "yaw_deg": 0
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C044_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       256.78,
+       286.46
+      ],
+      [
+       311.66,
+       286.46
+      ],
+      [
+       311.51,
+       231.74
+      ],
+      [
+       255.68,
+       231.74
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C054_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       272.02,
+       286.46
+      ],
+      [
+       326.9,
+       286.46
+      ],
+      [
+       327.02,
+       231.74
+      ],
+      [
+       271.19,
+       231.74
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C050_058",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       265.67,
+       271.45
+      ],
+      [
+       320.81,
+       271.44
+      ],
+      [
+       320.82,
+       216.2
+      ],
+      [
+       264.72,
+       216.2
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C066_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       290.32,
+       286.46
+      ],
+      [
+       345.19,
+       286.45
+      ],
+      [
+       345.63,
+       231.74
+      ],
+      [
+       289.8,
+       231.74
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C048_038",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       263.14,
+       301.33
+      ],
+      [
+       317.77,
+       301.33
+      ],
+      [
+       317.73,
+       247.13
+      ],
+      [
+       262.17,
+       247.13
+      ]
+     ],
+     "rank": 5
+    },
+    {
+     "candidate_id": "C080_096",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C084_042",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C028_066",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C052_080",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C066_088",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_072",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_026",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C062_086",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C052_024",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C100_084",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C102_052",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C088_044",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b1",
+   "noise_sigma_mm": 2,
+   "seed": 29,
+   "stamp": 20.1,
+   "tilt_deg": 6,
+   "yaw_deg": 30
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C061_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       291.62,
+       296.83
+      ],
+      [
+       346.82,
+       296.83
+      ],
+      [
+       347.05,
+       241.72
+      ],
+      [
+       291.38,
+       241.72
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C064_082",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       296.03,
+       244.81
+      ],
+      [
+       351.68,
+       244.81
+      ],
+      [
+       351.95,
+       188.79
+      ],
+      [
+       295.82,
+       188.8
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C054_082",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       280.57,
+       244.81
+      ],
+      [
+       336.22,
+       244.81
+      ],
+      [
+       336.36,
+       188.8
+      ],
+      [
+       280.23,
+       188.8
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C060_070",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       289.93,
+       263.26
+      ],
+      [
+       345.42,
+       263.26
+      ],
+      [
+       345.64,
+       207.57
+      ],
+      [
+       289.67,
+       207.57
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C068_030",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C094_076",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C026_054",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C070_108",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C092_072",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C090_068",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C028_058",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C036_072",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_028",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C094_094",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C098_082",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C032_038",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b1",
+   "noise_sigma_mm": 1,
+   "seed": 47,
+   "stamp": 20.200000000000003,
+   "tilt_deg": 3,
+   "yaw_deg": 60
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C060_040",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       280.56,
+       301.11
+      ],
+      [
+       336.24,
+       301.11
+      ],
+      [
+       336.24,
+       245.42
+      ],
+      [
+       280.56,
+       245.42
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C082_084",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       314.59,
+       233.04
+      ],
+      [
+       370.28,
+       233.04
+      ],
+      [
+       370.28,
+       177.35
+      ],
+      [
+       314.59,
+       177.35
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C050_040",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       265.09,
+       301.11
+      ],
+      [
+       320.77,
+       301.11
+      ],
+      [
+       320.77,
+       245.42
+      ],
+      [
+       265.09,
+       245.42
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C040_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       249.62,
+       270.17
+      ],
+      [
+       305.31,
+       270.17
+      ],
+      [
+       305.31,
+       214.48
+      ],
+      [
+       249.62,
+       214.48
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C070_080",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       296.02,
+       239.23
+      ],
+      [
+       351.71,
+       239.23
+      ],
+      [
+       351.71,
+       183.54
+      ],
+      [
+       296.02,
+       183.54
+      ]
+     ],
+     "rank": 5
+    },
+    {
+     "candidate_id": "C044_076",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C054_082",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_074",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_030",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C100_052",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C104_078",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C026_054",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C090_046",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C104_054",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C034_040",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_080",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C110_068",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b1",
+   "noise_sigma_mm": 0,
+   "seed": 53,
+   "stamp": 20.300000000000004,
+   "tilt_deg": 0,
+   "yaw_deg": 30
+  },
+  {
+   "boundary_angle_deg": 0,
+   "boundary_offset_mm": 0,
+   "expected": [
+    {
+     "candidate_id": "C088_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       342.54,
+       236.16
+      ],
+      [
+       398.43,
+       236.16
+      ],
+      [
+       398.73,
+       180.06
+      ],
+      [
+       342.63,
+       180.05
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C034_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       258.7,
+       236.16
+      ],
+      [
+       314.59,
+       236.16
+      ],
+      [
+       314.57,
+       180.06
+      ],
+      [
+       258.47,
+       180.06
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C030_018",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       252.86,
+       301.0
+      ],
+      [
+       308.45,
+       301.0
+      ],
+      [
+       308.41,
+       245.45
+      ],
+      [
+       252.61,
+       245.45
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C042_018",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       271.39,
+       301.0
+      ],
+      [
+       326.98,
+       301.0
+      ],
+      [
+       327.0,
+       245.45
+      ],
+      [
+       271.21,
+       245.45
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C088_058",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C088_054",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C088_056",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C090_058",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C084_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C084_058",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C086_058",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C088_050",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C088_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C090_054",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C090_056",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C034_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b2",
+   "seed": 11,
+   "stamp": 20.400000000000006,
+   "step_mm": 6
+  },
+  {
+   "boundary_angle_deg": 45,
+   "boundary_offset_mm": 40,
+   "expected": [
+    {
+     "candidate_id": "C064_022",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       306.84,
+       296.44
+      ],
+      [
+       362.53,
+       296.44
+      ],
+      [
+       362.53,
+       240.75
+      ],
+      [
+       306.84,
+       240.75
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C022_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       240.42,
+       237.61
+      ],
+      [
+       297.14,
+       237.61
+      ],
+      [
+       297.14,
+       180.88
+      ],
+      [
+       240.42,
+       180.88
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C084_044",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       337.78,
+       262.41
+      ],
+      [
+       393.47,
+       262.41
+      ],
+      [
+       393.47,
+       206.72
+      ],
+      [
+       337.78,
+       206.72
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C044_022",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C048_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C052_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C046_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_022",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_026",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_042",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_054",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_022",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_026",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_054",
+     "colour": "orange",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b2",
+   "seed": 29,
+   "stamp": 20.500000000000007,
+   "step_mm": 20
+  },
+  {
+   "boundary_angle_deg": 90,
+   "boundary_offset_mm": -40,
+   "expected": [
+    {
+     "candidate_id": "C074_032",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       321.07,
+       279.49
+      ],
+      [
+       376.75,
+       279.46
+      ],
+      [
+       376.75,
+       223.77
+      ],
+      [
+       321.07,
+       223.76
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C076_020",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       324.16,
+       298.06
+      ],
+      [
+       379.84,
+       298.01
+      ],
+      [
+       379.84,
+       242.33
+      ],
+      [
+       324.16,
+       242.33
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C030_058",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       252.85,
+       239.24
+      ],
+      [
+       308.67,
+       239.24
+      ],
+      [
+       308.67,
+       183.47
+      ],
+      [
+       252.85,
+       183.42
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C020_058",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       237.35,
+       239.24
+      ],
+      [
+       293.18,
+       239.24
+      ],
+      [
+       293.18,
+       183.47
+      ],
+      [
+       237.35,
+       183.42
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C088_020",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       342.73,
+       298.05
+      ],
+      [
+       398.37,
+       297.99
+      ],
+      [
+       398.37,
+       242.33
+      ],
+      [
+       342.73,
+       242.33
+      ]
+     ],
+     "rank": 5
+    }
+   ],
+   "kind": "b2",
+   "seed": 47,
+   "stamp": 20.60000000000001,
+   "step_mm": 2
+  },
+  {
+   "boundary_angle_deg": 0,
+   "boundary_offset_mm": 0,
+   "expected": [
+    {
+     "candidate_id": "C032_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       255.61,
+       236.38
+      ],
+      [
+       311.47,
+       236.38
+      ],
+      [
+       311.44,
+       180.34
+      ],
+      [
+       255.41,
+       180.34
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C042_020",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       271.35,
+       298.16
+      ],
+      [
+       326.95,
+       298.16
+      ],
+      [
+       326.98,
+       242.57
+      ],
+      [
+       271.2,
+       242.57
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C028_018",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       249.73,
+       301.24
+      ],
+      [
+       305.33,
+       301.24
+      ],
+      [
+       305.29,
+       245.67
+      ],
+      [
+       249.51,
+       245.67
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C056_018",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       292.97,
+       301.25
+      ],
+      [
+       348.58,
+       301.25
+      ],
+      [
+       348.67,
+       245.67
+      ],
+      [
+       292.89,
+       245.67
+      ]
+     ],
+     "rank": 4
+    },
+    {
+     "candidate_id": "C066_018",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       308.42,
+       301.25
+      ],
+      [
+       364.02,
+       301.25
+      ],
+      [
+       364.16,
+       245.67
+      ],
+      [
+       308.38,
+       245.67
+      ]
+     ],
+     "rank": 5
+    },
+    {
+     "candidate_id": "C042_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_042",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C048_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C048_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C048_042",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C050_042",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C062_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C028_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C028_038",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "kind": "b2",
+   "seed": 53,
+   "stamp": 20.70000000000001,
+   "step_mm": 5
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C046_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       277.26,
+       254.93
+      ],
+      [
+       333.46,
+       254.93
+      ],
+      [
+       333.46,
+       198.73
+      ],
+      [
+       277.26,
+       198.73
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C046_036",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       277.26,
+       273.67
+      ],
+      [
+       333.46,
+       273.66
+      ],
+      [
+       333.46,
+       217.47
+      ],
+      [
+       277.26,
+       217.46
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C064_048",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       305.36,
+       254.93
+      ],
+      [
+       361.55,
+       254.93
+      ],
+      [
+       361.56,
+       198.73
+      ],
+      [
+       305.36,
+       198.73
+      ]
+     ],
+     "rank": 3
+    },
+    {
+     "candidate_id": "C044_028",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C044_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C052_026",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C054_026",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C055_026",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C056_026",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C060_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C062_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C064_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C066_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C068_042",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C068_044",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "island_size": 0.32,
+   "island_xy": [
+    -1.0,
+    0.0
+   ],
+   "kind": "b3",
+   "seed": 11,
+   "stamp": 20.80000000000001,
+   "yaw_deg": 0
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C026_056",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       243.21,
+       242.1
+      ],
+      [
+       299.48,
+       242.08
+      ],
+      [
+       299.42,
+       185.9
+      ],
+      [
+       242.99,
+       185.74
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C038_060",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       261.95,
+       235.86
+      ],
+      [
+       318.16,
+       235.85
+      ],
+      [
+       318.15,
+       179.66
+      ],
+      [
+       261.79,
+       179.48
+      ]
+     ],
+     "rank": 2
+    },
+    {
+     "candidate_id": "C026_046",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C026_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C038_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C040_050",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_050",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C042_056",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C044_048",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C044_050",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C044_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C044_054",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "island_size": 0.32,
+   "island_xy": [
+    -1.12,
+    0.08
+   ],
+   "kind": "b3",
+   "seed": 29,
+   "stamp": 20.900000000000013,
+   "yaw_deg": 30
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C080_022",
+     "colour": "green",
+     "corner_pixels": [
+      [
+       331.35,
+       296.49
+      ],
+      [
+       387.76,
+       296.64
+      ],
+      [
+       387.54,
+       240.27
+      ],
+      [
+       331.32,
+       240.29
+      ]
+     ],
+     "rank": 1
+    },
+    {
+     "candidate_id": "C044_044",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_024",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_026",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_028",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_030",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_036",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C058_038",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C060_022",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C060_024",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C060_026",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C060_028",
+     "colour": "crimson",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "island_size": 0.32,
+   "island_xy": [
+    -0.88,
+    -0.08
+   ],
+   "kind": "b3",
+   "seed": 47,
+   "stamp": 21.000000000000014,
+   "yaw_deg": 60
+  },
+  {
+   "expected": [
+    {
+     "candidate_id": "C086_052",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C086_054",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C078_039",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C078_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C080_039",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C080_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C086_042",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C086_050",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C086_056",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C074_039",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C074_040",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    },
+    {
+     "candidate_id": "C076_039",
+     "colour": "red",
+     "corner_pixels": null,
+     "rank": null
+    }
+   ],
+   "island_size": 0.15,
+   "island_xy": [
+    -1.2,
+    0.0
+   ],
+   "kind": "b3",
+   "seed": 53,
+   "stamp": 21.100000000000016,
+   "yaw_deg": 0
+  }
+ ]
+}

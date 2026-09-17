@@ -26,3 +26,8 @@ uint8 HEIGHT_SOURCE_MEASURED_SUPPORT=1
 uint8 HEIGHT_SOURCE_CONFIGURED_SUPPORT=2
 uint8 HEIGHT_SOURCE_CATALOG_PRIOR=3
 uint8 height_source
+# --- Suction-patch contract (DYNAMIC-SUCTION plan section C, ST-2) ---
+# Ranked sealable candidates from the same acquisition. Empty with valid
+# box geometry means DETECT_NO_SEALABLE_PATCH upstream; top_surface_valid
+# alone no longer authorizes a hardware attach.
+SuctionCandidate[] suction_candidates

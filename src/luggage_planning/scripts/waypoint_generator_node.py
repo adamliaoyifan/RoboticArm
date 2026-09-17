@@ -288,6 +288,11 @@ class WaypointGeneratorNode(Node):
     def _handle(self, request, response):
         try:
             phase = str(request.phase) or "pick"
+            candidate_id = str(getattr(request, "suction_candidate_id", "")
+                               or "")
+            if candidate_id and phase == "pick":
+                return self._handle_candidate(
+                    request, response, candidate_id)
             pick = adapters.pick_from_detected(request.pick)
             place_slot = request.place_slot
             opening = None
@@ -347,6 +352,62 @@ class WaypointGeneratorNode(Node):
             response.success = False
             response.message = "build failed: %s" % exc
             self.get_logger().error(response.message)
+        return response
+
+    def _handle_candidate(self, request, response, candidate_id):
+        """Candidate-driven pick build (plan section C), fail-closed.
+
+        A valid top with zero candidates is ``DETECT_NO_SEALABLE_PATCH``;
+        a mismatched or missing candidate id is refused — the legacy
+        box-centre path must not silently take over.
+        """
+        from luggage_planning.suction_candidate_selection import (
+            observation_identity_consistent,
+            rank_candidates,
+        )
+        from luggage_planning.suction_candidate_waypoints import (
+            DETECT_NO_SEALABLE_PATCH,
+            SUCTION_CANDIDATE_NOT_FOUND,
+            build_candidate_pick_segments,
+        )
+
+        views = adapters.suction_candidates_from_detected(request.pick)
+        if not views:
+            response.segments = []
+            response.success = False
+            response.message = DETECT_NO_SEALABLE_PATCH
+            return response
+        ranked = rank_candidates(views)
+        selected = next(
+            (view for view in ranked
+             if view.candidate_id == candidate_id), None)
+        if selected is None:
+            response.segments = []
+            response.success = False
+            response.message = "%s: %s not on observation" % (
+                SUCTION_CANDIDATE_NOT_FOUND, candidate_id)
+            return response
+        stamp, frame = adapters.detected_observation_identity(request.pick)
+        mismatch = observation_identity_consistent(
+            (selected,), stamp, frame, selected.instance_id,
+            selected.generation)
+        if mismatch is not None:
+            response.segments = []
+            response.success = False
+            response.message = "%s: %s" % (mismatch[0], mismatch[1])
+            return response
+        pick = adapters.pick_from_detected(request.pick)
+        segments = build_candidate_pick_segments(
+            selected,
+            pick_clearances=self._clearances(),
+            detection_yaw=pick.yaw,
+            yaw_valid=bool(pick.yaw_valid),
+            fallback_yaw=0.0)
+        response.segments = [adapters.segment_to_msg(s) for s in segments]
+        response.success = bool(segments)
+        response.message = (
+            "%d segments for candidate=%s" % (len(segments), candidate_id))
+        self._publish_pick_markers(response.segments, "pick")
         return response
 
     def _publish_pick_markers(self, segments, phase):
