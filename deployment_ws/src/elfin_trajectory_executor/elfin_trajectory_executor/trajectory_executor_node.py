@@ -15,6 +15,7 @@ would fight /joint_states.
 
 from __future__ import annotations
 
+import math
 from typing import List, Optional
 
 import rclpy
@@ -87,6 +88,9 @@ class TrajectoryExecutorNode(Node):
         self.declare_parameter('max_velocity_deg', 60.0)
         self.declare_parameter('command_acceleration_deg', 60.0)
         self.declare_parameter('controller_limit_fraction', 0.8)
+        self.declare_parameter('execution_backend', 'waypoint')
+        self.declare_parameter('servo_j_servo_time', 0.02)
+        self.declare_parameter('servo_j_lookahead_time', 0.1)
         self.declare_parameter('power_off_on_disconnect', False)
         self.declare_parameter('joint_names', self.JOINT_NAMES)
         self.declare_parameter('action_name', DEFAULT_ACTION_NAME)
@@ -111,10 +115,23 @@ class TrajectoryExecutorNode(Node):
             self.get_parameter('action_name').get_parameter_value().string_value
             or DEFAULT_ACTION_NAME
         )
+        self._execution_backend = (
+            self.get_parameter(
+                'execution_backend').get_parameter_value().string_value
+            or 'waypoint'
+        )
+        self._servo_j_servo_time = self.get_parameter(
+            'servo_j_servo_time').get_parameter_value().double_value
+        self._servo_j_lookahead_time = self.get_parameter(
+            'servo_j_lookahead_time').get_parameter_value().double_value
+        if self._execution_backend not in ('waypoint', 'servo_j'):
+            raise ValueError(
+                "execution_backend must be 'waypoint' or 'servo_j'")
 
         self.get_logger().info(
             f'[executor] Starting in {mode.upper()} mode '
-            f'(robot_ip={robot_ip}:{robot_port} action={self._action_name})'
+            f'(robot_ip={robot_ip}:{robot_port} action={self._action_name} '
+            f'backend={self._execution_backend})'
         )
 
         # ----------------------------------------------------------------
@@ -308,7 +325,27 @@ class TrajectoryExecutorNode(Node):
                 goal_handle.publish_feedback(fb)
 
         try:
-            ret = self._iface.execute(ordered_traj, feedback_fn, cancel_flag)
+            if (
+                self._execution_backend == 'servo_j'
+                and isinstance(self._iface, HuayanInterface)
+            ):
+                servo_path = self._servo_j_path_from_trajectory(
+                    ordered_traj, self._servo_j_servo_time)
+                if isinstance(servo_path, str):
+                    self.get_logger().error(
+                        '[executor] ServoJ trajectory rejected: %s'
+                        % servo_path)
+                    ret = RESULT_INVALID_GOAL
+                else:
+                    ret = self._iface.execute_servo_j_path(
+                        servo_path,
+                        feedback_fn,
+                        cancel_flag,
+                        servo_time=self._servo_j_servo_time,
+                        lookahead_time=self._servo_j_lookahead_time,
+                    )
+            else:
+                ret = self._iface.execute(ordered_traj, feedback_fn, cancel_flag)
         except Exception as exc:
             self.get_logger().error(
                 '[executor] Backend execution exception: %s' % exc)
@@ -460,6 +497,44 @@ class TrajectoryExecutorNode(Node):
             new_traj.points.append(new_pt)
 
         return new_traj
+
+    def _servo_j_path_from_trajectory(
+        self, traj: JointTrajectory, servo_time: float,
+    ):
+        """Convert a fixed-grid FJT trajectory to absolute joint degrees."""
+        servo_time = float(servo_time)
+        if not math.isfinite(servo_time) or servo_time <= 0.0:
+            return "servo_j_servo_time must be positive"
+        if not traj.points:
+            return []
+        path = []
+        previous_t = None
+        for index, pt in enumerate(traj.points):
+            if len(pt.positions) != len(self._joint_names):
+                return "point %d has %d joints; expected %d" % (
+                    index, len(pt.positions), len(self._joint_names))
+            t = (
+                float(pt.time_from_start.sec)
+                + float(pt.time_from_start.nanosec) * 1e-9
+            )
+            if index == 0:
+                if t < -1e-9:
+                    return "first point time is negative"
+            else:
+                dt = t - float(previous_t)
+                if abs(dt - servo_time) > max(1e-4, 0.05 * servo_time):
+                    return (
+                        "point %d is not on the fixed ServoJ grid: "
+                        "dt=%.6f expected %.6f" % (index, dt, servo_time)
+                    )
+            previous_t = t
+            try:
+                path.append([math.degrees(float(value)) for value in pt.positions])
+            except (TypeError, ValueError):
+                return "point %d has non-numeric positions" % index
+            if any(not math.isfinite(value) for value in path[-1]):
+                return "point %d has non-finite positions" % index
+        return path
 
     def _publish_status(self, status: str) -> None:
         msg = String()

@@ -7,6 +7,8 @@ from elfin_trajectory_executor.huayan_interface import (
     ConnectionState,
     HuayanInterface,
     RESULT_ERROR,
+    RESULT_INVALID_GOAL,
+    RESULT_PREEMPTED,
     RESULT_SUCCESSFUL,
 )
 
@@ -154,6 +156,72 @@ class HardwareSafetyTest(unittest.TestCase):
     def test_limit_fraction_cannot_exceed_safety_maximum(self):
         with self.assertRaisesRegex(ValueError, "controller_limit_fraction"):
             HuayanInterface(_Node(), controller_limit_fraction=0.81)
+
+    def test_servo_j_uses_start_servo_and_push_servo_j_only(self):
+        class _Cps:
+            def __init__(self):
+                self.calls = []
+
+            def HRIF_StartServo(self, box, robot, servo_time, lookahead):
+                self.calls.append(
+                    ("StartServo", box, robot, servo_time, lookahead))
+                return 0
+
+            def HRIF_PushServoJ(self, box, robot, joints):
+                self.calls.append(("PushServoJ", box, robot, list(joints)))
+                return 0
+
+        iface = _polling_interface(_Cps())
+        iface._monitor_only = False
+        iface._ensure_connected = lambda: True
+        iface._refresh_positions = lambda: None
+        iface._current_positions_deg = [0.0] * 6
+
+        result = iface.execute_servo_j_path(
+            [[0.0] * 6, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]],
+            feedback_fn=lambda _positions: None,
+            cancel_flag=threading.Event(),
+            servo_time=0.001,
+            lookahead_time=0.01,
+        )
+
+        self.assertEqual(result, RESULT_SUCCESSFUL)
+        self.assertEqual(iface._cps.calls[0][0], "StartServo")
+        self.assertEqual([call[0] for call in iface._cps.calls[1:]], [
+            "PushServoJ", "PushServoJ"])
+        self.assertEqual(iface.states, [
+            ConnectionState.EXECUTING, ConnectionState.READY])
+
+    def test_servo_j_cancel_calls_grp_stop_path(self):
+        iface = _polling_interface(object())
+        iface._monitor_only = False
+        iface._ensure_connected = lambda: True
+        cancel = threading.Event()
+        cancel.set()
+
+        result = iface.execute_servo_j_path(
+            [[0.0] * 6],
+            feedback_fn=lambda _positions: None,
+            cancel_flag=cancel,
+            servo_time=0.001,
+            lookahead_time=0.01,
+        )
+
+        self.assertEqual(result, RESULT_PREEMPTED)
+        self.assertEqual(iface.stop_calls, 1)
+
+    def test_servo_j_rejects_bad_path_before_motion(self):
+        iface = _polling_interface(object())
+        iface._monitor_only = False
+
+        result = iface.execute_servo_j_path(
+            [[999.0] * 6],
+            feedback_fn=lambda _positions: None,
+            cancel_flag=threading.Event(),
+        )
+
+        self.assertEqual(result, RESULT_INVALID_GOAL)
+        self.assertEqual(iface.stop_calls, 0)
 
 
 if __name__ == "__main__":

@@ -34,6 +34,9 @@ def generate_launch_description() -> LaunchDescription:
     max_vel = LaunchConfiguration("max_velocity_deg")
     command_accel = LaunchConfiguration("command_acceleration_deg")
     controller_limit_fraction = LaunchConfiguration("controller_limit_fraction")
+    execution_backend = LaunchConfiguration("execution_backend")
+    servo_j_servo_time = LaunchConfiguration("servo_j_servo_time")
+    servo_j_lookahead_time = LaunchConfiguration("servo_j_lookahead_time")
     action_name = LaunchConfiguration("action_name")
 
     executor_node = Node(
@@ -52,6 +55,9 @@ def generate_launch_description() -> LaunchDescription:
                 "max_velocity_deg": max_vel,
                 "command_acceleration_deg": command_accel,
                 "controller_limit_fraction": controller_limit_fraction,
+                "execution_backend": execution_backend,
+                "servo_j_servo_time": servo_j_servo_time,
+                "servo_j_lookahead_time": servo_j_lookahead_time,
                 "action_name": action_name,
             },
         ],
@@ -96,6 +102,24 @@ def generate_launch_description() -> LaunchDescription:
                 ),
             ),
             DeclareLaunchArgument(
+                "execution_backend",
+                default_value="waypoint",
+                description=(
+                    "Execution backend: waypoint or servo_j. Keep waypoint "
+                    "for production pick until ServoJ gates S0-S3 pass."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "servo_j_servo_time",
+                default_value="0.02",
+                description="ServoJ fixed-grid period in seconds.",
+            ),
+            DeclareLaunchArgument(
+                "servo_j_lookahead_time",
+                default_value="0.1",
+                description="ServoJ lookahead time in seconds.",
+            ),
+            DeclareLaunchArgument(
                 "action_name",
                 default_value=DEFAULT_ACTION_NAME,
                 description=(
@@ -107,6 +131,8 @@ def generate_launch_description() -> LaunchDescription:
                 msg=[
                     "[jazzy_real] No Gazebo. Executor action=",
                     action_name,
+                    " backend=",
+                    execution_backend,
                     " ip=",
                     robot_ip,
                     ":",

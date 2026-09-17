@@ -163,6 +163,29 @@ def hrif_waypoint_joint(
     )
 
 
+def hrif_start_servo(
+    cps,
+    servo_time: float,
+    lookahead_time: float,
+    box_id: int = BOX_ID,
+    rbt_id: int = RBT_ID,
+):
+    return cps.HRIF_StartServo(
+        box_id, rbt_id, float(servo_time), float(lookahead_time))
+
+
+def hrif_push_servo_j(
+    cps,
+    joints_deg: List[float],
+    box_id: int = BOX_ID,
+    rbt_id: int = RBT_ID,
+):
+    joints = [float(v) for v in joints_deg]
+    if len(joints) != 6:
+        raise ValueError("HRIF_PushServoJ ACS needs 6 joints, got %s" % len(joints))
+    return cps.HRIF_PushServoJ(box_id, rbt_id, joints)
+
+
 def _max_joint_delta_deg(a: List[float], b: List[float]) -> float:
     n = min(6, len(a), len(b))
     if n <= 0:
@@ -637,6 +660,113 @@ class HuayanInterface:
                         f"out of limits [{lo:.0f}°, {hi:.0f}°]"
                     )
         return None
+
+    def validate_servo_j_path(self, joint_path_deg) -> Optional[str]:
+        """Return error string or None for absolute ServoJ ACS degrees."""
+        if not joint_path_deg:
+            return "ServoJ path has no points"
+        for point_index, joints_deg in enumerate(joint_path_deg):
+            if len(joints_deg) != len(self.JOINT_NAMES):
+                return (
+                    "ServoJ point %s has %s joints; expected %s"
+                    % (point_index, len(joints_deg), len(self.JOINT_NAMES))
+                )
+            for idx, pos_deg in enumerate(joints_deg):
+                pos_deg = float(pos_deg)
+                if not math.isfinite(pos_deg):
+                    return "ServoJ point %s has a non-finite joint" % point_index
+                lo, hi = self.JOINT_LIMITS_DEG[idx]
+                if not (lo <= pos_deg <= hi):
+                    return (
+                        f"Joint {self.JOINT_NAMES[idx]} at {pos_deg:.1f}° "
+                        f"out of limits [{lo:.0f}°, {hi:.0f}°]"
+                    )
+        return None
+
+    def execute_servo_j_path(
+        self,
+        joint_path_deg,
+        feedback_fn: Callable[[List[float]], None],
+        cancel_flag: threading.Event,
+        servo_time: float = 0.02,
+        lookahead_time: float = 0.1,
+    ) -> int:
+        """Execute absolute joint-degree targets with StartServo/PushServoJ.
+
+        This is an opt-in hardware backend for qualification only. It does not
+        call ServoEsJ and does not use MovePathJOL. The caller is responsible
+        for giving a fixed-grid path; every point is pushed with the same
+        ``servo_time`` period.
+        """
+        if self._monitor_only:
+            self._node.get_logger().error(
+                '[huayan] monitor_only is set; refusing ServoJ')
+            return RESULT_ERROR
+        servo_time = float(servo_time)
+        lookahead_time = float(lookahead_time)
+        if (
+            not math.isfinite(servo_time)
+            or not math.isfinite(lookahead_time)
+            or servo_time <= 0.0
+            or lookahead_time <= 0.0
+        ):
+            self._node.get_logger().error(
+                '[huayan] invalid ServoJ timing: servo_time=%s lookahead=%s'
+                % (servo_time, lookahead_time)
+            )
+            return RESULT_INVALID_GOAL
+        error = self.validate_servo_j_path(joint_path_deg)
+        if error:
+            self._node.get_logger().error(f'[huayan] {error}')
+            return RESULT_INVALID_GOAL
+        if not self._ensure_connected():
+            return RESULT_ERROR
+
+        self._set_state(ConnectionState.EXECUTING)
+        try:
+            if cancel_flag.is_set():
+                self._node.get_logger().info('[huayan] ServoJ preempted.')
+                self._safe_stop()
+                return RESULT_PREEMPTED
+            n_ret = hrif_start_servo(self._cps, servo_time, lookahead_time)
+            if n_ret != 0:
+                msg = self._get_error_str(n_ret)
+                self._node.get_logger().error(
+                    f'[huayan] HRIF_StartServo failed (code {n_ret}): {msg}')
+                self._safe_stop()
+                self._set_state(ConnectionState.ERROR)
+                return RESULT_ERROR
+
+            next_push = time.monotonic()
+            for index, joints_deg in enumerate(joint_path_deg):
+                if cancel_flag.is_set():
+                    self._node.get_logger().info('[huayan] ServoJ preempted.')
+                    self._safe_stop()
+                    return RESULT_PREEMPTED
+                wait_s = next_push - time.monotonic()
+                if wait_s > 0.0:
+                    time.sleep(wait_s)
+                n_ret = hrif_push_servo_j(self._cps, list(joints_deg))
+                if n_ret != 0:
+                    msg = self._get_error_str(n_ret)
+                    self._node.get_logger().error(
+                        f'[huayan] HRIF_PushServoJ {index} failed '
+                        f'(code {n_ret}): {msg}')
+                    self._safe_stop()
+                    self._set_state(ConnectionState.ERROR)
+                    return RESULT_ERROR
+                self._refresh_positions()
+                feedback_fn(self.current_positions)
+                next_push += servo_time
+        except Exception as exc:
+            self._node.get_logger().error(f'[huayan] ServoJ exception: {exc}')
+            self._safe_stop()
+            self._set_state(ConnectionState.ERROR)
+            return RESULT_ERROR
+
+        self._node.get_logger().info('[huayan] ServoJ execution complete.')
+        self._set_state(ConnectionState.READY)
+        return RESULT_SUCCESSFUL
 
     def execute(
         self,
