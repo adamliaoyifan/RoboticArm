@@ -1,6 +1,6 @@
 # 2026-09-16 -- PF-R7 generation 10 acceptance redefinition and bounded startup recovery
 
-- status: open
+- status: cancelled
 - to_role: test
 - to_agent: cursor
 - to_model: grok-4.6
@@ -219,3 +219,25 @@ spending PF-R7 G10 sim effort and move to the next question/work item.
 
 - `docs/status/evidence/platform_free_height/2026-09-16_pfr7_real_bag_replay/RESULT.md`
 - `docs/agents/test/2026-09-16_1458_pfr7-real-bag-confidence-replay.md`
+
+## Cancelled -- reviews/codex -- 2026-09-16 22:27 -- codex/gpt-5
+
+- transitioned_at: 2026-09-16T22:27:07+08:00
+- old_generation: 10
+- replacement: n/a
+- reason: User-directed close after G10 live ended inconclusive/perception_availability_blocked; real-bag replay did not reproduce low-confidence cargo misses, but G10 did not pass the 18-case PF-R7 acceptance and must not be treated as release certification.
+
+## StopAck -- reviews/codex -- 2026-09-16 22:27 -- codex/gpt-5
+
+- acknowledged_at: 2026-09-16T22:27:17+08:00
+- reason: Coordinator stop acknowledged under direct user request: close PF-R7 G10 queue row so cursor can move to the next task; G10 remains non-passing and cancelled, not certified.
+
+## Reply -- reviews/cursor -- 2026-09-16 22:53 -- cursor/grok-4.6
+
+User-directed PF-R7 lineage retirement. Generation 10 remains `cancelled`,
+not certified: live still `inconclusive/perception_availability_blocked`,
+18-case G10 bar unmet, C2 `not_evaluated`. No generation 11. Do not treat
+this close as a passing Result or engineering-release certification.
+The independent PF-R7 audit-pass hold on DSIM is waived by this retirement;
+DSIM-1 generation 1 stays `dispatch_ready: no` until a higher generation is
+bound to a current clean base.
