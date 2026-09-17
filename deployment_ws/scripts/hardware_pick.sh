@@ -9,20 +9,27 @@
 #   ./scripts/hardware_pick.sh preprocessor_config:=<share>/preprocessor_d555_site.yaml
 #
 # No NVIDIA GPU: semantic_device defaults to cpu unless the caller sets it.
-# Profile A is preprocessor_d555_live.yaml (default). Profile B is
-# preprocessor_d555_site.yaml. Do not pass preprocessor_d555_replay.yaml
+# Profile B (default) is preprocessor_d555_site.yaml (motion_gate off).
+# Profile A is preprocessor_d555_live.yaml. Do not pass preprocessor_d555_replay.yaml
 # into this live graph (use_sim_time true).
 #
 # Overlay is on by default (publish_overlay:=true). yaml keeps it off for
 # sim-eval; this launch overrides so /luggage/semantic/overlay is recorded.
 #
-# --skip-observe / --detect-only are driver flags, not launch args. Other
-# terminal, same ROS_DOMAIN_ID:
+# --skip-observe / --detect-only / --observe-pose are driver flags, not launch args.
+# Other terminal, same overlay:
+#   source scripts/env_jazzy_real.sh
+# then:
 #   ros2 run luggage_planning hardware_pick_driver.py --detect-only
-#   ros2 run luggage_planning hardware_pick_driver.py --detect-only --skip-observe
-#   ros2 run luggage_planning hardware_pick_driver.py --plan-only
-#   ros2 run luggage_planning hardware_pick_driver.py
+#   ros2 run luggage_planning hardware_pick_driver.py --plan-only --observe-pose current
+#   ros2 run luggage_planning hardware_pick_driver.py --observe-pose current
+#       # YOLO floor box: stay at live joints (default). Do not send
+#       # simulation pickup_observe.
+#   OBSERVE_POSE=current ./scripts/run_floor_box_pick.sh plan
 #   ros2 run luggage_planning hardware_pick_driver.py --release
+#
+# ServoJ + Orin sensors (does not change this script's waypoint default):
+#   ./scripts/hardware_pick_servo_j.sh
 set -euo pipefail
 
 DEPLOY="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -101,9 +108,9 @@ for arg in "$@"; do
     arg="${arg#--}"
   fi
   case "$arg" in
-    skip-observe|skip-observe:=*|detect-only|detect-only:=*|plan-only|plan-only:=*|--skip-observe|--detect-only|--plan-only)
+    skip-observe|skip-observe:=*|detect-only|detect-only:=*|plan-only|plan-only:=*|--skip-observe|--detect-only|--plan-only|observe-pose|observe-pose:=*)
       echo "WARNING: '$arg' is a hardware_pick_driver.py flag, not a launch argument." >&2
-      echo "  Other terminal: ros2 run luggage_planning hardware_pick_driver.py --detect-only --skip-observe" >&2
+      echo "  Other terminal: ros2 run luggage_planning hardware_pick_driver.py --observe-pose current --plan-only" >&2
       continue
       ;;
   esac

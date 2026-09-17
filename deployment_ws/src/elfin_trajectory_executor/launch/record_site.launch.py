@@ -4,6 +4,7 @@ Site recording graph: two replay-capable bag modes.
 
   record_mode:=pendant  teach pendant, CPS monitor only (default)
   record_mode:=real     jazzy_real executor owns the arm (FJT)
+  execution_backend:=waypoint  (default) or servo_j in real mode
 
 Source (one shell, Jazzy only):
 
@@ -209,13 +210,24 @@ def _cps_or_executor(context, *args, **kwargs):
     port = LaunchConfiguration("robot_port").perform(context)
     rate = LaunchConfiguration("rate_hz").perform(context)
     if _want_executor(context):
+        backend = str(
+            LaunchConfiguration("execution_backend").perform(context)
+        ).strip().lower()
+        if backend in ("servo_esj", "servoesj"):
+            raise RuntimeError(
+                "servo_esj is rejected on this S20. Use servo_j or waypoint."
+            )
+        if backend not in ("waypoint", "servo_j"):
+            raise RuntimeError(
+                "execution_backend must be 'waypoint' or 'servo_j'"
+            )
         pkg = get_package_share_directory("elfin_trajectory_executor")
         params = os.path.join(pkg, "config", "executor.yaml")
         return [
             LogInfo(
                 msg=(
-                    "[record_site] REAL mode: jazzy_real executor owns CPS at %s:%s"
-                    % (ip, port)
+                    "[record_site] REAL mode: backend=%s executor owns CPS at %s:%s"
+                    % (backend, ip, port)
                 )
             ),
             Node(
@@ -234,6 +246,11 @@ def _cps_or_executor(context, *args, **kwargs):
                         "max_velocity_deg": 60.0,
                         "command_acceleration_deg": 60.0,
                         "controller_limit_fraction": 0.8,
+                        "execution_backend": backend,
+                        "servo_j_servo_time": LaunchConfiguration(
+                            "servo_j_servo_time"),
+                        "servo_j_lookahead_time": LaunchConfiguration(
+                            "servo_j_lookahead_time"),
                     },
                 ],
             ),
@@ -362,6 +379,24 @@ def generate_launch_description():
                 "record_mode",
                 default_value="pendant",
                 description="pendant (teach + CPS monitor) or real (jazzy_real FJT).",
+            ),
+            DeclareLaunchArgument(
+                "execution_backend",
+                default_value="waypoint",
+                description=(
+                    "Real executor backend. Default stays waypoint; "
+                    "servo_j is opt-in. servo_esj is rejected on this S20."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "servo_j_servo_time",
+                default_value="0.02",
+                description="ServoJ fixed-grid period (s). Used only when backend=servo_j.",
+            ),
+            DeclareLaunchArgument(
+                "servo_j_lookahead_time",
+                default_value="0.1",
+                description="ServoJ lookahead (s). Used only when backend=servo_j.",
             ),
             DeclareLaunchArgument(
                 "start_cps",

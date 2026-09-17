@@ -11,8 +11,10 @@
 # -o/--out  is a directory (created if missing). The bag folder is created
 #           inside it and must not already exist.
 # -n/--name bag folder name; default record_site_<mode>_<YYYYMMDD_HHMMSS>
-# Extra ros2 launch args after -- :
+# Extra ros2 launch args after --, or as key:=value:
 #   ./scripts/record_site.sh pendant -- use_rviz:=true
+#   ./scripts/record_site.sh real -- execution_backend:=servo_j
+#   ./scripts/record_site.sh real execution_backend:=servo_j
 set -euo pipefail
 
 usage() {
@@ -26,7 +28,14 @@ Usage: record_site.sh [pendant|real] [-o DIR] [-n NAME] [-- LAUNCH_ARGS...]
   -n, --name NAME  bag folder name under DIR
   -h, --help
 
+  Launch args (after --, or as key:=value):
+    execution_backend:=waypoint   default
+    execution_backend:=servo_j    opt-in ServoJ (real mode only)
+    servo_j_servo_time:=0.02
+    servo_j_lookahead_time:=0.1
+
 Ctrl+C stops recording. Do not start scene.launch.py or a second CPS client.
+servo_esj is rejected on this S20.
 EOF
 }
 
@@ -53,9 +62,13 @@ while [[ $# -gt 0 ]]; do
       usage
       exit 0
       ;;
+    execution_backend:=servo_esj|execution_backend:=ServoEsJ)
+      echo "servo_esj is rejected on this S20. Use servo_j or waypoint." >&2
+      exit 1
+      ;;
     --)
       shift
-      LAUNCH_EXTRA=("$@")
+      LAUNCH_EXTRA+=("$@")
       break
       ;;
     -*)
@@ -64,9 +77,14 @@ while [[ $# -gt 0 ]]; do
       exit 2
       ;;
     *)
-      # Bare path: treat as -o for convenience
-      OUT_DIR="$1"
-      shift
+      if [[ "$1" == *:=* ]]; then
+        LAUNCH_EXTRA+=("$1")
+        shift
+      else
+        # Bare path: treat as -o for convenience
+        OUT_DIR="$1"
+        shift
+      fi
       ;;
   esac
 done
@@ -142,6 +160,7 @@ echo "bag -> ${BAG_PATH}"
 echo "Ctrl+C to stop"
 if [[ "$MODE" == "real" ]]; then
   echo "REAL mode: executor will electrify/enable. Person on e-stop."
+  echo "launch extra: ${LAUNCH_EXTRA[*]:-execution_backend:=waypoint}"
 fi
 
 exec ros2 launch elfin_trajectory_executor record_site.launch.py \

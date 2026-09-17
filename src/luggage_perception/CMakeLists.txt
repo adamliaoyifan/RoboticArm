@@ -49,6 +49,7 @@ install(PROGRAMS
   scripts/export_lidar_camera_calib.py
   scripts/table_patch_icp.py
   scripts/viz_eef_tf_fit.py
+  scripts/perception_site.sh
   DESTINATION lib/${PROJECT_NAME}
 )
 
