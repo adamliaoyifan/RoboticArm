@@ -1,0 +1,17 @@
+# Site named poses for hardware_pick / GoToRobotPose.
+# robot_poses.yaml.example pickup_observe is SIMULATION (camera at
+# world (-1.0, 0.0, 1.9)). Do not copy those joints onto this cell.
+#
+# Test default: current = stay at live /joint_states (no FJT).
+# After measuring, dump joints and set:
+#   defaults.observe_pose: pickup_observe
+# plus poses.pickup_observe.values.
+
+poses: {}
+
+defaults:
+  observe_pose: current
+
+meta:
+  name: robot_poses_site
+  version: 0.1.0

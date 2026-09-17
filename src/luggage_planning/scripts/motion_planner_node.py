@@ -8,7 +8,9 @@ wait for geometry_ok to recover before the next segment.
 
 GoToRobotPose resolves a named pose from robot_poses YAML to joint angles
 and sends them via plain FJT (no MoveIt; that is what observe_pose_hold
-does, and named poses are joint-space anyway).
+does, and named poses are joint-space anyway). Pose name ``current`` /
+``here`` stays at live /joint_states (no FJT). Site launch uses
+``robot_poses.site.yaml``; do not send simulation ``pickup_observe``.
 
 Keeps the original node name per docs/plans/closed_loop_pick_retreat_nodes.md.
 """
@@ -19,8 +21,6 @@ import json
 import os
 import threading
 import time
-
-import yaml
 
 import rclpy
 from action_msgs.msg import GoalStatus
@@ -37,11 +37,14 @@ from luggage_msgs.action import GoToRobotPose, PlanMotion
 from luggage_msgs.srv import ProbeMotionSegment
 
 from luggage_planning.motion_executor import MotionExecutor, _wrap_near
+from luggage_planning.named_robot_poses import (
+    JOINTS,
+    load_poses_config,
+    plan_goto_joints,
+    resolve_pose_name,
+)
 from luggage_planning.ros_clock_wait import ClockTimeout, wait_event
 from luggage_planning.settle_criterion import SettleTracker
-
-JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
-          "elfin_joint4", "elfin_joint5", "elfin_joint6"]
 
 
 class MotionPlannerNode(Node):
@@ -51,6 +54,7 @@ class MotionPlannerNode(Node):
         self._group = ReentrantCallbackGroup()
 
         self.declare_parameter("robot_poses_config", "")
+        self.declare_parameter("default_observe_pose", "current")
         self.declare_parameter("execute_timeout", 90.0)
         self.declare_parameter("planning_time", 5.0)
         self.declare_parameter("num_planning_attempts", 10)
@@ -149,21 +153,14 @@ class MotionPlannerNode(Node):
             return ([float(by_name.get(j, 0.0)) for j in JOINTS],
                     [float(by_vel.get(j, 0.0)) for j in JOINTS])
 
-    def _named_pose(self, pose_name):
+    def _poses_config(self):
         path = str(self.get_parameter("robot_poses_config").value)
         if not path:
             from ament_index_python.packages import get_package_share_directory
             path = os.path.join(
                 get_package_share_directory("luggage_description"),
-                "config", "robot_poses.yaml.example")
-        with open(path, "r", encoding="utf-8") as handle:
-            config = yaml.safe_load(handle)
-        try:
-            pose = config["poses"][pose_name]
-            return [float(v) for v in pose["values"]]
-        except KeyError as exc:
-            raise RuntimeError("pose %r not found in %s (%s)"
-                               % (pose_name, path, exc))
+                "config", "robot_poses.site.yaml")
+        return load_poses_config(path), path
 
     # ------------------------------------------------------------------
     # ProbeMotionSegment (plan-only; no motion, no vacuum)
@@ -298,7 +295,7 @@ class MotionPlannerNode(Node):
 
     def _execute_goto_pose(self, goal_handle):
         result = GoToRobotPose.Result()
-        pose_name = str(goal_handle.request.pose_name)
+        requested = str(goal_handle.request.pose_name)
 
         def feedback(stage, remaining_error=0.0):
             fb = GoToRobotPose.Feedback()
@@ -306,13 +303,28 @@ class MotionPlannerNode(Node):
             fb.remaining_error = float(remaining_error)
             goal_handle.publish_feedback(fb)
 
+        positions, _ = self._joint_positions()
+        path = ""
+        pose_name = requested
         try:
-            target = list(self._named_pose(pose_name))
+            config, path = self._poses_config()
+            pose_name = resolve_pose_name(
+                requested, config,
+                param_override=str(
+                    self.get_parameter("default_observe_pose").value))
+            target = plan_goto_joints(pose_name, config, positions)
         except Exception as exc:  # noqa: BLE001 - action boundary
             goal_handle.abort()
             result.success = False
             result.message = str(exc)
             return result
+        if target is None:
+            goal_handle.succeed()
+            result.success = True
+            result.already_there = True
+            result.message = "already at %s (current joints)" % pose_name
+            return result
+        target = list(target)
 
         positions, _ = self._joint_positions()
         if positions is not None:

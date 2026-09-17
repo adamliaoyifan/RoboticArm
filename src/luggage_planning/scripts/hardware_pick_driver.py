@@ -32,8 +32,9 @@ Typical order after hardware_pick.launch.py is up:
   ros2 run luggage_planning hardware_pick_driver.py --plan-only
   ros2 run luggage_planning hardware_pick_driver.py --dry-run   # C7 protocol
   ros2 run luggage_planning hardware_pick_driver.py
-  ros2 run luggage_planning hardware_pick_driver.py --skip-observe
-      # detect+pick from the current joints; do not drive pickup_observe
+      # default --observe-pose current: stay at live joints
+  ros2 run luggage_planning hardware_pick_driver.py --observe-pose pickup_observe
+      # only after filling robot_poses.site.yaml; sim example joints are forbidden
 """
 
 from __future__ import division
@@ -172,11 +173,11 @@ class RosPickSessionPorts:
 
     def graph_health(self):
         checks = (
-            (self._driver._plan.wait_for_server(timeout_sec=1.0),
+            (self._driver._plan.server_is_ready(),
              "PlanMotion action missing"),
-            (self._driver._probe.wait_for_service(timeout_sec=1.0),
+            (self._driver._probe.service_is_ready(),
              "ProbeMotionSegment missing"),
-            (self._driver._build.wait_for_service(timeout_sec=1.0),
+            (self._driver._build.service_is_ready(),
              "BuildMotionSequence missing"),
         )
         for ok, reason in checks:
@@ -310,30 +311,49 @@ class HardwarePickDriver(Node):
         timeout = float(self._args.ready_timeout)
         deadline = time.monotonic() + timeout
         needed = [
-            (self._detect, "DetectLuggage"),
-            (self._build, "BuildMotionSequence"),
+            (self._detect, "DetectLuggage", "service"),
+            (self._build, "BuildMotionSequence", "service"),
         ]
         if (self._args.use_vacuum
                 and not self._args.detect_only
                 and not self._args.plan_only
                 and not self._args.dry_run):
-            needed.append((self._vacuum, "VacuumCommand"))
-        for client, name in needed:
-            remain = max(0.5, deadline - time.monotonic())
-            if not client.wait_for_service(timeout_sec=remain):
+            needed.append((self._vacuum, "VacuumCommand", "service"))
+        for client, name, kind in needed:
+            if not self._wait_ready(client, name, kind, deadline, timeout):
                 return False, "%s missing after %.0fs" % (name, timeout)
-        remain = max(0.5, deadline - time.monotonic())
         if not self._args.skip_observe:
-            if not self._goto.wait_for_server(timeout_sec=remain):
+            if not self._wait_ready(
+                    self._goto, "GoToRobotPose", "action", deadline, timeout):
                 return False, "GoToRobotPose missing after %.0fs" % timeout
         if self._args.detect_only or self._args.plan_only or self._args.dry_run:
             return True, "observe/detect graph ready"
-        remain = max(0.5, deadline - time.monotonic())
-        if not self._plan.wait_for_server(timeout_sec=remain):
+        if not self._wait_ready(
+                self._plan, "PlanMotion", "action", deadline, timeout):
             return False, "PlanMotion missing after %.0fs" % timeout
-        if not self._probe.wait_for_service(timeout_sec=1.0):
+        if not self._wait_ready(
+                self._probe, "ProbeMotionSegment", "service", deadline, timeout):
             return False, "ProbeMotionSegment missing"
         return True, "pick graph ready"
+
+    def _wait_ready(self, client, name, kind, deadline, timeout):
+        """Poll readiness. Do not call wait_for_service while this node spins.
+
+        wait_for_service/wait_for_server on the same node as
+        MultiThreadedExecutor.spin can block past timeout with no log.
+        """
+        self.get_logger().info(
+            "waiting for %s (%s, timeout %.0fs)" % (name, kind, timeout))
+        while time.monotonic() < deadline:
+            if kind == "action":
+                ready = bool(client.server_is_ready())
+            else:
+                ready = bool(client.service_is_ready())
+            if ready:
+                self.get_logger().info("%s ready" % name)
+                return True
+            time.sleep(0.25)
+        return False
 
     @staticmethod
     def _box_geom(box):
@@ -570,10 +590,13 @@ class HardwarePickDriver(Node):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--observe-pose", default="pickup_observe")
+    parser.add_argument(
+        "--observe-pose", default="current",
+        help="GoToRobotPose name. current/here = stay at live joints. "
+             "Do not send simulation pickup_observe on this cell.")
     parser.add_argument(
         "--skip-observe", action="store_true",
-        help="Do not GoToRobotPose(pickup_observe); detect and pick in place.")
+        help="Do not GoToRobotPose; detect and pick in place.")
     parser.add_argument("--detect-only", action="store_true")
     parser.add_argument(
         "--plan-only", action="store_true",
@@ -592,7 +615,7 @@ def main(argv=None):
         help="Drop the box after pick_retreat (default holds suction).")
     parser.add_argument("--settle-sec", type=float, default=2.0)
     parser.add_argument("--goto-timeout", type=float, default=90.0)
-    parser.add_argument("--detect-timeout", type=float, default=20.0)
+    parser.add_argument("--detect-timeout", type=float, default=40.0)
     parser.add_argument("--detect-retries", type=int, default=5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=90.0)

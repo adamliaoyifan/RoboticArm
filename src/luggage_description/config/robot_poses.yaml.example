@@ -27,9 +27,10 @@ poses:
       - elfin_joint4
       - elfin_joint5
       - elfin_joint6
-    # Collision-aware IK for camera_depth_optical_frame at world
+# Collision-aware IK for camera_depth_optical_frame at world
     # (-1.0, 0.0, 1.9), optical +Z down, centred on the pickup platform.
-    # Previous (-0.8, 0.0, 1.7) clipped large (0.80 m) on the image left.
+    # SIMULATION ONLY. hardware_pick uses robot_poses.site.yaml; do not
+    # send these joints on the real cell.
     values: [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
     tolerance: 0.15
 

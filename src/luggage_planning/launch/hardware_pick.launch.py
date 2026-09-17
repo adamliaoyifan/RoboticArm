@@ -11,6 +11,8 @@ Then in another terminal:
 
   ros2 run luggage_planning hardware_pick_driver.py --detect-only
   ros2 run luggage_planning hardware_pick_driver.py
+  ros2 run luggage_planning hardware_pick_driver.py --observe-pose current
+      # default: stay at live joints (no sim pickup_observe)
 """
 
 from __future__ import annotations
@@ -142,7 +144,8 @@ def generate_launch_description():
     default_scene = os.path.join(desc_share, "config", "scene_tf.yaml")
     if not os.path.isfile(default_scene):
         default_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
-    poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
+    poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")
+    sim_poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
     site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
@@ -155,7 +158,25 @@ def generate_launch_description():
     return LaunchDescription(
         [
             DeclareLaunchArgument("scene_tf_config", default_value=default_scene),
-            DeclareLaunchArgument("robot_poses_config", default_value=poses),
+            DeclareLaunchArgument(
+                "robot_poses_config",
+                default_value=poses,
+                description=(
+                    "Named joint poses for GoToRobotPose. Default is "
+                    "robot_poses.site.yaml (observe_pose=current). "
+                    "Do not pass %s on this cell; those pickup_observe "
+                    "joints are simulation." % sim_poses
+                ),
+            ),
+            DeclareLaunchArgument(
+                "observe_pose_name",
+                default_value="current",
+                description=(
+                    "Default GoToRobotPose name when the goal is empty. "
+                    "current/here = stay. pickup_observe requires measured "
+                    "values in robot_poses_config."
+                ),
+            ),
             DeclareLaunchArgument("use_rviz", default_value="false"),
             DeclareLaunchArgument("use_moveit", default_value="true"),
             DeclareLaunchArgument(
@@ -187,14 +208,13 @@ def generate_launch_description():
             ),
             DeclareLaunchArgument(
                 "preprocessor_config",
-                default_value=live_pp,
+                default_value=site_pp,
                 description=(
-                    "实机 preprocessor A/B. Default A is canonical "
-                    "preprocessor_d555_live.yaml (motion_gate on). "
-                    "Pass B (humble site thresholds, wall clock) with "
-                    "preprocessor_config:=%s. Do not use "
-                    "preprocessor_d555_replay.yaml for live pick "
-                    "(use_sim_time true)." % site_pp
+                    "实机 preprocessor. Default B is "
+                    "preprocessor_d555_site.yaml (motion_gate off). "
+                    "Profile A (motion_gate on) is preprocessor_config:=%s. "
+                    "Do not use preprocessor_d555_replay.yaml for live pick "
+                    "(use_sim_time true)." % live_pp
                 ),
             ),
             DeclareLaunchArgument(
@@ -215,6 +235,16 @@ def generate_launch_description():
                     "servo_j is opt-in for hardware gates only."
                 ),
             ),
+            DeclareLaunchArgument(
+                "servo_j_servo_time",
+                default_value="0.02",
+                description="ServoJ fixed-grid period (s). Used only when backend=servo_j.",
+            ),
+            DeclareLaunchArgument(
+                "servo_j_lookahead_time",
+                default_value="0.1",
+                description="ServoJ lookahead (s). Used only when backend=servo_j.",
+            ),
             DeclareLaunchArgument("robot_ip", default_value="192.168.0.10"),
             DeclareLaunchArgument("robot_port", default_value="10003"),
             DeclareLaunchArgument(
@@ -231,7 +261,8 @@ def generate_launch_description():
                 msg=(
                     "[hardware_pick] No Gazebo. e-stop person required. "
                     "CPS via jazzy_real only. D555 colour+aligned depth. "
-                    "Ctrl+C does not BlackOut."
+                    "Ctrl+C does not BlackOut. Observe pose default=current "
+                    "(no sim pickup_observe swing)."
                 )
             ),
             IncludeLaunchDescription(
@@ -245,7 +276,12 @@ def generate_launch_description():
                     # crawl and still hit 20070; site Gate 5 uses 30/60.
                     "default_velocity_deg": "30.0",
                     "max_velocity_deg": "60.0",
+                    "command_acceleration_deg": "60.0",
                     "execution_backend": LaunchConfiguration("execution_backend"),
+                    "servo_j_servo_time": LaunchConfiguration("servo_j_servo_time"),
+                    "servo_j_lookahead_time": LaunchConfiguration(
+                        "servo_j_lookahead_time"
+                    ),
                 }.items(),
                 condition=start_executor,
             ),
@@ -329,9 +365,11 @@ def generate_launch_description():
                     "use_semantic": True,
                     "use_sim_time": False,
                     "depth_topic": "/luggage/preprocessed/camera/depth/image",
-                    "cloud_max_age_sec": 8.0,
-                    "estimate_retry_count": 4,
-                    "estimate_retry_period_sec": 0.25,
+                    # CPU YOLO + D555 host-stamp lag: 8 s rejected still
+                    # frames (DETECT_STALE_CLOUD). Site pick waits longer.
+                    "cloud_max_age_sec": 30.0,
+                    "estimate_retry_count": 6,
+                    "estimate_retry_period_sec": 2.0,
                     "support_mode": "auto",
                     "platform_z": "",
                     "suitcase_update_timeout_sec": 0.0,
@@ -381,6 +419,7 @@ def generate_launch_description():
                 parameters=[{
                     "use_sim_time": False,
                     "robot_poses_config": LaunchConfiguration("robot_poses_config"),
+                    "default_observe_pose": LaunchConfiguration("observe_pose_name"),
                     "named_pose_duration": 8.0,
                     "named_pose_max_vel": 1.0,
                     "velocity_scaling": 0.6,

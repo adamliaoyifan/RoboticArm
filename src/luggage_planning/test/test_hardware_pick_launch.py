@@ -17,6 +17,8 @@ class HardwarePickLaunchTest(unittest.TestCase):
         )
         self.assertIn("Do not use ", src)
         self.assertIn("preprocessor_d555_replay.yaml", src)
+        self.assertIn("default_value=site_pp", src)
+        self.assertIn('"cloud_max_age_sec": 30.0', src)
         self.assertNotIn(
             'os.path.join(exec_share, "config", "preprocessor_d555_replay.yaml")',
             src,
@@ -72,6 +74,79 @@ class HardwarePickLaunchTest(unittest.TestCase):
         self.assertIn("condition=start_d555", src)
         self.assertIn("condition=start_executor", src)
         self.assertIn("condition=start_scene", src)
+
+    def test_driver_polls_readiness_and_defaults_observe_current(self):
+        driver = (
+            Path(__file__).resolve().parents[1]
+            / "scripts" / "hardware_pick_driver.py"
+        )
+        src = driver.read_text(encoding="utf-8")
+        self.assertIn("PickSession", src)
+        self.assertIn(
+            'parser.add_argument(\n        "--observe-pose", default="current"',
+            src,
+        )
+        self.assertIn('"--detect-timeout", type=float, default=40.0', src)
+        self.assertIn("service_is_ready", src)
+        self.assertIn("server_is_ready", src)
+        self.assertIn("waiting for %s", src)
+        self.assertIn("def _wait_ready", src)
+        self.assertNotIn("wait_for_service(timeout_sec=remain)", src)
+        self.assertNotIn("wait_for_server(timeout_sec=remain)", src)
+
+    def test_site_launch_uses_site_poses_and_current_observe(self):
+        src = LAUNCH.read_text(encoding="utf-8")
+        self.assertIn("robot_poses.site.yaml", src)
+        self.assertIn('default_value="current"', src)
+        self.assertIn('"observe_pose_name"', src)
+        self.assertIn('"default_observe_pose"', src)
+        self.assertIn(
+            'poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")',
+            src,
+        )
+        self.assertIn("sim_poses =", src)
+
+    def test_execution_backend_stays_waypoint_and_forwards_servo_j(self):
+        src = LAUNCH.read_text(encoding="utf-8")
+        self.assertIn('"execution_backend"', src)
+        self.assertIn('default_value="waypoint"', src)
+        self.assertIn('"servo_j_servo_time"', src)
+        self.assertIn('"servo_j_lookahead_time"', src)
+        self.assertIn(
+            '"execution_backend": LaunchConfiguration("execution_backend")',
+            src,
+        )
+        self.assertIn(
+            '"servo_j_servo_time": LaunchConfiguration("servo_j_servo_time")',
+            src,
+        )
+        self.assertNotIn('default_value="servo_j"', src)
+
+
+class MotionExecutorIkFallbackTest(unittest.TestCase):
+    def test_pose_target_fails_closed_when_ik_misses(self):
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "luggage_planning" / "motion_executor.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("no pose-constraint fallback", src)
+        self.assertNotIn('note = "pose constraint fallback"', src)
+
+    def test_cartesian_and_joint_goals_use_rest_to_rest_not_totg(self):
+        src = (
+            Path(__file__).resolve().parents[1]
+            / "luggage_planning" / "motion_executor.py"
+        ).read_text(encoding="utf-8")
+        self.assertIn("apply_rest_to_rest_to_joint_trajectory", src)
+        self.assertIn("time_parameterize_cartesian", src)
+        self.assertIn("goal.planning_options.plan_only = True", src)
+        self.assertNotIn("goal.planning_options.plan_only = False", src)
+        self.assertNotIn("request.max_velocity_scaling_factor", src)
+        self.assertNotIn("request.max_acceleration_scaling_factor", src)
+        self.assertIn("point.velocities = list(vel)", src)
+        self.assertIn("point.accelerations = list(acc)", src)
+        self.assertNotIn("first and last steps double as a", src)
+        self.assertIn("_execute_robot_trajectory", src)
 
 
 if __name__ == "__main__":
