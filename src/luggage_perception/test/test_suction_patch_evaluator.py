@@ -16,6 +16,7 @@ import json
 import math
 import os
 import tempfile
+import time
 import unittest
 from types import SimpleNamespace
 
@@ -36,6 +37,7 @@ from luggage_description.suction_contact_model import (
 from luggage_perception.eval.dynamic_suction_renderer import (
     DEFAULT_CAMERA,
     NadirRenderer,
+    _surface_poly,
     make_b1_case,
     make_b2_case,
     make_b3_case,
@@ -394,6 +396,221 @@ MODULES = (
     "suction_patch_evaluator.py",
     "suction_height_map.py",
 )
+
+
+def _true_polygon_region(renderer, case):
+    """Pixel mask of the case's true top polygon (the B1 harness input).
+
+    Mirrors ``_polygon_region`` in the acceptance runner: same
+    half-plane rasterization as the renderer itself.
+    """
+    poly = _surface_poly(tuple(case.gt_center_xy), case.gt_size_wh,
+                         case.gt_yaw_deg)
+    wx, wy = renderer.world_xy_at(case.gt_top_z)
+    inside_pos = np.ones(wx.shape, dtype=bool)
+    inside_neg = np.ones(wx.shape, dtype=bool)
+    for i in range(len(poly)):
+        x0_, y0_ = poly[i]
+        x1_, y1_ = poly[(i + 1) % len(poly)]
+        cross = ((x1_ - x0_) * (wy - y0_) - (y1_ - y0_) * (wx - x0_))
+        inside_pos &= cross >= 0.0
+        inside_neg &= cross <= 0.0
+    return inside_pos | inside_neg
+
+
+class TestStepGateResponse(unittest.TestCase):
+    """B1/B2: the sustained-discontinuity gate on the smoothed field.
+
+    Response table (measured 2026-09-17): a noiseless hard step of ``s``
+    measures >= 0.84*s for any boundary angle, so the frozen 4 mm gate
+    keeps its exact-``>`` semantics (4.0 mm stays accepted, >= 5 mm
+    rejected) while the noise floor sits ~42% below the gate.
+    """
+
+    GATE = 0.0040
+    CELL = 0.005
+    MAXD = 0.010
+
+    def _step_field(self, step_m, angle_deg):
+        n = 48
+        a = math.radians(angle_deg)
+        i = np.arange(n)[:, None] - n // 2
+        j = np.arange(n)[None, :] - n // 2
+        field = np.where(i * math.sin(a) + j * math.cos(a) >= 0.0,
+                         step_m, 0.0)
+        return field, np.ones((n, n), dtype=bool)
+
+    def _gate(self, field, valid):
+        return SuctionPatchEvaluator._max_adjacent_step(
+            field, valid, self.CELL, self.MAXD, self.GATE)
+
+    def test_exact_threshold_semantics(self):
+        for angle in (0.0, 45.0):
+            for step_mm in (4.0, 5.0, 6.0, 10.0, 20.0):
+                field, valid = self._step_field(step_mm / 1000.0, angle)
+                _, count = self._gate(field, valid)
+                if step_mm > 4.0:
+                    self.assertGreater(
+                        count, 0,
+                        "step %.1f mm at %.0f deg must reject"
+                        % (step_mm, angle))
+                else:
+                    self.assertEqual(
+                        count, 0,
+                        "step %.1f mm at %.0f deg must stay accepted "
+                        "(strict > 4.0 mm)" % (step_mm, angle))
+
+    def test_reported_max_tracks_step_height(self):
+        field, valid = self._step_field(0.006, 0.0)
+        max_step, count = self._gate(field, valid)
+        self.assertGreater(count, 0)
+        self.assertGreater(max_step, 0.004)
+        self.assertLessEqual(max_step, 0.006 + 1e-9)
+
+
+class TestStepGateNoiseFloor(unittest.TestCase):
+    """B1: flat planes at real camera noise density must not trip.
+
+    Cell medians at ~2 points per 5 mm cell carry sigma up to ~2 mm;
+    the smoothed-field block gate keeps the confirmed count at zero and
+    the largest single difference well under the 4 mm gate.
+    """
+
+    def test_flat_noise_confirmed_count_zero(self):
+        gate = 0.0040
+        for sigma_mm in (1.35, 2.0):
+            rng = np.random.default_rng(20260917)
+            worst_single = 0.0
+            for _ in range(200):
+                raw = rng.normal(0.0, sigma_mm / 1000.0, (37, 37))
+                # The gate consumes the robust surface: median of the
+                # 5x5 neighbourhood, exactly the height map's smooth_h
+                # contract (>= 20/25 valid; fully valid here).
+                pad = np.pad(raw, 2, mode="reflect")
+                view = np.lib.stride_tricks.sliding_window_view(
+                    pad, (5, 5))
+                smooth = np.median(view, axis=(-2, -1))
+                valid = np.ones((37, 37), dtype=bool)
+                max_step, count = SuctionPatchEvaluator._max_adjacent_step(
+                    smooth, valid, 0.005, 0.010, gate)
+                self.assertEqual(count, 0,
+                                 "sigma %.2f mm tripped the gate" % sigma_mm)
+                worst_single = max(worst_single, max_step)
+            # 42% margin to the gate at sigma = 2 mm.
+            self.assertLess(worst_single, gate)
+
+
+class TestBoundaryMarginRotatedCorners(unittest.TestCase):
+    """Regressions for the 2026-09-17 rotated-corner off-surface rows.
+
+    At yaw 30/60 the true eroded surface is the ROTATED rectangle; the
+    margin-square gate keeps rank-1 inside it for every footprint (the
+    B1 harness's historical axis-aligned reference falsely rejected
+    these).
+    """
+
+    CASES = ((0.0, 60.0, 29), (6.0, 30.0, 29), (6.0, 30.0, 47))
+
+    def test_rank1_inside_rotated_eroded_surface(self):
+        renderer = NadirRenderer()
+        for tilt, yaw, seed in self.CASES:
+            case, _ = make_b1_case(renderer, tilt, yaw, 0.0, seed, 1.0)
+            region = _true_polygon_region(renderer, case)
+            comp = isolate_depth_component(case.depth_mm, bbox=case.bbox)
+            top = estimate_dynamic_top_surface(
+                case.depth_mm, comp.mask, INTR, case.mat4,
+                stamp=case.stamp, frame=case.frame,
+                instance_region=region)
+            evaluator = SuctionPatchEvaluator(make_model(0.08))
+            evaluator.update(case.depth_mm, INTR, case.mat4, top,
+                             instance_region=region, stamp=case.stamp,
+                             frame_id=case.frame, instance_id="box-1",
+                             generation=7)
+            out = evaluator.copy_output()
+            self.assertGreaterEqual(len(out.accepted), 1,
+                                    case.case_id)
+            rec = out.accepted[0]
+            dx, dy = rec.center_world[0] + 1.0, rec.center_world[1]
+            a = math.radians(yaw)
+            lx, ly = dx * math.cos(a) + dy * math.sin(a), \
+                -dx * math.sin(a) + dy * math.cos(a)
+            self.assertLessEqual(abs(lx), 0.55 / 2 - 0.015, case.case_id)
+            self.assertLessEqual(abs(ly), 0.40 / 2 - 0.015, case.case_id)
+
+
+class TestB1NoiseTwoMmFootprint18(unittest.TestCase):
+    """Regressions for the three 2026-09-16 B1 failures.
+
+    fp=0.18 + noise 2 mm produced zero candidates through the raw-block
+    step gate (5.1-5.3 mm noise spikes); these must now accept with the
+    rank-1 inside the true 15 mm-eroded surface.
+    """
+
+    CASES = ((0.0, 30.0, 47), (6.0, 0.0, 29), (6.0, 60.0, 47))
+
+    def test_all_three_accept_on_surface(self):
+        renderer = NadirRenderer()
+        model = make_model(0.18)
+        for tilt, yaw, seed in self.CASES:
+            case, _ = make_b1_case(renderer, tilt, yaw, 2.0, seed, 1.0)
+            region = _true_polygon_region(renderer, case)
+            comp = isolate_depth_component(case.depth_mm, bbox=case.bbox)
+            self.assertTrue(comp.ok, case.case_id)
+            top = estimate_dynamic_top_surface(
+                case.depth_mm, comp.mask, INTR, case.mat4,
+                stamp=case.stamp, frame=case.frame,
+                instance_region=region)
+            self.assertEqual(top.reason, "ok", case.case_id)
+            evaluator = SuctionPatchEvaluator(model)
+            evaluator.update(case.depth_mm, INTR, case.mat4, top,
+                             instance_region=region, stamp=case.stamp,
+                             frame_id=case.frame, instance_id="box-1",
+                             generation=7)
+            out = evaluator.copy_output()
+            self.assertGreaterEqual(
+                len(out.accepted), 1, case.case_id)
+            rec = out.accepted[0]
+            self.assertLessEqual(
+                abs(rec.center_world[0] + 1.0), 0.55 / 2 - 0.015,
+                case.case_id)
+            self.assertLessEqual(
+                abs(rec.center_world[1]), 0.40 / 2 - 0.015, case.case_id)
+
+
+class TestEvaluatorLatency(unittest.TestCase):
+    """B6 micro-benchmark; runs only under SUCTION_LATENCY_TEST=1."""
+
+    def test_no_seal_p95_under_half_budget(self):
+        if os.environ.get("SUCTION_LATENCY_TEST") != "1":
+            self.skipTest("set SUCTION_LATENCY_TEST=1 to run")
+        renderer = NadirRenderer()
+        case = make_b4_case(renderer, "ridge", 11, 1.0)
+        model = make_model(0.18)
+        comp = isolate_depth_component(case.depth_mm, bbox=case.bbox)
+        x0, y0, x1, y1 = case.bbox
+        region = np.zeros(case.depth_mm.shape, dtype=bool)
+        region[y0:y1, x0:x1] = True
+        top = estimate_dynamic_top_surface(
+            case.depth_mm, comp.mask, INTR, case.mat4, stamp=case.stamp,
+            frame=case.frame, instance_region=region)
+        evaluator = SuctionPatchEvaluator(model)
+        evaluator.update(case.depth_mm, INTR, case.mat4, top,
+                         instance_region=region, stamp=case.stamp,
+                         frame_id=case.frame, instance_id="box-1",
+                         generation=7)
+        self.assertEqual(len(evaluator.copy_output().accepted), 0)
+        latencies = []
+        for k in range(20):
+            t0 = time.monotonic()
+            evaluator.update(case.depth_mm, INTR, case.mat4, top,
+                             instance_region=region,
+                             stamp=case.stamp + k, frame_id=case.frame,
+                             instance_id="box-1", generation=7)
+            latencies.append((time.monotonic() - t0) * 1000.0)
+        p95 = float(np.percentile(latencies, 95))
+        self.assertLess(p95, 25.0, "p95 %.1f ms exceeds half budget"
+                        % p95)
+
 
 
 class TestArchitectureIsolation(unittest.TestCase):

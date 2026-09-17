@@ -628,9 +628,18 @@ def make_b3_case(renderer, island_xy, yaw_deg, seed, stamp,
     depth_island = renderer.render(
         [(island_z, island)], noise_sigma_mm=1.0, outlier_frac=0.0,
         missing_frac=0.02, seed=seed + 1)
-    visible = (depth_island > 0) | (depth > 0)
-    depth = np.where(depth_island > 0, depth_island, depth)
-    del visible
+    # The uneven top must sit on the same platform background as every
+    # other gate scene (B1/B2/B4 all render it): without the platform
+    # the base floats over invalid depth, the instance-separability
+    # boundary gate can never observe a step on any side, and 42/45
+    # interior cases were falsely rejected as continuous (measured
+    # 2026-09-17 on commit 5219dbc).
+    depth_platform = renderer.render(
+        [(DEFAULT_CAMERA["platform_z"],
+          [tuple(p) for p in DEFAULT_CAMERA["platform_poly"]])],
+        noise_sigma_mm=1.0, seed=seed + 2)
+    depth = np.where(depth_island > 0, depth_island,
+                     np.where(depth > 0, depth, depth_platform))
     bbox = pixel_bbox(renderer, poly, base_z, expand_frac=0.05)
     return SyntheticCase(
         case_id="b3_%+d%+d_%d_%d" % (round(island_xy[0] * 100),

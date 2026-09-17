@@ -132,7 +132,12 @@ matrices:
     seeds: [11, 29, 47]
     footprint_m: 0.18
     thresholds:
-      interior_on_island: 36
+      # 2026-09-17 arithmetic correction (user decision): the placement
+      # list (centre + four quadrants + one edge) x 3 yaws x 3 seeds =
+      # 45 interior + 9 edge = 54 rows; the plan's "45 cases / 36
+      # interior" totals cannot be derived from that list. 45/9 is
+      # strictly stricter than 36/9.
+      interior_on_island: 45
       edge_fail_closed: 9
   b4:
     kinds: [ridge, fold, seam, sparse, checkerboard, too_small]

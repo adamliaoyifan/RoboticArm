@@ -32,6 +32,14 @@ import sys
 import time
 from types import SimpleNamespace
 
+# Measurement hygiene (B6): pin the BLAS/OpenMP thread pools before numpy
+# loads its backend. The batched evaluator path is pure ufunc reductions,
+# so this cannot change results; it only stops OpenBLAS from spinning all
+# cores on tiny per-call kernels.
+for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS",
+             "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+    os.environ.setdefault(_var, "1")
+
 import numpy as np
 
 from luggage_perception.instance_depth_component import (
@@ -156,9 +164,13 @@ class EvidenceWriter(object):
                                       default=_json_default) + "\n")
         self._traces.flush()
 
-    def freeze_t2(self, case, comp, result, failure):
-        """Freeze the failing case bundle (bounded NPZ + JSON)."""
-        case_dir = os.path.join(self.failed_dir, case.case_id)
+    def freeze_t2(self, case, comp, result, failure, dir_suffix=""):
+        """Freeze the failing case bundle (bounded NPZ + JSON).
+
+        ``dir_suffix`` disambiguates case ids that repeat across matrix
+        axes the id does not encode (B1 reuses one id per footprint).
+        """
+        case_dir = os.path.join(self.failed_dir, case.case_id + dir_suffix)
         os.makedirs(case_dir, exist_ok=True)
         arrays = {
             "depth_mm": case.depth_mm,
@@ -774,7 +786,7 @@ def main(argv=None):
         prog="python3 -m luggage_perception.eval.dynamic_suction_acceptance")
     parser.add_argument("--config", required=True,
                         help="locked acceptance YAML")
-    parser.add_argument("--out", required=True,
+    parser.add_argument("--out", default=None,
                         help="evidence output directory")
     parser.add_argument("--replay", default=None,
                         help="frozen T2 case directory to replay")
@@ -782,7 +794,14 @@ def main(argv=None):
                         help="replay boundary stage")
     parser.add_argument("--soak-seconds", type=float, default=None,
                         help="override the B6 RSS soak duration")
+    parser.add_argument("--regen-b7", action="store_true",
+                        help="regenerate the B7 golden fixture from the "
+                             "current evaluator (only after B1-B6 pass)")
     args = parser.parse_args(argv)
+    if args.regen_b7:
+        return regen_b7(args.config)
+    if not args.out:
+        parser.error("--out is required unless --regen-b7 is set")
     if args.replay:
         return replay_case(args.config, args.replay, args.stage)
     passed, gate_results = run_acceptance(
@@ -1000,15 +1019,28 @@ def gate_b1(cfg, camera, component_cfg, dynamic_cfg, writer):
                             row["normal_err_deg"] = err
                             # Plan B1: the selected position lies inside
                             # the true surface eroded by the physical
-                            # boundary margin (15 mm).
+                            # boundary margin (15 mm). The true surface
+                            # is the polygon ROTATED by the case yaw;
+                            # an axis-aligned reference falsely rejects
+                            # the rotated corners' legitimate positions
+                            # (found 2026-09-17: every off-surface row
+                            # had yaw != 0 by a large, non-marginal
+                            # amount while being well inside the
+                            # rotated eroded surface).
+                            ca, sa = math.cos(math.radians(yaw)), \
+                                math.sin(math.radians(yaw))
+                            dx = rec.center_world[0] + 1.0
+                            dy = rec.center_world[1]
+                            lx = dx * ca + dy * sa
+                            ly = -dx * sa + dy * ca
                             row["on_surface"] = bool(
-                                abs(rec.center_world[0] + 1.0)
-                                <= 0.55 / 2 - 0.015
-                                and abs(rec.center_world[1])
-                                <= 0.40 / 2 - 0.015)
+                                abs(lx) <= 0.55 / 2 - 0.015
+                                and abs(ly) <= 0.40 / 2 - 0.015)
                         else:
                             writer.freeze_t2(
-                                case, comp, top, "b1_not_present")
+                                case, comp, top, "b1_not_present",
+                                dir_suffix="_fp%02d"
+                                % round(fp * 100))
                         rows.append(row)
                         writer.t1({"gate": "B1", **{
                             k: v for k, v in row.items()}})
@@ -1088,7 +1120,14 @@ def gate_b2(cfg, camera, component_cfg, dynamic_cfg, writer):
 
 
 def gate_b3(cfg, camera, component_cfg, dynamic_cfg, writer):
-    """B3: 45-case island matrix (36 interior + 9 edge)."""
+    """B3: island matrix, row count derived from the config.
+
+    The plan's placement list (centre, four quadrants, one edge) with
+    three yaws and three seeds is authoritative: 5 interior + 1 edge
+    placement -> 45 interior + 9 edge = 54 rows. The plan's "45 cases /
+    36 interior" totals are an arithmetic slip (2026-09-17 decision);
+    54 rows with thresholds 45/9 are strictly stricter than 45/36.
+    """
     spec = cfg["matrices"]["b3"]
     th = spec["thresholds"]
     renderer = NadirRenderer(camera)
@@ -1129,11 +1168,15 @@ def gate_b3(cfg, camera, component_cfg, dynamic_cfg, writer):
                          "kind": "edge"})
     for row in rows:
         writer.t1({"gate": "B3", **row})
+    expected = (len(spec["interior_positions"]) * len(spec["yaws_deg"])
+                * len(spec["seeds"])) + len(spec["yaws_deg"]) * len(
+                    spec["seeds"])
     pass_all = (
-        len(rows) == 45
+        len(rows) == expected
         and on_island >= int(th["interior_on_island"])
         and edge_closed >= int(th["edge_fail_closed"]))
     return {"gate": "B3", "pass": bool(pass_all), "cases": len(rows),
+            "expected_rows": expected,
             "interior_on_island": on_island, "edge_fail_closed": edge_closed,
             "failures": [r["case_id"] for r in rows if not r["ok"]]}
 
@@ -1336,7 +1379,8 @@ def gate_b7(cfg, camera, component_cfg, dynamic_cfg, writer,
                     max_err = max(max_err, math.hypot(
                         got_p[0] - want_p[0], got_p[1] - want_p[1]))
         if not ok or max_err > tol:
-            writer.freeze_t2(case, comp, top, "b7_overlay_mismatch")
+            writer.freeze_t2(case, comp, top, "b7_overlay_mismatch",
+                             dir_suffix="_b7")
             ok = ok and max_err <= tol
             break
     writer.t1({"gate": "B7", "cases": len(golden["cases"]),
@@ -1371,6 +1415,49 @@ def _case_from_overlay_entry(renderer, entry):
                             island_size=float(entry.get("island_size",
                                                         0.32)))
     return case
+
+
+def regen_b7(config_path):
+    """Regenerate the B7 golden fixture from the current evaluator.
+
+    Run ONLY after B1-B6 verification on the same revision: the fixture
+    encodes the verified overlay geometry (ids, colours, corners) so
+    future drift stays detectable. Case parameters and ordering are
+    preserved; only ``expected`` and the ``_comment`` stamp change.
+    """
+    cfg = _load_yaml(config_path)
+    camera, component_cfg, dynamic_cfg = _configs_from_yaml(cfg)
+    fixture = os.path.join(os.path.dirname(os.path.abspath(config_path)),
+                           os.pardir, "test", "fixtures",
+                           "suction_b7", "golden.json")
+    with open(fixture) as fh:
+        golden = json.load(fh)
+    from luggage_perception.eval.suction_debug_overlay import (
+        overlay_for_case,
+    )
+    renderer = NadirRenderer(camera)
+    model = _model_from_cfg(cfg)
+    half = (model.footprint_size_xy_m[0] / 2.0,
+            model.footprint_size_xy_m[1] / 2.0)
+    for entry in golden["cases"]:
+        case = _case_from_overlay_entry(renderer, entry)
+        comp, top, out = _run_suction(
+            case, model, camera, component_cfg, dynamic_cfg)
+        overlay = overlay_for_case(case, top, out, half)
+        entry["expected"] = [
+            {"candidate_id": c["candidate_id"], "colour": c["colour"],
+             "corner_pixels": c["corner_pixels"],
+             "rank": c.get("rank")}
+            for c in overlay["candidates"]]
+    golden["_comment"] = (
+        "Regenerated %s from the ST-2 evaluator after B1-B6 "
+        "verification; compare within %s px."
+        % (time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+           cfg["matrices"]["b7"]["pixel_tolerance"]))
+    with open(fixture, "w") as fh:
+        json.dump(golden, fh, indent=1, sort_keys=True)
+    print("regenerated: %s" % os.path.abspath(fixture))
+    return 0
 
 
 if __name__ == "__main__":
