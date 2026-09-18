@@ -117,6 +117,66 @@ def _plan(request):
                 "t_sec": [], "q": [], "xyz": []}
 
     client = move if move.server_is_ready() else move_alt
+
+    # Scene before planning: the detected cargo as a BOX collision
+    # object, so the plan reflects reaching over a real box. A scene
+    # that cannot be applied skips the plan honestly — never plan
+    # against an empty world while claiming otherwise.
+    scene_objects = []
+    for obj in request.get("collision_objects") or []:
+        scene_objects.append({
+            "id": str(obj["id"]),
+            "xyz": [float(v) for v in obj["xyz"][:3]],
+            "dimensions": [float(v) for v in obj["dimensions"][:3]],
+            "frame_id": str(obj.get("frame_id", "world")),
+        })
+    if scene_objects:
+        from moveit_msgs.msg import CollisionObject, PlanningScene
+        from moveit_msgs.srv import ApplyPlanningScene
+        scene_client = node.create_client(ApplyPlanningScene,
+                                          "/apply_planning_scene")
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not (
+                scene_client.service_is_ready()):
+            rclpy.spin_once(node, timeout_sec=0.1)
+        scene_ok = scene_client.service_is_ready()
+        if scene_ok:
+            scene = PlanningScene()
+            scene.robot_state.is_diff = True
+            for obj in scene_objects:
+                co = CollisionObject()
+                co.header.frame_id = obj["frame_id"]
+                co.id = obj["id"]
+                prim = SolidPrimitive()
+                prim.type = SolidPrimitive.BOX
+                prim.dimensions = [max(1e-3, v) for v in obj["dimensions"]]
+                co.primitives = [prim]
+                prim_pose = Pose()
+                prim_pose.position = Point(x=obj["xyz"][0],
+                                           y=obj["xyz"][1],
+                                           z=obj["xyz"][2])
+                prim_pose.orientation.w = 1.0
+                co.primitive_poses = [prim_pose]
+                co.operation = CollisionObject.ADD
+                scene.world.collision_objects.append(co)
+            req = ApplyPlanningScene.Request()
+            req.scene = scene
+            scene_future = scene_client.call_async(req)
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline and not scene_future.done():
+                rclpy.spin_once(node, timeout_sec=0.1)
+            scene_ok = (scene_future.done()
+                        and scene_future.result() is not None
+                        and bool(scene_future.result().success))
+        if not scene_ok:
+            timer.cancel()
+            node.destroy_node()
+            rclpy.shutdown()
+            return {"message": "MoveIt skipped: scene apply failed "
+                               "(collision objects not applied)",
+                    "t_sec": [], "q": [], "xyz": [],
+                    "scene_objects": scene_objects}
+
     pose = Pose()
     pose.position = Point(x=xyz[0], y=xyz[1], z=xyz[2])
     pose.orientation = Quaternion(
@@ -234,6 +294,7 @@ def _plan(request):
             payload["message"] = "MoveIt error_code=%s" % code
     node.destroy_node()
     rclpy.shutdown()
+    payload.setdefault("scene_objects", scene_objects)
     return payload
 
 
