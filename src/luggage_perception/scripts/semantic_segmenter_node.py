@@ -195,6 +195,7 @@ class SemanticSegmenterNode(Node):
         self._stats_interval_sec = 0.0 if stats_hz <= 0.0 else 1.0 / stats_hz
         self._stats_dirty = False
         self._last_stats_pub = 0.0
+        self._pending_stats = None
         self._overlay_missing_warned = False
         self._drop_count = 0
         self._camera_info = None
@@ -486,14 +487,13 @@ class SemanticSegmenterNode(Node):
         if (not self._stats_dirty
                 or now - self._last_stats_pub < self._stats_interval_sec):
             return
+        record = self._pending_stats
+        if record is None:
+            return
         self._stats_dirty = False
         self._last_stats_pub = now
-        out = self._segmenter.copy_output()
-        if out is not None:
-            record = dict(out.stats)
-            record["stamp"] = out.stamp
-            record["frame_id"] = out.frame_id
-            self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+        self._pending_stats = None
+        self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
 
     def _publish_yolo(self, out, stamp):
         msg = YoloDetections()
@@ -547,10 +547,12 @@ class SemanticSegmenterNode(Node):
         overlay.data = bgr.tobytes()
         self._overlay_pub.publish(overlay)
 
-    def _publish_stats(self, out, recv_wall=None):
-        if self._stats_interval_sec > 0.0:
-            self._stats_dirty = True
-            return
+    def _stats_record(self, out, recv_wall=None):
+        """Complete stats payload for one segmenter output.
+
+        Consumers correlate on ``generation`` / ``instance_id`` and measure
+        latency from the detect stamps, so every publish path must carry them.
+        """
         record = dict(out.stats)
         record["stamp"] = out.stamp
         record["mask_stamp"] = out.stamp
@@ -567,6 +569,18 @@ class SemanticSegmenterNode(Node):
         record["instance_id"] = str(self._box_id)
         if self._segmenter.self_body_mask is not None:
             record["self_body_pixels"] = int(self._segmenter.self_body_mask.sum())
+        return record
+
+    def _publish_stats(self, out, recv_wall=None):
+        record = self._stats_record(out, recv_wall)
+        if self._stats_interval_sec > 0.0:
+            # Rate-limit serialization, not content. Building the dict is
+            # cheap; json.dumps is what PF-R9 g2 moved onto the timer. The
+            # timer publishes this exact record, so a consumer waiting on
+            # generation/instance_id cannot be starved by the rate limit.
+            self._pending_stats = record
+            self._stats_dirty = True
+            return
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
 
     def _warn_throttled(self, text):
