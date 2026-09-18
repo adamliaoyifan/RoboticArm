@@ -4,6 +4,11 @@ project(luggage_perception)
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 
+# NOTE: ament_python_install_package COPIES the package under
+# install/*/dist-packages (the scripts below stay symlinks only under
+# --symlink-install). Library edits are invisible to installed CLIs until
+# `colcon build --packages-select luggage_perception` reruns; the eval
+# CLIs guard this with --check-install (eval/run_provenance.py).
 ament_python_install_package(${PROJECT_NAME})
 
 install(DIRECTORY config
@@ -46,6 +51,7 @@ install(PROGRAMS
   scripts/handeye_capture.py
   scripts/handeye_solve.py
   scripts/pendant_bag_replay_eval.py
+  scripts/backfill_pickup_labels.py
   scripts/export_lidar_camera_calib.py
   scripts/table_patch_icp.py
   scripts/viz_eef_tf_fit.py

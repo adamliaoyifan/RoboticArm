@@ -15,7 +15,7 @@ import base64
 import json
 import math
 import os
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from types import SimpleNamespace
 
 import numpy as np
@@ -39,7 +39,18 @@ from luggage_perception.eval.bag_mcap_source import (
     scan_bag,
     select_image_topics,
 )
+from luggage_perception.eval.bag_replay_index import (
+    camera_info_frame_from_payload,
+    camera_info_payload as _index_camera_info_payload,
+    load_index,
+    sidecar_path,
+    write_index,
+)
 from luggage_perception.eval.bag_tf import BagTfBuffer
+from luggage_perception.eval.pickup_xy_candidates import (
+    strategies_for_frame,
+    write_candidates_file,
+)
 from luggage_perception.eval.isolated_domain import (
     DEFAULT_REPLAY_DOMAIN_ID,
     IsolatedDomainError,
@@ -57,6 +68,7 @@ from luggage_perception.eval.replay_evaluate import (
     repaint_label_map,
     select_cargo_detection,
 )
+from luggage_perception.eval.run_provenance import collect_provenance
 from luggage_perception.eval.site_pick_viz import write_viz_html
 from luggage_perception.platform_free_pipeline import PlatformFreeDetector
 from luggage_perception.ros_message_adapters import camera_info_frame_from_msg
@@ -111,6 +123,25 @@ class SitePickConfig(object):
     plan_moveit: bool = False
     ros_domain_id: int = DEFAULT_REPLAY_DOMAIN_ID
     moveit_timeout_sec: float = 45.0
+    # "cargo": the detected box as a MoveIt collision object in the
+    # isolated plan-only scene (closes the known "no suitcase collision
+    # object" deviation); "cargo_ground" adds a ground slab; "none"
+    # keeps the empty scene (explicit, not silent).
+    moveit_scene: str = "cargo"
+    # Pickup XY benchmark candidates output path (empty = do not emit).
+    emit_candidates: str = ""
+    # Label mode: frames carry frame_id and the HTML viz accepts clicks
+    # that record suction_safe_lid_center_pixel rows (the human judgment
+    # lives in pixel space; backfill_pickup_labels converts to world XY).
+    label_viz: bool = False
+    index_cache_dir: str = ""            # "" = XDG default
+    use_index_cache: bool = True
+    # TF interpolation (EVAL-wave defect: nearest-stamp lookup carries up
+    # to ~20 ms of motion error at 50 Hz). Default OFF — scored
+    # comparisons keep the old semantics until re-baselined; the config
+    # hash records the state either way.
+    tf_interpolate: bool = False
+    tf_max_gap_ms: float = 50.0          # one 50 Hz TF period
 
 
 def _replay_eval_cfg(cfg):
@@ -287,17 +318,54 @@ def _workspace_and_catalog(scene_tf_config, roi_margin):
             catalog, path)
 
 
-def _tcp_in_world(tf_buffer, tcp_row, world_frame, stamp_ns):
+def _tcp_in_world(tf_buffer, tcp_row, world_frame, stamp_ns,
+                  interpolate=False, max_gap_ns=None):
     if not tcp_row:
         return None
     xyz = np.asarray(tcp_row["position"], dtype=np.float64).reshape(1, 3)
     src = str(tcp_row.get("frame_id") or "")
     if not src or src == world_frame:
         return [float(v) for v in xyz[0]]
-    pts = tf_buffer.transform_points(xyz, world_frame, src, stamp_ns)
+    pts = tf_buffer.transform_points(
+        xyz, world_frame, src, stamp_ns, interpolate=interpolate,
+        max_gap_ns=max_gap_ns)
     if pts is None:
         return [float(v) for v in xyz[0]]
     return [float(v) for v in pts[0]]
+
+
+def _moveit_scene_objects(mode, pick_dict):
+    """BOX collision objects for the isolated plan-only MoveIt scene.
+
+    Cargo center sits at (x, y, top_z - margin - h/2): the pick dict's
+    xyz is the top-surface point, the box extends downward from it. The
+    1 cm top margin keeps the attach goal (exactly at top_z) numerically
+    OFF the collision surface — a goal lying on the box surface is in
+    collision and the planner refuses, which measures nothing. Height
+    falls back to 0.30 m when the measured height is invalid — a guess
+    at the geometry is still better than planning through empty space,
+    and the applied object is recorded verbatim so the report says so.
+    """
+    if mode == "none" or not pick_dict:
+        return []
+    top_z = float(pick_dict["top_z"])
+    width = max(0.05, float(pick_dict["width"]))
+    depth = max(0.05, float(pick_dict["depth"]))
+    height = (float(pick_dict["height"])
+              if pick_dict.get("height_valid") else 0.30)
+    x, y = float(pick_dict["xyz"][0]), float(pick_dict["xyz"][1])
+    objects = [{
+        "id": "replay_cargo",
+        "xyz": [x, y, top_z - 0.01 - height / 2.0],
+        "dimensions": [width, depth, height],
+    }]
+    if mode == "cargo_ground":
+        objects.append({
+            "id": "replay_ground",
+            "xyz": [x, y, -0.025],
+            "dimensions": [2.0, 2.0, 0.05],
+        })
+    return objects
 
 
 def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
@@ -321,32 +389,123 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
     index_topics = [color_topic, depth_topic, COLOR_INFO_TOPIC,
                     DEPTH_INFO_TOPIC, JOINT_TOPIC, TCP_TOPIC,
                     TF_TOPIC, TF_STATIC_TOPIC]
+    # Sidecar index (bag_replay_index): on a hit, only /tf and /tf_static
+    # still stream (the TF edge series joins the sidecar in the bag_tf
+    # array-cache step); injected test streams bypass the cache.
+    cached = None
+    if cfg.use_index_cache and source_iter is None:
+        cached = load_index(mcap_path, scan, color_topic, depth_topic,
+                            cfg.index_cache_dir,
+                            producer="site_pick_replay")
     color_entries, depth_entries = [], []
     joint_by_stamp, tcp_by_stamp = {}, {}
     info_first = {}
+    tf_static_msgs = 0
     tf_buffer = BagTfBuffer()
-    for rec in stream(index_topics):
-        stamp = rec.header_stamp_ns
-        if rec.topic == color_topic:
-            color_entries.append((stamp, rec.log_time_ns, None))
-        elif rec.topic == depth_topic:
-            depth_entries.append((stamp, rec.log_time_ns, None))
-        elif rec.topic == JOINT_TOPIC:
-            payload = _joint_payload(rec.message)
-            if payload is not None:
-                joint_by_stamp[stamp] = payload
-        elif rec.topic == TCP_TOPIC:
-            tcp_by_stamp[stamp] = _tcp_payload(rec.message)
-        elif rec.topic in (COLOR_INFO_TOPIC, DEPTH_INFO_TOPIC):
-            if rec.topic not in info_first:
-                info_first[rec.topic] = rec.message
-        elif rec.topic == TF_STATIC_TOPIC:
-            tf_buffer.add_tf_message(rec.message, static=True)
-        elif rec.topic == TF_TOPIC:
-            tf_buffer.add_tf_message(rec.message, static=False)
+    if cached is not None:
+        joint_by_stamp = {int(s): dict(p)
+                          for s, p in cached["joint_payloads"]}
+        tcp_by_stamp = {int(s): dict(p)
+                        for s, p in cached["tcp_payloads"]}
+        info_first = {
+            topic: camera_info_frame_from_payload(payload)
+            for topic, payload in cached["camera_info"].items()}
+        tf_npz = sidecar_path(mcap_path, "tf_edges.npz",
+                              cfg.index_cache_dir)
+        tf_loaded = False
+        if os.path.isfile(tf_npz):
+            try:
+                tf_buffer.load_edges_npz(tf_npz)
+                tf_loaded = True
+            except (OSError, ValueError, KeyError):
+                tf_loaded = False
+        if not tf_loaded:
+            # Fall back to streaming /tf (+/tf_static): a missing or
+            # corrupt edge file only costs time, never correctness.
+            for rec in iter_bag_messages(mcap_path, topics=[
+                    TF_TOPIC, TF_STATIC_TOPIC]):
+                tf_buffer.add_tf_message(
+                    rec.message, static=rec.topic == TF_STATIC_TOPIC)
+            # Upgrade a sidecar that predates TF edges (e.g. written by
+            # pendant_bag_replay_eval): persist what was just streamed
+            # so the next warm run skips the /tf walk entirely.
+            if cfg.use_index_cache:
+                try:
+                    os.makedirs(os.path.dirname(tf_npz), exist_ok=True)
+                    tf_buffer.save_edges_npz(tf_npz)
+                except OSError:
+                    pass
+    else:
+        pass_a_stream = (
+            iter_bag_messages(mcap_path, topics=index_topics,
+                              header_only_topics=[color_topic,
+                                                  depth_topic])
+            if source_iter is None else stream(index_topics))
+        for rec in pass_a_stream:
+            stamp = rec.header_stamp_ns
+            if rec.topic == color_topic:
+                color_entries.append((stamp, rec.log_time_ns, None))
+            elif rec.topic == depth_topic:
+                depth_entries.append((stamp, rec.log_time_ns, None))
+            elif rec.topic == JOINT_TOPIC:
+                payload = _joint_payload(rec.message)
+                if payload is not None:
+                    joint_by_stamp[stamp] = payload
+            elif rec.topic == TCP_TOPIC:
+                tcp_by_stamp[stamp] = _tcp_payload(rec.message)
+            elif rec.topic in (COLOR_INFO_TOPIC, DEPTH_INFO_TOPIC):
+                if rec.topic not in info_first:
+                    info_first[rec.topic] = camera_info_frame_from_msg(
+                        rec.message)
+            elif rec.topic == TF_STATIC_TOPIC:
+                tf_static_msgs += 1
+                tf_buffer.add_tf_message(rec.message, static=True)
+            elif rec.topic == TF_TOPIC:
+                tf_buffer.add_tf_message(rec.message, static=False)
 
-    color_sorted, _color_dup = dedupe_stamped_entries(color_entries)
-    depth_sorted, _depth_dup = dedupe_stamped_entries(depth_entries)
+    if cached is not None:
+        # Sidecar entries are pre-deduped; duplicates counts ride along.
+        color_sorted = [(int(s), int(log), None)
+                        for s, log in cached["color_entries"]]
+        depth_sorted = [(int(s), int(log), None)
+                        for s, log in cached["depth_entries"]]
+    else:
+        color_sorted, color_dup = dedupe_stamped_entries(color_entries)
+        depth_sorted, depth_dup = dedupe_stamped_entries(depth_entries)
+    if (cached is None and cfg.use_index_cache and source_iter is None):
+        tf_edges_file = None
+        try:
+            tf_path = sidecar_path(mcap_path, "tf_edges.npz",
+                                   cfg.index_cache_dir)
+            os.makedirs(os.path.dirname(tf_path), exist_ok=True)
+            tf_buffer.save_edges_npz(tf_path)
+            tf_edges_file = "tf_edges.npz"
+        except OSError:
+            tf_edges_file = None
+        write_index(mcap_path, {
+            "color_topic": color_topic, "depth_topic": depth_topic,
+            "color_entries": [[int(s), int(log)]
+                              for s, log, _p in color_sorted],
+            "color_duplicates": [[int(s), int(n)]
+                                 for s, n in sorted(color_dup.items())],
+            "depth_entries": [[int(s), int(log)]
+                              for s, log, _p in depth_sorted],
+            "depth_duplicates": [[int(s), int(n)]
+                                 for s, n in sorted(depth_dup.items())],
+            "joint_payloads": [[int(s), p] for s, p in
+                               sorted(joint_by_stamp.items())],
+            "tcp_payloads": [[int(s), p] for s, p in
+                             sorted(tcp_by_stamp.items())],
+            "camera_info": {topic: _index_camera_info_payload(frame)
+                            for topic, frame in info_first.items()},
+            "camera_k_variants": {},
+            "tf_static_message_count": int(tf_static_msgs),
+            # This replay never indexes lidar: an empty list matches the
+            # "lidar not indexed" semantics, and replay_evaluate's
+            # archive guard forces its own miss whenever it needs more.
+            "lidar_stamps": [],
+            "tf_edges_file": tf_edges_file,
+        }, cfg.index_cache_dir, producer="site_pick_replay")
     plan = plan_frame_join(
         [s for s, _log, _payload in color_sorted],
         [s for s, _log, _payload in depth_sorted],
@@ -356,9 +515,11 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
 
     color_info = info_first.get(COLOR_INFO_TOPIC)
     optical_frame = ""
+    # info_first holds CameraInfoFrame objects (converted at ingest, so
+    # the sidecar cache round-trips the same shape).
     if color_info is not None:
-        optical_frame = str(getattr(color_info.header, "frame_id", "") or "")
-        frame = camera_info_frame_from_msg(color_info)
+        optical_frame = str(getattr(color_info, "frame_id", "") or "")
+        frame = color_info
     else:
         frame = None
 
@@ -431,6 +592,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
             else:
                 return
 
+    planned_depths = {pair.depth_stamp_ns for pair in pairs}
     for rec in stream([color_topic, depth_topic]):
         stamp = rec.header_stamp_ns
         if rec.topic == color_topic:
@@ -441,8 +603,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
                 continue
             pending["color"][stamp] = rgb
         elif rec.topic == depth_topic:
-            wanted_depth = {p.depth_stamp_ns for p in pairs}
-            if stamp not in wanted_depth:
+            if stamp not in planned_depths:
                 continue
             depth = decode_depth_message(rec.message)
             if depth is None:
@@ -469,9 +630,16 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
 
     tcp_series = []
     tcp_t = []
+    if cfg.label_viz:
+        for row in frame_rows:
+            # Join key shared with the candidates file: <bag>@<stamp>.
+            row["frame_id"] = "%s@%.9f" % (bag_name, row["stamp_sec"])
     for stamp in tcp_stamps:
         row = tcp_by_stamp[stamp]
-        xyz = _tcp_in_world(tf_buffer, row, cfg.world_frame, stamp)
+        xyz = _tcp_in_world(
+            tf_buffer, row, cfg.world_frame, stamp,
+            interpolate=bool(cfg.tf_interpolate),
+            max_gap_ns=int(cfg.tf_max_gap_ms * NS_PER_MS))
         if xyz is None:
             continue
         tcp_t.append(stamp / 1e9)
@@ -485,6 +653,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         joint_q.append(ordered)
 
     planned = None
+    scene_objects = []
     if cfg.plan_moveit:
         planner = moveit_plan_fn
         if planner is None:
@@ -494,12 +663,15 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         sel = frame_rows[selected] if frame_rows else {}
         start = sel.get("joints")
         segs = sel.get("waypoints") or []
+        scene_objects = _moveit_scene_objects(
+            cfg.moveit_scene, sel.get("pick"))
         try:
             planned = planner(
                 start_joints=start,
                 waypoints=segs,
                 domain_id=cfg.ros_domain_id,
                 timeout_sec=cfg.moveit_timeout_sec,
+                collision_objects=scene_objects,
             )
         except IsolatedDomainError:
             raise
@@ -515,6 +687,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         "scene_tf_config": scene_path,
         "backend": backend,
         "workspace_center_xy": ws_xy,
+        "label_mode": bool(cfg.label_viz),
         "domain": {
             "perception": "offline-mcap",
             "moveit": (int(cfg.ros_domain_id) if cfg.plan_moveit else None),
@@ -528,6 +701,8 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         "joints": {"t_sec": joint_t, "names": list(JOINT_NAMES),
                    "q": joint_q},
         "planned": planned,
+        "moveit_scene": {"mode": cfg.moveit_scene,
+                         "objects": scene_objects},
         "tf_frames": sorted(tf_buffer.frames()),
     }
     with open(os.path.join(out_dir, "replay.json"), "w",
@@ -536,6 +711,11 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         handle.write("\n")
     html_path = write_viz_html(
         payload, os.path.join(out_dir, "replay.html"))
+    n_candidates = None
+    if getattr(cfg, "emit_candidates", ""):
+        n_candidates = write_candidates_file(
+            cfg.emit_candidates, bag_name, scan.bag_path, frame_rows,
+            collect_provenance(asdict(cfg)))
     summary = {
         "bag": scan.bag_path,
         "out_dir": out_dir,
@@ -548,8 +728,24 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         "color_topic": color_topic,
         "depth_topic": depth_topic,
         "plan_moveit": bool(cfg.plan_moveit),
+        "moveit_scene": cfg.moveit_scene,
         "ros_domain_id": (
             int(cfg.ros_domain_id) if cfg.plan_moveit else None),
+        # TF-semantics disclosure: which mode ran and how many frames
+        # carried interpolated edges (never silently cross-compare runs
+        # with different tf_interpolate — the config hash differs too).
+        "tf_interpolate": bool(cfg.tf_interpolate),
+        "tf_max_gap_ms": float(cfg.tf_max_gap_ms),
+        "n_frames_with_interpolated_tf": sum(
+            1 for row in frame_rows if row.get("tf_mode") == "interpolated"),
+        "max_tf_gap_ms": max(
+            (row["tf_gap_ms"] for row in frame_rows
+             if row.get("tf_gap_ms") is not None), default=None),
+        # Attribution: revision + the full effective site-pick config
+        # (asdict keeps it honest through any future field additions).
+        "provenance": collect_provenance(asdict(cfg)),
+        "pickup_candidates": (cfg.emit_candidates or None),
+        "pickup_candidate_frames": n_candidates,
     }
     with open(os.path.join(out_dir, "summary.json"), "w",
               encoding="utf-8") as handle:
@@ -563,6 +759,9 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
                    joint_stamps, tcp_by_stamp, tcp_stamps, rng, aux_fn):
     stamp_ns = int(pair.stamp_ns)
     stamp_sec = stamp_ns / 1e9
+    tf_interp = bool(getattr(cfg, "tf_interpolate", False))
+    tf_gap_ns = int(getattr(cfg, "tf_max_gap_ms", 50.0) * NS_PER_MS)
+    tf_buffer.reset_stats()
     label_map, detections = segmenter.segment(rgb)
     detections = list(detections or [])
     if label_map is None:
@@ -584,12 +783,13 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
 
     src_frame = optical_frame
     if color_info is not None and not src_frame:
-        src_frame = str(color_info.header.frame_id or "")
+        src_frame = str(color_info.frame_id or "")
     pts_world = None
     tf_ok = False
     if cargo_pts is not None and len(cargo_pts) and src_frame:
         pts_world = tf_buffer.transform_points(
-            cargo_pts, cfg.world_frame, src_frame, stamp_ns)
+            cargo_pts, cfg.world_frame, src_frame, stamp_ns,
+            interpolate=tf_interp, max_gap_ns=tf_gap_ns)
         tf_ok = pts_world is not None
     elif cargo_pts is not None and len(cargo_pts) and not src_frame:
         pts_world = None
@@ -627,7 +827,8 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
     joint_row, _jdt = aux_fn(stamp_ns, joint_by_stamp, joint_stamps)
     tcp_row, _tdt = aux_fn(stamp_ns, tcp_by_stamp, tcp_stamps)
     joints = _ordered_joints(joint_row)
-    tcp_xyz = _tcp_in_world(tf_buffer, tcp_row, cfg.world_frame, stamp_ns)
+    tcp_xyz = _tcp_in_world(tf_buffer, tcp_row, cfg.world_frame, stamp_ns,
+                            interpolate=tf_interp, max_gap_ns=tf_gap_ns)
     waypoints = []
     if pick_ns is not None:
         suction_z = None if tcp_xyz is None else float(tcp_xyz[2])
@@ -642,20 +843,22 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
     if pick_xyz_world is not None and color_info is not None and src_frame:
         cam = tf_buffer.transform_points(
             np.asarray(pick_xyz_world).reshape(1, 3),
-            src_frame, cfg.world_frame, stamp_ns)
+            src_frame, cfg.world_frame, stamp_ns,
+            interpolate=tf_interp, max_gap_ns=tf_gap_ns)
         if cam is not None:
-            frame = camera_info_frame_from_msg(color_info)
-            uv = _project_uv(cam[0], frame.fx, frame.fy, frame.cx, frame.cy)
+            uv = _project_uv(cam[0], color_info.fx, color_info.fy,
+                             color_info.cx, color_info.cy)
     wps_uv = []
     if waypoints and color_info is not None and src_frame:
-        frame = camera_info_frame_from_msg(color_info)
         for wp in waypoints:
             cam = tf_buffer.transform_points(
                 np.asarray(wp["xyz"]).reshape(1, 3),
-                src_frame, cfg.world_frame, stamp_ns)
+                src_frame, cfg.world_frame, stamp_ns,
+                interpolate=tf_interp, max_gap_ns=tf_gap_ns)
             wps_uv.append(
                 None if cam is None else _project_uv(
-                    cam[0], frame.fx, frame.fy, frame.cx, frame.cy))
+                    cam[0], color_info.fx, color_info.fy,
+                    color_info.cx, color_info.cy))
     overlay = _draw_pick(overlay, uv, wps_uv)
 
     pick_dict = None
@@ -672,6 +875,15 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
             "confidence": float(pick_ns.confidence),
         }
 
+    tf_stats = tf_buffer.stats
+    pickup_candidates = None
+    if getattr(cfg, "emit_candidates", ""):
+        pickup_candidates = strategies_for_frame(
+            kept, depth, color_info, pts_world, result,
+            float(detector.config.ransac_dist_thresh),
+            tf_points_fn=lambda pts: tf_buffer.transform_points(
+                pts, cfg.world_frame, src_frame, stamp_ns,
+                interpolate=tf_interp, max_gap_ns=tf_gap_ns))
     return {
         "stamp_sec": stamp_sec,
         "join": pair.source,
@@ -681,6 +893,12 @@ def _process_frame(pair, rgb, depth, segmenter, point_filter, cfg, detector,
         "reason": reason,
         "workspace_source": ws_src,
         "tf_ok": bool(tf_ok),
+        "pickup_candidates": pickup_candidates,
+        "tf_mode": ("interpolated"
+                    if tf_stats["interpolated_edges"]
+                    else ("nearest" if tf_stats["lookups"] else "none")),
+        "tf_gap_ms": (tf_stats["max_edge_gap_ns"] / 1e6
+                      if tf_stats["interpolated_edges"] else None),
         "optical_frame": src_frame,
         "pick": pick_dict,
         "waypoints": waypoints,

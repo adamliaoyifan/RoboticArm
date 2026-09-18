@@ -29,12 +29,23 @@ _HTML = """<!DOCTYPE html>
   <div class="card">
     <div>帧 <span id="frameLabel">0</span></div>
     <input id="slider" type="range" min="0" max="0" value="0"/>
-    <img id="overlay" alt="overlay"/>
+    <div style="position:relative;display:inline-block">
+      <img id="overlay" alt="overlay"/>
+      <div id="labelMark" style="position:absolute;width:14px;height:14px;
+        border:2px solid #00ff88;border-radius:50%;margin:-8px 0 0 -8px;
+        display:none;pointer-events:none"></div>
+    </div>
     <pre id="pickText"></pre>
   </div>
   <div class="card" style="flex:1;min-width:420px">
     <div id="xyz" style="height:420px"></div>
   </div>
+</div>
+<div class="card" id="labelPanel" style="margin-top:12px;display:none">
+  <b>标注模式</b>：在图上点击“可安全吸附的箱盖中心”。
+  <button id="copyLabels" type="button">复制 labels JSON</button>
+  <span id="labelCount"></span>
+  <textarea id="labelOut" rows="6" style="width:100%"></textarea>
 </div>
 <div class="card" style="margin-top:12px">
   <div id="joints" style="height:360px"></div>
@@ -172,7 +183,38 @@ function drawJoints() {
   setFrame(DATA.selected || 0);
   drawXyz();
   drawJoints();
+  initLabelMode();
 })();
+function initLabelMode() {
+  if (!DATA.label_mode) return;
+  $("labelPanel").style.display = "block";
+  const labels = [];
+  const mark = $("labelMark");
+  const img = $("overlay");
+  img.addEventListener("click", e => {
+    const fr = (DATA.frames || [])[+$("slider").value];
+    if (!fr || !fr.frame_id) return;
+    const r = img.getBoundingClientRect();
+    const sx = (img.naturalWidth || r.width) / r.width;
+    const sy = (img.naturalHeight || r.height) / r.height;
+    const u = Math.round((e.clientX - r.left) * sx);
+    const v = Math.round((e.clientY - r.top) * sy);
+    labels.push({
+      frame_id: fr.frame_id,
+      stamp: fr.stamp_sec,
+      suction_safe_lid_center_pixel: [u, v],
+    });
+    mark.style.display = "block";
+    mark.style.left = (u / sx) + "px";
+    mark.style.top = (v / sy) + "px";
+    $("labelCount").textContent = "已标 " + labels.length + " 帧";
+    $("labelOut").value = JSON.stringify({labels: labels}, null, 2);
+  });
+  $("copyLabels").addEventListener("click", () => {
+    $("labelOut").select();
+    document.execCommand("copy");
+  });
+}
 </script>
 </body>
 </html>
