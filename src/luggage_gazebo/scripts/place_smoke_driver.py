@@ -138,6 +138,28 @@ def _yaw_quat(yaw):
     return q
 
 
+def _pick_detection_record(pick):
+    """Z inputs the pick waypoints are derived from.
+
+    `pick_contact_top_z` prefers `top_surface_pose.z` and falls back to
+    `pose.z + height/2`, and the detector only puts the true centre in
+    `pose.z` when `height_valid`. A planning failure cannot be attributed
+    without these fields.
+    """
+    return {
+        "id": str(pick.id),
+        "frame_id": str(pick.header.frame_id),
+        "pose_position": [pick.pose.position.x, pick.pose.position.y,
+                          pick.pose.position.z],
+        "size_wdh": [float(pick.width), float(pick.depth), float(pick.height)],
+        "height_valid": bool(getattr(pick, "height_valid", False)),
+        "height_source": int(getattr(pick, "height_source", 0)),
+        "top_surface_valid": bool(getattr(pick, "top_surface_valid", False)),
+        "top_surface_z": float(pick.top_surface_pose.position.z),
+        "yaw_valid": bool(pick.yaw_valid),
+    }
+
+
 class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def __init__(self, args):
@@ -152,6 +174,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe_joints = None
         self._follow_skipped0 = 0
         self._last_joint_state = None
+        self._last_pick_detection = None
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -530,6 +553,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "occupancy_meta": gt["surface_map"],
         }
 
+    def _scene_box_record(self):
+        """Collision box the pick planner had to avoid, as it was added."""
+        detection = self._last_pick_detection
+        if not detection:
+            return None
+        center = detection["pose_position"]
+        size = detection["size_wdh"]
+        return {
+            "center": center,
+            "size_wdh": size,
+            "z_bottom": center[2] - size[2] * 0.5,
+            "z_top": center[2] + size[2] * 0.5,
+        }
+
     def _on_joint_state(self, msg):
         self._last_joint_state = {
             "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
@@ -568,6 +605,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "planner_message": str(message),
             "sequence": [self._segment_record(s) for s in segments],
             "joint_state_at_failure": self._last_joint_state,
+            "pick_detection": self._last_pick_detection,
+            "scene_pickup_box": self._scene_box_record(),
             "place_state": self._place_state,
         }
 
@@ -956,6 +995,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = detect.message or "MEASURED_NONE"
             return None
         pick_msg = detect.luggage[0]
+        self._last_pick_detection = _pick_detection_record(pick_msg)
         if self._args.use_vacuum:
             scene_ok, scene_msg = self.add_scene_box(pick_msg)
             trial.extras["scene_add"] = scene_msg
