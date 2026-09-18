@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Unit tests for placement_solver floor-prior gate (no roscore, no ROS deps).
+"""Unit tests for placement_solver floor-prior, stacking, and flatten-first.
 
-Covers design §4.2.2: the container floor's *existence* is geometric prior
-(scene_tf), not a perception claim. So:
+Covers design §4.2.2 and docs/architecture/placement.md:
 
   - unobserved columns at ``peak ≈ floor_z`` are ALLOWED (``support_source =
     floor_prior``) -- empty container must yield floor-spanning candidates;
   - stacking on an unobserved surface (``peak > 0`` with unknown in the
     footprint) is REJECTED as ``unknown_above_floor`` -- never blind-stack;
-  - fully-observed floor / observed stacking are unaffected (no regression).
+  - fully-observed stacking is feasible; live score still prefers a remaining
+    floor slot over a low stack.
 """
 
 import os
@@ -17,7 +17,11 @@ import unittest
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-from luggage_packing.placement_solver import generate_candidates  # noqa: E402
+from luggage_packing.placement_solver import (  # noqa: E402
+    generate_candidates,
+    placement_constraint_verdict,
+    solve_placement,
+)
 
 
 def _make_map(nx=20, ny=16, inner=(2.0, 1.6, 1.5), res=0.1,
@@ -145,6 +149,90 @@ class TestFloorPriorGate(unittest.TestCase):
             "stacking on a fully-observed box must be feasible (no unknown_above_floor)")
         for c in stacking:
             self.assertEqual(c["reason"], "ok")
+
+
+KEEP = {"top_n": 400, "keep_rejected": 80}
+
+
+class TestLiveFlattenFirstAndCommitStack(unittest.TestCase):
+    """Live Humble solver: flatten-first ranking and commit-surface stacking.
+
+    Codifies docs/architecture/placement.md: weights do not change after a
+    commit; a known occupied top becomes a stack candidate; as long as a
+    feasible floor slot remains, score still picks the floor.
+    """
+
+    BOX = [0.7, 0.45, 0.28]
+    INNER_H = 1.5
+    COMMIT_H = 0.28
+
+    def _committed_corner_map(self):
+        sm = _make_map(state="free", height=0.0, confidence="sensor")
+        # 0.8 m x 0.6 m occupied patch: fully supports BOX (0.7 x 0.45).
+        _set_region(
+            sm, range(0, 8), range(0, 6),
+            state="occupied", height=self.COMMIT_H, confidence="geometry")
+        return sm
+
+    def _committed_aabb(self):
+        half_l, half_w, res = 1.0, 0.8, 0.1
+        return (
+            -half_l, -half_w, 0.0,
+            -half_l + 8 * res, -half_w + 6 * res, self.COMMIT_H,
+        )
+
+    def _validator(self, placed_aabbs):
+        def _validate(candidate):
+            return placement_constraint_verdict(
+                candidate, self.INNER_H, placed_aabbs=placed_aabbs)
+        return _validate
+
+    def test_floor_outranks_a_low_stack(self):
+        sm = self._committed_corner_map()
+        result = solve_placement(
+            sm, self.BOX, allowed_yaws=[0.0], params=KEEP,
+            candidate_validator=self._validator([self._committed_aabb()]))
+        self.assertTrue(result["success"], result["message"])
+        feasible = [c for c in result["candidates"] if c["feasible"]]
+        peaks = [_peak(c, self.INNER_H, self.BOX[2]) for c in feasible]
+        self.assertTrue(any(p <= 0.05 for p in peaks), "need a floor slot")
+        self.assertTrue(any(p > 0.05 for p in peaks), "need a stack slot")
+        selected_peak = _peak(result["selected"], self.INNER_H, self.BOX[2])
+        self.assertLessEqual(
+            selected_peak, 0.05,
+            "live score must flatten-first while a floor slot remains")
+
+    def test_stack_wins_once_the_floor_is_occupied(self):
+        sm = _make_map(
+            state="occupied", height=self.COMMIT_H, confidence="geometry")
+        result = solve_placement(
+            sm, self.BOX, allowed_yaws=[0.0], params=KEEP)
+        self.assertTrue(result["success"], result["message"])
+        selected_peak = _peak(result["selected"], self.INNER_H, self.BOX[2])
+        self.assertGreater(selected_peak, 0.05)
+        self.assertEqual(result["selected"]["reason"], "ok")
+
+    def test_placed_aabb_blocks_floor_through_box_when_surface_stale(self):
+        """Heights come from surface_2d; overlap comes from request.placed.
+
+        If the map is still empty while placed AABBs already contain the box,
+        floor windows through that volume must be overlap-rejected. A matching
+        committed height map instead lifts those windows onto the top (no
+        positive-volume overlap).
+        """
+        sm = _make_map(state="free", height=0.0, confidence="sensor")
+        result = solve_placement(
+            sm, self.BOX, allowed_yaws=[0.0], params=KEEP,
+            candidate_validator=self._validator([self._committed_aabb()]))
+        rejected_overlap = [
+            c for c in result["candidates"] if c["reason"] == "overlap"]
+        self.assertTrue(
+            rejected_overlap,
+            "stale floor windows through request.placed must be overlap")
+        for cand in rejected_overlap:
+            self.assertFalse(cand["feasible"])
+            self.assertFalse(cand["capacity_feasible"])
+            self.assertLessEqual(_peak(cand, self.INNER_H, self.BOX[2]), 0.05)
 
 
 if __name__ == "__main__":

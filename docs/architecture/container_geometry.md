@@ -70,3 +70,8 @@ enumerated candidate, not the retained `top_n` / `keep_rejected` subset.
 
 Every tried candidate keeps its reason, so `BIN_FULL` remains falsifiable from
 the dump alone.
+
+How candidates are enumerated, stacked on known support, and scored is
+specified in [placement.md](placement.md). What may fill occupancy and box
+size is [real_scenario.md](real_scenario.md): live perception plus hull/floor
+priors, not catalog, Gazebo, or an unverified planned slot.

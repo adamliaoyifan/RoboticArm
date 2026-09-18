@@ -47,3 +47,27 @@ def test_add_duplicate_remove_reset_revision_ledger_and_surface_contract():
 
     mapper.reset()
     assert mapper.stats()["map_revision"] == removed["map_revision"] + 1
+
+
+def test_commit_raises_known_geometry_support_surface():
+    """AddPlacedBox rasterizes SOURCE_GEOMETRY so stacking sees a known top.
+
+    Heights / stacking for the next ComputePlacement come from this surface,
+    not from Gazebo physics (docs/architecture/placement.md).
+    """
+    mapper = _mapper()
+    center = [0.0, 0.0, 0.15]
+    size = [0.2, 0.2, 0.2]
+    assert mapper.mark_placed_box(center, size, yaw=0.0)
+    surface = mapper.surface_map_2d()
+    occupied = [
+        (surface["height"][ix][iy], surface["confidence"][ix][iy])
+        for ix in range(surface["nx"])
+        for iy in range(surface["ny"])
+        if surface["state"][ix][iy] == "occupied"
+    ]
+    assert occupied, "commit must mark footprint columns occupied"
+    heights, confidences = zip(*occupied)
+    assert max(heights) >= size[2] - 1e-9
+    assert set(confidences) == {"geometry"}
+    assert surface["map_revision"] == mapper.stats()["map_revision"]

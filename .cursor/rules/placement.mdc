@@ -1,0 +1,39 @@
+---
+description: Placement candidate generation, stacking, scoring, and occupancy handshake
+globs: src/luggage_packing/**,src/luggage_perception/luggage_perception/cargo_volume_mapper.py,src/luggage_perception/scripts/cargo_volume_mapper_node.py,src/luggage_gazebo/scripts/place_only_eval_driver.py,src/luggage_gazebo/scripts/pack_eval_driver.py,src/luggage_gazebo/luggage_gazebo/place_only_fixture.py
+alwaysApply: false
+---
+
+# Placement
+
+Full contract: `docs/architecture/placement.md`. Hull identity and the
+`ComputePlacement` failure taxonomy: `docs/architecture/container_geometry.md`.
+
+## Must
+
+- Enumerate discrete support-surface poses (grid window and/or exact support
+  centers). Do not Monte Carlo-sample placement poses from a prior.
+- Rest each candidate on `peak = max(height under footprint)` at
+  `z = peak + box_height / 2`. Check the complete oriented payload box.
+- Allow stacking on previously placed cargo only when the footprint support is
+  known. Unobserved columns may land on the a-priori floor
+  (`peak ≈ floor_z`, `floor_prior`). Stacking on an unobserved surface is
+  `unknown_above_floor`.
+- Treat face contact with a placed AABB as support. Positive-volume overlap is
+  a capacity reject.
+- Prefer low placements when ranking the live Humble solver (`compactness` and
+  remaining top clearance). Do not treat a committed box top as a reason to
+  stack while a feasible floor slot remains.
+- Fill `surface_2d` from live depth and/or a verified measured commit. An
+  unverified planned slot, catalog size, or `GetCurrentBox` is not occupancy.
+  See `docs/architecture/real_scenario.md` (`RS-1` .. `RS-3`).
+- Do not copy `request.placed` from the same unverified plan used to fill
+  the height map in order to hide commit–reality disagreement.
+- Use the floor prior only as empty-floor existence when no accepted cargo
+  map exists. A rejected map must fail closed, not answer from the floor
+  prior. Do not treat floor prior as “no cargo inside.”
+- Do not require a fake `height_valid=true` box when detection is honestly
+  TOP_ONLY (`RS-8`).
+- Do not treat `FreeSpaceModel` / `placement_scoring` / the reachability atlas
+  as the live Humble `placement_planner_node` path unless that node and
+  `docs/architecture/placement.md` switch together.

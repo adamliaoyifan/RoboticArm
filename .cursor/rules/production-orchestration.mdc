@@ -26,5 +26,7 @@ Full contract: `docs/architecture/production_orchestration.md`.
   capabilities explicitly for tests.
 - Preserve vacuum on carrying faults until explicit recovery confirms payload
   release.
-- Keep simulation/hardware parity. Production code must not branch on
-  `sim_mode`, consume GT, or use fake success paths.
+- Keep simulation/hardware parity. Production code and eval drivers that
+  call production services must not branch on `sim_mode`, consume GT
+  (`GetCurrentBox`, catalog AABB, unverified planned pose), or use fake
+  success paths. See `docs/architecture/real_scenario.md`.

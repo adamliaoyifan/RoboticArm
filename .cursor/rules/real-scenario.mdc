@@ -1,0 +1,35 @@
+---
+description: Real-scenario packing: no GT/catalog/planned pose as perception
+globs: src/luggage_packing/**,src/luggage_perception/**,src/luggage_planning/**,src/luggage_gazebo/**,src/luggage_bringup/**
+alwaysApply: false
+---
+
+# Real-scenario packing
+
+Full contract: `docs/architecture/real_scenario.md`. Defect IDs `RS-1` ..
+`RS-26` are tracked exceptions, not templates.
+
+## Must
+
+- Drive `DetectLuggage`, `ComputePlacement`, cargo-map commits, vacuum
+  attach, and MoveIt collision from live perception plus allowed priors
+  (container hull, empty-floor existence, catalog height only with
+  `height_valid=false`).
+- Keep Gazebo, `GetCurrentBox`, catalog AABB, and `eval_perfect_geometry`
+  out of those APIs. Eval truth is a score numerator or dump only.
+- Do not stamp GT or catalog size as `height_valid=true` or
+  `HEIGHT_SOURCE_MEASURED_SUPPORT`.
+- Do not treat `HEIGHT_SOURCE_CONFIGURED_SUPPORT` (`platform_z`) as measured
+  FULL_3D geometry.
+- Update cargo-map occupancy from live depth and/or a verified measured
+  commit. An unverified planned slot is not occupancy.
+- Do not copy `request.placed` from the same unverified plan used to fill
+  `surface_2d` in order to hide commit–reality disagreement.
+- Use `floor_prior` only as empty-floor existence when no accepted map
+  exists, not as “the container is empty of cargo.”
+- Do not require a fake FULL_3D box (`height_valid=true`) when detection is
+  honestly TOP_ONLY. Fail closed or place under declared uncertainty.
+- Do not copy ROS1 `allow_gt_fallback`, `strict_perception=False`, gazebo
+  inspect, or GT OBB carving into Humble.
+- Do not branch production or production-API eval drivers on `sim_mode`,
+  skip perception, or use a fake success path.

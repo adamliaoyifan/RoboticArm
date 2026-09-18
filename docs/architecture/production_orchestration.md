@@ -84,4 +84,8 @@ ambiguous, repeated, or mismatched view integration fails closed.
 
 Simulation evaluation may read Gazebo truth only offline or in test/eval scope.
 The online production path must not branch on `sim_mode`, consume GT, or use a
-fake production success path.
+fake production success path. Drivers that call production services
+(`DetectLuggage`, `ComputePlacement`, cargo-map commit, MoveIt) are in that
+online path even when they live under `luggage_gazebo`. Catalog size,
+`GetCurrentBox`, and unverified planned poses are GT for this rule. The
+defect catalog is [real_scenario.md](real_scenario.md).
