@@ -26,6 +26,7 @@ import time
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
 
@@ -150,9 +151,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._tf_trace = []
         self._probe_joints = None
         self._follow_skipped0 = 0
+        self._last_joint_state = None
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        # IK seed for a planning failure: without it a PLAN_<segment> dump
+        # cannot tell an unreachable target from a bad start state.
+        self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10,
+            callback_group=self._group)
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
         self._add_placed = self.create_client(
@@ -521,6 +528,47 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "cloud_xyz": gt["cloud_xyz"],
             "cloud_rgb": gt["cloud_rgb"],
             "occupancy_meta": gt["surface_map"],
+        }
+
+    def _on_joint_state(self, msg):
+        self._last_joint_state = {
+            "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
+            "name": list(msg.name),
+            "position": [float(v) for v in msg.position],
+        }
+
+    @staticmethod
+    def _segment_record(segment):
+        pose = segment.target_pose
+        return {
+            "name": segment.name,
+            "type": segment.type,
+            "target_position": [pose.position.x, pose.position.y,
+                                pose.position.z],
+            "target_orientation": [pose.orientation.x, pose.orientation.y,
+                                   pose.orientation.z, pose.orientation.w],
+            "n_waypoints": len(segment.waypoints),
+            "keep_tool_down": bool(segment.keep_tool_down),
+            "keep_camera_down": bool(segment.keep_camera_down),
+            "lock_wrist": bool(segment.lock_wrist),
+            "allow_ompl_fallback": bool(segment.allow_ompl_fallback),
+            "required_cartesian_fraction": float(
+                segment.required_cartesian_fraction),
+        }
+
+    def _plan_failure_record(self, segments, failed, message):
+        """Planning-boundary payload for a PLAN_<segment> failure.
+
+        Without the requested pose and the start joint state, the dump cannot
+        separate an unreachable target from a bad start state or a collision,
+        and the next run repeats the same blind failure.
+        """
+        return {
+            "failed_segment": self._segment_record(failed),
+            "planner_message": str(message),
+            "sequence": [self._segment_record(s) for s in segments],
+            "joint_state_at_failure": self._last_joint_state,
+            "place_state": self._place_state,
         }
 
     def _dump_place(self, trial, extra_files=None, extra=None, debug=None):
@@ -922,7 +970,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = "BUILD_FAILED"
             trial.extras["build_pick"] = built.message if built else "timeout"
             return None
-        for segment in list(built.segments):
+        segments = list(built.segments)
+        for segment in segments:
             goal = PlanMotion.Goal()
             goal.segment = segment
             ok, message, _res = self.send_action(
@@ -931,6 +980,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if not ok:
                 trial.fail_code = "PLAN_%s" % segment.name
                 trial.extras["plan_%s" % segment.name] = message
+                trial.extras["plan_failure"] = self._plan_failure_record(
+                    segments, segment, message)
                 return None
             if segment.name == "attach" and self._args.use_vacuum:
                 vac_ok, vac_msg = self.vacuum_command(True)
