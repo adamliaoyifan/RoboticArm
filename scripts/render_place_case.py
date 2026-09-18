@@ -117,7 +117,7 @@ def draw_side_view(ax, ctx, data, aabbs):
     ax.set_ylim(-0.05, inner_h + 0.2)
     ax.set_xlabel("container x [m]")
     ax.set_ylabel("height above floor [m]")
-    ax.set_title("side view: why stacking loses top clearance")
+    ax.set_title("side view: cargo stacked on the highest committed surface")
 
 
 def draw_height_map(ax, data):
@@ -228,8 +228,9 @@ def main():
     figure.suptitle(
         "%s  %s  |  product %s  |  independent capacity test %s  |  hash %s"
         % (manifest.get("case_id", "?"), manifest.get("cargo_id", "?"),
-           data["last_result"].get("reason_code", "?"),
-           "agrees" if verdict.get("product_agrees") else "n/a",
+           data["last_result"].get("reason_code") or "success (slot returned)",
+           "agrees" if verdict.get("product_agrees")
+           else ("disagrees" if verdict else "not run (no failure)"),
            saved_hash[:12]),
         fontsize=11)
     figure.tight_layout(rect=(0, 0, 1, 0.97))
