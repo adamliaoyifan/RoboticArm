@@ -123,6 +123,63 @@ class TestPlanFrameJoin(unittest.TestCase):
             self.assertEqual(pair.stamp_ns, pair.depth_stamp_ns)
 
 
+class TestSetArithmeticEquivalence(unittest.TestCase):
+    """The set-arithmetic exact pass must equal the original list-scan
+    implementation on randomized inputs (duplicates included)."""
+
+    @staticmethod
+    def _reference(color_stamps_ns, depth_stamps_ns, tolerance_ns):
+        # Pre-change implementation, verbatim semantics.
+        color_sorted = sorted(int(s) for s in color_stamps_ns)
+        depth_sorted = sorted(int(s) for s in depth_stamps_ns)
+        depth_available = set(depth_sorted)
+        depth_pool = list(depth_sorted)
+        pairs = []
+        paired_color = set()
+        for stamp in color_sorted:
+            if stamp in depth_available:
+                depth_available.discard(stamp)
+                depth_pool.remove(stamp)
+                paired_color.add(stamp)
+                pairs.append((stamp, stamp, "exact", 0))
+        color_orphans = []
+        for stamp in color_sorted:
+            if stamp in paired_color:
+                continue
+            hit = nearest_stamp(depth_pool, stamp, tolerance_ns)
+            if hit is not None:
+                idx, dt = hit
+                depth_stamp = depth_pool.pop(idx)
+                pairs.append((stamp, depth_stamp, "tolerance", int(dt)))
+            else:
+                color_orphans.append(stamp)
+        pairs.sort(key=lambda p: p[0])
+        return (pairs, color_orphans, sorted(depth_pool))
+
+    def test_randomized_inputs_match_reference(self):
+        rng = random.Random(20260917)
+        for trial in range(60):
+            base = rng.randrange(1, 1_000_000)
+            def stamps(n):
+                out = []
+                for _ in range(n):
+                    out.append(base + rng.randrange(0, 400) * MS)
+                    if rng.random() < 0.2:
+                        out.append(out[-1])  # duplicate stamp
+                return out
+            color = stamps(rng.randrange(0, 40))
+            depth = stamps(rng.randrange(0, 40))
+            tolerance = rng.choice([0, MS, 2 * MS, 40 * MS])
+            plan = plan_frame_join(color, depth, tolerance_ns=tolerance)
+            ref_pairs, ref_color_orphans, ref_depth_orphans = \
+                self._reference(color, depth, tolerance)
+            got_pairs = [(p.stamp_ns, p.depth_stamp_ns, p.source, p.dt_ns)
+                         for p in plan.pairs]
+            self.assertEqual(got_pairs, ref_pairs, trial)
+            self.assertEqual(plan.color_orphans, ref_color_orphans, trial)
+            self.assertEqual(plan.depth_orphans, ref_depth_orphans, trial)
+
+
 class TestFrameDirName(unittest.TestCase):
     def test_roundtrip(self):
         for stamp in (0, 1, BASE_NS, BASE_NS + 999_999_999):

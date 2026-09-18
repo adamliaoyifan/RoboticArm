@@ -125,5 +125,59 @@ class TestBagMcapSource(unittest.TestCase):
         self.assertEqual(arr[0, 1].tolist(), [255, 0, 0])
 
 
+class TestHeaderFastPath(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp = tempfile.TemporaryDirectory()
+        cls.bag = build_fixture(os.path.join(cls._tmp.name, "tiny.mcap"))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp.cleanup()
+
+    def test_fast_path_stamps_equal_full_path(self):
+        # Every header-first topic in the fixture: the 8 stamp bytes parse
+        # to exactly the stamp the full deserializer reads.
+        for topic in (COLOR, DEPTH, DEPTH_INFO, "/joint_states",
+                      "/elfin/tcp_pose", "/camera/d555/color/camera_info"):
+            full = list(iter_bag_messages(self.bag, topics=[topic]))
+            fast = list(iter_bag_messages(self.bag, topics=[topic],
+                                          header_only_topics=[topic]))
+            self.assertTrue(full, topic)
+            self.assertEqual(len(full), len(fast), topic)
+            for a, b in zip(full, fast):
+                self.assertEqual(a.header_stamp_ns, b.header_stamp_ns,
+                                 topic)
+                self.assertEqual(a.log_time_ns, b.log_time_ns, topic)
+                self.assertIsNone(b.message, topic)
+                self.assertIsNotNone(a.message, topic)
+
+    def test_parse_cdr_header_stamp_round_trip(self):
+        from builtin_interfaces.msg import Time
+        from rclpy.serialization import serialize_message
+        from sensor_msgs.msg import Image
+
+        from luggage_perception.eval.bag_mcap_source import (
+            parse_cdr_header_stamp,
+        )
+
+        msg = Image()
+        msg.header.stamp = Time(sec=1_760_000_000, nanosec=123_456_789)
+        msg.header.frame_id = "optical"
+        self.assertEqual(parse_cdr_header_stamp(serialize_message(msg)),
+                         1_760_000_000 * 1_000_000_000 + 123_456_789)
+
+    def test_parse_cdr_header_stamp_rejects_junk(self):
+        from luggage_perception.eval.bag_mcap_source import (
+            parse_cdr_header_stamp,
+        )
+
+        self.assertIsNone(parse_cdr_header_stamp(b"\x00\x00\x00\x00"
+                                                 b"\x00\x00\x00\x00"
+                                                 b"\x00\x00\x00\x00"))
+        self.assertIsNone(parse_cdr_header_stamp(b"\x00\x01"))
+        self.assertIsNone(parse_cdr_header_stamp(b""))
+
+
 if __name__ == "__main__":
     unittest.main()

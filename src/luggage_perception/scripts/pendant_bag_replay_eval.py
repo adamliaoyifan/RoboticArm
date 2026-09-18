@@ -29,6 +29,10 @@ from luggage_perception.eval.replay_evaluate import (
     ReplayEvalConfig,
     evaluate_bag,
 )
+from luggage_perception.eval.run_provenance import (
+    check_install_staleness,
+    staleness_warning,
+)
 
 DEFAULT_OUT = os.path.join(
     "docs", "status", "evidence", "pendant_replay")
@@ -37,7 +41,7 @@ DEFAULT_OUT = os.path.join(
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0])
-    parser.add_argument("--bag", action="append", required=True,
+    parser.add_argument("--bag", action="append",
                         help="bag directory or .mcap file (repeatable)")
     parser.add_argument("--out", default=DEFAULT_OUT,
                         help="output root (default %(default)s)")
@@ -124,11 +128,48 @@ def _parse_args(argv):
                              "stub (testing only)")
     parser.add_argument("--dry-run", action="store_true",
                         help="join report only, no YOLO")
+    parser.add_argument("--artifacts", default="full",
+                        choices=["full", "minimal"],
+                        help="'minimal' keeps meta.json + the jsonl "
+                             "streams + summary and skips the per-frame "
+                             "PNG/NPY/PLY/single-frame JSON (iteration "
+                             "runs); 'full' is the evidence layout "
+                             "(default)")
+    parser.add_argument("--cache-dir", default="",
+                        help="sidecar index cache dir (default "
+                             "$XDG_CACHE_HOME/luggage_perception/"
+                             "replay_index)")
+    parser.add_argument("--no-index-cache", dest="use_index_cache",
+                        action="store_false", default=True,
+                        help="always run the full pass A indexing")
+    parser.add_argument("--check-install", action="store_true",
+                        help="verify the installed library matches the "
+                             "source tree and exit (2 when stale); run "
+                             "this before trusting any measured numbers")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+    if not args.bag and not args.check_install:
+        # --bag is declared optional so --check-install can run alone.
+        print("error: the following arguments are required: --bag",
+              file=sys.stderr)
+        return 2
+    staleness = check_install_staleness()
+    if args.check_install:
+        print("install check: mode=%s stale=%s checked=%d" % (
+            staleness["mode"], staleness["stale"],
+            staleness["checked"]))
+        for name in staleness["newer_files"]:
+            print("  newer-or-missing: %s" % name)
+        if staleness["stale"]:
+            print(staleness_warning(staleness), file=sys.stderr)
+            return 2
+        return 0
+    warning = staleness_warning(staleness)
+    if warning:
+        print(warning, file=sys.stderr)
     cfg = ReplayEvalConfig(
         backend=args.backend,
         device=args.device,
@@ -156,6 +197,9 @@ def main(argv=None):
         make_video=args.make_video,
         require_backend=args.require_backend,
         dry_run=args.dry_run,
+        artifacts=args.artifacts,
+        index_cache_dir=args.cache_dir,
+        use_index_cache=args.use_index_cache,
     )
     failures = []
     for bag in args.bag:

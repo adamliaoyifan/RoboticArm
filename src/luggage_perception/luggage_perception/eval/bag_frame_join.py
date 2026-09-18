@@ -92,29 +92,32 @@ def plan_frame_join(color_stamps_ns, depth_stamps_ns,
     """
     color_sorted = sorted(int(s) for s in color_stamps_ns)
     depth_sorted = sorted(int(s) for s in depth_stamps_ns)
-    depth_available = set(depth_sorted)
-    depth_pool = list(depth_sorted)
-    pairs = []
-    paired_color = set()
-
-    for stamp in color_sorted:
-        if stamp in depth_available:
-            depth_available.discard(stamp)
-            depth_pool.remove(stamp)
-            paired_color.add(stamp)
-            pairs.append(FrameJoinPair(
-                stamp_ns=stamp, depth_stamp_ns=stamp,
-                source="exact", dt_ns=0))
+    # Exact pass via set arithmetic — a list .remove per pair made this
+    # O(n^2) on multi-thousand-frame bags. Semantics preserved: one pair
+    # per UNIQUE stamp (a duplicated colour stamp pairs once and the
+    # extras are silently dropped, exactly like the old membership test;
+    # a duplicated depth stamp loses only its FIRST occurrence to the
+    # exact pass), pairs in ascending order, same tolerance pool.
+    exact_stamps = set(color_sorted) & set(depth_sorted)
+    pairs = [FrameJoinPair(stamp_ns=stamp, depth_stamp_ns=stamp,
+                           source="exact", dt_ns=0)
+             for stamp in sorted(exact_stamps)]
+    skip_once = set(exact_stamps)
+    depth_pool = []
+    for stamp in depth_sorted:
+        if stamp in skip_once:
+            skip_once.discard(stamp)  # extra duplicates stay in the pool
+            continue
+        depth_pool.append(stamp)
 
     color_orphans = []
     for stamp in color_sorted:
-        if stamp in paired_color:
+        if stamp in exact_stamps:
             continue
         hit = nearest_stamp(depth_pool, stamp, tolerance_ns)
         if hit is not None:
             idx, dt = hit
             depth_stamp = depth_pool.pop(idx)
-            depth_available.discard(depth_stamp)
             pairs.append(FrameJoinPair(
                 stamp_ns=stamp, depth_stamp_ns=depth_stamp,
                 source="tolerance", dt_ns=int(dt)))

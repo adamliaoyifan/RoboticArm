@@ -101,6 +101,12 @@ class TestEvaluateBagStub(unittest.TestCase):
         self.assertTrue(self.summary["backend"].startswith("stub"))
         self.assertEqual(self.summary["join"]["n_exact"], 2)
 
+    def test_summary_carries_provenance(self):
+        prov = self.summary["provenance"]
+        self.assertEqual(len(prov["config_hash"]), 64)
+        self.assertTrue(prov["code_revision"] == "unknown"
+                        or len(prov["code_revision"]) == 40)
+
     def test_frame_dirs_named_by_stamp(self):
         names = sorted(os.listdir(self.frames))
         self.assertEqual(names, sorted(
@@ -232,8 +238,67 @@ class TestEvaluateBagStub(unittest.TestCase):
             summary = evaluate_bag(self.bag, tmp, _stub_cfg(dry_run=True))
             self.assertEqual(summary["frames_processed"], 0)
             self.assertTrue(summary["dry_run"])
+            # A join report is a claim about the code too: attribution
+            # exists even when no frame runs.
+            self.assertEqual(len(summary["provenance"]["config_hash"]), 64)
             self.assertFalse(os.path.exists(
                 os.path.join(tmp, "tiny", "detections.jsonl")))
+
+    def test_cold_and_warm_runs_are_identical(self):
+        # The sidecar index must be output-neutral: a cache-hit rerun of
+        # the same bag produces byte-identical comparable rows.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = os.path.join(tmp, "cache")
+            cold_out = os.path.join(tmp, "cold")
+            warm_out = os.path.join(tmp, "warm")
+            cold = evaluate_bag(self.bag, cold_out, _stub_cfg(
+                archive_lidar=False, index_cache_dir=cache))
+            self.assertEqual(cold["index_cache"]["state"], "written")
+            warm = evaluate_bag(self.bag, warm_out, _stub_cfg(
+                archive_lidar=False, index_cache_dir=cache))
+            self.assertEqual(warm["index_cache"]["state"], "hit")
+            for name in ("detections.jsonl", "frames.jsonl",
+                         "join_report.json", "camera_info.json"):
+                with open(os.path.join(cold_out, "tiny", name), "rb") as h1, \
+                        open(os.path.join(warm_out, "tiny", name),
+                             "rb") as h2:
+                    self.assertEqual(h1.read(), h2.read(), name)
+            # The lidar archive guard: with archiving on and a fresh out
+            # dir there is no archive to point at, so even a cached bag
+            # must degrade to a full pass A (and rewrite the archive).
+            warm2 = evaluate_bag(self.bag, os.path.join(tmp, "warm2"),
+                                 _stub_cfg(index_cache_dir=cache))
+            self.assertEqual(warm2["index_cache"]["state"], "written")
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmp, "warm2", "tiny", "lidar_index.jsonl")))
+
+    def test_no_index_cache_disables_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            summary = evaluate_bag(self.bag, tmp, _stub_cfg(
+                use_index_cache=False, index_cache_dir=tmp))
+            self.assertEqual(summary["index_cache"]["state"], "disabled")
+
+    def test_minimal_artifacts_skip_per_frame_files(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "out")
+            summary = evaluate_bag(self.bag, out, _stub_cfg(
+                artifacts="minimal"))
+            self.assertEqual(summary["artifacts"], "minimal")
+            self.assertEqual(summary["frames_processed"], 2)
+            frame_dir = os.path.join(out, "tiny", "frames",
+                                     frame_dir_name(T0))
+            files = set(os.listdir(frame_dir))
+            self.assertEqual(files, {"meta.json"})
+            for name in ("detections.jsonl", "frames.jsonl",
+                         "summary.json", "join_report.json",
+                         "camera_info.json", "index.json"):
+                self.assertTrue(os.path.isfile(
+                    os.path.join(out, "tiny", name)), name)
+            self.assertFalse(os.path.exists(
+                os.path.join(out, "tiny", "INDEX.md")))
+            # The comparable rows keep the same content as a full run.
+            with open(os.path.join(out, "tiny", "frames.jsonl")) as handle:
+                self.assertEqual(len(handle.read().strip().splitlines()), 2)
 
 
 class TestCargoSelection(unittest.TestCase):

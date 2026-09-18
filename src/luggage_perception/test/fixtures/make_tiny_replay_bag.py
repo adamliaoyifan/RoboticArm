@@ -230,6 +230,17 @@ def build_fixture(path):
         tf_static.transforms = [tf]
         _write("/tf_static", "tf2_msgs", "TFMessage", tf_static, 0, 0)
 
+        # Stamped dynamic /tf near the frames: exercises the BagTfBuffer
+        # dynamic path and the tf_edges sidecar round-trip.
+        dyn = TFMessage()
+        edge = TransformStamped()
+        _stamp(edge, t0)
+        edge.header.frame_id = "elfin_base_link"
+        edge.child_frame_id = "elfin_end_link"
+        edge.transform.translation.z = 0.6
+        dyn.transforms = [edge]
+        _write("/tf", "tf2_msgs", "TFMessage", dyn, t0, t0 + 1_000_000)
+
         # Full-volume lidar archive cases: one scan near f0, one far from
         # any camera frame (still archived), one duplicate stamp.
         _write("/livox/lidar", "sensor_msgs", "PointCloud2",
