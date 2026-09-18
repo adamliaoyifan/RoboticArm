@@ -102,6 +102,42 @@ from luggage_gazebo.eval_metrics import (  # noqa: E402
     yolo_boxes_ready,
 )
 
+def current_ros_domain():
+    return os.environ.get("ROS_DOMAIN_ID", "") or "0"
+
+
+def ros_domain_of_pid(pid):
+    """Return a process's ROS_DOMAIN_ID, or None when it cannot be read."""
+    try:
+        with open("/proc/%s/environ" % pid, "rb") as handle:
+            raw = handle.read()
+    except (OSError, IOError):
+        return None
+    for item in raw.split(b"\0"):
+        if item.startswith(b"ROS_DOMAIN_ID="):
+            return item.split(b"=", 1)[1].decode("utf-8", "replace") or "0"
+    return "0"
+
+
+def count_procs_in_domain(pattern, domain):
+    """Count matching processes that share this ROS domain.
+
+    A stack on another `ROS_DOMAIN_ID` shares the machine but not the ROS
+    graph, so it must not read as a residual participant here. A process whose
+    environment cannot be read is counted, keeping the gate fail-closed.
+    """
+    try:
+        out = subprocess.check_output(["pgrep", "-f", pattern], text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return 0
+    count = 0
+    for token in out.split():
+        found = ros_domain_of_pid(token.strip())
+        if found is None or found == domain:
+            count += 1
+    return count
+
+
 DUPLICATE_PROCS = (
     ("camera_bridge", r"__node:=camera_bridge"),
     ("move_group", r"moveit_ros_move_group/move_group"),
@@ -608,12 +644,7 @@ class PickRetreatEvalDriver(Node):
         return ok, str(getattr(result, "message", "")), result
 
     def _proc_count(self, pattern):
-        try:
-            out = subprocess.check_output(
-                ["pgrep", "-c", "-f", pattern], text=True)
-            return int(out.strip() or "0")
-        except (OSError, subprocess.CalledProcessError, ValueError):
-            return 0
+        return count_procs_in_domain(pattern, current_ros_domain())
 
     def graph_error(self):
         # Process counts, not DDS names: Fast-DDS keeps ghost participants
