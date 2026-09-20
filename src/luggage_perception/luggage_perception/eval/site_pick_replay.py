@@ -426,15 +426,22 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
                     TF_TOPIC, TF_STATIC_TOPIC]):
                 tf_buffer.add_tf_message(
                     rec.message, static=rec.topic == TF_STATIC_TOPIC)
-            # Upgrade a sidecar that predates TF edges (e.g. written by
-            # pendant_bag_replay_eval): persist what was just streamed
-            # so the next warm run skips the /tf walk entirely.
+            # Re-arm a sidecar whose edge file was missing or corrupt
+            # (deleted cache file, interrupted save): persist what was
+            # just streamed so the next warm run skips the /tf walk, and
+            # update index.json to say so — the tf_edges_file pointer
+            # must match what is actually on disk.
             if cfg.use_index_cache:
                 try:
                     os.makedirs(os.path.dirname(tf_npz), exist_ok=True)
                     tf_buffer.save_edges_npz(tf_npz)
                 except OSError:
                     pass
+                else:
+                    upgraded = dict(cached)
+                    upgraded["tf_edges_file"] = "tf_edges.npz"
+                    write_index(mcap_path, upgraded, cfg.index_cache_dir,
+                                producer="site_pick_replay")
     else:
         pass_a_stream = (
             iter_bag_messages(mcap_path, topics=index_topics,

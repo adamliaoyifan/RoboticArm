@@ -165,6 +165,11 @@ def main(argv=None):
                 labels.append(record)
                 continue
             optical = deproject_pinhole(u, v, z_m, frame)
+            # Per-label accounting: without the reset, stats accumulate
+            # across the whole run and every label after the first
+            # interpolated lookup would claim tf_mode "interpolated"
+            # even when its own lookup was an exact/nearest hit.
+            tf_buffer.reset_stats()
             world = tf_buffer.transform_points(
                 optical.reshape(1, 3), "world", optical_frame, stamp_ns,
                 interpolate=interpolate, max_gap_ns=max_gap_ns)

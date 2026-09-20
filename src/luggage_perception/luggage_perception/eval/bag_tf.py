@@ -501,20 +501,33 @@ class BagTfBuffer(object):
         # Rows were rebuilt ascending from the arrays; skip the re-sort.
         self._sorted = True
 
-    @staticmethod
-    def _npz_escape(name):
-        # npz keys become zip entry names: escape separators so a frame
-        # id can never nest inside a directory-like entry.
-        return str(name).replace("/", "%2F")
+    # v1 escaped only "/" — a frame id literally containing "%2F" then
+    # collided with one containing "/". v2 escapes "%" first, making the
+    # map injective; the marker below lets v1 files still load with
+    # their original (non-)semantics.
+    _NPZ_ESCAPE_VERSION = 2
 
     @staticmethod
-    def _npz_unescape(name):
-        return str(name).replace("%2F", "/")
+    def _npz_escape(name, version=2):
+        # npz keys become zip entry names: escape separators so a frame
+        # id can never nest inside a directory-like entry.
+        text = str(name)
+        if version < 2:
+            return text.replace("/", "%2F")
+        return text.replace("%", "%25").replace("/", "%2F")
+
+    @staticmethod
+    def _npz_unescape(name, version=2):
+        text = str(name)
+        if version < 2:
+            return text.replace("%2F", "/")
+        return text.replace("%2F", "/").replace("%25", "%")
 
     def save_edges_npz(self, path):
         """Write static+dynamic edges to an npz sidecar file."""
         edges = self.export_edges()
         payload = {
+            "escape_version": np.asarray(self._NPZ_ESCAPE_VERSION),
             "dynamic_children": np.asarray(
                 sorted(self._npz_escape(c) for c in edges), dtype=np.str_),
         }
@@ -541,9 +554,13 @@ class BagTfBuffer(object):
     def load_edges_npz(self, path):
         """Restore from ``save_edges_npz`` output (replaces content)."""
         with np.load(path, allow_pickle=False) as data:
+            # Files pre-dating the injective escape carry no marker and
+            # must decode with their original v1 rules.
+            version = (int(data["escape_version"])
+                       if "escape_version" in data.files else 1)
             edges = {}
             for escaped in [str(c) for c in data["dynamic_children"]]:
-                child = self._npz_unescape(escaped)
+                child = self._npz_unescape(escaped, version)
                 edges[child] = {
                     "stamps": data["dyn_%s__stamps" % escaped],
                     "parents": [str(p) for p in
@@ -555,7 +572,7 @@ class BagTfBuffer(object):
                 }
             static_edges = {}
             for escaped in [str(c) for c in data["static_children"]]:
-                child = self._npz_unescape(escaped)
+                child = self._npz_unescape(escaped, version)
                 static_edges[child] = (
                     str(data["sta_%s__parent" % escaped]),
                     data["sta_%s__mat" % escaped])

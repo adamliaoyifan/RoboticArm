@@ -145,8 +145,15 @@ def _camera_info(topic, ns):
     return msg
 
 
-def build_fixture(path):
-    """Write the tiny fixture bag; returns the output path."""
+def build_fixture(path, camera_tf_stamps=()):
+    """Write the tiny fixture bag; returns the output path.
+
+    ``camera_tf_stamps`` (ns iterables) optionally adds dynamic
+    ``elfin_base_link -> d555_color_optical_frame`` /tf samples at those
+    stamps, closing the optical->world chain with a bracketable dynamic
+    edge (TF interpolation / label-backfill tests). Default: none — the
+    default fixture stays byte-for-byte the historical layout.
+    """
     if os.path.exists(path):
         os.remove(path)
     os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
@@ -240,6 +247,21 @@ def build_fixture(path):
         edge.transform.translation.z = 0.6
         dyn.transforms = [edge]
         _write("/tf", "tf2_msgs", "TFMessage", dyn, t0, t0 + 1_000_000)
+
+        # Optional dynamic base->optical edges (see build_fixture doc):
+        # each stamp is its own message, mirroring how real bags stream.
+        for cam_ns in camera_tf_stamps:
+            cam_ns = int(cam_ns)
+            cam_dyn = TFMessage()
+            cam_edge = TransformStamped()
+            _stamp(cam_edge, cam_ns)
+            cam_edge.header.frame_id = "elfin_base_link"
+            cam_edge.child_frame_id = "d555_color_optical_frame"
+            cam_edge.transform.translation.x = 0.4
+            cam_edge.transform.translation.z = 0.7
+            cam_dyn.transforms = [cam_edge]
+            _write("/tf", "tf2_msgs", "TFMessage", cam_dyn,
+                   cam_ns, cam_ns + 500_000)
 
         # Full-volume lidar archive cases: one scan near f0, one far from
         # any camera frame (still archived), one duplicate stamp.

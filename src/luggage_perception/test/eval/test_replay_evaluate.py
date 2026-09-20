@@ -299,6 +299,24 @@ class TestEvaluateBagStub(unittest.TestCase):
             # The comparable rows keep the same content as a full run.
             with open(os.path.join(out, "tiny", "frames.jsonl")) as handle:
                 self.assertEqual(len(handle.read().strip().splitlines()), 2)
+            # No PLY exists in minimal mode, so its vertex count in
+            # meta.json is an honest null — never a fake 0 sitting next
+            # to a real n_points.
+            with open(os.path.join(frame_dir, "meta.json"),
+                      encoding="utf-8") as handle:
+                meta = json.load(handle)
+            self.assertIsNotNone(meta["cargo_points"])
+            self.assertIsNone(meta["cargo_points"]["ply_vertices"])
+            self.assertIsInstance(meta["cargo_points"]["n_points"], int)
+            full_out = os.path.join(tmp, "full")
+            evaluate_bag(self.bag, full_out, _stub_cfg())
+            full_meta_path = os.path.join(
+                full_out, "tiny", "frames", frame_dir_name(T0), "meta.json")
+            with open(full_meta_path, encoding="utf-8") as handle:
+                full_meta = json.load(handle)
+            self.assertIsNotNone(full_meta["cargo_points"])
+            self.assertIsInstance(
+                full_meta["cargo_points"]["ply_vertices"], int)
 
 
 class TestCargoSelection(unittest.TestCase):

@@ -222,6 +222,52 @@ class TestBagTf(unittest.TestCase):
         late = restored.lookup_matrix("world", "ee", 300_000_000)
         np.testing.assert_allclose(late[0, 3], 9.0)
 
+    def test_npz_escape_round_trips_slash_and_percent(self):
+        # v2 escaping is injective: "/"-bearing, "%"-bearing and
+        # literal "%2F"/"%25" frame ids all survive the npz key round
+        # trip as distinct names.
+        names = ["plain", "slashed/name", "pct%25", "literal%2Fname",
+                 "mix%2Fed/name"]
+        buf = BagTfBuffer()
+        for i, name in enumerate(names):
+            buf.add_transform(self._tf("world", name, (0.1 * i, 0, 0)),
+                              static=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "tf_edges.npz")
+            buf.save_edges_npz(path)
+            restored = BagTfBuffer()
+            restored.load_edges_npz(path)
+            self.assertEqual(restored.frames(), buf.frames())
+            for i, name in enumerate(names):
+                mat = restored.lookup_matrix("world", name, 0)
+                self.assertIsNotNone(mat, name)
+                np.testing.assert_allclose(mat[0, 3], 0.1 * i)
+
+    def test_npz_v1_file_loads_with_v1_rules(self):
+        # Files written before the escape_version marker escaped only
+        # "/" and must keep decoding exactly as they always did.
+        child = "slashed/name"
+        escaped = "slashed%2Fname"
+        payload = {
+            "dynamic_children": np.asarray([escaped], dtype=np.str_),
+            "dyn_%s__stamps" % escaped: np.asarray([0], dtype=np.int64),
+            "dyn_%s__parents" % escaped: np.asarray(
+                ["world"], dtype=np.str_),
+            "dyn_%s__translations" % escaped: np.zeros((1, 3)),
+            "dyn_%s__quats" % escaped: np.asarray([[0, 0, 0, 1.0]]),
+            "dyn_%s__mats" % escaped: np.eye(4).reshape(1, 4, 4),
+            "static_children": np.asarray([], dtype=np.str_),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "v1_edges.npz")
+            with open(path, "wb") as handle:
+                np.savez(handle, **payload)
+            restored = BagTfBuffer()
+            restored.load_edges_npz(path)
+            self.assertIn(child, restored.frames())
+            self.assertIsNotNone(restored.lookup_matrix(
+                "world", child, 0))
+
 
 class TestTfInterpolation(unittest.TestCase):
     def _tf(self, parent, child, xyz, quat=(0.0, 0.0, 0.0, 1.0),
@@ -562,6 +608,28 @@ class TestReplayFixture(unittest.TestCase):
                              warm_payload["tf_frames"])
             self.assertTrue(os.path.isfile(sidecar_path(
                 self.bag, "tf_edges.npz", cache)))
+
+    def test_upgrade_path_rewrites_index_pointer(self):
+        # tf_edges.npz deleted after a cold run: the warm run re-streams
+        # /tf, re-saves the npz, AND index.json must say so — the
+        # tf_edges_file pointer has to match what is on disk.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = os.path.join(tmp, "cache")
+            cfg = dict(backend="stub", require_backend=False,
+                       device="cpu", stride=1, max_frames=2,
+                       index_cache_dir=cache)
+            replay_site_pick(self.bag, os.path.join(tmp, "cold"),
+                             SitePickConfig(**cfg))
+            tf_npz = sidecar_path(self.bag, "tf_edges.npz", cache)
+            self.assertTrue(os.path.isfile(tf_npz))
+            os.remove(tf_npz)
+            replay_site_pick(self.bag, os.path.join(tmp, "warm"),
+                             SitePickConfig(**cfg))
+            self.assertTrue(os.path.isfile(tf_npz))
+            with open(os.path.join(os.path.dirname(tf_npz), "index.json"),
+                      encoding="utf-8") as handle:
+                index = json.load(handle)
+            self.assertEqual(index["tf_edges_file"], "tf_edges.npz")
 
 
 class TestCliDomainGuard(unittest.TestCase):

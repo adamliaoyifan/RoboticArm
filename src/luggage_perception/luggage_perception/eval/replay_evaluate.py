@@ -984,10 +984,14 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
             n_ply = write_ply_xyz(
                 os.path.join(frame_dir, "cargo_points.ply"),
                 np.asarray(cargo_pts, dtype=np.float64))
+            ply_vertices = int(n_ply)
         else:
-            n_ply = 0
+            # No PLY file exists in minimal mode: report the absence as
+            # null, not 0 — a zero next to a real n_points reads like an
+            # empty cloud instead of a skipped write.
+            ply_vertices = None
         cargo_meta = {"n_points": int(len(cargo_pts)),
-                      "ply_vertices": int(n_ply),
+                      "ply_vertices": ply_vertices,
                       "frame": "optical(d555_color_optical_frame)"}
 
     lidar_meta = None
