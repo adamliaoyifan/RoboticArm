@@ -12,13 +12,11 @@ import unittest
 import numpy as np
 
 from luggage_perception.top_support_estimator import (
-    DETECT_HEIGHT_PRIOR_ONLY,
     DETECT_SUPPORT_UNOBSERVABLE,
     DETECT_SUPPORT_UNSTABLE,
     DETECT_TOP_UNOBSERVABLE,
     GEOMETRY_FULL_3D,
     GEOMETRY_TOP_ONLY,
-    HEIGHT_SOURCE_CATALOG_PRIOR,
     HEIGHT_SOURCE_CONFIGURED_SUPPORT,
     HEIGHT_SOURCE_MEASURED_SUPPORT,
     HEIGHT_SOURCE_UNAVAILABLE,
@@ -335,18 +333,18 @@ class TestComposeBoxGeometry(unittest.TestCase):
                          HEIGHT_SOURCE_CONFIGURED_SUPPORT)
         self.assertAlmostEqual(box.height, h, delta=0.015)
 
-    def test_catalog_prior_is_not_valid_geometry(self):
+    def test_catalog_height_is_not_applied(self):
         w, d, h = SIZES[0]
         cargo, raw, _ = _full_scene(w, d, h, 0.0, 0.62, seed=14,
                                     drop_sides=("+u", "-u", "+v", "-v"))
         top = estimate_top_surface(cargo, WORKSPACE, CONFIG)
-        box = compose_box_geometry(top, None, catalog_height=h)
+        box = compose_box_geometry(top, None)
         self.assertFalse(box.height_valid)
-        self.assertEqual(box.height_source, HEIGHT_SOURCE_CATALOG_PRIOR)
-        self.assertEqual(box.reason, DETECT_HEIGHT_PRIOR_ONLY)
+        self.assertEqual(box.height_source, HEIGHT_SOURCE_UNAVAILABLE)
         self.assertEqual(box.geometry_level, GEOMETRY_TOP_ONLY)
-        # Numeric prior present for display only.
-        self.assertAlmostEqual(box.height, h, delta=1e-9)
+        self.assertEqual(box.height, 0.0)
+        with self.assertRaises(TypeError):
+            compose_box_geometry(top, None, catalog_height=h)
 
     def test_top_only(self):
         w, d, h = SIZES[0]

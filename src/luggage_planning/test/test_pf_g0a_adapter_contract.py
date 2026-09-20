@@ -100,8 +100,8 @@ class TestPickFromDetectedContract(unittest.TestCase):
     def test_prior_only_height_cannot_drive_pick(self):
         msg = _full_geometry_msg()
         msg.top_surface_valid = False
-        msg.height_valid = False  # catalog prior populated the number only
-        msg.height_source = DetectedLuggage.HEIGHT_SOURCE_CATALOG_PRIOR
+        msg.height_valid = False
+        msg.height_source = DetectedLuggage.HEIGHT_SOURCE_UNAVAILABLE
         pick = pick_from_detected(msg)
         self.assertFalse(pick.height_valid)
         with self.assertRaises(ValueError) as ctx:
@@ -111,7 +111,7 @@ class TestPickFromDetectedContract(unittest.TestCase):
             build_sequence(pick, _slot(), "pick")
 
     def test_top_only_pick_uses_measured_top_z(self):
-        """TOP_ONLY is valid for picking (top measured), invalid for height."""
+        """TOP_ONLY still yields a measured contact Z; height stays invalid."""
         msg = _full_geometry_msg()
         msg.height_valid = False
         msg.height_source = DetectedLuggage.HEIGHT_SOURCE_UNAVAILABLE

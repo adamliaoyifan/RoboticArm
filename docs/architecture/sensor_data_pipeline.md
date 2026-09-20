@@ -95,7 +95,10 @@ synchronised set of standard messages (`Image`, `CameraInfo`) plus a JSON
 status string. The preprocessor does: view construction, buffering,
 pairing, frame validation, motion gating, and payload-identical republish.
 It does **not** run detection, RANSAC, planning, or point-cloud transport.
-Single-stream adapters (depth metre-to-millimetre) stay upstream of it.
+It does **not** subscribe `/luggage/current_box`. Task epoch (spawn id +
+generation) is latched by the segmenter, filter, and detector nodes, not by
+the camera pairer. Single-stream adapters (depth metre-to-millimetre) stay
+upstream of it.
 
 The D555 adapter maps device acquisition stamps into host ROS time; it must
 not replace them with callback receipt `now()`. Equal device stamps map to
@@ -314,3 +317,8 @@ Freshness is a snapshot property. Multi-sensor alignment is not re-implemented
 per consumer. A single-input consumer may still reject a cached preprocessed
 message that is older than its own deadline; that is an age check on
 `primary_stamp`, not a second pairing loop.
+
+Segmenter ingest is not a second pairer. It binds the latest `current_box`
+epoch onto an already stamp-joined preprocessed RGB frame
+(`SegmenterIngest.assemble`). Filter and detector keep their own epoch reset
+from the same topic; mask `sensor_msgs/Image` cannot carry generation.

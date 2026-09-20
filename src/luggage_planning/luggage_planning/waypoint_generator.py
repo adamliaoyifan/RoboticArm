@@ -40,8 +40,8 @@ DEFAULT_CORRIDOR_MARGIN = 0.05
 
 # Pick waypoint generation needs a measured pickup contact Z (E0/E4,
 # docs/plans/platform_free_height_eng_todo.md): either the measured
-# top_surface_pose or a measured height to derive it from. A catalog prior
-# (height_valid=false) must never drive the arm down.
+# top_surface_pose or a measured height to derive it from. An unmeasured
+# height (including a catalog prior) must never drive the arm down.
 FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
 
 

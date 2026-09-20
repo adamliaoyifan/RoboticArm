@@ -13,8 +13,8 @@ Full contract: `docs/architecture/real_scenario.md`. Defect IDs `RS-1` ..
 
 - Drive `DetectLuggage`, `ComputePlacement`, cargo-map commits, vacuum
   attach, and MoveIt collision from live perception plus allowed priors
-  (container hull, empty-floor existence, catalog height only with
-  `height_valid=false`).
+  (container hull, empty-floor existence). Catalog suitcase WDH is
+  spawn-only and must not fill those APIs.
 - Keep Gazebo, `GetCurrentBox`, catalog AABB, and `eval_perfect_geometry`
   out of those APIs. Eval truth is a score numerator or dump only.
 - Do not stamp GT or catalog size as `height_valid=true` or
@@ -27,8 +27,9 @@ Full contract: `docs/architecture/real_scenario.md`. Defect IDs `RS-1` ..
   `surface_2d` in order to hide commit–reality disagreement.
 - Use `floor_prior` only as empty-floor existence when no accepted map
   exists, not as “the container is empty of cargo.”
-- Do not require a fake FULL_3D box (`height_valid=true`) when detection is
-  honestly TOP_ONLY. Fail closed or place under declared uncertainty.
+- Do not authorize pick, MoveIt pickup AABB, or `ComputePlacement` without
+  `height_source=MEASURED_SUPPORT`. TOP_ONLY is a detection, not grasp
+  authority. Fail closed or wait/reobserve; do not invent height.
 - Do not copy ROS1 `allow_gt_fallback`, `strict_perception=False`, gazebo
   inspect, or GT OBB carving into Humble.
 - Do not branch production or production-API eval drivers on `sim_mode`,

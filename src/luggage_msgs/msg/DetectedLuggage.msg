@@ -17,8 +17,9 @@ geometry_msgs/Pose top_surface_pose
 bool top_surface_valid
 float64 top_surface_confidence
 # Height/center-Z are geometric measurements only when height_valid is true.
-# A catalog/configured prior may populate the numeric height with
-# height_valid=false; consumers must not build collision geometry from it.
+# Catalog suitcase size must not populate height. TOP_ONLY leaves height at 0
+# with HEIGHT_SOURCE_UNAVAILABLE; consumers must not invent a collision box
+# from a prior.
 bool height_valid
 float64 height_confidence
 uint8 HEIGHT_SOURCE_UNAVAILABLE=0

@@ -534,8 +534,11 @@ class TestReplayFixture(unittest.TestCase):
         self.assertEqual(_moveit_scene_objects("none", pick), [])
         self.assertEqual(_moveit_scene_objects("cargo", None), [])
         invalid = dict(pick, height_valid=False)
-        fell_back = _moveit_scene_objects("cargo", invalid)
-        self.assertAlmostEqual(fell_back[0]["dimensions"][2], 0.30)
+        skipped = _moveit_scene_objects("cargo", invalid)
+        self.assertEqual(skipped, [])
+        ground = _moveit_scene_objects("cargo_ground", invalid)
+        self.assertEqual(len(ground), 1)
+        self.assertEqual(ground[0]["id"], "replay_ground")
 
     def test_moveit_scene_plumbing_reaches_planner(self):
         # The stub backend yields no detections on the fixture bag, so

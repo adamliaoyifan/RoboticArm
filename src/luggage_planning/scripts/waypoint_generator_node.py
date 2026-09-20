@@ -26,11 +26,6 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import ColorRGBA, String
 from visualization_msgs.msg import Marker, MarkerArray
 
-from luggage_description.box_catalog_utils import (
-    box_catalog_path_from_scene,
-    box_size_range,
-    load_box_catalog,
-)
 from luggage_description.scene_tf_config_utils import (
     _point_in_container_link,
     container_inner_ceiling_z,
@@ -126,7 +121,6 @@ class WaypointGeneratorNode(Node):
         ceiling_z = container_inner_ceiling_z(self._scene_config)
         self._inner_size = [
             float(inner[0]), float(inner[1]), float(ceiling_z - floor_z)]
-        self._smallest_box = self._smallest_box_size()
         self._committed_boxes = []
 
         self._frame_window = LockedStampWindow(
@@ -167,14 +161,6 @@ class WaypointGeneratorNode(Node):
             "waypoint_generator ready (clearances %s, place_slot_frame=%s)"
             % (DEFAULT_PICK_CLEARANCES, self._place_slot_frame))
 
-    def _smallest_box_size(self):
-        try:
-            catalog = load_box_catalog(
-                box_catalog_path_from_scene(self._scene_config))
-            return [low for low, _high in box_size_range(catalog)]
-        except Exception:  # noqa: BLE001 - corridor probe fallback
-            return [0.55, 0.40, 0.25]
-
     def _on_committed(self, msg):
         try:
             payload = json.loads(msg.data)
@@ -203,7 +189,7 @@ class WaypointGeneratorNode(Node):
         local = _point_in_container_link(base, self._scene_config)
         aabb = corridor_aabb(
             local, [slot.width, slot.depth, slot.height],
-            self._inner_size, self._smallest_box)
+            self._inner_size, [slot.width, slot.depth, slot.height])
         surface_local = corridor_surface_max(self._committed_boxes, aabb)
         if surface_local is None:
             return None

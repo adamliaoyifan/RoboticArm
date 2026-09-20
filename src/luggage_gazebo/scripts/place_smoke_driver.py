@@ -138,6 +138,19 @@ def _yaw_quat(yaw):
     return q
 
 
+def _parse_synthetic_size(text):
+    parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
+    if len(parts) != 3:
+        return None
+    try:
+        size = tuple(float(part) for part in parts)
+    except ValueError:
+        return None
+    if any(value <= 0.0 for value in size):
+        return None
+    return size
+
+
 def _pick_detection_record(pick):
     """Z inputs the pick waypoints are derived from.
 
@@ -200,10 +213,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             callback_group=self._group)
         self._probe = MotionExecutor(self)
         self._keep_placed = False
+        self._last_authorized_pick = None
 
     def _exit_to_portal(self):
         """Cartesian reverse of traverse so HOME does not start inside the box."""
-        dummy = self._dummy_pick((0.55, 0.40, 0.25))
+        dummy = getattr(self, "_last_authorized_pick", None)
+        if dummy is None:
+            return False, "no measured pick for place_exit"
         slot, _meta = self._fixed_slot(dummy)
         req = BuildMotionSequence.Request()
         req.phase = "place"
@@ -300,6 +316,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return None
         return parse_ign_model_pose(out)
+
+    def on_detected_luggage(self, pick_msg, trial, spawn):
+        """Hook after DetectLuggage. Return a fail_code or empty string.
+
+        Pack-eval computes the place slot from this detection. Spawn GT
+        must not become ComputePlacement input.
+        """
+        del pick_msg, trial, spawn
+        return ""
+
+    def _place_slot_for(self, pick_msg, box_msg, trial):
+        """Place slot from measured detection, never from GetCurrentBox."""
+        del box_msg
+        if not bool(getattr(pick_msg, "height_valid", False)):
+            trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
+            return None, None
+        return self._fixed_slot(pick_msg)
 
     def _fixed_slot(self, box):
         height = float(box.height)
@@ -876,11 +909,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             float(size[0]), float(size[1]), float(size[2])]
         msg.yaw_valid = False
         msg.pose.orientation.w = 1.0
+        msg.height_valid = False
+        msg.height_source = DetectedLuggage.HEIGHT_SOURCE_UNAVAILABLE
+        msg.top_surface_valid = False
         return msg
 
     def run_trial(self, index, slot=None, slot_meta=None,
                   already_spawned=False, keep_placed=False):
         t0 = time.time()
+        self._yolo_decision_record = None
+        self._frozen_bundle = None
         self._timeline = []
         self._segments_log = []
         self._tf_trace = []
@@ -891,11 +929,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras = {}
 
         if self._args.plan_only or self._args.payload == "none":
-            size = (0.55, 0.40, 0.25)
+            size = _parse_synthetic_size(
+                getattr(self._args, "synthetic_size", ""))
+            if size is None:
+                trial.fail_code = "SYNTHETIC_SIZE_REQUIRED"
+                trial.extras["synthetic_plan_only"] = True
+                return trial
             pick = self._dummy_pick(size)
+            trial.extras["synthetic_plan_only"] = True
+            trial.extras["synthetic_size_wdh"] = list(size)
             if slot is None:
                 slot, slot_meta = self._fixed_slot(pick)
-            trial.catalog_id = "carryon"
+            trial.catalog_id = "synthetic"
             if self._args.payload == "none" and not self._args.plan_only:
                 self._home_arm()
             result = self.run_place_from_carry(pick, trial, slot, slot_meta)
@@ -911,7 +956,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         pick_msg, box_msg = carry
         self._box_model = str(getattr(box_msg, "id", "") or self._box_model or "")
         if slot is None:
-            slot, slot_meta = self._fixed_slot(box_msg)
+            slot, slot_meta = self._place_slot_for(pick_msg, box_msg, trial)
+            if slot is None:
+                trial.place_state = self._place_state or "CARRY_READY"
+                self._dump_place(trial)
+                return trial
         result = self.run_place_from_carry(pick_msg, trial, slot, slot_meta)
         result.wall_time_sec = time.time() - t0
         if (not keep_placed) and result.fail_code not in CARRYING_ABORTS:
@@ -972,7 +1021,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras["spawn_id"] = spawn.box.id
             trial.extras["spawn_generation"] = generation
             trial.extras["topic_box_id"] = box_id
-            trial.extras["seg_stats"] = _parse_json(self._seg_stats["payload"])
+            decision = self._yolo_decision_record or _parse_json(
+                self._seg_stats["payload"])
+            trial.extras["seg_stats"] = decision
+            trial.extras["decision_record"] = decision
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):
@@ -980,22 +1032,24 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 _parse_json(self._filter_stats["payload"]),
                 generation, spawn.box.id)
             return None
-        detect = self.call_srv(
-            self._detect, DetectLuggage.Request(),
-            timeout=self._args.detect_timeout)
+        auth = self.detect_until_authorized()
+        trial.extras["pick_authorization"] = auth.to_dict()
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
-        if detect is None:
-            trial.fail_code = "DETECT_TIMEOUT"
+        if not auth.authorized:
+            trial.fail_code = auth.decision.reason
+            trial.extras["detect"] = auth.detect_reason or auth.decision.reason
             return None
+        pick_msg = auth.box
+        self._last_authorized_pick = pick_msg
+        self._last_pick_detection = _pick_detection_record(pick_msg)
         if current is None or not current.success:
             trial.fail_code = "GT_UNAVAILABLE"
             return None
-        if not detect.success or not detect.luggage:
-            trial.fail_code = detect.message or "MEASURED_NONE"
+        place_err = self.on_detected_luggage(pick_msg, trial, spawn)
+        if place_err:
+            trial.fail_code = place_err
             return None
-        pick_msg = detect.luggage[0]
-        self._last_pick_detection = _pick_detection_record(pick_msg)
         if self._args.use_vacuum:
             scene_ok, scene_msg = self.add_scene_box(pick_msg)
             trial.extras["scene_add"] = scene_msg
@@ -1069,7 +1123,18 @@ def parse_args(argv):
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
     parser.add_argument("--scene-tf-config", default="")
+    parser.add_argument(
+        "--synthetic-size", default="",
+        help="W,D,H metres for --dry-run / --payload none. Required there.")
+    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
+    parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     args = parser.parse_args(argv)
+    if ((args.plan_only or args.payload == "none")
+            and _parse_synthetic_size(args.synthetic_size) is None):
+        parser.error(
+            "--synthetic-size W,D,H is required for --dry-run and "
+            "--payload none")
     args.use_vacuum = args.payload == "vacuum" and not args.plan_only
     args.dump_dir = args.dump_dir or os.path.join(args.out, "dumps")
     return args

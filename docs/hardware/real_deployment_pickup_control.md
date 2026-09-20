@@ -70,6 +70,13 @@ There must be exactly one owner for D555, one owner for CPS, and one owner for
 scene TF. The Lenovo graph consumes `/luggage/*` perception outputs published
 by Orin.
 
+The Orin segmenter is its own subscribe/publish node: preprocessed colour in,
+mask / YOLO / overlay / `stats_json` out. It is not folded into the D555
+process. Hardware launch does not start `pickup_box_spawner`, so
+`/luggage/current_box` may be omitted. Perception still runs with
+`generation=0`; identity on YOLO and stats is empty until an orchestrator
+publishes id+generation. Do not bind site DetectLuggage to a spawn id.
+
 ## Pickup XY Contract
 
 Do not change `luggage_msgs/DetectedLuggage.msg` for pickup XY selection.

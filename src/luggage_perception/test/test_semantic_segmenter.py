@@ -217,6 +217,9 @@ class TestUpdateCopyOutput(unittest.TestCase):
         self.assertEqual(out.label_map.shape, (12, 16))
         self.assertEqual(out.label_map.dtype, np.uint8)
         self.assertIsNone(out.instance_map)
+        self.assertEqual(out.generation, 0)
+        self.assertEqual(out.instance_id, "")
+        self.assertEqual(out.stats.get("generation"), 0)
         self.assertIn("backend", out.stats)
 
     def test_second_update_does_not_mutate_first_output(self):
@@ -239,6 +242,23 @@ class TestUpdateCopyOutput(unittest.TestCase):
         fresh = seg.copy_output()
         self.assertEqual(int(fresh.label_map.max()), 0)
         self.assertNotEqual(fresh.stats["backend"], "tampered")
+
+    def test_update_copies_task_epoch_onto_output(self):
+        seg = build_segmenter({"backend": "stub", "prompts": ["suitcase"]})
+        rgb = np.zeros((12, 16, 3), dtype=np.uint8)
+        seg.update(
+            rgb, stamp=5.0, frame_id="optical",
+            generation=2, instance_id="pickup_box_0001_carryon")
+        out = seg.copy_output()
+        self.assertEqual(out.generation, 2)
+        self.assertEqual(out.instance_id, "pickup_box_0001_carryon")
+        self.assertEqual(out.stats["generation"], 2)
+        self.assertEqual(out.stats["instance_id"], "pickup_box_0001_carryon")
+        first = out
+        seg.update(rgb, stamp=6.0, frame_id="optical", generation=3,
+                   instance_id="pickup_box_0002_carryon")
+        self.assertEqual(first.generation, 2)
+        self.assertEqual(first.instance_id, "pickup_box_0001_carryon")
 
     def test_detection_mask_is_copied(self):
         # A backend that returns detections with an HxW bool mask (SAM2 shape).

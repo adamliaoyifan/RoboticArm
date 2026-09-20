@@ -16,9 +16,9 @@ from luggage_perception.platform_free_pipeline import (
 )
 from luggage_perception.top_support_estimator import (
     DETECT_SUPPORT_STAMP_MISMATCH,
-    HEIGHT_SOURCE_CATALOG_PRIOR,
     HEIGHT_SOURCE_CONFIGURED_SUPPORT,
     HEIGHT_SOURCE_MEASURED_SUPPORT,
+    HEIGHT_SOURCE_UNAVAILABLE,
 )
 
 from test_top_support_estimator import (
@@ -162,18 +162,20 @@ class TestPipelineFaults(unittest.TestCase):
         self.assertAlmostEqual(out.box.height, h, delta=0.015)
         self.assertNotAlmostEqual(out.box.height, h - 0.20, delta=0.05)
 
-    def test_catalog_prior_stays_invalid(self):
+    def test_catalog_entries_are_not_an_input(self):
         cargo, raw, _, h, _ = _scene(
             seed=34, drop_sides=("+u", "-u", "+v", "-v"))
-        det = _detector(
-            support_mode="auto",
-            catalog_entries=[{"size": (SIZES[1][0], SIZES[1][1], h)}],
-            catalog_tolerance=0.08)
+        with self.assertRaises(TypeError):
+            _detector(
+                support_mode="auto",
+                catalog_entries=[{"size": (SIZES[1][0], SIZES[1][1], h)}])
+        det = _detector(support_mode="auto")
         out = det.update(cargo, None, source="measure", geometry_ok=True,
                          raw_same_stamp=True)
         self.assertTrue(out.top_valid)
         self.assertFalse(out.height_valid)
-        self.assertEqual(out.height_source, HEIGHT_SOURCE_CATALOG_PRIOR)
+        self.assertEqual(out.height_source, HEIGHT_SOURCE_UNAVAILABLE)
+        self.assertEqual(out.box.height, 0.0)
 
     def test_support_modes_declared(self):
         self.assertEqual(

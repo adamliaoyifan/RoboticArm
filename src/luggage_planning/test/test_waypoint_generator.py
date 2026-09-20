@@ -218,7 +218,7 @@ class TestWaypointGenerator(unittest.TestCase):
 
     def test_pick_top_z_rejects_prior_only_height(self):
         box = Box()
-        box.height_valid = False  # catalog prior only
+        box.height_valid = False
         with self.assertRaises(ValueError) as ctx:
             build_sequence(box, Slot(), "pick")
         self.assertIn("DETECT_FULL_GEOMETRY_REQUIRED", str(ctx.exception))

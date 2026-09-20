@@ -49,11 +49,6 @@ from geometry_msgs.msg import Quaternion
 from luggage_msgs.msg import SlotSpec
 from luggage_msgs.srv import ComputePlacement
 
-from luggage_description.box_catalog_utils import (
-    box_catalog_path_from_scene,
-    box_size_range,
-    load_box_catalog,
-)
 from luggage_description.scene_tf_config_utils import (
     _local_point_to_base_link,
     _point_in_container_link,
@@ -145,7 +140,6 @@ class PlacementPlannerNode(Node):
         self._inner_size = self._inner_dimensions()
         self._floor_z = container_inner_floor_z(self._scene)
         self._aperture_y = self._aperture_bounds()
-        self._smallest_box = self._smallest_box_size()
         self._surface = None
         self._hull = descriptor_from_scene_config(self._scene)
         self._geometry_hash = str(self._hull.geometry_hash)
@@ -165,9 +159,9 @@ class PlacementPlannerNode(Node):
             self._handle, callback_group=group)
 
         self.get_logger().info(
-            "placement_planner ready (aperture_y=%s, smallest=%s, "
+            "placement_planner ready (aperture_y=%s, corridor=request_box, "
             "geometry_hash=%s)"
-            % (self._aperture_y, self._smallest_box, self._geometry_hash))
+            % (self._aperture_y, self._geometry_hash))
 
     def _hull_geometry(self):
         """Authoritative kernel hull (cached; config is immutable here)."""
@@ -193,16 +187,6 @@ class PlacementPlannerNode(Node):
             return None
         ys = [float(corner[1]) for corner in corners]
         return min(ys), max(ys)
-
-    def _smallest_box_size(self):
-        try:
-            catalog = load_box_catalog(
-                box_catalog_path_from_scene(self._scene))
-            return [low for low, _high in box_size_range(catalog)]
-        except Exception as exc:  # noqa: BLE001 - safe default below
-            self.get_logger().warning(
-                "box catalog unavailable for corridor probe (%s)" % exc)
-        return [0.55, 0.40, 0.25]
 
     def _container_to_world(self, xyz):
         origin, rpy = origin_in_world(self._scene)
@@ -330,7 +314,7 @@ class PlacementPlannerNode(Node):
             ))
         return aabbs
 
-    def _constraint_verdict(self, candidate, placed_aabbs):
+    def _constraint_verdict(self, candidate, placed_aabbs, smallest_size):
         """Return ``(reason, capacity_ok)`` for one candidate."""
         hull_margin = float(self.get_parameter("hull_margin").value)
         hull = self._hull_geometry()
@@ -357,7 +341,7 @@ class PlacementPlannerNode(Node):
             aperture_y=self._aperture_y,
             hull_contains=hull_contains_floor_relative,
             inner_size=self._inner_size,
-            smallest_size=self._smallest_box,
+            smallest_size=smallest_size,
         )
 
     def _publish_last(self, payload):
@@ -377,15 +361,18 @@ class PlacementPlannerNode(Node):
         box = request.box
         response.geometry_hash = self._geometry_hash
         # E0/E4 contract: packing needs measured full geometry. A top-only
-        # detection (or a catalog prior with height_valid=false) must not
-        # become a collision box inside the container.
-        if not bool(getattr(box, "height_valid", False)):
+        # detection must not become a collision box inside the container.
+        # Catalog size is spawn-only and is never a substitute for height.
+        source = int(getattr(box, "height_source", 0) or 0)
+        if (not bool(getattr(box, "height_valid", False))
+                or source != 1):
             response.success = False
             response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
             response.message = (
                 "DETECT_FULL_GEOMETRY_REQUIRED: ComputePlacement needs "
-                "height_valid=true (measured support or configured mode); "
-                "got height_source=%d" % int(getattr(box, "height_source", 0)))
+                "height_source=MEASURED_SUPPORT; got height_valid=%s "
+                "height_source=%d" % (
+                    bool(getattr(box, "height_valid", False)), source))
             return response
         requested_hash = str(getattr(request, "geometry_hash", "") or "")
         if requested_hash and requested_hash != self._geometry_hash:
@@ -431,7 +418,7 @@ class PlacementPlannerNode(Node):
             allowed_yaws=self._allowed_yaws,
             params=self._params,
             candidate_validator=lambda candidate: self._constraint_verdict(
-                candidate, placed_aabbs),
+                candidate, placed_aabbs, size),
         )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]

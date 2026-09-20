@@ -57,6 +57,12 @@ from luggage_msgs.srv import (
 )
 
 from luggage_perception import ros_message_adapters as adapters
+from luggage_planning.pick_authorization import (
+    AuthorizationConfig,
+    PickAuthorizationPolicy,
+    run_authorization_loop,
+)
+from luggage_planning.pickup_collision import pickup_collision_aabb
 from luggage_planning.ros_clock_wait import wait_event
 from luggage_perception.cargo_instance_tracker import parse_current_box_payload
 from luggage_perception.detect_overlay import rotation_from_quaternion
@@ -88,6 +94,7 @@ from luggage_gazebo.eval_metrics import (  # noqa: E402
     TrialRecord,
     cargo_generation_ready,
     depth_to_camera_xyz,
+    first_yolo_ready,
     label_aabb,
     nearest_catalog_id,
     points_aabb,
@@ -99,7 +106,11 @@ from luggage_gazebo.eval_metrics import (  # noqa: E402
     transform_camera_xyz_to_world,
     trial_from_dict,
     trial_to_dict,
-    yolo_boxes_ready,
+)
+from luggage_gazebo.eval_dump_identity import (  # noqa: E402
+    dump_seg_stats,
+    dump_tf_stamp_from_color,
+    freeze_dump_bundle,
 )
 
 def current_ros_domain():
@@ -335,6 +346,10 @@ class _JsonStampBuffer(object):
             while len(self._items) > self._maxlen:
                 self._items.popitem(last=False)
 
+    def newest_first(self):
+        with self._lock:
+            return [payload for _key, payload in reversed(self._items.items())]
+
     def nearest(self, stamp_sec, tol=0.08):
         with self._lock:
             items = list(self._items.items())
@@ -433,6 +448,8 @@ class PickRetreatEvalDriver(Node):
         self._trial_join = {
             "aligned": False, "stamp_key": None, "cargo_matched": False,
         }
+        self._yolo_decision_record = None
+        self._frozen_bundle = None
         self._tf_buffer = Buffer()
         # Dedicated TF node so /tf does not starve camera_info on the driver
         # executor (early trials otherwise fail SPAWN_VISUAL_TF: no_camera_info).
@@ -704,16 +721,29 @@ class PickRetreatEvalDriver(Node):
     def wait_yolo_boxes(self, generation, spawn_id, min_stamp, timeout):
         """Wait for post-mask-filter YOLO cargo boxes of this spawn.
 
-        Returns the matching stats dict, or None on timeout.
+        Scans the stats ring newest-first so a matching sample is not lost
+        behind a stale latest latch. Returns the matching stats dict, or
+        None on timeout (``_yolo_decision_record`` keeps the last checked).
         """
+        self._yolo_decision_record = None
+        last_checked = None
         deadline = time.time() + timeout
         while time.time() < deadline:
-            stats = _parse_json(self._seg_stats["payload"])
-            if yolo_boxes_ready(
-                    stats, generation, expected_id=spawn_id,
-                    min_stamp=min_stamp):
-                return stats
+            records = self._seg_stats_buf.newest_first()
+            latch = _parse_json(self._seg_stats["payload"])
+            combined = list(records)
+            if latch is not None and latch not in combined:
+                combined.append(latch)
+            if combined:
+                last_checked = combined[0]
+            match = first_yolo_ready(
+                combined, generation, expected_id=spawn_id,
+                min_stamp=min_stamp)
+            if match:
+                self._yolo_decision_record = match
+                return match
             time.sleep(0.05)
+        self._yolo_decision_record = last_checked
         return None
 
     def overlay_projection_inputs(self):
@@ -731,9 +761,15 @@ class PickRetreatEvalDriver(Node):
         color = (self._trial_snapshot or {}).get("color")
         if color is not None and color.header.frame_id:
             camera_frame = color.header.frame_id
+        tf_stamp = dump_tf_stamp_from_color(color)
+        if tf_stamp is None:
+            return None, None, "no_color_stamp"
+        stamp = rclpy.time.Time(
+            seconds=int(tf_stamp[0]), nanoseconds=int(tf_stamp[1]),
+            clock_type=self.get_clock().clock_type)
         try:
             tf_msg = self._tf_buffer.lookup_transform(
-                camera_frame, "world", rclpy.time.Time(),
+                camera_frame, "world", stamp,
                 rclpy.duration.Duration(seconds=0.5))
         except TransformException as exc:
             return None, None, "tf:%s" % exc
@@ -1000,7 +1036,8 @@ class PickRetreatEvalDriver(Node):
             stamp_sec_from_key(stamp_key) if stamp_key else None)
         extras["min_stamp_sec"] = join.get("min_stamp_sec")
         extras["status"] = _parse_json(self._status["payload"])
-        extras["seg_stats"] = _parse_json(self._seg_stats["payload"])
+        extras["seg_stats"] = dump_seg_stats(
+            self._frozen_bundle, _parse_json(self._seg_stats["payload"]))
         extras["diag"] = _parse_json(self._diag["payload"])
         extras["filter_stats"] = _parse_json(self._filter_stats["payload"])
         for name in ("color", "depth", "overlay", "mask", "cargo"):
@@ -1025,12 +1062,18 @@ class PickRetreatEvalDriver(Node):
         if frame is not None:
             layers["detection_frame"] = detection_frame_as_dict(frame)
             layers["detection_frame_dt"] = dt
-        seg, dt = self._seg_stats_buf.nearest(stamp_sec)
-        if seg is None:
-            seg = _parse_json(self._seg_stats["payload"])
-            dt = None
-        layers["seg_stats"] = seg
-        layers["seg_stats_dt"] = dt
+        if (self._frozen_bundle
+                and self._frozen_bundle.get("decision_record") is not None):
+            layers["seg_stats"] = self._frozen_bundle["decision_record"]
+            layers["seg_stats_dt"] = 0.0
+        else:
+            seg, dt = self._seg_stats_buf.nearest(stamp_sec)
+            if seg is None:
+                seg = _parse_json(self._seg_stats["payload"])
+                dt = None
+            layers["seg_stats"] = seg
+            layers["seg_stats_dt"] = dt
+        seg = layers.get("seg_stats")
         if isinstance(seg, dict):
             layers["dropped_yolo"] = list(
                 seg.get("detections_dropped_self_body") or [])
@@ -1078,6 +1121,32 @@ class PickRetreatEvalDriver(Node):
             extras["seg_stats"] = layers.get("seg_stats")
         return layers
 
+    def freeze_failure_bundle(self, decision_record):
+        """Pin rings to the gated stats stamp. Does not wait for later frames."""
+        snaps = {}
+        if self._buffers:
+            snaps = {name: buf.snapshot() for name, buf in self._buffers.items()}
+        bundle = freeze_dump_bundle(decision_record, snaps)
+        self._frozen_bundle = bundle
+        join_key = bundle.get("join_key")
+        names = ("color", "depth", "overlay", "mask", "cargo")
+        if join_key is not None:
+            self._trial_snapshot = {
+                name: (snaps.get(name) or {}).get(join_key) for name in names
+            }
+            self._trial_join = {
+                "aligned": True,
+                "stamp_key": join_key,
+                "cargo_matched": join_key in (snaps.get("cargo") or {}),
+                "min_stamp_sec": (self._trial_join or {}).get("min_stamp_sec"),
+            }
+        else:
+            self._trial_snapshot = {}
+            self._trial_join = {
+                "aligned": False, "stamp_key": None, "cargo_matched": False,
+            }
+        return bundle
+
     def maybe_dump(self, fields, stamp0):
         """Write color/depth/overlay/mask PNGs for this trial. Mutates extras."""
         dump_dir = getattr(self._args, "dump_dir", "") or ""
@@ -1087,15 +1156,16 @@ class PickRetreatEvalDriver(Node):
         while self._camera_info is None and time.time() < info_deadline:
             time.sleep(0.05)
         detect_stamp = (fields.get("extras") or {}).get("detect_cloud_stamp")
-        if detect_stamp is not None:
-            if not self.wait_detect_frame(detect_stamp):
+        if self._frozen_bundle is None:
+            if detect_stamp is not None:
+                if not self.wait_detect_frame(detect_stamp):
+                    self.snapshot_frames(
+                        timeout=FRAME_JOIN_AFTER_SPAWN_SEC,
+                        min_stamp_sec=stamp0, require_cargo=True)
+            else:
                 self.snapshot_frames(
                     timeout=FRAME_JOIN_AFTER_SPAWN_SEC,
                     min_stamp_sec=stamp0, require_cargo=True)
-        else:
-            self.snapshot_frames(
-                timeout=FRAME_JOIN_AFTER_SPAWN_SEC,
-                min_stamp_sec=stamp0, require_cargo=True)
         images, extras, arrays = self.decoded_dump()
         extrinsics, intrinsics, proj_err = self.overlay_projection_inputs()
         rotation = translation = None
@@ -1127,6 +1197,15 @@ class PickRetreatEvalDriver(Node):
         visual_info = (fields.get("extras") or {}).get("spawn_visual")
         if visual_info:
             extras["spawn_visual"] = visual_info
+        if self._frozen_bundle:
+            extras["capture_complete"] = bool(
+                self._frozen_bundle.get("capture_complete"))
+            extras["missing"] = list(self._frozen_bundle.get("missing") or [])
+            extras["decision_record"] = self._frozen_bundle.get(
+                "decision_record")
+            extras["join_dt"] = self._frozen_bundle.get("join_dt")
+            extras["replay_possible"] = bool(
+                self._frozen_bundle.get("replay_possible"))
         dump_stamp = self.ros_now_sec()
         extras["dump_stamp"] = dump_stamp
         images, extras = apply_dump_timestamp_banners(
@@ -1166,11 +1245,35 @@ class PickRetreatEvalDriver(Node):
     def add_scene_box(self, box):
         if self._scene is None:
             return False, "no planning scene client"
-        xyz = [box.pose.position.x, box.pose.position.y, box.pose.position.z]
-        quat = [box.pose.orientation.x, box.pose.orientation.y,
-                box.pose.orientation.z, box.pose.orientation.w]
-        size = [box.width, box.depth, box.height]
+        try:
+            xyz, quat, size = pickup_collision_aabb(box)
+        except ValueError as exc:
+            return False, str(exc)
         return self._scene.add_pickup_box(xyz, quat, size)
+
+    def _auth_policy(self):
+        args = self._args
+        return PickAuthorizationPolicy(AuthorizationConfig(
+            max_attempts=int(getattr(args, "auth_max_attempts", 5)),
+            max_elapsed_sec=float(getattr(args, "auth_max_elapsed_sec", 5.0)),
+            wait_period_sec=float(getattr(args, "auth_wait_period_sec", 0.5)),
+        ))
+
+    def detect_until_authorized(self):
+        """DetectLuggage until MEASURED_SUPPORT, else fail closed."""
+
+        def _once():
+            detect = self.call_srv(
+                self._detect, DetectLuggage.Request(),
+                timeout=self._args.detect_timeout)
+            if detect is None:
+                return False, None, "DETECT_TIMEOUT"
+            if not detect.success or not detect.luggage:
+                return False, None, detect.message or "MEASURED_NONE"
+            return True, detect.luggage[0], detect.message or ""
+
+        return run_authorization_loop(
+            _once, time.sleep, time.monotonic, self._auth_policy())
 
     def vacuum_command(self, enable):
         if self._vacuum is None:
@@ -1198,6 +1301,8 @@ class PickRetreatEvalDriver(Node):
 
     def run_trial(self, index):
         t0 = time.time()
+        self._yolo_decision_record = None
+        self._frozen_bundle = None
         fields = {
             "index": index,
             "catalog_id": "",
@@ -1285,10 +1390,13 @@ class PickRetreatEvalDriver(Node):
             self._args.geometry_timeout)
         if not yolo_stats:
             fields["fail_code"] = "YOLO_NOT_READY"
-            fields["extras"]["seg_stats"] = _parse_json(
+            decision = self._yolo_decision_record or _parse_json(
                 self._seg_stats["payload"])
+            fields["extras"]["seg_stats"] = decision
+            fields["extras"]["decision_record"] = decision
             fields["extras"]["filter_stats"] = _parse_json(
                 self._filter_stats["payload"])
+            self.freeze_failure_bundle(decision)
             return self.finish_trial(
                 fields, t0, stamp0=stamp0, dump=True, clear=True)
         try:
@@ -1339,9 +1447,8 @@ class PickRetreatEvalDriver(Node):
                 return self.finish_trial(
                     fields, t0, stamp0=stamp0, dump=True, clear=True)
 
-        detect = self.call_srv(
-            self._detect, DetectLuggage.Request(),
-            timeout=self._args.detect_timeout)
+        auth = self.detect_until_authorized()
+        fields["extras"]["pick_authorization"] = auth.to_dict()
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
         diag = self._diag["payload"]
@@ -1356,14 +1463,19 @@ class PickRetreatEvalDriver(Node):
         if current is not None and current.success:
             fields["extras"]["gt"] = observation_from_detected(
                 current.box).__dict__
-        if detect is None:
-            fields["fail_code"] = "DETECT_TIMEOUT"
-            fields["detect_failure"] = "DETECT_TIMEOUT"
+        if not auth.authorized:
+            fields["fail_code"] = auth.decision.reason
+            fields["detect_failure"] = auth.detect_reason or auth.decision.reason
+            fields["extras"]["detect_message"] = auth.detect_reason
+            fields["extras"]["backend"] = (
+                (_parse_json(self._seg_stats["payload"]) or {}).get("backend"))
             return self.finish_trial(
                 fields, t0, stamp0=stamp0, dump=True, clear=True)
 
-        fields["detect_failure"] = detect.message or ""
-        fields["extras"]["detect_message"] = detect.message
+        detect_message = auth.detect_reason
+        pick_msg = auth.box
+        fields["detect_failure"] = detect_message or ""
+        fields["extras"]["detect_message"] = detect_message
         fields["extras"]["backend"] = (
             (_parse_json(self._seg_stats["payload"]) or {}).get("backend"))
 
@@ -1372,21 +1484,21 @@ class PickRetreatEvalDriver(Node):
             return self.finish_trial(
                 fields, t0, stamp0=stamp0, dump=True, clear=True)
 
-        if is_gt_fallback(detect.message, diag):
+        if is_gt_fallback(detect_message, diag):
             fields["fail_code"] = "DETECT_GT_FALLBACK"
             fields["detect_failure"] = perception_reason(
-                detect.message, diag) or "DETECT_GT_FALLBACK"
+                detect_message, diag) or "DETECT_GT_FALLBACK"
             return self.finish_trial(
                 fields, t0, stamp0=stamp0, dump=True, clear=True)
 
         if not is_perception_estimate(
-                detect.success, detect.message, bool(detect.luggage), diag):
-            fields["fail_code"] = detect.message or "MEASURED_NONE"
+                True, detect_message, True, diag):
+            fields["fail_code"] = detect_message or "MEASURED_NONE"
             fields["detect_failure"] = fields["fail_code"]
             return self.finish_trial(
                 fields, t0, stamp0=stamp0, dump=True, clear=True)
 
-        measured = observation_from_detected(detect.luggage[0])
+        measured = observation_from_detected(pick_msg)
         gt = observation_from_detected(current.box)
         result = self._accuracy.compare(measured, gt)
         fields["detect_usable"] = True
@@ -1409,7 +1521,7 @@ class PickRetreatEvalDriver(Node):
             return self.finish_trial(fields, t0, stamp0=stamp0, clear=True)
 
         if self._args.use_vacuum:
-            scene_ok, scene_msg = self.add_scene_box(detect.luggage[0])
+            scene_ok, scene_msg = self.add_scene_box(pick_msg)
             fields["extras"]["scene_add"] = scene_msg
             if not scene_ok:
                 fields["fail_code"] = "SCENE_ADD_FAILED"
@@ -1417,7 +1529,7 @@ class PickRetreatEvalDriver(Node):
 
         req = BuildMotionSequence.Request()
         req.phase = "pick"
-        req.pick = detect.luggage[0]
+        req.pick = pick_msg
         built = self.call_srv(self._build, req, timeout=15.0)
         if built is None or not built.success:
             fields["fail_code"] = "BUILD_FAILED"
@@ -1738,6 +1850,9 @@ def parse_args(argv):
     parser.add_argument(
         "--use-vacuum", action="store_true",
         help="Add pickup_box to PlanningScene and call /vacuum/command.")
+    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
+    parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     return parser.parse_args(argv)
 
 

@@ -33,6 +33,14 @@ class _Output(object):
     frame_id = "camera_color_optical_frame"
     stats = {"raw_cargo": True, "accepted_cargo_count": 1,
              "backend": "bbox_fill:yolov8s-world.pt"}
+    generation = 2
+    instance_id = "pickup_box_0001_carryon"
+    detections = ()
+
+    @property
+    def label_map(self):
+        import numpy as np
+        return np.zeros((4, 4), dtype=np.uint8)
 
 
 class _Clock(object):
@@ -127,6 +135,58 @@ class TestSegmenterStatsRateLimit(unittest.TestCase):
         node._stats_dirty = True
         node._on_stats_timer()
         self.assertEqual(len(node._stats_pub.messages), 1)
+
+    def test_stats_record_uses_output_epoch_not_latch(self):
+        node = self._node(0.0)
+        node._box_generation = 9
+        node._box_id = "stale"
+        node._publish_stats(_Output())
+        record = self._published(node)
+        self.assertEqual(record["generation"], 2)
+        self.assertEqual(record["instance_id"], "pickup_box_0001_carryon")
+
+    def test_timer_payload_is_not_rebuilt_from_stats_alone(self):
+        node = self._node(1.0)
+        node._publish_stats(_Output())
+        pending = dict(node._pending_stats)
+        rebuilt = dict(_Output.stats)
+        rebuilt["stamp"] = _Output.stamp
+        rebuilt["frame_id"] = _Output.frame_id
+        self.assertNotIn("generation", rebuilt)
+        self.assertIn("generation", pending)
+        self.assertIn("instance_id", pending)
+        node._on_stats_timer()
+        record = self._published(node)
+        self.assertEqual(record["generation"], pending["generation"])
+        self.assertEqual(record["instance_id"], pending["instance_id"])
+
+    def test_pending_record_frozen_after_latch_changes(self):
+        node = self._node(1.0)
+        node._publish_stats(_Output())
+        node._box_generation = 99
+        node._box_id = "later"
+        self.assertEqual(node._pending_stats["generation"], 2)
+        self.assertEqual(node._pending_stats["instance_id"],
+                         "pickup_box_0001_carryon")
+
+    def test_yolo_and_pending_stats_share_epoch(self):
+        node = self._node(1.0)
+        node._yolo_seq = 0
+        node._last_frame_id = _Output.frame_id
+        node._yolo_pub = _Pub()
+        out = _Output()
+        from luggage_perception import ros_message_adapters as adapters
+        stamp = adapters.sec_to_stamp(out.stamp)
+        node._publish_yolo(out, stamp)
+        node._publish_stats(out)
+        self.assertEqual(len(node._yolo_pub.messages), 1)
+        yolo = node._yolo_pub.messages[0]
+        pending = node._pending_stats
+        self.assertEqual(int(yolo.generation), int(pending["generation"]))
+        self.assertEqual(str(yolo.instance_id), str(pending["instance_id"]))
+        yolo_stamp = float(yolo.header.stamp.sec) + 1e-9 * float(
+            yolo.header.stamp.nanosec)
+        self.assertAlmostEqual(yolo_stamp, float(pending["stamp"]), places=6)
 
 
 if __name__ == "__main__":

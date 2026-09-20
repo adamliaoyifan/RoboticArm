@@ -303,19 +303,16 @@ def _draw_pick(overlay_bgr, uv, waypoints_uv=None):
     return overlay_bgr
 
 
-def _workspace_and_catalog(scene_tf_config, roi_margin):
-    from luggage_description.box_catalog_utils import (
-        box_catalog_entries, load_box_catalog)
+def _workspace_xy(scene_tf_config, roi_margin):
     from luggage_description.scene_tf_config_utils import (
         load_scene_tf_config, pickup_source_in_world,
         resolve_scene_tf_config_path)
     path = resolve_scene_tf_config_path(scene_tf_config or None)
     scene = load_scene_tf_config(path)
     source_xyz, _rpy = pickup_source_in_world(scene)
-    catalog = box_catalog_entries(load_box_catalog(scene_config=scene))
     return ([float(source_xyz[0]), float(source_xyz[1])],
             [float(roi_margin), float(roi_margin)],
-            catalog, path)
+            path)
 
 
 def _tcp_in_world(tf_buffer, tcp_row, world_frame, stamp_ns,
@@ -341,25 +338,27 @@ def _moveit_scene_objects(mode, pick_dict):
     xyz is the top-surface point, the box extends downward from it. The
     1 cm top margin keeps the attach goal (exactly at top_z) numerically
     OFF the collision surface — a goal lying on the box surface is in
-    collision and the planner refuses, which measures nothing. Height
-    falls back to 0.30 m when the measured height is invalid — a guess
-    at the geometry is still better than planning through empty space,
-    and the applied object is recorded verbatim so the report says so.
+    collision and the planner refuses, which measures nothing.
+
+    Unmeasured height skips the cargo object instead of inventing 0.30 m.
+    The skip is recorded by the caller as ``scene_skipped_height_invalid``.
     """
     if mode == "none" or not pick_dict:
         return []
-    top_z = float(pick_dict["top_z"])
-    width = max(0.05, float(pick_dict["width"]))
-    depth = max(0.05, float(pick_dict["depth"]))
-    height = (float(pick_dict["height"])
-              if pick_dict.get("height_valid") else 0.30)
-    x, y = float(pick_dict["xyz"][0]), float(pick_dict["xyz"][1])
-    objects = [{
-        "id": "replay_cargo",
-        "xyz": [x, y, top_z - 0.01 - height / 2.0],
-        "dimensions": [width, depth, height],
-    }]
+    objects = []
+    if pick_dict.get("height_valid"):
+        top_z = float(pick_dict["top_z"])
+        width = max(0.05, float(pick_dict["width"]))
+        depth = max(0.05, float(pick_dict["depth"]))
+        height = float(pick_dict["height"])
+        x, y = float(pick_dict["xyz"][0]), float(pick_dict["xyz"][1])
+        objects.append({
+            "id": "replay_cargo",
+            "xyz": [x, y, top_z - 0.01 - height / 2.0],
+            "dimensions": [width, depth, height],
+        })
     if mode == "cargo_ground":
+        x, y = float(pick_dict["xyz"][0]), float(pick_dict["xyz"][1])
         objects.append({
             "id": "replay_ground",
             "xyz": [x, y, -0.025],
@@ -543,7 +542,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
             intrinsics, intrinsics,
             DepthToColorExtrinsics.identity(), [LABEL_CARGO], [])
 
-    ws_xy, ws_half, catalog, scene_path = _workspace_and_catalog(
+    ws_xy, ws_half, scene_path = _workspace_xy(
         cfg.scene_tf_config, cfg.roi_margin)
     detector = PlatformFreeDetector(
         config=TopSupportConfig(
@@ -553,8 +552,6 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
             voxel_size=0.01,
         ),
         support_mode=cfg.support_mode,
-        catalog_entries=catalog,
-        catalog_tolerance=0.08,
     )
 
     if segmenter is None:
@@ -661,6 +658,7 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
 
     planned = None
     scene_objects = []
+    scene_skipped_height_invalid = False
     if cfg.plan_moveit:
         planner = moveit_plan_fn
         if planner is None:
@@ -670,8 +668,12 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         sel = frame_rows[selected] if frame_rows else {}
         start = sel.get("joints")
         segs = sel.get("waypoints") or []
+        pick_dict = sel.get("pick")
+        scene_skipped_height_invalid = bool(
+            pick_dict and not pick_dict.get("height_valid")
+            and cfg.moveit_scene != "none")
         scene_objects = _moveit_scene_objects(
-            cfg.moveit_scene, sel.get("pick"))
+            cfg.moveit_scene, pick_dict)
         try:
             planned = planner(
                 start_joints=start,
@@ -708,8 +710,12 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         "joints": {"t_sec": joint_t, "names": list(JOINT_NAMES),
                    "q": joint_q},
         "planned": planned,
-        "moveit_scene": {"mode": cfg.moveit_scene,
-                         "objects": scene_objects},
+        "moveit_scene": {
+            "mode": cfg.moveit_scene,
+            "objects": scene_objects,
+            "scene_skipped_height_invalid": bool(
+                scene_skipped_height_invalid),
+        },
         "tf_frames": sorted(tf_buffer.frames()),
     }
     with open(os.path.join(out_dir, "replay.json"), "w",
@@ -736,6 +742,8 @@ def replay_site_pick(bag_path, out_dir, cfg, segmenter=None,
         "depth_topic": depth_topic,
         "plan_moveit": bool(cfg.plan_moveit),
         "moveit_scene": cfg.moveit_scene,
+        "scene_skipped_height_invalid": bool(scene_skipped_height_invalid),
+        "plan_success_not_comparable": bool(scene_skipped_height_invalid),
         "ros_domain_id": (
             int(cfg.ros_domain_id) if cfg.plan_moveit else None),
         # TF-semantics disclosure: which mode ran and how many frames

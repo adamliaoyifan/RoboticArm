@@ -20,11 +20,12 @@ no-GT rule).
   `luggage_description.container_geometry`.
 - Empty-floor **existence** when no accepted cargo map exists (`floor_prior`,
   `peak ≈ floor_z`). This is not a claim that the interior is empty of cargo.
-- Catalog width/depth match that fills a numeric height with
-  `height_valid=false` (`HEIGHT_SOURCE_CATALOG_PRIOR`).
 - Eval / Gazebo truth as a **score numerator** or dump, never as the payload
   of `DetectLuggage`, `ComputePlacement`, cargo-map commit, or MoveIt collision
   for the online path.
+
+Catalog suitcase WDH is **spawn-only** (`pickup_box_spawner`). It must not
+fill `DetectedLuggage.height`, MoveIt pickup AABBs, or `ComputePlacement`.
 
 ## Forbidden successive priors
 
@@ -57,16 +58,20 @@ Hard rules:
 - Production and eval drivers that call production services must not branch on
   `sim_mode`, skip perception, or use a fake success path. Eval GT stays in
   the dump / score table.
-- Humble pick may be TOP_ONLY. Packing must not require a fake FULL_3D box to
-  proceed; it must fail closed or place under declared uncertainty.
+- Humble pick requires `height_source=HEIGHT_SOURCE_MEASURED_SUPPORT`.
+  TOP_ONLY is a valid detection (cargo present, height unknown) and never
+  grasp authority. Wait or change viewpoint; do not invent height.
 - ROS1 `allow_gt_fallback` / `strict_perception=False` / gazebo inspect are
   forbidden patterns, including in unported scripts.
 
-Honest product loop (not yet implemented on Humble):
+Honest product loop (pick gate on Humble; occupancy still RS-1 .. RS-7):
 
 ```text
-DetectLuggage (TOP_ONLY allowed)
-  -> place under uncertainty
+DetectLuggage (TOP_ONLY is a detection, not a grasp)
+  -> wait / reobserve until MEASURED_SUPPORT
+  -> pick
+  -> ComputePlacement (height_source=MEASURED_SUPPORT)
+  -> place
   -> RGBD / depth update of cargo map
   -> commit measured or verify-gated geometry
 ```
@@ -108,28 +113,33 @@ metrics, tests, and `dispatch_ready: yes`.
 
 ### B. Exact box size into packing APIs
 
-- **RS-8.** `ComputePlacement` refuses `height_valid=false`
-  (`DETECT_FULL_GEOMETRY_REQUIRED`). Humble pick is often TOP_ONLY with a
-  catalog prior. Real packing is then blocked or fed a fake FULL_3D box.
-  `src/luggage_packing/scripts/placement_planner_node.py`.
-- **RS-9.** `HEIGHT_SOURCE_CONFIGURED_SUPPORT` sets `height_valid=true`.
-  Param `platform_z` is treated as a measured support plane.
+- **RS-8.** Closed: `ComputePlacement` and the pick drivers refuse
+  `height_source!=MEASURED_SUPPORT`. TOP_ONLY waits then fail-closed
+  (`DETECT_FULL_GEOMETRY_REQUIRED`); catalog/configured height never
+  authorize a grasp. `src/luggage_planning/luggage_planning/pick_authorization.py`.
+- **RS-9.** `HEIGHT_SOURCE_CONFIGURED_SUPPORT` still sets `height_valid=true`.
+  Param `platform_z` is treated as a fitted support plane in configured
+  mode. Pick authorization ignores it. Launches stay `support_mode=auto`.
   `src/luggage_perception/luggage_perception/top_support_estimator.py`.
 - **RS-10.** Place-only injects `eval_perfect_geometry` into production
   services (`height_source=2`, `height_valid=true`) with
-  `use_perception: false`.
+  `use_perception: false`. Solver isolation only; it must not call
+  `DetectLuggage` and is not the product pick loop.
   `src/luggage_gazebo/luggage_gazebo/place_only_fixture.py`,
   `src/luggage_gazebo/config/place_only_profile.yaml`.
-- **RS-11.** Pack-eval uses `GetCurrentBox` as the place box. The spawner
-  stamps GT as `HEIGHT_SOURCE_MEASURED_SUPPORT`.
+- **RS-11.** Pack-eval ledger still records spawn WDH as score metadata.
+  `ComputePlacement` now takes `DetectLuggage`. Vacuum/sim follow still
+  reads `GetCurrentBox` (see RS-13).
   `src/luggage_gazebo/scripts/pack_eval_driver.py`,
   `src/luggage_gazebo/scripts/pickup_box_spawner_node.py`.
-- **RS-12.** Place-smoke dummy pick hard-codes `(0.55, 0.40, 0.25)` into the
-  same place chain. `src/luggage_gazebo/scripts/place_smoke_driver.py`.
+- **RS-12.** Closed: place-smoke `--dry-run` / `--payload none` require
+  an explicit `--synthetic-size W,D,H` flagged `synthetic_plan_only`.
+  `src/luggage_gazebo/scripts/place_smoke_driver.py`.
 - **RS-13.** Vacuum gate reads spawner JSON size/mass/pose, not
   `DetectLuggage`. `src/luggage_planning/scripts/vacuum_controller_node.py`.
-- **RS-14.** Legacy `match_catalog` snaps W/D/H to an exact catalog AABB.
-  Humble detector no longer calls it; ROS1 still can.
+- **RS-14.** Legacy `match_catalog` is forbidden (raises). Humble detector
+  does not call it. ROS1 reference still passes `catalog_entries` into
+  `estimate_box`, which now ignores them.
   `src/luggage_perception/luggage_perception/luggage_box_estimator.py`.
 
 ### C. ROS1 leftover oracles
@@ -158,22 +168,26 @@ Unported / `ros1_reference` / `COLCON_IGNORE`. Forbidden to copy into Humble.
   image stamp. `src/luggage_perception/scripts/semantic_segmenter_node.py`.
 - **RS-24.** Hardware pick `use_perception_approach:=false`; Humble waypoint
   node never passes `perception_info`.
-- **RS-25.** `site_pick_replay` invents 0.30 m collision height when
-  `height_valid=false`.
+- **RS-25.** Closed: `site_pick_replay` skips the cargo collision object
+  when `height_valid=false` and records `scene_skipped_height_invalid`.
+  Plan-success is not comparable to earlier 0.30 m runs.
 - **RS-26.** Pack-eval utilization uses a fixed AABB volume, not hull-clipped
   usable space.
 
 ## Not defects
 
 - Container seven-face hull from `scene_tf`.
-- Humble detector: measured top/XY; catalog height only with
-  `height_valid=false`; no `GetCurrentBox` in the estimate.
+- Humble detector: measured top/XY; no catalog height; `height=0` and
+  `HEIGHT_SOURCE_UNAVAILABLE` when support is unmeasured; no `GetCurrentBox`
+  in the estimate.
 - `pick_retreat_eval` scoring Detect vs `GetCurrentBox` as a metric only.
 - Unit-test synthetic maps that do not call production services as oracles.
+- Catalog YAML consumed by `pickup_box_spawner` to spawn Gazebo models.
 
 ## Severity
 
-Highest for a real cell: **RS-11, RS-10, RS-8** (packing never sees honest
-`DetectLuggage`) plus **RS-1, RS-2, RS-3** (interior is a planned-geometry
+Highest for a real cell: **RS-11, RS-10** (packing GT metadata / solver
+isolation) plus **RS-1, RS-2, RS-3** (interior is a planned-geometry
 ledger). Next: **RS-6, RS-7**, then ROS1 fallbacks **RS-15, RS-16** if that
-stack is run.
+stack is run. **RS-8, RS-12, RS-25** are closed by the pick-authorization
+gate.

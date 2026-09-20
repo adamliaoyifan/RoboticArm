@@ -120,7 +120,7 @@ class TestGeometryIdentityLive(unittest.TestCase):
         box = DetectedLuggage()
         box.width, box.depth, box.height = 0.55, 0.40, 0.25
         box.height_valid = True
-        box.height_source = 2
+        box.height_source = 1  # MEASURED_SUPPORT
         box.pose.orientation.w = 1.0
         request.box = box
         request.geometry_hash = geometry_hash

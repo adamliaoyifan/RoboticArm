@@ -128,6 +128,21 @@ def yolo_boxes_ready(seg_stats, expected_generation, expected_id=None,
     return n_cargo > 0
 
 
+def first_yolo_ready(records, expected_generation, expected_id=None,
+                     min_stamp=None):
+    """Return the first stats dict in *records* that satisfies the YOLO gate.
+
+    Callers pass newest-first so a matching sample in the ring wins over a
+    stale latest latch appended at the end.
+    """
+    for stats in records or ():
+        if yolo_boxes_ready(
+                stats, expected_generation, expected_id=expected_id,
+                min_stamp=min_stamp):
+            return stats
+    return None
+
+
 def depth_to_camera_xyz(depth_m, fx, fy, cx, cy, max_depth=2.5, stride=2):
     """Unproject a depth image to optical-frame XYZ (Nx3)."""
     depth = np.asarray(depth_m, dtype=np.float64)

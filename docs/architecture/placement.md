@@ -34,8 +34,8 @@ Hard rules:
 - The floor prior is legal when no map has been published, as empty-floor
   **existence**. It must not claim the interior is empty of cargo (`RS-4`).
   A rejected map must fail closed, not answer from the floor prior.
-- `ComputePlacement` must not require a fake `height_valid=true` box when
-  detection is honestly TOP_ONLY (`RS-8`).
+- `ComputePlacement` must fail closed until `height_source=MEASURED_SUPPORT`.
+  TOP_ONLY is a detection, not a placement payload (`RS-8` closed).
 
 ## Candidate generation (live Humble)
 

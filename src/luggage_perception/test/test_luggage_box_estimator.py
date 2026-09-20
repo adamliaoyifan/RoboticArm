@@ -166,7 +166,7 @@ class TestEstimateBoxBasic(unittest.TestCase):
         self.assertAlmostEqual(est.center_xyz[1], 0.0, delta=0.02)
         expected_cz = 0.86 + 0.28 / 2
         self.assertAlmostEqual(est.center_xyz[2], expected_cz, delta=0.02)
-        self.assertEqual(est.matched_catalog_id, "standard")
+        self.assertIsNone(est.matched_catalog_id)
         self.assertAlmostEqual(est.width, 0.70, delta=0.01)
         self.assertAlmostEqual(est.depth, 0.45, delta=0.01)
         self.assertAlmostEqual(est.height, 0.28, delta=0.01)
@@ -209,7 +209,7 @@ class TestEstimateBoxBasic(unittest.TestCase):
             platform_z=0.86, catalog_entries=CATALOG,
         )
         self.assertIsNotNone(est)
-        self.assertEqual(est.matched_catalog_id, "large")
+        self.assertIsNone(est.matched_catalog_id)
 
     def test_xy_offset_detection(self):
         """Box offset from the nominal centre by ±0.08 m."""
@@ -225,7 +225,7 @@ class TestEstimateBoxBasic(unittest.TestCase):
         self.assertIsNotNone(est)
         self.assertAlmostEqual(est.center_xyz[0], -1.08, delta=0.03)
         self.assertAlmostEqual(est.center_xyz[1], 0.06, delta=0.03)
-        self.assertEqual(est.matched_catalog_id, "carryon")
+        self.assertIsNone(est.matched_catalog_id)
 
     def test_raw_depth_platform_plane_does_not_dominate_box_top(self):
         """A dense platform plane must not beat the higher suitcase top."""
@@ -248,7 +248,7 @@ class TestEstimateBoxBasic(unittest.TestCase):
             catalog_entries=CATALOG,
         )
         self.assertIsNotNone(est)
-        self.assertEqual(est.matched_catalog_id, "standard")
+        self.assertIsNone(est.matched_catalog_id)
         self.assertAlmostEqual(est.center_xyz[0], -1.04, delta=0.03)
         self.assertAlmostEqual(est.center_xyz[1], 0.05, delta=0.03)
 
@@ -303,25 +303,25 @@ class TestEstimateBoxEdgeCases(unittest.TestCase):
 
 class TestCatalogMatching(unittest.TestCase):
 
-    def test_exact_match(self):
-        mid, w, d, h = match_catalog(0.70, 0.45, 0.28, CATALOG)
-        self.assertEqual(mid, "standard")
-        self.assertAlmostEqual(w, 0.70)
+    def test_match_catalog_is_forbidden(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            match_catalog(0.70, 0.45, 0.28, CATALOG)
+        self.assertIn("spawn-only", str(ctx.exception))
 
-    def test_swapped_axes(self):
-        """Width and depth may be swapped; matcher should handle it."""
-        mid, w, d, h = match_catalog(0.45, 0.70, 0.28, CATALOG)
-        self.assertEqual(mid, "standard")
-
-    def test_no_match(self):
-        mid, w, d, h = match_catalog(1.20, 0.80, 0.50, CATALOG, tolerance=0.05)
-        self.assertIsNone(mid)
-        self.assertAlmostEqual(w, 1.20)
-
-    def test_within_tolerance(self):
-        mid, w, d, h = match_catalog(0.72, 0.46, 0.29, CATALOG, tolerance=0.05)
-        self.assertEqual(mid, "standard")
-        self.assertAlmostEqual(w, 0.70)
+    def test_estimate_box_ignores_catalog_entries(self):
+        cloud = _synthetic_box_cloud(
+            cx=-1.0, cy=0.0, platform_z=0.86,
+            width=0.72, depth=0.46, height=0.29, yaw=0.0,
+        )
+        est = estimate_box(
+            cloud,
+            roi_center_xy=(-1.0, 0.0), roi_margin=0.6,
+            platform_z=0.86, catalog_entries=CATALOG,
+        )
+        self.assertIsNotNone(est)
+        self.assertIsNone(est.matched_catalog_id)
+        self.assertAlmostEqual(est.width, 0.72, delta=0.03)
+        self.assertAlmostEqual(est.depth, 0.46, delta=0.03)
 
 
 class TestYawValidity(unittest.TestCase):

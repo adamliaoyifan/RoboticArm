@@ -20,6 +20,7 @@ install(PROGRAMS
   scripts/place_smoke_driver.py
   scripts/pack_eval_driver.py
   scripts/place_only_eval_driver.py
+  scripts/cargo_map_integrate_eval_driver.py
   scripts/wait_controller_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
@@ -27,6 +28,8 @@ install(PROGRAMS
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)
+  ament_add_pytest_test(wait_yolo_boxes_ring_pytest test/test_wait_yolo_boxes_ring.py)
+  ament_add_pytest_test(yolo_not_ready_dump_identity_pytest test/test_yolo_not_ready_dump_identity.py)
   ament_add_pytest_test(place_metrics_pytest test/test_place_metrics.py)
   ament_add_pytest_test(place_gt_dump_pytest test/test_place_gt_dump.py)
   ament_add_pytest_test(sim_livox_bridge_pytest test/test_sim_livox_bridge.py)
