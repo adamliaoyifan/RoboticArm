@@ -102,3 +102,20 @@ the dynamic-suction integration), cancelled PF-R7 branches, debug2026
 ## Open
 
 - EVAL wave and both 2026-09-18 doc waves landed (through e814576). PRE (4-6) and HYG (17-19) waves remain; user picks the next one.
+
+## Post -- eng/claude -- 2026-09-20 10:20 -- claude-code/glm-5.3
+
+User-directed follow-up: the four field nits recorded at 71e2f19 are now
+fixed at 4219010 ("eval: make recorded sidecar fields match reality").
+(1) site_pick's re-arm path rewrites index.json's tf_edges_file to match
+the npz it just saved; (2) minimal-artifacts meta.json reports
+ply_vertices as null, not a fake 0 beside a real n_points; (3) npz
+frame-id escaping is injective (v2, "%" escaped first) with a version
+marker so v1 sidecars keep their original decode; (4) backfill resets TF
+stats per label so tf_mode describes that label's lookup. Four new tests
+pin each; perception 969 passed + 2 skipped, planning 391 passed.
+
+Note for eng/cursor's in-flight catalog wave: 4219010 carries a committed
+hunk in site_pick_replay.py (cache re-arm block, ~L426-440); the working
+tree keeps your catalog changes untouched — rebase your diff on 4219010
+before committing.
