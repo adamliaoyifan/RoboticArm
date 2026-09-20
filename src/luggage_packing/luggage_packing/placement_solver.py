@@ -25,6 +25,36 @@ REASON_OVERLAP = "overlap"
 REASON_OUTSIDE_APERTURE = "outside_aperture"
 REASON_OUTSIDE_HULL = "outside_hull"
 REASON_CORRIDOR_BLOCKED = "corridor_blocked"
+REASON_UNKNOWN_ABOVE_FLOOR = "unknown_above_floor"
+REASON_INSUFFICIENT_CLEARANCE = "insufficient_clearance"
+REASON_INSUFFICIENT_SUPPORT = "insufficient_support"
+
+# A capacity gate answers "does this box physically fit here, given the
+# container hull and what is already inside?". Everything else (aperture,
+# insertion corridor, unobserved support) is a policy or observation gate: it
+# rejects a slot the container may still have room for. The split matches the
+# independent eval enumerator in ``place_only_fixture.enumerate_footprints``
+# so the product's own claim and the arbiter's verdict are comparable.
+CAPACITY_REASONS = frozenset((
+    REASON_OVERLAP, REASON_OUTSIDE_HULL, REASON_INSUFFICIENT_CLEARANCE))
+POLICY_REASONS = frozenset((
+    REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
+    REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT))
+
+# Stable placement failure taxonomy (docs/architecture/container_geometry.md).
+# The solver emits the first four; the node adds the last two at its own
+# boundary. They share this module so every consumer reads one taxonomy.
+CODE_INVALID_BOX_SIZE = "INVALID_BOX_SIZE"
+CODE_BOX_EXCEEDS_CONTAINER = "BOX_EXCEEDS_CONTAINER"
+CODE_BIN_FULL = "BIN_FULL"
+CODE_PLACE_CANDIDATE_EXHAUSTED = "PLACE_CANDIDATE_EXHAUSTED"
+CODE_CARGO_MAP_GEOMETRY_MISMATCH = "CARGO_MAP_GEOMETRY_MISMATCH"
+CODE_DETECT_FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
+
+PLACEMENT_REASON_CODES = frozenset((
+    CODE_INVALID_BOX_SIZE, CODE_BOX_EXCEEDS_CONTAINER, CODE_BIN_FULL,
+    CODE_PLACE_CANDIDATE_EXHAUSTED, CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+    CODE_DETECT_FULL_GEOMETRY_REQUIRED))
 
 
 def candidate_aabb(candidate, inner_h):
@@ -51,34 +81,66 @@ def aabb_overlap(a, b, tolerance=1e-9):
     )
 
 
-def placement_constraint_reason(
+def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
         hull_contains=None, inner_size=None, smallest_size=None):
-    """Return the first hard-constraint reject reason, or ``None``.
+    """Return ``(reason, capacity_ok)`` for one candidate.
+
+    ``reason`` is ``None`` when every gate passes, otherwise the first reject
+    reason in the historical report order (aperture, hull, overlap, corridor).
+    ``capacity_ok`` is independent of that order: it is False only when a
+    capacity gate rejected the box, so a slot lost to aperture or corridor
+    alone still counts as physical room inside the container.
 
     ``hull_contains`` receives floor-relative XYZ corners. Keeping it as an
     injected geometry-kernel callback makes this function ROS-free without
     duplicating the authoritative seven-face hull implementation.
     """
     box = candidate_aabb(candidate, inner_h)
-    if aperture_y is not None:
-        if box[1] < float(aperture_y[0]) - 1e-6 \
-                or box[4] > float(aperture_y[1]) + 1e-6:
-            return REASON_OUTSIDE_APERTURE
+    outside_aperture = (
+        aperture_y is not None
+        and (box[1] < float(aperture_y[0]) - 1e-6
+             or box[4] > float(aperture_y[1]) + 1e-6))
+    outside_hull = False
     if hull_contains is not None:
         for x in (box[0], box[3]):
             for y in (box[1], box[4]):
                 for z in (box[2], box[5]):
                     if not hull_contains((x, y, z)):
-                        return REASON_OUTSIDE_HULL
-    if any(aabb_overlap(box, placed) for placed in (placed_aabbs or [])):
-        return REASON_OVERLAP
+                        outside_hull = True
+                        break
+                if outside_hull:
+                    break
+            if outside_hull:
+                break
+    overlaps = any(aabb_overlap(box, placed) for placed in (placed_aabbs or []))
+    capacity_ok = not (outside_hull or overlaps)
+
+    if outside_aperture:
+        return REASON_OUTSIDE_APERTURE, capacity_ok
+    if outside_hull:
+        return REASON_OUTSIDE_HULL, capacity_ok
+    if overlaps:
+        return REASON_OVERLAP, capacity_ok
+    # The corridor sweep is the expensive gate; it only matters once the box
+    # already fits, so it stays behind the cheap gates as before.
     if (inner_size is not None and smallest_size is not None):
         from luggage_packing.insertion_corridor import corridor_blocked
         if corridor_blocked(
                 box, placed_aabbs or [], inner_size, smallest_size):
-            return REASON_CORRIDOR_BLOCKED
-    return None
+            return REASON_CORRIDOR_BLOCKED, capacity_ok
+    return None, capacity_ok
+
+
+def placement_constraint_reason(
+        candidate, inner_h, placed_aabbs=None, aperture_y=None,
+        hull_contains=None, inner_size=None, smallest_size=None):
+    """Return the first hard-constraint reject reason, or ``None``."""
+    reason, _capacity_ok = placement_constraint_verdict(
+        candidate, inner_h, placed_aabbs=placed_aabbs, aperture_y=aperture_y,
+        hull_contains=hull_contains, inner_size=inner_size,
+        smallest_size=smallest_size)
+    return reason
 
 
 def _default_params():
@@ -161,12 +223,39 @@ def _local_to_base(center_base, yaw, lx, ly, lz):
     return [bx, by, bz]
 
 
+def _validator_verdict(candidate_validator, candidate):
+    """Normalize a validator result to ``(reason, capacity_ok)``.
+
+    Validators may return a plain reason string (legacy callers) or the
+    ``(reason, capacity_ok)`` pair from ``placement_constraint_verdict``.
+    """
+    if candidate_validator is None:
+        return None, True
+    result = candidate_validator(candidate)
+    if isinstance(result, tuple):
+        reason, capacity_ok = result
+        return (str(reason) if reason else None), bool(capacity_ok)
+    reason = str(result) if result else None
+    # A string-only validator cannot say which class rejected the candidate;
+    # assume the conservative answer (no proven capacity) for capacity gates.
+    return reason, reason not in CAPACITY_REASONS
+
+
 def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
-                        candidate_validator=None):
+                        candidate_validator=None, totals=None):
     """Return scored placement candidates sorted feasible-first by score.
 
     ``surface_map`` is the ``surface_map_2d`` dict. ``box_size`` is
     ``[length, width, height]`` in meters.
+
+    Each candidate also carries ``capacity_feasible``: True when no capacity
+    gate rejected it, so a caller can tell "the container is full" from
+    "every candidate was lost to a policy gate".
+
+    The returned list is truncated by ``top_n`` / ``keep_rejected``. Pass a
+    dict as ``totals`` to receive ``n_enumerated`` and ``n_capacity_feasible``
+    over every candidate evaluated, which is what a capacity claim must be
+    based on.
     """
     cfg = _default_params()
     if params:
@@ -211,13 +300,17 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 feasible = True
                 reason = "ok"
                 support_source = "sensor"
+                # Clearance is a capacity gate, so it is evaluated for every
+                # candidate rather than only for the ones that survive the
+                # observation gates above it.
+                clearance_ok = clearance_top >= cfg["clearance_margin"]
                 if has_unknown:
                     if abs(peak - floor_z) > cfg["support_tol"]:
                         # Stacking on an unobserved support surface -> reject.
                         # "floor exists" is geometric prior, but "something
                         # unseen holds the box at peak>0" is not trustworthy.
                         feasible = False
-                        reason = "unknown_above_floor"
+                        reason = REASON_UNKNOWN_ABOVE_FLOOR
                     else:
                         # peak ≈ floor_z: lands on the a-priori container floor.
                         # The floor's *existence* is geometric prior (scene_tf),
@@ -225,12 +318,12 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         # column is unobserved. confidence_ratio == 0 makes
                         # these score below observed positions. See §4.2.2.
                         support_source = "floor_prior"
-                if feasible and clearance_top < cfg["clearance_margin"]:
+                if feasible and not clearance_ok:
                     feasible = False
-                    reason = "insufficient_clearance"
+                    reason = REASON_INSUFFICIENT_CLEARANCE
                 elif feasible and support_ratio < cfg["min_support_ratio"]:
                     feasible = False
-                    reason = "insufficient_support"
+                    reason = REASON_INSUFFICIENT_SUPPORT
 
                 clearance_score = max(0.0, min(1.0, clearance_top / max(box_h, 1e-6)))
                 compactness = 1.0 - min(1.0, peak / max(inner_h, 1e-6))
@@ -259,13 +352,24 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                     "score": round(score, 4),
                     "feasible": feasible,
                     "reason": reason,
+                    "capacity_feasible": clearance_ok,
                 }
-                if feasible and candidate_validator is not None:
-                    constraint_reason = candidate_validator(candidate)
-                    if constraint_reason:
+                if clearance_ok:
+                    # Run the geometry gates even when an observation gate
+                    # already rejected the slot: capacity_feasible must not
+                    # depend on which gate happened to fire first.
+                    constraint_reason, capacity_ok = _validator_verdict(
+                        candidate_validator, candidate)
+                    candidate["capacity_feasible"] = bool(capacity_ok)
+                    if feasible and constraint_reason:
                         candidate["feasible"] = False
-                        candidate["reason"] = str(constraint_reason)
+                        candidate["reason"] = constraint_reason
                 candidates.append(candidate)
+
+    if totals is not None:
+        totals["n_enumerated"] = len(candidates)
+        totals["n_capacity_feasible"] = sum(
+            1 for c in candidates if c["capacity_feasible"])
 
     candidates.sort(key=lambda c: (not c["feasible"], -c["score"]))
     feasible = [c for c in candidates if c["feasible"]][: int(cfg["top_n"])]
@@ -275,7 +379,15 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
                     candidate_validator=None):
-    """ROS-free ComputePlacement core with stable BIN_FULL diagnostics."""
+    """ROS-free ComputePlacement core with a stable failure taxonomy.
+
+    On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
+    ``BOX_EXCEEDS_CONTAINER``, ``BIN_FULL`` or ``PLACE_CANDIDATE_EXHAUSTED``.
+    ``BIN_FULL`` is only returned when no enumerated candidate was
+    capacity-feasible, so a run that lost every slot to the aperture, the
+    insertion corridor, or unobserved support is never reported as a full
+    container.
+    """
     size = [float(v) for v in box_size]
     if len(size) != 3 or not all(math.isfinite(v) and v > 0.0 for v in size):
         return {
@@ -283,14 +395,20 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
             "selected": None,
             "candidates": [],
             "reject_histogram": {"invalid_size": 1},
-            "message": "BIN_FULL invalid_size",
+            "reason_code": CODE_INVALID_BOX_SIZE,
+            "capacity_feasible_count": 0,
+            "message": "%s invalid_size" % CODE_INVALID_BOX_SIZE,
             "map_revision": surface_map.get("map_revision"),
         }
+    totals = {}
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
-        candidate_validator=candidate_validator)
+        candidate_validator=candidate_validator, totals=totals)
     feasible = [candidate for candidate in candidates
                 if candidate.get("feasible", False)]
+    # Count over every enumerated candidate, not the retained subset: a
+    # capacity claim must not depend on keep_rejected.
+    capacity_feasible_count = int(totals.get("n_capacity_feasible", 0))
     histogram = {}
     for candidate in candidates:
         if candidate.get("feasible", False):
@@ -298,12 +416,21 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
         reason = str(candidate.get("reason") or "rejected")
         histogram[reason] = histogram.get(reason, 0) + 1
     if not feasible:
+        if not totals.get("n_enumerated"):
+            # No sliding window was even enumerated: the footprint or height
+            # exceeds the container at every allowed yaw.
+            reason_code = CODE_BOX_EXCEEDS_CONTAINER
+        elif capacity_feasible_count:
+            reason_code = CODE_PLACE_CANDIDATE_EXHAUSTED
+        else:
+            reason_code = CODE_BIN_FULL
         parts = " ".join("%s=%d" % (key, value)
                          for key, value in sorted(histogram.items()))
-        message = "BIN_FULL no_candidate%s%s" % (
-            ": " if parts else "", parts)
+        message = "%s no_candidate%s%s" % (
+            reason_code, ": " if parts else "", parts)
         selected = None
     else:
+        reason_code = ""
         selected = max(feasible, key=lambda item: item.get("score", 0.0))
         message = "slot score=%.3f feasible=%d rejected=%s" % (
             selected.get("score", 0.0), len(feasible),
@@ -313,6 +440,9 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
         "selected": selected,
         "candidates": candidates,
         "reject_histogram": histogram,
+        "reason_code": reason_code,
+        "capacity_feasible_count": capacity_feasible_count,
+        "candidates_enumerated": int(totals.get("n_enumerated", 0)),
         "message": message,
         "map_revision": surface_map.get("map_revision"),
     }

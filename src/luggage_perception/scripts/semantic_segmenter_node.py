@@ -43,6 +43,7 @@ from luggage_msgs.msg import YoloBox, YoloDetections
 from luggage_perception import ros_message_adapters as adapters
 from luggage_perception.cargo_instance_tracker import parse_current_box_payload
 from luggage_perception.detection_frame_join import yolo_box_fields_from_detections
+from luggage_perception.segmenter_ingest import SegmenterIngest
 from luggage_perception.detect_overlay import (
     draw_timestamp_banner,
     timestamp_banner_lines,
@@ -195,6 +196,7 @@ class SemanticSegmenterNode(Node):
         self._stats_interval_sec = 0.0 if stats_hz <= 0.0 else 1.0 / stats_hz
         self._stats_dirty = False
         self._last_stats_pub = 0.0
+        self._pending_stats = None
         self._overlay_missing_warned = False
         self._drop_count = 0
         self._camera_info = None
@@ -203,6 +205,7 @@ class SemanticSegmenterNode(Node):
         self._tf_listener = TransformListener(self._tf_buffer, self)
         self._box_id = ""
         self._box_generation = 0
+        self._ingest = SegmenterIngest()
         self._last_hw = None
         self._last_frame_id = "camera_depth_optical_frame"
         self._last_stamp = None
@@ -298,8 +301,7 @@ class SemanticSegmenterNode(Node):
 
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
-        if (generation == self._box_generation
-                and box_id == self._box_id):
+        if not self._ingest.note_epoch(box_id, generation):
             return
         self._box_id = box_id
         self._box_generation = generation
@@ -466,7 +468,10 @@ class SemanticSegmenterNode(Node):
         t0 = time.monotonic()
         self._segmenter.workspace_ctx = self._workspace_ctx_for(
             frame.stamp, frame.frame_id or self._last_frame_id)
-        self._segmenter.update(frame.image, frame.stamp, frame.frame_id)
+        obs = self._ingest.assemble(frame)
+        self._segmenter.update(
+            frame.image, frame.stamp, frame.frame_id,
+            generation=obs.generation, instance_id=obs.instance_id)
         out = self._segmenter.copy_output()
         stamp = adapters.sec_to_stamp(out.stamp)
         pub_ms = (time.monotonic() - t0) * 1000.0
@@ -486,14 +491,13 @@ class SemanticSegmenterNode(Node):
         if (not self._stats_dirty
                 or now - self._last_stats_pub < self._stats_interval_sec):
             return
+        record = self._pending_stats
+        if record is None:
+            return
         self._stats_dirty = False
         self._last_stats_pub = now
-        out = self._segmenter.copy_output()
-        if out is not None:
-            record = dict(out.stats)
-            record["stamp"] = out.stamp
-            record["frame_id"] = out.frame_id
-            self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+        self._pending_stats = None
+        self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
 
     def _publish_yolo(self, out, stamp):
         msg = YoloDetections()
@@ -501,8 +505,8 @@ class SemanticSegmenterNode(Node):
         msg.header.frame_id = out.frame_id or self._last_frame_id
         msg.frame_seq = self._yolo_seq
         self._yolo_seq += 1
-        msg.generation = int(self._box_generation)
-        msg.instance_id = str(self._box_id)
+        msg.generation = int(getattr(out, "generation", 0) or 0)
+        msg.instance_id = str(getattr(out, "instance_id", "") or "")
         height, width = out.label_map.shape[:2]
         msg.image_width = int(width)
         msg.image_height = int(height)
@@ -547,10 +551,12 @@ class SemanticSegmenterNode(Node):
         overlay.data = bgr.tobytes()
         self._overlay_pub.publish(overlay)
 
-    def _publish_stats(self, out, recv_wall=None):
-        if self._stats_interval_sec > 0.0:
-            self._stats_dirty = True
-            return
+    def _stats_record(self, out, recv_wall=None):
+        """Complete stats payload for one segmenter output.
+
+        Consumers correlate on ``generation`` / ``instance_id`` and measure
+        latency from the detect stamps, so every publish path must carry them.
+        """
         record = dict(out.stats)
         record["stamp"] = out.stamp
         record["mask_stamp"] = out.stamp
@@ -563,10 +569,22 @@ class SemanticSegmenterNode(Node):
             record["recv_wall_sec"] = float(recv_wall)
         record["rate_limited_drops"] = self._drop_count
         record["self_body_source"] = self._self_body_source
-        record["generation"] = int(self._box_generation)
-        record["instance_id"] = str(self._box_id)
+        record["generation"] = int(getattr(out, "generation", 0) or 0)
+        record["instance_id"] = str(getattr(out, "instance_id", "") or "")
         if self._segmenter.self_body_mask is not None:
             record["self_body_pixels"] = int(self._segmenter.self_body_mask.sum())
+        return record
+
+    def _publish_stats(self, out, recv_wall=None):
+        record = self._stats_record(out, recv_wall)
+        if self._stats_interval_sec > 0.0:
+            # Rate-limit serialization, not content. Building the dict is
+            # cheap; json.dumps is what PF-R9 g2 moved onto the timer. The
+            # timer publishes this exact record, so a consumer waiting on
+            # generation/instance_id cannot be starved by the rate limit.
+            self._pending_stats = record
+            self._stats_dirty = True
+            return
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
 
     def _warn_throttled(self, text):

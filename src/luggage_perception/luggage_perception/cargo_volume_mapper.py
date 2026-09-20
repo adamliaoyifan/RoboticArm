@@ -32,7 +32,14 @@ class CargoVolumeMapper:
     def __init__(
         self, inner_size, center_base, yaw, resolution, occupancy_params=None,
         max_raycast_points=None, hull_local_inside=None,
+        geometry_descriptor=None, geometry_hash="",
     ):
+        # Identity of the container hull this map describes. Consumers join
+        # the map with their own kernel descriptor and must fail closed when
+        # the hashes differ (docs/architecture/container_geometry.md).
+        self.geometry_descriptor = dict(geometry_descriptor or {})
+        self.geometry_hash = str(
+            geometry_hash or self.geometry_descriptor.get("geometry_hash", ""))
         self.resolution = float(resolution)
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
         self.center = [float(v) for v in center_base]
@@ -520,6 +527,7 @@ class CargoVolumeMapper:
             "label_distribution": {str(k): v for k, v in label_dist.items()},
             "map_revision": self._revision,
             "committed_box_count": len(self._placed_boxes),
+            "geometry_hash": self.geometry_hash,
         }
 
     def _frontier_indices(self):
@@ -574,6 +582,9 @@ class CargoVolumeMapper:
 
         Conversion metadata (``center_base``, ``yaw``, ``inner_size``,
         ``resolution``) lets callers map a cell back into ``elfin_base_link``.
+        ``geometry_hash`` / ``geometry_descriptor`` identify the hull this map
+        was built for; a consumer whose own kernel hash differs must reject
+        the map instead of reading ``inner_size``.
         """
         half_l = self.inner_l * 0.5
         half_w = self.inner_w * 0.5
@@ -635,6 +646,8 @@ class CargoVolumeMapper:
         return {
             "frame": "container_local",
             "map_revision": self._revision,
+            "geometry_hash": self.geometry_hash,
+            "geometry_descriptor": dict(self.geometry_descriptor),
             "resolution": self.resolution,
             "nx": self.nx,
             "ny": self.ny,

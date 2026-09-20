@@ -455,6 +455,8 @@ class SegmenterOutput:
     detections: tuple            # tuple of dict, already copied
     instance_map: np.ndarray     # HxW uint16 or None
     stats: dict
+    generation: int = 0
+    instance_id: str = ""
 
     def copy(self):
         return SegmenterOutput(
@@ -465,6 +467,8 @@ class SegmenterOutput:
             instance_map=(None if self.instance_map is None
                           else np.copy(self.instance_map)),
             stats=dict(self.stats),
+            generation=int(self.generation or 0),
+            instance_id=str(self.instance_id or ""),
         )
 
 
@@ -790,13 +794,16 @@ class SemanticSegmenter:
         )
         return None if self._instance_map is None else np.copy(self._instance_map)
 
-    def update(self, rgb_uint8, stamp, frame_id):
+    def update(self, rgb_uint8, stamp, frame_id, generation=0, instance_id=""):
         """Run ``segment()`` and store a deep-copied snapshot.
 
         The backends may reuse internal buffers between calls, so every array
         is copied here; a previously returned ``SegmenterOutput`` is never
         mutated by a later ``update``. No publishing, no I/O. ``stamp`` /
         ``frame_id`` must come from the input header, not from wall clock.
+        ``generation`` / ``instance_id`` are the task epoch from ingest
+        (optional ``/luggage/current_box``); they are copied onto the output
+        and never used as geometry.
 
         Panel pixels are painted letterbox-grey *before* ``segment()`` so
         YOLO never proposes the suction panel as cargo. ``apply_self_body_mask``
@@ -888,6 +895,10 @@ class SemanticSegmenter:
         stats["detection_count"] = len(detections)
         if n_self:
             stats["self_body_pixels"] = n_self
+        generation = int(generation or 0)
+        instance_id = str(instance_id or "")
+        stats["generation"] = generation
+        stats["instance_id"] = instance_id
         self._last_stats = dict(stats)
         self._output = SegmenterOutput(
             stamp=float(stamp),
@@ -897,6 +908,8 @@ class SemanticSegmenter:
             instance_map=(None if instance_map is None
                           else np.copy(instance_map)),
             stats=stats,
+            generation=generation,
+            instance_id=instance_id,
         )
 
     def copy_output(self):

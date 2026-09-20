@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Pack-to-full eval driver (Todo 5 slice D).
 
-Loops spawn -> pick(vacuum) -> ComputePlacement -> place -> commit until a
-stop condition (BIN_FULL / SPAWN_EXHAUSTED / MAX_BOXES / ABORT / TIMEOUT),
-writing the ledger-first evidence contract from
-docs/plans/packing_eval_metrics.md.
+Loops spawn -> pick(vacuum) -> ComputePlacement(DetectLuggage) -> place
+-> commit until a stop condition (the planner's reason_code /
+SPAWN_EXHAUSTED / MAX_BOXES / ABORT / TIMEOUT), writing the ledger-first
+evidence contract from docs/plans/packing_eval_metrics.md. Spawn catalog
+WDH is score/dump metadata only; ComputePlacement sees DetectLuggage.
 
 Subclasses PlaceSmokeDriver for the pick+place state machine. This file owns
 the multi-box loop, placement service, cargo_map commit, FinalizeCurrentBox
@@ -43,7 +44,6 @@ from luggage_msgs.srv import (
     ClearCurrentBox,
     ComputePlacement,
     FinalizeCurrentBox,
-    GetCurrentBox,
     SpawnNextBox,
     RemovePlacedBox,
 )
@@ -89,6 +89,10 @@ class PackEvalDriver(PlaceSmokeDriver):
         os.makedirs(self._dumps, exist_ok=True)
         self._suite_t0 = time.time()
         self._last_rejected = None
+        self._pending_slot = None
+        self._pending_slot_meta = None
+        self._pending_audit = None
+        self._pending_center_local = None
 
     def graph_error(self):
         err = super().graph_error()
@@ -112,6 +116,49 @@ class PackEvalDriver(PlaceSmokeDriver):
             self._last_result = json.loads(msg.data)
         except ValueError:
             pass
+
+    def on_detected_luggage(self, pick_msg, trial, spawn):
+        """ComputePlacement from DetectLuggage, not GetCurrentBox / catalog."""
+        del spawn
+        request = self._compute_request(pick_msg)
+        placement = self._call(self._compute, request, timeout=30.0)
+        if placement is None or not placement.success:
+            reason = (placement.message
+                      if placement else "COMPUTE_TIMEOUT")
+            reason_code = (
+                str(getattr(placement, "reason_code", "") or "")
+                if placement else "COMPUTE_TIMEOUT")
+            last = dict(self._last_result or {})
+            size = [pick_msg.width, pick_msg.depth, pick_msg.height]
+            self._last_rejected = {
+                "seq": trial.index,
+                "size_wdh": size,
+                "reason_code": reason_code,
+                "n_candidates_total": last.get("n_candidates_total", -1),
+                "n_feasible": last.get("n_feasible", 0),
+                "n_capacity_feasible": last.get("n_capacity_feasible", -1),
+                "reject_histogram": last.get("reject_histogram") or
+                self._parse_histogram(reason),
+            }
+            trial.extras["placement"] = reason
+            trial.extras["placement_from"] = "DetectLuggage"
+            return reason_code or "PLACEMENT_FAILED"
+        slot = placement.slot
+        audit, center_local = self._corridor_audit(slot)
+        self._pending_slot = slot
+        self._pending_slot_meta = self._slot_meta(slot)
+        self._pending_audit = audit
+        self._pending_center_local = center_local
+        trial.extras["placement_from"] = "DetectLuggage"
+        trial.extras["placement_message"] = placement.message or ""
+        return ""
+
+    def _place_slot_for(self, pick_msg, box_msg, trial):
+        del pick_msg, box_msg
+        if self._pending_slot is None:
+            trial.fail_code = trial.fail_code or "PLACEMENT_FAILED"
+            return None, None
+        return self._pending_slot, self._pending_slot_meta
 
     def _dump_json(self, folder, name, payload):
         os.makedirs(folder, exist_ok=True)
@@ -198,7 +245,7 @@ class PackEvalDriver(PlaceSmokeDriver):
         return audit_corridor(
             center_local, [slot.width, slot.depth, slot.height],
             self._committed_ledger_boxes,
-            [1.49, 1.97, 1.48], [0.55, 0.40, 0.25],
+            [1.49, 1.97, 1.48], [slot.width, slot.depth, slot.height],
             opening_side="negative_x"), center_local
 
     def _slot_meta(self, slot):
@@ -286,72 +333,22 @@ class PackEvalDriver(PlaceSmokeDriver):
                     t_ros_spawn=t_spawn, volume_m3=0.0)
                 break
 
-            current = self._call(
-                self._current, GetCurrentBox.Request(), timeout=10.0)
-            box = current.box if current and current.success else spawn.box
+            # Spawn WDH is ledger/score metadata only. Placement uses
+            # DetectLuggage inside on_detected_luggage.
+            box = spawn.box
             size = [box.width, box.depth, box.height]
             volume = size[0] * size[1] * size[2]
             dump_slug = "pending"
-
-            request = self._compute_request(box)
-            placement = self._call(self._compute, request, timeout=30.0)
-            if placement is None or not placement.success:
-                reason = (placement.message
-                          if placement else "COMPUTE_TIMEOUT")
-                last = dict(self._last_result or {})
-                self._last_rejected = {
-                    "seq": seq,
-                    "catalog_id": self._catalog_id(spawn),
-                    "size_wdh": size,
-                    "n_candidates_total": last.get("n_candidates_total", -1),
-                    "n_feasible": last.get("n_feasible", 0),
-                    "reject_histogram": last.get("reject_histogram") or
-                    self._parse_histogram(reason),
-                }
-                if args.skip_unplaceable and "no_candidate" in reason:
-                    dump_slug = "SKIP_NO_SLOT"
-                    dump_path = self._box_dump_dir(seq, dump_slug)
-                    self._dump_placement(dump_path, box, size, spawn)
-                    self._ledger_line(
-                        seq=seq, committed=False, fail_code=dump_slug,
-                        spawn_id=spawn.box.id,
-                        catalog_id=self._catalog_id(spawn),
-                        size_wdh=size, mass_kg=self._mass(spawn),
-                        t_ros_spawn=t_spawn, volume_m3=volume,
-                        message=reason, dump=dump_path)
-                    self._call(self._clear, ClearCurrentBox.Request(),
-                               timeout=15.0)
-                    seq += 1
-                    continue
-                termination = "BIN_FULL"
-                dump_slug = "BIN_FULL"
-                dump_path = self._box_dump_dir(seq, dump_slug)
-                self._dump_placement(dump_path, box, size, spawn)
-                self._dump_json(dump_path, "commit.json", {"committed": False})
-                self._dump_json(dump_path, "final_layout.json", {
-                    "path": "../../final_layout",
-                    "note": "suite writes final_layout/ on stop",
-                })
-                self._ledger_line(
-                    seq=seq, committed=False, fail_code="BIN_FULL",
-                    spawn_id=spawn.box.id,
-                    catalog_id=self._catalog_id(spawn),
-                    size_wdh=size, mass_kg=self._mass(spawn),
-                    t_ros_spawn=t_spawn, volume_m3=volume,
-                    message=reason, dump=dump_path)
-                self._call(self._clear, ClearCurrentBox.Request(),
-                           timeout=15.0)
-                break
-
-            slot = placement.slot
-            audit, center_local = self._corridor_audit(slot)
-            slot_meta = self._slot_meta(slot)
-            dump_slug = "ok"
+            self._pending_slot = None
+            self._pending_slot_meta = None
+            self._pending_audit = None
+            self._pending_center_local = None
+            self._last_result = {}
             args.dump_dir = self._box_dump_dir(seq, "pending")
             args.dump_exact = True
             try:
                 record = self.run_trial(
-                    seq, slot=slot, slot_meta=slot_meta,
+                    seq, slot=None, slot_meta=None,
                     already_spawned=True, keep_placed=True)
                 commit_ok = place_ok(record)
                 fail = getattr(record, "fail_code", "") or ""
@@ -364,6 +361,61 @@ class PackEvalDriver(PlaceSmokeDriver):
                 record = None
                 fail = dump_slug
                 self.get_logger().error("trial %d raised %s" % (seq, exc))
+
+            slot = self._pending_slot
+            slot_meta = self._pending_slot_meta
+            audit = self._pending_audit or {}
+            center_local = self._pending_center_local
+            unplaceable = fail in (
+                "PLACE_CANDIDATE_EXHAUSTED", "BOX_EXCEEDS_CONTAINER")
+            suite_stop = fail in (
+                "BIN_FULL", "PLACE_CANDIDATE_EXHAUSTED",
+                "BOX_EXCEEDS_CONTAINER", "CARGO_MAP_GEOMETRY_MISMATCH",
+                "COMPUTE_TIMEOUT", "PLACEMENT_FAILED")
+            if (not commit_ok) and args.skip_unplaceable and unplaceable:
+                dump_slug = "SKIP_NO_SLOT"
+                dump_path = self._rename_dump_dir(seq, dump_slug)
+                self._dump_placement(dump_path, box, size, spawn)
+                self._ledger_line(
+                    seq=seq, committed=False, fail_code=dump_slug,
+                    spawn_id=spawn.box.id,
+                    catalog_id=self._catalog_id(spawn),
+                    size_wdh=size, mass_kg=self._mass(spawn),
+                    t_ros_spawn=t_spawn, volume_m3=volume,
+                    message=fail, dump=dump_path)
+                self._call(self._clear, ClearCurrentBox.Request(),
+                           timeout=15.0)
+                seq += 1
+                continue
+            if (not commit_ok) and suite_stop:
+                termination = fail or "PLACEMENT_FAILED"
+                dump_slug = termination
+                dump_path = self._rename_dump_dir(seq, dump_slug)
+                self._dump_placement(dump_path, box, size, spawn)
+                self._dump_json(dump_path, "commit.json", {"committed": False})
+                self._dump_json(dump_path, "final_layout.json", {
+                    "path": "../../final_layout",
+                    "note": "suite writes final_layout/ on stop",
+                })
+                self._ledger_line(
+                    seq=seq, committed=False, fail_code=termination,
+                    spawn_id=spawn.box.id,
+                    catalog_id=self._catalog_id(spawn),
+                    size_wdh=size, mass_kg=self._mass(spawn),
+                    t_ros_spawn=t_spawn, volume_m3=volume,
+                    message=fail, dump=dump_path)
+                self._call(self._clear, ClearCurrentBox.Request(),
+                           timeout=15.0)
+                break
+
+            if slot is None or slot_meta is None:
+                slot_meta = {
+                    "planning_frame": "world",
+                    "pose_world": {"position": [0.0, 0.0, 0.0], "yaw": 0.0},
+                    "pose_base_link": {
+                        "position": [0.0, 0.0, 0.0], "yaw": 0.0},
+                    "source": "none",
+                }
 
             t_commit = time.time()
             cycle = t_commit - t_spawn
@@ -475,6 +527,10 @@ class PackEvalDriver(PlaceSmokeDriver):
         request = ComputePlacement.Request()
         request.box = box
         request.placed = list(self._placed_slots)
+        # Pin the hull this driver actually observed, so a planner loaded
+        # against a different scene config fails closed instead of answering.
+        request.geometry_hash = str(
+            (self._surface_2d or {}).get("geometry_hash") or "")
         return request
 
     @staticmethod

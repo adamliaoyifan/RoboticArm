@@ -280,10 +280,10 @@ def _inventory_table(vacuum_geom_lines, vacuum_gc_lines):
             "class": CLASS_CONFIG,
             "sim_provider": "box catalog YAML",
             "hardware_provider": "same catalog as deployment prior",
-            "consumers": "compose_box_geometry HEIGHT_SOURCE_CATALOG_PRIOR",
+            "consumers": "pickup_box_spawner_node spawn only",
             "feeds_online_geometry": False,
             "privileged": False,
-            "note": "height_valid stays false for catalog prior",
+            "note": "catalog WDH must not enter DetectLuggage or ComputePlacement",
         },
         {
             "input": "Gazebo /world/*/set_pose",

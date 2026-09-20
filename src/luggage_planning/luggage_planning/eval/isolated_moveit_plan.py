@@ -26,11 +26,19 @@ JOINTS = [
 
 
 def plan_pick_segments(start_joints, waypoints, domain_id=None,
-                       timeout_sec=45.0, environ=None):
+                       timeout_sec=45.0, environ=None,
+                       collision_objects=None):
     """Plan attach (or last cartesian) from *start_joints*. Never execute.
 
     Returns a dict with ``t_sec``, ``q``, ``xyz``, ``message``. *xyz* is
     empty unless the planner wrote FK samples.
+
+    ``collision_objects`` (optional) is a list of
+    ``{"id", "xyz", "dimensions"}`` BOX primitives applied to the
+    isolated planning scene before planning — the replay passes the
+    detected cargo so the plan reflects reaching over a real box, not an
+    empty world. A scene that cannot be applied fails the plan honestly
+    (the worker reports the skip), never plans against nothing.
     """
     env = isolated_replay_env(domain_id, environ=environ)
     if not start_joints or len(start_joints) < 6:
@@ -51,11 +59,20 @@ def plan_pick_segments(start_joints, waypoints, domain_id=None,
     if not os.path.isfile(script):
         return {"message": "MoveIt skipped: worker missing",
                 "t_sec": [], "q": [], "xyz": []}
+    objects = []
+    for obj in collision_objects or []:
+        objects.append({
+            "id": str(obj["id"]),
+            "xyz": [float(v) for v in obj["xyz"][:3]],
+            "dimensions": [float(v) for v in obj["dimensions"][:3]],
+            "frame_id": str(obj.get("frame_id", "world")),
+        })
     request = {
         "start_joints": [float(v) for v in start_joints[:6]],
         "xyz": [float(v) for v in attach["xyz"]],
         "timeout_sec": float(timeout_sec),
         "joint_names": list(JOINTS),
+        "collision_objects": objects,
     }
     with tempfile.TemporaryDirectory(prefix="elfin_replay_moveit_") as tmp:
         req_path = os.path.join(tmp, "request.json")

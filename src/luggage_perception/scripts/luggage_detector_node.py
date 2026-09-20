@@ -13,9 +13,9 @@ Platform-free height contract (docs/plans/platform_free_height_eng_todo.md):
 - top surface, XY, yaw, width, depth are measured from the cargo cloud;
 - height/center-Z are valid (FULL_3D) only when the local support plane
   was measured from the *same* acquisition stamp with settled geometry;
-  otherwise the result is TOP_ONLY with an explicit reason;
-- a catalog width/depth match may populate a numeric prior height with
-  ``height_valid=false``;
+  otherwise the result is TOP_ONLY with height 0 and
+  ``HEIGHT_SOURCE_UNAVAILABLE``;
+- catalog / spawn WDH never enter this estimate (spawn-only);
 - no GT fallback: ``GetCurrentBox``/spawner state never enters the online
   estimate (eval drivers do their own GT comparison).
 """
@@ -50,14 +50,6 @@ from std_msgs.msg import Header
 from std_msgs.msg import String
 import tf2_ros
 
-from luggage_description.box_catalog_utils import (
-    box_catalog_entries,
-    load_box_catalog,
-)
-from luggage_description.scene_tf_config_utils import (
-    load_scene_tf_config,
-    resolve_scene_tf_config_path,
-)
 from luggage_perception.detection_temporal_gate import (
     SuitcaseViewWait,
     should_retry_estimate,
@@ -230,6 +222,8 @@ class LuggageDetector(Node):
         # → aligned depth. Opt in only for sim/eval FP gates.
         self.declare_parameter("crop_to_workspace", False)
         self.declare_parameter("cloud_max_age_sec", 1.0)
+        # Declared so old launch files still load. Catalog size is spawn-only
+        # and is not a DetectLuggage input.
         self.declare_parameter("catalog_match_tolerance", 0.08)
         self.declare_parameter("min_points", 50)
         self.declare_parameter("min_confidence", 0.70)
@@ -302,18 +296,12 @@ class LuggageDetector(Node):
         self.declare_parameter("stream_stats_topic", "~/stream_stats_json")
         self.declare_parameter("join_buffer_maxlen", 10)
 
-        # DYNAMIC-SUCTION ST-1: scene_tf no longer enters the detection
-        # path. The scene config is read ONLY as the box-catalog source
-        # (height prior); pickup_source pose, workspace extents, platform
-        # geometry are never read here. Crop windows come exclusively from
-        # explicit workspace parameters.
-        scene_cfg_path = self.get_parameter("scene_tf_config").value
-        if not scene_cfg_path:
-            scene_cfg_path = resolve_scene_tf_config_path()
-        scene_config = load_scene_tf_config(scene_cfg_path)
-
-        catalog_config = load_box_catalog(scene_config=scene_config)
-        self._catalog_entries = box_catalog_entries(catalog_config)
+        # DYNAMIC-SUCTION ST-1: scene_tf and the box catalog are not
+        # detection inputs. Catalog WDH is spawn-only.
+        if str(self.get_parameter("scene_tf_config").value).strip():
+            self.get_logger().warning(
+                "scene_tf_config is ignored on DetectLuggage "
+                "(catalog/scene_tf is spawn-only)")
 
         self._world_frame = self.get_parameter("world_frame").value
         self._use_semantic = bool(self.get_parameter("use_semantic").value)
@@ -335,8 +323,6 @@ class LuggageDetector(Node):
         self._timing = {}
         self._roi_margin = float(self.get_parameter("roi_margin").value)
         self._cloud_max_age = float(self.get_parameter("cloud_max_age_sec").value)
-        self._catalog_tol = float(
-            self.get_parameter("catalog_match_tolerance").value)
         self._min_points = int(self.get_parameter("min_points").value)
         self._min_confidence = float(self.get_parameter("min_confidence").value)
 
@@ -396,8 +382,6 @@ class LuggageDetector(Node):
                     self.get_parameter("min_support_sides").value),
             ),
             support_mode=self._support_mode,
-            catalog_entries=self._catalog_entries,
-            catalog_tolerance=self._catalog_tol,
             stability_window=int(
                 self.get_parameter("stability_window").value),
             stability_max_z_spread=float(
@@ -1232,8 +1216,8 @@ class LuggageDetector(Node):
 
         - ``top_surface_pose.z`` is the measured pickup contact Z;
         - ``pose.position.z``/``height`` are measurements only when
-          ``height_valid`` (else pose.z falls back to the top Z and the
-          numeric height stays whatever prior produced it);
+          ``height_valid`` (else pose.z falls back to the top Z and
+          height stays 0);
         - ``header`` carries the acquisition stamp/frame.
         """
         box = result.box

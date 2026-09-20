@@ -26,6 +26,7 @@ import time
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
 
@@ -137,6 +138,41 @@ def _yaw_quat(yaw):
     return q
 
 
+def _parse_synthetic_size(text):
+    parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
+    if len(parts) != 3:
+        return None
+    try:
+        size = tuple(float(part) for part in parts)
+    except ValueError:
+        return None
+    if any(value <= 0.0 for value in size):
+        return None
+    return size
+
+
+def _pick_detection_record(pick):
+    """Z inputs the pick waypoints are derived from.
+
+    `pick_contact_top_z` prefers `top_surface_pose.z` and falls back to
+    `pose.z + height/2`, and the detector only puts the true centre in
+    `pose.z` when `height_valid`. A planning failure cannot be attributed
+    without these fields.
+    """
+    return {
+        "id": str(pick.id),
+        "frame_id": str(pick.header.frame_id),
+        "pose_position": [pick.pose.position.x, pick.pose.position.y,
+                          pick.pose.position.z],
+        "size_wdh": [float(pick.width), float(pick.depth), float(pick.height)],
+        "height_valid": bool(getattr(pick, "height_valid", False)),
+        "height_source": int(getattr(pick, "height_source", 0)),
+        "top_surface_valid": bool(getattr(pick, "top_surface_valid", False)),
+        "top_surface_z": float(pick.top_surface_pose.position.z),
+        "yaw_valid": bool(pick.yaw_valid),
+    }
+
+
 class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def __init__(self, args):
@@ -150,9 +186,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._tf_trace = []
         self._probe_joints = None
         self._follow_skipped0 = 0
+        self._last_joint_state = None
+        self._last_pick_detection = None
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        # IK seed for a planning failure: without it a PLAN_<segment> dump
+        # cannot tell an unreachable target from a bad start state.
+        self.create_subscription(
+            JointState, "/joint_states", self._on_joint_state, 10,
+            callback_group=self._group)
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
         self._add_placed = self.create_client(
@@ -170,10 +213,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             callback_group=self._group)
         self._probe = MotionExecutor(self)
         self._keep_placed = False
+        self._last_authorized_pick = None
 
     def _exit_to_portal(self):
         """Cartesian reverse of traverse so HOME does not start inside the box."""
-        dummy = self._dummy_pick((0.55, 0.40, 0.25))
+        dummy = getattr(self, "_last_authorized_pick", None)
+        if dummy is None:
+            return False, "no measured pick for place_exit"
         slot, _meta = self._fixed_slot(dummy)
         req = BuildMotionSequence.Request()
         req.phase = "place"
@@ -270,6 +316,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return None
         return parse_ign_model_pose(out)
+
+    def on_detected_luggage(self, pick_msg, trial, spawn):
+        """Hook after DetectLuggage. Return a fail_code or empty string.
+
+        Pack-eval computes the place slot from this detection. Spawn GT
+        must not become ComputePlacement input.
+        """
+        del pick_msg, trial, spawn
+        return ""
+
+    def _place_slot_for(self, pick_msg, box_msg, trial):
+        """Place slot from measured detection, never from GetCurrentBox."""
+        del box_msg
+        if not bool(getattr(pick_msg, "height_valid", False)):
+            trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
+            return None, None
+        return self._fixed_slot(pick_msg)
 
     def _fixed_slot(self, box):
         height = float(box.height)
@@ -521,6 +584,63 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "cloud_xyz": gt["cloud_xyz"],
             "cloud_rgb": gt["cloud_rgb"],
             "occupancy_meta": gt["surface_map"],
+        }
+
+    def _scene_box_record(self):
+        """Collision box the pick planner had to avoid, as it was added."""
+        detection = self._last_pick_detection
+        if not detection:
+            return None
+        center = detection["pose_position"]
+        size = detection["size_wdh"]
+        return {
+            "center": center,
+            "size_wdh": size,
+            "z_bottom": center[2] - size[2] * 0.5,
+            "z_top": center[2] + size[2] * 0.5,
+        }
+
+    def _on_joint_state(self, msg):
+        self._last_joint_state = {
+            "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
+            "name": list(msg.name),
+            "position": [float(v) for v in msg.position],
+        }
+
+    @staticmethod
+    def _segment_record(segment):
+        pose = segment.target_pose
+        return {
+            "name": segment.name,
+            "type": segment.type,
+            "target_position": [pose.position.x, pose.position.y,
+                                pose.position.z],
+            "target_orientation": [pose.orientation.x, pose.orientation.y,
+                                   pose.orientation.z, pose.orientation.w],
+            "n_waypoints": len(segment.waypoints),
+            "keep_tool_down": bool(segment.keep_tool_down),
+            "keep_camera_down": bool(segment.keep_camera_down),
+            "lock_wrist": bool(segment.lock_wrist),
+            "allow_ompl_fallback": bool(segment.allow_ompl_fallback),
+            "required_cartesian_fraction": float(
+                segment.required_cartesian_fraction),
+        }
+
+    def _plan_failure_record(self, segments, failed, message):
+        """Planning-boundary payload for a PLAN_<segment> failure.
+
+        Without the requested pose and the start joint state, the dump cannot
+        separate an unreachable target from a bad start state or a collision,
+        and the next run repeats the same blind failure.
+        """
+        return {
+            "failed_segment": self._segment_record(failed),
+            "planner_message": str(message),
+            "sequence": [self._segment_record(s) for s in segments],
+            "joint_state_at_failure": self._last_joint_state,
+            "pick_detection": self._last_pick_detection,
+            "scene_pickup_box": self._scene_box_record(),
+            "place_state": self._place_state,
         }
 
     def _dump_place(self, trial, extra_files=None, extra=None, debug=None):
@@ -789,11 +909,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             float(size[0]), float(size[1]), float(size[2])]
         msg.yaw_valid = False
         msg.pose.orientation.w = 1.0
+        msg.height_valid = False
+        msg.height_source = DetectedLuggage.HEIGHT_SOURCE_UNAVAILABLE
+        msg.top_surface_valid = False
         return msg
 
     def run_trial(self, index, slot=None, slot_meta=None,
                   already_spawned=False, keep_placed=False):
         t0 = time.time()
+        self._yolo_decision_record = None
+        self._frozen_bundle = None
         self._timeline = []
         self._segments_log = []
         self._tf_trace = []
@@ -804,11 +929,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras = {}
 
         if self._args.plan_only or self._args.payload == "none":
-            size = (0.55, 0.40, 0.25)
+            size = _parse_synthetic_size(
+                getattr(self._args, "synthetic_size", ""))
+            if size is None:
+                trial.fail_code = "SYNTHETIC_SIZE_REQUIRED"
+                trial.extras["synthetic_plan_only"] = True
+                return trial
             pick = self._dummy_pick(size)
+            trial.extras["synthetic_plan_only"] = True
+            trial.extras["synthetic_size_wdh"] = list(size)
             if slot is None:
                 slot, slot_meta = self._fixed_slot(pick)
-            trial.catalog_id = "carryon"
+            trial.catalog_id = "synthetic"
             if self._args.payload == "none" and not self._args.plan_only:
                 self._home_arm()
             result = self.run_place_from_carry(pick, trial, slot, slot_meta)
@@ -824,7 +956,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         pick_msg, box_msg = carry
         self._box_model = str(getattr(box_msg, "id", "") or self._box_model or "")
         if slot is None:
-            slot, slot_meta = self._fixed_slot(box_msg)
+            slot, slot_meta = self._place_slot_for(pick_msg, box_msg, trial)
+            if slot is None:
+                trial.place_state = self._place_state or "CARRY_READY"
+                self._dump_place(trial)
+                return trial
         result = self.run_place_from_carry(pick_msg, trial, slot, slot_meta)
         result.wall_time_sec = time.time() - t0
         if (not keep_placed) and result.fail_code not in CARRYING_ABORTS:
@@ -885,7 +1021,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras["spawn_id"] = spawn.box.id
             trial.extras["spawn_generation"] = generation
             trial.extras["topic_box_id"] = box_id
-            trial.extras["seg_stats"] = _parse_json(self._seg_stats["payload"])
+            decision = self._yolo_decision_record or _parse_json(
+                self._seg_stats["payload"])
+            trial.extras["seg_stats"] = decision
+            trial.extras["decision_record"] = decision
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):
@@ -893,21 +1032,24 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 _parse_json(self._filter_stats["payload"]),
                 generation, spawn.box.id)
             return None
-        detect = self.call_srv(
-            self._detect, DetectLuggage.Request(),
-            timeout=self._args.detect_timeout)
+        auth = self.detect_until_authorized()
+        trial.extras["pick_authorization"] = auth.to_dict()
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
-        if detect is None:
-            trial.fail_code = "DETECT_TIMEOUT"
+        if not auth.authorized:
+            trial.fail_code = auth.decision.reason
+            trial.extras["detect"] = auth.detect_reason or auth.decision.reason
             return None
+        pick_msg = auth.box
+        self._last_authorized_pick = pick_msg
+        self._last_pick_detection = _pick_detection_record(pick_msg)
         if current is None or not current.success:
             trial.fail_code = "GT_UNAVAILABLE"
             return None
-        if not detect.success or not detect.luggage:
-            trial.fail_code = detect.message or "MEASURED_NONE"
+        place_err = self.on_detected_luggage(pick_msg, trial, spawn)
+        if place_err:
+            trial.fail_code = place_err
             return None
-        pick_msg = detect.luggage[0]
         if self._args.use_vacuum:
             scene_ok, scene_msg = self.add_scene_box(pick_msg)
             trial.extras["scene_add"] = scene_msg
@@ -922,7 +1064,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = "BUILD_FAILED"
             trial.extras["build_pick"] = built.message if built else "timeout"
             return None
-        for segment in list(built.segments):
+        segments = list(built.segments)
+        for segment in segments:
             goal = PlanMotion.Goal()
             goal.segment = segment
             ok, message, _res = self.send_action(
@@ -931,6 +1074,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if not ok:
                 trial.fail_code = "PLAN_%s" % segment.name
                 trial.extras["plan_%s" % segment.name] = message
+                trial.extras["plan_failure"] = self._plan_failure_record(
+                    segments, segment, message)
                 return None
             if segment.name == "attach" and self._args.use_vacuum:
                 vac_ok, vac_msg = self.vacuum_command(True)
@@ -978,7 +1123,18 @@ def parse_args(argv):
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
     parser.add_argument("--scene-tf-config", default="")
+    parser.add_argument(
+        "--synthetic-size", default="",
+        help="W,D,H metres for --dry-run / --payload none. Required there.")
+    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
+    parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     args = parser.parse_args(argv)
+    if ((args.plan_only or args.payload == "none")
+            and _parse_synthetic_size(args.synthetic_size) is None):
+        parser.error(
+            "--synthetic-size W,D,H is required for --dry-run and "
+            "--payload none")
     args.use_vacuum = args.payload == "vacuum" and not args.plan_only
     args.dump_dir = args.dump_dir or os.path.join(args.out, "dumps")
     return args

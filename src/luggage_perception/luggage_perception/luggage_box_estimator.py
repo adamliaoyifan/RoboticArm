@@ -8,8 +8,7 @@ single box sitting on a known-height platform:
   1. ROI spatial crop  (approximate pickup position ± margin)
   2. RANSAC horizontal plane fit  (box top surface)
   3. PCA on the inlier rectangle  (yaw + width/depth extents)
-  4. Height from platform Z
-  5. Optional catalog matching to snap noisy dimensions
+  4. Height from platform Z (when provided)
 """
 
 from __future__ import division
@@ -205,27 +204,15 @@ def _refine_rectangle(points_2d, initial_yaw, search_deg=20.0, step_deg=0.25):
 # ---------------------------------------------------------------------------
 
 def match_catalog(width, depth, height, catalog_entries, tolerance=0.05):
-    """Find the best matching catalog entry within *tolerance* on each axis.
+    """Forbidden: catalog AABB is spawn-only, never a perception snap.
 
-    Returns ``(matched_id, snapped_width, snapped_depth, snapped_height)``
-    or ``(None, width, depth, height)`` when no match is close enough.
+    Kept so accidental callers fail closed instead of silently rewriting
+    measured WDH.
     """
-    best_id = None
-    best_err = float("inf")
-    best_size = (width, depth, height)
-
-    for entry in catalog_entries:
-        ew, ed, eh = entry["size"]
-        # Try both axis assignments (width↔depth may be swapped depending on
-        # the box yaw alignment relative to the PCA principal axis).
-        for cw, cd in ((ew, ed), (ed, ew)):
-            err = abs(cw - width) + abs(cd - depth) + abs(eh - height)
-            if err < best_err and abs(cw - width) < tolerance and abs(cd - depth) < tolerance and abs(eh - height) < tolerance:
-                best_err = err
-                best_id = entry["id"]
-                best_size = (cw, cd, eh)
-
-    return best_id, best_size[0], best_size[1], best_size[2]
+    del width, depth, height, catalog_entries, tolerance
+    raise RuntimeError(
+        "match_catalog is forbidden: catalog size is spawn-only, "
+        "not a DetectLuggage or packing input")
 
 
 # ---------------------------------------------------------------------------
@@ -277,10 +264,9 @@ def estimate_box(points, roi_center_xy=None, roi_margin=0.3,
         Known Z of the platform top surface in the same frame as *points*.
         Used to compute box height = ``plane_z - platform_z``.
     catalog_entries : list[dict] or None
-        Output of ``box_catalog_entries()``; each entry must have ``size``
-        and ``id`` keys.
+        Ignored. Catalog AABB is spawn-only; this estimator must not snap.
     catalog_tolerance : float
-        Maximum per-axis deviation (m) for catalog snapping.
+        Ignored (kept so old callers do not crash).
     min_points : int
         Minimum number of ROI-filtered points required for estimation.
     ransac_max_iter : int
@@ -384,12 +370,10 @@ def estimate_box(points, roi_center_xy=None, roi_margin=0.3,
     else:
         height = max(0.01, plane_z - float(pts[:, 2].min()))
 
-    # ---- Catalog matching (hybrid) ----
+    # Catalog AABB must not snap measured WDH. The kwargs stay so old
+    # callers do not crash, but they have no effect.
+    del catalog_entries, catalog_tolerance
     matched_id = None
-    if catalog_entries:
-        matched_id, width, depth, height = match_catalog(
-            width, depth, height, catalog_entries, catalog_tolerance,
-        )
 
     # ---- Centre ----
     cx = float(rectangle_center[0])

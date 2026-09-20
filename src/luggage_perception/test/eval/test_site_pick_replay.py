@@ -23,6 +23,7 @@ from luggage_perception.eval.bag_mcap_source import (  # noqa: E402
     select_image_topics,
 )
 from luggage_perception.eval.bag_tf import BagTfBuffer  # noqa: E402
+from luggage_perception.eval.bag_replay_index import sidecar_path  # noqa: E402
 from luggage_perception.eval.isolated_domain import (  # noqa: E402
     DEFAULT_REPLAY_DOMAIN_ID,
     IsolatedDomainError,
@@ -113,6 +114,243 @@ class TestBagTf(unittest.TestCase):
         buf = BagTfBuffer()
         buf.add_transform(self._tf("world", "base", (0, 0, 0)), static=True)
         self.assertIsNone(buf.lookup_matrix("world", "camera", 0))
+
+    @staticmethod
+    def _golden_parent_of(dynamic, static, max_dt_ns, child, stamp_ns):
+        """Pre-change linear-scan _parent_of, verbatim semantics."""
+        hist = dynamic.get(child)
+        if hist:
+            best = None
+            for row_stamp, parent, mat, *_rest in sorted(
+                    hist, key=lambda row: row[0]):
+                dt = int(row_stamp) - int(stamp_ns)
+                adt = abs(dt)
+                if adt > max_dt_ns:
+                    if row_stamp > stamp_ns:
+                        break
+                    continue
+                cand = (adt, int(row_stamp), parent, mat)
+                if (best is None or cand[0] < best[0]
+                        or (cand[0] == best[0] and cand[1] < best[1])):
+                    best = cand
+            if best is not None:
+                return best[2], best[3]
+        return static.get(child)
+
+    def _golden_lookup(self, buf, target, source, stamp_ns):
+        def root_of(frame):
+            chain, cur = [], str(frame)
+            seen = set()
+            while cur and cur not in seen:
+                seen.add(cur)
+                edge = self._golden_parent_of(
+                    buf._dynamic, buf._static, buf.max_dt_ns, cur, stamp_ns)
+                if edge is None:
+                    break
+                parent, mat = edge
+                chain.append(mat)
+                cur = parent
+            mat = np.eye(4)
+            for edge in chain:
+                mat = edge.dot(mat)
+            return mat, cur
+        from luggage_perception.eval.bag_tf import invert_matrix
+        src_mat, src_root = root_of(source)
+        tgt_mat, tgt_root = root_of(target)
+        if not src_root or not tgt_root or src_root != tgt_root:
+            return None
+        return invert_matrix(tgt_mat).dot(src_mat)
+
+    def test_array_cache_matches_linear_scan_reference(self):
+        rng = np.random.RandomState(11)
+        buf = BagTfBuffer(max_dt_ns=30_000_000)
+        stamps = sorted(rng.choice(
+            range(0, 500_000_000, 10_000_000), size=40, replace=False))
+        for i, stamp in enumerate(stamps):
+            buf.add_transform(self._tf(
+                "world", "ee", (0.001 * i, -0.002 * i, 0.003 * i),
+                int(stamp)), static=False)
+            buf.add_transform(self._tf(
+                "ee", "optical", (0.0, 0.0, 0.01 * (i % 7)),
+                int(stamp)), static=False)
+        buf.set_static("root", "world", np.eye(4))
+        for probe in list(stamps[::3]) + [0, 250_000_000, 499_999_999,
+                                          600_000_000]:
+            for target, source in (("world", "optical"),
+                                   ("optical", "world"),
+                                   ("world", "nonexistent"),
+                                   ("root", "optical")):
+                got = buf.lookup_matrix(target, source, int(probe))
+                want = self._golden_lookup(buf, target, source, int(probe))
+                if want is None:
+                    self.assertIsNone(got, (target, source, probe))
+                else:
+                    self.assertIsNotNone(got, (target, source, probe))
+                    np.testing.assert_array_equal(got, want)
+
+    def test_memo_invalidated_by_add_transform(self):
+        buf = BagTfBuffer()
+        buf.add_transform(self._tf("world", "base", (1.0, 0, 0), 100),
+                          static=False)
+        first = buf.lookup_matrix("world", "base", 100)
+        np.testing.assert_allclose(first[0, 3], 1.0)
+        buf.add_transform(self._tf("world", "base", (2.0, 0, 0),
+                                   100 + 1_000_000), static=False)
+        second = buf.lookup_matrix("world", "base", 100 + 1_000_000)
+        np.testing.assert_allclose(second[0, 3], 2.0)
+
+    def test_npz_round_trip_preserves_lookups(self):
+        buf = BagTfBuffer(max_dt_ns=50_000_000)
+        for i, stamp in enumerate(range(0, 200_000_000, 20_000_000)):
+            buf.add_transform(self._tf("world", "ee", (0.01 * i, 0, 0),
+                                       stamp), static=False)
+        buf.set_static("anchor", "world", np.eye(4))
+        pts = np.array([[0.5, -0.2, 0.3]])
+        before = buf.transform_points(pts, "world", "ee", 90_000_000)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "tf_edges.npz")
+            buf.save_edges_npz(path)
+            restored = BagTfBuffer(max_dt_ns=50_000_000)
+            restored.load_edges_npz(path)
+            after = restored.transform_points(pts, "world", "ee",
+                                              90_000_000)
+            self.assertEqual(restored.frames(), buf.frames())
+        np.testing.assert_array_equal(before, after)
+        # The restored buffer still accepts appends and re-finalizes.
+        restored.add_transform(self._tf("world", "ee", (9.0, 0, 0),
+                                        300_000_000), static=False)
+        late = restored.lookup_matrix("world", "ee", 300_000_000)
+        np.testing.assert_allclose(late[0, 3], 9.0)
+
+    def test_npz_escape_round_trips_slash_and_percent(self):
+        # v2 escaping is injective: "/"-bearing, "%"-bearing and
+        # literal "%2F"/"%25" frame ids all survive the npz key round
+        # trip as distinct names.
+        names = ["plain", "slashed/name", "pct%25", "literal%2Fname",
+                 "mix%2Fed/name"]
+        buf = BagTfBuffer()
+        for i, name in enumerate(names):
+            buf.add_transform(self._tf("world", name, (0.1 * i, 0, 0)),
+                              static=False)
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "tf_edges.npz")
+            buf.save_edges_npz(path)
+            restored = BagTfBuffer()
+            restored.load_edges_npz(path)
+            self.assertEqual(restored.frames(), buf.frames())
+            for i, name in enumerate(names):
+                mat = restored.lookup_matrix("world", name, 0)
+                self.assertIsNotNone(mat, name)
+                np.testing.assert_allclose(mat[0, 3], 0.1 * i)
+
+    def test_npz_v1_file_loads_with_v1_rules(self):
+        # Files written before the escape_version marker escaped only
+        # "/" and must keep decoding exactly as they always did.
+        child = "slashed/name"
+        escaped = "slashed%2Fname"
+        payload = {
+            "dynamic_children": np.asarray([escaped], dtype=np.str_),
+            "dyn_%s__stamps" % escaped: np.asarray([0], dtype=np.int64),
+            "dyn_%s__parents" % escaped: np.asarray(
+                ["world"], dtype=np.str_),
+            "dyn_%s__translations" % escaped: np.zeros((1, 3)),
+            "dyn_%s__quats" % escaped: np.asarray([[0, 0, 0, 1.0]]),
+            "dyn_%s__mats" % escaped: np.eye(4).reshape(1, 4, 4),
+            "static_children": np.asarray([], dtype=np.str_),
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "v1_edges.npz")
+            with open(path, "wb") as handle:
+                np.savez(handle, **payload)
+            restored = BagTfBuffer()
+            restored.load_edges_npz(path)
+            self.assertIn(child, restored.frames())
+            self.assertIsNotNone(restored.lookup_matrix(
+                "world", child, 0))
+
+
+class TestTfInterpolation(unittest.TestCase):
+    def _tf(self, parent, child, xyz, quat=(0.0, 0.0, 0.0, 1.0),
+            stamp_ns=0):
+        from geometry_msgs.msg import TransformStamped
+        msg = TransformStamped()
+        msg.header.frame_id = parent
+        msg.child_frame_id = child
+        msg.header.stamp.sec = int(stamp_ns // 1_000_000_000)
+        msg.header.stamp.nanosec = int(stamp_ns % 1_000_000_000)
+        (msg.transform.translation.x, msg.transform.translation.y,
+         msg.transform.translation.z) = (float(v) for v in xyz)
+        (msg.transform.rotation.x, msg.transform.rotation.y,
+         msg.transform.rotation.z, msg.transform.rotation.w) = (
+            float(v) for v in quat)
+        return msg
+
+    def test_midpoint_translation_and_quaternion(self):
+        import math
+        buf = BagTfBuffer(max_dt_ns=100_000_000)
+        quarter = math.pi / 4.0
+        # -90° about z at t=0, identity at t=40 ms: the 20 ms midpoint
+        # must be a -45° rotation with the translation lerped to 0.5.
+        buf.add_transform(self._tf(
+            "world", "ee", (0.0, 0.0, 0.0),
+            quat=(0.0, 0.0, -math.sin(quarter),
+                  math.cos(quarter)), stamp_ns=0))
+        buf.add_transform(self._tf(
+            "world", "ee", (1.0, 0.0, 0.0), quat=(0.0, 0.0, 0.0, 1.0),
+            stamp_ns=40_000_000))
+        mid = buf.lookup_matrix("world", "ee", 20_000_000,
+                                interpolate=True, max_gap_ns=50_000_000)
+        np.testing.assert_allclose(mid[0, 3], 0.5, atol=1e-12)
+        expected = np.array([
+            [math.cos(-quarter), -math.sin(-quarter), 0.0],
+            [math.sin(-quarter), math.cos(-quarter), 0.0],
+            [0.0, 0.0, 1.0]])
+        np.testing.assert_allclose(mid[:3, :3], expected, atol=1e-9)
+        self.assertEqual(buf.stats["interpolated_edges"], 1)
+        self.assertAlmostEqual(buf.stats["max_edge_gap_ns"],
+                               40_000_000)
+        self.assertEqual(buf.interpolation_log[-1]["child"], "ee")
+
+    def test_exact_stamp_interpolation_returns_stored_matrix(self):
+        buf = BagTfBuffer()
+        buf.add_transform(self._tf("world", "ee", (1.0, 2.0, 3.0),
+                                   stamp_ns=10_000_000))
+        near = buf.lookup_matrix("world", "ee", 10_000_000,
+                                 interpolate=True)
+        exact = buf.lookup_matrix("world", "ee", 10_000_000)
+        np.testing.assert_array_equal(near, exact)
+        self.assertEqual(buf.stats["interpolated_edges"], 0)
+
+    def test_wide_gap_falls_back_to_nearest(self):
+        # Bracket spans 200 ms > max_gap 50 ms: interpolation is refused
+        # and the lookup degrades to the nearest sample (never extrapol
+        # ates, never removes a previously-working lookup).
+        buf = BagTfBuffer(max_dt_ns=100_000_000)
+        buf.add_transform(self._tf("world", "ee", (0.0, 0.0, 0.0),
+                                   stamp_ns=0))
+        buf.add_transform(self._tf("world", "ee", (2.0, 0.0, 0.0),
+                                   stamp_ns=200_000_000))
+        interp = buf.lookup_matrix("world", "ee", 100_000_000,
+                                   interpolate=True,
+                                   max_gap_ns=50_000_000)
+        nearest = buf.lookup_matrix("world", "ee", 100_000_000)
+        np.testing.assert_array_equal(interp, nearest)
+        self.assertIn(interp[0, 3], (0.0, 2.0))
+        self.assertEqual(buf.stats["interpolated_edges"], 0)
+
+    def test_default_off_is_bit_identical(self):
+        buf = BagTfBuffer()
+        buf.add_transform(self._tf("world", "ee", (0.3, 0.0, 0.0),
+                                   stamp_ns=10_000_000))
+        buf.add_transform(self._tf("world", "ee", (0.5, 0.0, 0.0),
+                                   stamp_ns=30_000_000))
+        default = buf.lookup_matrix("world", "ee", 20_000_000)
+        explicit = buf.lookup_matrix("world", "ee", 20_000_000,
+                                     interpolate=False)
+        np.testing.assert_array_equal(default, explicit)
+        # Nearest-sample semantics: the 20 ms query picks whichever
+        # sample is nearer, unchanged by the interpolation feature.
+        self.assertIn(default[0, 3], (0.3, 0.5))
 
 
 class TestCompressedDecode(unittest.TestCase):
@@ -273,6 +511,128 @@ class TestReplayFixture(unittest.TestCase):
         self.assertEqual(called["domain_id"], 42)
         payload = json.load(open(os.path.join(out, "replay.json")))
         self.assertEqual(payload["planned"]["message"], "fake-plan")
+
+    def test_moveit_scene_objects_unit(self):
+        from luggage_perception.eval.site_pick_replay import (
+            _moveit_scene_objects,
+        )
+        pick = {"xyz": [0.4, -0.2, 0.9], "top_z": 0.9,
+                "width": 0.5, "depth": 0.35, "height": 0.7,
+                "height_valid": True}
+        objects = _moveit_scene_objects("cargo", pick)
+        self.assertEqual(len(objects), 1)
+        self.assertEqual(objects[0]["id"], "replay_cargo")
+        self.assertEqual(objects[0]["dimensions"], [0.5, 0.35, 0.7])
+        # The box hangs BELOW the top surface with a 1 cm modelling
+        # margin: the attach goal sits exactly at top_z, and a goal on
+        # the collision surface is numerically in collision.
+        self.assertAlmostEqual(objects[0]["xyz"][0], 0.4)
+        self.assertAlmostEqual(objects[0]["xyz"][2], 0.9 - 0.01 - 0.35)
+        ground = _moveit_scene_objects("cargo_ground", pick)
+        self.assertEqual(len(ground), 2)
+        self.assertEqual(ground[1]["id"], "replay_ground")
+        self.assertEqual(_moveit_scene_objects("none", pick), [])
+        self.assertEqual(_moveit_scene_objects("cargo", None), [])
+        invalid = dict(pick, height_valid=False)
+        skipped = _moveit_scene_objects("cargo", invalid)
+        self.assertEqual(skipped, [])
+        ground = _moveit_scene_objects("cargo_ground", invalid)
+        self.assertEqual(len(ground), 1)
+        self.assertEqual(ground[0]["id"], "replay_ground")
+
+    def test_moveit_scene_plumbing_reaches_planner(self):
+        # The stub backend yields no detections on the fixture bag, so
+        # the replay has no pick and no cargo object — but the mode is
+        # still plumbed through and recorded verbatim.
+        called = {}
+
+        def _fake(**kwargs):
+            called.update(kwargs)
+            return {"message": "fake-plan", "t_sec": [], "q": [], "xyz": []}
+
+        out = os.path.join(self._tmp.name, "moveit_scene")
+        replay_site_pick(
+            self.bag, out,
+            SitePickConfig(backend="stub", require_backend=False,
+                           stride=1, max_frames=2, plan_moveit=True,
+                           ros_domain_id=42, moveit_scene="cargo"),
+            moveit_plan_fn=_fake)
+        self.assertIn("collision_objects", called)
+        payload = json.load(open(os.path.join(out, "replay.json")))
+        self.assertEqual(payload["moveit_scene"]["mode"], "cargo")
+        self.assertEqual(payload["moveit_scene"]["objects"],
+                         called["collision_objects"])
+
+    def test_tf_interpolate_config_reaches_rows_and_summary(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "interp")
+            cfg = SitePickConfig(backend="stub", require_backend=False,
+                                 device="cpu", stride=1, max_frames=2,
+                                 tf_interpolate=True)
+            summary = replay_site_pick(self.bag, out, cfg)
+            self.assertTrue(summary["tf_interpolate"])
+            payload = json.load(open(os.path.join(out, "replay.json")))
+            self.assertGreaterEqual(len(payload["frames"]), 1)
+            for row in payload["frames"]:
+                self.assertIn(row["tf_mode"],
+                              ("interpolated", "nearest", "none"))
+                self.assertIn("tf_gap_ms", row)
+            # Default-off run reports the old semantics explicitly.
+            out0 = os.path.join(tmp, "plain")
+            summary0 = replay_site_pick(self.bag, out0, SitePickConfig(
+                backend="stub", require_backend=False, device="cpu",
+                stride=1, max_frames=2))
+            self.assertFalse(summary0["tf_interpolate"])
+            self.assertEqual(summary0["n_frames_with_interpolated_tf"], 0)
+            self.assertIsNone(summary0["max_tf_gap_ms"])
+
+    def test_cached_replay_matches_cold(self):
+        # The TF-edge sidecar must be lookup-neutral: a warm site-pick
+        # replay (facts + tf_edges.npz from cache, no /tf stream) writes
+        # the same replay.json payload as the cold run.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = os.path.join(tmp, "cache")
+            cfg = dict(backend="stub", require_backend=False,
+                       device="cpu", stride=1, max_frames=2,
+                       index_cache_dir=cache)
+            replay_site_pick(self.bag, os.path.join(tmp, "cold"),
+                             SitePickConfig(**cfg))
+            warm = replay_site_pick(self.bag, os.path.join(tmp, "warm"),
+                                    SitePickConfig(**cfg))
+            self.assertGreaterEqual(warm["frames_processed"], 1)
+            cold_payload = json.load(open(
+                os.path.join(tmp, "cold", "replay.json")))
+            warm_payload = json.load(open(
+                os.path.join(tmp, "warm", "replay.json")))
+            self.assertEqual(cold_payload["frames"], warm_payload["frames"])
+            self.assertEqual(cold_payload["tcp"], warm_payload["tcp"])
+            self.assertEqual(cold_payload["joints"], warm_payload["joints"])
+            self.assertEqual(cold_payload["tf_frames"],
+                             warm_payload["tf_frames"])
+            self.assertTrue(os.path.isfile(sidecar_path(
+                self.bag, "tf_edges.npz", cache)))
+
+    def test_upgrade_path_rewrites_index_pointer(self):
+        # tf_edges.npz deleted after a cold run: the warm run re-streams
+        # /tf, re-saves the npz, AND index.json must say so — the
+        # tf_edges_file pointer has to match what is on disk.
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = os.path.join(tmp, "cache")
+            cfg = dict(backend="stub", require_backend=False,
+                       device="cpu", stride=1, max_frames=2,
+                       index_cache_dir=cache)
+            replay_site_pick(self.bag, os.path.join(tmp, "cold"),
+                             SitePickConfig(**cfg))
+            tf_npz = sidecar_path(self.bag, "tf_edges.npz", cache)
+            self.assertTrue(os.path.isfile(tf_npz))
+            os.remove(tf_npz)
+            replay_site_pick(self.bag, os.path.join(tmp, "warm"),
+                             SitePickConfig(**cfg))
+            self.assertTrue(os.path.isfile(tf_npz))
+            with open(os.path.join(os.path.dirname(tf_npz), "index.json"),
+                      encoding="utf-8") as handle:
+                index = json.load(handle)
+            self.assertEqual(index["tf_edges_file"], "tf_edges.npz")
 
 
 class TestCliDomainGuard(unittest.TestCase):

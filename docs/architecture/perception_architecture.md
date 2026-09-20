@@ -161,6 +161,27 @@ Backend adapters (for example the Gazebo depth metre-to-millimetre
 republisher) may rewrite a **single** stream. Cross-stream pairing stays in
 the preprocessor.
 
+## Task epoch versus visual track id
+
+`generation` / `instance_id` on segmenter YOLO and stats are a **task epoch**:
+the latest `/luggage/current_box` JSON (`id` + `generation`) copied onto the
+RGB frame at ingest. They are not `instance_map` pixel labels and not a visual
+multi-object track id. `CargoInstanceTracker` remains a one-slot centroid
+associate.
+
+`/luggage/current_box` is an optional TRANSIENT_LOCAL `std_msgs/String`. Sim
+spawn publishes it. Hardware may omit it; then every assembled frame is
+`generation=0`, `instance_id=""`, and DetectLuggage skips the instance gate
+until a message is seen. The camera `SensorPreprocessor` does not subscribe
+this topic. Segmenter ingest is latest-at-ingest, not an exact-stamp pairer.
+
+The segmenter node owns ingest: it subscribes preprocessed colour and optional
+`current_box`, assembles one `FrameObservation`, then
+`SemanticSegmenter.update(..., generation, instance_id)`. Mask, YOLO, overlay,
+and the rate-limited `stats_json` (default `stats_publish_hz: 1.0`) all read
+one `SegmenterOutput`. The stats timer must serialize that pending record; it
+must not rebuild from `out.stats` plus stamp and frame_id.
+
 ## Node parameter conventions
 
 - Declare every parameter with `declare_parameter` and a default; read it once

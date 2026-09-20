@@ -59,6 +59,19 @@ TOPIC_TYPES = {
 
 _MSG_CLASS_CACHE = {}
 
+# Schemas whose first CDR field is std_msgs/Header (stamp first: int32 sec
+# + uint32 nanosec right after the 4-byte encapsulation header), so the
+# stamp can be parsed without deserializing the payload. Livox CustomMsg
+# has the same header layout. tf2_msgs/TFMessage has NO top-level header
+# and never qualifies.
+HEADER_FIRST_SCHEMAS = {
+    "sensor_msgs/msg/Image",
+    "sensor_msgs/msg/CompressedImage",
+    "sensor_msgs/msg/CameraInfo",
+    "sensor_msgs/msg/JointState",
+    "geometry_msgs/msg/PoseStamped",
+}
+
 
 def _msg_class(schema_name):
     """Resolve 'pkg/msg/Type' to the ROS message class (cached), or None."""
@@ -74,6 +87,23 @@ def _msg_class(schema_name):
             cls = None
     _MSG_CLASS_CACHE[schema_name] = cls
     return cls
+
+
+def parse_cdr_header_stamp(data):
+    """header.stamp (ns) straight from a little-endian CDR payload whose
+    first field is std_msgs/Header, or None when it is not that shape.
+
+    The 4-byte encapsulation header is followed by the stamp (int32 sec,
+    uint32 nanosec) — the same offsets decode_livox_custom_cdr reads.
+    Anything else (big-endian encapsulation, truncated payload) returns
+    None and the caller falls back to full deserialization.
+    """
+    head = bytes(data[:12])
+    if len(head) < 12 or head[0] != 0x00 or head[1] != 0x01:
+        return None
+    import struct
+    sec, nsec = struct.unpack_from("<iI", head, 4)
+    return int(sec) * 1_000_000_000 + int(nsec)
 
 
 @dataclass
@@ -232,33 +262,83 @@ def scan_bag(bag_path):
     return scan
 
 
-def iter_bag_messages(bag_path, topics=None):
+_CHANNEL_TYPES_CACHE = {}
+
+
+def _channel_types(mcap_path, reader):
+    """{channel_id: (topic, schema_name)} from the summary, memoized.
+
+    A replay opens the mcap several times (scan_bag plus one stream per
+    pass); the summary section parse is pure overhead after the first.
+    Keyed on (realpath, size, mtime) — a bag is immutable, so identity
+    holds for the process lifetime.
+    """
+    try:
+        stat = os.stat(mcap_path)
+        key = (os.path.realpath(mcap_path), stat.st_size, stat.st_mtime_ns)
+    except OSError:
+        key = None
+    if key is not None and key in _CHANNEL_TYPES_CACHE:
+        return _CHANNEL_TYPES_CACHE[key]
+    summary = reader.get_summary()
+    if summary is None:
+        raise ValueError("mcap has no summary section: %s" % mcap_path)
+    channel_types = {}
+    for channel in summary.channels.values():
+        schema = summary.schemas.get(channel.schema_id)
+        channel_types[channel.id] = (
+            channel.topic, schema.name if schema else "")
+    if key is not None:
+        if len(_CHANNEL_TYPES_CACHE) >= 32:
+            _CHANNEL_TYPES_CACHE.clear()
+        _CHANNEL_TYPES_CACHE[key] = channel_types
+    return channel_types
+
+
+def _is_livox_custom(schema_name, topic):
+    return schema_name == LIVOX_CUSTOM_SCHEMA or (
+        topic == LIDAR_TOPIC and str(schema_name).endswith("CustomMsg"))
+
+
+def iter_bag_messages(bag_path, topics=None, header_only_topics=None):
     """Stream (BagMessage) records for the requested topics.
 
     ``topics`` defaults to every TOPIC_TYPES topic present in the bag.
     Topics whose type cannot be resolved are skipped (counted by scan_bag,
     not here). The mcap reader iterates chunk-by-chunk, so a 1 GB bag never
     materializes in memory.
+
+    ``header_only_topics`` suppresses full CDR deserialization for those
+    topics: the stamp is parsed straight from the encapsulated bytes and
+    ``message`` is None. Only header-first schemas (and Livox CustomMsg,
+    same header layout) qualify; anything else falls back to the full
+    path. Pass A reads stamps only — deserializing every image just to
+    read 8 stamp bytes is the largest avoidable cost of the first pass.
     """
     mcap_path = find_mcap_file(bag_path)
     requested = list(topics) if topics else [
         topic for topic in TOPIC_TYPES]
+    header_only = set(header_only_topics or ())
     with open(mcap_path, "rb") as handle:
         reader = make_reader(handle)
-        summary = reader.get_summary()
-        if summary is None:
-            raise ValueError("mcap has no summary section: %s" % mcap_path)
-        channel_types = {}
-        for channel in summary.channels.values():
-            schema = summary.schemas.get(channel.schema_id)
-            channel_types[channel.id] = (
-                channel.topic, schema.name if schema else "")
+        channel_types = _channel_types(mcap_path, reader)
         for _schema, channel, message in reader.iter_messages(
                 topics=requested):
             _topic, schema_name = channel_types[channel.id]
-            if schema_name == LIVOX_CUSTOM_SCHEMA or (
-                    channel.topic == LIDAR_TOPIC
-                    and str(schema_name).endswith("CustomMsg")):
+            fast_stamp = None
+            if channel.topic in header_only:
+                if (schema_name in HEADER_FIRST_SCHEMAS
+                        or _is_livox_custom(schema_name, channel.topic)):
+                    fast_stamp = parse_cdr_header_stamp(message.data)
+            if fast_stamp is not None:
+                yield BagMessage(
+                    topic=channel.topic,
+                    header_stamp_ns=fast_stamp,
+                    log_time_ns=int(message.log_time),
+                    message=None,
+                )
+                continue
+            if _is_livox_custom(schema_name, channel.topic):
                 scan = decode_livox_custom_cdr(message.data)
                 if scan is None:
                     continue

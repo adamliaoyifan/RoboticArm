@@ -12,3 +12,5 @@ int32 occupied_count
 int32 frontier_count
 int32 total_voxels
 int64 map_revision
+# Kernel geometry_hash of the hull this map describes.
+string geometry_hash

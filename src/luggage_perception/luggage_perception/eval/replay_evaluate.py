@@ -28,6 +28,15 @@ from luggage_perception.eval.bag_frame_join import (
     nearest_stamp,
     plan_frame_join,
 )
+from luggage_perception.eval.bag_replay_index import (
+    bag_identity,
+    camera_info_frame_from_payload,
+    camera_info_payload as _index_camera_info_payload,
+    count_jsonl_rows,
+    default_cache_dir,
+    load_index,
+    write_index,
+)
 from luggage_perception.eval.bag_mcap_source import (
     TOPIC_TYPES,
     decode_color_message,
@@ -44,6 +53,7 @@ from luggage_perception.eval.detection_gate_sampling import (
     write_png,
 )
 from luggage_perception.eval.gate4_dump import write_ply_xyz
+from luggage_perception.eval.run_provenance import collect_provenance
 from luggage_perception.ros_message_adapters import (
     camera_info_frame_from_msg,
     joint_sample_from_msg,
@@ -186,6 +196,13 @@ class ReplayEvalConfig(object):
     make_video: bool = False
     require_backend: bool = True
     dry_run: bool = False
+    # Iteration-loop controls: "minimal" skips every per-frame artefact a
+    # re-run comparison does not need (PNG/NPY/PLY/single-frame JSON);
+    # the sidecar index lets a warm replay of an immutable bag skip pass A
+    # entirely (see bag_replay_index).
+    artifacts: str = "full"              # "full" | "minimal"
+    index_cache_dir: str = ""            # "" = XDG default
+    use_index_cache: bool = True
 
 
 def _package_root():
@@ -387,6 +404,19 @@ def _tcp_payload(msg):
     }
 
 
+def _lidar_frame_id(message):
+    """frame_id of either a ROS lidar message or a LivoxCustomScan.
+
+    Site bags record the Mid-360 as livox CustomMsg (decoded to
+    LivoxCustomScan, whose frame_id is a plain field, no .header);
+    fixture and xfer_format-0 bags record PointCloud2.
+    """
+    header = getattr(message, "header", None)
+    if header is not None:
+        return header.frame_id
+    return getattr(message, "frame_id", "")
+
+
 def _planned_pairs(plan, cfg):
     pairs = plan.pairs
     stride = max(1, int(cfg.stride))
@@ -407,6 +437,11 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     stream for tests."""
     from luggage_perception.semantic_point_filter import (
         CameraIntrinsics, DepthToColorExtrinsics, SemanticPointFilter)
+
+    if cfg.make_video and str(cfg.artifacts) == "minimal":
+        # The quick-look video concatenates the per-frame overlays, so a
+        # minimal run that also wants a video is meaningless.
+        cfg.artifacts = "full"
 
     if os.path.isdir(bag_path):
         bag_name = os.path.basename(os.path.normpath(bag_path))
@@ -431,89 +466,166 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
         index_topics.append(LIDAR_TOPIC)
 
     # ---- Pass A: stamps + tiny aux payloads (+ full lidar archive) ------
+    # A warm replay of the same immutable bag may serve pass A from the
+    # sidecar index (bag_replay_index), validated against a fresh scan_bag
+    # summary and — when lidar archiving is on — against the archive
+    # already on disk (archiving is part of the evidence; a cache hit
+    # must not skip it silently). Any doubt is a miss and the full pass
+    # runs. Injected test streams never use the cache either way.
+    index_state = {"state": "disabled", "key": None, "cache_dir": None}
+    cached = None
+    if cfg.use_index_cache and source_iter is None:
+        cached = load_index(mcap_path, scan, color_topic, depth_topic,
+                            cfg.index_cache_dir,
+                            producer="replay_evaluate")
+        if cached is not None and cfg.archive_lidar:
+            rows = count_jsonl_rows(os.path.join(
+                bag_out, "lidar_index.jsonl"))
+            if rows != len(cached["lidar_stamps"]):
+                cached = None  # archive incomplete for this out dir
+        if cached is not None:
+            key, _identity = bag_identity(mcap_path)
+            index_state = {"state": "hit", "key": key,
+                           "cache_dir": default_cache_dir(
+                               cfg.index_cache_dir)}
+        else:
+            index_state["state"] = "miss"
+
     color_entries, depth_entries = [], []
     joint_by_stamp, tcp_by_stamp = {}, {}
-    lidar_by_stamp = {}
+    lidar_by_stamp = {}   # only when archiving is off (--with-lidar alone)
     lidar_stamps_seen = []
     info_first, info_k_seen = {}, {}
     tf_static_msgs = 0
     lidar_index_jsonl = None
     lidar_archive_stats = {"n_scans": 0, "n_points_total": 0,
                            "n_decode_failures": 0}
-    if cfg.archive_lidar:
-        os.makedirs(os.path.join(bag_out, "lidar"), exist_ok=True)
-        lidar_index_jsonl = open(
-            os.path.join(bag_out, "lidar_index.jsonl"), "w",
-            encoding="utf-8")
-    for rec in stream(index_topics):
-        topic = rec.topic
-        stamp = rec.header_stamp_ns
-        if topic == color_topic:
-            color_entries.append((stamp, rec.log_time_ns, None))
-        elif topic == depth_topic:
-            depth_entries.append((stamp, rec.log_time_ns, None))
-        elif topic == JOINT_TOPIC:
-            payload = _joint_payload(rec.message)
-            if payload is not None:
-                joint_by_stamp[stamp] = payload
-        elif topic == TCP_TOPIC:
-            tcp_by_stamp[stamp] = _tcp_payload(rec.message)
-        elif topic in (COLOR_INFO_TOPIC, DEPTH_INFO_TOPIC):
-            frame = camera_info_frame_from_msg(rec.message)
-            if topic not in info_first:
-                info_first[topic] = frame
-            info_k_seen.setdefault(topic, {})[
-                (frame.fx, frame.fy, frame.cx, frame.cy)] = \
-                info_k_seen.setdefault(topic, {}).get(
-                    (frame.fx, frame.fy, frame.cx, frame.cy), 0) + 1
-        elif topic == TF_STATIC_TOPIC:
-            tf_static_msgs += 1
-        elif topic == LIDAR_TOPIC:
-            lidar_stamps_seen.append(stamp)
-            if cfg.with_lidar:
-                lidar_by_stamp[stamp] = rec.message
-            if lidar_index_jsonl is not None:
-                # Full-volume archive: EVERY scan keyed by its own header
-                # stamp, independent of camera-frame coupling.
-                scan_dir = os.path.join(bag_out, "lidar",
-                                        frame_dir_name(stamp))
-                os.makedirs(scan_dir, exist_ok=True)
-                points = decode_lidar_scan(rec.message)
-                if points is None:
-                    lidar_archive_stats["n_decode_failures"] += 1
-                    lidar_index_jsonl.write(json.dumps({
-                        "stamp_ns": int(stamp),
-                        "log_time_ns": int(rec.log_time_ns),
-                        "n_points": 0, "dir": None,
-                        "reason": "decode_failed"}) + "\n")
-                else:
-                    np.save(os.path.join(scan_dir, "points.npy"), points)
-                    write_ply_xyz(os.path.join(scan_dir, "lidar.ply"),
-                                  np.column_stack([points["x"],
-                                                   points["y"],
-                                                   points["z"]])
-                                  .astype(np.float64))
-                    ts = points["timestamp"]
-                    lidar_archive_stats["n_scans"] += 1
-                    lidar_archive_stats["n_points_total"] += int(
-                        len(points))
-                    lidar_index_jsonl.write(json.dumps({
-                        "stamp_ns": int(stamp),
-                        "log_time_ns": int(rec.log_time_ns),
-                        "n_points": int(len(points)),
-                        "frame_id": str(rec.message.header.frame_id),
-                        "fields": ("x, y, z, intensity, tag, line, "
-                                   "timestamp (structured npy; "
-                                   "timestamp = unix ns, float64)"),
-                        "ts_min_ns": float(ts.min()),
-                        "ts_max_ns": float(ts.max()),
-                        "scan_span_ms": (float(ts.max()) - float(ts.min()))
-                        / 1e6,
-                        "dir": os.path.relpath(scan_dir, bag_out),
-                        "files": ["points.npy", "lidar.ply"]}) + "\n")
+    if cached is not None:
+        joint_by_stamp = {int(s): dict(p)
+                          for s, p in cached["joint_payloads"]}
+        tcp_by_stamp = {int(s): dict(p)
+                        for s, p in cached["tcp_payloads"]}
+        info_first = {
+            topic: camera_info_frame_from_payload(payload)
+            for topic, payload in cached["camera_info"].items()}
+        info_k_seen = {
+            topic: {tuple(float(v) for v in k): int(n)
+                    for k, n in variants}
+            for topic, variants in cached["camera_k_variants"].items()}
+        tf_static_msgs = int(cached["tf_static_message_count"])
+        lidar_stamps_seen = [int(s) for s in cached["lidar_stamps"]]
+        if cfg.archive_lidar:
+            # Rebuild the archive stats from the pointer index on disk.
+            try:
+                with open(os.path.join(bag_out, "lidar_index.jsonl"),
+                          encoding="utf-8") as handle:
+                    rows = [json.loads(line) for line in handle
+                            if line.strip()]
+                lidar_archive_stats = {
+                    "n_scans": sum(1 for r in rows if r.get("dir")),
+                    "n_points_total": sum(int(r.get("n_points") or 0)
+                                          for r in rows),
+                    "n_decode_failures": sum(
+                        1 for r in rows
+                        if r.get("reason") == "decode_failed"),
+                }
+            except OSError:
+                pass
+    else:
+        if cfg.archive_lidar:
+            os.makedirs(os.path.join(bag_out, "lidar"), exist_ok=True)
+            lidar_index_jsonl = open(
+                os.path.join(bag_out, "lidar_index.jsonl"), "w",
+                encoding="utf-8")
+        # The fast path parses colour/depth stamps straight from the CDR
+        # bytes (message=None): pass A never needs those payloads.
+        pass_a_stream = (
+            iter_bag_messages(mcap_path, topics=index_topics,
+                              header_only_topics=[color_topic,
+                                                  depth_topic])
+            if source_iter is None else stream(index_topics))
+        for rec in pass_a_stream:
+            topic = rec.topic
+            stamp = rec.header_stamp_ns
+            if topic == color_topic:
+                color_entries.append((stamp, rec.log_time_ns, None))
+            elif topic == depth_topic:
+                depth_entries.append((stamp, rec.log_time_ns, None))
+            elif topic == JOINT_TOPIC:
+                payload = _joint_payload(rec.message)
+                if payload is not None:
+                    joint_by_stamp[stamp] = payload
+            elif topic == TCP_TOPIC:
+                tcp_by_stamp[stamp] = _tcp_payload(rec.message)
+            elif topic in (COLOR_INFO_TOPIC, DEPTH_INFO_TOPIC):
+                frame = camera_info_frame_from_msg(rec.message)
+                if topic not in info_first:
+                    info_first[topic] = frame
+                info_k_seen.setdefault(topic, {})[
+                    (frame.fx, frame.fy, frame.cx, frame.cy)] = \
+                    info_k_seen.setdefault(topic, {}).get(
+                        (frame.fx, frame.fy, frame.cx, frame.cy), 0) + 1
+            elif topic == TF_STATIC_TOPIC:
+                tf_static_msgs += 1
+            elif topic == LIDAR_TOPIC:
+                lidar_stamps_seen.append(stamp)
+                if cfg.with_lidar and not cfg.archive_lidar:
+                    lidar_by_stamp[stamp] = rec.message
+                if lidar_index_jsonl is not None:
+                    # Full-volume archive: EVERY scan keyed by its own
+                    # header stamp, independent of camera-frame coupling.
+                    scan_dir = os.path.join(bag_out, "lidar",
+                                            frame_dir_name(stamp))
+                    os.makedirs(scan_dir, exist_ok=True)
+                    points = decode_lidar_scan(rec.message)
+                    if points is None:
+                        lidar_archive_stats["n_decode_failures"] += 1
+                        lidar_index_jsonl.write(json.dumps({
+                            "stamp_ns": int(stamp),
+                            "log_time_ns": int(rec.log_time_ns),
+                            "n_points": 0, "dir": None,
+                            "reason": "decode_failed"}) + "\n")
+                    else:
+                        np.save(os.path.join(scan_dir, "points.npy"),
+                                points)
+                        write_ply_xyz(os.path.join(scan_dir, "lidar.ply"),
+                                      np.column_stack([points["x"],
+                                                       points["y"],
+                                                       points["z"]])
+                                      .astype(np.float64))
+                        ts = points["timestamp"]
+                        lidar_archive_stats["n_scans"] += 1
+                        lidar_archive_stats["n_points_total"] += int(
+                            len(points))
+                        lidar_index_jsonl.write(json.dumps({
+                            "stamp_ns": int(stamp),
+                            "log_time_ns": int(rec.log_time_ns),
+                            "n_points": int(len(points)),
+                            "frame_id": str(_lidar_frame_id(rec.message)),
+                            "fields": ("x, y, z, intensity, tag, line, "
+                                       "timestamp (structured npy; "
+                                       "timestamp = unix ns, float64)"),
+                            "ts_min_ns": float(ts.min()),
+                            "ts_max_ns": float(ts.max()),
+                            "scan_span_ms": (float(ts.max())
+                                             - float(ts.min())) / 1e6,
+                            "dir": os.path.relpath(scan_dir, bag_out),
+                            "files": ["points.npy", "lidar.ply"]}) + "\n")
 
-    color_sorted, color_dup = dedupe_stamped_entries(color_entries)
-    depth_sorted, depth_dup = dedupe_stamped_entries(depth_entries)
+    if cached is not None:
+        # Already deduped when the sidecar was written; the duplicates
+        # counts come with it (re-running dedupe here would zero them).
+        color_sorted = [(int(s), int(log), None)
+                        for s, log in cached["color_entries"]]
+        color_dup = {int(s): int(n)
+                     for s, n in cached["color_duplicates"]}
+        depth_sorted = [(int(s), int(log), None)
+                        for s, log in cached["depth_entries"]]
+        depth_dup = {int(s): int(n)
+                     for s, n in cached["depth_duplicates"]}
+    else:
+        color_sorted, color_dup = dedupe_stamped_entries(color_entries)
+        depth_sorted, depth_dup = dedupe_stamped_entries(depth_entries)
     duplicates = {"color": color_dup, "depth": depth_dup}
     plan = plan_frame_join(
         [s for s, _log, _payload in color_sorted],
@@ -529,6 +641,61 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     if lidar_index_jsonl is not None:
         lidar_index_jsonl.close()
         lidar_archive_stats["n_lidar_msgs"] = len(lidar_stamps) or None
+
+    if index_state["state"] == "miss":
+        # Persist the bag facts for the next warm run. Join-plan inputs
+        # only — the plan itself is always recomputed from the stamps.
+        written = write_index(mcap_path, {
+            "color_topic": color_topic, "depth_topic": depth_topic,
+            "color_entries": [[int(s), int(log)]
+                              for s, log, _p in color_sorted],
+            "color_duplicates": [[int(s), int(n)]
+                                 for s, n in sorted(color_dup.items())],
+            "depth_entries": [[int(s), int(log)]
+                              for s, log, _p in depth_sorted],
+            "depth_duplicates": [[int(s), int(n)]
+                                 for s, n in sorted(depth_dup.items())],
+            "joint_payloads": [[int(s), p] for s, p in
+                               sorted(joint_by_stamp.items())],
+            "tcp_payloads": [[int(s), p] for s, p in
+                             sorted(tcp_by_stamp.items())],
+            "camera_info": {topic: _index_camera_info_payload(frame)
+                            for topic, frame in info_first.items()},
+            "camera_k_variants": {
+                topic: [[list(k), int(n)] for k, n in sorted(
+                    variants.items())]
+                for topic, variants in info_k_seen.items()},
+            "tf_static_message_count": int(tf_static_msgs),
+            "lidar_stamps": [int(s) for s in lidar_stamps],
+            "tf_edges_file": None,
+        }, cfg.index_cache_dir, producer="replay_evaluate")
+        if written:
+            index_state["state"] = "written"
+            index_state["key"] = bag_identity(mcap_path)[0]
+            index_state["cache_dir"] = default_cache_dir(
+                cfg.index_cache_dir)
+
+    if lidar_by_stamp and pairs:
+        # Without an archive there is no disk copy to read back from:
+        # bound the RAM to scans a planned frame can actually join.
+        planned_stamps = sorted(p.stamp_ns for p in pairs)
+        window_ns = int(cfg.lidar_tolerance_ms * NS_PER_MS)
+        lidar_by_stamp = {
+            stamp: message for stamp, message in lidar_by_stamp.items()
+            if nearest_stamp(planned_stamps, stamp, window_ns) is not None}
+
+    def _lidar_points(stamp_ns):
+        """Decoded scan for --with-lidar frame copies: read back from the
+        archive when one exists (the default), else the pruned RAM dict."""
+        if cfg.archive_lidar:
+            path = os.path.join(bag_out, "lidar",
+                                frame_dir_name(stamp_ns), "points.npy")
+            try:
+                return np.load(path)
+            except OSError:
+                return None
+        message = lidar_by_stamp.get(int(stamp_ns))
+        return decode_lidar_scan(message) if message is not None else None
     aux_stats = {
         "n_joint_states": len(joint_stamps),
         "n_tcp_pose": len(tcp_stamps),
@@ -570,6 +737,12 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
         "inference_ms": {}, "detection_conf": {},
         "per_prompt_counts": {}, "frames_with_cargo": 0,
         "skipped_topics": sorted(scan.skipped_topics),
+        # Attribution: the report names the revision and effective config
+        # it was produced with (also on dry runs — a join report is a
+        # claim about the code too).
+        "provenance": collect_provenance(load_segmenter_config(cfg)),
+        "artifacts": str(cfg.artifacts),
+        "index_cache": index_state,
     }
     if cfg.dry_run:
         summary["dry_run"] = True
@@ -615,7 +788,7 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
             bag_out, frames_root, pair, rgb, depth,
             segmenter, point_filter, cfg,
             joint_by_stamp, joint_stamps, tcp_by_stamp, tcp_stamps,
-            lidar_by_stamp, lidar_stamps,
+            _lidar_points, lidar_stamps,
             detections_jsonl, frames_jsonl, frame_rows,
             all_confs, all_infer_ms, per_prompt_counts, select_stats)
 
@@ -687,7 +860,8 @@ def evaluate_bag(bag_path, out_root, cfg, segmenter=None,
     }
     summary["wall_sec"] = round(time.time() - t_start, 2)
     _write_json(os.path.join(bag_out, "summary.json"), summary)
-    write_index_md(bag_out, frame_rows, bag_name)
+    if str(cfg.artifacts) != "minimal":
+        write_index_md(bag_out, frame_rows, bag_name)
     with open(os.path.join(bag_out, "index.json"), "w",
               encoding="utf-8") as handle:
         json.dump(frame_rows, handle, indent=1)
@@ -702,12 +876,16 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
                    segmenter, point_filter, cfg,
                    joint_by_stamp, joint_stamps,
                    tcp_by_stamp, tcp_stamps,
-                   lidar_by_stamp, lidar_stamps,
+                   lidar_points_fn, lidar_stamps,
                    detections_jsonl, frames_jsonl, frame_rows,
                    all_confs, all_infer_ms, per_prompt_counts,
                    select_stats):
     import cv2  # noqa: WPS433 dump path only (matches repo convention)
 
+    # "minimal" keeps the comparable rows (meta.json, both jsonl streams)
+    # and drops every per-frame artefact a re-run comparison does not
+    # need — that write traffic dominates iteration runs.
+    full = str(cfg.artifacts) != "minimal"
     stamp_ns = pair.stamp_ns
     stamp_sec = stamp_ns / 1e9
     name = frame_dir_name(stamp_ns)
@@ -735,14 +913,15 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
         label_map = repaint_label_map(rgb.shape[:2], detections)
     select_stats.append(selection_info.get("selection", "none"))
 
-    write_png(os.path.join(frame_dir, "color.png"), rgb)
-    np.save(os.path.join(frame_dir, "mask.npy"), label_map)
-    write_png(os.path.join(frame_dir, "mask.png"),
-              colorize_mask_rgb(label_map))
-    overlay_bgr = draw_detections_overlay(rgb, detections)
-    cv2.imwrite(os.path.join(frame_dir, "overlay.png"), overlay_bgr)
+    if full:
+        write_png(os.path.join(frame_dir, "color.png"), rgb)
+        np.save(os.path.join(frame_dir, "mask.npy"), label_map)
+        write_png(os.path.join(frame_dir, "mask.png"),
+                  colorize_mask_rgb(label_map))
+        cv2.imwrite(os.path.join(frame_dir, "overlay.png"),
+                    draw_detections_overlay(rgb, detections))
 
-    if depth is not None:
+    if full and depth is not None:
         if cfg.save_depth_npy:
             np.save(os.path.join(frame_dir, "depth.npy"),
                     np.asarray(depth))
@@ -751,9 +930,11 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
             write_png(os.path.join(frame_dir, "depth_vis.png"),
                       depth_vis_uint8(depth_m))
 
-    instance_map = getattr(segmenter, "_instance_map", None)
-    if instance_map is not None:
-        np.save(os.path.join(frame_dir, "instance_mask.npy"), instance_map)
+    if full:
+        instance_map = getattr(segmenter, "_instance_map", None)
+        if instance_map is not None:
+            np.save(os.path.join(frame_dir, "instance_mask.npy"),
+                    instance_map)
 
     det_rows = []
     for det in detections:
@@ -769,8 +950,9 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
         per_prompt_counts[row["prompt"]] = \
             per_prompt_counts.get(row["prompt"], 0) + 1
         all_confs.append(row["confidence"])
-    _write_json(os.path.join(frame_dir, "detections.json"),
-                {"stamp_sec": stamp_sec, "detections": det_rows})
+    if full:
+        _write_json(os.path.join(frame_dir, "detections.json"),
+                    {"stamp_sec": stamp_sec, "detections": det_rows})
 
     # Aux nearest-stamp joins (miss is reported, never silently widened).
     joint_row, joint_dt_ms = None, None
@@ -780,8 +962,9 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
         idx, dt = hit
         joint_row = dict(joint_by_stamp[joint_stamps[idx]])
         joint_dt_ms = dt / 1e6
-        _write_json(os.path.join(frame_dir, "joint_state.json"),
-                    dict(joint_row, dt_sec=dt / 1e9))
+        if full:
+            _write_json(os.path.join(frame_dir, "joint_state.json"),
+                        dict(joint_row, dt_sec=dt / 1e9))
     tcp_row, tcp_dt_ms = None, None
     hit = nearest_stamp(tcp_stamps, stamp_ns,
                         int(cfg.aux_tolerance_ms * NS_PER_MS))
@@ -789,18 +972,26 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
         idx, dt = hit
         tcp_row = dict(tcp_by_stamp[tcp_stamps[idx]])
         tcp_dt_ms = dt / 1e6
-        _write_json(os.path.join(frame_dir, "tcp_pose.json"),
-                    dict(tcp_row, dt_sec=dt / 1e9))
+        if full:
+            _write_json(os.path.join(frame_dir, "tcp_pose.json"),
+                        dict(tcp_row, dt_sec=dt / 1e9))
 
     cargo_meta = None
     if point_filter is not None and depth is not None:
         cargo_pts, _obstacle_pts = point_filter.filter_depth(
             depth, label_map, pixel_stride=int(cfg.pixel_stride))
-        n_ply = write_ply_xyz(
-            os.path.join(frame_dir, "cargo_points.ply"),
-            np.asarray(cargo_pts, dtype=np.float64))
+        if full:
+            n_ply = write_ply_xyz(
+                os.path.join(frame_dir, "cargo_points.ply"),
+                np.asarray(cargo_pts, dtype=np.float64))
+            ply_vertices = int(n_ply)
+        else:
+            # No PLY file exists in minimal mode: report the absence as
+            # null, not 0 — a zero next to a real n_points reads like an
+            # empty cloud instead of a skipped write.
+            ply_vertices = None
         cargo_meta = {"n_points": int(len(cargo_pts)),
-                      "ply_vertices": int(n_ply),
+                      "ply_vertices": ply_vertices,
                       "frame": "optical(d555_color_optical_frame)"}
 
     lidar_meta = None
@@ -816,15 +1007,16 @@ def _process_frame(bag_out, frames_root, pair, rgb, depth,
                               lidar_stamps[idx]),
                           "dt_sec": dt / 1e9}
             if cfg.with_lidar:
-                points = decode_lidar_scan(
-                    lidar_by_stamp[lidar_stamps[idx]])
+                points = lidar_points_fn(lidar_stamps[idx])
                 if points is not None and len(points):
-                    np.save(os.path.join(frame_dir, "lidar.npy"), points)
-                    write_ply_xyz(
-                        os.path.join(frame_dir, "lidar.ply"),
-                        np.column_stack([points["x"], points["y"],
-                                          points["z"]]).astype(
-                            np.float64))
+                    if full:
+                        np.save(os.path.join(frame_dir, "lidar.npy"),
+                                points)
+                        write_ply_xyz(
+                            os.path.join(frame_dir, "lidar.ply"),
+                            np.column_stack([points["x"], points["y"],
+                                             points["z"]]).astype(
+                                np.float64))
                     lidar_meta["n_points"] = int(len(points))
 
     depth_stats = {"zero_px": None, "min_mm_nonzero": None, "max_mm": None}

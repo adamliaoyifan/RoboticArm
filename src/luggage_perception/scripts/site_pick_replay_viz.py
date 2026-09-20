@@ -30,6 +30,10 @@ from luggage_perception.eval.replay_evaluate import (
     REAL_SITE_PROMPTS,
 )
 from luggage_perception.eval.site_pick_replay import SitePickConfig, replay_site_pick
+from luggage_perception.eval.run_provenance import (
+    check_install_staleness,
+    staleness_warning,
+)
 
 DEFAULT_OUT = os.path.join(
     os.path.expanduser("~/work/robotarm_bags"), "pick_replay_out")
@@ -38,7 +42,7 @@ DEFAULT_OUT = os.path.join(
 def _parse_args(argv):
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0])
-    parser.add_argument("--bag", required=True,
+    parser.add_argument("--bag", default="",
                         help="bag directory or .mcap file")
     parser.add_argument("--out", default="",
                         help="output directory (default "
@@ -68,17 +72,66 @@ def _parse_args(argv):
                         help="plan-only MoveIt on --ros-domain-id "
                              "(never executes, never uses domain %s)"
                              % LIVE_SIM_DOMAIN_ID)
+    parser.add_argument("--moveit-scene", default="cargo",
+                        choices=["cargo", "cargo_ground", "none"],
+                        help="collision objects applied to the isolated "
+                             "plan-only scene: the detected cargo box "
+                             "(default), cargo + ground slab, or the "
+                             "empty scene (explicit)")
     parser.add_argument("--ros-domain-id", type=int,
                         default=DEFAULT_REPLAY_DOMAIN_ID,
                         help="isolated domain for optional MoveIt "
                              "(default %(default)s; refusing 7)")
     parser.add_argument("--allow-stub", dest="require_backend",
                         action="store_false", default=True)
+    parser.add_argument("--tf-interpolate", dest="tf_interpolate",
+                        action="store_true", default=False,
+                        help="lerp/slerp TF edges between bracketing "
+                             "samples within --tf-max-gap-ms (nearest-"
+                             "stamp lookups otherwise; unbracketed "
+                             "stamps still fall back to nearest, so "
+                             "this only refines numbers)")
+    parser.add_argument("--tf-no-interpolate", dest="tf_interpolate",
+                        action="store_false")
+    parser.add_argument("--tf-max-gap-ms", type=float, default=50.0,
+                        help="max bracket span for TF interpolation "
+                             "(default %(default)s, one 50 Hz TF period)")
+    parser.add_argument("--emit-candidates", default="",
+                        help="write the per-frame pickup XY candidates "
+                             "JSON for pickup_xy_benchmark to this path")
+    parser.add_argument("--label-viz", action="store_true",
+                        help="label mode: click the overlay in the HTML "
+                             "to record suction_safe_lid_center_pixel "
+                             "rows, then backfill to world XY with "
+                             "backfill_pickup_labels.py")
+    parser.add_argument("--check-install", action="store_true",
+                        help="verify the installed library matches the "
+                             "source tree and exit (2 when stale); run "
+                             "this before trusting any measured numbers")
     return parser.parse_args(argv)
 
 
 def main(argv=None):
     args = _parse_args(argv if argv is not None else sys.argv[1:])
+    staleness = check_install_staleness()
+    if args.check_install:
+        print("install check: mode=%s stale=%s checked=%d" % (
+            staleness["mode"], staleness["stale"],
+            staleness["checked"]))
+        for name in staleness["newer_files"]:
+            print("  newer-or-missing: %s" % name)
+        if staleness["stale"]:
+            print(staleness_warning(staleness), file=sys.stderr)
+            return 2
+        return 0
+    if not args.bag:
+        # --bag is declared optional so --check-install can run alone.
+        print("error: the following arguments are required: --bag",
+              file=sys.stderr)
+        return 2
+    warning = staleness_warning(staleness)
+    if warning:
+        print(warning, file=sys.stderr)
     try:
         domain = assert_isolated_domain(args.ros_domain_id)
     except IsolatedDomainError as exc:
@@ -116,7 +169,12 @@ def main(argv=None):
         support_mode=args.support_mode,
         require_backend=args.require_backend,
         plan_moveit=bool(args.plan_moveit),
+        moveit_scene=args.moveit_scene,
         ros_domain_id=domain,
+        tf_interpolate=bool(args.tf_interpolate),
+        tf_max_gap_ms=args.tf_max_gap_ms,
+        emit_candidates=args.emit_candidates,
+        label_viz=bool(args.label_viz),
     )
     summary = replay_site_pick(bag, out_dir, cfg)
     print("wrote", summary.get("html"))

@@ -139,6 +139,11 @@ semantic_point_filter:
     input.camera_info: /luggage/preprocessed/camera/color/camera_info
     output.cargo_points: /luggage/semantic/cargo_points
     output.obstacle_points: /luggage/semantic/obstacle_points
+    output.cargo_points_untracked: /luggage/semantic/cargo_points_untracked
+    # OCC-1: label-filtered cloud before CargoInstanceTracker. Default off
+    # so the pickup track is unchanged; sim_world enables it with the cargo map.
+    publish_untracked_cargo: false
+    untracked_include_obstacle: false
     output.stats: ~/stats_json
     output.cargo_voxel_size: 0.005
     # Label routing: cargo feeds the detector; obstacles are conservative.

@@ -11,8 +11,8 @@ adapter:
   and a raw cloud from the *same* acquisition stamp;
 - support modes: ``auto``, ``configured``, ``auto_then_configured``,
   ``top_only``;
-- a catalog width/depth match may populate a prior height, but the result
-  stays ``height_valid=false`` (HEIGHT_SOURCE_CATALOG_PRIOR).
+- suitcase WDH priors are spawn-only. Missing support stays TOP_ONLY
+  with ``height_valid=false`` and ``HEIGHT_SOURCE_UNAVAILABLE``.
 
 Stateful temporal filtering delegates to
 :class:`~luggage_perception.top_support_estimator.SupportStabilityFilter`
@@ -206,38 +206,16 @@ class PipelineResult:
     top_source: str = "legacy"
 
 
-def _catalog_prior_height(width, depth, catalog_entries, tolerance):
-    """Best width/depth catalog match -> prior height, or None.
-
-    Height is deliberately not part of the metric: it is the unknown we
-    are trying to prior-ize.
-    """
-    best = None
-    best_err = float("inf")
-    for entry in catalog_entries or []:
-        ew, ed, eh = entry["size"]
-        for cw, cd in ((ew, ed), (ed, ew)):
-            err = abs(cw - width) + abs(cd - depth)
-            if (err < best_err and abs(cw - width) < tolerance
-                    and abs(cd - depth) < tolerance):
-                best_err = err
-                best = float(eh)
-    return best
-
-
 class PlatformFreeDetector:
     """Stateful gate + estimator composition for one luggage instance."""
 
     def __init__(self, config=None, support_mode="auto",
-                 catalog_entries=None, catalog_tolerance=0.08,
                  stability_window=5, stability_max_z_spread=0.015):
         if support_mode not in SUPPORT_MODES:
             raise ValueError(
                 "support_mode must be one of %s" % (SUPPORT_MODES,))
         self.config = config or TopSupportConfig()
         self.support_mode = support_mode
-        self.catalog_entries = list(catalog_entries or [])
-        self.catalog_tolerance = float(catalog_tolerance)
         self._stability = SupportStabilityFilter(
             window=stability_window, max_z_spread=stability_max_z_spread)
 
@@ -418,7 +396,7 @@ class PlatformFreeDetector:
         return (filtered if filtered is not None else support), "", True
 
     def _compose(self, top, support, platform_z):
-        """Apply the support-mode fallback chain and catalog prior."""
+        """Apply the support-mode fallback chain. No catalog size."""
         support_ok = (
             support is not None and support.reason == "ok"
             and np.isfinite(support.support_z))
@@ -428,12 +406,8 @@ class PlatformFreeDetector:
             if platform_z is not None and np.isfinite(float(platform_z)):
                 box = compose_box_geometry(top, None, platform_z=platform_z)
                 return box
-        prior = _catalog_prior_height(
-            top.width, top.depth, self.catalog_entries,
-            self.catalog_tolerance)
         return compose_box_geometry(
-            top, support if support_ok else None,
-            catalog_height=prior)
+            top, support if support_ok else None)
 
 
 def _workspace_pair(config):

@@ -120,4 +120,5 @@ evaluations, or search diagnostics.
 
 Do not classify `PLACE_CANDIDATE_EXHAUSTED` as `BIN_FULL`: retain every tried
 candidate so planning infeasibility remains distinguishable from packing
-capacity.
+capacity. Do not classify an occupancy-blocked carry as `BIN_FULL` either:
+retain every tried path, occupancy hash/revision, and rejection reason.

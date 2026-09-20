@@ -21,4 +21,14 @@ Full contract: `docs/architecture/container_geometry.md`.
   selection.
 - Fail closed on missing, invalid, unsupported, or mismatched geometry. Do not
   silently fall back from seven-face geometry to legacy `inner_size`.
+- Stamp `geometry_hash` on the cargo map, its commit ledger, map stats, and
+  both directions of `ComputePlacement`. A consumer whose own kernel hash
+  differs must reject the input, not read its `inner_size`.
+- Return a `reason_code` from the fixed placement taxonomy. `BIN_FULL` means
+  no enumerated candidate was capacity-feasible (overlap, top clearance, hull
+  containment). A slot lost to aperture, insertion corridor, unobserved or
+  insufficient support is `PLACE_CANDIDATE_EXHAUSTED`; an oversized box is
+  `BOX_EXCEEDS_CONTAINER`. Count capacity over every enumerated candidate,
+  not the retained subset, and keep every tried candidate's reason. An
+  occupancy-blocked carry is a motion/path reason, not `BIN_FULL`.
 - Keep eval/Gazebo truth out of online geometry and usable-space denominators.

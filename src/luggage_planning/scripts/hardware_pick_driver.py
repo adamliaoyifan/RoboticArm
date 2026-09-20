@@ -61,6 +61,12 @@ from luggage_msgs.srv import (BuildMotionSequence, DetectLuggage,
 from std_msgs.msg import Bool, String
 
 from luggage_planning import ros_message_adapters as adapters
+from luggage_planning.pick_authorization import (
+    AuthorizationConfig,
+    PickAuthorizationPolicy,
+    run_authorization_loop,
+)
+from luggage_planning.pickup_collision import pickup_collision_aabb
 from luggage_planning.suction_candidate_selection import rank_candidates
 from luggage_planning.suction_candidate_waypoints import (
     build_candidate_pick_segments,
@@ -293,6 +299,25 @@ class HardwarePickDriver(Node):
         return self._call_srv(
             self._detect, DetectLuggage.Request(), self._args.detect_timeout)
 
+    def _auth_policy(self):
+        return PickAuthorizationPolicy(AuthorizationConfig(
+            max_attempts=int(self._args.auth_max_attempts),
+            max_elapsed_sec=float(self._args.auth_max_elapsed_sec),
+            wait_period_sec=float(self._args.auth_wait_period_sec),
+        ))
+
+    def detect_until_authorized(self):
+        def _once():
+            detect = self.detect_once()
+            if detect is None:
+                return False, None, "DETECT_TIMEOUT"
+            if not detect.success or not detect.luggage:
+                return False, None, detect.message or "MEASURED_NONE"
+            return True, detect.luggage[0], detect.message or ""
+
+        return run_authorization_loop(
+            _once, time.sleep, time.monotonic, self._auth_policy())
+
     def detect(self):
         last = None
         attempts = max(1, int(self._args.detect_retries))
@@ -357,17 +382,16 @@ class HardwarePickDriver(Node):
 
     @staticmethod
     def _box_geom(box):
-        xyz = [box.pose.position.x, box.pose.position.y, box.pose.position.z]
-        quat = [box.pose.orientation.x, box.pose.orientation.y,
-                box.pose.orientation.z, box.pose.orientation.w]
-        size = [box.width, box.depth, box.height]
-        return xyz, quat, size
+        return pickup_collision_aabb(box)
 
     def add_scene_box(self, box):
         scene = self._scene_client()
         if not scene.wait_ready(timeout_sec=5.0):
             return False, "apply_planning_scene unavailable"
-        xyz, quat, size = self._box_geom(box)
+        try:
+            xyz, quat, size = pickup_collision_aabb(box)
+        except ValueError as exc:
+            return False, str(exc)
         ok, message = scene.add_pickup_box(xyz, quat, size)
         if ok:
             self._scene_box = (xyz, quat, size)
@@ -436,6 +460,7 @@ class HardwarePickDriver(Node):
             1.0 - 2.0 * (orientation.y * orientation.y
                           + orientation.z * orientation.z))
         stamp, frame = adapters.detected_observation_identity(box)
+        xyz, quat, size = pickup_collision_aabb(box)
         return DetectionView(
             stamp=stamp,
             frame=frame,
@@ -443,11 +468,9 @@ class HardwarePickDriver(Node):
             top_surface_valid=bool(box.top_surface_valid),
             detection_yaw=yaw,
             yaw_valid=bool(getattr(box, "yaw_valid", True)),
-            box_xyz=[box.pose.position.x, box.pose.position.y,
-                     box.pose.position.z],
-            box_quat=[orientation.x, orientation.y, orientation.z,
-                      orientation.w],
-            box_size=[box.width, box.depth, box.height])
+            box_xyz=xyz,
+            box_quat=quat,
+            box_size=size)
 
     def _session_config(self, model):
         return SessionConfig(
@@ -507,16 +530,35 @@ class HardwarePickDriver(Node):
                 "at %s: %s" % (self._args.observe_pose, message))
         time.sleep(self._args.settle_sec)
 
-        detect = self.detect()
-        if detect is None or not detect.success or not detect.luggage:
-            msg = detect.message if detect else "timeout"
-            self.get_logger().error("detect failed: %s" % msg)
+        if self._args.detect_only:
+            detect = self.detect()
+            if detect is None or not detect.success or not detect.luggage:
+                msg = detect.message if detect else "timeout"
+                self.get_logger().error("detect failed: %s" % msg)
+                return 3
+            box = detect.luggage[0]
+            self.get_logger().info(
+                "detect-only id=%s height_valid=%s height_source=%s "
+                "top_valid=%s xyz=(%.3f,%.3f,%.3f) size=%.3fx%.3fx%.3f"
+                % (box.id, box.height_valid, box.height_source,
+                   box.top_surface_valid, box.pose.position.x,
+                   box.pose.position.y, box.pose.position.z,
+                   box.width, box.depth, box.height))
+            return 0
+
+        auth = self.detect_until_authorized()
+        self.get_logger().info(
+            "pick_authorization action=%s reason=%s attempts=%s"
+            % (auth.decision.action, auth.decision.reason,
+               auth.decision.attempts))
+        if not auth.authorized:
+            self.get_logger().error(
+                "pick not authorized: %s (%s)"
+                % (auth.decision.reason, auth.detect_reason))
             return 3
-        box = detect.luggage[0]
+        box = auth.box
         detection = self._detection_view(box)
         self._log_detection(box, detection)
-        if self._args.detect_only:
-            return 0
 
         try:
             model = self._load_contact_model()
@@ -617,6 +659,9 @@ def main(argv=None):
     parser.add_argument("--goto-timeout", type=float, default=90.0)
     parser.add_argument("--detect-timeout", type=float, default=40.0)
     parser.add_argument("--detect-retries", type=int, default=5)
+    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
+    parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=90.0)
     parser.add_argument("--max-candidates", type=int, default=3)

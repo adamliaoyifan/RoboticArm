@@ -81,7 +81,8 @@ def test_stale_map_overlap_fixture_fails_closed():
     _case, _surface, result = _solve("overlap")
     assert not result["success"]
     assert result["reject_histogram"]["overlap"] > 0
-    assert result["message"].startswith("BIN_FULL no_candidate")
+    assert result["reason_code"] in ("BIN_FULL", "PLACE_CANDIDATE_EXHAUSTED")
+    assert result["message"].startswith("%s no_candidate" % result["reason_code"])
 
 
 def test_corridor_fixture_records_blocked_candidates():
@@ -93,4 +94,6 @@ def test_oversized_fixture_has_no_candidate():
     _case, _surface, result = _solve("no_candidate")
     assert not result["success"]
     assert result["candidates"] == []
-    assert result["message"] == "BIN_FULL no_candidate"
+    # A box larger than the container is not a full bin.
+    assert result["reason_code"] == "BOX_EXCEEDS_CONTAINER"
+    assert result["message"] == "BOX_EXCEEDS_CONTAINER no_candidate"

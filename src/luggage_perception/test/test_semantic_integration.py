@@ -67,7 +67,7 @@ class TestSpawnWithJitterDetectAndCompare(unittest.TestCase):
         entry = CATALOG[1]  # standard
         est, cx, cy, w, d, h, yaw = self._run_trial(entry, 0.0, 0.0, 0.0)
         self.assertIsNotNone(est)
-        self.assertEqual(est.matched_catalog_id, "standard")
+        self.assertIsNone(est.matched_catalog_id)
         self.assertAlmostEqual(est.center_xyz[0], cx, delta=0.02)
         self.assertAlmostEqual(est.center_xyz[1], cy, delta=0.02)
         gt_cz = PLATFORM_Z + h / 2
@@ -85,19 +85,19 @@ class TestSpawnWithJitterDetectAndCompare(unittest.TestCase):
         entry = CATALOG[0]  # carryon
         est, cx, cy, w, d, h, yaw = self._run_trial(entry, -0.05, 0.02, 1.2)
         self.assertIsNotNone(est)
-        self.assertEqual(est.matched_catalog_id, "carryon")
+        self.assertIsNone(est.matched_catalog_id)
         self.assertAlmostEqual(est.center_xyz[0], cx, delta=0.03)
 
     def test_large_box_with_jitter(self):
         entry = CATALOG[2]  # large
         est, cx, cy, w, d, h, yaw = self._run_trial(entry, 0.07, -0.04, -0.5)
         self.assertIsNotNone(est)
-        self.assertEqual(est.matched_catalog_id, "large")
+        self.assertIsNone(est.matched_catalog_id)
         self.assertAlmostEqual(est.width, 0.80, delta=0.01)
         self.assertAlmostEqual(est.depth, 0.50, delta=0.01)
 
-    def test_all_catalog_entries_detected_correctly(self):
-        """Every catalog entry should be detected with correct ID."""
+    def test_all_catalog_entries_detected_without_snap(self):
+        """Spawn catalog sizes are estimated; IDs are not snapped on."""
         rng = np.random.RandomState(123)
         for entry in CATALOG:
             dx = rng.uniform(-0.10, 0.10)
@@ -105,10 +105,9 @@ class TestSpawnWithJitterDetectAndCompare(unittest.TestCase):
             yaw = rng.uniform(-math.pi, math.pi)
             est, cx, cy, w, d, h, _ = self._run_trial(entry, dx, dy, yaw)
             self.assertIsNotNone(est, "Detection failed for %s" % entry["id"])
-            self.assertEqual(
-                est.matched_catalog_id, entry["id"],
-                "Catalog mismatch for %s: got %s" % (entry["id"], est.matched_catalog_id),
-            )
+            self.assertIsNone(est.matched_catalog_id)
+            self.assertAlmostEqual(est.width, w, delta=0.03)
+            self.assertAlmostEqual(est.depth, d, delta=0.03)
 
     def test_gt_delta_within_tolerance(self):
         """Perception vs GT position delta should be < 3 cm for all sizes."""

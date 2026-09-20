@@ -423,14 +423,12 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
         confidence=float(confidence))
 
 
-def compose_box_geometry(top, support=None, platform_z=None,
-                        catalog_height=None):
+def compose_box_geometry(top, support=None, platform_z=None):
     """Compose a BoxGeometryEstimate from top (+ optional support).
 
     ``platform_z`` is only consumed as CONFIGURED_SUPPORT (explicit
-    deployment mode); it never overrides a measured support. A
-    ``catalog_height`` prior populates the numeric height with
-    ``height_valid=false`` (HEIGHT_SOURCE_CATALOG_PRIOR).
+    deployment mode); it never overrides a measured support. Catalog
+    suitcase size is spawn-only and must not fill height here.
     """
     if top is None:
         return BoxGeometryEstimate(
@@ -457,19 +455,12 @@ def compose_box_geometry(top, support=None, platform_z=None,
             top.center_xy[0], top.center_xy[1],
             (top.top_z + float(platform_z)) * 0.5])
         source = HEIGHT_SOURCE_CONFIGURED_SUPPORT
-    elif catalog_height is not None:
-        height = float(catalog_height)
-        center = np.array([
-            top.center_xy[0], top.center_xy[1],
-            top.top_z - height * 0.5])
-        source = HEIGHT_SOURCE_CATALOG_PRIOR
 
     height_valid = source in (
         HEIGHT_SOURCE_MEASURED_SUPPORT, HEIGHT_SOURCE_CONFIGURED_SUPPORT)
     reason = "ok" if height_valid else (
-        DETECT_HEIGHT_PRIOR_ONLY if source == HEIGHT_SOURCE_CATALOG_PRIOR
-        else (support.reason if support is not
-              None else DETECT_SUPPORT_UNOBSERVABLE))
+        support.reason if support is not
+        None else DETECT_SUPPORT_UNOBSERVABLE)
     return BoxGeometryEstimate(
         top=top,
         support=support,
