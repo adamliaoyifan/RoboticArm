@@ -731,7 +731,11 @@ def _launch_setup(context):
         output="screen",
         additional_env={**_arena_env_mmap, "OPENBLAS_NUM_THREADS": "1"},
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
-        parameters=[semantic_config, {"use_sim_time": True}],
+        parameters=[semantic_config, {
+            "use_sim_time": True,
+            "publish_untracked_cargo": True,
+            "untracked_include_obstacle": True,
+        }],
     )
 
     jsb_spawner = Node(
@@ -857,7 +861,13 @@ def _launch_setup(context):
             executable="cargo_volume_mapper_node.py",
             name="cargo_volume_mapper",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{
+                "use_sim_time": True,
+                "cargo_cloud_topic": "/luggage/semantic/cargo_points_untracked",
+                "base_frame": "container_link",
+                "cloud_buffer_size": 12,
+                "freshness_window_sec": 0.20,
+            }],
             condition=IfCondition(_bool_text(cfg["use_cargo_map"])),
         ),
         Node(

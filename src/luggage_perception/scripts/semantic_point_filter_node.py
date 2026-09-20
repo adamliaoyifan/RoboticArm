@@ -51,6 +51,7 @@ from luggage_perception.cargo_instance_tracker import (
     xyz_array,
 )
 from luggage_perception.luggage_box_estimator import voxel_downsample
+from luggage_perception.cargo_view_integration import untracked_xyz
 from luggage_perception.semantic_point_filter import (
     CameraIntrinsics,
     DepthToColorExtrinsics,
@@ -80,6 +81,9 @@ class SemanticPointFilterNode(Node):
             "input.camera_info": "/luggage/preprocessed/camera/color/camera_info",
             "output.cargo_points": "/luggage/semantic/cargo_points",
             "output.obstacle_points": "/luggage/semantic/obstacle_points",
+            "output.cargo_points_untracked": "/luggage/semantic/cargo_points_untracked",
+            "publish_untracked_cargo": False,
+            "untracked_include_obstacle": False,
             "output.stats": "~/stats_json",
             "output.cargo_voxel_size": 0.0,
             "cargo_labels": [2],
@@ -126,6 +130,10 @@ class SemanticPointFilterNode(Node):
         self._grow_raise_mm = max(
             0, int(self.get_parameter("cargo_grow_raise_mm").value))
         self._world_frame = str(self.get_parameter("world_frame").value)
+        self._publish_untracked_cargo = bool(
+            self.get_parameter("publish_untracked_cargo").value)
+        self._untracked_include_obstacle = bool(
+            self.get_parameter("untracked_include_obstacle").value)
         stats_hz = float(self.get_parameter("stats_publish_hz").value)
         self._stats_publish_interval_sec = (
             0.0 if stats_hz <= 0.0 else 1.0 / stats_hz)
@@ -178,7 +186,9 @@ class SemanticPointFilterNode(Node):
                         "stale_instance_dropped": 0,
                         "depth_horizon_evicted": 0,
                         "obstacle_publish_count": 0,
-                        "obstacle_publish_skipped": 0}
+                        "obstacle_publish_skipped": 0,
+                        "untracked_publish_count": 0,
+                        "untracked_point_count": 0}
         self._last_stage_ms = {}
 
         sensor_qos = QoSProfile(
@@ -200,6 +210,12 @@ class SemanticPointFilterNode(Node):
         self._obstacle_pub = self.create_publisher(
             PointCloud2, self.get_parameter("output.obstacle_points").value,
             sensor_qos)
+        self._untracked_pub = None
+        if self._publish_untracked_cargo:
+            self._untracked_pub = self.create_publisher(
+                PointCloud2,
+                self.get_parameter("output.cargo_points_untracked").value,
+                sensor_qos)
         self._stats_pub = self.create_publisher(
             String, self.get_parameter("output.stats").value, stats_qos)
 
@@ -408,6 +424,17 @@ class SemanticPointFilterNode(Node):
         rot, trans = rt
         return transform_points(points_world, rot, trans)
 
+    def _publish_untracked(self, cargo, obstacle, stamp, frame_id):
+        """Label-filtered cloud before CargoInstanceTracker (OCC-1)."""
+        if self._untracked_pub is None:
+            return
+        xyz = untracked_xyz(cargo, obstacle, self._untracked_include_obstacle)
+        self._untracked_pub.publish(adapters.cloud_msg_from_points(
+            xyz, stamp, frame_id or self._last_depth_frame))
+        with self._lock:
+            self._counts["untracked_publish_count"] += 1
+            self._counts["untracked_point_count"] = int(xyz.shape[0])
+
     def _publish_cargo(self, points_xyz, stamp, frame_id, n_points=None):
         # filter_depth already returns a contiguous float32 view into its
         # fixed-capacity buffer.  Preserve it through the normal measurement
@@ -515,6 +542,7 @@ class SemanticPointFilterNode(Node):
 
         stamp = depth_msg.header.stamp
         frame_id = depth_msg.header.frame_id or self._last_depth_frame
+        self._publish_untracked(cargo, obstacle, stamp, frame_id)
         camera_pts = cargo
         world_pts = None
         tf_miss = False
@@ -614,6 +642,9 @@ class SemanticPointFilterNode(Node):
         record.update(self._tracker.as_dict())
         record["buffer_maxlen"] = int(self._buffer_maxlen)
         record["cargo_voxel_size"] = float(self._cargo_voxel_size)
+        record["publish_untracked_cargo"] = bool(self._publish_untracked_cargo)
+        record["untracked_include_obstacle"] = bool(
+            self._untracked_include_obstacle)
         record["buffer_occupancy"] = {
             "depth": len(self._depths),
             "mask": len(self._masks),

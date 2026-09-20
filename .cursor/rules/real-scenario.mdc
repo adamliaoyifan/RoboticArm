@@ -7,7 +7,7 @@ alwaysApply: false
 # Real-scenario packing
 
 Full contract: `docs/architecture/real_scenario.md`. Defect IDs `RS-1` ..
-`RS-26` are tracked exceptions, not templates.
+`RS-27` are tracked exceptions, not templates.
 
 ## Must
 
@@ -34,3 +34,7 @@ Full contract: `docs/architecture/real_scenario.md`. Defect IDs `RS-1` ..
   inspect, or GT OBB carving into Humble.
 - Do not branch production or production-API eval drivers on `sim_mode`,
   skip perception, or use a fake success path.
+- Do not plan place motion from URDF and `scene_manager` boxes alone.
+  Every planner must query cargo occupancy at the request hash/revision,
+  emit multiple occupancy-checked paths, and select by dimension, safety,
+  and efficiency (`RS-27`).

@@ -64,7 +64,8 @@ Hard rules:
 - ROS1 `allow_gt_fallback` / `strict_perception=False` / gazebo inspect are
   forbidden patterns, including in unported scripts.
 
-Honest product loop (pick gate on Humble; occupancy still RS-1 .. RS-7):
+Honest product loop (pick gate on Humble; occupancy node is closed at
+`RS-1`, production caller still `RS-7`):
 
 ```text
 DetectLuggage (TOP_ONLY is a detection, not a grasp)
@@ -85,14 +86,22 @@ oracle. `deployment_ws` is a site trajectory executor, not packing GT.
 
 ## Defect catalog
 
-IDs are stable. Closing an item requires a higher-generation plan with
-metrics, tests, and `dispatch_ready: yes`.
+IDs are stable (`RS-1` .. `RS-27`). Closing an item requires a
+higher-generation plan with metrics, tests, and `dispatch_ready: yes`.
 
 ### A. Occupancy without perception
 
-- **RS-1.** Humble `cargo_volume_mapper_node` never integrates depth
-  (`SOURCE_GEOMETRY` only). `CargoVolumeMapper.integrate_points` is unused.
-  `src/luggage_perception/scripts/cargo_volume_mapper_node.py`.
+- **RS-1.** Closed at the node/service level: Humble
+  `cargo_volume_mapper_node` exposes `/cargo_map/integrate_cargo_view`
+  (`IntegrateCargoView`). It buffers `/luggage/semantic/cargo_points_untracked`
+  (label-filtered, pre-`CargoInstanceTracker`), selects by acquisition stamp
+  inside a 0.20 s window, looks up TF at that stamp into `container_link`,
+  voxel-downsamples, then calls `CargoVolumeMapper.integrate_points`.
+  Latest-cloud integrate and tracker-gated `/luggage/semantic/cargo_points`
+  are forbidden. The production pack/orchestrator still does not call the
+  service (`RS-7`). Planned `AddPlacedBox` remains a `SOURCE_GEOMETRY` lock
+  (`RS-2`). `src/luggage_perception/scripts/cargo_volume_mapper_node.py`,
+  `src/luggage_perception/luggage_perception/cargo_view_integration.py`.
 - **RS-2.** Cargo-map commit is the planned `ComputePlacement` slot, not a
   measured settled box. `src/luggage_gazebo/scripts/place_only_eval_driver.py`,
   `src/luggage_gazebo/scripts/pack_eval_driver.py`.
@@ -174,6 +183,18 @@ Unported / `ros1_reference` / `COLCON_IGNORE`. Forbidden to copy into Humble.
 - **RS-26.** Pack-eval utilization uses a fixed AABB volume, not hull-clipped
   usable space.
 
+### E. Place motion without occupancy
+
+- **RS-27.** Place motion (cartesian `GetCartesianPath` and OMPL
+  `RRTConnect` in `motion_executor`) collision-checks MoveIt URDF, the
+  attached payload, and `scene_manager` boxes only. It does not query
+  cargo occupancy (`surface_2d` / voxel map) at `geometry_hash` /
+  `map_revision`, does not emit a scored multi-path set, and has no
+  dimension/safety/efficiency selector. OCC-1 trial 1
+  `PLACE_PLAN_traverse` fraction 0.859 then OMPL `FAILURE` is this gap.
+  Contract: [placement.md](placement.md) Place motion through occupancy.
+  `src/luggage_planning/luggage_planning/motion_executor.py`.
+
 ## Not defects
 
 - Container seven-face hull from `scene_tf`.
@@ -186,8 +207,10 @@ Unported / `ros1_reference` / `COLCON_IGNORE`. Forbidden to copy into Humble.
 
 ## Severity
 
-Highest for a real cell: **RS-11, RS-10** (packing GT metadata / solver
-isolation) plus **RS-1, RS-2, RS-3** (interior is a planned-geometry
-ledger). Next: **RS-6, RS-7**, then ROS1 fallbacks **RS-15, RS-16** if that
-stack is run. **RS-8, RS-12, RS-25** are closed by the pick-authorization
-gate.
+Highest for a real cell: **RS-27** (place carry does not read occupancy;
+second-box `PLACE_PLAN_traverse` is this), then **RS-11, RS-10** (packing
+GT metadata / solver isolation) plus **RS-2, RS-3** (planned-geometry
+commit still fills the map). `RS-1` is closed at the node/service; the
+production caller is `RS-7`. Next: occupancy-aware multi-path motion,
+then **RS-6, RS-7**, then ROS1 fallbacks **RS-15, RS-16** if that stack
+is run. **RS-8, RS-12, RS-25** are closed by the pick-authorization gate.

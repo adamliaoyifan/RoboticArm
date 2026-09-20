@@ -71,6 +71,10 @@ enumerated candidate, not the retained `top_n` / `keep_rejected` subset.
 Every tried candidate keeps its reason, so `BIN_FULL` remains falsifiable from
 the dump alone.
 
+A later occupancy-aware carry that cannot produce a collision-free path is
+a motion/path reason (`PLACE_PLAN_*` or a dedicated path-infeasible code),
+not `BIN_FULL` or `PLACE_CANDIDATE_EXHAUSTED`. See [placement.md](placement.md).
+
 How candidates are enumerated, stacked on known support, and scored is
 specified in [placement.md](placement.md). What may fill occupancy and box
 size is [real_scenario.md](real_scenario.md): live perception plus hull/floor

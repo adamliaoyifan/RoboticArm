@@ -16,9 +16,10 @@ preference.
 - [Container geometry](container_geometry.md): authoritative usable-space hull,
   descriptor/hash identity, and exact clipped geometry semantics.
 - [Placement](placement.md): live candidate generation, stacking on known
-  support, flatten-first scoring, and how the solver reads `surface_2d`.
+  support, flatten-first scoring, occupancy-aware place motion, and how
+  the solver reads `surface_2d`.
 - [Real-scenario packing](real_scenario.md): no successive perfect priors;
-  occupancy and box size from perception; defect catalog `RS-1` .. `RS-26`.
+  occupancy and box size from perception; defect catalog `RS-1` .. `RS-27`.
 - [Production orchestration](production_orchestration.md): operator
   authorization, ROS-free state/effect contracts, request-ID correlation, and
   exploration boundaries.
@@ -62,7 +63,8 @@ touches these files should move them toward compliance.
 | Wrist camera visual/collision is D555 167×42×48 mm, but Gazebo still uses the historical D435 `rgbd_camera` FOV plugin on `camera_link`. | [realsense_d435.urdf.xacro](../../src/luggage_description/urdf/realsense_d435.urdf.xacro) | D555 sim camera, or keep the deviation explicit |
 | Algorithm class imports `rospy` and implements a latest-TF fallback, both forbidden | [robot_self_point_filter.py](../../src/luggage_perception/luggage_perception/robot_self_point_filter.py) `_lookup_transform` | node resolves transforms at the data stamp and passes them in; delete `allow_latest_tf_fallback` |
 | Algorithm class builds `Marker` / `ColorRGBA` via deferred imports | [cargo_volume_mapper.py](../../src/luggage_perception/luggage_perception/cargo_volume_mapper.py) | return geometry; assemble messages in the node |
-| Humble `cargo_volume_mapper_node` never integrates depth (`SOURCE_GEOMETRY` commits only). Production requires live depth **and** verified measured commits (`RS-1`). | [cargo_volume_mapper_node.py](../../src/luggage_perception/scripts/cargo_volume_mapper_node.py) | sensor integrate on the node; keep geometry commits locked against free-space misses |
-| Successive perfect priors in packing: planned-slot occupancy, no Humble verify (`RS-1` .. `RS-7`, `RS-10`, `RS-13`) | [real_scenario.md](real_scenario.md) | DetectLuggage then pick only on MEASURED_SUPPORT, then depth-updated map then measured/verify-gated commit |
+| Humble `cargo_volume_mapper_node` integrates settled untracked cargo views; planned `AddPlacedBox` remains a `SOURCE_GEOMETRY` lock, and no production orchestrator calls `IntegrateCargoView` (`RS-2`, `RS-7`). | [cargo_volume_mapper_node.py](../../src/luggage_perception/scripts/cargo_volume_mapper_node.py) | measured/verify-gated commit; production caller |
+| Successive perfect priors in packing: planned-slot occupancy, no Humble verify (`RS-2` .. `RS-7`, `RS-10`, `RS-13`) | [real_scenario.md](real_scenario.md) | DetectLuggage then pick only on MEASURED_SUPPORT, then depth-updated map then measured/verify-gated commit |
+| Place motion cartesian/OMPL checks MoveIt URDF and scene boxes only; no occupancy query, no scored multi-path set (`RS-27`) | [motion_executor.py](../../src/luggage_planning/luggage_planning/motion_executor.py) | Occupancy-aware candidate paths plus dimension/safety/efficiency selector |
 | Planning utilities build `geometry_msgs` types via deferred imports | `vacuum_attach_utils.py`, `container_aim_utils.py` in `luggage_planning` | return tuples; convert in the node |
 | Unported `rospy` files sit directly in `scripts/`, not only in `scripts/ros1_reference/` | `luggage_planning` (16), `luggage_packing` (2), `luggage_bringup` (COLCON_IGNORE) | reference only; identify by absence from `install(PROGRAMS ...)` |

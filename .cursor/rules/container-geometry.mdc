@@ -29,5 +29,6 @@ Full contract: `docs/architecture/container_geometry.md`.
   containment). A slot lost to aperture, insertion corridor, unobserved or
   insufficient support is `PLACE_CANDIDATE_EXHAUSTED`; an oversized box is
   `BOX_EXCEEDS_CONTAINER`. Count capacity over every enumerated candidate,
-  not the retained subset, and keep every tried candidate's reason.
+  not the retained subset, and keep every tried candidate's reason. An
+  occupancy-blocked carry is a motion/path reason, not `BIN_FULL`.
 - Keep eval/Gazebo truth out of online geometry and usable-space denominators.

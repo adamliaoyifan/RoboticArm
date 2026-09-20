@@ -1,6 +1,6 @@
 ---
 description: Placement candidate generation, stacking, scoring, and occupancy handshake
-globs: src/luggage_packing/**,src/luggage_perception/luggage_perception/cargo_volume_mapper.py,src/luggage_perception/scripts/cargo_volume_mapper_node.py,src/luggage_gazebo/scripts/place_only_eval_driver.py,src/luggage_gazebo/scripts/pack_eval_driver.py,src/luggage_gazebo/luggage_gazebo/place_only_fixture.py
+globs: src/luggage_packing/**,src/luggage_perception/luggage_perception/cargo_volume_mapper.py,src/luggage_perception/scripts/cargo_volume_mapper_node.py,src/luggage_planning/luggage_planning/motion_executor.py,src/luggage_gazebo/scripts/place_only_eval_driver.py,src/luggage_gazebo/scripts/pack_eval_driver.py,src/luggage_gazebo/luggage_gazebo/place_only_fixture.py
 alwaysApply: false
 ---
 
@@ -37,3 +37,11 @@ Full contract: `docs/architecture/placement.md`. Hull identity and the
 - Do not treat `FreeSpaceModel` / `placement_scoring` / the reachability atlas
   as the live Humble `placement_planner_node` path unless that node and
   `docs/architecture/placement.md` switch together.
+- Plan place motion (cartesian, OMPL, or later search) against the current
+  cargo occupancy at `geometry_hash` / `map_revision`. Occupied and
+  unknown-above-floor cells are obstacles for the swept payload and arm.
+  URDF plus `scene_manager` boxes are not occupancy (`RS-27`).
+- Generate a set of candidate paths when the first is in collision, below
+  the cartesian fraction gate, or has no IK. Select among collision-free
+  paths by cost with dimension, safety, and efficiency terms. An empty set
+  is a motion/path fail-closed reason, not `BIN_FULL`.

@@ -130,6 +130,7 @@ table over message headers where the two disagree.
 | D555 aligned depth transport | `/camera/d555/aligned_depth_to_color/image_raw/compressed` | `CompressedImage` | `d555_color_optical_frame` | optical | 15 Hz | lossless 16UC1 PNG, millimetres |
 | Camera points (legacy, unconsumed) | `/camera/depth/points` | `PointCloud2` | `camera_depth_optical_frame` (wrong) | **`camera_link`** (+X forward) | 30 Hz | metres, misses are `inf` |
 | Cargo points | `/luggage/semantic/cargo_points` | `PointCloud2` | declared by producer | declared by producer | on demand | metres |
+| Untracked cargo points | `/luggage/semantic/cargo_points_untracked` | `PointCloud2` | declared by producer | camera optical | on demand | metres |
 | Lidar | `/livox/lidar` | `PointCloud2` or Livox `CustomMsg` | `livox_frame` | sensor | ~10 Hz | metres, per-point time |
 | Lidar IMU | `/livox/imu` | `Imu` | `livox_frame` | sensor | 200 Hz | gyro rad/s, **accel in g** |
 | Joints | `/joint_states` | `JointState` | n/a | n/a | 50 Hz | rad |
@@ -151,6 +152,12 @@ Three traps encoded above:
 3. **Livox acceleration is in g**, while `sensor_msgs/Imu` is defined in m/s^2.
    Convert by 9.80665 at ingestion. Static z reading near 1.0 instead of 9.8
    means the conversion is missing.
+4. **`/luggage/semantic/cargo_points` is the pickup track**, not interior
+   occupancy. `CargoInstanceTracker` rejects clutter beyond 0.15 m, republishes
+   `hold_track` on misses, and goes `frozen_empty` after `ClearCurrentBox`.
+   Cargo-map integrate consumes `/luggage/semantic/cargo_points_untracked`
+   (label-filtered, pre-tracker; default off except when the cargo map is
+   launched).
 
 Mid-360 URDF publishes `livox_frame` and `livox_imu_frame` (handbook
 initial values in [mid360_origin.xacro](../../src/luggage_description/config/mid360_origin.xacro)).
