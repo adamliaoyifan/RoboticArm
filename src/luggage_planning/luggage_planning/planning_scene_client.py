@@ -75,6 +75,101 @@ def build_add_scene(box_id, xyz, quat, box_size, frame_id="world"):
     return scene
 
 
+def _xyz_quat_from_pose(pose):
+    if pose is None:
+        return [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]
+    pos = pose.position
+    ori = pose.orientation
+    return (
+        [float(pos.x), float(pos.y), float(pos.z)],
+        [float(ori.x), float(ori.y), float(ori.z), float(ori.w)],
+    )
+
+
+def _is_origin_pose(xyz, quat):
+    return (sum(abs(float(v)) for v in xyz) < 1e-9
+            and abs(float(quat[0])) < 1e-9
+            and abs(float(quat[1])) < 1e-9
+            and abs(float(quat[2])) < 1e-9)
+
+
+def summarize_collision_object(obj):
+    """Compact collision-object record. Mesh vertices are omitted."""
+    row = {
+        "id": str(getattr(obj, "id", "") or ""),
+        "frame": str(getattr(getattr(obj, "header", None), "frame_id", "") or ""),
+        "type": "unknown",
+    }
+    primitives = list(getattr(obj, "primitives", None) or [])
+    primitive_poses = list(getattr(obj, "primitive_poses", None) or [])
+    obj_xyz, obj_quat = _xyz_quat_from_pose(getattr(obj, "pose", None))
+    if primitives:
+        prim = primitives[0]
+        prim_xyz, prim_quat = _xyz_quat_from_pose(
+            primitive_poses[0] if primitive_poses else None)
+        if _is_origin_pose(prim_xyz, prim_quat) and not _is_origin_pose(
+                obj_xyz, obj_quat):
+            xyz, quat = obj_xyz, obj_quat
+        else:
+            xyz, quat = prim_xyz, prim_quat
+        row.update({
+            "type": "box" if int(getattr(prim, "type", 0) or 0) == int(
+                SolidPrimitive.BOX) else int(getattr(prim, "type", 0) or 0),
+            "size": [float(v) for v in (prim.dimensions or [])],
+            "xyz": xyz,
+            "quat": quat,
+            "xyz_object": obj_xyz,
+            "xyz_primitive": prim_xyz,
+        })
+        return row
+    meshes = list(getattr(obj, "meshes", None) or [])
+    mesh_poses = list(getattr(obj, "mesh_poses", None) or [])
+    if meshes:
+        pose = mesh_poses[0] if mesh_poses else getattr(obj, "pose", None)
+        xyz, quat = _xyz_quat_from_pose(pose)
+        mesh = meshes[0]
+        row.update({
+            "type": "mesh",
+            "n_triangles": len(getattr(mesh, "triangles", None) or []),
+            "xyz": xyz,
+            "quat": quat,
+        })
+        return row
+    xyz, quat = _xyz_quat_from_pose(getattr(obj, "pose", None))
+    row.update({"xyz": xyz, "quat": quat})
+    return row
+
+
+def summarize_planning_scene(scene):
+    """World/attached/robot-state summary for replay. No mesh vertices."""
+    if scene is None:
+        return {"error": "no planning scene"}
+    world = getattr(scene, "world", None)
+    objects = list(getattr(world, "collision_objects", None) or [])
+    robot = getattr(scene, "robot_state", None)
+    attached = list(getattr(robot, "attached_collision_objects", None) or [])
+    joints = getattr(robot, "joint_state", None) if robot is not None else None
+    names = list(getattr(joints, "name", None) or [])
+    positions = [float(v) for v in (getattr(joints, "position", None) or [])]
+    octomap = getattr(world, "octomap", None)
+    octo_info = None
+    if octomap is not None and getattr(octomap, "octomap", None) is not None:
+        blob = octomap.octomap
+        octo_info = {
+            "frame": str(getattr(getattr(octomap, "header", None), "frame_id", "")
+                         or ""),
+            "id": str(getattr(blob, "id", "") or ""),
+            "binary_bytes": len(getattr(blob, "data", None) or b""),
+        }
+    return {
+        "world_objects": [summarize_collision_object(obj) for obj in objects],
+        "world_object_ids": [str(obj.id) for obj in objects],
+        "attached": [str(item.object.id) for item in attached if item.object],
+        "robot_joints": {"name": names, "position": positions},
+        "octomap": octo_info,
+    }
+
+
 def build_collision_object(box_id, xyz, quat, box_size, frame_id,
                            operation):
     obj = CollisionObject()
@@ -301,6 +396,30 @@ class PlanningSceneClient(object):
         scene.is_diff = True
         scene.world.collision_objects = [build_collision_object(
             obj_id, xyz, quat, box_size, frame_id, CollisionObject.ADD)]
+        return self._apply(scene, timeout=timeout)
+
+    def add_collision_boxes(self, boxes, frame_id="world", timeout=10.0):
+        """Add many boxes in one PlanningScene diff.
+
+        ``boxes`` is an iterable of dicts with ``id``, ``xyz``, ``size``,
+        optional ``quat``.
+        """
+        scene = PlanningScene()
+        scene.is_diff = True
+        objects = []
+        for box in boxes:
+            quat = box.get("quat") or (0.0, 0.0, 0.0, 1.0)
+            objects.append(build_collision_object(
+                str(box["id"]), box["xyz"], quat, box["size"], frame_id,
+                CollisionObject.ADD))
+        scene.world.collision_objects = objects
+        return self._apply(scene, timeout=timeout)
+
+    def remove_objects(self, obj_ids, timeout=10.0):
+        scene = PlanningScene()
+        scene.is_diff = True
+        scene.world.collision_objects = [
+            build_remove_object(str(obj_id)) for obj_id in obj_ids]
         return self._apply(scene, timeout=timeout)
 
     def add_collision_mesh(self, obj_id, xyz, quat, mesh_msg,

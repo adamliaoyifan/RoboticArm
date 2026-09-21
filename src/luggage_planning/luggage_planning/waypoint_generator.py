@@ -107,6 +107,28 @@ def _yaw_from_quaternion(q):
     return math.atan2(siny_cosp, cosy_cosp)
 
 
+def nearest_box_yaw(reference, target):
+    """Choose *target* or *target ± π* closest to *reference*.
+
+    A rectangular payload is unchanged under 180° yaw. Independently folding
+    both angles into (-π/2, π/2] would rewrite staging to the slot yaw and
+    flip the wrist on the cartesian stage hop. Keep the carry heading and
+    pick the equivalent slot yaw that does not demand that hop.
+
+    Do not wrap ±π onto a single representative: ``_tool_down_quaternion(π)``
+    is ``[0,1,0,0]`` and ``_tool_down_quaternion(-π)`` is ``[0,-1,0,0]``.
+    IK treats those as a 180° wrist change even though they are the same
+    heading. Stay on the reference sign of π.
+    """
+    ref = float(reference)
+    candidates = [float(target) + k * math.pi for k in (-2, -1, 0, 1, 2)]
+    best = min(candidates, key=lambda yaw: abs(yaw - ref))
+    wrapped = abs(math.atan2(math.sin(best - ref), math.cos(best - ref)))
+    if wrapped < 1e-3:
+        return ref
+    return best
+
+
 def pick_tool_yaw(detected_yaw, yaw_valid, fallback_yaw=0.0):
     """Azimuth for tool-down pick poses.
 
@@ -130,6 +152,16 @@ def _tool_down_quaternion(yaw):
     c = math.cos(yaw * 0.5)
     s = math.sin(yaw * 0.5)
     return Quaternion(x=c, y=s, z=0.0, w=0.0)
+
+
+def tool_down_yaw(x, y):
+    """Yaw carried by a tool-down quaternion's ``x``/``y`` components.
+
+    Inverse of ``_tool_down_quaternion``. Keeps the sign of π so a caller can
+    feed the result to ``nearest_box_yaw`` as the reference wrist: ``[0,1,0,0]``
+    reads +π and ``[0,-1,0,0]`` reads -π, which IK treats as a 180° apart.
+    """
+    return 2.0 * math.atan2(float(y), float(x))
 
 
 def _pose_at(pose, z, yaw):
@@ -255,6 +287,12 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         # SlotSpec.place_pose is the suitcase CENTER. Motion planning targets
         # suction_contact_frame, which must finish on the suitcase top.
         slot_yaw = _yaw_from_quaternion(slot_pose.orientation)
+        pick_yaw = pick_tool_yaw(
+            _yaw_from_quaternion(pick.pose.orientation),
+            _luggage_yaw_valid(pick),
+            fallback_yaw,
+        )
+        place_yaw = nearest_box_yaw(pick_yaw, slot_yaw)
         box_height = max(
             0.0,
             float(getattr(place_slot, "height", 0.0)
@@ -270,7 +308,7 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         clearance = corridor_clearance(
             corridor_surface_max, box_height, contact_z, place_clearance_z,
             margin=corridor_margin)
-        above_pose = _pose_at(slot_pose, contact_z + clearance, slot_yaw)
+        above_pose = _pose_at(slot_pose, contact_z + clearance, place_yaw)
         transit_pose = above_pose
         stage_pose = None
         stage_mid_pose = None
@@ -308,12 +346,7 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             transit_pose = Pose(
                 position=Point(
                     x=portal[0], y=portal[1], z=portal[2]),
-                orientation=_tool_down_quaternion(slot_yaw),
-            )
-            pick_yaw = pick_tool_yaw(
-                _yaw_from_quaternion(pick.pose.orientation),
-                _luggage_yaw_valid(pick),
-                fallback_yaw,
+                orientation=_tool_down_quaternion(place_yaw),
             )
             stage_distance = float(
                 opening_info.get("stage_outward_clearance", 0.65))
@@ -356,9 +389,9 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         insert_pose = _pose_at(
             slot_pose,
             contact_z + insertion_clearance(box_height, clearance),
-            slot_yaw)
-        contact_pose = _pose_at(slot_pose, contact_z, slot_yaw)
-        retreat_pose = _pose_at(slot_pose, contact_z + clearance, slot_yaw)
+            place_yaw)
+        contact_pose = _pose_at(slot_pose, contact_z, place_yaw)
+        retreat_pose = _pose_at(slot_pose, contact_z + clearance, place_yaw)
         # Transit keeps the suction normal tool-down during payload carry.
         # Do not also lock J4/J5/J6: that redundant joint-space constraint can
         # exclude every IK branch for an otherwise valid tool-down goal

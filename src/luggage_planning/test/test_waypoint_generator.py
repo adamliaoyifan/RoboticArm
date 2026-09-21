@@ -11,10 +11,13 @@ from luggage_planning.waypoint_generator import (
     DEFAULT_PLACE_CLEARANCE_Z,
     build_sequence,
     insertion_clearance,
+    nearest_box_yaw,
     pick_tool_yaw,
     segment_names_for_phase,
     staging_offset,
+    tool_down_yaw,
     _perception_clearances,
+    _tool_down_quaternion,
 )
 
 
@@ -251,6 +254,118 @@ class TestWaypointGenerator(unittest.TestCase):
         q = segs[0].target_pose.orientation
         self.assertAlmostEqual(q.x, c)
         self.assertAlmostEqual(q.y, s)
+
+
+def _exit_quat(measured_x, measured_y):
+    """What `_exit_to_portal` builds for a wrist holding this quaternion."""
+    yaw = nearest_box_yaw(tool_down_yaw(measured_x, measured_y), 0.0)
+    return math.cos(0.5 * yaw), math.sin(0.5 * yaw)
+
+
+class TestExitPortalYaw(unittest.TestCase):
+    """The portal hop must keep the wrist the place left the arm in.
+
+    Portal yaw is free (`keep_tool_down` allows ±π about Z), so asking for
+    yaw 0 from a wrist at yaw ±π is the same heading commanded as a 180°
+    wrist change. 1838 answered that with a 6 rad joint-1 unwind.
+    """
+
+    def test_wrist_at_plus_pi_keeps_plus_pi(self):
+        x, y = _exit_quat(0.0, 1.0)
+        self.assertAlmostEqual(x, 0.0, places=3)
+        self.assertAlmostEqual(y, 1.0, places=3)
+
+    def test_wrist_at_minus_pi_keeps_minus_pi(self):
+        """[0,-1,0,0] must not be answered with [0,+1,0,0]."""
+        x, y = _exit_quat(0.0, -1.0)
+        self.assertAlmostEqual(x, 0.0, places=3)
+        self.assertAlmostEqual(y, -1.0, places=3)
+
+    def test_measured_1838_retreat_quaternion(self):
+        """The exact orientation the arm held when the old exit flipped it."""
+        x, y = _exit_quat(-1.6e-16, 1.0)
+        self.assertAlmostEqual(x, 0.0, places=3)
+        self.assertAlmostEqual(y, 1.0, places=3)
+
+    def test_wrist_near_zero_still_asks_for_zero(self):
+        x, y = _exit_quat(1.0, 0.0)
+        self.assertAlmostEqual(x, 1.0, places=3)
+        self.assertAlmostEqual(y, 0.0, places=3)
+        x, y = _exit_quat(math.cos(0.05), math.sin(0.05))
+        self.assertAlmostEqual(x, 1.0, places=3)
+        self.assertAlmostEqual(y, 0.0, places=3)
+
+    def test_yaw_is_the_inverse_of_the_quaternion_builder(self):
+        for yaw in (0.0, 0.3, -0.4, math.pi, -math.pi, 2.0):
+            quat = _tool_down_quaternion(yaw)
+            self.assertAlmostEqual(tool_down_yaw(quat.x, quat.y), yaw,
+                                   places=9)
+
+
+class TestNearestBoxYaw(unittest.TestCase):
+    def test_pi_slot_stays_with_pi_carry(self):
+        self.assertAlmostEqual(nearest_box_yaw(math.pi, 0.0), math.pi)
+        self.assertAlmostEqual(nearest_box_yaw(0.0, math.pi), 0.0)
+        self.assertAlmostEqual(nearest_box_yaw(-math.pi, 0.0), -math.pi)
+
+    def test_same_heading_is_unchanged(self):
+        self.assertAlmostEqual(nearest_box_yaw(0.3, 0.3), 0.3)
+        self.assertAlmostEqual(nearest_box_yaw(-0.4, -0.4), -0.4)
+
+    def test_place_keeps_carry_quat_when_slot_is_pi_equivalent(self):
+        """Pick yaw π and slot yaw 0 must not hop transit to [1,0,0,0]."""
+        box = Box()
+        box.pose.orientation = Quaternion(x=0.0, y=0.0, z=1.0, w=0.0)
+        box.yaw_valid = True
+        slot = Slot()
+        slot.place_pose.orientation = Quaternion(w=1.0)
+        segs = build_sequence(
+            box, slot, "place",
+            opening_info={
+                "point": [0.755, -0.27, 1.30],
+                "normal": [-1.0, 0.0, 0.0],
+                "outward_clearance": 0.15,
+                "stage_outward_clearance": 0.65,
+                "start_point": [-1.0, -0.01, 1.49],
+            },
+        )
+        by_name = {seg.name: seg for seg in segs}
+        self.assertIn("stage_mid", by_name)
+        self.assertIn("transit", by_name)
+        self.assertIn("retreat", by_name)
+        for name in ("stage_mid", "stage_late", "transit", "retreat"):
+            q = by_name[name].target_pose.orientation
+            self.assertAlmostEqual(q.x, 0.0, places=6, msg=name)
+            self.assertAlmostEqual(q.y, 1.0, places=6, msg=name)
+            self.assertAlmostEqual(q.z, 0.0, places=6, msg=name)
+            self.assertAlmostEqual(q.w, 0.0, places=6, msg=name)
+
+    def test_place_keeps_negative_pi_carry_quat(self):
+        """Live picks can extract yaw -π from tool-down [ε,-1,0,0]."""
+        box = Box()
+        box.pose.orientation = Quaternion(x=0.0002, y=-1.0, z=0.0, w=0.0)
+        box.yaw_valid = True
+        slot = Slot()
+        slot.place_pose.orientation = Quaternion(w=1.0)
+        segs = build_sequence(
+            box, slot, "place",
+            opening_info={
+                "point": [0.755, -0.27, 1.30],
+                "normal": [-1.0, 0.0, 0.0],
+                "outward_clearance": 0.15,
+                "stage_outward_clearance": 0.65,
+                "start_point": [-1.0, -0.01, 1.49],
+            },
+        )
+        by_name = {seg.name: seg for seg in segs}
+        stage = by_name["stage_mid"].target_pose.orientation
+        self.assertLess(stage.y, 0.0)
+        for name in ("stage_late", "transit", "retreat"):
+            q = by_name[name].target_pose.orientation
+            self.assertAlmostEqual(q.x, stage.x, places=6, msg=name)
+            self.assertAlmostEqual(q.y, stage.y, places=6, msg=name)
+            self.assertAlmostEqual(q.z, stage.z, places=6, msg=name)
+            self.assertAlmostEqual(q.w, stage.w, places=6, msg=name)
 
 
 class TestPerceptionApproachClearance(unittest.TestCase):
