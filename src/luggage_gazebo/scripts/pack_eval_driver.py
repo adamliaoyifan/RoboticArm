@@ -32,8 +32,16 @@ from place_smoke_driver import (  # noqa: E402
     _yaw_quat,
 )
 
-from luggage_gazebo.place_metrics import place_ok  # noqa: E402
+from luggage_gazebo.place_metrics import (  # noqa: E402
+    RETURN_FAIL_CODES,
+    place_ok,
+)
 from luggage_gazebo.place_gt_dump import write_pack_layout_dump  # noqa: E402
+from luggage_description.container_geometry import (  # noqa: E402
+    descriptor_from_scene_config,
+    floor_area,
+    volume as hull_volume,
+)
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     xyz_base_link_to_world,
     yaw_base_link_to_world,
@@ -51,8 +59,6 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 MAX_CONSECUTIVE_FAILURES = 3
-INNER_FLOOR_XY = 1.49 * 1.97
-INNER_VOLUME = 1.49 * 1.97 * (2.01 - 0.53)
 
 
 class PackEvalDriver(PlaceSmokeDriver):
@@ -246,7 +252,8 @@ class PackEvalDriver(PlaceSmokeDriver):
             center_local, [slot.width, slot.depth, slot.height],
             self._committed_ledger_boxes,
             [1.49, 1.97, 1.48], [slot.width, slot.depth, slot.height],
-            opening_side="negative_x"), center_local
+            opening_side="negative_x",
+            hull=descriptor_from_scene_config(self._scene_config)), center_local
 
     def _slot_meta(self, slot):
         pos = slot.place_pose.position
@@ -352,7 +359,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                     already_spawned=True, keep_placed=True)
                 commit_ok = place_ok(record)
                 fail = getattr(record, "fail_code", "") or ""
-                if fail and fail != "GOTO_FAILED":
+                if fail and fail not in RETURN_FAIL_CODES:
                     dump_slug = fail
                     commit_ok = False
             except Exception as exc:  # noqa: BLE001 - ledger boundary
@@ -455,7 +462,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                     self._call(self._clear, self._clear_request(), timeout=15.0)
             else:
                 self._consecutive_failures += 1
-                if fail != "GOTO_FAILED":
+                if fail not in RETURN_FAIL_CODES:
                     self._call(self._clear, self._clear_request(), timeout=15.0)
 
             if commit_ok:
@@ -548,15 +555,10 @@ class PackEvalDriver(PlaceSmokeDriver):
         return "unknown"
 
     def _mass(self, spawn):
-        payload = {}
+        # GT mass from the GetCurrentBox pull response; the latched
+        # /luggage/current_box record no longer carries GT fields.
         try:
-            raw = self._current_box_topic.get("payload")
-            if raw:
-                payload = json.loads(raw)
-        except (TypeError, ValueError):
-            payload = {}
-        try:
-            return float(payload.get("mass_kg") or 0.0)
+            return float(getattr(spawn, "mass_kg", 0.0) or 0.0)
         except (TypeError, ValueError):
             return 0.0
 
@@ -587,6 +589,9 @@ class PackEvalDriver(PlaceSmokeDriver):
         ids = [s.strip() for s in str(self._args.sequence_ids).split(",")
                if s.strip()]
         wall_total = time.time() - self._suite_t0
+        hull = descriptor_from_scene_config(self._scene_config)
+        inner_volume = hull_volume(hull)
+        inner_floor = floor_area(hull)
         layout_dir = os.path.join(self._out, "final_layout")
         layout_meta = write_pack_layout_dump(
             layout_dir, self._scene_config, self._placed_records,
@@ -608,9 +613,11 @@ class PackEvalDriver(PlaceSmokeDriver):
                 and len(set(ids)) == 1),
             "boxes_packed": len(committed),
             "boxes_attempted": attempted,
-            "volume_fraction": round(volume_sum / INNER_VOLUME, 4),
-            "floor_coverage": round(footprint / INNER_FLOOR_XY, 4),
-            "inner_volume_m3": round(INNER_VOLUME, 3),
+            "volume_fraction": round(volume_sum / inner_volume, 4),
+            "floor_coverage": round(footprint / inner_floor, 4),
+            "inner_volume_m3": round(inner_volume, 3),
+            "inner_floor_m2": round(inner_floor, 4),
+            "geometry_hash": str(hull.geometry_hash),
             "packed_volume_m3": round(volume_sum, 4),
             "catalog_counts": catalog_counts,
             "cycle_sec": {

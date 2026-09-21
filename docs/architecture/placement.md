@@ -203,6 +203,8 @@ scored path set (`RS-27`).
 committed-box AABBs, LBCP support polygons, and exact stack-center poses.
 `placement_scoring.score_candidates` adds `proxy_score` (EMS regularity,
 corridor, reachability atlas prior, …) plus `w_floor_first=0.60`.
+EMS tiles stay axis-aligned empty cuboids for indexing; regularity and the
+blocked-deep term clip those tiles to the seven-face hull.
 
 `proxy_score` without that term is structurally stack-biased: a committed box
 top scores high on support and observation confidence, an unobserved floor

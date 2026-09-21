@@ -20,6 +20,8 @@ preference.
   the solver reads `surface_2d`.
 - [Real-scenario packing](real_scenario.md): no successive perfect priors;
   occupancy and box size from perception; defect catalog `RS-1` .. `RS-27`.
+- [Privilege boundary](privilege_boundary.md): chain modules read measured
+  geometry only; GT lives behind pull services for eval/physics/fixtures/viz.
 - [Production orchestration](production_orchestration.md): operator
   authorization, ROS-free state/effect contracts, request-ID correlation, and
   exploration boundaries.

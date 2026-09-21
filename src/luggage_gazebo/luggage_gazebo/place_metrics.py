@@ -9,7 +9,16 @@ import re
 from typing import Optional
 
 
-PLACE_PASS_CODES = ("", "GOTO_FAILED")
+# The arm failed on the way back to observe, after the box was already down.
+# EXIT_FAILED_* keeps "the portal hop aborted" distinguishable from "the named
+# observe pose was unreachable"; folding them into GOTO_FAILED would hide
+# which stage to dump, the way PLACE_CANDIDATE_EXHAUSTED must stay out of
+# BIN_FULL. EXIT_FAILED_STUCK additionally means the arm never recovered, so
+# the next trial starts from wherever the exit aborted.
+RETURN_FAIL_CODES = (
+    "GOTO_FAILED", "EXIT_FAILED_RECOVERED", "EXIT_FAILED_STUCK")
+
+PLACE_PASS_CODES = ("",) + RETURN_FAIL_CODES
 
 PLACE_CORE_SEGMENTS = (
     "transit", "traverse", "insert", "descend", "retreat")
@@ -40,11 +49,15 @@ class PlaceTrial:
 
 
 def place_ok(record):
-    """True when the place itself succeeded. GOTO_FAILED after HOME is ok."""
+    """True when the place itself succeeded.
+
+    A return failure after ``HOME`` does not undo the placement, so the codes
+    in ``RETURN_FAIL_CODES`` pass at that state and only at that state.
+    """
     code = str(getattr(record, "fail_code", "") or "")
     if not code:
         return True
-    if code == "GOTO_FAILED":
+    if code in RETURN_FAIL_CODES:
         return str(getattr(record, "place_state", "")) == "HOME"
     return False
 
@@ -91,7 +104,8 @@ def _mean(values):
 def summarize(records):
     records = list(records or [])
     fail_codes = Counter(
-        r.fail_code for r in records if r.fail_code and r.fail_code != "GOTO_FAILED")
+        r.fail_code for r in records
+        if r.fail_code and r.fail_code not in RETURN_FAIL_CODES)
     n = len(records)
     n_ok = sum(1 for r in records if place_ok(r))
     n_descend = sum(

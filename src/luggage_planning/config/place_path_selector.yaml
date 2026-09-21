@@ -1,0 +1,19 @@
+# MOTION-OCC trajectory selector v1. Tests pin this file.
+# cost = w_placement*C_place + w_dimension*C_dim + w_safety*C_safe
+#        + w_efficiency*C_eff
+w_placement: 1.0
+w_dimension: 1.0
+w_safety: 1.5
+w_efficiency: 0.5
+safety_ref_m: 0.10
+inflate_m: 0.05
+arm_radius_m: 0.08
+carry_margin_m: 0.05
+collision_pad_m: 0.02
+arm_overhead_m: 0.20
+max_candidates: 5
+max_candidates_per_slot: 4
+cartesian_min_fraction: 0.95
+max_occ_objects: 200
+occupancy_freshness_s: 0.0
+support_tol: 0.05

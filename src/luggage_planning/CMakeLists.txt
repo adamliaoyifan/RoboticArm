@@ -14,6 +14,10 @@ install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}
+)
+
 install(PROGRAMS
   scripts/waypoint_generator_node.py
   scripts/motion_planner_node.py

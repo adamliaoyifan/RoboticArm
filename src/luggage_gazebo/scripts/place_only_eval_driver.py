@@ -994,6 +994,15 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             return None, "FIXTURE_SETUP_FAILED:tool_offset:%s" % json.dumps(
                 {k: round(v, 5) for k, v in errors.items()})
 
+        # Fixture path: sync the perfect (catalog) descriptor through the
+        # same channel the pick chain uses, so the MoveIt attach geometry
+        # and every later occupancy sweep read one measured record. Fixture
+        # catalog sizes are authorized privileged input (eval fixture).
+        sync_ok, sync_msg, _sync_gen = self.sync_pickup_geometry(pick_msg)
+        self._t1("fixture_payload_sync", ok=sync_ok, message=sync_msg)
+        if not sync_ok:
+            return None, "FIXTURE_SETUP_FAILED:payload_sync:%s" % sync_msg
+
         vac_ok, vac_msg = self.vacuum_command(True)
         if not vac_ok:
             return None, "FIXTURE_SETUP_FAILED:vacuum:%s" % vac_msg

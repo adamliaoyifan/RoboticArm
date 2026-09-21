@@ -21,6 +21,7 @@ install(PROGRAMS
   scripts/pack_eval_driver.py
   scripts/place_only_eval_driver.py
   scripts/cargo_map_integrate_eval_driver.py
+  scripts/motion_occ_eval_driver.py
   scripts/wait_controller_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
