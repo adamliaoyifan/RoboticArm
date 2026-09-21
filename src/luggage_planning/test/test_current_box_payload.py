@@ -1,59 +1,88 @@
 #!/usr/bin/env python3
-"""Parse /luggage/current_box JSON the spawner actually publishes."""
+"""Parse /luggage/current_box JSON the spawner actually publishes (schema 2).
 
+Identity + measured only; GT spawn fields are behind the GetCurrentBox
+pull service (docs/architecture/privilege_boundary.md).
+"""
+
+import json
 import unittest
 
 from luggage_planning.current_box_payload import (
-    box_from_current_box_payload,
-    parse_current_box_json,
+    identity_from_current_box_json,
+    identity_from_current_box_payload,
+    measured_from_current_box_json,
+    measured_from_current_box_payload,
 )
 
-# Captured shape of pickup_box_spawner_node._box_to_record (plus generation).
-SPAWNER_PAYLOAD = {
+# Captured shape of pickup_box_spawner_node._publish_box_state (schema 2)
+# after sync_detected_pickup_box backfilled a perception measurement.
+SYNCED_PAYLOAD = {
+    "schema": 2,
     "id": "suitcase_standard_vintage_0003",
-    "width": 0.70,
-    "depth": 0.45,
-    "height": 0.28,
-    "yaw": 0.0,
-    "mass_kg": 12.5,
-    "size_mode": "catalog",
-    "visual_kind": "mesh",
-    "model_name": "suitcase_vintage_standard",
     "generation": 7,
-    "pose": {
-        "position": {"x": -1.0, "y": 0.0, "z": 1.01},
-        "orientation": {"x": 0.0, "y": 0.0, "z": 0.0, "w": 1.0},
+    "measured": {
+        "width": 0.68,
+        "depth": 0.44,
+        "height": 0.26,
+        "height_source": 1,
+        "yaw_valid": True,
+        "stamp_sec": 1789980000.5,
     },
 }
 
+UNSYNCED_PAYLOAD = {"schema": 2, "id": "suitcase_a_0004", "generation": 8}
+CLEARED_PAYLOAD = {"schema": 2, "id": "", "generation": 9}
 
-class TestCurrentBoxPayload(unittest.TestCase):
 
-    def test_spawner_record_has_size_list(self):
-        box = box_from_current_box_payload(SPAWNER_PAYLOAD)
-        self.assertIsNotNone(box)
-        self.assertEqual(box["size"], [0.70, 0.45, 0.28])
-        self.assertEqual(box["model_name"], "suitcase_vintage_standard")
-        self.assertEqual(box["xyz"], [-1.0, 0.0, 1.01])
-        self.assertAlmostEqual(box["mass_kg"], 12.5)
-        self.assertEqual(box["generation"], 7)
+class TestIdentity(unittest.TestCase):
 
-    def test_nested_size_key_is_not_required(self):
-        self.assertIsNone(box_from_current_box_payload({
-            "model_name": "x", "id": "x", "size": [0.7, 0.45, 0.28],
-        }))
+    def test_synced_record(self):
+        self.assertEqual(
+            identity_from_current_box_payload(SYNCED_PAYLOAD),
+            ("suitcase_standard_vintage_0003", 7))
 
-    def test_clear_payload_is_none(self):
-        self.assertIsNone(box_from_current_box_payload(
-            {"id": "", "generation": 8}))
-        self.assertIsNone(box_from_current_box_payload({}))
-        self.assertIsNone(box_from_current_box_payload(None))
+    def test_cleared_and_malformed(self):
+        self.assertEqual(
+            identity_from_current_box_payload(CLEARED_PAYLOAD), ("", 9))
+        self.assertEqual(identity_from_current_box_payload({}), ("", 0))
+        self.assertEqual(identity_from_current_box_payload(None), ("", 0))
+        self.assertEqual(identity_from_current_box_payload("junk"), ("", 0))
 
-    def test_parse_json_string(self):
-        import json
-        box = parse_current_box_json(json.dumps(SPAWNER_PAYLOAD, sort_keys=True))
-        self.assertEqual(box["size"][0], 0.70)
-        self.assertIsNone(parse_current_box_json("not-json"))
+    def test_json_string(self):
+        box_id, generation = identity_from_current_box_json(
+            json.dumps(SYNCED_PAYLOAD))
+        self.assertEqual(box_id, "suitcase_standard_vintage_0003")
+        self.assertEqual(generation, 7)
+
+
+class TestMeasured(unittest.TestCase):
+
+    def test_synced_record(self):
+        measured = measured_from_current_box_payload(SYNCED_PAYLOAD)
+        self.assertEqual(
+            [measured["width"], measured["depth"], measured["height"]],
+            [0.68, 0.44, 0.26])
+        self.assertEqual(measured["height_source"], 1)
+        self.assertTrue(measured["yaw_valid"])
+        self.assertEqual(measured["generation"], 7)
+
+    def test_unsynced_and_cleared_are_none(self):
+        self.assertIsNone(measured_from_current_box_payload(UNSYNCED_PAYLOAD))
+        self.assertIsNone(measured_from_current_box_payload(CLEARED_PAYLOAD))
+        self.assertIsNone(measured_from_current_box_payload(None))
+
+    def test_malformed_measured_block_is_none(self):
+        self.assertIsNone(measured_from_current_box_payload({
+            "id": "x", "generation": 1, "measured": {"width": 0.5}}))
+        self.assertIsNone(measured_from_current_box_payload({
+            "id": "x", "generation": 1, "measured": "junk"}))
+
+    def test_json_string(self):
+        measured = measured_from_current_box_json(
+            json.dumps(SYNCED_PAYLOAD))
+        self.assertAlmostEqual(measured["height"], 0.26)
+        self.assertIsNone(measured_from_current_box_json("not-json"))
 
 
 if __name__ == "__main__":

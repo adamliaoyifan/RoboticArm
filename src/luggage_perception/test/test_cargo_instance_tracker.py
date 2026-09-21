@@ -41,10 +41,12 @@ class TestParseCurrentBox(unittest.TestCase):
             parse_current_box_payload(payload),
             ("pickup_box_0004_carryon", 7))
 
-    def test_model_name_fallback(self):
+    def test_schema2_no_gt_fields(self):
+        # Schema 2: identity only; a GT-only record resolves to empty id
+        # (no model_name fallback — GT fields are not on the topic).
         self.assertEqual(
             parse_current_box_payload('{"model_name": "box_a", "generation": 2}'),
-            ("box_a", 2))
+            ("", 2))
 
     def test_dict_passthrough(self):
         self.assertEqual(

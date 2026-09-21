@@ -37,6 +37,7 @@ from luggage_msgs.srv import (
     FinalizeCurrentBox,
     GetCurrentBox,
     SpawnNextBox,
+    SyncPickupBox,
 )
 from ros_gz_interfaces.msg import Entity
 from ros_gz_interfaces.srv import DeleteEntity, SetEntityPose, SpawnEntity
@@ -225,6 +226,9 @@ class PickupBoxSpawner(Node):
         self._current_box = None
         self._current_model = None
         self._current_ref = None
+        # Perception-measured geometry backfilled by sync_detected_pickup_box.
+        # Cleared on spawn/clear/finalize: a fresh instance is unmeasured.
+        self._measured = None
         self._finalized_models = []
         self._sequence = 0
         self._generation = 0
@@ -276,6 +280,9 @@ class PickupBoxSpawner(Node):
         self.create_service(
             GetCurrentBox, "/pickup_box_spawner/get_current_box", self.handle_get_current,
             callback_group=self._group)
+        self.create_service(
+            SyncPickupBox, "/pickup_box_spawner/sync_detected_pickup_box",
+            self.handle_sync_detected, callback_group=self._group)
 
         self._publish_box_state()
         self.get_logger().info(
@@ -460,60 +467,25 @@ class PickupBoxSpawner(Node):
     # State topics (replace the ROS 1 param server)
     # ------------------------------------------------------------------
 
-    def _box_to_record(self, box, yaw=0.0, mass_kg=0.0):
-        record = {
-            "id": box.id,
-            "width": box.width,
-            "depth": box.depth,
-            "height": box.height,
-            "yaw": float(yaw),
-            "mass_kg": float(mass_kg),
-            "size_mode": self._size_mode,
-            "visual_kind": self._visual_kind,
-            "model_name": self._current_model or "",
-            "pose": {
-                "position": {
-                    "x": box.pose.position.x,
-                    "y": box.pose.position.y,
-                    "z": box.pose.position.z,
-                },
-                "orientation": {
-                    "x": box.pose.orientation.x,
-                    "y": box.pose.orientation.y,
-                    "z": box.pose.orientation.z,
-                    "w": box.pose.orientation.w,
-                },
-            },
-        }
-        # PF-R5A: GT reference identity on the eval-side records only
-        # (never in DetectedLuggage / online paths).
-        ref = getattr(self, "_current_ref", None)
-        if ref is not None:
-            record["gt_reference"] = {
-                "version": ref["version"],
-                "stl_sha256": ref["stl_sha256"],
-                "stl_path": ref["stl_path"],
-                "visual_id": ref["visual_id"],
-                "tier": ref["tier"],
-                "lid_offset": float(ref["lid_offset"]),
-            }
-        return record
-
     def _publish_box_state(self):
-        payload = {}
+        """Publish the box-instance record (schema 2).
+
+        Privilege boundary (docs/architecture/privilege_boundary.md): the
+        latched topic carries ONLY instance identity plus the perception
+        MEASURED geometry. GT spawn fields (size/pose/mass/model_name/
+        gt_reference) live behind the GetCurrentBox pull service for sim
+        physics backends, eval fixtures, scoring, and viz.
+        """
         box_id = ""
         if self._current_box is not None:
-            payload = self._box_to_record(
-                self._current_box,
-                yaw=getattr(self, "_current_yaw", 0.0),
-                mass_kg=getattr(self, "_current_mass", 0.0),
-            )
-            box_id = str(payload.get("id") or "")
+            box_id = str(getattr(self._current_box, "id", "") or "")
         if self._published_id is None or box_id != self._published_id:
             self._generation += 1
             self._published_id = box_id
-        if self._current_box is None:
-            payload["id"] = ""
+        payload = {"schema": 2, "id": box_id}
+        measured = getattr(self, "_measured", None)
+        if measured is not None:
+            payload["measured"] = dict(measured)
         payload["generation"] = int(self._generation)
         self._box_pub.publish(String(data=json.dumps(payload, sort_keys=True)))
 
@@ -657,6 +629,7 @@ class PickupBoxSpawner(Node):
 
     def handle_clear(self, _req, _response):
         response = ClearCurrentBox.Response()
+        self._measured = None
         if not self._current_model:
             self._current_box = None
             self._current_ref = None
@@ -681,6 +654,7 @@ class PickupBoxSpawner(Node):
     def handle_finalize(self, _req, _response):
         """Clear the pickup role without deleting the placed Gazebo model."""
         response = FinalizeCurrentBox.Response()
+        self._measured = None
         if not self._current_model:
             response.success = False
             response.message = "no current pickup box to finalize"
@@ -711,6 +685,7 @@ class PickupBoxSpawner(Node):
 
     def handle_get_current(self, _req, _response):
         response = GetCurrentBox.Response()
+        response.generation = int(self._generation)
         if self._current_box is None:
             response.box = DetectedLuggage()
             response.success = False
@@ -718,7 +693,64 @@ class PickupBoxSpawner(Node):
             return response
         response.box = self._current_box
         response.success = True
-        response.message = "current pickup box"
+        response.message = "current pickup box (GT pull; measured rides the topic)"
+        response.mass_kg = float(getattr(self, "_current_mass", 0.0) or 0.0)
+        response.model_name = str(self._current_model or "")
+        return response
+
+    def handle_sync_detected(self, request, _response):
+        """Backfill perception-measured geometry onto the current instance.
+
+        CAS on generation (the caller's expected_generation must equal the
+        spawner's current generation) so a stale sync can never leak onto a
+        newer box. Catalog priors are rejected per the DetectedLuggage
+        geometry contract: height must be measured (height_valid).
+        """
+        response = SyncPickupBox.Response()
+        response.generation = int(self._generation)
+        box = getattr(request, "box", None)
+        if self._current_box is None:
+            response.success = False
+            response.message = "NO_CURRENT_BOX"
+            return response
+        expected = int(getattr(request, "expected_generation", 0) or 0)
+        if expected != int(self._generation):
+            response.success = False
+            response.message = "GENERATION_MISMATCH expected=%d current=%d" % (
+                expected, self._generation)
+            return response
+        if not bool(getattr(box, "height_valid", False)):
+            response.success = False
+            response.message = (
+                "DETECT_FULL_GEOMETRY_REQUIRED: height_valid=false")
+            return response
+        dims = [
+            float(getattr(box, "width", 0.0) or 0.0),
+            float(getattr(box, "depth", 0.0) or 0.0),
+            float(getattr(box, "height", 0.0) or 0.0),
+        ]
+        if not all(math.isfinite(v) and v > 0.0 for v in dims):
+            response.success = False
+            response.message = (
+                "DETECT_FULL_GEOMETRY_REQUIRED: dims=%s" % (dims,))
+            return response
+        self._measured = {
+            "width": dims[0],
+            "depth": dims[1],
+            "height": dims[2],
+            "height_source": int(getattr(box, "height_source", 0) or 0),
+            "yaw_valid": bool(getattr(box, "yaw_valid", False)),
+            "stamp_sec": time.time(),
+        }
+        # Same instance epoch: republish without bumping generation.
+        self._publish_box_state()
+        self.get_logger().info(
+            "sync_detected_pickup_box: measured %.3fx%.3fx%.3f onto %s (gen %d)"
+            % (dims[0], dims[1], dims[2], self._current_box.id,
+               self._generation))
+        response.success = True
+        response.generation = int(self._generation)
+        response.message = "measured geometry synced"
         return response
 
     def handle_spawn_next(self, _req, _response):
@@ -828,7 +860,6 @@ class PickupBoxSpawner(Node):
         self._current_model = model_name
         self._current_ref = self._observable_reference(size, visual_id)
         self._current_box = box
-        self._current_yaw = yaw
         self._current_mass = mass_kg
         self._publish_box_state()
         # Ground truth for evaluating perception, on a separate topic so

@@ -23,7 +23,8 @@ SOURCE_REJECT_CLUTTER = "reject_clutter"
 def parse_current_box_payload(payload):
     """Return ``(box_id, generation)`` from ``/luggage/current_box`` JSON.
 
-    Empty or invalid payloads are ``("", 0)``.
+    Schema 2 carries identity + measured only; empty or invalid payloads
+    are ``("", 0)``.
     """
     if not payload:
         return "", 0
@@ -36,7 +37,7 @@ def parse_current_box_payload(payload):
             return "", 0
         if not isinstance(data, dict):
             return "", 0
-    box_id = str(data.get("id") or data.get("model_name") or "")
+    box_id = str(data.get("id") or "")
     try:
         generation = int(data.get("generation") or 0)
     except (TypeError, ValueError):

@@ -114,12 +114,35 @@ class FakeScene(object):
 class TestSimBackend(unittest.TestCase):
 
     def _context(self):
+        # GT fields feed the kinematic follow offset; scene_box_size is the
+        # perception-measured MoveIt geometry (privilege boundary).
         return {
             "model_name": "pickup_box_0001",
             "panel_xyz": PANEL_XYZ, "panel_quat": PANEL_QUAT,
             "box_xyz": BOX_XYZ, "box_quat": BOX_QUAT,
             "box_size": BOX_SIZE,
+            "scene_box_size": [0.66, 0.41, 0.27],
         }
+
+    def test_attach_uses_measured_scene_geometry(self):
+        gz, scene = FakeGzClient(), FakeScene()
+        backend = SimVacuumBackend(gz, scene)
+        ok, message = backend.attach(self._context())
+        self.assertTrue(ok)
+        self.assertEqual(message, "attached pickup_box_0001 (follow 30.0 Hz)")
+        # The MoveIt box is the MEASURED size, not the GT spawn size.
+        self.assertEqual(scene.attached[3], (0.66, 0.41, 0.27))
+
+    def test_attach_without_measured_geometry_fails(self):
+        gz, scene = FakeGzClient(), FakeScene()
+        backend = SimVacuumBackend(gz, scene)
+        context = self._context()
+        del context["scene_box_size"]
+        ok, message = backend.attach(context)
+        self.assertFalse(ok)
+        self.assertIn("VACUUM_BACKEND_ERROR", message)
+        self.assertFalse(backend.is_attached())
+        self.assertIsNone(scene.attached)
 
     def test_attach_detach_roundtrip(self):
         gz, scene = FakeGzClient(), FakeScene()
