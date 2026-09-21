@@ -7,6 +7,9 @@
 DetectedLuggage box
 SlotSpec[] placed
 string geometry_hash
+# 0 = planner default (config, typically 5). Ranked feasible slots returned
+# in ``candidates`` so a later path selector can try more than one target.
+int32 max_candidates
 ---
 SlotSpec slot
 bool success
@@ -17,3 +20,7 @@ string geometry_hash
 # must never be used for candidates lost to aperture, corridor, support or
 # observation gates - those are PLACE_CANDIDATE_EXHAUSTED.
 string reason_code
+# Score-sorted feasible slots; candidates[0] matches ``slot`` on success.
+SlotSpec[] candidates
+float64[] candidate_scores
+string[] candidate_reasons

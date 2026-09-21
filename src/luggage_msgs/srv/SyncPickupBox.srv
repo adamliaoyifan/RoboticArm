@@ -1,4 +1,12 @@
+# Backfill perception-measured geometry onto the current box instance.
+# CAS: the request generation must equal the spawner's current generation,
+# else GENERATION_MISMATCH (same pattern as IntegrateCargoView.
+# expected_map_revision). box.height_valid must be true; catalog priors are
+# rejected (DetectedLuggage geometry contract).
 DetectedLuggage box
+int32 expected_generation
 ---
 bool success
 string message
+# Generation the measured record is now attached to (0 on failure).
+int32 generation
