@@ -237,5 +237,54 @@ class TestPlacementSolverConfidence(unittest.TestCase):
         self.assertTrue(top["feasible"])
 
 
+class TestSevenFaceMapper(unittest.TestCase):
+    def _hull(self):
+        from luggage_description.container_geometry import normalize_descriptor
+        return normalize_descriptor({
+            "frame_id": "container_link",
+            "length": 1.0,
+            "width": 1.0,
+            "floor_z": 0.0,
+            "ceiling_z": 1.0,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.10,
+                "wall_y": 0.50,
+                "wall_z": 0.40,
+            },
+        })
+
+    def test_chamfer_voxels_are_inactive_and_descriptor_is_stamped(self):
+        hull = self._hull()
+        mapper = CargoVolumeMapper(
+            inner_size=[1.0, 1.0, 1.0],
+            center_base=[0.0, 0.0, 0.5],
+            yaw=0.0,
+            resolution=0.1,
+            geometry_descriptor=hull.descriptor(),
+        )
+        stats = mapper.stats()
+        self.assertGreater(stats["inactive_count"], 0)
+        self.assertLess(
+            stats["total_voxels"], mapper.nx * mapper.ny * mapper.nz)
+        mapper.mark_occupied_world(0.0, 0.40, 0.05)
+        self.assertEqual(mapper.stats()["occupied_count"], 0)
+        mapper.mark_occupied_world(0.0, 0.0, 0.50)
+        self.assertGreater(mapper.stats()["occupied_count"], 0)
+        surface = mapper.surface_map_2d()
+        self.assertEqual(surface["geometry_hash"], hull.geometry_hash)
+        self.assertIn("chamfer", surface["geometry_descriptor"])
+
+    def test_invalid_descriptor_fails_closed(self):
+        with self.assertRaises(ValueError):
+            CargoVolumeMapper(
+                inner_size=[1.0, 1.0, 1.0],
+                center_base=[0.0, 0.0, 0.5],
+                yaw=0.0,
+                resolution=0.1,
+                geometry_descriptor={"length": 1.0},
+            )
+
+
 if __name__ == "__main__":
     unittest.main()
