@@ -168,6 +168,18 @@ def normalize_descriptor(descriptor: dict) -> ContainerGeometry:
     )
 
 
+def cuboid_from_inner_size(inner_size, floor_z=0.0):
+    """AABB hull used when a caller has only ``inner_size`` (no chamfer)."""
+    inner_l, inner_w, inner_h = [float(value) for value in inner_size]
+    return normalize_descriptor({
+        "frame_id": "container_link",
+        "length": inner_l,
+        "width": inner_w,
+        "floor_z": float(floor_z),
+        "ceiling_z": float(floor_z) + inner_h,
+    })
+
+
 def descriptor_from_scene_config(config: dict) -> ContainerGeometry:
     container = config.get("container", {})
     inner = container.get("inner", {})
@@ -197,6 +209,95 @@ def y_max_at_z(geometry: ContainerGeometry, z: float, margin: float = 0.0) -> fl
     intercept = chamfer.floor_y - slope * geometry.floor_z
     plane_limit = slope * z + intercept - clearance * math.sqrt(1.0 + slope * slope)
     return min(limit, plane_limit)
+
+
+def y_bounds_at_z(
+    geometry: ContainerGeometry, z: float, margin: float = 0.0
+) -> tuple[float, float]:
+    """Usable Y interval in ``container_link`` at elevation ``z``."""
+    clearance = max(0.0, float(margin))
+    return (-geometry.half_y + clearance, y_max_at_z(geometry, z, margin=clearance))
+
+
+def y_bounds_for_z_interval(
+    geometry: ContainerGeometry,
+    z_min: float,
+    z_max: float,
+    margin: float = 0.0,
+) -> tuple[float, float]:
+    """Tightest hull Y span over ``[z_min, z_max]`` in ``container_link``.
+
+    The +Y chamfer is tightest at the lowest Z in the interval, so a corridor
+    that spans a height band must use this, not the AABB ``±width/2``.
+    """
+    lower = float(z_min)
+    upper = float(z_max)
+    if upper < lower:
+        lower, upper = upper, lower
+    z_samples = [lower, upper]
+    chamfer = geometry.chamfer
+    if chamfer is not None and lower - EPS <= chamfer.wall_z <= upper + EPS:
+        z_samples.append(chamfer.wall_z)
+    y_min = -geometry.half_y + max(0.0, float(margin))
+    y_max = min(y_max_at_z(geometry, z, margin=margin) for z in z_samples)
+    return y_min, y_max
+
+
+def clip_y_interval_to_hull(
+    geometry: ContainerGeometry,
+    y0: float,
+    y1: float,
+    z_min: float,
+    z_max: float,
+    margin: float = 0.0,
+    z_is_floor_relative: bool = False,
+) -> tuple[float, float]:
+    """Intersect a Y interval with the hull span over a Z band.
+
+    Packing corridors are floor-relative (Z in ``[0, height]``); occupancy
+    and waypoint corridors are ``container_link`` Z. Set
+    ``z_is_floor_relative`` accordingly. An empty intersection returns
+    ``(hi, lo)`` with ``hi < lo``.
+    """
+    if z_is_floor_relative:
+        z_min = float(z_min) + geometry.floor_z
+        z_max = float(z_max) + geometry.floor_z
+    hull_y0, hull_y1 = y_bounds_for_z_interval(
+        geometry, z_min, z_max, margin=margin)
+    lo = min(float(y0), float(y1))
+    hi = max(float(y0), float(y1))
+    return max(lo, hull_y0), min(hi, hull_y1)
+
+
+def hull_edges(
+    geometry: ContainerGeometry, margin: float = 0.0
+) -> list[tuple[tuple[float, float, float], tuple[float, float, float]]]:
+    """Line segments of the usable hull in ``container_link``.
+
+    Without a chamfer this is the 12-edge AABB. With the +Y cut the ±X
+    faces are pentagons and the lower +Y edge follows the slanted contour.
+    """
+    polygon = yz_polygon(geometry, margin=margin)
+    if len(polygon) < 3:
+        return []
+    hx = geometry.half_x - max(0.0, float(margin))
+
+    def _pt(x, y, z):
+        return (float(x), float(y), float(z))
+
+    minus = [_pt(-hx, y, z) for y, z in polygon]
+    plus = [_pt(hx, y, z) for y, z in polygon]
+    count = len(polygon)
+    edges = []
+    for index in range(count):
+        nxt = (index + 1) % count
+        edges.append((minus[index], minus[nxt]))
+    for index in range(count):
+        nxt = (index + 1) % count
+        edges.append((plus[index], plus[nxt]))
+    for index in range(count):
+        edges.append((minus[index], plus[index]))
+    return edges
 
 
 def yz_polygon(geometry: ContainerGeometry, margin: float = 0.0) -> list[tuple[float, float]]:
@@ -265,14 +366,45 @@ def contains_point(
     margin: float = 0.0,
 ) -> bool:
     clearance = max(0.0, float(margin))
+    x, _y, _z = [float(value) for value in point]
+    if x < -geometry.half_x + clearance - EPS:
+        return False
+    return _within_closed_faces(geometry, point, clearance)
+
+
+def _within_closed_faces(
+    geometry: ContainerGeometry,
+    point: Sequence[float],
+    clearance: float,
+) -> bool:
+    """Every face except the -X door: +X, ±Y, floor, ceiling, +Y chamfer."""
     x, y, z = [float(value) for value in point]
-    if x < -geometry.half_x + clearance - EPS or x > geometry.half_x - clearance + EPS:
+    if x > geometry.half_x - clearance + EPS:
         return False
     if y < -geometry.half_y + clearance - EPS or y > geometry.half_y - clearance + EPS:
         return False
     if z < geometry.floor_z + clearance - EPS or z > geometry.ceiling_z - clearance + EPS:
         return False
     return y <= y_max_at_z(geometry, z, margin=clearance) + EPS
+
+
+def contains_point_through_aperture(
+    geometry: ContainerGeometry,
+    point: Sequence[float],
+    margin: float = 0.0,
+) -> bool:
+    """``contains_point`` with the -X door face open.
+
+    The insertion aperture is a hole in the -X pentagon, so a payload standing
+    in the doorway is legitimately outside the hull in -X. Enforcing full
+    containment there rejects every insertion path: the entry waypoint sits at
+    ``x = -half_x``, so any box centred on it has corners beyond the face
+    whatever its size. Which part of that face is actually open is decided by
+    the aperture Y-shadow gate in the packing solver and by
+    ``insertion_corridor.corridor_blocked``; this hull test owns the closed
+    faces only.
+    """
+    return _within_closed_faces(geometry, point, max(0.0, float(margin)))
 
 
 def oriented_box_corners(
@@ -305,6 +437,22 @@ def contains_oriented_box(
         raise ValueError("box size values must be positive")
     return all(
         contains_point(geometry, corner, margin=margin)
+        for corner in oriented_box_corners(center, size, yaw)
+    )
+
+
+def contains_oriented_box_through_aperture(
+    geometry: ContainerGeometry,
+    center: Sequence[float],
+    size: Sequence[float],
+    yaw: float = 0.0,
+    margin: float = 0.0,
+) -> bool:
+    """``contains_oriented_box`` for a box that may straddle the -X door."""
+    if any(float(value) <= 0.0 for value in size):
+        raise ValueError("box size values must be positive")
+    return all(
+        contains_point_through_aperture(geometry, corner, margin=margin)
         for corner in oriented_box_corners(center, size, yaw)
     )
 

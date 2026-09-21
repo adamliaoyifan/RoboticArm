@@ -302,7 +302,7 @@ class FreeSpaceModelStrategy(object):
     def __init__(self, inner_size, center_base, yaw, resolution, atlas, entries,
                  mode="b2", smallest_size=None, top_n=50, top_k_rollout=5,
                  rollout_K=3, rollout_M=8, w_floor_first=None,
-                 opening_side="negative_x"):
+                 opening_side="negative_x", hull=None):
         from luggage_packing.placement_scoring import DEFAULT_W_FLOOR_FIRST
         self.inner_size = [float(v) for v in inner_size]
         self.inner_l, self.inner_w, self.inner_h = self.inner_size
@@ -321,6 +321,7 @@ class FreeSpaceModelStrategy(object):
             DEFAULT_W_FLOOR_FIRST if w_floor_first is None
             else float(w_floor_first))
         self.opening_side = opening_side
+        self.hull = hull
 
     def _build_model(self, placed):
         from luggage_packing.free_space_model import FreeSpaceModel
@@ -355,7 +356,7 @@ class FreeSpaceModelStrategy(object):
         from luggage_packing.insertion_corridor import proxy_score
         from luggage_packing.value_estimator import value_hat
         model = self._build_model(placed)
-        ems = EMS(self.inner_size, min_useful_edge=0.1)
+        ems = EMS(self.inner_size, min_useful_edge=0.1, hull=self.hull)
         for p in placed:
             ems.place(_cand_box_floor(p))
         cands = model.candidates(box_size, allowed_yaws=[0.0, 1.5707963],
@@ -387,12 +388,15 @@ class FreeSpaceModelStrategy(object):
             score_candidates(
                 reachable, model, ems, self.inner_size, self.smallest_size,
                 opening_side=self.opening_side,
-                w_floor_first=self.w_floor_first)
+                w_floor_first=self.w_floor_first,
+                hull=self.hull)
             return reachable[0]
         if self.mode == "b2":
             best, best_s = None, -1e18
             for c in reachable:
-                s, _ = proxy_score(c, model, ems, self.inner_size, self.smallest_size)
+                s, _ = proxy_score(
+                    c, model, ems, self.inner_size, self.smallest_size,
+                    hull=self.hull)
                 if s > best_s:
                     best, best_s = c, s
             return best

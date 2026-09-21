@@ -18,8 +18,8 @@ import copy
 
 import numpy as np
 
-from luggage_packing.ems import EMS, volume
-from luggage_packing.insertion_corridor import proxy_score, blocks_deep_space
+from luggage_packing.ems import EMS
+from luggage_packing.insertion_corridor import proxy_score
 
 
 # --------------------------------------------------------------------------- #
@@ -137,18 +137,19 @@ class ProxyStrategy(object):
     """
 
     def __init__(self, model_factory, entries, inner_size, smallest_size,
-                 weights=None, reachability_prior=0.5):
+                 weights=None, reachability_prior=0.5, hull=None):
         self.model_factory = model_factory  # () -> fresh FreeSpaceModel
         self.entries = entries
         self.inner_size = inner_size
         self.smallest_size = smallest_size
         self.weights = weights or _DEFAULT_PROXY_WEIGHTS
         self.reachability_prior = reachability_prior
+        self.hull = hull
 
     def place(self, box_size, placed):
         """Return the best candidate dict (proxy_score-ranked) or None."""
         model = self.model_factory()
-        ems = EMS(self.inner_size, min_useful_edge=0.1)
+        ems = EMS(self.inner_size, min_useful_edge=0.1, hull=self.hull)
         for p in placed:
             model.add_placed_box(p["center_local"], p["size"])
             ems.place(_box_from_cand(p))
@@ -159,7 +160,7 @@ class ProxyStrategy(object):
         for c in cands:
             score, _ = proxy_score(
                 c, model, ems, self.inner_size, self.smallest_size,
-                reachability_prior=self.reachability_prior)
+                reachability_prior=self.reachability_prior, hull=self.hull)
             if score > best_score:
                 best, best_score = c, score
         return best

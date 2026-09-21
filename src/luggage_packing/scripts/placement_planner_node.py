@@ -14,9 +14,12 @@ hull is rejected outright; the planner never reads a foreign map's
 
 Service ``/placement_planner/compute_placement`` (luggage_msgs/ComputePlacement):
   request  box (DetectedLuggage), placed (SlotSpec[] in elfin_base_link),
-           geometry_hash (optional pin on the container hull)
+           geometry_hash (optional pin on the container hull),
+           max_candidates (0 = node default)
   response slot (SlotSpec in elfin_base_link), success, message,
-           geometry_hash (hull the answer was computed against), reason_code
+           geometry_hash (hull the answer was computed against), reason_code,
+           candidates / candidate_scores / candidate_reasons (feasible
+           prefix; candidates[0] matches slot on success).
            message carries the reject histogram when no candidate survives,
            e.g. "PLACE_CANDIDATE_EXHAUSTED no_candidate: overlap=10
            outside_aperture=6 corridor_blocked=2". Only reason_code=BIN_FULL
@@ -28,8 +31,8 @@ candidate (feasible + rejected) for pack-eval dumps.
 G2 aperture gate: a candidate footprint outside the opening-aperture Y
 shadow gets ``reason=outside_aperture``. The 7-face hull gate rejects boxes
 whose AABB corners leave the chamfered inner volume (``outside_hull``).
-Corridor check uses floor-relative container AABBs
-(insertion_corridor.corridor_blocked, single-box wall).
+Corridor check uses a hull-clipped insertion corridor
+(insertion_corridor.corridor_blocked, single-box wall spanning hull Y).
 """
 
 from __future__ import division
@@ -66,6 +69,7 @@ from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
     placement_constraint_verdict,
+    ranked_feasible_candidates,
     solve_placement,
 )
 from luggage_description.container_geometry import (
@@ -116,6 +120,7 @@ class PlacementPlannerNode(Node):
         # (eval drivers retry over the retained list; 24 is the historical
         # visualization-sized default).
         self.declare_parameter("last_result_max_candidates", 24)
+        self.declare_parameter("max_candidates", 5)
 
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
@@ -268,6 +273,7 @@ class PlacementPlannerNode(Node):
         ny = max(1, int(round(inner_w / res)))
         return {
             "geometry_hash": self._geometry_hash,
+            "geometry_descriptor": dict(self._hull.descriptor()),
             "resolution": res,
             "nx": nx, "ny": ny,
             "inner_size": [inner_l, inner_w, inner_h],
@@ -342,6 +348,7 @@ class PlacementPlannerNode(Node):
             hull_contains=hull_contains_floor_relative,
             inner_size=self._inner_size,
             smallest_size=smallest_size,
+            hull=hull,
         )
 
     def _publish_last(self, payload):
@@ -447,6 +454,9 @@ class PlacementPlannerNode(Node):
             response.success = False
             response.reason_code = result["reason_code"]
             response.message = result["message"]
+            response.candidates = []
+            response.candidate_scores = []
+            response.candidate_reasons = []
             dump["message"] = response.message
             self._publish_last(dump)
             return response
@@ -457,6 +467,18 @@ class PlacementPlannerNode(Node):
         response.success = True
         response.reason_code = ""
         response.message = result["message"]
+        want = int(getattr(request, "max_candidates", 0) or 0)
+        if want <= 0:
+            want = int(self.get_parameter("max_candidates").value)
+        topk = ranked_feasible_candidates(result, want)
+        response.candidates = []
+        response.candidate_scores = []
+        response.candidate_reasons = []
+        for candidate in topk:
+            slot_i, _ann = self._slot_from_candidate(candidate, size)
+            response.candidates.append(slot_i)
+            response.candidate_scores.append(float(candidate.get("score", 0.0)))
+            response.candidate_reasons.append(str(candidate.get("reason") or "ok"))
         dump["message"] = response.message
         dump["selected"] = jsonable_candidate(annotated)
         dump["pose_base_link"] = annotated["center_base_link"]

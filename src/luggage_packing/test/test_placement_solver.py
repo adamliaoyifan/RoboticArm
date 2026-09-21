@@ -20,6 +20,7 @@ PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 from luggage_packing.placement_solver import (  # noqa: E402
     generate_candidates,
     placement_constraint_verdict,
+    ranked_feasible_candidates,
     solve_placement,
 )
 
@@ -233,6 +234,20 @@ class TestLiveFlattenFirstAndCommitStack(unittest.TestCase):
             self.assertFalse(cand["feasible"])
             self.assertFalse(cand["capacity_feasible"])
             self.assertLessEqual(_peak(cand, self.INNER_H, self.BOX[2]), 0.05)
+
+
+class TestRankedFeasibleCandidates(unittest.TestCase):
+    def test_topk_matches_selected(self):
+        sm = _make_map(state="unknown", height=0.0, confidence="none")
+        result = solve_placement(
+            sm, [0.7, 0.45, 0.28], allowed_yaws=[0.0],
+            params={"top_n": 20, "keep_rejected": 5})
+        self.assertTrue(result["success"])
+        top = ranked_feasible_candidates(result, 5)
+        self.assertGreaterEqual(len(top), 2)
+        self.assertLessEqual(len(top), 5)
+        self.assertEqual(top[0]["center_base"], result["selected"]["center_base"])
+        self.assertAlmostEqual(top[0]["score"], result["selected"]["score"])
 
 
 if __name__ == "__main__":
