@@ -29,6 +29,17 @@ import threading
 import time
 from collections import OrderedDict, deque
 
+# The estimate worker is single-flight. A 12-thread OpenBLAS team on that
+# one frame was the Orin load of about nine cores, on top of YOLO.
+for _numeric_thread_env in (
+        "OMP_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "VECLIB_MAXIMUM_THREADS",
+):
+    os.environ.setdefault(_numeric_thread_env, "1")
+
 import numpy as np
 
 import rclpy
@@ -88,7 +99,10 @@ from luggage_perception.dynamic_top_surface import (
 )
 # DYNAMIC-SUCTION ST-2: sealable suction-patch candidates. The contact
 # model is a versioned hardware config (B0); the evaluator is ROS-free.
-from luggage_perception.suction_patch_evaluator import SuctionPatchEvaluator
+from luggage_perception.suction_patch_evaluator import (
+    SuctionPatchEvaluator,
+    center_suction_evaluation,
+)
 from luggage_description._share import description_config_path
 from luggage_description.suction_contact_model import (
     load_suction_contact_model,
@@ -194,6 +208,84 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
         out_view += trans
         return out_view, None
     return points.dot(rot.T) + trans, None
+
+
+def _fmt_metric(value):
+    if isinstance(value, float):
+        return "%.3f" % value
+    return str(value)
+
+
+def _cap_loaded_blas(nthreads=1):
+    """Apply the numeric-thread cap if BLAS is already resident.
+
+    Environment variables are read when the library loads. A parent that
+    imported numpy first would otherwise keep a 12-thread team.
+    """
+    import ctypes
+
+    for lib in ("libopenblas.so.0", "libopenblas.so", "libblas.so.3"):
+        try:
+            blas = ctypes.CDLL(lib)
+        except OSError:
+            continue
+        fn = getattr(blas, "openblas_set_num_threads", None)
+        if fn is None:
+            continue
+        fn.argtypes = [ctypes.c_int]
+        fn.restype = None
+        fn(int(nthreads))
+        return
+
+
+_cap_loaded_blas(1)
+
+
+class LatestEstimateQueue(object):
+    """One in-flight estimate, and at most one newer pair waiting.
+
+    Callbacks only submit. A later pair replaces the one still waiting, and
+    an older stamp cannot overwrite a newer one. ``take`` blocks until a
+    pair is waiting or ``close`` is called.
+    """
+
+    def __init__(self):
+        self._cond = threading.Condition()
+        self._pending = None
+        self._stop = False
+        self._coalesced = 0
+
+    @property
+    def coalesced(self):
+        with self._cond:
+            return self._coalesced
+
+    def submit(self, yolo_msg, cloud_msg):
+        header = getattr(cloud_msg, "header", None)
+        key = stamp_key(getattr(header, "stamp", None))
+        with self._cond:
+            if self._pending is not None:
+                old_key = self._pending[0]
+                self._coalesced += 1
+                if (key is not None and old_key is not None and key < old_key):
+                    return
+            self._pending = (key, yolo_msg, cloud_msg)
+            self._cond.notify()
+
+    def take(self):
+        with self._cond:
+            while self._pending is None and not self._stop:
+                self._cond.wait()
+            if self._pending is None:
+                return None
+            _key, yolo_msg, cloud_msg = self._pending
+            self._pending = None
+            return yolo_msg, cloud_msg
+
+    def close(self):
+        with self._cond:
+            self._stop = True
+            self._cond.notify_all()
 
 
 class LuggageDetector(Node):
@@ -416,6 +508,9 @@ class LuggageDetector(Node):
             self.get_parameter("use_instance_mask").value)
         self._component_config = ComponentConfig()
         self._dynamic_config = DynamicTopConfig()
+        # Algorithm default is 8 deg. Real D555 tops are rejected by that
+        # gate; the live node accepts planes within 20 deg of +Z.
+        self._dynamic_config.normal_tol_deg = 20.0
         # ST-2 B0: a dynamic-mode node requires a readable, versioned
         # contact model at startup (missing/malformed/oversized geometry
         # fails startup); the absolute path and SHA-256 are logged once.
@@ -427,6 +522,12 @@ class LuggageDetector(Node):
                 self.get_parameter("suction_contact_model_config").value
             ) or description_config_path("suction_contact_model.yaml")
             contact_model = load_suction_contact_model(model_path)
+            file_tilt = float(contact_model.max_normal_tilt_deg)
+            file_dev = float(contact_model.max_normal_deviation_p95_deg)
+            file_frac = float(contact_model.min_connected_plane_fraction)
+            contact_model.max_normal_tilt_deg = 20.0
+            contact_model.max_normal_deviation_p95_deg = 15.0
+            contact_model.min_connected_plane_fraction = 0.70
             self._suction_evaluator = SuctionPatchEvaluator(contact_model)
             self.get_logger().info(
                 "luggage_detector: suction contact model %s sha256=%s "
@@ -435,8 +536,20 @@ class LuggageDetector(Node):
                    contact_model.model_version,
                    contact_model.footprint_size_xy_m[0],
                    contact_model.footprint_size_xy_m[1]))
+            self.get_logger().info(
+                "luggage_detector: plane gates relaxed "
+                "top_normal_tol_deg=%.1f suction_tilt_deg %.1f->%.1f "
+                "normal_deviation_p95_deg %.1f->%.1f "
+                "connected_plane_fraction %.2f->%.2f"
+                % (self._dynamic_config.normal_tol_deg,
+                   file_tilt, contact_model.max_normal_tilt_deg,
+                   file_dev, contact_model.max_normal_deviation_p95_deg,
+                   file_frac, contact_model.min_connected_plane_fraction))
         self._pending_joins = OrderedDict()
         self._ready_joins = deque()
+        self._join_emit_lock = threading.Lock()
+        self._estimates = LatestEstimateQueue()
+        self._estimate_thread = None
         self._support_wait_timeout = float(
             self.get_parameter("support_wait_timeout_sec").value)
         self._support_stride = max(
@@ -468,6 +581,9 @@ class LuggageDetector(Node):
             maxlen=max(4, int(self.get_parameter(
                 "geometry_status_buffer_maxlen").value)))
         self._last_failure_reason = "not_run"
+        self._last_tf_error = ""
+        self._last_plane_detail = ""
+        self._support_gate_by_key = OrderedDict()
         self._last_cloud_stamp_sec = None
         self._last_cloud_age_sec = None
         self._status = {"payload": None}
@@ -543,11 +659,9 @@ class LuggageDetector(Node):
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
-        # Ready-join emitter: parked pairs completed by the depth callback
-        # are emitted here between callbacks, one per tick. Default
-        # (mutually exclusive) group: a reentrant timer stacks concurrent
-        # ticks against the 65 ms estimates and thundering-herds the
-        # executor.
+        # Hands the newest parked pair to the estimate worker. Geometry
+        # does not run in this timer. Default (mutually exclusive) group
+        # so the handoff itself cannot re-enter.
         self.create_timer(0.005, self._emit_ready_joins)
         self.get_logger().info("luggage_detector subscribing to %s" % topic)
 
@@ -584,16 +698,43 @@ class LuggageDetector(Node):
                 "(support_mode=%s): raw depth is not segmented cargo; "
                 "launch with use_semantic:=true"
                 % self._support_mode)
+        self._estimate_thread = threading.Thread(
+            target=self._estimate_worker,
+            name="luggage_detector_estimate",
+            daemon=True)
+        self._estimate_thread.start()
         self.get_logger().info(
             "luggage_detector ready (platform-free, semantic=%s, "
             "support_mode=%s, platform_z=%s, crop_to_workspace=%s, "
-            "retries=%d period=%.2fs suitcase_wait=%.1fs)"
+            "retries=%d period=%.2fs suitcase_wait=%.1fs, "
+            "estimate=single-flight)"
             % (self._use_semantic, self._support_mode,
                ("%.3f" % self._platform_z) if self._platform_z is not None
                else "omitted",
                crop_ws,
                self._estimate_retry_count,
                self._estimate_retry_period, self._suitcase_update_timeout))
+
+    def destroy_node(self):
+        estimates = getattr(self, "_estimates", None)
+        thread = getattr(self, "_estimate_thread", None)
+        if estimates is not None:
+            estimates.close()
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=3.0)
+        return super().destroy_node()
+
+    def _estimate_worker(self):
+        while True:
+            item = self._estimates.take()
+            if item is None:
+                return
+            yolo_msg, cloud_msg = item
+            try:
+                self._emit_joined(yolo_msg, cloud_msg)
+            except Exception as exc:
+                self.get_logger().error(
+                    "luggage_detector estimate failed: %s" % exc)
 
     def _cloud_cb(self, msg):
         with self._cloud_lock:
@@ -608,7 +749,7 @@ class LuggageDetector(Node):
             if pair is not None:
                 self._maybe_emit_joined(pair[0], pair[1])
             return
-        self._emit_joined(self._empty_yolo_for_cloud(msg), msg)
+        self._estimates.submit(self._empty_yolo_for_cloud(msg), msg)
 
     def _yolo_cb(self, msg):
         key = stamp_key(msg.header.stamp)
@@ -619,46 +760,52 @@ class LuggageDetector(Node):
             self._maybe_emit_joined(pair[0], pair[1])
 
     def _maybe_emit_joined(self, yolo_msg, cloud_msg):
-        """Emit now if the support depth for this stamp is buffered; else
-        park the pair (bounded) until the depth callback completes it.
+        """Queue an estimate if support depth for this stamp is buffered.
 
-        A parked pair older than ``support_wait_timeout_sec`` is emitted
-        support-less (TOP_ONLY, named reason) so no pair is ever dropped
-        or double-published.
+        Otherwise park the pair until the depth callback completes it.
+        Geometry runs on the single estimate worker. A newer pair replaces
+        one that has not started, so a 1.5 s fit cannot stack on every
+        camera frame. A parked pair older than ``support_wait_timeout_sec``
+        is still queued once, support-less.
         """
         key = stamp_key(cloud_msg.header.stamp)
         with self._raw_lock:
             have_depth = key is not None and key in self._raw_buffer
         if have_depth or key is None:
-            self._emit_joined(yolo_msg, cloud_msg)
+            self._estimates.submit(yolo_msg, cloud_msg)
             return
-        self._pending_joins[key] = (yolo_msg, cloud_msg, time.monotonic())
-        self._raw_counts["support_wait_parked"] += 1
-        while len(self._pending_joins) > 8:
-            old_key, old = self._pending_joins.popitem(last=False)
-            self._raw_counts["support_wait_expired"] += 1
-            self._emit_joined(old[0], old[1])
+        expired = []
+        with self._join_emit_lock:
+            self._pending_joins[key] = (yolo_msg, cloud_msg, time.monotonic())
+            self._raw_counts["support_wait_parked"] += 1
+            while len(self._pending_joins) > 8:
+                _old_key, old = self._pending_joins.popitem(last=False)
+                self._raw_counts["support_wait_expired"] += 1
+                expired.append(old)
+        for old in expired:
+            self._estimates.submit(old[0], old[1])
 
     def _drain_pending_joins(self, new_key=None):
         """Move parked joins whose depth arrived (or expired) onto the
-        ready queue. The depth callback stays light; a timer emits the
-        ready pairs between callbacks so the executor never drowns.
+        ready queue. The depth callback stays light; the timer only hands
+        the newest ready pair to the estimate worker.
         """
         now = time.monotonic()
-        ready = []
-        for key, entry in list(self._pending_joins.items()):
-            if key == new_key or now - entry[2] > self._support_wait_timeout:
-                ready.append(key)
-        for key in ready:
-            yolo_msg, cloud_msg, _ = self._pending_joins.pop(key)
-            if key == new_key:
-                self._raw_counts["support_wait_completed"] += 1
-            else:
-                self._raw_counts["support_wait_expired"] += 1
-            self._ready_joins.append((yolo_msg, cloud_msg))
-            while len(self._ready_joins) > 4:
-                self._ready_joins.popleft()
-                self._raw_counts["support_ready_dropped"] += 1
+        with self._join_emit_lock:
+            ready = []
+            for key, entry in list(self._pending_joins.items()):
+                if key == new_key or now - entry[2] > self._support_wait_timeout:
+                    ready.append(key)
+            for key in ready:
+                yolo_msg, cloud_msg, _ = self._pending_joins.pop(key)
+                if key == new_key:
+                    self._raw_counts["support_wait_completed"] += 1
+                else:
+                    self._raw_counts["support_wait_expired"] += 1
+                self._ready_joins.append((yolo_msg, cloud_msg))
+                while len(self._ready_joins) > 4:
+                    self._ready_joins.popleft()
+                    self._raw_counts["support_ready_dropped"] += 1
 
     def _emit_ready_joins(self):
         deadline = getattr(self, "_gc_post_epoch_deadline", 0.0)
@@ -666,10 +813,18 @@ class LuggageDetector(Node):
             self._gc_post_epoch_deadline = 0.0
             if self._gc_on_epoch:
                 self._gc_on_epoch()
-        if not self._ready_joins:
-            return
-        yolo_msg, cloud_msg = self._ready_joins.popleft()
-        self._emit_joined(yolo_msg, cloud_msg)
+        with self._join_emit_lock:
+            if not self._ready_joins:
+                return
+            dropped = 0
+            newest = None
+            while self._ready_joins:
+                newest = self._ready_joins.popleft()
+                dropped += 1
+            if dropped > 1:
+                self._raw_counts["support_ready_dropped"] += dropped - 1
+        if newest is not None:
+            self._estimates.submit(newest[0], newest[1])
 
     def _raw_depth_cb(self, msg):
         """Buffer the aligned depth image by exact stamp (PF-R9 g2).
@@ -791,7 +946,7 @@ class LuggageDetector(Node):
         """
         _t0 = time.monotonic()
         if yolo_msg is None or not yolo_msg.detections:
-            return "DETECT_DYNAMIC_TOP_NO_INSTANCE"
+            return "DETECT_DYNAMIC_TOP_NO_INSTANCE", None
         key = stamp_key(cloud_msg.header.stamp)
         pair, intr = self._pop_raw_depth(key)
         if pair is None:
@@ -803,10 +958,11 @@ class LuggageDetector(Node):
             depth, bbox=bbox, mask=mask, config=self._component_config)
         if not component.ok:
             return "DETECT_" + component.reason, None
-        mat4, _err = _lookup_transform_matrix(
+        mat4, tf_err = _lookup_transform_matrix(
             self._tf_buffer, depth_msg.header.frame_id,
             self._world_frame, stamp_time)
         if mat4 is None:
+            self._note_tf_failure(tf_err)
             return "DETECT_TF_FAILED", None
         if mask is not None:
             instance_region = mask
@@ -821,22 +977,75 @@ class LuggageDetector(Node):
             instance_region=instance_region, config=self._dynamic_config,
             timing=self._timing)
         if result.reason != "ok":
+            self._last_plane_detail = self._dynamic_plane_detail(result)
+            self._warn_throttled(
+                "luggage_detector: %s: %s"
+                % (result.reason, self._last_plane_detail))
             return result.reason, None
-        suction = None
-        if self._suction_evaluator is not None:
-            # Same acquisition identity as the YOLO observation; the
-            # candidate records echo it for the consumer-side
-            # SUCTION_CANDIDATE_IDENTITY_MISMATCH gate.
-            self._suction_evaluator.update(
-                depth, intr, mat4, result,
-                instance_region=instance_region,
-                stamp=cloud_stamp_sec, frame_id=self._world_frame,
-                instance_id=str(getattr(yolo_msg, "instance_id", "")),
-                generation=int(getattr(yolo_msg, "generation", 0)),
-                timing=self._timing)
-            suction = self._suction_evaluator.copy_output()
+        # Centre only. The footprint grid is not run; one candidate is
+        # the fitted top centre so a pick is not blocked on seal gates.
+        model = (self._suction_evaluator.contact_model
+                 if self._suction_evaluator is not None else None)
+        suction = center_suction_evaluation(
+            result,
+            stamp=cloud_stamp_sec,
+            frame_id=self._world_frame,
+            instance_id=str(getattr(yolo_msg, "instance_id", "") or ""),
+            generation=int(getattr(yolo_msg, "generation", 0) or 0),
+            model_version=int(getattr(model, "model_version", 0) or 0),
+            model_hash=str(getattr(model, "identity_hash", "") or ""),
+        )
+        self._last_plane_detail = ""
+        self._timing["suction_mode"] = "center"
         self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
         return result, suction
+
+    def _dynamic_plane_detail(self, result):
+        """Why the dynamic top plane gate rejected this acquisition."""
+        cands = tuple(getattr(result, "plane_candidates", ()) or ())
+        if not cands:
+            return "no plane within normal_tol_deg=%.1f" % (
+                self._dynamic_config.normal_tol_deg)
+        parts = []
+        for cand in cands[:4]:
+            normal = getattr(cand, "normal", None) or (0.0, 0.0, 1.0)
+            nz = min(1.0, abs(float(normal[2])))
+            tilt = math.degrees(math.acos(nz))
+            parts.append(
+                "id=%s tilt=%.1fdeg inliers=%s area=%s mask=%.2f reason=%s"
+                % (cand.plane_id, tilt, cand.inliers, cand.connected_area,
+                   float(cand.mask_support), cand.rejected_reason or "-"))
+        return "candidates " + "; ".join(parts)
+
+    def _suction_reject_summary(self, suction):
+        """Counts and a few metric samples from rejected seal patches."""
+        rejected = tuple(getattr(suction, "rejected", ()) or ())
+        if not rejected:
+            return str(getattr(suction, "reason", "") or "no candidates")
+        counts = {}
+        examples = []
+        for item in rejected:
+            reason = str(item[1]) if len(item) > 1 else str(item)
+            metrics = item[2] if len(item) > 2 and isinstance(
+                item[2], dict) else {}
+            counts[reason] = counts.get(reason, 0) + 1
+            if len(examples) < 3 and metrics:
+                bits = ", ".join(
+                    "%s=%s" % (key, _fmt_metric(value))
+                    for key, value in list(metrics.items())[:4])
+                examples.append("%s(%s)" % (reason, bits))
+        hist = ", ".join(
+            "%s x%d" % (key, counts[key]) for key in sorted(counts))
+        text = "rejected %d: %s" % (len(rejected), hist)
+        if examples:
+            text += "; e.g. " + "; ".join(examples)
+        return text
+
+    def _failure_message(self, reason):
+        detail = str(getattr(self, "_last_plane_detail", "") or "")
+        if detail:
+            return "%s: %s" % (reason, detail)
+        return str(reason)
 
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
@@ -854,10 +1063,9 @@ class LuggageDetector(Node):
 
         One (capacity, 3) float32 points buffer and one float64 world
         buffer per source resolution. The returned view's lifetime is
-        the synchronous support fit of one joined observation; the next
-        lookup overwrites it. Join emission is serialized by the
-        mutually-exclusive 5 ms timer, and the lock covers the reentrant
-        subscription path, so a single pair per resolution is safe.
+        one joined observation. The estimate worker runs a single fit
+        at a time, and the lock covers buffer allocation, so one pair
+        per resolution is safe.
         """
         shape = tuple(np.asarray(depth_image).shape)
         with self._scratch_lock:
@@ -927,7 +1135,7 @@ class LuggageDetector(Node):
                     break
                 stamp_time = rclpy.time.Time.from_msg(msg.header.stamp)
                 source_frame = msg.header.frame_id
-                pts_world, _err = _transform_points_to_world(
+                pts_world, tf_err = _transform_points_to_world(
                     self._tf_buffer, pts, source_frame,
                     self._world_frame, stamp_time, out_buffer=world_buf)
                 if pts_world is not None:
@@ -939,6 +1147,11 @@ class LuggageDetector(Node):
                         self._last_raw_lookup = dict(lookup)
                     return pts_world
                 lookup["raw_lookup_status"] = "tf_fail"
+                lookup["tf_error"] = str(tf_err or "")
+                self._note_tf_failure(tf_err)
+                self._warn_throttled(
+                    "luggage_detector: DETECT_TF_FAILED: %s"
+                    % (tf_err or "lookup failed"))
                 with self._raw_lock:
                     self._raw_counts["raw_lookup_tf_fail"] += 1
                 break
@@ -1144,6 +1357,28 @@ class LuggageDetector(Node):
     # Perception path
     # ------------------------------------------------------------------
 
+    def _note_tf_failure(self, err):
+        """Keep DETECT_TF_FAILED as the reason code; retain the tf2 text."""
+        self._last_tf_error = str(err or "")
+
+    def _format_stream_warning(self, reason, n_points):
+        text = "luggage_detector: stream %s (n=%d)" % (reason, int(n_points))
+        if reason == "DETECT_TF_FAILED" and self._last_tf_error:
+            text = "%s: %s" % (text, self._last_tf_error)
+        return text
+
+    def _remember_support_gate(self, stamp, gate):
+        key = stamp_key(stamp)
+        self._support_gate_by_key[key] = str(gate or "")
+        self._support_gate_by_key.move_to_end(key)
+        while len(self._support_gate_by_key) > 32:
+            self._support_gate_by_key.popitem(last=False)
+
+    def _acquisition_unsettled(self, stamp):
+        return (
+            self._support_gate_by_key.get(stamp_key(stamp))
+            == "geometry_not_settled")
+
     def _warn_throttled(self, msg):
         # Replaces rospy.logwarn_throttle; 5 s window on the node clock.
         now = self.get_clock().now().nanoseconds
@@ -1290,6 +1525,7 @@ class LuggageDetector(Node):
         frame = cloud_msg.header.frame_id
         stamp_time = rclpy.time.Time.from_msg(stamp)
         self._timing = {}
+        self._last_tf_error = ""
         _t0 = time.monotonic()
         pts_camera = adapters.cloud_points_from_msg(cloud_msg)
         if pts_camera is None:
@@ -1315,6 +1551,7 @@ class LuggageDetector(Node):
             self._world_frame, stamp_time,
         )
         if pts_world is None:
+            self._note_tf_failure(tf_err)
             return (pca_fields_from_failure(
                 "DETECT_TF_FAILED", n_points, source),
                 None, self._support_fields_empty())
@@ -1327,6 +1564,7 @@ class LuggageDetector(Node):
         # missing, malformed, or not-settled status yields TOP_ONLY with
         # its own machine reason — never a measured height.
         geometry_ok, geometry_gate_reason = self._evaluate_geometry_gate(stamp)
+        self._remember_support_gate(stamp, geometry_gate_reason)
         cloud_stamp_sec = float(adapters.stamp_to_sec(stamp))
         dynamic_top = None
         self._last_suction_eval = None
@@ -1455,9 +1693,8 @@ class LuggageDetector(Node):
                     "DETECT_CLOUD_DECODE_FAILED",
                     "DETECT_TF_FAILED",
                     "DETECT_TOO_FEW_POINTS"):
-                self._warn_throttled(
-                    "luggage_detector: stream %s (n=%d)"
-                    % (reason, fields["n_cargo_points"]))
+                self._warn_throttled(self._format_stream_warning(
+                    reason, fields["n_cargo_points"]))
         frame = self._make_detection_frame(
             yolo_msg, cloud_msg, fields, box, support)
         self._frame_pub.publish(frame)
@@ -1484,6 +1721,7 @@ class LuggageDetector(Node):
             "yolo_count": int(len(yolo_msg.detections)),
             "pca_valid": bool(fields["pca_valid"]),
             "pca_reason": str(fields["pca_reason"]),
+            "tf_error": str(self._last_tf_error or ""),
             "pca_source": str(fields["pca_source"]),
             "pca_confidence": float(fields["pca_confidence"]),
             "n_cargo_points": int(fields["n_cargo_points"]),
@@ -1506,6 +1744,7 @@ class LuggageDetector(Node):
             "raw_buffer_len": int(raw_buffer_len),
             "raw_buffer_maxlen": int(self._raw_buffer_maxlen),
             "raw_counts": raw_counts,
+            "estimate_coalesced": int(self._estimates.coalesced),
             "raw_lookup": raw_lookup,
             "filter_stats": self._filter_stats or {},
         }
@@ -1557,6 +1796,9 @@ class LuggageDetector(Node):
         if not frame.pca_valid:
             self._last_failure_reason = str(
                 frame.pca_reason or "DETECT_ESTIMATION_FAILED")
+            return None, float(frame.pca_confidence)
+        if self._acquisition_unsettled(frame.header.stamp):
+            self._last_failure_reason = "geometry_not_settled"
             return None, float(frame.pca_confidence)
         self._last_failure_reason = "ok"
         return frame.box, float(frame.pca_confidence)
@@ -1612,6 +1854,12 @@ class LuggageDetector(Node):
         fields, box, support = self._pca_from_cloud_msg(cloud_msg)
         self._last_failure_reason = (
             "ok" if fields["pca_valid"] else fields["pca_reason"])
+        if fields["pca_valid"] and self._acquisition_unsettled(
+                cloud_msg.header.stamp):
+            self._last_failure_reason = "geometry_not_settled"
+            self._warn_throttled(
+                "luggage_detector: %s" % self._last_failure_reason)
+            return None, fields["pca_confidence"]
         if fields["pca_valid"]:
             t = self._timing
             self.get_logger().info(
@@ -1631,8 +1879,10 @@ class LuggageDetector(Node):
                    if support["support_z"] == support["support_z"] else "nan",
                    support["support_reason"]))
             return box, fields["pca_confidence"]
-        self._warn_throttled(
-            "luggage_detector: %s" % self._last_failure_reason)
+        detail = self._last_failure_reason
+        if detail == "DETECT_TF_FAILED" and self._last_tf_error:
+            detail = "%s: %s" % (detail, self._last_tf_error)
+        self._warn_throttled("luggage_detector: %s" % detail)
         return None, fields["pca_confidence"]
 
     def _publish_diagnostics(self, source, success, confidence, reason,
@@ -1744,7 +1994,10 @@ class LuggageDetector(Node):
                     self._last_failure_reason, detected)
                 response.luggage = [detected]
                 response.success = False
-                response.message = self._last_failure_reason
+                response.message = self._failure_message(
+                    self._last_failure_reason)
+                self.get_logger().warning(
+                    "luggage_detector: %s" % response.message)
                 return response
             self._publish_diagnostics(
                 "perception", True, confidence, "ok", detected)
@@ -1755,14 +2008,14 @@ class LuggageDetector(Node):
                 % (confidence, detected.height_valid))
             return response
 
+        response.message = self._failure_message(self._last_failure_reason)
         self.get_logger().warning(
             "luggage_detector: strict perception failed (%s)"
-            % self._last_failure_reason)
+            % response.message)
         self._publish_diagnostics(
             "perception", False, confidence, self._last_failure_reason)
         response.luggage = []
         response.success = False
-        response.message = self._failure_message()
         return response
 
 

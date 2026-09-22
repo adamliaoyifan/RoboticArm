@@ -123,6 +123,66 @@ class SuctionPatchEvaluation:
     timing_ms: float = 0.0
 
 
+def center_suction_evaluation(top, stamp, frame_id, instance_id, generation,
+                              model_version=0, model_hash=""):
+    """One accepted candidate at the dynamic-top centre.
+
+    Skips the footprint grid. The contact pose sits on the fitted plane
+    at ``(center_xy, top_z)`` with +Z along that plane's normal.
+    """
+    normal = np.array([0.0, 0.0, 1.0], dtype=np.float64)
+    basis = getattr(top, "plane_basis", ()) or ()
+    if len(basis) >= 3:
+        raw = np.asarray(basis[2], dtype=np.float64)
+        nrm = float(np.linalg.norm(raw))
+        if nrm > 1e-9:
+            normal = raw / nrm
+    if float(normal[2]) < 0.0:
+        normal = -normal
+    quat = _quaternion_aligning_z_to(normal)
+    center = (
+        float(top.center_xy[0]),
+        float(top.center_xy[1]),
+        float(top.top_z),
+    )
+    record = SuctionCandidateRecord(
+        candidate_id="center",
+        rank=0,
+        center_uv=(0.0, 0.0),
+        center_world=center,
+        quaternion_xyzw=quat,
+        normal_world=(float(normal[0]), float(normal[1]), float(normal[2])),
+        score=1.0,
+        valid_coverage=1.0,
+        mask_coverage=1.0,
+        plane_coverage=1.0,
+        rms_residual=0.0,
+        p95_residual=0.0,
+        peak_to_valley=0.0,
+        normal_deviation_p95=0.0,
+        max_adjacent_step=0.0,
+        boundary_clearance=0.0,
+        discontinuity_count=0,
+        stamp=float(stamp),
+        frame=str(frame_id),
+        instance_id=str(instance_id),
+        generation=int(generation),
+        model_version=int(model_version),
+        model_hash=str(model_hash),
+    )
+    return SuctionPatchEvaluation(
+        ok=True,
+        reason="center",
+        accepted=(record,),
+        stamp=float(stamp),
+        frame=str(frame_id),
+        instance_id=str(instance_id),
+        generation=int(generation),
+        model_version=int(model_version),
+        model_hash=str(model_hash),
+    )
+
+
 def suction_identity_mismatch(candidate, stamp, frame_id, instance_id,
                               generation, tolerance_sec=0.0):
     """None when the candidate shares the observation's identity.

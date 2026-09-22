@@ -64,6 +64,10 @@ def _stamp_key(msg):
     return (msg.header.stamp.sec, msg.header.stamp.nanosec)
 
 
+def _key_ns(key):
+    return int(key[0]) * 1000000000 + int(key[1])
+
+
 def _stamp_to_tf_time(stamp):
     """ROS stamp message -> rclpy Time for stamped TF lookups (PF-R3)."""
     return rclpy.time.Time(
@@ -167,6 +171,10 @@ class SemanticPointFilterNode(Node):
             self._tf_buffer, self._tf_node, spin_thread=True)
         self._last_depth_stamp = None
         self._last_depth_frame = "camera_depth_optical_frame"
+        # Detector keeps raw depth for 1 s / 15 frames. A cargo cloud whose
+        # stamp is already this far behind the newest depth misses that
+        # buffer and DetectLuggage has no depth for the pick point.
+        self._max_join_lag_ns = 200000000
 
         # Exact-stamp join buffers (bounded, oldest evicted first).
         self._depths = {}
@@ -184,6 +192,7 @@ class SemanticPointFilterNode(Node):
                         "stale_depth_dropped": 0,
                         "stale_mask_dropped": 0,
                         "stale_instance_dropped": 0,
+                        "stale_join_lag_dropped": 0,
                         "depth_horizon_evicted": 0,
                         "obstacle_publish_count": 0,
                         "obstacle_publish_skipped": 0,
@@ -492,7 +501,25 @@ class SemanticPointFilterNode(Node):
         if not keys:
             return None
         key = max(keys)
+        # A mask that completes only an old depth publishes cargo after the
+        # detector's 1 s raw-depth horizon has dropped that stamp.
+        newest_depth = max(self._depths)
+        if _key_ns(newest_depth) - _key_ns(key) > self._max_join_lag_ns:
+            self._depths.pop(key, None)
+            self._masks.pop(key, None)
+            self._instances.pop(key, None)
+            self._retire_older_than(key)
+            self._counts["stale_join_lag_dropped"] += 1
+            self._warn_throttled(
+                "semantic_point_filter: dropped join %.0f ms behind newest depth"
+                % ((_key_ns(newest_depth) - _key_ns(key)) / 1e6))
+            return None
         joined = self._take_join(key)
+        self._retire_older_than(key)
+        return joined
+
+    def _retire_older_than(self, key):
+        """Drop buffered entries strictly older than a joined stamp."""
         stale_depth = [k for k in self._depths if k < key]
         stale_mask = [k for k in self._masks if k < key]
         stale_instance = [k for k in self._instances if k < key]
@@ -507,7 +534,6 @@ class SemanticPointFilterNode(Node):
         self._counts["stale_instance_dropped"] += len(stale_instance)
         self._join_stamps.note_stale_drop(
             len(stale_depth) + len(stale_mask) + len(stale_instance))
-        return joined
 
     def _process_joined(self, depth_msg, mask_msg, instance_msg, filt):
         """Decode + numpy off the lock so current_box can reset the epoch."""

@@ -73,12 +73,29 @@ def test_driver_is_raw_only_and_pointcloud_is_disabled():
     assert "sensor_preprocessor_node.py" in launch_source
 
 
+def test_orin_profile_is_mapped_raw_site_b():
+    profile = yaml.safe_load(
+        (PACKAGE / "config" / "preprocessor_d555_orin.yaml").read_text())
+    params = profile["sensor_preprocessor"]["ros__parameters"]
+    assert params["use_sim_time"] is False
+    assert params["motion_gate.enabled"] is True
+    assert params["input.use_compressed"] is False
+    assert not params["input.color_image"].endswith("/compressed")
+    assert not params["input.depth_image"].endswith("/compressed")
+    assert params["camera_pair_tolerance_sec"] == 0.050
+    assert params["output_cloud_frame"] == "d555_color_optical_frame"
+
+
 def test_layered_site_profiles_stay_self_consistent():
     """hardware_pick layers the base yaml under a D555 overlay."""
     base = yaml.safe_load(
         (PACKAGE / "config" / "sensor_preprocessor.yaml").read_text()
     )["sensor_preprocessor"]["ros__parameters"]
-    for name in ("preprocessor_d555_live.yaml", "preprocessor_d555_site.yaml"):
+    for name in (
+        "preprocessor_d555_live.yaml",
+        "preprocessor_d555_site.yaml",
+        "preprocessor_d555_orin.yaml",
+    ):
         overlay = yaml.safe_load(
             (PACKAGE / "config" / name).read_text()
         )["sensor_preprocessor"]["ros__parameters"]
@@ -116,3 +133,7 @@ def test_transport_adapter_does_not_own_rgbd_pairing():
     assert "ApproximateTimeSynchronizer" not in source
     assert "TimeSynchronizer" not in source
     assert "DeviceClockMapper" in source
+    # rclpy Node stores the ROS clock on _clock; shadowing it crashes create_timer.
+    assert "self._clock = DeviceClockMapper" not in source
+    assert "self._device_clock = DeviceClockMapper" in source
+    assert '"publish_compressed": True' in source

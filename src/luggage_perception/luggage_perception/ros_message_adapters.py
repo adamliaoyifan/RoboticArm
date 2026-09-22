@@ -13,6 +13,8 @@ points is not an error: it decodes to an empty array.
 
 from __future__ import division
 
+import array
+
 import numpy as np
 
 from builtin_interfaces.msg import Time
@@ -47,9 +49,20 @@ def _compressed_bytes(msg):
     return np.frombuffer(msg.data, dtype=np.uint8)
 
 
-def _decoded_payload(array):
+def _decoded_payload(decoded):
     """Own a decoded array through a read-only buffer without another copy."""
-    return OpaquePayload(memoryview(array).toreadonly(), origin="decoded")
+    return OpaquePayload(memoryview(decoded).toreadonly(), origin="decoded")
+
+
+def _image_data_from_bytes(raw):
+    """Fill ``sensor_msgs.Image.data`` without a Python-level byte loop.
+
+    The generated ``Image.data`` field is an ``array.array('B')``. Assigning a
+    ``bytes`` object walks every element in Python (~90 ms for 640x360 RGB8,
+    ~60 ms for 16UC1 on this Orin) and caps the D555 preprocessor at ~6 Hz.
+    ``array.array('B', raw)`` uses the C ``frombytes`` path (~0.5 ms).
+    """
+    return array.array("B", raw)
 
 
 def rgb_frame_from_compressed_msg(msg):
@@ -370,7 +383,8 @@ def image_msg_from_frame(frame, stamp):
     out.width = int(image.shape[1])
     out.is_bigendian = 0
     out.step = out.width if image.ndim == 2 else out.width * int(image.shape[2])
-    out.data = np.ascontiguousarray(image, dtype=np.uint8).tobytes()
+    out.data = _image_data_from_bytes(
+        np.ascontiguousarray(image, dtype=np.uint8).tobytes())
     return out
 
 
@@ -393,7 +407,8 @@ def depth_msg_from_frame(frame, stamp):
     out.encoding = "16UC1"
     out.is_bigendian = 0
     out.step = out.width * 2
-    out.data = np.ascontiguousarray(depth, dtype="<u2").tobytes()
+    out.data = _image_data_from_bytes(
+        np.ascontiguousarray(depth, dtype="<u2").tobytes())
     return out
 
 
@@ -409,7 +424,7 @@ def mask_msg_from_array(label_map, stamp, frame_id):
     out.encoding = "mono8"
     out.is_bigendian = 0
     out.step = out.width
-    out.data = arr.tobytes()
+    out.data = _image_data_from_bytes(arr.tobytes())
     return out
 
 
@@ -425,7 +440,7 @@ def instance_mask_msg_from_array(instance_map, stamp, frame_id):
     out.encoding = "mono16"
     out.is_bigendian = 0
     out.step = out.width * 2
-    out.data = arr.tobytes()
+    out.data = _image_data_from_bytes(arr.tobytes())
     return out
 
 

@@ -1,0 +1,13 @@
+# Stock rs_launch.py params only. Neon pointcloud is enabled after the node is up
+# (the launch file does not declare pointcloud__neon_.enable).
+enable_color: true
+enable_depth: true
+enable_sync: true
+align_depth.enable: true
+enable_gyro: false
+enable_accel: false
+enable_motion: false
+rgb_camera.color_format: RGB8
+rgb_camera.color_profile: "640,360,15"
+depth_module.depth_profile: "640,360,15"
+pointcloud.enable: true

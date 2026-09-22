@@ -213,11 +213,12 @@ class SemanticSegmenterNode(Node):
 
         sensor_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
-        # Preprocessed colour rides a deeper transport queue: with depth=1
-        # the segmenter dropped input frames while a frame was processing
-        # and the mask stream fell below the emission rate (PF-R9 g2 D4).
+        # Keep only the latest colour frame. A depth-10 queue made the mask
+        # stamp ~0.5 s old while this callback ran; the point filter then
+        # published cargo on that stamp after the detector had already
+        # evicted the matching depth, so DetectLuggage found no pick point.
         colour_qos = QoSProfile(
-            depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+            depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         mask_qos = QoSProfile(
             depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
         stream_qos = QoSProfile(
@@ -269,6 +270,12 @@ class SemanticSegmenterNode(Node):
         """Live-tune YOLO / cargo / robot-arm floors without a restart."""
         result = SetParametersResult(successful=True)
         for param in params:
+            if param.name == "publish_overlay":
+                self._overlay_ok = bool(param.value)
+                self._overlay_missing_warned = False
+                self.get_logger().info(
+                    "live publish_overlay = %s" % self._overlay_ok)
+                continue
             if param.name not in LIVE_CONFIDENCE_PARAMS:
                 continue
             ok, reason = set_live_confidence_param(
@@ -465,23 +472,37 @@ class SemanticSegmenterNode(Node):
         if self._segmenter.self_body_mask is None:
             self._rebuild_self_body_mask()
 
-        t0 = time.monotonic()
+        t0 = time.perf_counter()
         self._segmenter.workspace_ctx = self._workspace_ctx_for(
             frame.stamp, frame.frame_id or self._last_frame_id)
+        t_ws = time.perf_counter()
         obs = self._ingest.assemble(frame)
+        t_asm = time.perf_counter()
         self._segmenter.update(
             frame.image, frame.stamp, frame.frame_id,
             generation=obs.generation, instance_id=obs.instance_id)
+        t_upd = time.perf_counter()
         out = self._segmenter.copy_output()
+        t_copy = time.perf_counter()
         stamp = adapters.sec_to_stamp(out.stamp)
-        pub_ms = (time.monotonic() - t0) * 1000.0
+        pub_ms = (t_copy - t0) * 1000.0
 
         self._mask_pub.publish(adapters.mask_msg_from_array(
             out.label_map, stamp, out.frame_id))
+        t_mask = time.perf_counter()
+        self._node_stage_ms = {
+            "workspace": round((t_ws - t0) * 1000.0, 2),
+            "assemble": round((t_asm - t_ws) * 1000.0, 2),
+            "update": round((t_upd - t_asm) * 1000.0, 2),
+            "copy_output": round((t_copy - t_upd) * 1000.0, 2),
+            "mask_publish": round((t_mask - t_copy) * 1000.0, 2),
+        }
         if out.instance_map is not None:
             self._instance_pub.publish(adapters.instance_mask_msg_from_array(
                 out.instance_map, stamp, out.frame_id))
         self._publish_yolo(out, stamp)
+        t_yolo = time.perf_counter()
+        self._node_stage_ms["yolo_publish"] = round((t_yolo - t_mask) * 1000.0, 2)
         self._publish_overlay(frame.image, out, stamp, pub_ms=pub_ms)
         self._publish_stats(out, recv_wall=recv_wall)
 
@@ -558,6 +579,9 @@ class SemanticSegmenterNode(Node):
         latency from the detect stamps, so every publish path must carry them.
         """
         record = dict(out.stats)
+        stage = dict(record.get("stage_ms") or {})
+        stage.update(getattr(self, "_node_stage_ms", {}) or {})
+        record["stage_ms"] = stage
         record["stamp"] = out.stamp
         record["mask_stamp"] = out.stamp
         record["image_stamp"] = out.stamp
