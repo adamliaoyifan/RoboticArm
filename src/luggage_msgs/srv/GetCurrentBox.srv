@@ -1,4 +1,11 @@
 ---
+# GT spawn record (size/pose/mass/model) for sim physics backends, eval
+# fixtures, scoring, and viz. Chain modules (perception/planning/motion)
+# must use the measured sub-record on /luggage/current_box instead; this
+# service is the privileged pull path (docs/architecture/privilege_boundary.md).
 DetectedLuggage box
 bool success
 string message
+int32 generation
+float64 mass_kg
+string model_name

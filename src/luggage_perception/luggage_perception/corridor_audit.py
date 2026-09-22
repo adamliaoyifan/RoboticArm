@@ -20,18 +20,25 @@ CORRIDOR_UNKNOWN = "unknown"       # fail-closed: treat as not placeable now
 CORRIDOR_EMPTY_MAP = "empty_map"   # no committed geometry: trivially free
 
 
+from luggage_description.container_geometry import (
+    clip_y_interval_to_hull,
+    cuboid_from_inner_size,
+)
+
+
 def corridor_aabb(slot_center_local, slot_size, inner_size, smallest_size,
-                  opening_side="negative_x"):
+                  opening_side="negative_x", hull=None):
     """AABB from the opening plane to the slot near face (container-local).
 
     Same convention as insertion_corridor._corridor_to, factored out so the
-    audit and the placement gate cannot drift apart.
+    audit and the placement gate cannot drift apart. Y is clipped to the hull
+    over the slot Z band. ``slot_center_local`` Z is ``container_link``.
     """
     inner_l = float(inner_size[0])
-    inner_w = float(inner_size[1])
     cx, cy, cz = [float(v) for v in slot_center_local]
     w, d, h = [float(v) for v in slot_size]
     sw, sd = float(smallest_size[0]), float(smallest_size[1])
+    del sw
     ex0, ex1 = cx - w * 0.5, cx + w * 0.5
     ey0, ey1 = cy - d * 0.5, cy + d * 0.5
     ez0, ez1 = cz - h * 0.5, cz + h * 0.5
@@ -39,7 +46,11 @@ def corridor_aabb(slot_center_local, slot_size, inner_size, smallest_size,
         x0, x1 = -inner_l * 0.5, ex0
     else:
         x0, x1 = ex1, inner_l * 0.5
-    return (x0, ey0 - sd * 0.5, ez0, x1, ey1 + sd * 0.5, ez1)
+    geometry = hull if hull is not None else cuboid_from_inner_size(inner_size)
+    y0, y1 = clip_y_interval_to_hull(
+        geometry, ey0 - sd * 0.5, ey1 + sd * 0.5, ez0, ez1,
+        z_is_floor_relative=False)
+    return (x0, y0, ez0, x1, y1, ez1)
 
 
 def corridor_surface_max(ledger_boxes, corridor):
@@ -76,7 +87,7 @@ def required_carry_z(corridor_surface_max_z, box_height,
 
 
 def audit_corridor(slot_center_local, slot_size, ledger_boxes, inner_size,
-                   smallest_size, opening_side="negative_x"):
+                   smallest_size, opening_side="negative_x", hull=None):
     """One-shot corridor audit for a candidate slot.
 
     Returns a dict with the corridor AABB, the surface max, the required
@@ -84,7 +95,8 @@ def audit_corridor(slot_center_local, slot_size, ledger_boxes, inner_size,
     CORRIDOR_FREE / CORRIDOR_OCCUPIED / CORRIDOR_UNKNOWN / CORRIDOR_EMPTY_MAP.
     """
     corridor = corridor_aabb(
-        slot_center_local, slot_size, inner_size, smallest_size, opening_side)
+        slot_center_local, slot_size, inner_size, smallest_size, opening_side,
+        hull=hull)
     boxes_in = []
     x0, y0, z0, x1, y1, z1 = corridor
     for center, size in ledger_boxes or []:

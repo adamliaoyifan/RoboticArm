@@ -13,9 +13,13 @@ from dataclasses import dataclass
 # Match elfin_moveit_config/config/joint_limits.yaml.
 JOINT_VEL_LIMIT_RAD = 1.57
 JOINT_ACC_LIMIT_RAD = 3.14
-# Proven S20 WayPoint command caps (executor.yaml).
+# Proven S20 WayPoint velocity cap (executor.yaml). ServoJ has no
+# acceleration field: the point spacing is the accel. 60 deg/s^2 on the
+# way up (pick_retreat) and on the brake (pre_grasp) both tripped the
+# controller collision monitor. Both ramps stay at 20 deg/s^2.
 HARDWARE_VEL_RAD = math.radians(60.0)
-HARDWARE_ACC_RAD = math.radians(60.0)
+HARDWARE_ACC_RAD = math.radians(20.0)
+HARDWARE_DECEL_RAD = math.radians(20.0)
 
 _EPS_S = 1e-12
 _TIME_BUMP_S = 1e-6
@@ -31,10 +35,11 @@ class TimedPath:
     v_peak: float
     v_max: float
     a_max: float
+    a_decel: float
 
 
 def cartesian_joint_limits(vel_scale, acc_scale):
-    """Scaled URDF limits, capped to the site 60 deg/s and 60 deg/s^2."""
+    """Scaled URDF limits, capped to 60 deg/s and 20 deg/s^2."""
     vel_scale = float(vel_scale)
     acc_scale = float(acc_scale)
     if not math.isfinite(vel_scale) or vel_scale <= 0.0:
@@ -48,24 +53,32 @@ def cartesian_joint_limits(vel_scale, acc_scale):
 
 def time_parameterize_cartesian(positions_rad, vel_scale, acc_scale):
     v_max, a_max = cartesian_joint_limits(vel_scale, acc_scale)
-    return time_parameterize_rest_to_rest(positions_rad, v_max, a_max)
+    return time_parameterize_rest_to_rest(
+        positions_rad, v_max, a_max, a_decel=HARDWARE_DECEL_RAD)
 
 
-def time_parameterize_rest_to_rest(positions_rad, v_max, a_max):
-    """Trapezoid (or triangle) on joint-space path length, rest to rest."""
+def time_parameterize_rest_to_rest(positions_rad, v_max, a_max, a_decel=None):
+    """Trapezoid (or triangle) on joint-space path length, rest to rest.
+
+    ``a_decel`` defaults to ``a_max``. The live cartesian path uses 20 deg/s^2
+    for both ramps so the points sent to ServoJ already start and stop gently.
+    """
     v_max = float(v_max)
     a_max = float(a_max)
+    a_decel = a_max if a_decel is None else float(a_decel)
     if not math.isfinite(v_max) or v_max <= 0.0:
         raise ValueError("v_max must be positive")
     if not math.isfinite(a_max) or a_max <= 0.0:
         raise ValueError("a_max must be positive")
+    if not math.isfinite(a_decel) or a_decel <= 0.0:
+        raise ValueError("a_decel must be positive")
     knots = [_as_joints(q) for q in positions_rad]
     if not knots:
-        return TimedPath([], [], [], 0.0, 0.0, 0.0, v_max, a_max)
+        return TimedPath([], [], [], 0.0, 0.0, 0.0, v_max, a_max, a_decel)
     n_joints = len(knots[0])
     s_knots = _cumulative_length(knots)
     path_length = s_knots[-1]
-    profile = _trapezoid_profile(path_length, v_max, a_max)
+    profile = _trapezoid_profile(path_length, v_max, a_max, a_decel)
     times = []
     vels = []
     accs = []
@@ -83,14 +96,14 @@ def time_parameterize_rest_to_rest(positions_rad, v_max, a_max):
     accs[0] = [tangent * profile.a_max for tangent in _path_tangent(
         knots, s_knots, 0, n_joints)]
     vels[-1] = [0.0] * n_joints
-    accs[-1] = [-comp * profile.a_max for comp in _path_tangent(
+    accs[-1] = [-comp * profile.a_decel for comp in _path_tangent(
         knots, s_knots, len(knots) - 1, n_joints)]
     if path_length <= _EPS_S:
         accs[0] = [0.0] * n_joints
         accs[-1] = [0.0] * n_joints
     return TimedPath(
         times, vels, accs, path_length, times[-1],
-        profile.v_peak, v_max, a_max,
+        profile.v_peak, v_max, a_max, a_decel,
     )
 
 
@@ -114,36 +127,48 @@ def _cumulative_length(knots):
 
 
 class _Trapezoid(object):
-    __slots__ = ("s_total", "v_peak", "a_max", "t_acc", "t_cruise", "t_total",
-                 "s_acc")
+    __slots__ = ("s_total", "v_peak", "a_max", "a_decel", "t_acc", "t_dec",
+                 "t_cruise", "t_total", "s_acc", "s_dec")
 
-    def __init__(self, s_total, v_peak, a_max, t_acc, t_cruise, t_total, s_acc):
+    def __init__(self, s_total, v_peak, a_max, a_decel, t_acc, t_dec,
+                 t_cruise, t_total, s_acc, s_dec):
         self.s_total = s_total
         self.v_peak = v_peak
         self.a_max = a_max
+        self.a_decel = a_decel
         self.t_acc = t_acc
+        self.t_dec = t_dec
         self.t_cruise = t_cruise
         self.t_total = t_total
         self.s_acc = s_acc
+        self.s_dec = s_dec
 
 
-def _trapezoid_profile(s_total, v_max, a_max):
+def _trapezoid_profile(s_total, v_max, a_max, a_decel):
     if s_total <= _EPS_S:
-        return _Trapezoid(0.0, 0.0, a_max, 0.0, 0.0, 0.0, 0.0)
-    # Two ramps of v^2 / (2a) need v_max^2 / a_max of path.
-    if s_total * a_max <= v_max * v_max:
-        v_peak = math.sqrt(s_total * a_max)
-        t_acc = v_peak / a_max
-        s_acc = 0.5 * s_total
         return _Trapezoid(
-            s_total, v_peak, a_max, t_acc, 0.0, 2.0 * t_acc, s_acc)
+            0.0, 0.0, a_max, a_decel, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+    # v^2/2 * (1/a_acc + 1/a_dec) of path is the two ramps at v_max.
+    ramp = 0.5 * v_max * v_max * (1.0 / a_max + 1.0 / a_decel)
+    if s_total <= ramp:
+        v_peak = math.sqrt(
+            2.0 * s_total / (1.0 / a_max + 1.0 / a_decel))
+        t_acc = v_peak / a_max
+        t_dec = v_peak / a_decel
+        s_acc = v_peak * v_peak / (2.0 * a_max)
+        s_dec = s_total - s_acc
+        return _Trapezoid(
+            s_total, v_peak, a_max, a_decel, t_acc, t_dec, 0.0,
+            t_acc + t_dec, s_acc, s_dec)
     t_acc = v_max / a_max
+    t_dec = v_max / a_decel
     s_acc = 0.5 * a_max * t_acc * t_acc
-    s_cruise = s_total - 2.0 * s_acc
+    s_dec = 0.5 * a_decel * t_dec * t_dec
+    s_cruise = s_total - s_acc - s_dec
     t_cruise = s_cruise / v_max
     return _Trapezoid(
-        s_total, v_max, a_max, t_acc, t_cruise,
-        2.0 * t_acc + t_cruise, s_acc,
+        s_total, v_max, a_max, a_decel, t_acc, t_dec, t_cruise,
+        t_acc + t_cruise + t_dec, s_acc, s_dec,
     )
 
 
@@ -152,7 +177,7 @@ def _profile_state(profile, s_query):
     if profile.t_total <= _EPS_S:
         return 0.0, 0.0, 0.0
     s_acc = profile.s_acc
-    s_cruise_end = s_acc + profile.v_peak * profile.t_cruise
+    s_cruise_end = profile.s_total - profile.s_dec
     if s_query <= s_acc:
         t = math.sqrt(2.0 * s_query / profile.a_max) if profile.a_max > 0.0 else 0.0
         return t, profile.a_max * t, profile.a_max
@@ -160,9 +185,9 @@ def _profile_state(profile, s_query):
         t = profile.t_acc + (s_query - s_acc) / profile.v_peak
         return t, profile.v_peak, 0.0
     remaining = max(profile.s_total - s_query, 0.0)
-    tau = math.sqrt(2.0 * remaining / profile.a_max) if profile.a_max > 0.0 else 0.0
+    tau = math.sqrt(2.0 * remaining / profile.a_decel) if profile.a_decel > 0.0 else 0.0
     t = profile.t_total - tau
-    return t, profile.a_max * tau, -profile.a_max
+    return t, profile.a_decel * tau, -profile.a_decel
 
 
 def _path_tangent(knots, s_knots, index, n_joints):

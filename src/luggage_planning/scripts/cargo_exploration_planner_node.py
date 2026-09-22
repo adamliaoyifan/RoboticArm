@@ -53,7 +53,6 @@ from exploration_config_utils import (  # noqa: E402
 )
 from scene_tf_config_utils import (  # noqa: E402
     container_in_base_link,
-    container_inner_box_in_base_link,
     container_opening_aperture_corners,
     container_opening_axes_in_base_link,
     container_opening_dimensions,
@@ -69,7 +68,6 @@ DEBUG_APERTURE_LINE = 0.055
 DEBUG_PROBE_PATH_LINE = 0.065
 DEBUG_FRAME_AXIS_LEN = 0.45
 DEBUG_FRAME_AXIS_WIDTH = 0.035
-DEBUG_INNER_BOX_LINE = 0.028
 DEBUG_FRAME_LABEL = 0.09
 from container_aim_utils import look_at_quaternion  # noqa: E402
 from constrained_view_planner import coverage_score  # noqa: E402
@@ -856,50 +854,12 @@ class CargoExplorationPlannerNode:
         marker.lifetime = rospy.Duration(0)
         marker_array.markers.append(marker)
 
-    @staticmethod
-    def _append_aabb_wireframe(
-            marker_array, stamp, frame_id, min_corner, max_corner, ns, marker_id,
-            color, line_width):
-        corners = [
-            [min_corner[0], min_corner[1], min_corner[2]],
-            [max_corner[0], min_corner[1], min_corner[2]],
-            [max_corner[0], max_corner[1], min_corner[2]],
-            [min_corner[0], max_corner[1], min_corner[2]],
-            [min_corner[0], min_corner[1], max_corner[2]],
-            [max_corner[0], min_corner[1], max_corner[2]],
-            [max_corner[0], max_corner[1], max_corner[2]],
-            [min_corner[0], max_corner[1], max_corner[2]],
-        ]
-        edges = (
-            (0, 1), (1, 2), (2, 3), (3, 0),
-            (4, 5), (5, 6), (6, 7), (7, 4),
-            (0, 4), (1, 5), (2, 6), (3, 7),
-        )
-        marker = Marker()
-        marker.header.frame_id = frame_id
-        marker.header.stamp = stamp
-        marker.ns = ns
-        marker.id = marker_id
-        marker.type = Marker.LINE_LIST
-        marker.action = Marker.ADD
-        marker.pose.orientation = Quaternion(w=1.0)
-        marker.scale.x = line_width
-        marker.color = color
-        marker.lifetime = rospy.Duration(0)
-        for start_idx, end_idx in edges:
-            start = corners[start_idx]
-            end = corners[end_idx]
-            marker.points.append(Point(x=start[0], y=start[1], z=start[2]))
-            marker.points.append(Point(x=end[0], y=end[1], z=end[2]))
-        marker_array.markers.append(marker)
-
     def _append_frame_debug_markers(self, marker_array, stamp):
-        """Publish container/opening frame axes, labels, and inner volume bounds."""
+        """Publish container/opening frame axes and labels."""
         scene = self._scene_config
         container_xyz, container_rpy = container_in_base_link(scene)
         opening_xyz, opening_rpy = container_opening_in_base_link(scene)
         normal, _lateral, _vertical = container_opening_axes_in_base_link(scene)
-        inner_min, inner_max = container_inner_box_in_base_link(scene)
 
         self._append_axis_triplet(
             marker_array, stamp, self._base_frame, container_xyz,
@@ -910,11 +870,6 @@ class CargoExplorationPlannerNode:
             marker_array, stamp, self._base_frame, opening_xyz,
             self._rpy_axis_directions(opening_rpy),
             "opening_frame_axes", 20, DEBUG_FRAME_AXIS_LEN, DEBUG_FRAME_AXIS_WIDTH,
-        )
-        self._append_aabb_wireframe(
-            marker_array, stamp, self._base_frame, inner_min, inner_max,
-            "container_inner_box", 30,
-            ColorRGBA(r=0.8, g=0.5, b=1.0, a=0.8), DEBUG_INNER_BOX_LINE,
         )
 
         label_color = ColorRGBA(r=1.0, g=1.0, b=1.0, a=1.0)

@@ -173,6 +173,11 @@ class SimVacuumBackend(VacuumBackend):
     ``scene`` must expose ``attach_pickup_box(...)`` /
     ``detach_and_remove(...)`` (planning_scene_client). Both are injected
     so the state machine runs under plain pytest with mocks.
+
+    Privilege boundary: ``context["scene_box_size"]`` is the MoveIt attach
+    geometry and MUST be the perception-measured size — never the GT spawn
+    size (docs/architecture/privilege_boundary.md). The GT box pose feeds
+    only the kinematic follow offset.
     """
 
     def __init__(self, gz_client, scene, follow_rate_hz=30.0):
@@ -198,7 +203,7 @@ class SimVacuumBackend(VacuumBackend):
                 context["box_xyz"], context["box_quat"])
             scene_ok, scene_msg = self._scene.attach_pickup_box(
                 context["model_name"], context["box_xyz"],
-                context["box_quat"], context["box_size"],
+                context["box_quat"], context["scene_box_size"],
                 context.get("attach_link", "suction_contact_frame"))
             if not scene_ok:
                 self.last_error = scene_msg

@@ -1,6 +1,7 @@
 """Corridor audit (G4/E1) unit tests - no ROS."""
 import unittest
 
+from luggage_description.container_geometry import normalize_descriptor
 from luggage_perception.corridor_audit import (
     CORRIDOR_EMPTY_MAP,
     CORRIDOR_FREE,
@@ -25,6 +26,29 @@ class TestCorridorAABB(unittest.TestCase):
         # Y inflated by half the smallest box depth.
         self.assertAlmostEqual(aabb[1], -0.2 - 0.2)
         self.assertAlmostEqual(aabb[4], 0.2 + 0.2)
+
+    def test_chamfer_clips_positive_y(self):
+        hull = normalize_descriptor({
+            "frame_id": "container_link",
+            "length": 2.0,
+            "width": 2.0,
+            "floor_z": 0.0,
+            "ceiling_z": 2.0,
+            "chamfer": {
+                "side": "positive_y",
+                "floor_y": 0.20,
+                "wall_y": 1.0,
+                "wall_z": 0.50,
+            },
+        })
+        aabb = corridor_aabb(
+            [0.0, 0.6, 0.15], [0.4, 0.4, 0.3],
+            [2.0, 2.0, 2.0], [0.4, 0.4, 0.25], hull=hull)
+        cuboid = corridor_aabb(
+            [0.0, 0.6, 0.15], [0.4, 0.4, 0.3],
+            [2.0, 2.0, 2.0], [0.4, 0.4, 0.25])
+        self.assertAlmostEqual(aabb[4], 0.20, places=6)
+        self.assertGreater(cuboid[4], aabb[4] + 0.2)
 
 
 class TestSurfaceMax(unittest.TestCase):

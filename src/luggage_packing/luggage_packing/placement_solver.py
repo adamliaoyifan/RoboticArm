@@ -83,7 +83,7 @@ def aabb_overlap(a, b, tolerance=1e-9):
 
 def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
     """Return ``(reason, capacity_ok)`` for one candidate.
 
     ``reason`` is ``None`` when every gate passes, otherwise the first reject
@@ -127,19 +127,20 @@ def placement_constraint_verdict(
     if (inner_size is not None and smallest_size is not None):
         from luggage_packing.insertion_corridor import corridor_blocked
         if corridor_blocked(
-                box, placed_aabbs or [], inner_size, smallest_size):
+                box, placed_aabbs or [], inner_size, smallest_size,
+                hull=hull):
             return REASON_CORRIDOR_BLOCKED, capacity_ok
     return None, capacity_ok
 
 
 def placement_constraint_reason(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
     """Return the first hard-constraint reject reason, or ``None``."""
     reason, _capacity_ok = placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=placed_aabbs, aperture_y=aperture_y,
         hull_contains=hull_contains, inner_size=inner_size,
-        smallest_size=smallest_size)
+        smallest_size=smallest_size, hull=hull)
     return reason
 
 
@@ -453,6 +454,21 @@ def best_candidate(candidates):
         if cand["feasible"]:
             return cand
     return None
+
+
+def ranked_feasible_candidates(result, max_candidates=5):
+    """Score-sorted feasible prefix for ComputePlacement.candidates.
+
+    ``candidates[0]`` matches ``result['selected']`` when any slot is
+    feasible. ``max_candidates <= 0`` uses the default of 5.
+    """
+    feasible = [
+        candidate for candidate in (result.get("candidates") or [])
+        if candidate.get("feasible")]
+    limit = int(max_candidates or 0)
+    if limit <= 0:
+        limit = 5
+    return feasible[:limit]
 
 
 if __name__ == "__main__":

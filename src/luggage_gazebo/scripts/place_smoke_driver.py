@@ -22,6 +22,7 @@ import subprocess
 import sys
 import threading
 import time
+from collections import deque
 
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
@@ -30,11 +31,11 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 from std_srvs.srv import SetBool
 
-from geometry_msgs.msg import Quaternion
+from geometry_msgs.msg import Pose, Quaternion
 from moveit_msgs.msg import PlanningSceneComponents
 from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import PlanMotion
-from luggage_msgs.msg import DetectedLuggage, SlotSpec
+from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
 from luggage_msgs.srv import (
     AddPlacedBox,
     BuildMotionSequence,
@@ -47,6 +48,8 @@ from luggage_msgs.srv import (
 
 from luggage_description.scene_tf_config_utils import (
     container_inner_floor_z,
+    container_opening_normal_in_world,
+    container_opening_target_point_in_world,
     load_scene_tf_config,
     origin_in_world,
     point_inside_container_inner_box,
@@ -57,6 +60,12 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_planning.motion_executor import MotionExecutor
+from luggage_planning.motion_boundary import (
+    load_latest_boundary,
+    replay_manifest,
+)
+from luggage_planning.planning_scene_client import summarize_planning_scene
+from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
 from luggage_gazebo.place_metrics import (
     PlaceTrial,
@@ -104,6 +113,46 @@ CARRYING_ABORTS = {
 
 STAGING_NAMES = ("stage_mid", "stage_late", "stage")
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
+
+# Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
+# was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
+# many seconds; grow if a planned segment plus goal_time plus tail is longer.
+JOINT_RING_FLOOR_SEC = 20.0
+JOINT_RING_GOAL_TIME_SEC = 5.0
+JOINT_RING_TAIL_SEC = 2.0
+# Bound the ring against a segment that hangs until the execute timeout.
+JOINT_RING_CEILING_SEC = 120.0
+
+
+def joint_ring_horizon_sec(segment_duration=None):
+    """Seconds of joint history to retain for a segment of this length.
+
+    The planned duration is not known when a segment starts - the driver only
+    reads it back from the boundary dump after the action returns - so the
+    caller grows the horizon from elapsed segment time while the segment runs.
+    The 1838 place_exit ran 24.3 s against the bare 20 s floor and lost its
+    first 4.35 s, which is the start of the execute a divergence is measured
+    against.
+    """
+    duration = 0.0 if segment_duration is None else float(segment_duration)
+    return min(
+        JOINT_RING_CEILING_SEC,
+        max(JOINT_RING_FLOOR_SEC,
+            duration + JOINT_RING_GOAL_TIME_SEC + JOINT_RING_TAIL_SEC))
+
+
+def prune_joint_ring(ring, now_stamp, horizon_sec):
+    cutoff = float(now_stamp) - float(horizon_sec)
+    while ring and float(ring[0].get("stamp") or 0.0) < cutoff:
+        ring.popleft()
+
+
+def joint_ring_from(ring, t0):
+    rows = list(ring or ())
+    if t0 is None:
+        return rows
+    start = float(t0)
+    return [row for row in rows if float(row.get("stamp") or 0.0) >= start]
 
 
 def _pose_to_dict(pose):
@@ -187,7 +236,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe_joints = None
         self._follow_skipped0 = 0
         self._last_joint_state = None
+        self._joint_ring = deque()
+        self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
+        self._segment_exec_t0 = None
+        self._segment_exec_name = None
         self._last_pick_detection = None
+        self._home_arm_state = {}
+        self._exit_yaw = {}
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -215,46 +270,109 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._keep_placed = False
         self._last_authorized_pick = None
 
+    def exit_tool_yaw(self):
+        """Portal yaw that keeps the wrist the place left the arm in.
+
+        The portal only needs the tool pointing down; `keep_tool_down` leaves
+        yaw free (``absolute_z_axis_tolerance = 3.14``). Asking for yaw 0 while
+        the arm carries yaw ±π is the same heading but a 180° wrist change, and
+        cartesian interpolation answers it by unwinding the arm: 1838 planned
+        `j1` -5.96 rad / `j5` -3.14 rad over 19.3 s and the controller missed
+        the goal. Pick the equivalent portal yaw nearest the current wrist.
+        """
+        try:
+            _xyz, quat = self._lookup_xyz_quat(
+                "world", "suction_contact_frame")
+        except Exception as exc:  # noqa: BLE001 - TF boundary
+            return 0.0, str(exc)
+        return nearest_box_yaw(tool_down_yaw(quat[0], quat[1]), 0.0), ""
+
     def _exit_to_portal(self):
-        """Cartesian reverse of traverse so HOME does not start inside the box."""
-        dummy = getattr(self, "_last_authorized_pick", None)
-        if dummy is None:
-            return False, "no measured pick for place_exit"
-        slot, _meta = self._fixed_slot(dummy)
-        req = BuildMotionSequence.Request()
-        req.phase = "place"
-        req.pick = dummy
-        req.place_slot = slot
-        built = self.call_srv(self._build, req, timeout=15.0)
-        if built is None or not built.success:
-            return False, built.message if built else "build timeout"
-        transit = next((s for s in built.segments if s.name == "transit"), None)
-        if transit is None:
-            return False, "no transit segment"
-        transit.name = "place_exit"
-        transit.type = "cartesian"
-        transit.allow_ompl_fallback = True
-        # The exit reverse-traverse passes near a wrist singularity: its
-        # joint-space path is long, and at profile scaling 0.15 the retimed
-        # trajectory ran past the 60 s plan timeout (streak 2 P3) while the
-        # controller was still grinding. Give the exit room to complete;
-        # cancellation (driver side) plus the setup settle are backstops.
-        ok, message, _result = self.send_action(
-            self._plan, PlanMotion.Goal(segment=transit),
-            timeout=max(self._args.plan_timeout, 150.0),
-            name="PlanMotion:place_exit")
-        return ok, message
+        """Cartesian/OMPL out to the opening portal, not back onto the slot."""
+        opening = container_opening_target_point_in_world(self._scene_config)
+        normal = container_opening_normal_in_world(self._scene_config)
+        suction, _err = self.suction_xyz()
+        z = float(opening[2]) + 0.35
+        if suction is not None:
+            z = max(z, float(suction[2]))
+        yaw, yaw_err = self.exit_tool_yaw()
+        pose = Pose()
+        pose.position.x = float(opening[0] + 0.20 * normal[0])
+        pose.position.y = float(opening[1] + 0.20 * normal[1])
+        pose.position.z = float(max(z, 0.95))
+        pose.orientation.x = math.cos(0.5 * yaw)
+        pose.orientation.y = math.sin(0.5 * yaw)
+        pose.orientation.z, pose.orientation.w = 0.0, 0.0
+        self._exit_yaw = {"yaw": yaw, "tf_error": yaw_err}
+        segment = MotionSegment()
+        segment.name = "place_exit"
+        segment.type = "cartesian"
+        segment.allow_ompl_fallback = True
+        segment.keep_tool_down = True
+        segment.target_pose = pose
+        ok, _code, rec = self._execute_segment(segment, PlaceTrial(index=-1))
+        return ok, rec.get("message") if rec else "place_exit failed"
+
+    def wait_arm_settle(self, reason="", timeout=6.0, still_eps=0.005,
+                        quiet_sec=0.4):
+        """Block until `/joint_states` stops changing, bounded.
+
+        A goal-time abort leaves the arm still decelerating when the driver
+        regains control, and a plan from a moving arm reports a start state in
+        collision that the same plan accepts a fraction of a second later.
+        Polls the persistent joint subscription; do not build a second one.
+        """
+        t0 = time.time()
+        deadline = t0 + float(timeout)
+        last = None
+        still_since = None
+        while time.time() < deadline and rclpy.ok():
+            record = self._last_joint_state
+            positions = list((record or {}).get("position") or [])
+            if positions:
+                moved = (
+                    last is None
+                    or len(last) != len(positions)
+                    or max(abs(a - b) for a, b in zip(positions, last))
+                    > float(still_eps))
+                if moved:
+                    still_since = None
+                elif still_since is None:
+                    still_since = time.time()
+                elif time.time() - still_since >= float(quiet_sec):
+                    return "still after %.2fs" % (time.time() - t0)
+                last = positions
+            time.sleep(0.05)
+        return "not still within %.1fs (%s)" % (timeout, reason or "settle")
+
+    def home_arm_code(self):
+        """Reason code for the last `_home_arm`, or "" when it returned."""
+        state = dict(self._home_arm_state or {})
+        if not state or state.get("ok"):
+            return ""
+        if not state.get("exit_ok"):
+            return ("EXIT_FAILED_RECOVERED" if state.get("goto_ok")
+                    else "EXIT_FAILED_STUCK")
+        return "GOTO_FAILED"
 
     def _home_arm(self):
         suction, _err = self.suction_xyz()
         notes = []
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
+        exit_ok = True
         if suction is not None and float(suction[0]) > 0.2:
             exit_ok, exit_msg = self._exit_to_portal()
             notes.append("exit=%s" % exit_msg)
             if not exit_ok:
-                return False, "; ".join(notes), None
+                # An aborted exit leaves the arm mid-path, usually still
+                # inside the container. Returning here is what left trials 1
+                # and 2 of motion_occ/2026-09-21_1838 planning from that pose
+                # and failing before they picked anything. goto_observe is an
+                # FJT to a fixed joint vector and does not depend on the
+                # portal pose, so it is still worth attempting once the arm
+                # has stopped moving. The exit failure is still reported.
+                notes.append("settle=%s" % self.wait_arm_settle("place_exit"))
         goto_ok, goto_msg, result = self.goto_observe()
         notes.append("goto=%s" % goto_msg)
         dt_wall = time.time() - t_wall0
@@ -262,7 +380,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         rtf = (dt_ros / dt_wall) if dt_wall > 1e-3 else 0.0
         notes.append("rtf=%.3f (sim %.2fs / wall %.2fs)" % (
             rtf, dt_ros, dt_wall))
-        return goto_ok, "; ".join(notes), result
+        ok = bool(exit_ok and goto_ok)
+        self._home_arm_state = {
+            "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok)}
+        return ok, "; ".join(notes), result
 
     def graph_error(self):
         err = super().graph_error()
@@ -303,10 +424,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return sample
 
     def _gz_box_pose(self, model=None):
-        model = str(model or self._box_model or "")
-        if not model:
-            payload = _parse_json(self._current_box_topic.get("payload")) or {}
-            model = str(payload.get("model_name") or "")
+        model = str(model or self._box_model or "") or self.gt_model_name()
         if not model:
             return None
         try:
@@ -377,6 +495,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         request = GetPlanningScene.Request()
         request.components.components = int(
             PlanningSceneComponents.WORLD_OBJECT_NAMES
+            | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
+            | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
             | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
         response = self.call_srv(self._get_scene, request, timeout=5.0)
@@ -384,13 +504,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return {"error": "get_planning_scene timeout"}
         scene = response.scene
         acm = scene.allowed_collision_matrix
-        return {
-            "world_objects": [obj.id for obj in scene.world.collision_objects],
-            "attached": [
-                a.object.id for a in scene.robot_state.attached_collision_objects],
+        summary = summarize_planning_scene(scene)
+        summary.update({
             "acm_names": list(acm.entry_names),
             "place_state": self._place_state,
-        }
+        })
+        return summary
 
     def _follow_skipped(self):
         events = dict(self._vacuum_events or {})
@@ -430,9 +549,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def _execute_segment(self, segment, trial):
         t0 = time.time()
+        if self._last_joint_state:
+            stamp0 = float(self._last_joint_state["stamp"])
+        else:
+            stamp0 = self.ros_now_sec()
+        name = str(segment.name)
+        if getattr(self, "_segment_exec_name", None) != name:
+            self._segment_exec_name = name
+            self._segment_exec_t0 = stamp0
+        self._joint_ring_horizon_sec = joint_ring_horizon_sec()
         before = self._sample_tf_box("before_%s" % segment.name)
         ok_i1, code = self._check_i1()
-        if not ok_i1 and segment.name != "retreat":
+        if not ok_i1 and segment.name not in ("retreat", "place_exit"):
             return False, code, None
         if self._args.plan_only:
             probe = self._probe.probe_segment(
@@ -492,7 +620,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "box_gz_before": before.get("box_gz"),
             "box_gz_after": after.get("box_gz"),
             "vacuum": after.get("vacuum"),
+            "joint_ring_t0": self._segment_exec_t0,
         }
+        rec["boundary"] = load_latest_boundary(
+            os.environ.get("MOTION_BOUNDARY_DUMP", ""))
         self._segments_log.append(rec)
         self.get_logger().info(
             "place %s ok=%s frac=%.3f f_ompl=%s vac=%s"
@@ -601,11 +732,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         }
 
     def _on_joint_state(self, msg):
-        self._last_joint_state = {
+        record = {
             "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
             "name": list(msg.name),
             "position": [float(v) for v in msg.position],
         }
+        self._last_joint_state = record
+        self._joint_ring.append(record)
+        if self._segment_exec_t0 is not None:
+            self._joint_ring_horizon_sec = max(
+                self._joint_ring_horizon_sec,
+                joint_ring_horizon_sec(
+                    record["stamp"] - float(self._segment_exec_t0)))
+        prune_joint_ring(
+            self._joint_ring, record["stamp"], self._joint_ring_horizon_sec)
 
     @staticmethod
     def _segment_record(segment):
@@ -661,6 +801,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         with open(os.path.join(dest, "segments.jsonl"), "w", encoding="utf-8") as handle:
             for row in self._segments_log:
                 handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+        self._freeze_motion_replay(dest, trial)
         with open(os.path.join(dest, "state_timeline.jsonl"), "w", encoding="utf-8") as handle:
             for row in self._timeline:
                 handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
@@ -692,6 +833,118 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 handle.write("\n")
         return dest
 
+    def _freeze_motion_replay(self, dest, trial):
+        """T2 motion/perception bundle: planned traj, scene geometry, joints."""
+        replay_dir = os.path.join(dest, "replay")
+        os.makedirs(replay_dir, exist_ok=True)
+        artifacts = {}
+        missing = []
+        boundary = load_latest_boundary(
+            os.environ.get("MOTION_BOUNDARY_DUMP", ""))
+        if boundary:
+            with open(os.path.join(replay_dir, "last_boundary.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump(boundary, handle, indent=2, sort_keys=True,
+                          default=str)
+                handle.write("\n")
+            artifacts["last_boundary"] = "replay/last_boundary.json"
+            if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
+                missing.append("trajectory")
+        else:
+            missing.append("last_boundary")
+        scene = self._scene_snapshot()
+        with open(os.path.join(replay_dir, "planning_scene.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(scene, handle, indent=2, sort_keys=True, default=str)
+            handle.write("\n")
+        artifacts["planning_scene"] = "replay/planning_scene.json"
+        if scene.get("error"):
+            missing.append("planning_scene")
+        fail = str(getattr(trial, "fail_code", "") or "")
+        if fail:
+            joints = joint_ring_from(
+                getattr(self, "_joint_ring", ()),
+                getattr(self, "_segment_exec_t0", None))
+        else:
+            joints = list(getattr(self, "_joint_ring", ()) or ())
+        with open(os.path.join(replay_dir, "joint_ring.jsonl"), "w",
+                  encoding="utf-8") as handle:
+            for row in joints:
+                handle.write(json.dumps(row, sort_keys=True) + "\n")
+        artifacts["joint_ring"] = "replay/joint_ring.jsonl"
+        if not joints:
+            missing.append("joint_ring")
+        surface = getattr(self, "_surface_2d", None)
+        if surface:
+            with open(os.path.join(replay_dir, "surface_2d.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump(surface, handle, indent=2, sort_keys=True,
+                          default=str)
+                handle.write("\n")
+            artifacts["surface_2d"] = "replay/surface_2d.json"
+        # Node-side failure capture (occ snapshot + source cloud + depth),
+        # referenced by the boundary record's "capture" block. Listed in
+        # artifacts but never in missing this wave: absence must not flip
+        # replay_possible before the capture has proven reliable in sim.
+        capture = (boundary or {}).get("capture") or {}
+        for key in ("surface_2d_dump", "sidecar"):
+            src = capture.get(key)
+            if src and os.path.isfile(src):
+                shutil.copy(src, os.path.join(
+                    replay_dir, "capture_%s" % os.path.basename(src)))
+                artifacts["capture_%s" % key] = (
+                    "replay/capture_%s" % os.path.basename(src))
+        for key in ("cloud", "depth"):
+            block = capture.get(key) or {}
+            src = block.get("path")
+            if src and os.path.isfile(src):
+                shutil.copy(src, os.path.join(
+                    replay_dir, "capture_%s" % os.path.basename(src)))
+                artifacts["capture_%s" % key] = (
+                    "replay/capture_%s" % os.path.basename(src))
+        if capture.get("missing"):
+            trial.extras.setdefault("replay", {})[
+                "capture_missing"] = list(capture["missing"])
+        suction, serr = self.suction_xyz()
+        perception = {
+            "suction_xyz": suction,
+            "suction_error": serr,
+            "pick_detection": self._last_pick_detection,
+            "gz_box": self._gz_box_pose() if hasattr(self, "_gz_box_pose")
+            else None,
+        }
+        with open(os.path.join(replay_dir, "perception_refs.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(perception, handle, indent=2, sort_keys=True, default=str)
+            handle.write("\n")
+        artifacts["perception_refs"] = "replay/perception_refs.json"
+        fail = str(getattr(trial, "fail_code", "") or "")
+        stage = "motion"
+        if fail.startswith("PLACE_PLAN_"):
+            stage = fail[len("PLACE_PLAN_"):]
+        elif fail.startswith("EXIT_FAILED_"):
+            stage = "place_exit"
+        elif fail == "GOTO_FAILED":
+            if any(row.get("name") == "place_exit" for row in self._segments_log):
+                stage = "place_exit"
+            else:
+                stage = "goto_observe"
+        elif self._segments_log:
+            stage = str(self._segments_log[-1].get("name") or "motion")
+        manifest = replay_manifest(
+            "trial_%02d" % int(getattr(trial, "index", 0) or 0),
+            str(getattr(trial, "fail_code", "") or ""),
+            stage, artifacts, missing)
+        with open(os.path.join(replay_dir, "manifest.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        trial.extras.setdefault("replay", {})["dir"] = replay_dir
+        trial.extras["replay"]["capture_complete"] = manifest["capture_complete"]
+        trial.extras["replay"]["replay_possible"] = manifest["replay_possible"]
+        trial.extras["replay"]["stage"] = stage
+        return manifest
+
     def _abort(self, trial, code, carrying, extra=None):
         trial.fail_code = code
         if carrying:
@@ -712,8 +965,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._follow_skipped0 = self._follow_skipped()
         extras = {"slot.json": slot_meta}
         if not self._box_model:
-            payload = _parse_json(self._current_box_topic.get("payload")) or {}
-            self._box_model = str(payload.get("model_name") or "")
+            self._box_model = self.gt_model_name()
         extras["box_model"] = self._box_model
         if not getattr(self, "_keep_placed", False):
             self._clear_smoke_slot(slot, delete_model=False)
@@ -894,8 +1146,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not self._args.plan_only:
             goto_ok, goto_msg, _ = self._home_arm()
             trial.extras["return_observe"] = goto_msg
+            trial.extras["exit_yaw"] = dict(self._exit_yaw or {})
             if not goto_ok:
-                trial.fail_code = "GOTO_FAILED"
+                trial.fail_code = self.home_arm_code()
         trial.place_state = self._place_state
         self._dump_place(trial, extra=extras, debug=debug)
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
@@ -922,6 +1175,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._timeline = []
         self._segments_log = []
         self._tf_trace = []
+        self._segment_exec_t0 = None
+        self._segment_exec_name = None
+        self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._place_state = "INIT"
         self._box_model = ""
         self._keep_placed = bool(keep_placed)
@@ -971,7 +1227,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
         goto_ok, goto_msg, _ = self._home_arm()
         if not goto_ok:
-            trial.fail_code = "GOTO_FAILED"
+            trial.fail_code = self.home_arm_code()
             trial.extras["goto"] = goto_msg
             return None
         if already_spawned:
@@ -1051,6 +1307,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = place_err
             return None
         if self._args.use_vacuum:
+            sync_ok, sync_msg, sync_gen = self.sync_pickup_geometry(pick_msg)
+            trial.extras["payload_sync"] = {
+                "ok": sync_ok, "message": sync_msg, "generation": sync_gen}
+            if not sync_ok:
+                trial.fail_code = "PAYLOAD_SYNC_FAILED"
+                return None
             scene_ok, scene_msg = self.add_scene_box(pick_msg)
             trial.extras["scene_add"] = scene_msg
             if not scene_ok:

@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
-"""Parse /luggage/current_box JSON (no ROS).
+"""Parse /luggage/current_box JSON (no ROS). Schema 2.
 
-The spawner publishes top-level width/depth/height plus pose, not a nested
-``size`` dict. ClearCurrentBox publishes ``{"id": "", "generation": N}``.
+The latched topic carries instance identity plus the perception MEASURED
+geometry only. GT spawn fields (size/pose/mass/model_name) are behind the
+``/pickup_box_spawner/get_current_box`` pull service for sim physics
+backends, eval fixtures, scoring, and viz — chain modules must not read
+them (docs/architecture/privilege_boundary.md).
+
+Shapes:
+  measured instance: {"schema": 2, "id": "box_...", "generation": N,
+                      "measured": {"width", "depth", "height",
+                                   "height_source", "yaw_valid",
+                                   "stamp_sec"}}
+  cleared platform:  {"schema": 2, "id": "", "generation": N}
 """
 
 from __future__ import division
@@ -10,63 +20,68 @@ from __future__ import division
 import json
 
 
-def box_from_current_box_payload(data):
-    """Return a gate-ready box dict, or None when the platform is empty.
-
-    ``None`` covers a missing payload, a clear message (empty id / no
-    model_name), and a record that lacks width/depth/height.
-    """
+def identity_from_current_box_payload(data):
+    """Return ``(box_id, generation)``; empty id means no current box."""
     if not isinstance(data, dict):
-        return None
-    model_name = str(data.get("model_name") or "")
+        return "", 0
     box_id = str(data.get("id") or "")
-    if not model_name and not box_id:
-        return None
-    try:
-        width = float(data["width"])
-        depth = float(data["depth"])
-        height = float(data["height"])
-    except (KeyError, TypeError, ValueError):
-        return None
-    pose = data.get("pose") or {}
-    position = pose.get("position") or {}
-    orientation = pose.get("orientation") or {}
     try:
         generation = int(data.get("generation") or 0)
     except (TypeError, ValueError):
         generation = 0
+    return box_id, generation
+
+
+def measured_from_current_box_payload(data):
+    """Return the measured-geometry dict, or None when unmeasured.
+
+    Keys: ``width``/``depth``/``height`` (m, PCA order — width is the
+    larger footprint extent), ``height_source`` (DetectedLuggage constant),
+    ``yaw_valid``, ``generation``. None covers a cleared platform, a
+    spawned-but-unsynced instance, and malformed records.
+    """
+    if not isinstance(data, dict):
+        return None
+    measured = data.get("measured")
+    if not isinstance(measured, dict):
+        return None
     try:
-        mass_kg = float(data.get("mass_kg") or 0.0)
+        width = float(measured["width"])
+        depth = float(measured["depth"])
+        height = float(measured["height"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    try:
+        height_source = int(measured.get("height_source") or 0)
     except (TypeError, ValueError):
-        mass_kg = 0.0
+        height_source = 0
+    _box_id, generation = identity_from_current_box_payload(data)
     return {
-        "id": box_id,
-        "model_name": model_name,
-        "size": [width, depth, height],
-        "mass_kg": mass_kg,
-        "xyz": [
-            float(position.get("x", 0.0)),
-            float(position.get("y", 0.0)),
-            float(position.get("z", 0.0)),
-        ],
-        "quat": [
-            float(orientation.get("x", 0.0)),
-            float(orientation.get("y", 0.0)),
-            float(orientation.get("z", 0.0)),
-            float(orientation.get("w", 1.0)),
-        ],
+        "width": width,
+        "depth": depth,
+        "height": height,
+        "height_source": height_source,
+        "yaw_valid": bool(measured.get("yaw_valid")),
         "generation": generation,
     }
 
 
-def parse_current_box_json(text):
-    """Parse a JSON string (or dict) into ``box_from_current_box_payload``."""
+def identity_from_current_box_json(text):
+    """``identity_from_current_box_payload`` for a JSON string (or dict)."""
+    return identity_from_current_box_payload(_loads(text))
+
+
+def measured_from_current_box_json(text):
+    """``measured_from_current_box_payload`` for a JSON string (or dict)."""
+    return measured_from_current_box_payload(_loads(text))
+
+
+def _loads(text):
     if isinstance(text, dict):
-        return box_from_current_box_payload(text)
+        return text
     if not text:
         return None
     try:
-        data = json.loads(text)
+        return json.loads(text)
     except (TypeError, ValueError):
         return None
-    return box_from_current_box_payload(data)

@@ -15,7 +15,9 @@ Hard rules:
   `geometry_hash` from the kernel.
 - AABB storage is allowed only for indexing, broad phase, and array allocation.
   Any reported usable, free, reachable, blocked, covered, or placeable volume
-  must be clipped to the hull first.
+  must be clipped to the hull first. Offline EMS cuboids are AABB indexes of
+  empty tiles; their reported free, regularity, and blocked-deep volumes use
+  `aabb_intersection_volume`.
 - Placement and motion feasibility use the complete oriented payload box or
   swept box. Center-point checks are insufficient.
 - Hull filtering happens before ranking, retention, `top_n`, or

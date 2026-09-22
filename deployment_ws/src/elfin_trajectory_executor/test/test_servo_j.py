@@ -4,8 +4,11 @@ import math
 import unittest
 
 from elfin_trajectory_executor.servo_j import (
+    SERVO_MAX_ACCEL_DEG,
+    SERVO_MAX_DECEL_DEG,
     densify_servo_j_path,
     fjt_to_servo_j_deg,
+    limit_servo_braking,
     servo_j_hold_count,
 )
 
@@ -46,6 +49,44 @@ class ServoJPathTest(unittest.TestCase):
         for prev, nxt in zip(path, path[1:]):
             delta = max(abs(nxt[i] - prev[i]) for i in range(6))
             self.assertLessEqual(delta, max_step + 1e-9)
+
+    def test_braking_limit_stretches_a_hard_stop(self):
+        # 40 deg/s down to 0 in one 20 ms step is 2000 deg/s^2.
+        start = [0.0] * 6
+        mid = [0.8, 0.0, 0.0, 0.0, 0.0, 0.0]
+        end = [0.8, 0.0, 0.0, 0.0, 0.0, 0.0]
+        path = limit_servo_braking([start, mid, end], 0.02, SERVO_MAX_DECEL_DEG)
+        self.assertGreater(len(path), 3)
+        self.assertEqual(path[0], start)
+        self.assertAlmostEqual(path[-1][0], 0.8)
+        prev_v = 0.0
+        dt = 0.02
+        for prev, nxt in zip(path, path[1:]):
+            vel = (nxt[0] - prev[0]) / dt
+            if prev_v * vel < 0.0:
+                delta = abs(prev_v) + abs(vel)
+            else:
+                delta = abs(abs(prev_v) - abs(vel))
+            self.assertLessEqual(delta / dt, SERVO_MAX_ACCEL_DEG + 1e-4)
+            self.assertLessEqual(delta / dt, SERVO_MAX_DECEL_DEG + 1e-4)
+            prev_v = vel
+        # The hold repeats the last point, so the stream must already be stopped.
+        self.assertLessEqual(abs(prev_v) / dt, SERVO_MAX_DECEL_DEG + 1e-4)
+
+    def test_braking_limit_keeps_joint_path(self):
+        path = []
+        for index in range(15):
+            row = [0.0] * 6
+            row[0] = index * 0.8
+            row[1] = index * 0.2
+            path.append(row)
+        path.append(list(path[-1]))
+        limited = limit_servo_braking(path, 0.02, SERVO_MAX_DECEL_DEG)
+        self.assertAlmostEqual(limited[-1][0], path[-1][0])
+        self.assertAlmostEqual(limited[-1][1], path[-1][1])
+        for sample in limited:
+            if sample[0] > 1e-3:
+                self.assertAlmostEqual(sample[1] / sample[0], 0.25, places=3)
 
     def test_hold_covers_lookahead_window(self):
         self.assertEqual(servo_j_hold_count(0.1, 0.02), 5)

@@ -5,6 +5,7 @@ import unittest
 
 from luggage_planning.trajectory_timing import (
     HARDWARE_ACC_RAD,
+    HARDWARE_DECEL_RAD,
     HARDWARE_VEL_RAD,
     cartesian_joint_limits,
     time_parameterize_cartesian,
@@ -68,6 +69,18 @@ class TrajectoryTimingTest(unittest.TestCase):
         for acc in timed.accelerations_rad:
             self.assertLessEqual(max(abs(a) for a in acc), a_max + 1e-6)
         self.assertGreater(timed.duration, 20.0 * math.pi / 180.0 / totg_acc)
+
+    def test_live_path_ramps_at_20_deg_s2(self):
+        timed = time_parameterize_cartesian(
+            [_q(0.0), _q(math.radians(40.0))], 0.6, 0.6)
+        self.assertAlmostEqual(timed.a_max, math.radians(20.0))
+        self.assertAlmostEqual(timed.a_decel, math.radians(20.0))
+        self.assertAlmostEqual(timed.a_max, HARDWARE_ACC_RAD)
+        self.assertAlmostEqual(timed.a_decel, HARDWARE_DECEL_RAD)
+        end_acc = max(abs(a) for a in timed.accelerations_rad[-1])
+        start_acc = max(abs(a) for a in timed.accelerations_rad[0])
+        self.assertAlmostEqual(start_acc, HARDWARE_ACC_RAD, places=6)
+        self.assertAlmostEqual(end_acc, HARDWARE_DECEL_RAD, places=6)
 
 
 if __name__ == "__main__":

@@ -31,9 +31,12 @@ from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool
 
 from luggage_msgs.msg import VacuumState
-from luggage_msgs.srv import VacuumCommand
+from luggage_msgs.srv import GetCurrentBox, VacuumCommand
 
-from luggage_planning.current_box_payload import box_from_current_box_payload
+from luggage_planning.current_box_payload import (
+    identity_from_current_box_payload,
+    measured_from_current_box_payload,
+)
 from luggage_planning.vacuum_backend import (
     HardwareVacuumBackend,
     SimVacuumBackend,
@@ -198,13 +201,19 @@ class VacuumControllerNode(Node):
         self._follow_lock = threading.Lock()
         self._follow_skipped = 0
 
-        # Current box from the spawner (transient-local JSON).
-        self._box = None
+        # Box instance from the spawner (transient-local JSON, schema 2):
+        # identity + MEASURED geometry only. GT for the sim physics path is
+        # pulled from get_current_box at attach time.
+        self._identity = ("", 0)
+        self._measured = None
         box_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(
             String, "/luggage/current_box", self._on_current_box, box_qos,
+            callback_group=group)
+        self._get_box_cli = self.create_client(
+            GetCurrentBox, "/pickup_box_spawner/get_current_box",
             callback_group=group)
 
         state_qos = QoSProfile(
@@ -268,16 +277,54 @@ class VacuumControllerNode(Node):
             data = json.loads(msg.data)
         except ValueError:
             return
-        parsed = box_from_current_box_payload(data)
-        self._box = parsed
-        if parsed:
-            size = parsed["size"]
-            self.get_logger().info(
-                "current_box model=%s size=%.3fx%.3fx%.3f gen=%s"
-                % (parsed["model_name"], size[0], size[1], size[2],
-                   parsed["generation"]))
+        self._identity = identity_from_current_box_payload(data)
+        self._measured = measured_from_current_box_payload(data)
+        if self._identity[0]:
+            if self._measured is not None:
+                self.get_logger().info(
+                    "current_box id=%s measured=%.3fx%.3fx%.3f gen=%d"
+                    % (self._identity[0], self._measured["width"],
+                       self._measured["depth"], self._measured["height"],
+                       self._identity[1]))
+            else:
+                self.get_logger().info(
+                    "current_box id=%s gen=%d (no measured geometry yet)"
+                    % (self._identity[0], self._identity[1]))
         else:
             self.get_logger().info("current_box cleared")
+
+    def _pull_gt_box(self, timeout=5.0):
+        """Pull the GT spawn record for the CURRENT instance epoch.
+
+        Sim-physics context only (gate contact, retention mass, gz follow).
+        The MoveIt attach geometry comes from the topic's measured record.
+        Returns None unless the pulled generation matches the latched
+        identity, so a spawn swap between topic and pull cannot mix epochs.
+        """
+        if not self._get_box_cli.wait_for_service(timeout_sec=timeout):
+            return None
+        event = threading.Event()
+        future = self._get_box_cli.call_async(GetCurrentBox.Request())
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout):
+            return None
+        resp = future.result()
+        if resp is None or not resp.success:
+            return None
+        if int(resp.generation) != int(self._identity[1]):
+            return None
+        box = resp.box
+        position = box.pose.position
+        orientation = box.pose.orientation
+        return {
+            "model_name": str(resp.model_name or ""),
+            "mass_kg": float(resp.mass_kg or 0.0),
+            "size": [float(box.width), float(box.depth), float(box.height)],
+            "xyz": [float(position.x), float(position.y), float(position.z)],
+            "quat": [float(orientation.x), float(orientation.y),
+                     float(orientation.z), float(orientation.w)],
+            "generation": int(resp.generation),
+        }
 
     def _panel_pose(self):
         try:
@@ -290,11 +337,6 @@ class VacuumControllerNode(Node):
         t = transform.transform
         return ([t.translation.x, t.translation.y, t.translation.z],
                 [t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w])
-
-    def _box_pose_lists(self):
-        if not self._box:
-            return None, None
-        return list(self._box["xyz"]), list(self._box["quat"])
 
     # ------------------------------------------------------------------
 
@@ -321,7 +363,6 @@ class VacuumControllerNode(Node):
             return response
 
         panel = self._panel_pose()
-        box_xyz, box_quat = self._box_pose_lists()
         if panel is None:
             response.success = False
             response.message = "VACUUM_BACKEND_ERROR: panel TF unavailable"
@@ -329,15 +370,39 @@ class VacuumControllerNode(Node):
             self._publish_state()
             return response
 
-        size = list(self._box["size"]) if self._box else None
-        mass_kg = self._box["mass_kg"] if self._box else 0.0
+        # Planning artifacts consume the MEASURED geometry only. Refuse to
+        # attach without it: falling back to the GT spawn size would put
+        # privileged geometry into the MoveIt planning scene.
+        measured = self._measured
+        if measured is None:
+            response.success = False
+            response.message = (
+                "ATTACH_REFUSED: no measured geometry synced "
+                "(call /pickup_box_spawner/sync_detected_pickup_box first)")
+            self._last_fail_reason = response.message
+            self._publish_state()
+            self._publish_event("attach", False, response.message)
+            return response
 
-        radius = 0.0
-        if size:
-            radius = 0.5 * math.sqrt(sum(float(v) ** 2 for v in size))
+        # Sim-physics context (contact gate, retention, gz follow) may use
+        # the GT spawn record, pulled for the current instance epoch.
+        gt = self._pull_gt_box()
+        if gt is None:
+            response.success = False
+            response.message = (
+                "VACUUM_BACKEND_ERROR: GT pull unavailable for generation %d"
+                % self._identity[1])
+            self._last_fail_reason = response.message
+            self._publish_state()
+            self._publish_event("attach", False, response.message)
+            return response
+
+        size = list(gt["size"])
+        mass_kg = gt["mass_kg"]
+        radius = 0.5 * math.sqrt(sum(float(v) ** 2 for v in size))
 
         gate = self._gate.evaluate(
-            panel[0], panel[1], box_xyz, size, mass_kg, radius)
+            panel[0], panel[1], gt["xyz"], size, mass_kg, radius)
         self._last_gate = gate
         if not gate.ok:
             self._vacuum_on = False
@@ -349,16 +414,21 @@ class VacuumControllerNode(Node):
             return response
 
         context = {
-            "model_name": self._box.get("model_name", ""),
+            "model_name": gt["model_name"],
             "panel_xyz": panel[0], "panel_quat": panel[1],
-            "box_xyz": box_xyz, "box_quat": box_quat,
-            "box_size": size,
+            "box_xyz": gt["xyz"], "box_quat": gt["quat"],
+            # MoveIt attach geometry: perception-measured, not GT.
+            "scene_box_size": [
+                measured["width"], measured["depth"], measured["height"]],
         }
         ok, message = self._backend.attach(context)
         self._vacuum_on = ok
         self._last_fail_reason = "" if ok else message
         self._publish_state()
-        self._publish_event("attach", ok, message)
+        attach_note = "%s; scene=%.3fx%.3fx%.3f@gen%d(measured)" % (
+            message, measured["width"], measured["depth"],
+            measured["height"], measured["generation"])
+        self._publish_event("attach", ok, attach_note)
         response.success = ok
         response.message = message
         return response

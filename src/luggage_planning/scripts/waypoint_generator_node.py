@@ -38,6 +38,7 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
     xyz_world_to_base_link,
 )
+from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_perception.corridor_audit import (
     corridor_aabb,
     corridor_surface_max,
@@ -121,6 +122,7 @@ class WaypointGeneratorNode(Node):
         ceiling_z = container_inner_ceiling_z(self._scene_config)
         self._inner_size = [
             float(inner[0]), float(inner[1]), float(ceiling_z - floor_z)]
+        self._hull = descriptor_from_scene_config(self._scene_config)
         self._committed_boxes = []
 
         self._frame_window = LockedStampWindow(
@@ -189,7 +191,8 @@ class WaypointGeneratorNode(Node):
         local = _point_in_container_link(base, self._scene_config)
         aabb = corridor_aabb(
             local, [slot.width, slot.depth, slot.height],
-            self._inner_size, [slot.width, slot.depth, slot.height])
+            self._inner_size, [slot.width, slot.depth, slot.height],
+            hull=self._hull)
         surface_local = corridor_surface_max(self._committed_boxes, aabb)
         if surface_local is None:
             return None

@@ -23,6 +23,7 @@ from geometry_msgs.msg import Point, Quaternion
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from luggage_msgs.srv import GetCurrentBox
 from std_msgs.msg import ColorRGBA, String
 from visualization_msgs.msg import Marker, MarkerArray
 
@@ -122,6 +123,10 @@ class SceneVizNode(Node):
         self.create_subscription(
             String, "/luggage/perception/detection/latest",
             self._on_detection, _latch_qos())
+        # GT wireframe source: the pull service (viz is an allowed GT
+        # consumer); /luggage/current_box only carries identity + measured.
+        self._gt_cli = self.create_client(
+            GetCurrentBox, "/pickup_box_spawner/get_current_box")
 
         period = float(self.get_parameter("republish_period_sec").value)
         self.create_timer(max(0.5, period), self._publish_scene)
@@ -221,22 +226,44 @@ class SceneVizNode(Node):
             ColorRGBA(r=0.45, g=0.45, b=0.48, a=0.55))
 
     def _on_current_box(self, msg):
-        stamp = _stamp_now(self)
-        array = MarkerArray()
-        array.markers.append(_delete_all(self._world, stamp, "pickup_box"))
         try:
             payload = json.loads(msg.data) if msg.data else {}
         except ValueError:
             payload = {}
-        if not payload or "pose" not in payload:
+        box_id = (
+            str(payload.get("id") or "") if isinstance(payload, dict) else "")
+        generation = (
+            int(payload.get("generation") or 0)
+            if isinstance(payload, dict) else 0)
+        stamp = _stamp_now(self)
+        array = MarkerArray()
+        array.markers.append(_delete_all(self._world, stamp, "pickup_box"))
+        if not box_id or not self._gt_cli.service_is_ready():
             self._box_pub.publish(array)
             return
-        pos = payload["pose"]["position"]
-        ori = payload["pose"]["orientation"]
-        position = (pos["x"], pos["y"], pos["z"])
-        quat = (ori["x"], ori["y"], ori["z"], ori["w"])
-        size = (payload["width"], payload["depth"], payload["height"])
+        # Async pull: single-threaded spin cannot block in this callback.
+        future = self._gt_cli.call_async(GetCurrentBox.Request())
+        future.add_done_callback(
+            lambda f, gen=int(generation): self._render_gt_box(f, gen))
+
+    def _render_gt_box(self, future, generation):
+        response = future.result()
+        if response is None or not response.success:
+            return
+        if int(response.generation) != generation:
+            return  # instance swapped between topic and pull
+        box = response.box
+        stamp = _stamp_now(self)
+        position = (
+            float(box.pose.position.x), float(box.pose.position.y),
+            float(box.pose.position.z))
+        quat = (
+            float(box.pose.orientation.x), float(box.pose.orientation.y),
+            float(box.pose.orientation.z), float(box.pose.orientation.w))
+        size = (float(box.width), float(box.depth), float(box.height))
         color = _rgba_bgr(COLOR_GT_FALLBACK_BGR, 0.95)
+        array = MarkerArray()
+        array.markers.append(_delete_all(self._world, stamp, "pickup_box"))
         array.markers.append(_obb_wireframe(
             self._world, stamp, "pickup_box", 0, position, quat, size, color))
         sphere = Marker()
@@ -246,8 +273,8 @@ class SceneVizNode(Node):
         sphere.id = 1
         sphere.type = Marker.SPHERE
         sphere.action = Marker.ADD
-        sphere.pose.position = Point(x=float(position[0]), y=float(position[1]),
-                                     z=float(position[2]))
+        sphere.pose.position = Point(x=position[0], y=position[1],
+                                     z=position[2])
         sphere.pose.orientation = Quaternion(w=1.0)
         sphere.scale.x = sphere.scale.y = sphere.scale.z = 0.05
         sphere.color = color
@@ -260,12 +287,12 @@ class SceneVizNode(Node):
         label.type = Marker.TEXT_VIEW_FACING
         label.action = Marker.ADD
         label.pose.position = Point(
-            x=float(position[0]), y=float(position[1]),
-            z=float(position[2] + size[2] * 0.5 + 0.08))
+            x=position[0], y=position[1],
+            z=position[2] + size[2] * 0.5 + 0.08)
         label.pose.orientation.w = 1.0
         label.scale.z = 0.06
         label.color = color
-        label.text = "GT %s" % payload.get("id", "box")
+        label.text = "GT %s" % (box.id or "box")
         array.markers.append(label)
         self._box_pub.publish(array)
 

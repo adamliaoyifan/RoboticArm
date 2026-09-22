@@ -5,6 +5,12 @@ from __future__ import division
 
 import math
 
+from luggage_description.container_geometry import (
+    contains_point,
+    cuboid_from_inner_size,
+    hull_edges,
+    normalize_descriptor,
+)
 from luggage_perception.voxel_log_odds import LogOddsGrid
 
 try:
@@ -54,6 +60,10 @@ class CargoVolumeMapper:
             None if max_raycast_points is None else max(1, int(max_raycast_points))
         )
         self._hull_local_inside = hull_local_inside
+        self._hull = self._load_hull()
+        stamped = self._hull.descriptor()
+        self.geometry_descriptor = stamped
+        self.geometry_hash = str(stamped["geometry_hash"])
         self._active = None
         self._grid = None
         self._occupancy = None
@@ -61,6 +71,20 @@ class CargoVolumeMapper:
         self._placed_boxes = []
         self._build_active_mask()
         self.reset()
+
+    def _load_hull(self):
+        if self.geometry_descriptor:
+            try:
+                return normalize_descriptor(self.geometry_descriptor)
+            except (TypeError, ValueError, KeyError) as exc:
+                raise ValueError(
+                    "invalid geometry_descriptor: %s" % exc) from exc
+        if self.geometry_hash:
+            raise ValueError(
+                "geometry_hash without geometry_descriptor is invalid")
+        floor_z = self.center[2] - 0.5 * self.inner_h
+        return cuboid_from_inner_size(
+            [self.inner_l, self.inner_w, self.inner_h], floor_z=floor_z)
 
     def reset(self, preserve_placed=False):
         saved = list(self._placed_boxes) if preserve_placed else []
@@ -81,16 +105,22 @@ class CargoVolumeMapper:
         self._instance_ids = [0] * total
 
     def _build_active_mask(self):
+        """Index the enclosing AABB; deactivate voxels outside the 7-face hull."""
         total = self.nx * self.ny * self.nz
-        if self._hull_local_inside is None:
-            self._active = None
-            return
         self._active = [True] * total
         for iz in range(self.nz):
             for iy in range(self.ny):
                 for ix in range(self.nx):
-                    if not self._hull_local_inside(
-                            *self._voxel_center_local(ix, iy, iz)):
+                    local = self._voxel_center_local(ix, iy, iz)
+                    # Mapper-local origin is the usable-volume center; the
+                    # kernel hull is ``container_link``. Do not use mapper
+                    # world here: eval dumps may place the grid in base_link.
+                    mid_z = 0.5 * (self._hull.floor_z + self._hull.ceiling_z)
+                    inside = contains_point(
+                        self._hull, (local[0], local[1], local[2] + mid_z))
+                    if inside and self._hull_local_inside is not None:
+                        inside = self._hull_local_inside(*local)
+                    if not inside:
                         self._active[self._index(ix, iy, iz)] = False
 
     def _index(self, ix, iy, iz):
@@ -142,21 +172,14 @@ class CargoVolumeMapper:
         return wx, wy, wz
 
     def _edge_segments_local(self):
-        half_l = self.inner_l * 0.5
-        half_w = self.inner_w * 0.5
-        half_h = self.inner_h * 0.5
+        """Hull edges in mapper-local coordinates (volume-center origin)."""
+        mid_z = 0.5 * (self._hull.floor_z + self._hull.ceiling_z)
         segments = []
-
-        for y in (-half_w, half_w):
-            for z in (-half_h, half_h):
-                segments.append(((-half_l, y, z), (half_l, y, z)))
-        for x in (-half_l, half_l):
-            for z in (-half_h, half_h):
-                segments.append(((x, -half_w, z), (x, half_w, z)))
-        for x in (-half_l, half_l):
-            for y in (-half_w, half_w):
-                segments.append(((x, y, -half_h), (x, y, half_h)))
-
+        for start, end in hull_edges(self._hull):
+            segments.append((
+                (start[0], start[1], start[2] - mid_z),
+                (end[0], end[1], end[2] - mid_z),
+            ))
         return segments
 
     def _sample_segment_local(self, start, end):
@@ -200,19 +223,22 @@ class CargoVolumeMapper:
         ]
 
     def _is_near_edge_local(self, local_x, local_y, local_z):
-        half_l = self.inner_l * 0.5
-        half_w = self.inner_w * 0.5
-        half_h = self.inner_h * 0.5
+        """True near a hull vertex (same role as the old AABB corner test)."""
         tol = self.resolution * 1.5
-        near_faces = 0
-        for distance in (
-            abs(abs(local_x) - half_l),
-            abs(abs(local_y) - half_w),
-            abs(abs(local_z) - half_h),
-        ):
-            if distance <= tol:
-                near_faces += 1
-        return near_faces >= 2
+        tol2 = tol * tol
+        seen = set()
+        for start, end in self._edge_segments_local():
+            for vertex in (start, end):
+                key = tuple(round(v, 6) for v in vertex)
+                if key in seen:
+                    continue
+                seen.add(key)
+                dx = local_x - vertex[0]
+                dy = local_y - vertex[1]
+                dz = local_z - vertex[2]
+                if dx * dx + dy * dy + dz * dz <= tol2:
+                    return True
+        return False
 
     def mark_occupied_world(self, x, y, z, source=SOURCE_SENSOR,
                             label=0, instance_id=0):

@@ -23,6 +23,7 @@ from luggage_description.scene_tf_config_utils import (
     container_inner_ceiling_z,
     container_inner_chamfer,
     container_inner_floor_z,
+    container_inner_geometry_descriptor,
     container_inner_hull_edges_in_container,
     container_inner_y_max,
     container_opening_aperture_corners_in_container,
@@ -60,12 +61,14 @@ BOX_PALETTE = (
 def mapper_from_scene(config, resolution=DEFAULT_RESOLUTION):
     inner = container_usable_dimensions(config)
     _xyz, rpy = container_in_base_link(config)
+    descriptor = container_inner_geometry_descriptor(config)
     return CargoVolumeMapper(
         inner_size=inner,
         center_base=container_usable_center_in_base_link(config),
         yaw=float(rpy[2]),
         resolution=float(resolution),
         hull_local_inside=container_hull_local_inside_fn(config),
+        geometry_descriptor=descriptor,
     )
 
 

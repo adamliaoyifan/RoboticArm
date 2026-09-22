@@ -57,7 +57,13 @@ from .cps_parse import (
     joints_moved_deg,
     tcp_from_read_act_pos,
 )
-from .servo_j import densify_servo_j_path, servo_j_hold_count
+from .servo_j import (
+    SERVO_MAX_ACCEL_DEG,
+    SERVO_MAX_DECEL_DEG,
+    densify_servo_j_path,
+    limit_servo_braking,
+    servo_j_hold_count,
+)
 
 # ---------------------------------------------------------------------------
 # Result codes (mirrors control_msgs/action/FollowJointTrajectory constants)
@@ -167,6 +173,16 @@ def hrif_waypoint_joint(
         0,
         str(cmd_id),
     )
+
+
+def hrif_init_servo_esj(
+    cps,
+    box_id: int = BOX_ID,
+    rbt_id: int = RBT_ID,
+):
+    """Clear the servo point buffer. This CPS rejects PushServoJ with 40071
+    until InitServoEsJ has run. PushServoEsJ itself stays unused."""
+    return cps.HRIF_InitServoEsJ(box_id, rbt_id)
 
 
 def hrif_start_servo(
@@ -722,10 +738,10 @@ class HuayanInterface:
     ) -> int:
         """Execute absolute joint-degree targets with StartServo/PushServoJ.
 
-        This is an opt-in hardware backend for qualification only. It does not
-        call ServoEsJ and does not use MovePathJOL. The caller is responsible
-        for giving a fixed-grid path; every point is pushed with the same
-        ``servo_time`` period.
+        This CPS returns 40071 (ServoEsJ not initialized) on the first
+        PushServoJ unless InitServoEsJ has cleared the buffer. PushServoEsJ
+        stays unused: on this S20 it returns 20006/20007. The caller supplies
+        a fixed-grid path; every point is pushed with the same ``servo_time``.
         """
         if self._monitor_only:
             self._node.get_logger().error(
@@ -757,6 +773,14 @@ class HuayanInterface:
                 "[huayan] ServoJ densified %d -> %d points (cap %.1f deg/s)"
                 % (len(joint_path_deg), len(path), cap)
             )
+        limited = limit_servo_braking(path, servo_time, SERVO_MAX_DECEL_DEG)
+        if len(limited) != len(path):
+            self._node.get_logger().info(
+                "[huayan] ServoJ accel limited %d -> %d points "
+                "(accel/decel cap %.0f/%.0f deg/s^2)"
+                % (len(path), len(limited), SERVO_MAX_ACCEL_DEG, SERVO_MAX_DECEL_DEG)
+            )
+        path = limited
         error = self.validate_servo_j_path(path)
         if error:
             self._node.get_logger().error(f'[huayan] {error}')
@@ -785,18 +809,11 @@ class HuayanInterface:
                 self._node.get_logger().info('[huayan] ServoJ preempted.')
                 self._safe_stop()
                 return RESULT_PREEMPTED
-            n_ret = hrif_start_servo(self._cps, servo_time, lookahead_time)
-            if n_ret != 0:
-                msg = self._get_error_str(n_ret)
-                self._node.get_logger().error(
-                    f'[huayan] HRIF_StartServo failed (code {n_ret}): {msg}')
-                fsm_after, _ = self._read_fsm()
-                if fsm_after != FSM_COLLISION_STOP:
-                    self._safe_stop()
-                self._set_state(ConnectionState.ERROR)
+            if not self._open_servo_j(servo_time, lookahead_time):
                 return RESULT_ERROR
 
             next_push = time.monotonic()
+            rearmed = False
             for index, joints_deg in enumerate(stream):
                 if cancel_flag.is_set():
                     self._node.get_logger().info('[huayan] ServoJ preempted.')
@@ -806,6 +823,18 @@ class HuayanInterface:
                 if wait_s > 0.0:
                     time.sleep(wait_s)
                 n_ret = hrif_push_servo_j(self._cps, list(joints_deg))
+                # A finished ServoJ segment, or a DO command between
+                # segments, drops the EsJ session. The next segment's
+                # first push then returns 40071 even after StartServo.
+                # Re-open once and push this point again.
+                if n_ret == 40071 and not rearmed:
+                    rearmed = True
+                    self._node.get_logger().warning(
+                        "[huayan] PushServoJ %d returned 40071; "
+                        "re-initializing ServoEsJ" % index)
+                    if not self._open_servo_j(servo_time, lookahead_time):
+                        return RESULT_ERROR
+                    n_ret = hrif_push_servo_j(self._cps, list(joints_deg))
                 if n_ret != 0:
                     msg = self._get_error_str(n_ret)
                     self._node.get_logger().error(
@@ -836,6 +865,29 @@ class HuayanInterface:
         )
         self._set_state(ConnectionState.READY)
         return RESULT_SUCCESSFUL
+
+    def _open_servo_j(self, servo_time, lookahead_time):
+        """StartServo, then InitServoEsJ. Init after Start: Start can clear
+        the buffer flag that PushServoJ checks (40071)."""
+        n_ret = hrif_start_servo(self._cps, servo_time, lookahead_time)
+        if n_ret != 0:
+            msg = self._get_error_str(n_ret)
+            self._node.get_logger().error(
+                f'[huayan] HRIF_StartServo failed (code {n_ret}): {msg}')
+            fsm_after, _ = self._read_fsm()
+            if fsm_after != FSM_COLLISION_STOP:
+                self._safe_stop()
+            self._set_state(ConnectionState.ERROR)
+            return False
+        n_ret = hrif_init_servo_esj(self._cps)
+        if n_ret != 0:
+            msg = self._get_error_str(n_ret)
+            self._node.get_logger().error(
+                f'[huayan] HRIF_InitServoEsJ failed (code {n_ret}): {msg}')
+            self._safe_stop()
+            self._set_state(ConnectionState.ERROR)
+            return False
+        return True
 
     def execute(
         self,

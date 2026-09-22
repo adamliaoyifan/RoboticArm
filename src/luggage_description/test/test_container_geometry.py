@@ -10,18 +10,23 @@ import yaml
 
 from luggage_description.container_geometry import (  # noqa: E402
     aabb_intersection_volume,
+    clip_y_interval_to_hull,
     contains_oriented_box,
+    contains_oriented_box_through_aperture,
     contains_point,
+    contains_point_through_aperture,
     contains_swept_box,
     descriptor_from_scene_config,
     floor_area,
     floor_support_area,
     geometry_hash,
+    hull_edges,
     normalize_descriptor,
     payload_center_y_interval,
     polygon_area,
     sum_aabb_tiles,
     volume,
+    y_bounds_for_z_interval,
     y_max_at_z,
     yz_polygon,
 )
@@ -197,6 +202,44 @@ class TestContainerGeometry(unittest.TestCase):
                 )
             )
 
+    def test_aperture_variant_opens_only_the_minus_x_face(self):
+        """An insertion path stands in the doorway; every other face holds.
+
+        Enforcing full containment at the aperture rejects every place path:
+        the entry waypoint sits at ``x = -half_x``, so a box centred on it has
+        corners beyond that face whatever its size.
+        """
+        g = self.geometry
+        size = [0.08, 0.08, 0.08]
+        half = 0.04
+        delta = 1e-4
+        z = 1.20
+        out_of_door = [-g.half_x + half - delta, 0.0, z]
+        self.assertFalse(contains_oriented_box(g, out_of_door, size))
+        self.assertTrue(
+            contains_oriented_box_through_aperture(g, out_of_door, size))
+        # Fully outside in -X is still allowed: that is the approach.
+        self.assertTrue(contains_oriented_box_through_aperture(
+            g, [-g.half_x - 0.5, 0.0, z], size))
+        for blocked in (
+                [g.half_x - half + delta, 0.0, z],
+                [0.0, g.half_y - half + delta, z],
+                [0.0, -g.half_y + half - delta, z],
+                [0.0, 0.0, g.floor_z + half - delta],
+                [0.0, 0.0, g.ceiling_z - half + delta]):
+            self.assertFalse(
+                contains_oriented_box_through_aperture(g, blocked, size),
+                blocked)
+
+    def test_aperture_variant_still_enforces_the_chamfer(self):
+        g = self.geometry
+        z = 0.70
+        y_slant = y_max_at_z(g, z)
+        self.assertTrue(contains_point_through_aperture(
+            g, [-g.half_x - 0.2, y_slant - 1e-4, z]))
+        self.assertFalse(contains_point_through_aperture(
+            g, [-g.half_x - 0.2, y_slant + 1e-4, z]))
+
     def test_oriented_box_checks_all_corners(self):
         g = self.geometry
         self.assertTrue(contains_oriented_box(g, [0.0, -0.3, 1.1], [0.4, 0.3, 0.3]))
@@ -252,6 +295,44 @@ class TestContainerGeometry(unittest.TestCase):
         y_min, y_max = payload_center_y_interval(g, [0.4, 0.2, 0.3], 0.62, 0.82)
         self.assertLess(y_min, y_max)
         self.assertLess(y_max, 0.57)
+
+    def test_z_interval_y_clip_uses_tightest_chamfer(self):
+        g = self.geometry
+        y_min, y_max = y_bounds_for_z_interval(g, g.floor_z, g.floor_z + 0.05)
+        self.assertAlmostEqual(y_min, -g.half_y, places=9)
+        self.assertAlmostEqual(y_max, y_max_at_z(g, g.floor_z), places=9)
+        self.assertLess(y_max, g.half_y - 0.3)
+        lo, hi = clip_y_interval_to_hull(
+            g, -g.half_y, g.half_y, 0.0, 0.05, z_is_floor_relative=True)
+        self.assertAlmostEqual(lo, y_min, places=9)
+        self.assertAlmostEqual(hi, y_max, places=9)
+        cuboid = normalize_descriptor(
+            {
+                "frame_id": "container_link",
+                "length": 2.0,
+                "width": 2.0,
+                "floor_z": 0.0,
+                "ceiling_z": 2.0,
+            }
+        )
+        c_lo, c_hi = clip_y_interval_to_hull(
+            cuboid, -0.4, 0.4, 0.0, 0.5, z_is_floor_relative=True)
+        self.assertAlmostEqual(c_lo, -0.4, places=9)
+        self.assertAlmostEqual(c_hi, 0.4, places=9)
+
+    def test_hull_edges_are_seven_face_not_cuboid(self):
+        edges = hull_edges(self.geometry)
+        self.assertGreaterEqual(len(edges), 15)
+        cuboid = normalize_descriptor(
+            {
+                "frame_id": "container_link",
+                "length": 1.5,
+                "width": 2.0,
+                "floor_z": 0.4,
+                "ceiling_z": 1.9,
+            }
+        )
+        self.assertEqual(len(hull_edges(cuboid)), 12)
 
     def test_module_imports_without_ros(self):
         module = importlib.import_module("luggage_description.container_geometry")

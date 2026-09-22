@@ -61,6 +61,7 @@ from place_smoke_driver import (  # noqa: E402
     parse_args as parse_place_args,
 )
 from luggage_gazebo.place_metrics import (  # noqa: E402
+    RETURN_FAIL_CODES,
     place_ok,
     summarize,
     trial_to_dict,
@@ -224,17 +225,6 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                     if os.path.isfile(src):
                         shutil.copyfile(src, dst)
         return super()._home_arm()
-
-    def _lookup_xyz_quat(self, target, source):
-        tf_msg = self._tf_buffer.lookup_transform(
-            target, source, rclpy.time.Time(),
-            rclpy.duration.Duration(seconds=1.0))
-        t = tf_msg.transform.translation
-        r = tf_msg.transform.rotation
-        return (
-            (float(t.x), float(t.y), float(t.z)),
-            (float(r.x), float(r.y), float(r.z), float(r.w)),
-        )
 
     def _aim_from_portal(self, slot_meta, pick_msg):
         """Exit to the opening and aim camera_depth_optical_frame at the lid.
@@ -910,7 +900,7 @@ def main(argv=None):
                 "integrate": (rec.extras.get("integrate") or {}).get("success"),
             }, sort_keys=True), flush=True)
             if rec.fail_code and args.on_place_fail == "stop":
-                if rec.fail_code not in ("GOTO_FAILED", "COVERAGE_LOW"):
+                if rec.fail_code not in RETURN_FAIL_CODES + ("COVERAGE_LOW",):
                     break
         ws = os.path.normpath(os.path.join(_SCRIPTS, "..", "..", ".."))
         extra.update({
@@ -940,7 +930,8 @@ def main(argv=None):
                 or suite["hold_track_accepts"]
                 or not suite["capture_complete"]):
             return 1
-        if any(r.fail_code and r.fail_code != "GOTO_FAILED" for r in records):
+        if any(r.fail_code and r.fail_code not in RETURN_FAIL_CODES
+               for r in records):
             return 1
         return 0
     finally:

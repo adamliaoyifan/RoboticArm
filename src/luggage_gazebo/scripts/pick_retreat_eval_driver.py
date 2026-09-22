@@ -53,6 +53,7 @@ from luggage_msgs.srv import (
     DetectLuggage,
     GetCurrentBox,
     SpawnNextBox,
+    SyncPickupBox,
     VacuumCommand,
 )
 
@@ -535,6 +536,9 @@ class PickRetreatEvalDriver(Node):
             callback_group=self._group)
         self._current = self.create_client(
             GetCurrentBox, "/pickup_box_spawner/get_current_box",
+            callback_group=self._group)
+        self._sync = self.create_client(
+            SyncPickupBox, "/pickup_box_spawner/sync_detected_pickup_box",
             callback_group=self._group)
         self._detect = self.create_client(
             DetectLuggage, "/luggage_detector/detect_luggage",
@@ -1242,6 +1246,18 @@ class PickRetreatEvalDriver(Node):
         t = tf_msg.transform.translation
         return (float(t.x), float(t.y), float(t.z)), ""
 
+    def _lookup_xyz_quat(self, target, source):
+        """TF position + orientation. Raises ``TransformException``."""
+        tf_msg = self._tf_buffer.lookup_transform(
+            target, source, rclpy.time.Time(),
+            rclpy.duration.Duration(seconds=1.0))
+        t = tf_msg.transform.translation
+        r = tf_msg.transform.rotation
+        return (
+            (float(t.x), float(t.y), float(t.z)),
+            (float(r.x), float(r.y), float(r.z), float(r.w)),
+        )
+
     def add_scene_box(self, box):
         if self._scene is None:
             return False, "no planning scene client"
@@ -1285,6 +1301,26 @@ class PickRetreatEvalDriver(Node):
             return False, "vacuum command timeout"
         return bool(response.success), response.message or ""
 
+    def sync_pickup_geometry(self, pick_msg, timeout=5.0):
+        """Backfill measured geometry onto the current box instance (CAS).
+
+        expected_generation comes from the latched /luggage/current_box the
+        driver already tracks, so the spawner refuses a sync that would
+        leak onto a newer box. Vacuum attach geometry and the motion
+        occupancy sweep payload read the measured record afterwards.
+        Returns (ok, message, generation).
+        """
+        _box_id, generation = parse_current_box_payload(
+            self._current_box_topic.get("payload") or "")
+        request = SyncPickupBox.Request()
+        request.box = pick_msg
+        request.expected_generation = int(generation)
+        response = self.call_srv(self._sync, request, timeout=timeout)
+        if response is None:
+            return False, "sync service timeout", generation
+        return (bool(response.success), str(response.message or ""),
+                int(response.generation))
+
     def ensure_clean(self):
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
@@ -1298,6 +1334,18 @@ class PickRetreatEvalDriver(Node):
             return "CLEAR_FAILED:%s" % (
                 cleared.message if cleared else "timeout")
         return ""
+
+    def gt_model_name(self, timeout=5.0):
+        """GT model_name of the current instance, via the pull service.
+
+        Eval-side path only: /luggage/current_box no longer carries GT
+        fields (privilege boundary). Returns "" when unavailable.
+        """
+        response = self.call_srv(
+            self._current, GetCurrentBox.Request(), timeout=timeout)
+        if response is None or not response.success:
+            return ""
+        return str(response.model_name or "")
 
     def run_trial(self, index):
         t0 = time.time()
@@ -1521,6 +1569,12 @@ class PickRetreatEvalDriver(Node):
             return self.finish_trial(fields, t0, stamp0=stamp0, clear=True)
 
         if self._args.use_vacuum:
+            sync_ok, sync_msg, sync_gen = self.sync_pickup_geometry(pick_msg)
+            fields["extras"]["payload_sync"] = {
+                "ok": sync_ok, "message": sync_msg, "generation": sync_gen}
+            if not sync_ok:
+                fields["fail_code"] = "PAYLOAD_SYNC_FAILED"
+                return self.finish_trial(fields, t0, stamp0=stamp0, clear=True)
             scene_ok, scene_msg = self.add_scene_box(pick_msg)
             fields["extras"]["scene_add"] = scene_msg
             if not scene_ok:

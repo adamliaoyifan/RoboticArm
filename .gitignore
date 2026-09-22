@@ -44,3 +44,4 @@ docs/plans/
 .DS_Store
 .env
 .env.*
+orin_perception_pack_*.tar.gz

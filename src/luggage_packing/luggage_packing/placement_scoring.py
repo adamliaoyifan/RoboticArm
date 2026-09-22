@@ -33,13 +33,14 @@ def floor_first_term(candidate, usable_height):
 
 def score_candidate(candidate, model, ems, usable_inner, smallest_size,
                     opening_side="negative_x",
-                    w_floor_first=DEFAULT_W_FLOOR_FIRST):
+                    w_floor_first=DEFAULT_W_FLOOR_FIRST,
+                    hull=None):
     """Return ``(score, breakdown)`` for one candidate."""
     base, breakdown = proxy_score(
         candidate, model, ems, usable_inner, smallest_size,
         reachability_prior=float(
             candidate.get("reachability_prior", DEFAULT_REACHABILITY_PRIOR)),
-        opening_side=opening_side)
+        opening_side=opening_side, hull=hull)
     floor_first = floor_first_term(candidate, usable_inner[2])
     breakdown["floor_first"] = round(floor_first, 4)
     return base + w_floor_first * floor_first, breakdown
@@ -63,12 +64,14 @@ def tie_break_key(candidate):
 def score_candidates(candidates, model, ems, usable_inner, smallest_size,
                      opening_side="negative_x",
                      w_floor_first=DEFAULT_W_FLOOR_FIRST,
-                     keep_breakdown=True):
+                     keep_breakdown=True,
+                     hull=None):
     """Score in place and return the list ranked best-first."""
     for candidate in candidates:
         score, breakdown = score_candidate(
             candidate, model, ems, usable_inner, smallest_size,
-            opening_side=opening_side, w_floor_first=w_floor_first)
+            opening_side=opening_side, w_floor_first=w_floor_first,
+            hull=hull)
         candidate["score"] = round(score, 6)
         if keep_breakdown:
             candidate["score_breakdown"] = breakdown

@@ -7,8 +7,13 @@ import unittest
 
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+from luggage_description.container_geometry import (  # noqa: E402
+    cuboid_from_inner_size,
+    normalize_descriptor,
+)
 from luggage_packing.ems import EMS  # noqa: E402
 from luggage_packing.insertion_corridor import (  # noqa: E402
+    _corridor_to,
     corridor_blocked,
     blocks_deep_space,
     proxy_score,
@@ -17,31 +22,33 @@ from luggage_packing.free_space_model import FreeSpaceModel  # noqa: E402
 
 INNER = (2.0, 2.0, 2.0)
 SMALL = (0.4, 0.4, 0.25)  # smallest catalog size
+CUBOID = cuboid_from_inner_size(INNER)
 
 
 class TestCorridor(unittest.TestCase):
     def test_corridor_free_when_empty(self):
         ems = (0.5, -0.5, 0.0, 1.0, 0.5, 0.5)  # deep EMS
-        self.assertFalse(corridor_blocked(ems, [], INNER, SMALL))
+        self.assertFalse(corridor_blocked(ems, [], INNER, SMALL, hull=CUBOID))
 
     def test_corridor_blocked_by_wall_near_opening(self):
         """A box walling off the opening blocks the deep EMS corridor."""
         deep_ems = (0.5, -0.5, 0.0, 1.0, 0.5, 0.5)
         wall = (-1.0, -1.0, 0.0, -0.5, 1.0, 0.5)  # near opening, full y, z[0,0.5]
-        self.assertTrue(corridor_blocked(deep_ems, [wall], INNER, SMALL))
+        self.assertTrue(corridor_blocked(deep_ems, [wall], INNER, SMALL, hull=CUBOID))
 
     def test_full_width_wall_allows_1mm_slop(self):
         """Catalog width == inner_w plus yaw noise still counts as a wall."""
         inner = (1.49, 1.97, 1.48)
         deep = (0.125, -0.2, 0.0, 0.675, 0.2, 0.25)
         wall = (-0.4, -0.984995, 0.0, 0.0, 0.985005, 0.32)
-        self.assertTrue(corridor_blocked(deep, [wall], inner, (0.55, 0.40, 0.25)))
+        self.assertTrue(corridor_blocked(deep, [wall], inner, (0.55, 0.40, 0.25),
+                                        hull=cuboid_from_inner_size(inner)))
 
     def test_corridor_not_blocked_by_box_outside_z(self):
         """A box at a different z-level does not block the corridor."""
         deep_ems = (0.5, -0.5, 0.0, 1.0, 0.5, 0.5)
         wall = (-1.0, -1.0, 1.0, -0.5, 1.0, 1.5)  # z[1,1.5] -- above the EMS
-        self.assertFalse(corridor_blocked(deep_ems, [wall], INNER, SMALL))
+        self.assertFalse(corridor_blocked(deep_ems, [wall], INNER, SMALL, hull=CUBOID))
 
 
 class TestBlocksDeepSpace(unittest.TestCase):
@@ -64,6 +71,48 @@ class TestBlocksDeepSpace(unittest.TestCase):
             cand_box, e, [], INNER, SMALL, v_min=SMALL[0] * SMALL[1] * SMALL[2],
             blocked_tol=0.5)  # generous tol: only large blockage counts
         self.assertFalse(is_blocked)
+
+    def test_prism_only_volume_is_not_useful_blocked_space(self):
+        """A chamfer-prism cuboid has hull volume 0, so it cannot trip v_min."""
+        hull = _chamfer_hull()
+        e = EMS(INNER, min_useful_edge=0.1, hull=hull)
+        prism = (0.0, 0.75, 0.0, 0.50, 1.0, 0.25)
+        self.assertAlmostEqual(e.space_volume(prism), 0.0, places=6)
+        self.assertLess(e.space_volume(prism), SMALL[0] * SMALL[1] * SMALL[2])
+
+
+def _chamfer_hull():
+    return normalize_descriptor({
+        "frame_id": "container_link",
+        "length": 2.0,
+        "width": 2.0,
+        "floor_z": 0.0,
+        "ceiling_z": 2.0,
+        "chamfer": {
+            "side": "positive_y",
+            "floor_y": 0.20,
+            "wall_y": 1.0,
+            "wall_z": 0.50,
+        },
+    })
+
+
+class TestHeptahedronCorridor(unittest.TestCase):
+    def test_corridor_y_clips_to_floor_chamfer(self):
+        hull = _chamfer_hull()
+        ems = (0.5, -0.5, 0.0, 1.0, 0.5, 0.3)
+        corridor = _corridor_to(ems, INNER, SMALL, hull=hull)
+        self.assertAlmostEqual(corridor[4], 0.20, places=6)
+        cuboid = _corridor_to(ems, INNER, SMALL, hull=CUBOID)
+        self.assertGreater(cuboid[4], corridor[4] + 0.2)
+
+    def test_narrow_hull_y_is_the_wall_span(self):
+        hull = _chamfer_hull()
+        deep = (0.5, -0.5, 0.0, 1.0, 0.5, 0.3)
+        # Spans the chamfered floor Y but not the enclosing AABB.
+        wall = (-1.0, -1.0, 0.0, -0.5, 0.20, 0.3)
+        self.assertTrue(corridor_blocked(deep, [wall], INNER, SMALL, hull=hull))
+        self.assertFalse(corridor_blocked(deep, [wall], INNER, SMALL, hull=CUBOID))
 
 
 class TestProxyScore(unittest.TestCase):

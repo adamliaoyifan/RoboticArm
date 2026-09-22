@@ -2,9 +2,15 @@
 """EMS (Maximal Empty Space) incremental maintenance + regularity metric.
 
 P2 of the online-packing redesign (design §5.2). Pure Python + numpy, no
-ROS/scipy. An EMS is a maximal axis-aligned empty cuboid inside the container
-that does not intersect any placed box. After each placement the intersected
-EMSs are split along the 6 faces and contained sub-spaces are eliminated.
+ROS/scipy. An EMS is a maximal axis-aligned empty cuboid used as an *index*
+of unoccupied AABB tiles. After each placement the intersected EMSs are split
+along the 6 faces and contained sub-spaces are eliminated.
+
+Those cuboids are not the usable interior. Reported free / regularity /
+blocked-deep volume clips each tile to the seven-face hull
+(docs/architecture/container_geometry.md). Humble's live
+``placement_planner_node`` does not construct EMS; this module serves offline
+replay, corridor scoring, and the ROS1 reference planner.
 
 EMS is the direct input to:
   - candidate generation (EMS corners, §3.1);
@@ -12,7 +18,8 @@ EMS is the direct input to:
   - the ``ems_regularity`` proxy for V̂ (§5.7 degraded path).
 
 Coordinates are floor-relative (X/Y in [-inner/2, +inner/2], Z in [0, inner_h])
-to match ``FreeSpaceModel.H``.
+to match ``FreeSpaceModel.H``. Hull Z is container_link, so
+``space_volume`` adds ``hull.floor_z``.
 """
 
 from __future__ import division
@@ -21,10 +28,11 @@ from __future__ import division
 class EMS(object):
     """Maximal Empty Space list with incremental split + containment elimination."""
 
-    def __init__(self, inner_size, min_useful_edge=0.25, max_count=64):
+    def __init__(self, inner_size, min_useful_edge=0.25, max_count=64, hull=None):
         self.inner_l, self.inner_w, self.inner_h = [float(v) for v in inner_size]
         self.min_edge = float(min_useful_edge)
         self.max_count = int(max_count)
+        self.hull = hull
         self.spaces = [self._initial_space()]
 
     def _initial_space(self):
@@ -36,6 +44,8 @@ class EMS(object):
         new = []
         for space in self.spaces:
             new.extend(self._split(space, box))
+        if self.hull is not None:
+            new = [space for space in new if self.space_volume(space) > 1e-12]
         self.spaces = self._eliminate_contained(new)
         return list(self.spaces)
 
@@ -92,7 +102,7 @@ class EMS(object):
                 keep.append(s)
         # Bound count; drop smallest when over max.
         if len(keep) > self.max_count:
-            keep.sort(key=volume, reverse=True)
+            keep.sort(key=self.space_volume, reverse=True)
             keep = keep[:self.max_count]
         return keep
 
@@ -104,15 +114,40 @@ class EMS(object):
                 sy0 < by1 and sy1 > by0 and
                 sz0 < bz1 and sz1 > bz0)
 
+    def container_volume(self):
+        """Usable interior volume: hull when present, else the indexing AABB."""
+        if self.hull is not None:
+            from luggage_description.container_geometry import volume as hull_volume
+            return hull_volume(self.hull)
+        return self.inner_l * self.inner_w * self.inner_h
+
+    def space_volume(self, space, hull=None):
+        """Hull-clipped volume of one EMS cuboid (AABB volume when no hull)."""
+        geometry = hull if hull is not None else self.hull
+        if geometry is None:
+            return volume(space)
+        from luggage_description.container_geometry import aabb_intersection_volume
+        floor_z = float(geometry.floor_z)
+        return aabb_intersection_volume(
+            geometry,
+            (space[0], space[1], space[2] + floor_z),
+            (space[3], space[4], space[5] + floor_z),
+        )
+
     def regularity(self):
         """§5.7 ``ems_regularity`` proxy in [0, 1]: large + concentrated + balanced."""
         if not self.spaces:
             return 0.0
-        vols = sorted((volume(s) for s in self.spaces), reverse=True)
-        v_ref = self.inner_l * self.inner_w * self.inner_h
+        vols = sorted(
+            (vol for vol in (self.space_volume(space) for space in self.spaces)
+             if vol > 1e-12),
+            reverse=True)
+        if not vols:
+            return 0.0
+        v_ref = max(self.container_volume(), 1e-9)
         max_ratio = vols[0] / v_ref
         top3_share = sum(vols[:3]) / max(1e-9, sum(vols))
-        largest = max(self.spaces, key=volume)
+        largest = max(self.spaces, key=self.space_volume)
         lwh = [largest[3] - largest[0], largest[4] - largest[1], largest[5] - largest[2]]
         balance = 1.0 - (max(lwh) - min(lwh)) / max(max(lwh), 1e-9)
         return 0.5 * max_ratio + 0.3 * top3_share + 0.2 * balance

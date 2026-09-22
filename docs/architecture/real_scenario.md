@@ -180,8 +180,8 @@ Unported / `ros1_reference` / `COLCON_IGNORE`. Forbidden to copy into Humble.
 - **RS-25.** Closed: `site_pick_replay` skips the cargo collision object
   when `height_valid=false` and records `scene_skipped_height_invalid`.
   Plan-success is not comparable to earlier 0.30 m runs.
-- **RS-26.** Pack-eval utilization uses a fixed AABB volume, not hull-clipped
-  usable space.
+- **RS-26.** Closed: pack-eval utilization denominators are `volume()` /
+  `floor_area()` of the scene_tf seven-face hull, not the enclosing AABB.
 
 ### E. Place motion without occupancy
 
