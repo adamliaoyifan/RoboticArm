@@ -40,6 +40,43 @@ def _bool_text(value):
     return str(value).strip().lower() in ("true", "1", "yes", "on")
 
 
+_RAW_COLOR = "/camera/d555/color/image_raw"
+_RAW_DEPTH = "/camera/d555/aligned_depth_to_color/image_raw"
+
+
+def _preprocessor_node(context, *args, **kwargs):
+    """Subscribe raw images unless use_compressed:=true."""
+    if not _bool_text(LaunchConfiguration("start_perception").perform(context)):
+        return []
+    use_compressed = _bool_text(
+        LaunchConfiguration("use_compressed").perform(context))
+    perc_share = get_package_share_directory("luggage_perception")
+    if use_compressed:
+        color = _RAW_COLOR + "/compressed"
+        depth = _RAW_DEPTH + "/compressed"
+    else:
+        color = _RAW_COLOR
+        depth = _RAW_DEPTH
+    return [
+        Node(
+            package="luggage_perception",
+            executable="sensor_preprocessor_node.py",
+            name="sensor_preprocessor",
+            output="screen",
+            parameters=[
+                os.path.join(perc_share, "config", "sensor_preprocessor.yaml"),
+                LaunchConfiguration("preprocessor_config"),
+                {
+                    "use_sim_time": False,
+                    "input.use_compressed": use_compressed,
+                    "input.color_image": color,
+                    "input.depth_image": depth,
+                },
+            ],
+        )
+    ]
+
+
 def _semantic_srdf():
     path = os.path.join(
         get_package_share_directory("luggage_description"),
@@ -218,6 +255,15 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument(
+                "use_compressed",
+                default_value="false",
+                description=(
+                    "false: preprocessor subscribes mapped raw "
+                    "/camera/d555/.../image_raw. true: JPEG/PNG "
+                    "image_raw/compressed (old bags and recorders only)."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "publish_overlay",
                 default_value="true",
                 description=(
@@ -227,6 +273,14 @@ def generate_launch_description():
                 ),
             ),
             DeclareLaunchArgument("semantic_device", default_value="cuda"),
+            DeclareLaunchArgument(
+                "max_rate_hz",
+                default_value="0.0",
+                description=(
+                    "YOLO cap. 0 follows the camera (~15 Hz). "
+                    "A positive value drops frames closer than 1/max_rate_hz."
+                ),
+            ),
             DeclareLaunchArgument(
                 "execution_backend",
                 default_value="waypoint",
@@ -306,18 +360,7 @@ def generate_launch_description():
                 }.items(),
                 condition=start_d555,
             ),
-            Node(
-                package="luggage_perception",
-                executable="sensor_preprocessor_node.py",
-                name="sensor_preprocessor",
-                output="screen",
-                parameters=[
-                    os.path.join(perc_share, "config", "sensor_preprocessor.yaml"),
-                    LaunchConfiguration("preprocessor_config"),
-                    {"use_sim_time": False},
-                ],
-                condition=start_perception,
-            ),
+            OpaqueFunction(function=_preprocessor_node),
             Node(
                 package="luggage_perception",
                 executable="semantic_segmenter_node.py",
@@ -339,10 +382,12 @@ def generate_launch_description():
                             LaunchConfiguration("publish_overlay"),
                             value_type=bool,
                         ),
-                        # D555 is 15 Hz; CPU YOLO cannot keep that queue.
-                        # Unbounded processing leaves DetectionFrame stamps
-                        # older than cloud_max_age (DETECT_STALE_CLOUD).
-                        "max_rate_hz": 2.0,
+                        # 0 follows the 15 Hz camera. A 2 Hz cap drops frames
+                        # even when inference is ~64 ms.
+                        "max_rate_hz": ParameterValue(
+                            LaunchConfiguration("max_rate_hz"),
+                            value_type=float,
+                        ),
                     },
                 ],
                 condition=start_perception,

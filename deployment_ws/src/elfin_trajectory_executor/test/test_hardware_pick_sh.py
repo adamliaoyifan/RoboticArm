@@ -23,6 +23,8 @@ class HardwarePickShTest(unittest.TestCase):
         self.assertIn("preprocessor_d555_site.yaml", src)
         self.assertIn("Do not pass preprocessor_d555_replay.yaml", src)
         self.assertIn("Profile B (default)", src)
+        self.assertIn("use_compressed:=false", src)
+        self.assertIn("use_compressed:=true", src)
 
     def test_driver_flags_are_not_forwarded_to_launch(self):
         src = SCRIPT.read_text(encoding="utf-8")
@@ -120,6 +122,24 @@ class EnvJazzyRealShTest(unittest.TestCase):
         deploy = src.find("${_DEPLOY}/install/local_setup.bash")
         self.assertLess(humble, livox)
         self.assertLess(livox, deploy)
+
+
+class RecordPerceptionCaseShTest(unittest.TestCase):
+    SCRIPT = ROOT / "scripts" / "record_perception_case.sh"
+
+    def test_starts_raw_perception_graph_and_records_raw_images(self):
+        src = self.SCRIPT.read_text(encoding="utf-8")
+        self.assertTrue(self.SCRIPT.is_file(), self.SCRIPT)
+        self.assertIn("compress:=false", src)
+        self.assertIn("publish_raw:=true", src)
+        self.assertIn("use_compressed:=false", src)
+        self.assertIn("publish_overlay:=false", src)
+        self.assertIn("max_rate_hz:=0.0", src)
+        self.assertIn("start_d555:=false", src)
+        self.assertIn("/camera/d555/color/image_raw$", src)
+        self.assertNotIn("/camera/d555/color/image_raw/compressed$", src)
+        self.assertIn("hardware_pick.sh", src)
+        self.assertNotIn("hardware_pick_driver.py", src)
 
 
 class RecordSiteShTest(unittest.TestCase):

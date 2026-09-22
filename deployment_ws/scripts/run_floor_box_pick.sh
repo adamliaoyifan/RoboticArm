@@ -2,7 +2,7 @@
 # 实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
 #
 # Overlay + YOLO floor-box pick driver. Person on e-stop. ROS_DOMAIN_ID=7.
-# Pick graph must already be up (./scripts/hardware_pick.sh).
+# Pick graph must already be up (./scripts/hardware_pick_servo_j.sh).
 #
 # Observe pose (GoToRobotPose):
 #   OBSERVE_POSE=current          # default: joints at driver start (no FJT)

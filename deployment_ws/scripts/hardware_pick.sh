@@ -13,6 +13,9 @@
 # Profile A is preprocessor_d555_live.yaml. Do not pass preprocessor_d555_replay.yaml
 # into this live graph (use_sim_time true).
 #
+# Detect path subscribes raw images. Pass use_compressed:=true only to
+# read old JPEG/PNG topics (.../image_raw/compressed).
+#
 # Overlay is on by default (publish_overlay:=true). yaml keeps it off for
 # sim-eval; this launch overrides so /luggage/semantic/overlay is recorded.
 #
@@ -101,6 +104,7 @@ _has_nvidia_gpu() {
 # arguments; passing them used to look like a silent no-op.
 launch_args=()
 has_semantic_device=false
+has_use_compressed=false
 for arg in "$@"; do
   if [[ "$arg" == "--" ]]; then
     continue
@@ -118,7 +122,15 @@ for arg in "$@"; do
   if [[ "$arg" == semantic_device:=* ]]; then
     has_semantic_device=true
   fi
+  if [[ "$arg" == use_compressed:=* ]]; then
+    has_use_compressed=true
+  fi
 done
+
+if [[ "$has_use_compressed" == false ]]; then
+  echo "detect path subscribes raw image_raw (use_compressed:=false)"
+  launch_args+=("use_compressed:=false")
+fi
 
 if [[ "$has_semantic_device" == false ]] && ! _has_nvidia_gpu; then
   echo "no NVIDIA GPU (nvidia-smi failed); defaulting semantic_device:=cpu" >&2

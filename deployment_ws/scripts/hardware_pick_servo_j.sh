@@ -14,10 +14,10 @@
 #
 # servo_esj is rejected on this S20. Person on e-stop. No BlackOut.
 #
-# Laptop subscribe (Orin publishes; names unchanged):
-#   /camera/d555/color/image_raw/compressed
+# Laptop subscribe (Orin publishes raw images; names unchanged):
+#   /camera/d555/color/image_raw
 #   /camera/d555/color/camera_info
-#   /camera/d555/aligned_depth_to_color/image_raw/compressed
+#   /camera/d555/aligned_depth_to_color/image_raw
 #   /camera/d555/aligned_depth_to_color/camera_info
 #   /livox/lidar
 #   /livox/imu

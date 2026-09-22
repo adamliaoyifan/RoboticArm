@@ -18,6 +18,13 @@ class HardwarePickLaunchTest(unittest.TestCase):
         self.assertIn("Do not use ", src)
         self.assertIn("preprocessor_d555_replay.yaml", src)
         self.assertIn("default_value=site_pp", src)
+        self.assertIn('"use_compressed"', src)
+        self.assertIn('"max_rate_hz"', src)
+        self.assertIn('default_value="0.0"', src)
+        self.assertNotIn('"max_rate_hz": 2.0', src)
+        self.assertIn('default_value="false"', src)
+        self.assertIn("input.use_compressed", src)
+        self.assertIn('"/compressed"', src)
         self.assertIn('"cloud_max_age_sec": 30.0', src)
         self.assertNotIn(
             'os.path.join(exec_share, "config", "preprocessor_d555_replay.yaml")',
@@ -44,7 +51,6 @@ class HardwarePickLaunchTest(unittest.TestCase):
         self.assertIn('start_perception = IfCondition(', src)
         self.assertIn('start_planning = IfCondition(', src)
         for name in (
-            "sensor_preprocessor",
             "semantic_segmenter",
             "semantic_point_filter",
             "luggage_detector",
@@ -53,6 +59,9 @@ class HardwarePickLaunchTest(unittest.TestCase):
                 src,
                 r'(?s)name="%s".*?condition=start_perception' % name,
             )
+        self.assertIn('name="sensor_preprocessor"', src)
+        self.assertIn('LaunchConfiguration("start_perception").perform(context)', src)
+        self.assertIn("def _preprocessor_node", src)
         for name in (
             "scene_manager",
             "waypoint_generator",
