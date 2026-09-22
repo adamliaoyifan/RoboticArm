@@ -66,6 +66,9 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
             fx=1.0, fy=1.0, cx=0.0, cy=0.0, width=2, height=2)
         self.node._scratch_lock = threading.Lock()
         self.node._scratch_buffers = {}
+        self.node._last_tf_error = ""
+        self.warnings = []
+        self.node._warn_throttled = self.warnings.append
 
     def test_raw_lookup_rejects_neighbor_stamp(self):
         self.node._raw_buffer[(10, 0)] = _cloud(10, 0)
@@ -133,6 +136,111 @@ class TestPfR6LazyRawLookup(unittest.TestCase):
         self.assertEqual(self.node._raw_counts["raw_lookup_tf_fail"], 1)
         self.assertEqual(
             self.node._last_raw_lookup["raw_lookup_status"], "tf_fail")
+        self.assertEqual(self.node._last_raw_lookup["tf_error"], "missing tf")
+        self.assertEqual(self.node._last_tf_error, "missing tf")
+        self.assertIn("DETECT_TF_FAILED: missing tf", self.warnings[0])
+
+
+class TestUnsettledGeometryRejectsDetect(unittest.TestCase):
+
+    def setUp(self):
+        self.mod = _load_detector_module()
+        self.node = object.__new__(self.mod.LuggageDetector)
+        self.node._cloud_max_age = 8.0
+        self.node._use_semantic = True
+        self.node._box_epoch_seen = False
+        self.node._support_gate_by_key = OrderedDict()
+        self.node._last_failure_reason = ""
+        self.node._last_cloud_stamp_sec = None
+        self.node._last_tf_error = ""
+
+    def _frame(self, sec=10, nanosec=0):
+        box = SimpleNamespace()
+        return SimpleNamespace(
+            header=SimpleNamespace(
+                stamp=_stamp(sec, nanosec), frame_id="world"),
+            pca_valid=True,
+            pca_reason="ok",
+            pca_confidence=0.9,
+            generation=1,
+            box=box,
+        )
+
+    def _pin_clock(self, frame):
+        now = self.mod.rclpy.time.Time.from_msg(frame.header.stamp)
+        self.node.get_clock = lambda: SimpleNamespace(now=lambda: now)
+
+    def test_unsettled_gate_fails_detect_frame(self):
+        frame = self._frame()
+        self._pin_clock(frame)
+        self.node._remember_support_gate(
+            frame.header.stamp, "geometry_not_settled")
+
+        detected, confidence = self.node._frame_to_detect(frame)
+
+        self.assertIsNone(detected)
+        self.assertEqual(confidence, 0.9)
+        self.assertEqual(self.node._last_failure_reason, "geometry_not_settled")
+        self.assertFalse(self.mod.should_retry_estimate(
+            self.node._last_failure_reason))
+
+    def test_settled_gate_returns_the_box(self):
+        frame = self._frame()
+        self._pin_clock(frame)
+        self.node._remember_support_gate(frame.header.stamp, "")
+
+        detected, confidence = self.node._frame_to_detect(frame)
+
+        self.assertIs(detected, frame.box)
+        self.assertEqual(confidence, 0.9)
+        self.assertEqual(self.node._last_failure_reason, "ok")
+
+    def test_tf_warning_keeps_reason_code_and_appends_tf2_text(self):
+        self.node._note_tf_failure("Lookup would require extrapolation")
+        text = self.node._format_stream_warning("DETECT_TF_FAILED", 12)
+        self.assertTrue(text.startswith(
+            "luggage_detector: stream DETECT_TF_FAILED (n=12): "))
+        self.assertIn("extrapolation", text)
+
+
+class TestLatestEstimateQueue(unittest.TestCase):
+
+    def setUp(self):
+        self.mod = _load_detector_module()
+
+    def test_newer_replaces_waiting_pair(self):
+        queue = self.mod.LatestEstimateQueue()
+        queue.submit("y1", _cloud(1, 0))
+        queue.submit("y2", _cloud(2, 0))
+        yolo, cloud = queue.take()
+        self.assertEqual(yolo, "y2")
+        self.assertEqual(cloud.header.stamp.sec, 2)
+        self.assertEqual(queue.coalesced, 1)
+
+    def test_older_does_not_replace_newer(self):
+        queue = self.mod.LatestEstimateQueue()
+        queue.submit("y2", _cloud(2, 0))
+        queue.submit("y1", _cloud(1, 0))
+        yolo, cloud = queue.take()
+        self.assertEqual(yolo, "y2")
+        self.assertEqual(cloud.header.stamp.sec, 2)
+        self.assertEqual(queue.coalesced, 1)
+
+    def test_close_unblocks_take(self):
+        queue = self.mod.LatestEstimateQueue()
+        holder = []
+
+        def run():
+            holder.append(queue.take())
+
+        worker = threading.Thread(target=run)
+        worker.start()
+        worker.join(timeout=0.05)
+        self.assertTrue(worker.is_alive())
+        queue.close()
+        worker.join(timeout=1.0)
+        self.assertFalse(worker.is_alive())
+        self.assertIsNone(holder[0])
 
 
 if __name__ == "__main__":

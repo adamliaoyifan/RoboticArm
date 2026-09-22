@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Unit tests for ros_message_adapters (needs sensor_msgs, no roscore)."""
 
+import time
 import unittest
 
 import numpy as np
@@ -22,6 +23,7 @@ from luggage_perception import ros_message_adapters as adapters  # noqa: E402
 from luggage_perception.sensor_types import (  # noqa: E402
     CameraInfoFrame,
     DepthFrame,
+    OpaquePayload,
     RgbFrame,
 )
 
@@ -179,6 +181,26 @@ class TestImageAdapters(unittest.TestCase):
         np.testing.assert_array_equal(
             adapters.image_array_from_msg(out), image)
 
+    def test_decoded_payload_republish_round_trips_and_is_fast(self):
+        # D555 compressed origin="decoded" cannot use ROS payload identity.
+        # Assigning numpy.tobytes() into Image.data is ~90 ms at 640x360
+        # and was the measured ~6 Hz preprocessor cap.
+        image = np.arange(360 * 640 * 3, dtype=np.uint8).reshape(360, 640, 3)
+        frozen = np.ascontiguousarray(image)
+        frozen.setflags(write=False)
+        frame = RgbFrame(
+            stamp=1.0, frame_id="d555_color_optical_frame", encoding="rgb8",
+            payload=OpaquePayload(
+                memoryview(frozen).toreadonly(), origin="decoded"),
+            height=360, width=640, step=640 * 3)
+        t0 = time.perf_counter()
+        out = adapters.image_msg_from_frame(frame, adapters.sec_to_stamp(1.0))
+        dt = time.perf_counter() - t0
+        self.assertEqual(len(out.data), 360 * 640 * 3)
+        np.testing.assert_array_equal(
+            adapters.image_array_from_msg(out), image)
+        self.assertLess(dt, 0.040)
+
     def test_mono8_decodes_two_dimensional(self):
         image = np.arange(6, dtype=np.uint8).reshape(2, 3)
         out = adapters.image_array_from_msg(_make_image(image, "mono8"))
@@ -246,6 +268,24 @@ class TestDepthAdapters(unittest.TestCase):
         self.assertEqual(out.step, 4)
         np.testing.assert_array_equal(
             adapters.depth_array_from_msg(out), depth)
+
+    def test_decoded_depth_republish_round_trips_and_is_fast(self):
+        depth = np.arange(360 * 640, dtype=np.uint16).reshape(360, 640)
+        frozen = np.ascontiguousarray(depth)
+        frozen.setflags(write=False)
+        frame = DepthFrame(
+            stamp=2.0, frame_id="d555_color_optical_frame",
+            units="millimetres", encoding="16UC1",
+            payload=OpaquePayload(
+                memoryview(frozen).toreadonly(), origin="decoded"),
+            height=360, width=640, step=640 * 2)
+        t0 = time.perf_counter()
+        out = adapters.depth_msg_from_frame(frame, adapters.sec_to_stamp(2.0))
+        dt = time.perf_counter() - t0
+        self.assertEqual(len(out.data), 360 * 640 * 2)
+        np.testing.assert_array_equal(
+            adapters.depth_array_from_msg(out), depth)
+        self.assertLess(dt, 0.040)
 
     def test_big_endian_depth(self):
         depth = np.array([[1000, 2000]], dtype=np.uint16)

@@ -60,6 +60,7 @@ class D555TransportAdapter(Node):
             "camera_name": "d555",
             "jpeg_quality": 80,
             "publish_raw": False,
+            "publish_compressed": True,
             "require_clock_lock": True,
             "clock_min_samples": 5,
             "clock_rollback_sec": 0.5,
@@ -73,9 +74,12 @@ class D555TransportAdapter(Node):
         self._base = "/%s/%s" % (ns, name)
         self._jpeg_quality = int(self.get_parameter("jpeg_quality").value)
         self._publish_raw = bool(self.get_parameter("publish_raw").value)
+        self._publish_compressed = bool(
+            self.get_parameter("publish_compressed").value)
         self._require_lock = bool(
             self.get_parameter("require_clock_lock").value)
-        self._clock = DeviceClockMapper(
+        # Do not assign to Node._clock: create_timer/get_clock need the ROS clock.
+        self._device_clock = DeviceClockMapper(
             min_samples=int(self.get_parameter("clock_min_samples").value),
             rollback_ns=int(float(
                 self.get_parameter("clock_rollback_sec").value) * 1e9),
@@ -89,11 +93,16 @@ class D555TransportAdapter(Node):
             "depth_out": 0, "warmup_drop": 0, "codec_error": 0,
         }
 
-        self._color_pub = self.create_publisher(
-            CompressedImage, self._base + "/color/image_raw/compressed", _SENSOR)
-        self._depth_pub = self.create_publisher(
-            CompressedImage,
-            self._base + "/aligned_depth_to_color/image_raw/compressed", _SENSOR)
+        self._color_pub = None
+        self._depth_pub = None
+        if self._publish_compressed:
+            self._color_pub = self.create_publisher(
+                CompressedImage, self._base + "/color/image_raw/compressed",
+                _SENSOR)
+            self._depth_pub = self.create_publisher(
+                CompressedImage,
+                self._base + "/aligned_depth_to_color/image_raw/compressed",
+                _SENSOR)
         self._color_info_pub = self.create_publisher(
             CameraInfo, self._base + "/color/camera_info", _INFO_OUT)
         self._depth_info_pub = self.create_publisher(
@@ -138,7 +147,7 @@ class D555TransportAdapter(Node):
 
     def _mapping(self, msg, stream):
         receipt_ns = int(self.get_clock().now().nanoseconds)
-        mapped = self._clock.map(_stamp_ns(msg.header.stamp), receipt_ns)
+        mapped = self._device_clock.map(_stamp_ns(msg.header.stamp), receipt_ns)
         event = {
             "stream": stream,
             "device_stamp_ns": mapped.device_ns,
@@ -167,17 +176,20 @@ class D555TransportAdapter(Node):
         stamp = self._mapping(msg, "color")
         if stamp is None:
             return
-        try:
-            out = color_to_jpeg(msg, self._jpeg_quality)
-        except Exception as exc:  # codec failures are observable, not fatal
-            self._counts["codec_error"] += 1
-            self.get_logger().error("D555 color compression failed: %s" % exc)
-            return
-        out.header.stamp = stamp
-        self._color_pub.publish(out)
+        if self._color_pub is not None:
+            try:
+                out = color_to_jpeg(msg, self._jpeg_quality)
+            except Exception as exc:  # codec failures are observable, not fatal
+                self._counts["codec_error"] += 1
+                self.get_logger().error(
+                    "D555 color compression failed: %s" % exc)
+                return
+            out.header.stamp = stamp
+            self._color_pub.publish(out)
         if self._raw_color_pub is not None:
-            msg.header.stamp = stamp
-            self._raw_color_pub.publish(msg)
+            raw = copy.deepcopy(msg)
+            raw.header.stamp = stamp
+            self._raw_color_pub.publish(raw)
         self._publish_info(self._color_info, self._color_info_pub, stamp)
         self._counts["color_out"] += 1
 
@@ -186,17 +198,20 @@ class D555TransportAdapter(Node):
         stamp = self._mapping(msg, "depth")
         if stamp is None:
             return
-        try:
-            out = depth_to_png(msg)
-        except Exception as exc:  # codec failures are observable, not fatal
-            self._counts["codec_error"] += 1
-            self.get_logger().error("D555 depth compression failed: %s" % exc)
-            return
-        out.header.stamp = stamp
-        self._depth_pub.publish(out)
+        if self._depth_pub is not None:
+            try:
+                out = depth_to_png(msg)
+            except Exception as exc:  # codec failures are observable, not fatal
+                self._counts["codec_error"] += 1
+                self.get_logger().error(
+                    "D555 depth compression failed: %s" % exc)
+                return
+            out.header.stamp = stamp
+            self._depth_pub.publish(out)
         if self._raw_depth_pub is not None:
-            msg.header.stamp = stamp
-            self._raw_depth_pub.publish(msg)
+            raw = copy.deepcopy(msg)
+            raw.header.stamp = stamp
+            self._raw_depth_pub.publish(raw)
         self._publish_info(self._depth_info, self._depth_info_pub, stamp)
         self._counts["depth_out"] += 1
 
@@ -204,7 +219,7 @@ class D555TransportAdapter(Node):
         payload = {
             "master": "host_ros_system_time",
             "d555": "mapped_device_acquisition_time",
-            "mapping": self._clock.diagnostics(),
+            "mapping": self._device_clock.diagnostics(),
             "counts": dict(self._counts),
         }
         self._master_pub.publish(String(data=json.dumps(payload, sort_keys=True)))

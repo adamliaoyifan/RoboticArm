@@ -804,6 +804,7 @@ class SemanticSegmenter:
         YOLO never proposes the suction panel as cargo. ``apply_self_body_mask``
         still runs afterwards as a fallback.
         """
+        t_body = self._time.perf_counter() if hasattr(self, "_time") else None
         body = combined_self_body_mask(
             self.self_body_mask, self.self_body_row_start_frac,
             rgb_uint8.shape[:2])
@@ -811,7 +812,9 @@ class SemanticSegmenter:
         if body is not None and np.any(body):
             rgb_in = np.array(rgb_uint8, copy=True)
             rgb_in[body] = 114
+        t_seg = self._time.perf_counter() if t_body is not None else None
         label_map, detections = self.segment(rgb_in)
+        t_after_seg = self._time.perf_counter() if t_body is not None else None
         label_map, detections, instance_map, n_arm_drop = (
             suppress_low_conf_robot_arm(
                 label_map, detections, self.robot_arm_confidence_threshold,
@@ -824,6 +827,12 @@ class SemanticSegmenter:
             label_map, detections, body, instance_map=self._instance_map)
         n_after = cargo_detection_count(detections)
         stats = dict(self._last_stats)
+        if t_after_seg is not None:
+            stage = dict(stats.get("stage_ms") or {})
+            stage["self_body_prep"] = round((t_seg - t_body) * 1000.0, 2)
+            stage["after_segment"] = round(
+                (self._time.perf_counter() - t_after_seg) * 1000.0, 2)
+            stats["stage_ms"] = stage
         stats["n_dropped_low_conf_robot_arm"] = int(n_arm_drop)
         stats.update(confidence_floors(self))
         stats["n_yolo_cargo_before_self_body"] = int(n_before)
@@ -872,6 +881,7 @@ class SemanticSegmenter:
         # Self-body first, then the vote. A panel flank scored as cargo on
         # every frame made the window think it always saw cargo, so a real
         # miss never reached the majority test.
+        t_temporal = self._time.perf_counter() if t_after_seg is not None else None
         if self.temporal_gate is not None:
             label_map, detections, tstats = self.temporal_gate.apply(
                 label_map, detections, rgb_uint8)
@@ -882,6 +892,7 @@ class SemanticSegmenter:
                 # back to the cargo cloud.
                 label_map = np.array(label_map, copy=True)
                 label_map[body] = LABEL_ROBOT_ARM
+        t_counts = self._time.perf_counter() if t_after_seg is not None else None
         stats["detections"] = compact_detections(detections)
         stats["label_counts"] = {
             int(label): int((label_map == label).sum())
@@ -894,6 +905,14 @@ class SemanticSegmenter:
         instance_id = str(instance_id or "")
         stats["generation"] = generation
         stats["instance_id"] = instance_id
+        if t_after_seg is not None:
+            now = self._time.perf_counter()
+            stage = dict(stats.get("stage_ms") or {})
+            stage["before_temporal"] = round(
+                (t_temporal - t_after_seg) * 1000.0, 2)
+            stage["temporal"] = round((t_counts - t_temporal) * 1000.0, 2)
+            stage["label_counts_and_copy"] = round((now - t_counts) * 1000.0, 2)
+            stats["stage_ms"] = stage
         self._last_stats = dict(stats)
         self._output = SegmenterOutput(
             stamp=float(stamp),
@@ -972,10 +991,19 @@ class BboxFillSegmenter(SemanticSegmenter):
         self._time = time
         self._device = str(device)
         self._model_name = str(model_name)
+        if self._device.startswith("cuda"):
+            import torch
+            if not torch.cuda.is_available():
+                raise RuntimeError(
+                    "YOLO-World device=%s but torch.cuda is unavailable"
+                    % self._device)
         clip_vendor = _setup_clip_vendor()
         from ultralytics import YOLOWorld  # noqa: WPS433
 
         self._model = YOLOWorld(self._model_name)
+        to_fn = getattr(self._model, "to", None)
+        if callable(to_fn):
+            to_fn(self._device)
         self._model.set_classes(list(self.prompts))
         self._last_stats["backend"] = "bbox_fill:%s" % self._model_name
         if clip_vendor:
@@ -984,43 +1012,49 @@ class BboxFillSegmenter(SemanticSegmenter):
     def segment(self, rgb_image):
         import numpy as _np
 
-        t0 = self._time.time()
+        t0 = self._time.perf_counter()
         results = self._model.predict(
             rgb_image, conf=self.confidence_threshold, device=self._device,
             verbose=False,
         )
-        inference_ms = (self._time.time() - t0) * 1000.0
+        t_predict = self._time.perf_counter()
+        inference_ms = (t_predict - t0) * 1000.0
 
         h, w = rgb_image.shape[:2]
         label_map = _np.zeros((h, w), dtype=_np.uint8)
         detections = []
         counts = {label: 0 for label in DEFAULT_LABEL_NAMES}
 
-        if not results:
+        def _finish(sync_ms, fill_ms):
             self._last_stats = {
                 "backend": self._last_stats["backend"],
                 "inference_ms": inference_ms,
-                "detection_count": 0,
+                "detection_count": len(detections),
                 "label_counts": counts,
+                "stage_ms": {
+                    "predict": round(inference_ms, 2),
+                    "gpu_sync": round(sync_ms, 2),
+                    "mask_fill": round(fill_ms, 2),
+                },
             }
             return label_map, detections
+
+        if not results:
+            return _finish(0.0, 0.0)
 
         result = results[0]
         boxes = getattr(result.boxes, "xyxy", None)
         classes = getattr(result.boxes, "cls", None)
         confs = getattr(result.boxes, "conf", None)
         if boxes is None or classes is None or len(boxes) == 0:
-            self._last_stats = {
-                "backend": self._last_stats["backend"],
-                "inference_ms": inference_ms,
-                "detection_count": 0,
-                "label_counts": counts,
-            }
-            return label_map, detections
+            return _finish(0.0, 0.0)
 
+        t_sync = self._time.perf_counter()
         boxes = boxes.cpu().numpy()
         classes = classes.cpu().numpy()
         confs = confs.cpu().numpy() if confs is not None else _np.zeros(len(boxes))
+        sync_ms = (self._time.perf_counter() - t_sync) * 1000.0
+        t_fill = self._time.perf_counter()
 
         for idx in range(len(boxes)):
             cls_idx = int(classes[idx])
@@ -1049,13 +1083,8 @@ class BboxFillSegmenter(SemanticSegmenter):
             counts[label_id] += int((ix2 - ix1) * (iy2 - iy1))
 
         counts[LABEL_BACKGROUND] = int((label_map == LABEL_BACKGROUND).sum())
-        self._last_stats = {
-            "backend": self._last_stats["backend"],
-            "inference_ms": inference_ms,
-            "detection_count": len(detections),
-            "label_counts": counts,
-        }
-        return label_map, detections
+        fill_ms = (self._time.perf_counter() - t_fill) * 1000.0
+        return _finish(sync_ms, fill_ms)
 
 
 class YoloWorldSam2Segmenter(SemanticSegmenter):

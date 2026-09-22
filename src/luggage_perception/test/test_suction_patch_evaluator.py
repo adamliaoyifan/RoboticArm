@@ -55,6 +55,7 @@ from luggage_perception.suction_patch_evaluator import (
     SUCTION_REJECT_BIMODAL,
     SUCTION_REJECT_PLANE_COVERAGE,
     SuctionPatchEvaluator,
+    center_suction_evaluation,
     suction_identity_mismatch,
 )
 
@@ -630,6 +631,38 @@ class TestArchitectureIsolation(unittest.TestCase):
                           "os.remove"):
                 self.assertNotIn(token, source,
                                  "%s must not perform file I/O" % name)
+
+
+class TestCenterSuctionCandidate(unittest.TestCase):
+
+    def test_one_candidate_at_top_center(self):
+        top = SimpleNamespace(
+            center_xy=np.array([1.25, -0.4]),
+            top_z=0.62,
+            plane_basis=(
+                np.array([1.0, 0.0, 0.0]),
+                np.array([0.0, 1.0, 0.0]),
+                np.array([0.0, 0.0, 1.0]),
+            ),
+        )
+        evaluation = center_suction_evaluation(
+            top, stamp=12.5, frame_id="world", instance_id="box-a",
+            generation=4, model_version=1, model_hash="abc")
+        self.assertTrue(evaluation.ok)
+        self.assertEqual(evaluation.reason, "center")
+        self.assertEqual(evaluation.rejected, ())
+        self.assertEqual(len(evaluation.accepted), 1)
+        record = evaluation.accepted[0]
+        self.assertEqual(record.candidate_id, "center")
+        self.assertEqual(record.rank, 0)
+        self.assertEqual(record.center_world, (1.25, -0.4, 0.62))
+        self.assertEqual(record.quaternion_xyzw, (0.0, 0.0, 0.0, 1.0))
+        self.assertEqual(record.instance_id, "box-a")
+        self.assertEqual(record.generation, 4)
+        self.assertEqual(record.model_version, 1)
+        self.assertEqual(record.model_hash, "abc")
+        self.assertIsNone(suction_identity_mismatch(
+            record, 12.5, "world", "box-a", 4))
 
 
 if __name__ == "__main__":
