@@ -1,0 +1,23 @@
+# Orin live D555: same pairing as site B, mapped-raw from the transport
+# adapter (no JPEG/PNG). The driver remaps its raw+compressed products to
+# *_hw so they do not share /camera/d555/*/image_raw[/compressed].
+#
+# Do not pass preprocessor_d555_replay.yaml into this live graph.
+sensor_preprocessor:
+  ros__parameters:
+    input.color_image: /camera/d555/color/image_raw
+    input.depth_image: /camera/d555/aligned_depth_to_color/image_raw
+    input.camera_info: /camera/d555/aligned_depth_to_color/camera_info
+    input.color_camera_info: /camera/d555/color/camera_info
+    input.use_compressed: false
+    input.joint_states: /joint_states
+    output_cloud_frame: d555_color_optical_frame
+    use_sim_time: false
+    camera_pair_tolerance_sec: 0.050
+    camera_wait_deadline_sec: 0.150
+    camera_info_shared: false
+    camera_geometry_max_depth_dt_sec: 0.005
+    camera_input_qos_reliability: best_effort
+    enable_lidar_output: false
+    enable_imu: false
+    motion_gate.enabled: true
