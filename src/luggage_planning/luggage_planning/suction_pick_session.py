@@ -33,7 +33,7 @@ for the ROS implementation):
 
 from collections import deque
 from dataclasses import dataclass, replace
-from typing import Tuple
+from typing import Optional, Tuple
 
 from luggage_planning.suction_candidate_selection import (
     MAX_CANDIDATE_ATTEMPTS,
@@ -43,6 +43,7 @@ from luggage_planning.suction_candidate_selection import (
     ProbeRecord,
     SelectionState,
     contact_model_matches,
+    contact_record_admission,
     cross_candidate_identity_consistent,
     judge_probe,
     next_candidate,
@@ -166,6 +167,11 @@ class DetectionView:
     box_xyz: Tuple[float, float, float] = (0.0, 0.0, 0.0)
     box_quat: Tuple[float, float, float, float] = (0.0, 0.0, 0.0, 1.0)
     box_size: Tuple[float, float, float] = (0.0, 0.0, 0.0)
+    # Exact acquisition stamp in integer nanoseconds (None = undeclared;
+    # the float ``stamp`` above is the lossy transport form). Port-side
+    # builders fill this straight from the message header so the retry
+    # snapshot keeps every nanosecond at epoch scale.
+    stamp_ns: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -410,6 +416,28 @@ class PickSession:
                     "selection exhausted but reducer state is %s"
                     % self._model.state.value)
             candidate = self._candidates[candidate_id]
+            # v2 boundary admission FIRST — before any waypoint building
+            # or probe call (a probe is a real motion-planning spend). A
+            # boundary violation (stale scene, wrong frame, bad payload)
+            # rejects with zero plan/probe/vacuum effects.
+            contact_record = self._contact_record_for(candidate_id)
+            if contact_record is not None:
+                admission = contact_record_admission(
+                    contact_record, self._config.scene_revision,
+                    planning_frame=self._config.planning_frame)
+                if admission is not None:
+                    reason = admission[0]
+                    detail = str(admission[1])
+                    self._selection = record_rejection(
+                        self._selection, candidate_id, reason, detail)
+                    self._emit("io", "candidate_rejected",
+                               candidate_id=candidate_id,
+                               reason=reason, detail=detail)
+                    self._feed(RetryEvent(
+                        RetryEventType.CANDIDATE_REJECTED,
+                        candidate_id=candidate_id,
+                        reason_code=reason, detail=detail))
+                    continue
             segments = build_candidate_pick_segments(
                 candidate,
                 detection_yaw=self._detection_yaw,
@@ -432,15 +460,7 @@ class PickSession:
             reason = judge_probe(
                 candidate, records,
                 required_fraction=self._config.required_cartesian_fraction,
-                planning_frame=self._config.planning_frame,
-                contact_record=self._contact_record_for(candidate_id),
-                scene_revision=self._config.scene_revision)
-            # v2 admission rejections carry their exact contract code as
-            # the detail (``(category, "CODE:field")``); probe rejections
-            # stay the plain documented reason strings.
-            admission_detail = ""
-            if isinstance(reason, tuple):
-                reason, admission_detail = str(reason[0]), str(reason[1])
+                planning_frame=self._config.planning_frame)
             if reason is None:
                 self._selection = record_attempt(self._selection, candidate_id)
                 self._segments[candidate_id] = segments
@@ -449,7 +469,7 @@ class PickSession:
                 self._feed(RetryEvent(RetryEventType.CANDIDATE_SELECTED,
                                       candidate_id=candidate_id))
                 return
-            detail = admission_detail or "; ".join(
+            detail = "; ".join(
                 "%s ik=%s frac=%.3f code=%d" % (
                     record.segment_name, record.ik_ok, record.fraction,
                     record.moveit_error_code)
@@ -612,9 +632,10 @@ class PickSession:
         """Optional v2 contact record for this candidate (F04 admission).
 
         Ports may expose ``contact_record(candidate_id) -> record|None``.
-        A supplied record is admitted by ``judge_probe`` before any probe
-        effect; a missing port (v1 deployments, no v2 candidate stream
-        yet) keeps the unchanged v1 string-compare path.
+        A supplied record is admitted by :func:`contact_record_admission`
+        BEFORE any waypoint building or probe call — a boundary violation
+        costs zero plan/probe/vacuum. A missing port (v1 deployments, no
+        v2 candidate stream yet) keeps the unchanged v1 path.
         """
         port = getattr(self._ports, "contact_record", None)
         if not callable(port):

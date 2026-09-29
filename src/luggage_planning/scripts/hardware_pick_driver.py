@@ -479,7 +479,12 @@ class HardwarePickDriver(Node):
             yaw_valid=bool(getattr(box, "yaw_valid", True)),
             box_xyz=xyz,
             box_quat=quat,
-            box_size=size)
+            box_size=size,
+            # Exact acquisition stamp straight from the header: the float
+            # ``stamp`` above is the lossy transport form (-21 ns at epoch
+            # scale); the retry snapshot prefers these nanoseconds.
+            stamp_ns=(int(box.header.stamp.sec) * 1_000_000_000
+                      + int(box.header.stamp.nanosec)))
 
     def _session_config(self, model):
         return SessionConfig(

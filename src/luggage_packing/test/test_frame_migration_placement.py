@@ -508,11 +508,12 @@ class FrameMigrationPlacement(unittest.TestCase):
                 __file__))), '..', 'luggage_perception', 'scripts',
             'cargo_volume_mapper_node.py'))
 
-    def _planner_stub(self, module, mapper):
+    def _planner_stub(self, module, mapper, v2_mode=True):
         import types as types_module
         errors = []
         stub = types_module.SimpleNamespace(
-            _frame_scene_revision=SCENE,
+            _frame_scene_revision=SCENE if v2_mode else '',
+            _v2_surface_mode=bool(v2_mode),
             _geometry_hash=mapper.geometry_hash,
             _rejected_maps=0, _surface=None, _admitted_map_revision=None,
             _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
@@ -522,7 +523,7 @@ class FrameMigrationPlacement(unittest.TestCase):
                 error=errors.append))
         planner = module['PlacementPlannerNode']
         for name in ('_surface_context', '_surface_view_from_record',
-                     '_on_surface_v2'):
+                     '_on_surface_v2', '_on_surface'):
             setattr(stub, name,
                     types_module.MethodType(getattr(planner, name), stub))
         return stub, errors
@@ -614,6 +615,66 @@ class FrameMigrationPlacement(unittest.TestCase):
             self.assertEqual(stub._rejected_maps, 1, errors)
             self.assertIsNone(stub._surface)
             observed.update(revision=mapper._revision)
+
+    def test_review2_v1_cannot_regress_v2(self):
+        # P1-a regression: in v2 surface mode the v1 transport is not this
+        # node's map stream. A delayed v1 map (older revision) must not
+        # regress the active surface or the admitted revision, and a
+        # replayed v2 revision stays rejected (progression + dedup intact).
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+
+        module = self._planner_module()
+        planner = module['PlacementPlannerNode']
+
+        def fresh_map():
+            mapper = CargoVolumeMapper(
+                (1.0, 0.6, 0.8), (0.0, 0.0, .53 + 0.4), 0.0, resolution=0.05)
+            mapper.mark_placed_box([0.0, 0.0, .53 + 0.16], [0.2, 0.2, 0.2],
+                                   measured_source='verify_placed_box')
+            return mapper
+
+        with case('review2/v1-cannot-regress-v2', {}) as observed:
+            mapper = fresh_map()
+            stub, errors = self._planner_stub(module, mapper, v2_mode=True)
+            revision = mapper._revision
+            accepted = self._wire_surface(
+                mapper, revision, 'map-rev-%d' % revision)
+            planner._on_surface_v2(stub, accepted)
+            self.assertIsNotNone(stub._surface)
+            self.assertEqual(stub._admitted_map_revision, revision)
+            admitted_surface = stub._surface
+            # A delayed v1 map at revision-1 (hash matches) arrives on the
+            # callback anyway (delivery is QoS business; consumption is
+            # the node's). v2 mode must refuse it.
+            v1_dict = mapper.surface_map_2d()
+            v1_dict['map_revision'] = revision - 1
+            v1_message = type('V1Message', (), {})()
+            v1_message.data = json.dumps(v1_dict, sort_keys=True)
+            planner._on_surface(stub, v1_message)
+            self.assertIs(stub._surface, admitted_surface)
+            self.assertEqual(stub._admitted_map_revision, revision)
+            self.assertEqual(stub._rejected_maps, 1, errors)
+            # Replaying the already-consumed v2 revision stays rejected.
+            planner._on_surface_v2(stub, accepted)
+            self.assertEqual(stub._rejected_maps, 2, errors)
+            self.assertIs(stub._surface, admitted_surface)
+            self.assertEqual(stub._admitted_map_revision, revision)
+            observed.update(rejected=stub._rejected_maps,
+                            admitted=stub._admitted_map_revision)
+        with case('review2/v1-mode-still-consumes-v1', {}) as observed:
+            # Control: v1 mode (no scene revision) keeps the unchanged v1
+            # latest-wins behavior.
+            mapper = fresh_map()
+            stub, errors = self._planner_stub(module, mapper, v2_mode=False)
+            v1_dict = mapper.surface_map_2d()
+            v1_message = type('V1Message', (), {})()
+            v1_message.data = json.dumps(v1_dict, sort_keys=True)
+            planner._on_surface(stub, v1_message)
+            self.assertEqual(stub._rejected_maps, 0, errors)
+            self.assertIsNotNone(stub._surface)
+            self.assertEqual(stub._surface['map_revision'],
+                             v1_dict['map_revision'])
+            observed.update(rejected=stub._rejected_maps)
 
     def test_review_expected_map_revision_gate(self):
         # R4 regression, callback level: a request planned against a

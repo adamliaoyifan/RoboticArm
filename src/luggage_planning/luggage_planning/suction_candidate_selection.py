@@ -130,8 +130,7 @@ def contact_model_matches(candidate, model_version, model_hash):
 
 
 def judge_probe(candidate, records, required_fraction=REQUIRED_CARTESIAN_FRACTION,
-                planning_frame="world", contact_record=None,
-                scene_revision=""):
+                planning_frame="world"):
     """None when the candidate passes every probe, else a reason string.
 
     TF: the candidate frame must equal the planning frame. IK: a failed
@@ -139,18 +138,10 @@ def judge_probe(candidate, records, required_fraction=REQUIRED_CARTESIAN_FRACTIO
     Fraction: ``approach``/``attach``/``retry_reverse`` must reach
     ``required_fraction`` exactly (0.999 fails a 1.0 gate).
 
-    v2 admission: when a v2 contact record is supplied (the session's
-    ``contact_record`` port provides one for the candidate under test),
-    :func:`contact_record_admission` runs FIRST — a boundary violation
-    (stale scene, wrong frame, bad payload) rejects before any probe
-    effect, carrying the exact contract code in the reason detail. The v1
-    string-compare path is unchanged when no record is supplied.
+    v2 contact-record admission is NOT judged here: it must run before
+    any probe is spent (see the pick session's selection gate, which
+    calls :func:`contact_record_admission` first).
     """
-    if contact_record is not None:
-        admission = contact_record_admission(
-            contact_record, scene_revision, planning_frame=planning_frame)
-        if admission is not None:
-            return admission
     if str(candidate.frame) != str(planning_frame):
         return SUCTION_REJECT_TF
     for record in records:

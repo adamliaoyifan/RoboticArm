@@ -176,13 +176,14 @@ class CargoVolumeMapper:
         self._source = [SOURCE_NONE] * total
         self._labels = [0] * total
         self._instance_ids = [0] * total
-        # Independent sensor evidence: the sensor's latest classification,
-        # label and instance per voxel. A geometry commit may overlay these
-        # cells (SOURCE_GEOMETRY); removal must restore the sensor's word,
-        # not erase it. Kept in parallel to _source so geometry and sensor
-        # evidence retract independently.
+        # Independent sensor evidence: a per-voxel shadow log-odds value
+        # the sensor's own hits/misses accumulate, plus its latest label
+        # and instance. The shadow is updated unconditionally — geometry
+        # locks protect the live grid, never this ledger — so retracting a
+        # committed box restores the sensor's *latest* word exactly as if
+        # the geometry had never been there (control-equivalence).
         self._sensor_seen = [False] * total
-        self._sensor_state = [UNKNOWN] * total
+        self._sensor_values = [0.0] * total
         self._sensor_labels = [0] * total
         self._sensor_instance_ids = [0] * total
 
@@ -344,13 +345,7 @@ class CargoVolumeMapper:
             )
         else:
             self._grid[idx] = self._occupancy.apply_hit(idx)
-            # Sensor evidence is recorded independently of the current
-            # source owner, so a later geometry commit + removal restores
-            # the sensor's word instead of erasing it.
-            self._sensor_seen[idx] = True
-            self._sensor_state[idx] = self._grid[idx]
-            self._sensor_labels[idx] = int(label)
-            self._sensor_instance_ids[idx] = int(instance_id)
+            self._record_sensor_hit(idx, label, instance_id)
         if self._source[idx] == SOURCE_NONE:
             self._source[idx] = source
         # Sensor observations overwrite geometry-inferred labels.
@@ -358,12 +353,39 @@ class CargoVolumeMapper:
             self._labels[idx] = int(label)
             self._instance_ids[idx] = int(instance_id)
 
-    def _forget_sensor_evidence(self, idx):
-        """A miss superseded the sensor's own hit on this voxel."""
-        self._sensor_seen[idx] = False
-        self._sensor_state[idx] = UNKNOWN
-        self._sensor_labels[idx] = 0
-        self._sensor_instance_ids[idx] = 0
+    def _record_sensor_hit(self, idx, label=0, instance_id=0):
+        """A sensor hit is testimony: accumulate the shadow ledger.
+
+        The shadow accumulates the sensor-only log-odds trajectory with
+        the same increments and clamps as the live grid. Because geometry
+        writes never touch it, restoring it after a geometry retraction
+        reproduces exactly the state the sensor alone would have built.
+        """
+        occupancy = self._occupancy
+        self._sensor_values[idx] = min(
+            occupancy.maximum, max(occupancy.minimum,
+                                   self._sensor_values[idx]
+                                   + occupancy.hit_increment))
+        self._sensor_seen[idx] = True
+        self._sensor_labels[idx] = int(label)
+        self._sensor_instance_ids[idx] = int(instance_id)
+
+    def _record_sensor_miss(self, idx):
+        """A miss is testimony too: the lock protects the grid, not the
+        ledger. The sensor's latest word is recorded unconditionally, so
+        retracting overlaid geometry restores it (never a stale hit)."""
+        occupancy = self._occupancy
+        # miss_increment is negative log-odds; accumulate exactly like
+        # LogOddsGrid.apply_miss (which the lock may bypass, the ledger
+        # never).
+        self._sensor_values[idx] = max(
+            occupancy.minimum, min(occupancy.maximum,
+                                   self._sensor_values[idx]
+                                   + occupancy.miss_increment))
+        self._sensor_seen[idx] = True
+        if occupancy.classify_value(self._sensor_values[idx]) == FREE:
+            self._sensor_labels[idx] = 0
+            self._sensor_instance_ids[idx] = 0
 
     def mark_free_world(self, x, y, z):
         local = self._world_to_local(x, y, z)
@@ -372,11 +394,11 @@ class CargoVolumeMapper:
             return
         idx = self._index(*vox)
         self._grid[idx] = self._occupancy.apply_miss(idx)
+        self._record_sensor_miss(idx)
         if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
             self._source[idx] = SOURCE_NONE
             self._labels[idx] = 0
             self._instance_ids[idx] = 0
-            self._forget_sensor_evidence(idx)
 
     def _raycast_indices(self, origin, hit):
         ox, oy, oz = origin
@@ -441,11 +463,11 @@ class CargoVolumeMapper:
         miss_indices.difference_update(hit_records)
         for idx in miss_indices:
             self._grid[idx] = self._occupancy.apply_miss(idx)
+            self._record_sensor_miss(idx)
             if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
                 self._source[idx] = SOURCE_NONE
                 self._labels[idx] = 0
                 self._instance_ids[idx] = 0
-                self._forget_sensor_evidence(idx)
         for x, y, z, lbl, iid in hit_records.values():
             self.mark_occupied_world(
                 x, y, z, label=lbl, instance_id=iid
@@ -573,50 +595,58 @@ class CargoVolumeMapper:
     def unmark_placed_box(self, center, size, yaw=None, tolerance=0.05):
         """Remove a committed geometry record and rebuild fail-closed state.
 
-        ST04 F19: only committed-geometry voxels are retracted; independent
-        sensor observations survive the removal. Cells the removed box had
-        masked return to unknown — removal never fabricates free space.
+        ST04 F19: the removed box's exact voxel set is retracted — locks
+        released, and every cell the sensor had its own word on is
+        restored to the sensor's *latest* testimony (shadow ledger),
+        never erased and never a stale hit. Cells only geometry touched
+        return to unknown; removal never fabricates free space.
         """
         match = self._matching_placed_box(center, size, yaw, tolerance)
         if match is None:
             return False
+        removed = self._placed_boxes[match]
         remaining = [
             record for index, record in enumerate(self._placed_boxes)
             if index != match]
         self._placed_boxes = remaining
-        self._retract_geometry_voxels()
+        self._retract_box_voxels(
+            self._iter_placed_box_voxels(
+                removed["center"], removed["size"], removed["yaw"]))
         for record in remaining:
             self._rasterize_placed_box(
                 record["center"], record["size"], record["yaw"])
         self._revision += 1
         return True
 
-    def _retract_geometry_voxels(self):
-        """Retract geometry evidence only; sensor evidence is restored.
+    def _retract_box_voxels(self, indices):
+        """Retract one removed box's voxel set.
 
-        A committed box overlays its voxels with SOURCE_GEOMETRY. Removing
-        it clears those voxels to unknown — unless the sensor had its own
-        word on the same voxel (hit before or after the commit): the
-        sensor's recorded classification, label and instance are restored,
-        so removal never erases an independent observation.
+        Every covered cell is unlocked and cleared; the sensor's shadow
+        testimony is written back as the live log-odds value (no lock, no
+        force) so the cell equals the no-geometry control exactly.
         """
-        total = self.nx * self.ny * self.nz
-        for idx in range(total):
-            if self._source[idx] != SOURCE_GEOMETRY:
-                continue
-            self._occupancy.clear(idx)
+        occupancy = self._occupancy
+        for idx in indices:
+            occupancy.clear(idx)
             if self._sensor_seen[idx]:
-                if self._sensor_state[idx] == OCCUPIED:
-                    self._grid[idx] = self._occupancy.force_occupied(
-                        idx, lock_geometry=False)
-                elif self._sensor_state[idx] == FREE:
-                    self._grid[idx] = self._occupancy.apply_miss(idx)
+                value = self._sensor_values[idx]
+                state = occupancy.classify_value(value)
+                occupancy.values[idx] = value
+                self._grid[idx] = state
+                if state == FREE:
+                    # A FREE cell has no owner or label — exactly what
+                    # mark_free_world's own normalization produces in the
+                    # no-geometry control.
+                    self._source[idx] = SOURCE_NONE
+                    self._labels[idx] = 0
+                    if self._instance_ids:
+                        self._instance_ids[idx] = 0
                 else:
-                    self._grid[idx] = self._occupancy.state_at(idx)
-                self._source[idx] = SOURCE_SENSOR
-                self._labels[idx] = self._sensor_labels[idx]
-                if self._instance_ids:
-                    self._instance_ids[idx] = self._sensor_instance_ids[idx]
+                    self._source[idx] = SOURCE_SENSOR
+                    self._labels[idx] = self._sensor_labels[idx]
+                    if self._instance_ids:
+                        self._instance_ids[idx] = \
+                            self._sensor_instance_ids[idx]
                 continue
             self._grid[idx] = UNKNOWN
             self._source[idx] = SOURCE_NONE
@@ -638,8 +668,8 @@ class CargoVolumeMapper:
             snapshot.append(entry)
         return snapshot
 
-    def _rasterize_placed_box(self, center, size, yaw=0.0):
-        """Rasterize a committed box without changing history/revision.
+    def _iter_placed_box_voxels(self, center, size, yaw=0.0):
+        """Yield the flat indices of one committed box's exact voxel set.
 
         ST04 declared half-open rule: a column cell is occupied iff the
         oriented footprint rectangle intersects the cell's half-open square
@@ -685,7 +715,15 @@ class CargoVolumeMapper:
                         corners, xmin, ymin, xmin + res, ymin + res) <= 1e-12:
                     continue
                 for iz in range(iz_min, iz_max + 1):
-                    self.mark_occupied_voxel(ix, iy, iz, SOURCE_GEOMETRY)
+                    yield self._index(ix, iy, iz)
+
+    def _rasterize_placed_box(self, center, size, yaw=0.0):
+        """Rasterize a committed box without changing history/revision."""
+        for idx in self._iter_placed_box_voxels(center, size, yaw):
+            self._grid[idx] = self._occupancy.force_occupied(
+                idx, lock_geometry=True)
+            if self._source[idx] == SOURCE_NONE:
+                self._source[idx] = SOURCE_GEOMETRY
 
     def fill_unoccupied_as_free(self):
         """Geometry GT: usable-hull empty cells are known-free."""

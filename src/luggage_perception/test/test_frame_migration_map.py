@@ -22,8 +22,9 @@ from luggage_description.frame_diagnostics import (
     BoundaryContext, BoundaryContractError,
 )
 from luggage_perception.cargo_volume_mapper import (
-    SOURCE_SENSOR, CargoVolumeMapper, normalize_ledger_slot,
+    SOURCE_NONE, SOURCE_SENSOR, CargoVolumeMapper, normalize_ledger_slot,
 )
+from luggage_perception.voxel_log_odds import FREE, OCCUPIED, UNKNOWN
 from luggage_perception.frame_message_adapters import (
     measured_surface_to_message, measured_surface_from_message,
 )
@@ -569,6 +570,116 @@ class FrameMigrationMap(unittest.TestCase):
             self.assertEqual((mapper._grid[idx], mapper._source[idx],
                               mapper._labels[idx]), (0, 0, 0))
             observed.update(voxel=list(voxel))
+
+    def test_review2_sensor_control_equivalence(self):
+        # P1-b regression (property): the committed-geometry overlay is
+        # invisible to the sensor's own evidence. For every hit/miss
+        # sequence, interleaving a box commit + removal anywhere must
+        # leave the voxel exactly where the no-geometry control ends —
+        # value, source, label and (no) lock.
+        point = (0.0, 0.0, .53 + 0.5 * WDH[2])
+        box = ([0.0, 0.0, point[2]], [0.2, 0.2, 0.2])
+
+        def fresh():
+            return make_mapper(.53)
+
+        def idx_of(mapper):
+            return mapper._index(*mapper._local_to_voxel(
+                *mapper._world_to_local(*point)))
+
+        def apply(mapper, ops, label=42):
+            for op in ops:
+                if op == 'h':
+                    mapper.mark_occupied_world(
+                        *point, source=SOURCE_SENSOR, label=label,
+                        instance_id=3)
+                else:
+                    mapper.mark_free_world(*point)
+
+        def snapshot(mapper, idx):
+            return (mapper._grid[idx], mapper._source[idx],
+                    mapper._labels[idx],
+                    mapper._occupancy.geometry_locked[idx])
+
+        sequences = [
+            ('h',), ('h', 'm'), ('h', 'm', 'm', 'm'),
+            ('h',) + ('m',) * 25, ('h', 'h') + ('m',) * 5,
+            ('h', 'm', 'h'), ('m',), ('m', 'm', 'm'), ('m', 'h'),
+            ('m',) + ('h',) * 3,
+        ]
+        failures = []
+        for sequence in sequences:
+            with self.subTest(sequence=sequence), \
+                    case('review2/sensor-control-equivalence/'
+                         + ''.join(sequence),
+                         {'sequence': list(sequence)}) as observed:
+                control = fresh()
+                apply(control, sequence)
+                expected = snapshot(control, idx_of(control))
+                # A: hits before the commit, the rest after the removal.
+                split = sequence.count('h')
+                variant_a = fresh()
+                apply(variant_a, sequence[:split])
+                self.assertTrue(variant_a.mark_placed_box(
+                    *box, measured_source='verify_placed_box'))
+                self.assertTrue(variant_a.unmark_placed_box(
+                    box[0], box[1], yaw=0.0))
+                apply(variant_a, sequence[split:])
+                got_a = snapshot(variant_a, idx_of(variant_a))
+                # B: the remainder runs DURING coverage; removal last.
+                variant_b = fresh()
+                apply(variant_b, sequence[:split])
+                self.assertTrue(variant_b.mark_placed_box(
+                    *box, measured_source='verify_placed_box'))
+                apply(variant_b, sequence[split:])
+                self.assertTrue(variant_b.unmark_placed_box(
+                    box[0], box[1], yaw=0.0))
+                got_b = snapshot(variant_b, idx_of(variant_b))
+                observed.update(expected=list(expected), variant_a=list(got_a),
+                                variant_b=list(got_b))
+                if not (expected == got_a == got_b):
+                    failures.append(sequence)
+                    self.assertEqual((expected, got_a, got_b),
+                                     (expected, expected, expected))
+        # The reviewer's exact counterexample is the 25-miss row: FREE,
+        # unlocked, no label — identical to the control.
+        review = fresh()
+        apply(review, ('h',))
+        review.mark_placed_box(*box, measured_source='verify_placed_box')
+        review.unmark_placed_box(box[0], box[1], yaw=0.0)
+        apply(review, ('m',) * 25)
+        with case('review2/sensor-control-equivalence/reviewer-case',
+                  {'sequence': ['h', 'commit', 'remove'] + ['m'] * 25}):
+            self.assertEqual(snapshot(review, idx_of(review)),
+                             (FREE, SOURCE_NONE, 0, False))
+        # Pure geometry still clears to unknown with the lock released.
+        pure = fresh()
+        pure.mark_placed_box(*box)
+        pure.unmark_placed_box(box[0], box[1], yaw=0.0)
+        with case('review2/sensor-control-equivalence/pure-geometry', {}):
+            self.assertEqual(snapshot(pure, idx_of(pure)),
+                             (UNKNOWN, SOURCE_NONE, 0, False))
+        # Two overlapping boxes: removing one leaves the other covering
+        # (still locked); removing both restores the sensor's word.
+        both = fresh()
+        both.mark_occupied_world(*point, source=SOURCE_SENSOR, label=9)
+        both.mark_placed_box([0.0, 0.0, point[2]], [0.2, 0.2, 0.2],
+                             measured_source='verify_placed_box')
+        both.mark_placed_box([0.12, 0.0, point[2]], [0.2, 0.2, 0.2],
+                             measured_source='verify_placed_box')
+        with case('review2/sensor-control-equivalence/overlapping-boxes',
+                  {}) as observed:
+            self.assertTrue(both.unmark_placed_box(
+                [0.0, 0.0, point[2]], [0.2, 0.2, 0.2], yaw=0.0))
+            mid = snapshot(both, idx_of(both))
+            self.assertEqual(mid[0], OCCUPIED)
+            self.assertIs(mid[3], True)
+            self.assertTrue(both.unmark_placed_box(
+                [0.12, 0.0, point[2]], [0.2, 0.2, 0.2], yaw=0.0))
+            self.assertEqual(snapshot(both, idx_of(both)),
+                             (OCCUPIED, SOURCE_SENSOR, 9, False))
+            observed.update(after_first=list(mid))
+        self.assertEqual(failures, [])
 
     def test_review_v2_commit_provenance_gate(self):
         # R2 regression, callback level: the v2 ledger is measured-commit

@@ -8,16 +8,17 @@
     "64 matrix cases: world surface-contact records with +Z outward normal through real serialization; contact +Z vs tool -Z preserved",
     "contact_record_admission rejects frame/basis/scene defects with SUCTION_REJECT_TF reason carrying the exact contract code",
     "luggage_detector_node publishes /luggage/suction/candidates_v2 beside v1",
-    "review wiring: judge_probe admits a supplied v2 contact record before probe effects (stale scene rejects with the exact contract code); session-level real-caller test added"
+    "review wiring: judge_probe admits a supplied v2 contact record before probe effects (stale scene rejects with the exact contract code); session-level real-caller test added",
+    "repair2 P1-c: v2 contact admission runs in the session gate BEFORE any waypoint building or probe call - a stale record rejects with zero probe/motion/vacuum effects (probes are ProbeMotionSegment planning calls); judge_probe keeps its probe-only signature"
   ],
-  "sample_count": 95,
+  "sample_count": 94,
   "source_sha256": {
     "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
     "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
     "src/luggage_msgs/msg/SuctionCandidate.msg": "ba98b8991d14c726ebd28abc2162ea37179a86224c8a08cb36a1594018bb379b",
     "src/luggage_perception/luggage_perception/frame_boundary_records.py": "0e5075aa22b12960bd2ae2ba73104a460b2711d26aaff811d6afc375cfd2a1b2",
     "src/luggage_perception/luggage_perception/suction_patch_evaluator.py": "a70ebcbbc96aa64c55255455edb90999f9d5ab0d0725117fb274e660bb418777",
-    "src/luggage_planning/luggage_planning/suction_candidate_selection.py": "3f1163d9cdea6654e9a4de12fbbca4f4a9e2a16ae98edd1758ef507e74081059",
+    "src/luggage_planning/luggage_planning/suction_candidate_selection.py": "cd9c82f3eab1ebb584aebc5979b2a756f25e770565f6ab42e0066434c4736a18",
     "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py": "07369a663ea3f98c40187ef2a5c3995d1cd571ade430cb227b16c6037d650cdb"
   },
   "status": "pass"

@@ -106,12 +106,15 @@ def approach_snapshot(target_pose, candidate, detection, scene_revision="",
             (contact.orientation.x, contact.orientation.y,
              contact.orientation.z, contact.orientation.w),
             scene_revision)
-    # Exact stamp preference: an integer-nanosecond field wins over the
-    # float-seconds transport form (epoch floats cannot carry nanoseconds).
+    # Exact stamp preference: a declared integer-nanosecond field wins
+    # over the float-seconds transport form (epoch floats cannot carry
+    # nanoseconds). Zero stays undeclared so a synthetic float stamp is
+    # never folded to 0.
     stamp = 0
     detection_stamp_ns = getattr(detection, "stamp_ns", None)
-    if isinstance(detection_stamp_ns, int) and not isinstance(
-            detection_stamp_ns, bool):
+    if (isinstance(detection_stamp_ns, int)
+            and not isinstance(detection_stamp_ns, bool)
+            and detection_stamp_ns > 0):
         stamp = detection_stamp_ns
     else:
         detection_stamp = getattr(detection, "stamp", None)

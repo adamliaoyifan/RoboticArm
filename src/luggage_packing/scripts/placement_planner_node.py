@@ -242,24 +242,32 @@ class PlacementPlannerNode(Node):
         map_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.create_subscription(
-            String, "/luggage/cargo_map/surface_2d",
-            self._on_surface, map_qos, callback_group=group)
-        self._last_pub = self.create_publisher(
-            String, "/placement_planner/last_result", map_qos)
-
-        # ST05: v2 surface ingest and ComputePlacementV2 are enabled only by
-        # an explicit scene revision; unset leaves v1 behavior untouched.
+        # ST05 surface mode: one map transport per deployment. With an
+        # explicit scene revision the planner subscribes ONLY the v2
+        # contract topic (a single admitted-revision stream); the v1 JSON
+        # topic stays for v1 deployments. A v2-mode planner on a mapper
+        # that does not publish v2 is a wiring gap: no map is admitted,
+        # the floor prior serves, and requests fail closed on the
+        # revision gate — never silently fed by the v1 topic. The v1
+        # ComputePlacement service keeps answering in v2 mode from the
+        # same admitted map (shared normalization, response unchanged).
         self.declare_parameter("frame_scene_revision", "")
         self._frame_scene_revision = str(
             self.get_parameter("frame_scene_revision").value or "")
-        if self._frame_scene_revision:
+        self._v2_surface_mode = bool(self._frame_scene_revision)
+        if not self._v2_surface_mode:
+            self.create_subscription(
+                String, "/luggage/cargo_map/surface_2d",
+                self._on_surface, map_qos, callback_group=group)
+        else:
             self.create_subscription(
                 SurfaceContractV2, "/luggage/cargo_map/surface_v2",
                 self._on_surface_v2, map_qos, callback_group=group)
             self.create_service(
                 ComputePlacementV2, "/placement_planner/compute_placement_v2",
                 self._handle_v2, callback_group=group)
+        self._last_pub = self.create_publisher(
+            String, "/placement_planner/last_result", map_qos)
 
         self.create_service(
             ComputePlacement, "/placement_planner/compute_placement",
@@ -344,6 +352,15 @@ class PlacementPlannerNode(Node):
     # Surface map in / floor prior
 
     def _on_surface(self, msg):
+        if getattr(self, "_v2_surface_mode", False):
+            # v2 mode subscribes only the contract topic; a v1 JSON
+            # message delivered here anyway is not this deployment's map
+            # stream. Consuming it could regress the admitted v2 map.
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "ignored v1 cargo map in v2 surface mode (rejected=%d)"
+                % self._rejected_maps)
+            return
         try:
             surface = json.loads(msg.data)
         except ValueError:
@@ -362,11 +379,6 @@ class PlacementPlannerNode(Node):
                    self._rejected_maps))
             return
         self._surface = surface
-        # Mirror the v2 progression bookkeeping on the v1 transport: the
-        # two topics carry the same mapper state, so the admitted revision
-        # must advance with whichever transport delivered the newer map.
-        if isinstance(surface.get("map_revision"), int):
-            self._admitted_map_revision = int(surface["map_revision"])
 
     def _floor_prior_surface(self):
         """Match cargo_volume_mapper.surface_map_2d: floor-relative height.

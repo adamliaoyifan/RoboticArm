@@ -498,9 +498,11 @@ class FrameMigrationPick(unittest.TestCase):
             observed.update(snapshot=list(frozen))
 
     def test_judge_probe_admits_v2_record_before_effects(self):
-        # Real-caller wiring: judge_probe admits a supplied v2 contact
-        # record FIRST — a boundary violation rejects before the probe
-        # records are even considered, carrying the exact contract code.
+        # P1-c: admission is a session-gate responsibility now (before any
+        # plan spend); judge_probe keeps its original probe-only signature.
+        # This test pins the helper pair the session composes: admission
+        # rejects with the exact contract code, the probe judge never sees
+        # a boundary question.
         candidate = make_candidate('C000_000', 1)
         good = contact_boundary(
             _contact_candidate((.65, 0.0, .85)), STAMP_SEC, SCENE,
@@ -509,34 +511,26 @@ class FrameMigrationPick(unittest.TestCase):
         stale['scene_revision'] = 'scene-old'
         record = ProbeRecord(candidate_id='C000_000', segment_name='approach',
                              ik_ok=True, fraction=1.0, moveit_error_code=1)
-        with case('review/judge-probe-v2-admission', {}) as observed:
-            self.assertIsNone(judge_probe(
-                candidate, [record], contact_record=good,
-                scene_revision=SCENE))
-            reason = judge_probe(candidate, [record],
-                                 contact_record=stale,
-                                 scene_revision=SCENE)
-            self.assertEqual(reason[0], SUCTION_REJECT_TF)
-            self.assertTrue(reason[1].startswith(
-                'CALIBRATION_REVISION_MISMATCH'), reason)
-            # Admission runs before probe evaluation: even a failing IK
-            # record cannot mask the boundary rejection.
-            failing = ProbeRecord(candidate_id='C000_000',
-                                  segment_name='approach', ik_ok=False,
-                                  fraction=-1.0, moveit_error_code=1)
-            reason = judge_probe(candidate, [failing],
-                                 contact_record=stale,
-                                 scene_revision=SCENE)
-            self.assertTrue(reason[1].startswith(
-                'CALIBRATION_REVISION_MISMATCH'), reason)
-            observed.update(reason=reason)
+        with case('review2/admission-helper-pair', {}) as observed:
+            self.assertIsNone(
+                contact_record_admission(good, SCENE))
+            reason, detail = contact_record_admission(stale, SCENE)
+            self.assertEqual(reason, SUCTION_REJECT_TF)
+            self.assertTrue(detail.startswith('CALIBRATION_REVISION_MISMATCH'),
+                            detail)
+            # judge_probe stays pure: it judges probe records only and
+            # never takes a contact record.
+            import inspect
+            parameters = inspect.signature(judge_probe).parameters
+            self.assertNotIn('contact_record', parameters)
+            self.assertIsNone(judge_probe(candidate, [record]))
+            observed.update(detail=detail)
 
     def test_session_gate_rejects_stale_v2_record_zero_effects(self):
-        # Real-caller test through the session's own selection step: the
-        # ports supply the v2 contact record; a stale scene record rejects
-        # the first candidate with zero MOTION/VACUUM effects for it (the
-        # planning-space probes are the judge's inputs, not effects), and
-        # the next (clean) candidate is selected normally.
+        # P1-c regression: a stale v2 contact record rejects the candidate
+        # BEFORE any waypoint building or probe call — zero probe (each
+        # probe is a real ProbeMotionSegment planning call), zero motion,
+        # zero vacuum; the next (clean) candidate proceeds normally.
         stale_first = make_candidate('C001_001', 1)
         clean_second = make_candidate('C002_001', 2)
         good = contact_boundary(
@@ -563,25 +557,82 @@ class FrameMigrationPick(unittest.TestCase):
             ports, SessionConfig(scene_revision=SCENE, dry_run=True,
                                  contact_model_version=1,
                                  contact_model_hash='abc123'))
-        with case('review/session-v2-record-gate', {}) as observed:
+        with case('review2/session-admission-before-plan', {}) as observed:
             result = session.run_request(
                 make_detection([stale_first, clean_second]))
+            probe_ids = [candidate_id
+                         for candidate_id, _ in ports.probe_fake.calls]
+            self.assertNotIn('C001_001', probe_ids)
             executed_ids = [candidate_id
                             for candidate_id, _ in ports.motion.executed]
             self.assertNotIn('C001_001', executed_ids)
-            self.assertNotIn('C001_001',
-                             ports.vacuum.enable_candidates)
+            self.assertNotIn('C001_001', ports.vacuum.enable_candidates)
+            self.assertIn('C002_001', probe_ids)
             self.assertIn('C002_001', executed_ids)
             rejected = [row for row in session._trace
                         if row.get('kind') == 'io'
                         and row.get('name') == 'candidate_rejected']
-            self.assertTrue(rejected)
-            self.assertTrue(any(
-                'CALIBRATION_REVISION_MISMATCH' in str(row) for row in
-                rejected), rejected)
-            observed.update(executed_ids=executed_ids,
-                            n_rejected=len(rejected),
+            self.assertEqual(len(rejected), 1)
+            self.assertIn('CALIBRATION_REVISION_MISMATCH',
+                          str(rejected[0].get('payload', '')))
+            planned = [row for row in session._trace
+                       if row.get('kind') == 'io'
+                       and row.get('name') == 'plan']
+            self.assertTrue(all(
+                row.get('candidate_id') != 'C001_001' or
+                row.get('payload', {}).get('candidate_id') != 'C001_001'
+                for row in planned))
+            observed.update(probe_ids=probe_ids,
+                            executed_ids=executed_ids,
+                            rejected=len(rejected),
                             exit_code=result.exit_code)
+
+    def test_review2_hardware_stamp_chain(self):
+        # P2-d regression: the hardware detection view carries the exact
+        # integer-nanosecond stamp from the message header, and the retry
+        # snapshot keeps it — the float-seconds path lost 21 ns at epoch
+        # scale.
+        import runpy
+        import types as types_module
+        driver_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'hardware_pick_driver.py')
+        module = runpy.run_path(driver_path)
+        from luggage_msgs.msg import DetectedLuggage
+        box = DetectedLuggage()
+        box.header.stamp.sec = 1720000000
+        box.header.stamp.nanosec = 123456789
+        box.header.frame_id = 'world'
+        box.pose.orientation.w = 1.0
+        box.width, box.depth, box.height = 0.5, 0.35, 0.4
+        box.height_valid = True
+        box.height_source = 1  # MEASURED_SUPPORT (pickup AABB needs it)
+        box.top_surface_valid = True
+        box.yaw_valid = True
+        expected_ns = 1720000000123456789
+        with case('review2/hardware-stamp-chain',
+                  {'sec': 1720000000, 'nanosec': 123456789}) as observed:
+            # _detection_view only needs its module imports; bind it onto
+            # a bare namespace (no node construction).
+            holder = types_module.SimpleNamespace()
+            method = types_module.MethodType(
+                module['HardwarePickDriver']._detection_view, holder)
+            view = method(box)
+            self.assertEqual(view.stamp_ns, expected_ns)
+            candidate = make_candidate('C000_000', 1)
+            snapshot = approach_snapshot(
+                pose_along_normal(candidate.contact, (0., 0., 1.), 0.10),
+                candidate, view, scene_revision=SCENE)
+            self.assertEqual(snapshot.stamp_ns, expected_ns)
+            # Undeclared stamp_ns (None) keeps the documented float path.
+            fallback = make_detection([candidate])
+            fallback_snapshot = approach_snapshot(
+                pose_along_normal(candidate.contact, (0., 0., 1.), 0.10),
+                candidate, fallback, scene_revision=SCENE)
+            self.assertEqual(fallback_snapshot.stamp_ns, STAMP_NS)
+            observed.update(view_stamp_ns=view.stamp_ns,
+                            snapshot_stamp_ns=snapshot.stamp_ns,
+                            fallback_stamp_ns=fallback_snapshot.stamp_ns)
 
     def test_hardware_driver_supplies_scene_revision(self):
         # Real wiring: the hardware driver forwards --frame-scene-revision
