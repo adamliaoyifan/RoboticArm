@@ -105,6 +105,110 @@ def stamp_geometry_descriptor(surface, hull=None):
     return out
 
 
+def _legacy_view_of_surface_contract(record, inner_size,
+                                     geometry_descriptor):
+    """ST04 F06: convert one v2 surface record into the legacy dict view.
+
+    The v2 record is authoritative for grid, floor and ceiling
+    (container-origin datum, ``None`` unknowns). The consumer supplies
+    ``inner_size`` as its declared geometry identity; a grid whose span
+    disagrees with that identity by more than one cell is refused. Output
+    keeps the legacy floor-relative ``height`` vocabulary so every existing
+    consumer below this boundary is unchanged in this stage.
+    """
+    required = ("surface_z_container", "state", "confidence",
+                "floor_z_container", "ceiling_z_container",
+                "origin_xy_container", "resolution_m", "map_revision",
+                "geometry_hash")
+    for key in required:
+        if key not in record:
+            raise OccupancyMismatch(
+                "%s: v2 surface missing %s" % (PLACE_PATH_INFEASIBLE, key))
+    if str(record.get("height_datum")) != "container_origin":
+        raise OccupancyMismatch(
+            "%s: v2 surface height_datum %r is not container_origin"
+            % (PLACE_PATH_INFEASIBLE, record.get("height_datum")))
+    if str(record.get("frame_id")) != "container_link":
+        raise OccupancyMismatch(
+            "%s: v2 surface frame %r is not container_link"
+            % (PLACE_PATH_INFEASIBLE, record.get("frame_id")))
+    if not inner_size or not isinstance(geometry_descriptor, dict) \
+            or not geometry_descriptor:
+        raise OccupancyMismatch(
+            "%s: v2 surface ingest requires consumer inner_size and "
+            "geometry_descriptor" % PLACE_PATH_INFEASIBLE)
+    resolution = float(record["resolution_m"])
+    floor = float(record["floor_z_container"])
+    ceiling = float(record["ceiling_z_container"])
+    inner_h = ceiling - floor
+    inner = [float(v) for v in inner_size]
+    if abs(inner[2] - inner_h) > 1e-6:
+        raise OccupancyMismatch(
+            "%s: v2 surface inner height %s != consumer %s"
+            % (PLACE_PATH_INFEASIBLE, inner_h, inner[2]))
+    surface_z = record["surface_z_container"]
+    state = record["state"]
+    confidence = record["confidence"]
+    nx = len(surface_z)
+    ny = len(surface_z[0]) if nx else 0
+    if not nx or not ny:
+        raise OccupancyMismatch(
+            "%s: v2 surface grid is empty" % PLACE_PATH_INFEASIBLE)
+    span_x, span_y = nx * resolution, ny * resolution
+    if (abs(span_x - inner[0]) > resolution
+            or abs(span_y - inner[1]) > resolution):
+        raise OccupancyMismatch(
+            "%s: v2 surface span (%s, %s) disagrees with inner_size (%s, %s)"
+            % (PLACE_PATH_INFEASIBLE, span_x, span_y, inner[0], inner[1]))
+    height = []
+    legacy_state = []
+    legacy_confidence = []
+    inverse = {"sensor": "sensor", "verified_geometry": "geometry",
+               "unknown": "none"}
+    for ix in range(nx):
+        h_row, s_row, c_row = [], [], []
+        for iy in range(ny):
+            top = surface_z[ix][iy]
+            cell_state = str(state[ix][iy])
+            source = inverse.get(str(confidence[ix][iy]))
+            if source is None:
+                raise OccupancyMismatch(
+                    "%s: v2 surface confidence %r unknown"
+                    % (PLACE_PATH_INFEASIBLE, confidence[ix][iy]))
+            if top is None:
+                if cell_state != "unknown":
+                    raise OccupancyMismatch(
+                        "%s: v2 surface null top with state %r"
+                        % (PLACE_PATH_INFEASIBLE, cell_state))
+                h_row.append(0.0)
+                s_row.append("unknown")
+                c_row.append("none")
+            else:
+                h_row.append(float(top) - floor)
+                s_row.append(cell_state)
+                c_row.append(source)
+        height.append(h_row)
+        legacy_state.append(s_row)
+        legacy_confidence.append(c_row)
+    return {
+        "frame": "container_local",
+        "map_revision": record["map_revision"],
+        "geometry_hash": str(record["geometry_hash"]),
+        "geometry_descriptor": dict(geometry_descriptor),
+        "resolution": resolution,
+        "nx": nx,
+        "ny": ny,
+        "inner_size": inner,
+        "floor_z": 0.0,
+        "origin_local": [float(v) for v in record["origin_xy_container"]],
+        "center_base": [0.0, 0.0, floor + 0.5 * inner_h],
+        "yaw": 0.0,
+        "height": height,
+        "state": legacy_state,
+        "confidence": legacy_confidence,
+    }
+
+
 def clip01(value):
     if value <= 0.0:
         return 0.0
@@ -244,10 +348,39 @@ class OccupancySnapshot:
     @classmethod
     def from_surface_2d(cls, surface, expected_hash=None,
                         expected_revision=None, inflate_m=0.05,
-                        support_tol=0.05):
+                        support_tol=0.05, inner_size=None,
+                        geometry_descriptor=None):
+        """Build a snapshot from a v2 surface record or a legacy v1 dump.
+
+        ST04 F06: a v2 record (``kind == "surface"``,
+        ``height_datum == "container_origin"``) is the native input —
+        ``inner_size`` is then required from the consumer (declared geometry
+        identity; the record itself is authoritative only for grid, floor
+        and ceiling). Anything else is the **single declared v1 import
+        adapter**: a legacy ``surface_map_2d`` dict with the complete datum
+        field set. A dict with ``height`` but missing datum fields, a
+        foreign ``frame`` label, or neither schema is an OccupancyMismatch —
+        no default datum, no magnitude guessing.
+        """
+        if isinstance(surface, dict) and surface.get("kind") == "surface":
+            surface = _legacy_view_of_surface_contract(
+                surface, inner_size, geometry_descriptor)
         if not isinstance(surface, dict) or "height" not in surface:
             raise OccupancyMismatch(
                 "%s: surface_2d missing height" % PLACE_PATH_INFEASIBLE)
+        # Declared v1 import adapter: the legacy datum fields are required,
+        # and an explicit frame label must be the container-local one.
+        label = surface.get("frame")
+        if label is not None and str(label) != "container_local":
+            raise OccupancyMismatch(
+                "%s: surface_2d frame %r is not container_local"
+                % (PLACE_PATH_INFEASIBLE, label))
+        for datum in ("floor_z", "center_base", "inner_size", "resolution",
+                      "nx", "ny"):
+            if datum not in surface:
+                raise OccupancyMismatch(
+                    "%s: surface_2d missing datum field %s"
+                    % (PLACE_PATH_INFEASIBLE, datum))
         raw = surface.get("geometry_descriptor")
         if not isinstance(raw, dict) or not raw:
             raise OccupancyMismatch(

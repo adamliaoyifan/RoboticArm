@@ -1,0 +1,11 @@
+# F19 v2: remove one committed box by its explicit container_link slot
+# pose and size. Same normalization as AddPlacedBoxV2/readback by
+# construction; removed geometry never erases sensor observations.
+luggage_msgs/PoseContractV2 slot_pose
+float64[3] size_wdh
+uint64 expected_map_revision
+string geometry_hash
+---
+bool success
+string message
+uint64 resulting_map_revision

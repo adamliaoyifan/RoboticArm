@@ -16,6 +16,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointTrajectoryContractV2.msg"
   "msg/BoundaryDiagnosticV2.msg"
   "srv/ValidatePoseV2.srv"
+  "srv/AddPlacedBoxV2.srv"
+  "srv/RemovePlacedBoxV2.srv"
   "msg/DetectedLuggage.msg"
   "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"

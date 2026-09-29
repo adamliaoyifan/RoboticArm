@@ -49,7 +49,17 @@ class FrameContractTests(unittest.TestCase):
         report = checker.inventory_report(
             self.inventory, {case["id"] for case in self.suite["cases"]})
         self.assertEqual(report["interface_count"], 24)
-        self.assertEqual(len(report["pending"]), 24)
+        # Pending shrinks only through verified rows whose runtime proofs the
+        # checker itself validates in this tree (ST03+: F02-F05/F09/F10...).
+        # Expected pending = 24 minus verified-and-valid rows; anything else
+        # (isolated rows aside) must stay pending.
+        verified = {
+            row["id"] for row in self.inventory["interfaces"]
+            if row.get("migration_state") == "verified"}
+        self.assertEqual(
+            len(report["pending"]),
+            24 - len(verified - {"F24"}),
+            report["pending"])
 
     def test_nonfinite_boolean_and_wrong_length_coordinates_rejected(self):
         for bad in (float("nan"), float("inf"), -float("inf"), True):

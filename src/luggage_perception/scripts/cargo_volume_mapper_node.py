@@ -24,6 +24,7 @@ SOURCE_GEOMETRY commits remain a lock against free-space misses (RS-2).
 from __future__ import division
 
 import json
+import math
 import threading
 from collections import OrderedDict
 
@@ -39,14 +40,22 @@ from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from geometry_msgs.msg import Pose as PoseMsg
+from luggage_msgs.msg import SurfaceContractV2
 from luggage_msgs.srv import (
     AddPlacedBox,
+    AddPlacedBoxV2,
     GetCargoMapStats,
     IntegrateCargoView,
     RemovePlacedBox,
+    RemovePlacedBoxV2,
     ResetCargoMap,
 )
 
+from luggage_description.frame_contracts import ContractError
+from luggage_description.frame_diagnostics import (
+    BoundaryContext, BoundaryContractError,
+)
+from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.scene_tf_config_utils import (
     container_hull_local_inside_fn,
     container_inner_ceiling_z,
@@ -62,7 +71,10 @@ from luggage_perception.cargo_instance_tracker import (
     rotation_from_xyzw,
     transform_points,
 )
-from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+from luggage_perception.cargo_volume_mapper import (
+    CargoVolumeMapper, normalize_ledger_slot,
+)
+from luggage_perception.frame_message_adapters import measured_surface_to_message
 from luggage_perception.cargo_view_integration import (
     REASON_TF_MISSING,
     REASON_VIEW_EMPTY,
@@ -96,6 +108,11 @@ class CargoVolumeMapperNode(Node):
         self.declare_parameter("freshness_window_sec", 0.20)
         self.declare_parameter("max_raycast_points", 2000)
         self.declare_parameter("integrate_min_z_above_floor", 0.05)
+        # ST04 F06/F19: v2 surface publication and ledger services are
+        # enabled only by an explicit scene revision; unset leaves the node
+        # byte-identical to its v1 behavior.
+        self.declare_parameter("frame_scene_revision", "")
+        self.declare_parameter("surface_v2_topic", "/luggage/cargo_map/surface_v2")
 
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
@@ -169,6 +186,20 @@ class CargoVolumeMapperNode(Node):
         self.create_service(
             IntegrateCargoView, "/cargo_map/integrate_cargo_view",
             self._on_integrate, callback_group=group)
+
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        self._surface_v2_pub = None
+        if self._frame_scene_revision:
+            self._surface_v2_pub = self.create_publisher(
+                SurfaceContractV2,
+                str(self.get_parameter("surface_v2_topic").value), transient)
+            self.create_service(
+                AddPlacedBoxV2, "/cargo_map/add_placed_box_v2",
+                self._on_add_v2, callback_group=group)
+            self.create_service(
+                RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
+                self._on_remove_v2, callback_group=group)
 
         self._publish_all()
         self.get_logger().info(
@@ -327,19 +358,22 @@ class CargoVolumeMapperNode(Node):
 
     def _on_add(self, request, response):
         slot = request.slot
-        center_c = self._to_container(slot.place_pose)
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
                 max(0.0, float(slot.height))]
-        yaw = (
-            self._yaw_from_pose(slot.place_pose)
-            - float(self._world_from_container["rotation_rpy"][2])
-        )
         try:
-            added = self._mapper.mark_placed_box(
-                [center_c.position.x, center_c.position.y,
-                 center_c.position.z],
-                size, yaw=yaw)
+            # F19: the v1 world-pose shape normalizes through the single
+            # shared ledger entry (declared v1 shim) — one conversion, never
+            # _to_container plus a second normalization.
+            center, yaw_c, size = normalize_ledger_slot(
+                [slot.place_pose.position.x, slot.place_pose.position.y,
+                 slot.place_pose.position.z],
+                self._yaw_from_pose(slot.place_pose), size,
+                source_frame="world",
+                container_yaw=float(
+                    self._world_from_container["rotation_rpy"][2]),
+                container_translation=self._world_from_container["translation"])
+            added = self._mapper.mark_placed_box(center, size, yaw=yaw_c)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "mark failed: %s" % exc
@@ -353,18 +387,23 @@ class CargoVolumeMapperNode(Node):
 
     def _on_remove(self, request, response):
         slot = request.slot
-        center_c = self._to_container(slot.place_pose)
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
                 max(0.0, float(slot.height))]
-        yaw = (
-            self._yaw_from_pose(slot.place_pose)
-            - float(self._world_from_container["rotation_rpy"][2])
-        )
-        removed = self._mapper.unmark_placed_box(
-            [center_c.position.x, center_c.position.y,
-             center_c.position.z],
-            size, yaw=yaw)
+        try:
+            center, yaw_c, size = normalize_ledger_slot(
+                [slot.place_pose.position.x, slot.place_pose.position.y,
+                 slot.place_pose.position.z],
+                self._yaw_from_pose(slot.place_pose), size,
+                source_frame="world",
+                container_yaw=float(
+                    self._world_from_container["rotation_rpy"][2]),
+                container_translation=self._world_from_container["translation"])
+            removed = self._mapper.unmark_placed_box(center, size, yaw=yaw_c)
+        except Exception as exc:  # noqa: BLE001 - service boundary
+            response.success = False
+            response.message = "unmark failed: %s" % exc
+            return response
         self._publish_all()
         response.success = bool(removed)
         response.message = (
@@ -417,6 +456,123 @@ class CargoVolumeMapperNode(Node):
             "map_revision": self._mapper._revision,
             "geometry_hash": self._geometry_hash,
         }, sort_keys=True)))
+        # ST04 F06: scene-bound v2 surface beside the byte-stable v1 JSON.
+        if self._surface_v2_pub is not None:
+            try:
+                record = self._mapper.surface_contract_v2(
+                    self._frame_scene_revision,
+                    "map-rev-%d" % int(self._mapper._revision))
+                self._surface_v2_pub.publish(
+                    measured_surface_to_message(record, self._surface_context()))
+            except BoundaryContractError as error:
+                self.get_logger().warning(
+                    "surface v2 rejected (%s %s)" % (error.code, error.field))
+            except Exception as error:  # noqa: BLE001 - never break v1
+                self.get_logger().warning(
+                    "surface v2 emit failed: %s" % error)
+
+    def _surface_context(self):
+        return BoundaryContext(
+            "F06", "cargo_volume_mapper_node", "surface_v2_subscribers",
+            "map-rev-%d" % int(self._mapper._revision),
+            self._frame_scene_revision, "container_link", "",
+            "scene", geometry_hash=self._geometry_hash,
+            map_revision=int(self._mapper._revision))
+
+    def _decode_slot_v2(self, slot_pose, request_id):
+        """Decode one v2 slot record (F19) with explicit consumer identity."""
+        context = BoundaryContext(
+            "F19", "v2_client", "cargo_volume_mapper_node",
+            str(request_id), self._frame_scene_revision,
+            "container_link", "box_center", "scene",
+            geometry_hash=self._geometry_hash,
+            map_revision=None)
+        return pose_from_message(slot_pose, "slot", context)
+
+    def _ledger_guard(self, expected_map_revision, geometry_hash,
+                      response=None):
+        """Reject stale revision / foreign hull before any map mutation."""
+        stats = self._mapper.stats()
+        if int(expected_map_revision) != int(stats["map_revision"]):
+            if response is not None:
+                response.success = False
+                response.message = "stale map revision %s != %s" % (
+                    expected_map_revision, stats["map_revision"])
+            return False
+        incoming = str(geometry_hash or "")
+        if incoming and incoming != self._geometry_hash:
+            if response is not None:
+                response.success = False
+                response.message = "geometry hash mismatch"
+            return False
+        return True
+
+    def _on_add_v2(self, request, response):
+        try:
+            slot = self._decode_slot_v2(
+                request.slot_pose, request.slot_pose.identity.request_id)
+        except ContractError as error:
+            response.success = False
+            response.message = "slot rejected (%s %s)" % (
+                error.code, error.field)
+            return response
+        if not self._ledger_guard(
+                request.expected_map_revision, request.geometry_hash,
+                response):
+            return response
+        yaw = 2.0 * math.atan2(slot["quaternion_xyzw"][2],
+                                slot["quaternion_xyzw"][3])
+        try:
+            # v2 slot records are already container_link: the shared
+            # normalization applies no second yaw subtraction.
+            center, yaw_c, size = normalize_ledger_slot(
+                slot["position"], yaw, list(request.size_wdh),
+                source_frame="container_link")
+            added = self._mapper.mark_placed_box(
+                center, size, yaw=yaw_c,
+                measured_source=str(request.measured_source or ""))
+        except Exception as exc:  # noqa: BLE001 - service boundary
+            response.success = False
+            response.message = "mark failed: %s" % exc
+            return response
+        self._publish_all()
+        response.success = True
+        response.message = "%s %d boxes (rev %d)" % (
+            "committed" if added else "already committed",
+            len(self._mapper.commit_ledger()), self._mapper._revision)
+        response.resulting_map_revision = int(self._mapper._revision)
+        return response
+
+    def _on_remove_v2(self, request, response):
+        try:
+            slot = self._decode_slot_v2(
+                request.slot_pose, request.slot_pose.identity.request_id)
+        except ContractError as error:
+            response.success = False
+            response.message = "slot rejected (%s %s)" % (
+                error.code, error.field)
+            return response
+        if not self._ledger_guard(
+                request.expected_map_revision, request.geometry_hash,
+                response):
+            return response
+        yaw = 2.0 * math.atan2(slot["quaternion_xyzw"][2],
+                                slot["quaternion_xyzw"][3])
+        try:
+            center, yaw_c, size = normalize_ledger_slot(
+                slot["position"], yaw, list(request.size_wdh),
+                source_frame="container_link")
+            removed = self._mapper.unmark_placed_box(center, size, yaw=yaw_c)
+        except Exception as exc:  # noqa: BLE001 - service boundary
+            response.success = False
+            response.message = "unmark failed: %s" % exc
+            return response
+        self._publish_all()
+        response.success = bool(removed)
+        response.message = (
+            "removed" if removed else "no matching committed box")
+        response.resulting_map_revision = int(self._mapper._revision)
+        return response
 
 
 def main(argv=None):
