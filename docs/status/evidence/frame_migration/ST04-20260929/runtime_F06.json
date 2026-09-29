@@ -1,0 +1,21 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_map.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "e35ab4de7a9156c908b8b6e7ff5cbb48173bdda6b50250e0d19168503cea34a1",
+  "interface_id": "F06",
+  "kind": "runtime_boundary",
+  "observations": [
+    "64-case matrix: container-origin surface records with null unknowns through real SurfaceContractV2 serialization; dual datum agrees <=1e-9 with the unchanged v1 floor-relative output on every non-null cell",
+    "raster occupancy equals the independent exact-intersection oracle per cell under the declared half-open rule (mismatch count 0)",
+    "/luggage/cargo_map/surface_v2 published beside byte-stable v1 JSON; OccupancySnapshot ingests the v2 record natively and through the single declared legacy adapter"
+  ],
+  "sample_count": 67,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_perception/luggage_perception/cargo_volume_mapper.py": "8e6226b0a5fa3e4aaf84855729af184bc3617d35f8e60552022da1a8925f9960",
+    "src/luggage_perception/scripts/cargo_volume_mapper_node.py": "36d168cf37f927dc33969790bf0766867ca687a5d562c4c0112e4f403440117c",
+    "src/luggage_planning/luggage_planning/occupancy_place_paths.py": "4c75c357b7ebe93d5e7dc75d3ef1b86c0381554aee3804313660cb56bfc82434"
+  },
+  "status": "pass"
+}

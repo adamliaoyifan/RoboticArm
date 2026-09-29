@@ -1,0 +1,22 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_map.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "75b4771e7f9bb92cc433513b054b957869cb1a400fde8d21493a609147136172",
+  "interface_id": "F19",
+  "kind": "runtime_boundary",
+  "observations": [
+    "AddPlacedBoxV2/RemovePlacedBoxV2 slot-profile records with one shared normalize_ledger_slot; add/remove/readback share normalization by construction",
+    "duplicate v2 commits idempotent (no revision bump); stale revision/foreign hull rejected before any mutation; v1 world-pose shim produces identical voxels to the v2 container path",
+    "remove retracts only committed-geometry voxels: independent sensor observations survive; masked cells return to unknown, never free"
+  ],
+  "sample_count": 67,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_msgs/srv/AddPlacedBox.srv": "0255735bc9d0a4e24a9610d7e47db2e35fa7ab97611387c7260ef551922e266f",
+    "src/luggage_msgs/srv/RemovePlacedBox.srv": "0255735bc9d0a4e24a9610d7e47db2e35fa7ab97611387c7260ef551922e266f",
+    "src/luggage_msgs/srv/VerifyPlacedBox.srv": "05b10f6f6f4f80aefe0b56a846e7e0183ce1b52f5a3872ac7cd13e1ac384a38b",
+    "src/luggage_perception/scripts/cargo_volume_mapper_node.py": "36d168cf37f927dc33969790bf0766867ca687a5d562c4c0112e4f403440117c"
+  },
+  "status": "pass"
+}
