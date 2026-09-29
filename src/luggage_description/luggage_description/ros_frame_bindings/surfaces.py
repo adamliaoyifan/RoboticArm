@@ -71,7 +71,9 @@ def surface_from_message(message, context):
                 raise ContractError('UNKNOWN_SURFACE_HAS_VALUE', 'valid', 'valid iff observed', valid)
         def grid(values):
             return [list(values[i:i+columns]) for i in range(0, count, columns)]
-        record['origin_xy_container'] = list(message.origin_xy_container)
+        # rosidl fixed float arrays expose numpy.float64; the plain contract
+        # intentionally accepts only built-in numbers. Convert at this typed boundary.
+        record['origin_xy_container'] = [float(v) for v in message.origin_xy_container]
         record['surface_z_container'] = grid([v if ok else None for v, ok in zip(message.surface_z_container, message.valid)])
         record['state'] = grid(message.state)
         record['confidence'] = grid(message.confidence)

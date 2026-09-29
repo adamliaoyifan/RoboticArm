@@ -149,6 +149,8 @@ class FrameMigrationMessages(unittest.TestCase):
                 tool = box_to_tool_target(bound_box, grasp)
                 pure = transform_pose(tool, tf)
                 encoded = planning_pose_to_message(pure, 'motion', context(pure))
+                observed.update(stage='motion_decode', motion_input=pure,
+                                motion_wire_hex=serialize_message(encoded).hex())
                 actual = planning_pose_from_message(wire(encoded), 'motion', context(pure))
                 c, s = math.cos(yaw), math.sin(yaw)
                 cb, sb = math.cos(yaw+beta), math.sin(yaw+beta)
@@ -182,6 +184,8 @@ class FrameMigrationMessages(unittest.TestCase):
                             geometry_hash=HULL, map_revision=7, waypoints=[actual, second])
                 path_ctx = context(path, reference='suction_contact_frame')
                 path_msg = cartesian_path_to_message(path, 'motion', path_ctx)
+                observed.update(stage='path_decode', path_input=path,
+                                path_wire_hex=serialize_message(path_msg).hex())
                 decoded = cartesian_path_from_message(wire(path_msg), 'motion', path_ctx)
                 self.assertEqual(decoded, path)
                 path_msg.waypoints[0].pose.position.x += 10.
@@ -193,11 +197,17 @@ class FrameMigrationMessages(unittest.TestCase):
                                surface_z_container=[[None, floor, floor+support]],
                                height_above_floor=[[None, 0., support]])
                 surface_msg = measured_surface_to_message(surface, context(surface, 'F06'))
-                self.assertEqual(measured_surface_from_message(wire(surface_msg), context(surface, 'F06')), surface)
+                observed.update(stage='surface_decode', surface_input=surface,
+                                surface_wire_hex=serialize_message(surface_msg).hex())
+                surface_output = measured_surface_from_message(wire(surface_msg), context(surface, 'F06'))
+                self.assertEqual(surface_output, surface)
+                self.assertTrue(all(type(v) is float for v in surface_output['origin_xy_container']))
                 joints = joint_record()
                 joints['request_id'] = box['request_id']
                 joint_ctx = context(joints, 'F15')
                 joint_msg = joint_path_to_message(joints, joint_ctx)
+                observed.update(stage='joint_decode', joint_input=joints,
+                                joint_wire_hex=serialize_message(joint_msg).hex())
                 self.assertEqual(joint_path_from_message(wire(joint_msg), joint_ctx), joints)
                 diag = wire(diagnostic_to_message(actual, context(actual)))
                 self.assertEqual(diag.code, 'OK')
@@ -205,7 +215,7 @@ class FrameMigrationMessages(unittest.TestCase):
                 self.assertEqual(diag.declared_stamp_ns, str(STAMP))
                 encoded.pose.orientation.x = .5
                 self.assertEqual(actual, pure)
-                observed.update(expected_position=expected_position, expected_quaternion=expected_q,
+                observed.update(stage='complete', expected_position=expected_position, expected_quaternion=expected_q,
                                 actual=actual, covariance=covariance, rotated_vector=vector,
                                 diagnostic_request=diag.request_id, identity_loss=0)
                 count += 1
@@ -362,8 +372,14 @@ class FrameMigrationMessages(unittest.TestCase):
             msg.pose.orientation.w = -1.
             decoded = planning_pose_from_message(wire(msg), 'slot', context(pose))
             self.assert_quaternion(decoded['quaternion_xyzw'], pose['quaternion_xyzw'])
-            yaw0 = [1., 0., 0., 0.]
-            yawpi = [0., 1., 0., 0.]
+            directed = []
+            for quaternion in ([1., 0., 0., 0.], [0., 1., 0., 0.]):
+                tool = slot_record()
+                tool.update(frame_id='world', reference='suction_contact_frame',
+                            orientation_semantics='tool_quaternion', quaternion_xyzw=quaternion)
+                msg = planning_pose_to_message(tool, 'motion', context(tool))
+                directed.append(planning_pose_from_message(wire(msg), 'motion', context(tool))['quaternion_xyzw'])
+            yaw0, yawpi = directed
             with self.assertRaises(AssertionError):
                 self.assert_quaternion(yaw0, yawpi)
             result.update(q_sign_equivalent=True, directed_tool_yaws_distinct=True)
