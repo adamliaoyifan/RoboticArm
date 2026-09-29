@@ -17,6 +17,7 @@ from luggage_perception.suction_patch_evaluator import (
     SUCTION_CANDIDATE_IDENTITY_MISMATCH,
     suction_identity_mismatch,
 )
+from luggage_description.frame_contracts import ContractError, validate_pose
 from luggage_planning.pose import Pose
 
 SUCTION_REJECT_TF = "SUCTION_REJECT_TF"
@@ -148,6 +149,26 @@ def judge_probe(candidate, records, required_fraction=REQUIRED_CARTESIAN_FRACTIO
             return SUCTION_REJECT_IK
         if float(record.fraction) < float(required_fraction):
             return SUCTION_REJECT_CARTESIAN_FRACTION
+    return None
+
+
+def contact_record_admission(record, scene_revision, planning_frame="world"):
+    """None when a v2 contact record is admissible for planning (F04).
+
+    Otherwise ``(SUCTION_REJECT_TF, "<ContractError.code>:<field>")``: the
+    documented reason category is preserved while the detail carries the
+    exact v2 code (FRAME_CONTRACT_MISMATCH, TIME_BASIS_MISMATCH,
+    CALIBRATION_REVISION_MISMATCH, ...). Pure check — building it into the
+    selection loop must precede any probe/waypoint/vacuum effect. The v1
+    string-compare path in ``judge_probe`` is unchanged for v1 records.
+    """
+    try:
+        validate_pose(record, "contact", scene_revision)
+    except ContractError as error:
+        return (SUCTION_REJECT_TF, "%s:%s" % (error.code, error.field))
+    if str(record.get("frame_id")) != str(planning_frame):
+        return (SUCTION_REJECT_TF,
+                "FRAME_CONTRACT_MISMATCH:%s" % record.get("frame_id"))
     return None
 
 

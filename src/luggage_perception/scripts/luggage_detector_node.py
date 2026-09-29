@@ -53,9 +53,20 @@ from rclpy.qos import (
 )
 
 from geometry_msgs.msg import Point, Pose, Quaternion
-from luggage_msgs.msg import DetectedLuggage, DetectionFrame, YoloDetections
+from luggage_msgs.msg import (
+    DetectedLuggage, DetectionFrame, PoseContractV2, YoloDetections,
+)
 from luggage_msgs.srv import DetectLuggage
 from luggage_perception import ros_message_adapters as adapters
+from luggage_perception.frame_boundary_records import (
+    contact_boundary, detection_boundary,
+)
+from luggage_perception.frame_message_adapters import (
+    contact_to_message, detection_to_message,
+)
+from luggage_description.frame_diagnostics import (
+    BoundaryContext, BoundaryContractError,
+)
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import Header
 from std_msgs.msg import String
@@ -301,6 +312,14 @@ class LuggageDetector(Node):
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
         self.declare_parameter("use_semantic", False)
+        # ST03 F03/F04: v2 boundary emission is enabled only by an explicit
+        # scene revision; without one the node publishes v1 only (v1 topics
+        # and messages stay byte-identical in both modes).
+        self.declare_parameter("frame_scene_revision", "")
+        self.declare_parameter("frame_yaw_fallback_rad", 0.0)
+        self.declare_parameter("detection_v2_topic", "/luggage/detection/luggage_v2")
+        self.declare_parameter(
+            "suction_candidates_v2_topic", "/luggage/suction/candidates_v2")
         # DYNAMIC-SUCTION ST-1: "dynamic" derives the top from the YOLO
         # instance ROI + aligned-depth component (plan design decision A);
         # "legacy" keeps the cargo-cloud RANSAC/PCA path. scene_tf never
@@ -659,6 +678,21 @@ class LuggageDetector(Node):
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
+        # ST03: v2 pose-contract publishers exist only when an explicit
+        # scene revision enables the boundary; a rejected conversion warns
+        # with its diagnostic and never disturbs the v1 stream.
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        self._detection_v2_pub = None
+        self._suction_v2_pub = None
+        if self._frame_scene_revision:
+            self._detection_v2_pub = self.create_publisher(
+                PoseContractV2,
+                self.get_parameter("detection_v2_topic").value, stream_qos)
+            self._suction_v2_pub = self.create_publisher(
+                PoseContractV2,
+                self.get_parameter("suction_candidates_v2_topic").value,
+                stream_qos)
         # Hands the newest parked pair to the estimate worker. Geometry
         # does not run in this timer. Default (mutually exclusive) group
         # so the handoff itself cannot re-enter.
@@ -1700,7 +1734,64 @@ class LuggageDetector(Node):
         self._frame_pub.publish(frame)
         self._frame_window.push(
             adapters.stamp_to_sec(cloud_msg.header.stamp), frame)
+        self._publish_frame_contracts_v2(frame, cloud_msg)
         self._publish_stream_stats(frame, fields, support, yolo_msg, cloud_msg)
+
+    def _publish_frame_contracts_v2(self, frame, cloud_msg):
+        """Emit detection/contact v2 records beside the v1 frame (F03/F04).
+
+        Records carry the same acquisition stamp/frame as the v1 message.
+        Any contract rejection is a boundary diagnostic plus throttled
+        warning; the v1 publication has already happened and is never
+        retried or altered here.
+        """
+        if self._detection_v2_pub is None:
+            return
+        detected = getattr(frame, "box", None)
+        if detected is None:
+            return
+        stamp_sec = adapters.stamp_to_sec(detected.header.stamp)
+        stamp_ns = (int(detected.header.stamp.sec) * 1_000_000_000
+                    + int(detected.header.stamp.nanosec))
+        request_id = "detect-%d" % stamp_ns
+        yaw_source = ""
+        try:
+            record, yaw_source = detection_boundary(
+                (detected.pose.position.x, detected.pose.position.y,
+                 detected.pose.position.z),
+                2.0 * math.atan2(detected.pose.orientation.z,
+                                 detected.pose.orientation.w),
+                stamp_sec, self._frame_scene_revision, request_id,
+                frame_id=self._world_frame,
+                yaw_valid=bool(detected.yaw_valid),
+                fallback_yaw=float(
+                    self.get_parameter("frame_yaw_fallback_rad").value))
+            context = BoundaryContext(
+                "F03", "luggage_detector_node", "v2_detection_subscribers",
+                request_id, self._frame_scene_revision, self._world_frame,
+                "box_center", "acquisition")
+            self._detection_v2_pub.publish(
+                detection_to_message(record, context))
+            if self._suction_v2_pub is not None:
+                for candidate in detected.suction_candidates:
+                    candidate_id = str(candidate.candidate_id)
+                    contact = contact_boundary(
+                        candidate, stamp_sec,
+                        self._frame_scene_revision,
+                        request_id, frame_id=self._world_frame)
+                    candidate_context = BoundaryContext(
+                        "F04", "luggage_detector_node",
+                        "v2_suction_subscribers", request_id,
+                        self._frame_scene_revision, self._world_frame,
+                        "surface_contact", "acquisition")
+                    self._suction_v2_pub.publish(
+                        contact_to_message(contact, candidate_context))
+        except BoundaryContractError as error:
+            self._warn_throttled(
+                "frame contract v2 rejected (%s %s, yaw_source=%s)"
+                % (error.code, error.field, yaw_source))
+        except Exception as error:  # noqa: BLE001 - never break the v1 stream
+            self._warn_throttled("frame contract v2 emit failed: %s" % error)
 
     def _publish_stream_stats(self, frame, fields, support, yolo_msg, cloud_msg):
         with self._raw_lock:

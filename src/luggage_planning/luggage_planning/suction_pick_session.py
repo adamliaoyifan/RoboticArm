@@ -57,6 +57,12 @@ from luggage_planning.suction_candidate_waypoints import (
     retry_reverse_segment,
     reverse_distance_m,
 )
+from luggage_planning.pick_frame_contracts import (
+    SUCTION_TARGET_LINK,
+    approach_snapshot,
+    retry_segment_from_snapshot,
+    stale_calibration_reason,
+)
 from luggage_planning.suction_retry_contracts import (
     REQUEST_DEADLINE_SEC,
     RELEASE_DEADLINE_SEC,
@@ -108,6 +114,7 @@ class SessionConfig:
     planning_frame: str = "world"
     contact_model_version: int = 0
     contact_model_hash: str = ""
+    scene_revision: str = ""
     dry_run: bool = False
     dry_run_count: int = 10
 
@@ -185,6 +192,8 @@ class PickSession:
         self._candidates = {}
         self._segments = {}
         self._recorded_approach = None
+        self._recorded_snapshot = None
+        self._detection_view = None
         self._trace = []
         self._pending = deque()
         self._request_started = 0.0
@@ -207,6 +216,7 @@ class PickSession:
         self._candidates = {
             candidate.candidate_id: candidate
             for candidate in detection.candidates}
+        self._detection_view = detection
         ranked = rank_candidates(detection.candidates)
         self._selection = SelectionState(
             ranked_ids=tuple(c.candidate_id for c in ranked),
@@ -480,6 +490,13 @@ class PickSession:
 
     def _segment_by_name(self, name: str):
         if name == "retry_reverse":
+            # F10: prefer the frozen approach snapshot; the legacy bare-pose
+            # path stays for callers that never recorded one.
+            if self._recorded_snapshot is not None:
+                return retry_segment_from_snapshot(
+                    self._recorded_snapshot,
+                    attach_pose=self._segment_by_name("attach").target_pose,
+                    reverse_min_m=self._config.reverse_min_m)
             return retry_reverse_segment(
                 self._candidates[self._model.active_candidate],
                 self._recorded_approach)
@@ -499,6 +516,12 @@ class PickSession:
                    fraction=outcome.fraction)
         if segment_name == "approach" and outcome.ok:
             self._recorded_approach = segment.target_pose
+            self._recorded_snapshot = approach_snapshot(
+                segment.target_pose,
+                self._candidates[self._model.active_candidate],
+                self._detection_view,
+                scene_revision=self._config.scene_revision,
+                link_name=SUCTION_TARGET_LINK)
         if segment_name == "retry_reverse" and outcome.ok:
             distance = reverse_distance_m(
                 self._candidates[self._model.active_candidate],
@@ -561,6 +584,18 @@ class PickSession:
             self._feed(RetryEvent(RetryEventType.GRAPH_LOST, detail=reason))
             return
         self._emit("io", "graph_ok")
+        # F10: recovery rejects a changed calibration/scene identity before
+        # any retry motion or vacuum; the port is optional so existing
+        # ports without a scene identity simply skip the check.
+        current_revision = getattr(self._ports, "scene_revision", None)
+        if callable(current_revision) and self._recorded_snapshot is not None:
+            reason = stale_calibration_reason(
+                self._recorded_snapshot, current_revision())
+            if reason is not None:
+                self._emit("io", "stale_calibration", reason=reason)
+                self._feed(RetryEvent(RetryEventType.IDENTITY_CHANGED,
+                                      detail=reason))
+                return
         self._feed(RetryEvent(RetryEventType.RECOVERY_VERIFIED))
 
     # -- helpers -------------------------------------------------------------------
