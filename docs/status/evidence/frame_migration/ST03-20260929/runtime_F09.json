@@ -5,15 +5,15 @@
   "interface_id": "F09",
   "kind": "runtime_boundary",
   "observations": [
-    "64 matrix cases: actual box-to-tool grasp transform stored with the explicit suction target link and observation identity; translation equals the lateral contact offset in box axes",
-    "approach snapshot reproduces the substrate tool target exactly; v1 MotionSegment publication byte-identical"
+    "revalidated on the ST05 tree: ST05 touched waypoint_generator.py (an F09 source) with the additive slot_from_contract seam, so the ST03 proof hashes were stale by design; the pick suite reruns green on this revision",
+    "64-case pick matrix: grasp transform stores the actual lateral offset in box axes; retry rebuilds strictly from the frozen snapshot; stale-calibration recovery rejects with zero motion/vacuum side effects"
   ],
   "sample_count": 64,
   "source_sha256": {
     "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
     "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
     "src/luggage_planning/luggage_planning/suction_pick_session.py": "025b032b56078fe976a9fc4542287e50e12439fe8d38fd62f659142e385233df",
-    "src/luggage_planning/luggage_planning/waypoint_generator.py": "cf021f9af587131a2b7df4fdabd9265e5b6ec14e97e94bafd2ece7ef82a9e954",
+    "src/luggage_planning/luggage_planning/waypoint_generator.py": "6020341ceabd5d824a9157e3763947b524012c507ee5cb32ac1f6026afdb8200",
     "src/luggage_planning/scripts/hardware_pick_driver.py": "a8986d068d2dc8daf6eb853bb70a40e3b68137704b714aa748794c8ba6445966"
   },
   "status": "pass"

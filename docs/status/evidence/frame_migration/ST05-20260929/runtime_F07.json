@@ -1,0 +1,21 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_packing/test -p test_frame_migration_placement.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "1b28fe062de7687111a7260bb04b53fa433b47552b27e71fda78f9b1811e61b4",
+  "interface_id": "F07",
+  "kind": "runtime_boundary",
+  "observations": [
+    "64-case matrix (4 box yaws x 2 translations x 2 floors x 2 supports x 2 surface forms): candidates from the v1 dict and the serialized v2 record agree per cell; center z = floor + support + h/2 and box top = center + h/2 on support columns",
+    "four container yaws leave center_container/footprint invariant (the old center_base rotated); the legacy decoder reproduces the pre-ST05 encoding from container truth; AABB re-expression equivalence within 1e-9",
+    "ComputePlacementV2 dual emission with v2 placed[] normalization; replan moves off the occupied slot; unknown-support keeps its geometric reason (never BIN_FULL); slot records round-trip real serialization; atlas hook still hard-rejects"
+  ],
+  "sample_count": 64,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_packing/luggage_packing/placement_reachability.py": "e753e8d586bd82ddb9cb54d56b6795d80b69cacad7d8f47dd28ea5b95780d996",
+    "src/luggage_packing/luggage_packing/placement_solver.py": "9fe5111abc5de91ce1326d62f53631ede026ffb661c0e4534bd0f7fba55a681b",
+    "src/luggage_packing/scripts/placement_planner_node.py": "00696d81a09e448c74809c11d4bd9923b63601187f7707fcbe812eb8f9246269"
+  },
+  "status": "pass"
+}
