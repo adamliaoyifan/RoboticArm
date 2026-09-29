@@ -1,0 +1,22 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_perception.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "dd890a97cfc055bd425f66820d12afd3b375bbbc146f73b20e2e4e86732bf50b",
+  "interface_id": "F04",
+  "kind": "runtime_boundary",
+  "observations": [
+    "64 matrix cases: world surface-contact records with +Z outward normal through real serialization; contact +Z vs tool -Z preserved",
+    "contact_record_admission rejects frame/basis/scene defects with SUCTION_REJECT_TF reason carrying the exact contract code",
+    "luggage_detector_node publishes /luggage/suction/candidates_v2 beside v1"
+  ],
+  "sample_count": 64,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_msgs/msg/SuctionCandidate.msg": "ba98b8991d14c726ebd28abc2162ea37179a86224c8a08cb36a1594018bb379b",
+    "src/luggage_perception/luggage_perception/suction_patch_evaluator.py": "a70ebcbbc96aa64c55255455edb90999f9d5ab0d0725117fb274e660bb418777",
+    "src/luggage_planning/luggage_planning/suction_candidate_selection.py": "127078bbb8e16d23ff082b70b9026587a22c9f97f7bbf5941641e45eae3efec3",
+    "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py": "07369a663ea3f98c40187ef2a5c3995d1cd571ade430cb227b16c6037d650cdb"
+  },
+  "status": "pass"
+}
