@@ -189,7 +189,43 @@ def _print_rows(title, rows):
             row["unreachable"], row["unknown"], row["connected"]), flush=True)
 
 
-def unexplained_low_layer_drops(builder, old_npz, new_npz):
+def _gate_yaw_map(old_meta_path, new_meta_path):
+    """Old bin index -> new bin index across the v1/v3 yaw schema gap.
+
+    v1 bins are base-frame yaws; v3 bins are DIRECTED container-frame yaws
+    (base = container - pi/2 on the sim scene). Comparing cells index-for-
+    index would test a different branch. Returns {old_iyaw: new_iyaw};
+    unmapped old bins are reported by the caller, never silently skipped.
+    """
+    with open(old_meta_path, "r", encoding="utf-8") as stream:
+        old_meta = yaml.safe_load(stream)
+    with open(new_meta_path, "r", encoding="utf-8") as stream:
+        new_meta = yaml.safe_load(stream)
+    old_bins = [float(v) for v in old_meta["grid"]["yaw_bins"]]
+    new_bins = [float(v) for v in new_meta["grid"]["yaw_bins"]]
+    offset = 0.0
+    old_contract = old_meta.get("contract")
+    new_contract = new_meta.get("contract")
+    if old_contract is None and new_contract is not None:
+        # v1 base-frame bins -> container frame via the scene container yaw.
+        rpy = [float(v) for v in new_meta["container"]["base_rpy"]]
+        offset = -math.atan2(math.sin(rpy[2]), math.cos(rpy[2]))
+    mapping = {}
+    for old_i, old_yaw in enumerate(old_bins):
+        target = (old_yaw + offset) % (2.0 * math.pi)
+        for new_i, new_yaw in enumerate(new_bins):
+            delta = abs((target - (new_yaw % (2.0 * math.pi)) + math.pi)
+                        % (2.0 * math.pi) - math.pi)
+            # Scene configs store rounded yaws (-1.5708 vs -pi/2 ~ 3.7e-6
+            # off); 1e-3 still sits far below the pi/2 bin spacing.
+            if delta < 1e-3:
+                mapping[old_i] = new_i
+                break
+    return mapping
+
+
+def unexplained_low_layer_drops(builder, old_npz, new_npz,
+                                old_meta_path, new_meta_path):
     """Cells in iz 0-4 that lost a solution while the old seed is still valid."""
     old = np.load(old_npz)
     new = np.load(new_npz)
@@ -198,6 +234,7 @@ def unexplained_low_layer_drops(builder, old_npz, new_npz):
     seeds = old["contact_seeds"] if "contact_seeds" in old.files else None
     if seeds is None:
         seeds = old["seed_joints"][..., None, :]
+    yaw_map = _gate_yaw_map(old_meta_path, new_meta_path)
     dropped = []
     limit = min(5, old_status.shape[2], new_status.shape[2])
     for iz in range(limit):
@@ -205,8 +242,14 @@ def unexplained_low_layer_drops(builder, old_npz, new_npz):
             for iy in range(old_status.shape[1]):
                 for iyaw in range(old_status.shape[3]):
                     was = int(old_status[ix, iy, iz, iyaw]) in (2, 3)
-                    still = int(new_status[ix, iy, iz, iyaw]) in (2, 3)
-                    if not was or still:
+                    if not was:
+                        continue
+                    if iyaw not in yaw_map:
+                        dropped.append((ix, iy, iz, iyaw, "yaw_bin_unmapped"))
+                        continue
+                    still = int(
+                        new_status[ix, iy, iz, yaw_map[iyaw]]) in (2, 3)
+                    if still:
                         continue
                     seed = np.asarray(seeds[ix, iy, iz, iyaw, 0], dtype=float)
                     if not np.all(np.isfinite(seed)):
@@ -235,7 +278,9 @@ def gate(old_base, new_npz, new_meta, builder):
                 "iz%d connected %d -> %d" % (iz, old["connected"], new["connected"]))
         if new["z"] >= 1.70 and new["reachable"] != 0:
             failures.append("iz%d z=%.3f has REACHABLE cells" % (iz, new["z"]))
-    drops = unexplained_low_layer_drops(builder, old_npz, new_npz)
+    drops = unexplained_low_layer_drops(
+        builder, old_npz, new_npz,
+        old_base + ".yaml", new_meta)
     if drops:
         failures.append("unexplained low-layer drops: %d" % len(drops))
         print("unexplained low-layer drops: %d" % len(drops), flush=True)
@@ -330,8 +375,15 @@ def main():
             node, args.output_dir, payload, scene_tf=args.scene_tf)
         if not args.gate:
             return 0
-        npz = os.path.join(args.output_dir, "s20_container_collision_aware.npz")
-        meta = os.path.join(args.output_dir, "s20_container_collision_aware.yaml")
+        # Mirror the builder's file naming so payload builds gate their own
+        # artifact, not the stale empty-load one.
+        suffix = "collision_aware"
+        if payload is not None:
+            suffix += "_payload_%.2fx%.2fx%.2f" % tuple(payload)
+        npz = os.path.join(
+            args.output_dir, "s20_container_%s.npz" % suffix)
+        meta = os.path.join(
+            args.output_dir, "s20_container_%s.yaml" % suffix)
         failures, fingerprint = gate(args.old_atlas, npz, meta, builder)
         print("fingerprint %s" % fingerprint, flush=True)
         if failures:
