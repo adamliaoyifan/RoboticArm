@@ -42,6 +42,7 @@ def relative_offset(panel_xyz, panel_quat, box_xyz, box_quat):
     return compose_pose(inv_xyz, inv_quat, box_xyz, box_quat)
 
 
+
 class VacuumBackend(object):
     """Contract for attach/detach implementations."""
 

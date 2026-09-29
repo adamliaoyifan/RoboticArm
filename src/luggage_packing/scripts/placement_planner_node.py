@@ -65,6 +65,7 @@ from luggage_description.scene_tf_config_utils import (
     yaw_base_link_to_world,
     yaw_world_to_base_link,
 )
+from luggage_packing.placement_reachability import make_atlas_annotate
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
@@ -121,11 +122,60 @@ class PlacementPlannerNode(Node):
         # visualization-sized default).
         self.declare_parameter("last_result_max_candidates", 24)
         self.declare_parameter("max_candidates", 5)
-
+        # Reachability atlas wiring (shared yaml; every key overridable).
+        # luggage_planning is imported lazily: declaring the exec_depend
+        # would close a colcon build cycle (see package.xml NOTE).
+        self.declare_parameter("atlas_runtime_config", "")
+        try:
+            from luggage_planning.atlas_runtime import (
+                PARAM_SPEC,
+                apply_query_semantics,
+                apply_ros_overrides,
+                certification_block_reason,
+                compute_scene_tf_hash,
+                load_atlas_runtime,
+                load_atlas_runtime_for_scene,
+                load_runtime_atlas,
+            )
+            from luggage_planning.urdf_identity import UrdfIdentity
+        except ImportError as exc:
+            PARAM_SPEC = ()
+            load_atlas_runtime = None
+            apply_query_semantics = None
+            certification_block_reason = None
+            load_atlas_runtime_for_scene = None
+            UrdfIdentity = None
+            compute_scene_tf_hash = lambda path: ""  # noqa: E731
+            self.get_logger().warning(
+                "atlas runtime unavailable (%s); placement runs no_atlas",
+                exc)
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
             config_path = resolve_scene_tf_config_path()
+        if load_atlas_runtime_for_scene is not None:
+            atlas_cfg = load_atlas_runtime_for_scene(
+                config_path,
+                str(self.get_parameter("atlas_runtime_config").value) or None)
+            for ros_name, _path, _cast in PARAM_SPEC:
+                default = atlas_cfg
+                for key in _path:
+                    default = default[key]
+                self.declare_parameter(ros_name, default)
+            apply_ros_overrides(self, atlas_cfg)
+        else:
+            atlas_cfg = {"enabled": False, "placement": {}, "motion": {},
+                         "query_offset": None}
+        self._atlas_cfg = atlas_cfg
+        # The lazy imports above are locals of __init__; methods must go
+        # through these handles (a direct global lookup NameErrors -- caught
+        # once by test_placement_geometry_identity_live).
+        self._load_runtime_atlas = (
+            load_runtime_atlas if load_atlas_runtime is not None else None)
+        self._apply_query_semantics = apply_query_semantics
+        self._certification_block_reason = certification_block_reason
+
         self._scene = load_scene_tf_config(config_path)
+        self._scene_tf_hash = compute_scene_tf_hash(config_path)
 
         self._allowed_yaws = [
             float(v) for v in self.get_parameter("allowed_yaws").value]
@@ -149,6 +199,20 @@ class PlacementPlannerNode(Node):
         self._hull = descriptor_from_scene_config(self._scene)
         self._geometry_hash = str(self._hull.geometry_hash)
         self._rejected_maps = 0
+        # Atlas handles keyed by requested box size (payload selection is
+        # per-request; see atlas_runtime.resolve_atlas_files).
+        self._atlas_cache = {}
+        self._urdf_identity = None
+        if UrdfIdentity is not None and self._atlas_cfg.get("enabled"):
+            self._urdf_identity = UrdfIdentity(self)
+            self._urdf_identity.start()
+        if self._atlas_cfg.get("enabled"):
+            self.get_logger().info(
+                "atlas runtime gate on (dir=%s, hash_policy=%s, w=%s, hard_reject=%s)"
+                % (self._atlas_cfg.get("atlas_dir") or "reachability_atlas",
+                   self._atlas_cfg.get("hash_policy"),
+                   self._atlas_cfg["placement"].get("w_reachability"),
+                   self._atlas_cfg["placement"].get("hard_reject")))
 
         map_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
@@ -290,6 +354,52 @@ class PlacementPlannerNode(Node):
     def _active_surface(self):
         return self._surface or self._floor_prior_surface()
 
+    def _atlas_for(self, size):
+        """Cached (atlas, diagnostics) for one requested box size."""
+        if not self._atlas_cfg.get("enabled"):
+            return None, {"loaded": False, "reason": "disabled"}
+        if self._load_runtime_atlas is None:
+            return None, {"loaded": False, "reason": "unavailable"}
+        if self._urdf_identity is not None:
+            self._urdf_identity.poll()
+        urdf_hash = (
+            self._urdf_identity.hash
+            if self._urdf_identity is not None and self._urdf_identity.ready
+            else "")
+        key = (tuple(round(float(v), 4) for v in size),
+               self._scene_tf_hash, urdf_hash)
+        if key not in self._atlas_cache:
+            self._atlas_cache[key] = self._load_runtime_atlas(
+                self._atlas_cfg, box_size=list(key[0]),
+                scene_tf_hash=self._scene_tf_hash,
+                urdf_hash=urdf_hash)
+        return self._atlas_cache[key]
+
+    def _atlas_hook(self, size):
+        """solve_placement hook for this request, or None when disabled."""
+        if not self._atlas_cfg.get("enabled"):
+            return None
+        atlas, _diag = self._atlas_for(size)
+        # Query-layer semantics (floor re-anchoring, boundary promotion):
+        # the hook queries the exact contact point, so it is the side that
+        # inherits the iz1 floor false-negative without this wrap.
+        if self._apply_query_semantics is not None:
+            atlas = self._apply_query_semantics(
+                atlas, self._atlas_cfg, floor_z=self._floor_z,
+                box_height=float(size[2]))
+        placement = self._atlas_cfg.get("placement") or {}
+        # A neutral no_atlas hook still annotates candidates for the dump.
+        hook = make_atlas_annotate(
+            atlas,
+            self._floor_z,
+            self._inner_size[2],
+            score_weight=float(placement.get("w_reachability", 0.3)),
+            hard_reject=bool(placement.get("hard_reject", True)),
+            dump_only=bool(placement.get("dump_only", False)),
+            query_offset=self._atlas_cfg.get("query_offset"),
+        )
+        return hook
+
     # ------------------------------------------------------------------
     # Feasibility gates (G2 + corridor)
 
@@ -418,14 +528,46 @@ class PlacementPlannerNode(Node):
         size = [max(0.0, float(box.width)),
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]
+        atlas, atlas_diag = self._atlas_for(size)
+        if self._certification_block_reason is not None:
+            block = self._certification_block_reason(
+                self._atlas_cfg, atlas_diag)
+        else:
+            block = ""
+        if block:
+            response.success = False
+            response.reason_code = block
+            response.message = "%s: %s" % (
+                block,
+                atlas_diag.get("hash_message") or atlas_diag.get("reason")
+                or "atlas identity unverified")
+            self._publish_last({
+                "success": False,
+                "size_wdh": size,
+                "n_candidates_total": 0,
+                "n_feasible": 0,
+                "reject_histogram": {},
+                "reason_code": response.reason_code,
+                "geometry_hash": self._geometry_hash,
+                "floor_prior": False,
+                "candidates": [],
+                "message": response.message,
+                "atlas": {
+                    "enabled": True,
+                    "diagnostics": atlas_diag,
+                },
+            })
+            return response
         surface = self._active_surface()
         placed_aabbs = self._placed_aabbs(request.placed)
+        atlas, atlas_diag = self._atlas_for(size)
         result = solve_placement(
             surface, size,
             allowed_yaws=self._allowed_yaws,
             params=self._params,
             candidate_validator=lambda candidate: self._constraint_verdict(
                 candidate, placed_aabbs, size),
+            atlas_annotate=self._atlas_hook(size),
         )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]
@@ -445,6 +587,11 @@ class PlacementPlannerNode(Node):
             "rejected_maps": self._rejected_maps,
             "map_revision": surface.get("map_revision"),
             "floor_prior": self._surface is None,
+            "atlas": {
+                "enabled": bool(self._atlas_cfg.get("enabled")),
+                "diagnostics": atlas_diag,
+                "report": result.get("atlas"),
+            },
             "candidates": [jsonable_candidate(self._annotate_frames(dict(c)))
                            for c in candidates],
         }

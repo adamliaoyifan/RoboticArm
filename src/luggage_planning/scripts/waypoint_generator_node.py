@@ -48,6 +48,10 @@ from luggage_msgs.srv import BuildMotionSequence
 
 from luggage_perception.locked_stamp_window import LockedStampWindow
 from luggage_planning import ros_message_adapters as adapters
+from luggage_planning.reachability_wavefront import (
+    SAFE_TOOL_Z,
+    container_tool_z_in_frame,
+)
 from luggage_planning.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
@@ -117,6 +121,10 @@ class WaypointGeneratorNode(Node):
         scene_path = str(self.get_parameter("scene_tf_config").value or "")
         self._scene_config = load_scene_tf_config(
             resolve_scene_tf_config_path(scene_path or None))
+        origin_xyz, origin_rpy = origin_in_world(self._scene_config)
+        # container_link safe tool z -> world, the frame build_sequence sees.
+        self._retreat_safe_tool_z = container_tool_z_in_frame(
+            SAFE_TOOL_Z, origin_xyz[2], origin_rpy)
         inner = container_inner_dimensions(self._scene_config)
         floor_z = container_inner_floor_z(self._scene_config)
         ceiling_z = container_inner_ceiling_z(self._scene_config)
@@ -326,7 +334,13 @@ class WaypointGeneratorNode(Node):
                     self.get_parameter("place_clearance_z").value),
                 opening_info=opening,
                 fallback_yaw=fallback_yaw,
-                corridor_surface_max=surface_max)
+                corridor_surface_max=surface_max,
+                retreat_safe_tool_z=(
+                    self._retreat_safe_tool_z if phase == "place" else None))
+            for segment in segments:
+                truncated = float(getattr(segment, "clearance_truncation_m", 0.0))
+                if truncated > 1e-9:
+                    notes.append("retreat_truncation_m=%.3f" % truncated)
             response.segments = [adapters.segment_to_msg(s) for s in segments]
             response.success = bool(segments)
             message = (

@@ -39,6 +39,7 @@ from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 
 from luggage_description.scene_tf_config_utils import (
     _point_in_container_link,
+    container_inner_floor_z,
     load_scene_tf_config,
     origin_in_world,
     resolve_scene_tf_config_path,
@@ -47,6 +48,16 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_msgs.action import GoToRobotPose, PlanMotion
 from luggage_msgs.srv import ProbeMotionSegment
 from luggage_planning.debug_capture import write_failure_capture
+from luggage_planning.atlas_runtime import (
+    PARAM_SPEC,
+    apply_query_semantics,
+    apply_ros_overrides,
+    atlas_seeds_for_query,
+    compute_scene_tf_hash,
+    load_atlas_runtime_for_scene,
+    load_runtime_atlas,
+)
+from luggage_planning.urdf_identity import UrdfIdentity
 from luggage_planning.motion_boundary import robot_traj_to_dict, write_boundary_dump
 from luggage_planning.motion_executor import MotionExecutor, _wrap_near
 from luggage_planning.named_robot_poses import (
@@ -88,6 +99,10 @@ def occupancy_scope(names_csv, segment_name):
     return "*" in names or str(segment_name) in names
 
 
+# Cross-call caches for the atlas seed chain (URDF parse + tcp path).
+_ATLAS_CACHE = {}
+
+
 class MotionPlannerNode(Node):
 
     def __init__(self):
@@ -106,6 +121,26 @@ class MotionPlannerNode(Node):
         # near-singular reconfiguration instead of executing it; see
         # motion_executor._CARTESIAN_EXCURSION_RAD_PER_M for the measurement.
         self.declare_parameter("cartesian_excursion_rad_per_m", 3.0)
+        # Deterministic joint re-solve when a no-fallback cartesian leg
+        # (insert/descend/retreat) is rejected by the excursion gate or a
+        # sub-threshold fraction: offline refine from the live joints, then
+        # the executor re-checks the SAME excursion bar (fail-closed).
+        self.declare_parameter("cartesian_joint_fallback", True)
+        # Wrist-only excursion on insert/descend: rotate onto the goal
+        # heading in place, then re-run the descent (see
+        # motion_executor._align_then_retry).
+        self.declare_parameter("align_retry_enabled", True)
+        # Dump-only: closest approach of elfin_joint5 to k*pi.
+        self.declare_parameter("wrist_singularity_margin_rad", 0.50)
+        # Dump-only: max per-joint |seed-goal| on pose_target IK.
+        self.declare_parameter("pose_target_max_joint_delta_rad", 1.50)
+        # Dump-only j6 travel. Not a refuse gate.
+        self.declare_parameter("j6_rotation_limit_rad", 2.50)
+        # Kept so older launches still parse. No longer a refuse opt-out.
+        self.declare_parameter("wrist_free_segments", "")
+        # keep_tool_down: suction normal within this many radians of
+        # world -Z. Yaw about that axis is free. j5 and j6 are not gated.
+        self.declare_parameter("tool_down_abs_tol", 0.05)
         self.declare_parameter("velocity_scaling", 0.3)
         self.declare_parameter("acceleration_scaling", 0.3)
         # Settle gate between segments.
@@ -142,10 +177,27 @@ class MotionPlannerNode(Node):
         self.declare_parameter("occupancy_exempt_margin_m", 0.0)
         # Failure-time occ/cloud/depth capture (never blocks motion).
         self.declare_parameter("debug_capture", True)
-
+        # Reachability-atlas IK seed chain (shared yaml; overridable).
+        self.declare_parameter("atlas_runtime_config", "")
         scene_path = str(self.get_parameter("scene_tf_config").value or "")
-        self._scene = load_scene_tf_config(
-            resolve_scene_tf_config_path(scene_path or None))
+        scene_path = resolve_scene_tf_config_path(scene_path or None)
+        atlas_cfg = load_atlas_runtime_for_scene(
+            scene_path,
+            str(self.get_parameter("atlas_runtime_config").value) or None)
+        for ros_name, _path, _cast in PARAM_SPEC:
+            default = atlas_cfg
+            for key in _path:
+                default = default[key]
+            self.declare_parameter(ros_name, default)
+        apply_ros_overrides(self, atlas_cfg)
+        self._atlas_cfg = atlas_cfg
+        self._atlas_cache = {}
+        self._urdf_identity = UrdfIdentity(self)
+        if self._atlas_cfg.get("enabled"):
+            self._urdf_identity.start()
+
+        self._scene = load_scene_tf_config(scene_path)
+        self._scene_tf_hash = compute_scene_tf_hash(scene_path)
         self._surface_2d = None
         self._surface_recv = None
         self._payload_measured = None
@@ -205,6 +257,33 @@ class MotionPlannerNode(Node):
                 self.get_parameter("cartesian_min_fraction").value),
             cartesian_excursion_rad_per_m=float(
                 self.get_parameter("cartesian_excursion_rad_per_m").value),
+            wrist_singularity_margin_rad=float(
+                self.get_parameter("wrist_singularity_margin_rad").value),
+            wrist_free_segments={
+                part.strip() for part in str(
+                    self.get_parameter("wrist_free_segments").value
+                    or "").split(",") if part.strip()},
+            pose_target_max_joint_delta_rad=float(
+                self.get_parameter("pose_target_max_joint_delta_rad").value),
+            j6_rotation_limit_rad=float(
+                self.get_parameter("j6_rotation_limit_rad").value),
+            tool_down_abs_tol=float(
+                self.get_parameter("tool_down_abs_tol").value),
+            atlas_seed_provider=self._atlas_seed_provider,
+            atlas_mode=str(self._atlas_cfg["motion"].get(
+                "mode", "miss-retry")),
+            atlas_max_seeds=int(self._atlas_cfg["motion"].get(
+                "max_seeds", 3)),
+            atlas_fk_verify_tol_m=float(self._atlas_cfg["motion"].get(
+                "fk_verify_tol_m", 0.03)),
+            atlas_submit_mode=str(self._atlas_cfg["motion"].get(
+                "submit_mode", "reseed")),
+            cartesian_joint_fallback=(
+                self._cartesian_fallback_provider
+                if bool(self.get_parameter("cartesian_joint_fallback").value)
+                else None),
+            align_retry_enabled=bool(
+                self.get_parameter("align_retry_enabled").value),
         )
         self._fjt = rclpy.action.ActionClient(
             self, FollowJointTrajectory,
@@ -276,6 +355,197 @@ class MotionPlannerNode(Node):
     def _world_to_map(self, xyz):
         base = xyz_world_to_base_link(self._scene, xyz)
         return _point_in_container_link(base, self._scene)
+
+    def _atlas_seed_provider(self, pose):
+        """Executor callback: atlas IK seeds for one target pose (or None).
+
+        Frame math stays on the node (the executor is frame-agnostic):
+        world -> container_link through the live scene_tf, plus the
+        configured query offset for real-machine compensation.
+        """
+        motion = self._atlas_cfg.get("motion") or {}
+        if not (self._atlas_cfg.get("enabled")
+                and motion.get("enabled", True)):
+            return None
+        wdh = self._payload_wdh()
+        self._urdf_identity.poll()
+        urdf_hash = (
+            self._urdf_identity.hash if self._urdf_identity.ready else "")
+        key = (tuple(round(float(v), 4) for v in wdh),
+               self._scene_tf_hash, urdf_hash)
+        if key not in self._atlas_cache:
+            self._atlas_cache[key] = load_runtime_atlas(
+                self._atlas_cfg, box_size=list(key),
+                scene_tf_hash=self._scene_tf_hash,
+                urdf_hash=urdf_hash)[0]
+        atlas = self._atlas_cache[key]
+        if atlas is None:
+            return None
+        # Query-layer semantics: floor re-anchoring matters here too -- the
+        # 1540/smoke1 class of slot-contact targets lands in the iz1 cell
+        # whose sampled centre clips the floor, which would starve the seed
+        # query of its own cell and force the neighbour fallback every time.
+        atlas = apply_query_semantics(
+            atlas, self._atlas_cfg,
+            floor_z=container_inner_floor_z(self._scene),
+            box_height=float(wdh[2]))
+        xyz = self._world_to_map([
+            float(pose.position.x), float(pose.position.y),
+            float(pose.position.z)])
+        yaw = tool_down_yaw(
+            float(pose.orientation.x), float(pose.orientation.y))
+        found = atlas_seeds_for_query(
+            atlas, xyz[0], xyz[1], xyz[2], yaw,
+            seed_set=str(motion.get("seed_set", "transit")),
+            max_seeds=int(motion.get("max_seeds", 3)),
+            query_offset=self._atlas_cfg.get("query_offset"))
+        if found.get("seeds") and motion.get("refine", True):
+            found["refined"] = True
+            # The GT attach hangs the box ~5 mm below + ~8 mm lateral to
+            # the suction frame (1540 evidence), so a slot-contact target
+            # is ~3.5 mm INSIDE the floor as a MoveIt state. Lift the
+            # refine target for in-container goals by the configured
+            # compensation; the descend leg's own touch logic finishes.
+            lift = float(motion.get("target_z_lift_m", 0.008))
+            inside = self._target_in_container(xyz)
+            found["target_z_lift_m"] = lift if inside else 0.0
+            # Also refine the live arm state: a different branch family
+            # sweeps a different hull corridor (the 1838 transit path came
+            # from the current-joints family, not the atlas family), and
+            # the executor tries every FK-verified goal in turn.
+            live = self._live_arm_joints()
+            seeds = list(found["seeds"])
+            if live and all(
+                    any(abs(a - b) > 0.05 for a, b in zip(live, seed))
+                    for seed in seeds):
+                seeds.append(live)
+            found["seeds"] = self._refine_atlas_seeds(
+                pose, seeds, lift if inside else 0.0)
+        return found
+
+    def _live_arm_joints(self):
+        with self._joint_lock:
+            state = getattr(self, "_joint_state", None)
+        if not state:
+            return None
+        by_name = dict(zip(state.name, state.position))
+        try:
+            return [float(by_name[n]) for n in JOINTS]
+        except KeyError:
+            return None
+
+    def _target_in_container(self, map_xyz):
+        from luggage_planning.geometry_view_generator import (
+            point_inside_container_inner_box)
+        world = self._map_to_world(list(map_xyz))
+        return bool(point_inside_container_inner_box(world, self._scene))
+
+    def _refine_atlas_seeds(self, pose, seeds, z_lift_m=0.0):
+        """Deterministic offline refine of atlas seeds onto the exact pose.
+
+        KDL's random restarts make /compute_ik a lottery for this target
+        class (2026-09-24 smokes: same seed/scene flapping between instant
+        solutions and 1 s -31). scipy converges from these seeds in
+        milliseconds, deterministically; the executor then FK-verifies the
+        refined joints before submitting them as a MoveGroup joint goal.
+        Unrefinable seeds are dropped.
+        """
+        try:
+            from luggage_planning.offline_ik import (
+                load_urdf, refine_to_pose)
+            urdf = load_urdf(scene_tf_config=str(
+                self.get_parameter("scene_tf_config").value or "") or None)
+            path = self._offline_tcp_path(urdf)
+            quat = (float(pose.orientation.x), float(pose.orientation.y),
+                    float(pose.orientation.z), float(pose.orientation.w))
+            target = (float(pose.position.x), float(pose.position.y),
+                      float(pose.position.z) + float(z_lift_m))
+            refined = []
+            for seed in seeds:
+                joints, info = refine_to_pose(
+                    urdf, path, target, quat, seed)
+                if joints is not None:
+                    refined.append(joints)
+                    self.get_logger().info(
+                        "atlas seed refined pos_err=%s rot_err=%s"
+                        % (info["pos_err_m"], info["rot_err_rad"]))
+            return refined
+        except Exception as exc:  # noqa: BLE001 - refine is best-effort
+            self.get_logger().warning(
+                "atlas seed refine unavailable (%s); raw seeds" % exc)
+            return seeds
+
+    @staticmethod
+    def _offline_tcp_path(urdf):
+        key = ("tcp_path", id(urdf))
+        cached = _ATLAS_CACHE.get(key)
+        if cached is None:
+            cached = urdf.path_to("suction_contact_frame")
+            _ATLAS_CACHE[key] = cached
+        return cached
+
+    def _cartesian_fallback_provider(self, segment_msg, live_joints):
+        """Offline re-solve of a rejected cartesian leg (goal or polyline).
+
+        Returns ``{"knots": [live, ...per-waypoint], "fk_path_len": m}`` or
+        ``None``. The refine seeds from the live arm and warm-starts along
+        the waypoint chain, so it selects the IK branch continuous with the
+        current state -- the branch GetCartesianPath failed to hold
+        (2026-09-27 insert: j6 drift 0.771 rad at fraction 0.244; box3
+        transit carry: stalled 0.459 on the rim-riding diagonal while the
+        walk converges along the whole chain). The executor densifies,
+        re-checks the SAME excursion bar and sweeps occupancy before
+        executing, so this stays fail-closed.
+        """
+        try:
+            from luggage_planning.offline_ik import (
+                load_urdf, refine_to_pose)
+            urdf = load_urdf(scene_tf_config=str(
+                self.get_parameter("scene_tf_config").value or "") or None)
+            path = self._offline_tcp_path(urdf)
+            pose = segment_msg.target_pose
+            quat = (float(pose.orientation.x), float(pose.orientation.y),
+                    float(pose.orientation.z), float(pose.orientation.w))
+            chain = [
+                (float(p.position.x), float(p.position.y), float(p.position.z))
+                for p in (getattr(segment_msg, "waypoints", None) or [])]
+            chain.append((float(pose.position.x), float(pose.position.y),
+                          float(pose.position.z)))
+            current = [float(v) for v in live_joints]
+            start_fk = urdf.tcp(current, path)[:3, 3]
+            knots = [list(current)]
+            fk_len = 0.0
+            prev = tuple(float(v) for v in start_fk)
+            for point in chain:
+                joints, info = refine_to_pose(urdf, path, point, quat,
+                                              seed=current)
+                if joints is None:
+                    self.get_logger().info(
+                        "cartesian joint fallback refine failed at %s (%s)"
+                        % (tuple(round(v, 3) for v in point), info))
+                    return None
+                fk = urdf.tcp(joints, path)[:3, 3]
+                fk_len += float(
+                    sum((float(fk[i]) - prev[i]) ** 2 for i in range(3))
+                    ** 0.5)
+                prev = tuple(float(v) for v in fk)
+                knots.append(list(joints))
+                current = joints
+            self.get_logger().info(
+                "cartesian joint fallback refined %s (%d waypoints) "
+                "fk_len=%.3f pos_err=%s rot_err=%s"
+                % (getattr(segment_msg, "name", "?"), len(knots) - 1, fk_len,
+                   info["pos_err_m"], info["rot_err_rad"]))
+            return {
+                "knots": knots,
+                "fk_path_len": fk_len,
+                "pos_err_m": info.get("pos_err_m"),
+                "rot_err_rad": info.get("rot_err_rad"),
+            }
+        except Exception as exc:  # noqa: BLE001 - provider boundary
+            self.get_logger().warning(
+                "cartesian joint fallback unavailable (%s)" % exc)
+            return None
 
     def _map_to_world(self, xyz):
         origin, rpy = origin_in_world(self._scene)

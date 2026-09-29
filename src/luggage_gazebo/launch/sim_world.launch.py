@@ -81,6 +81,12 @@ def _default_launch_values():
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
+        # Reachability-atlas runtime wiring (placement gate + motion IK
+        # seeds). Empty = the nodes pick the atlas whose stored scene hash
+        # matches scene_tf_config. atlas_runtime_config overrides that.
+        # atlas_enabled forces the whole chain on/off.
+        "atlas_runtime_config": "",
+        "atlas_enabled": "",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -769,6 +775,14 @@ def _launch_setup(context):
     # Pick/retreat shells (Todo 3). Default off so perception-only
     # debugging is unaffected; the closed-loop eval turns them on.
     poses_path = cfg["robot_poses_config"]
+    # Atlas overrides only when explicitly set; empty keeps the nodes on
+    # the installed atlas_runtime.yaml defaults.
+    atlas_params = {}
+    if cfg["atlas_runtime_config"]:
+        atlas_params["atlas_runtime_config"] = cfg["atlas_runtime_config"]
+    if cfg["atlas_enabled"]:
+        atlas_params["atlas_enabled"] = _as_bool(cfg["atlas_enabled"])
+
     motion_chain = [
         Node(
             package="luggage_planning",
@@ -803,12 +817,27 @@ def _launch_setup(context):
             output="screen",
             parameters=[{
                 "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
                 "robot_poses_config": poses_path,
                 "named_pose_duration": float(cfg["named_pose_duration"]),
                 "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
                 "velocity_scaling": float(cfg["velocity_scaling"]),
                 "acceleration_scaling": float(cfg["acceleration_scaling"]),
-            }],
+            }, atlas_params],
+            condition=IfCondition(_bool_text(cfg["use_motion"])),
+        ),
+        # SelectPlacePath provider (production path). The motion_occ driver
+        # still selects in-process; this node runs alongside so the service
+        # surface boots with the stack and stays covered by the smokes.
+        Node(
+            package="luggage_planning",
+            executable="trajectory_selector_node.py",
+            name="trajectory_selector",
+            output="screen",
+            parameters=[{
+                "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
+            }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
     ]
@@ -877,13 +906,14 @@ def _launch_setup(context):
             output="screen",
             parameters=[{
                 "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
                 "hull_margin": float(cfg["hull_margin"]),
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
-            }],
+            }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
         Node(
@@ -1042,6 +1072,16 @@ def generate_launch_description():
             profile_arg(
                 "robot_poses_config",
                 "Robot named-pose YAML path.",
+            ),
+            profile_arg(
+                "atlas_runtime_config",
+                "Reachability-atlas runtime YAML path (empty = installed "
+                "atlas_runtime.yaml).",
+            ),
+            profile_arg(
+                "atlas_enabled",
+                "Force the atlas chain on/off for placement and motion "
+                "(empty = yaml default).",
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),

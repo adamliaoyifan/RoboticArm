@@ -196,6 +196,15 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("scene_tf_config", default_value=default_scene),
             DeclareLaunchArgument(
+                "atlas_runtime_config",
+                default_value="",
+                description=(
+                    "Reachability-atlas runtime YAML. Empty selects the "
+                    "atlas cell whose stored scene hash matches "
+                    "scene_tf_config (simulation or scene_tf_deploy)."
+                ),
+            ),
+            DeclareLaunchArgument(
                 "robot_poses_config",
                 default_value=poses,
                 description=(
@@ -463,6 +472,9 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{
                     "use_sim_time": False,
+                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                    "atlas_runtime_config": LaunchConfiguration(
+                        "atlas_runtime_config"),
                     "robot_poses_config": LaunchConfiguration("robot_poses_config"),
                     "default_observe_pose": LaunchConfiguration("observe_pose_name"),
                     "named_pose_duration": 8.0,

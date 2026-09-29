@@ -175,6 +175,15 @@ class ReachabilityAtlas:
         self._neighbor_confidence = self._grid_array(
             data.get("neighbor_confidence"),
             "neighbor_confidence", np.float32, 0.0)
+        # v3 sampling record. Absent on older atlases; omitted from save then.
+        self._lift_clearance = None
+        self._branch_kind = None
+        if "lift_clearance" in data:
+            self._lift_clearance = self._grid_array(
+                data.get("lift_clearance"), "lift_clearance", np.float32, np.nan)
+        if "branch_kind" in data:
+            self._branch_kind = self._grid_array(
+                data.get("branch_kind"), "branch_kind", np.uint8, 0)
 
         # Kept for callers that used the v1 private member.
         self._seeds = (
@@ -194,8 +203,7 @@ class ReachabilityAtlas:
     def save(self, npz_path, meta_path):
         """Save schema v2 plus v1 compatibility arrays."""
         os.makedirs(os.path.dirname(npz_path) or ".", exist_ok=True)
-        np.savez_compressed(
-            npz_path,
+        payload = dict(
             status=self._status,
             opening_connected=self._opening_connected,
             reachable=self._reachable,
@@ -209,6 +217,11 @@ class ReachabilityAtlas:
             joint_margin=self._joint_margin,
             manipulability=self._manipulability,
         )
+        if self._lift_clearance is not None:
+            payload["lift_clearance"] = self._lift_clearance
+        if self._branch_kind is not None:
+            payload["branch_kind"] = self._branch_kind
+        np.savez_compressed(npz_path, **payload)
         os.makedirs(os.path.dirname(meta_path) or ".", exist_ok=True)
         saved_meta = dict(self._meta)
         saved_meta["atlas_version"] = "2.0"
@@ -505,6 +518,16 @@ class ReachabilityAtlas:
     @property
     def grid_size(self):
         return (self._nx, self._ny, self._nz, self._nyaw)
+
+    @property
+    def status(self):
+        """Status grid ``(nx, ny, nz, nyaw)``. Treat as read-only.
+
+        Exposed for query-layer neighbourhood reasoning (atlas_runtime
+        QuerySemantics): a cell verdict must not stand when a neighbouring
+        cell contradicts it.
+        """
+        return self._status
 
     def stats(self):
         """Return atlas statistics."""

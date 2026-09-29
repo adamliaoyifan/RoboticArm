@@ -159,3 +159,81 @@ def annotate_with_atlas(candidates, atlas, floor_z):
             continue
         kept.append(candidate)
     return kept, rejected
+
+
+def solver_contact_point(candidate, floor_z, inner_h):
+    """Container_link contact point for a placement_solver candidate.
+
+    Solver candidates do not carry ``peak`` (that key belongs to the
+    packing_replay rows ``atlas_contact_point`` was written for); recover it
+    from the AABB convention of placement_solver.candidate_aabb:
+    peak = center_local.z + inner_h/2 - box_h/2.
+    """
+    local = candidate["center_local"]
+    box_height = float(candidate["size"][2])
+    peak = float(local[2]) + float(inner_h) / 2.0 - box_height / 2.0
+    return float(local[0]), float(local[1]), float(floor_z) + peak + box_height
+
+
+def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
+                        hard_reject=True, dump_only=False, query_offset=None):
+    """Build the runtime atlas hook for ``solve_placement``.
+
+    Records ``reachability_prior`` / ``atlas_status`` / ``atlas_status_name``
+    / ``atlas_contact_z`` on every candidate. Unless ``dump_only``:
+    high-confidence unreachable cells (``hard_reject_safe``) flip to
+    ``feasible=False, reason="atlas_unreachable"`` (kept in the list so the
+    reject histogram sees them) and reachable/marginal candidates gain
+    ``score += score_weight * prior`` so selection prefers covered cells.
+
+    Returns ``hook(candidates) -> (candidates, report)``.
+    """
+    from luggage_planning.atlas_runtime import snap_yaw_to_bin
+
+    offset = [float(v) for v in (query_offset or (0.0, 0.0, 0.0))]
+
+    def hook(candidates):
+        report = {
+            "atlas": atlas is not None,
+            "n_candidates": len(candidates),
+            "n_hard_rejected": 0,
+            "status_histogram": {},
+        }
+        if atlas is None:
+            for candidate in candidates:
+                candidate["reachability_prior"] = NEUTRAL_PRIOR
+                candidate["atlas_status"] = None
+                candidate["atlas_status_name"] = "no_atlas"
+            report["status_histogram"] = {"no_atlas": len(candidates)}
+            return candidates, report
+
+        def bump(status):
+            report["status_histogram"][status] = (
+                report["status_histogram"].get(status, 0) + 1)
+
+        for candidate in candidates:
+            x, y, z = solver_contact_point(candidate, floor_z, inner_h)
+            bin_yaw, _ = snap_yaw_to_bin(
+                atlas, atlas_query_yaw(candidate))
+            result = atlas.query(
+                x + offset[0], y + offset[1], z + offset[2], bin_yaw)
+            status = int(result.status)
+            prior = ATLAS_PRIOR_BY_STATUS.get(status, 0.0)
+            candidate["reachability_prior"] = prior
+            candidate["atlas_status"] = status
+            candidate["atlas_status_name"] = str(result.reason)
+            candidate["atlas_contact_z"] = round(z, 4)
+            bump(str(result.reason))
+            if dump_only:
+                continue
+            if hard_reject and result.hard_reject_safe:
+                candidate["feasible"] = False
+                candidate["reason"] = "atlas_unreachable"
+                report["n_hard_rejected"] += 1
+                continue
+            candidate["score"] = round(
+                float(candidate.get("score", 0.0))
+                + float(score_weight) * prior, 4)
+        return candidates, report
+
+    return hook

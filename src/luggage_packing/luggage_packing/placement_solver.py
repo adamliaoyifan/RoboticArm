@@ -42,19 +42,23 @@ POLICY_REASONS = frozenset((
     REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT))
 
 # Stable placement failure taxonomy (docs/architecture/container_geometry.md).
-# The solver emits the first four; the node adds the last two at its own
-# boundary. They share this module so every consumer reads one taxonomy.
+# The solver emits the first four. The node adds cargo-map identity,
+# measured-height, and atlas-identity failures at its own boundary.
+# They share this module so every consumer reads one taxonomy.
 CODE_INVALID_BOX_SIZE = "INVALID_BOX_SIZE"
 CODE_BOX_EXCEEDS_CONTAINER = "BOX_EXCEEDS_CONTAINER"
 CODE_BIN_FULL = "BIN_FULL"
 CODE_PLACE_CANDIDATE_EXHAUSTED = "PLACE_CANDIDATE_EXHAUSTED"
 CODE_CARGO_MAP_GEOMETRY_MISMATCH = "CARGO_MAP_GEOMETRY_MISMATCH"
 CODE_DETECT_FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
+# Node boundary, same string as atlas_runtime.ATLAS_IDENTITY_UNVERIFIED.
+# Strict atlas identity failed: do not hard-reject or re-rank.
+CODE_ATLAS_IDENTITY_UNVERIFIED = "ATLAS_IDENTITY_UNVERIFIED"
 
 PLACEMENT_REASON_CODES = frozenset((
     CODE_INVALID_BOX_SIZE, CODE_BOX_EXCEEDS_CONTAINER, CODE_BIN_FULL,
     CODE_PLACE_CANDIDATE_EXHAUSTED, CODE_CARGO_MAP_GEOMETRY_MISMATCH,
-    CODE_DETECT_FULL_GEOMETRY_REQUIRED))
+    CODE_DETECT_FULL_GEOMETRY_REQUIRED, CODE_ATLAS_IDENTITY_UNVERIFIED))
 
 
 def candidate_aabb(candidate, inner_h):
@@ -379,7 +383,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
-                    candidate_validator=None):
+                    candidate_validator=None, atlas_annotate=None):
     """ROS-free ComputePlacement core with a stable failure taxonomy.
 
     On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
@@ -388,6 +392,12 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     capacity-feasible, so a run that lost every slot to the aperture, the
     insertion corridor, or unobserved support is never reported as a full
     container.
+
+    ``atlas_annotate`` (see placement_reachability.make_atlas_annotate) runs
+    after enumeration and before selection: it may flip candidates
+    infeasible (atlas_unreachable) and adjust ``score`` (reachability
+    prior), so both the reject histogram and the ``max(score)`` selection
+    reflect the atlas. Its report is returned as ``result["atlas"]``.
     """
     size = [float(v) for v in box_size]
     if len(size) != 3 or not all(math.isfinite(v) and v > 0.0 for v in size):
@@ -405,6 +415,9 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
         candidate_validator=candidate_validator, totals=totals)
+    atlas_report = None
+    if atlas_annotate is not None:
+        candidates, atlas_report = atlas_annotate(candidates)
     feasible = [candidate for candidate in candidates
                 if candidate.get("feasible", False)]
     # Count over every enumerated candidate, not the retained subset: a
@@ -446,6 +459,7 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
         "candidates_enumerated": int(totals.get("n_enumerated", 0)),
         "message": message,
         "map_revision": surface_map.get("map_revision"),
+        "atlas": atlas_report,
     }
 
 

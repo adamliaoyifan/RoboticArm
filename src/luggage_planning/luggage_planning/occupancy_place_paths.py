@@ -70,6 +70,11 @@ DEFAULT_WEIGHTS = {
     # Wrist + camera stack above suction in tool-down; MoveIt still owns
     # mesh-vs-ceiling, this only keeps the geometric hover under the lid.
     "arm_overhead_m": 0.20,
+    # Corridor variant: horizontal carry height for the enter-align-descend
+    # decomposition. 1.50 keeps the measured wrist/elbow band ~99 mm under
+    # the lid at door-crossing depth (2026-09-29 offline walk), while the
+    # single-diagonal variants ride the rim (-51 mm).
+    "corridor_tool_z": 1.50,
 }
 
 OFFSET_DELTAS = (0.10, 0.20, -0.10, -0.20)
@@ -721,7 +726,7 @@ def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
                            inner_h=None, max_candidates=4, payload_height=0.0,
                            payload_wdh=None, yaw=0.0, arm_radius=None,
                            carry_margin=None, collision_pad=None,
-                           arm_overhead=None):
+                           arm_overhead=None, corridor_tool_z=None):
     """Return at least two geometric variants whenever possible.
 
     ``portal`` / ``target`` are map-frame XYZ (suction frame). ``target`` is
@@ -774,6 +779,19 @@ def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
         hi_dest = (dest[0], dest[1], max(dest[2], headroom))
         if abs(hi_dest[2] - dest[2]) > 1e-4:
             variants.append(PathVariant("clear_headroom", [hi_entry, hi_dest]))
+
+    # Corridor: enter-inside at a fixed horizontal carry height, translate
+    # above the slot, then descend vertically. Axis-aligned legs keep the
+    # arm band off the lid by construction; the single-diagonal families
+    # ride the rim at door-crossing depth (2026-09-29 box3 evidence).
+    cz = float(_weight("corridor_tool_z", corridor_tool_z))
+    if snapshot is not None:
+        cz = min(max(cz, need), suction_max)
+    cz = max(cz, dest[2])
+    inset = 0.15
+    inside = (portal[0] + along[0] * inset, portal[1] + along[1] * inset, cz)
+    above = (dest[0], dest[1], cz)
+    variants.append(PathVariant("corridor", [inside, above, dest]))
 
     mid = (
         0.5 * (portal[0] + dest[0]),

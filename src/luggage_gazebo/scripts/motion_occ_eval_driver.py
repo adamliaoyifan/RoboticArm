@@ -2,8 +2,10 @@
 """MOTION-OCC A1: occupancy-aware multi-slot place paths.
 
 n=2 carryon,standard. Occupancy from IntegrateCargoView (no AddPlacedBox).
-Second carry goes through PlacePathPlanner; cartesian/OMPL see occupancy
-via motion_planner_node injection plus executor re-sweep.
+Second carry goes through TrajectorySelector (grid paths plus geometric
+variants). joint_path segments do not fall back to RRTConnect. Cartesian
+and OMPL still see occupancy via motion_planner_node injection plus the
+executor re-sweep.
 
 Selection-stage MoveIt probe: rows that pass the occupancy sweep are
 probed via /motion_planner/probe_motion_segment (traverse-equivalent
@@ -40,6 +42,7 @@ from cargo_map_integrate_eval_driver import (  # noqa: E402
 )
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     _point_in_container_link,
+    container_inner_ceiling_z,
     container_opening_normal_in_world,
     container_opening_target_point_in_world,
     origin_in_world,
@@ -58,9 +61,12 @@ from luggage_planning.occupancy_place_paths import (  # noqa: E402
     PAYLOAD_SOURCE_MEASURED,
     dump_rows,
 )
-from luggage_planning.place_path_planner import (  # noqa: E402
-    PlacePathPlanner,
-    apply_variant_to_segment,
+from luggage_planning.place_selection_client import (  # noqa: E402
+    apply_carry_segment,
+)
+from luggage_planning.trajectory_selector import (  # noqa: E402
+    TrajectorySelector,
+    make_arm_ceiling_checker,
 )
 from pick_retreat_eval_driver import _git_meta  # noqa: E402
 
@@ -88,6 +94,26 @@ def _map_to_world(scene, xyz):
     ]
 
 
+def _quat_yaw(orientation):
+    """Planar yaw of a slot orientation (footprint heading for the sweep)."""
+    siny = 2.0 * (float(orientation.w) * float(orientation.z)
+                  + float(orientation.x) * float(orientation.y))
+    cosy = 1.0 - 2.0 * (float(orientation.y) ** 2
+                        + float(orientation.z) ** 2)
+    return math.atan2(siny, cosy)
+
+
+def _joint_positions(state):
+    if not isinstance(state, dict):
+        return None
+    raw = state.get("position")
+    if raw is None:
+        raw = state.get("positions")
+    if not raw:
+        return None
+    return [float(v) for v in list(raw)[:6]]
+
+
 def _world_to_map(scene, xyz):
     base = xyz_world_to_base_link(scene, xyz)
     return _point_in_container_link(base, scene)
@@ -96,7 +122,42 @@ def _world_to_map(scene, xyz):
 class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
-        self._planner = PlacePathPlanner.from_yaml()
+        self._selector = TrajectorySelector.from_yaml()
+        self._atlas = None
+        self._atlas_diag = {}
+        try:
+            from luggage_planning.atlas_runtime import (
+                certification_block_reason,
+                compute_scene_tf_hash,
+                load_atlas_runtime_for_scene,
+                load_runtime_atlas,
+            )
+            from luggage_planning.urdf_identity import UrdfIdentity
+            from luggage_description.scene_tf_config_utils import (
+                resolve_scene_tf_config_path,
+            )
+            self._certification_block_reason = certification_block_reason
+            self._load_runtime_atlas = load_runtime_atlas
+            scene_path = resolve_scene_tf_config_path(
+                getattr(args, "scene_tf_config", None) or None)
+            self._scene_tf_hash = compute_scene_tf_hash(scene_path)
+            self._atlas_cfg = load_atlas_runtime_for_scene(
+                scene_path, os.environ.get("ATLAS_RUNTIME_CONFIG") or None)
+            if str(self._atlas_cfg.get("hash_policy") or "") == "strict":
+                self._selector.config["hash_policy"] = "strict"
+            self._urdf_identity = UrdfIdentity(self)
+            if self._atlas_cfg.get("enabled"):
+                self._urdf_identity.start()
+            self._atlas_key = None
+        except Exception as exc:  # noqa: BLE001 - atlas is a prior, not the map
+            self._atlas = None
+            self._atlas_diag = {"reason": str(exc)}
+            self._atlas_cfg = {"enabled": False}
+            self._certification_block_reason = None
+            self._load_runtime_atlas = None
+            self._urdf_identity = None
+            self._scene_tf_hash = ""
+            self._atlas_key = None
         self._selected_path = None
         self._selector_rows = []
         self._last_boundary = None
@@ -246,6 +307,28 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         }
         return folder
 
+    def _runtime_atlas(self):
+        """Load the atlas with the live scene and URDF hashes.
+
+        The cache key includes both hashes, so a description that arrives
+        after startup replaces an unverified refusal instead of sticking.
+        """
+        cfg = getattr(self, "_atlas_cfg", None) or {}
+        if not cfg.get("enabled") or self._load_runtime_atlas is None:
+            return None, {"loaded": False, "reason": "disabled"}
+        if self._urdf_identity is not None:
+            self._urdf_identity.poll()
+        urdf_hash = (
+            self._urdf_identity.hash
+            if self._urdf_identity is not None and self._urdf_identity.ready
+            else "")
+        key = (self._scene_tf_hash, urdf_hash)
+        if key != self._atlas_key:
+            self._atlas, self._atlas_diag = self._load_runtime_atlas(
+                cfg, scene_tf_hash=self._scene_tf_hash, urdf_hash=urdf_hash)
+            self._atlas_key = key
+        return self._atlas, self._atlas_diag
+
     def _place_slot_for(self, pick_msg, box_msg, trial):
         del box_msg
         if not bool(getattr(pick_msg, "height_valid", False)):
@@ -284,22 +367,59 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 "index": i,
                 "score": score,
                 "target": self._slot_target_map(slot),
+                "yaw": _quat_yaw(slot.place_pose.orientation),
             })
         surface = dict(self._surface_2d or {})
         probe_fn = None
         probe_stats = {"mode": "off"}
         if getattr(self._args, "place_probe", "on") == "on":
             probe_fn, probe_stats = self._place_probe_fn(slots)
+        start_live = _joint_positions(getattr(self, "_last_joint_state", None))
+        arm_check = None
+        if start_live:
+            lid_world = _map_to_world(
+                self._scene_config,
+                [0.0, 0.0, container_inner_ceiling_z(self._scene_config)])[2]
+            org, _rpy = origin_in_world(self._scene_config)
+            inner = self._scene_config["container"]["inner"]
+            arm_check = make_arm_ceiling_checker(
+                start_live, lid_world,
+                frame_convert=lambda xyz: _map_to_world(
+                    self._scene_config, xyz),
+                footprint=(
+                    float(org[0]) - float(inner["length"]) * 0.5,
+                    float(org[0]) + float(inner["length"]) * 0.5,
+                    float(org[1]) - float(inner["width"]) * 0.5,
+                    float(org[1]) + float(inner["width"]) * 0.5))
+        atlas, atlas_diag = self._runtime_atlas()
+        trial.extras["atlas_identity"] = atlas_diag
+        block = ""
+        if self._certification_block_reason is not None:
+            block = self._certification_block_reason(
+                self._atlas_cfg, atlas_diag)
+        if block:
+            trial.fail_code = block
+            trial.extras["selector_error"] = atlas_diag.get(
+                "hash_message") or atlas_diag.get("reason") or block
+            return None, None
+        urdf_hash = ""
+        if self._urdf_identity is not None and self._urdf_identity.ready:
+            urdf_hash = self._urdf_identity.hash
         try:
-            winner, rows, reason, _snap = self._planner.plan(
+            winner, rows, reason, _snap = self._selector.select(
                 surface, planner_slots, self._portal_map(),
                 payload_wdh=(
                     float(pick_msg.width), float(pick_msg.depth),
                     float(pick_msg.height)),
+                atlas=atlas,
                 expected_hash=str(surface.get("geometry_hash") or "") or None,
                 expected_revision=surface.get("map_revision"),
                 opening_tangent=self._opening_tangent_map(),
                 probe_fn=probe_fn,
+                start_joints=start_live,
+                arm_check=arm_check,
+                scene_tf_hash=self._scene_tf_hash,
+                urdf_hash=urdf_hash,
             )
         except Exception as exc:  # noqa: BLE001 - eval boundary
             trial.fail_code = PLACE_PATH_INFEASIBLE
@@ -314,8 +434,45 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             trial.fail_code = PLACE_PATH_INFEASIBLE
             return None, None
         self._selected_path = winner
+        trial.extras["path_source"] = winner.get("path_source")
+        trial.extras["selection_id"] = winner.get("selection_id")
+        trial.extras["grid"] = (winner.get("diagnostics") or {}).get("slots")
         slot = slots[int(winner["slot_index"])]
+        trial.extras["placement_atlas"] = self._placement_atlas_extra(slot)
         return slot, self._slot_meta(slot)
+
+    def _placement_atlas_extra(self, slot):
+        """Atlas status of the selected slot from the placement dump.
+
+        The ComputePlacement response carries no atlas fields; the latched
+        /placement_planner/last_result does. The motion selector may pick
+        any of the ranked candidates, so match the chosen slot's container
+        x/y against the dumped candidates.
+        """
+        last = getattr(self, "_last_result", None)
+        if not isinstance(last, dict):
+            return None
+        extra = {"gate": last.get("atlas") or None, "selected": None}
+        target = self._slot_target_map(slot)
+        best = None
+        for cand in last.get("candidates") or []:
+            center = cand.get("center_local")
+            if not center or len(center) < 2:
+                continue
+            dist = math.hypot(
+                float(center[0]) - target[0], float(center[1]) - target[1])
+            if best is None or dist < best[0]:
+                best = (dist, cand)
+        if best is not None and best[0] <= 0.15:
+            cand = best[1]
+            extra["selected"] = {
+                "atlas_status": cand.get("atlas_status"),
+                "atlas_status_name": cand.get("atlas_status_name"),
+                "reachability_prior": cand.get("reachability_prior"),
+                "atlas_contact_z": cand.get("atlas_contact_z"),
+                "match_dist_m": round(best[0], 4),
+            }
+        return extra
 
     def _execute_segment(self, segment, trial):
         if (str(segment.name) in ("transit", "traverse")
@@ -324,8 +481,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             # Selected carry variant (map frame) onto the segment, in the
             # world frame the planner runs in — same helper the production
             # chain will use when the selector moves into the node layer.
-            apply_variant_to_segment(
-                segment, list(self._selected_path["waypoints"]),
+            apply_carry_segment(
+                segment, self._selected_path,
                 frame_convert=lambda xyz: _map_to_world(
                     self._scene_config, xyz))
         t0 = time.time()
@@ -437,6 +594,18 @@ def _write_suite(out, records, driver):
                              for s in probe_stats), 3),
         },
         "selectors": [r.extras.get("selector") for r in records],
+        "atlas": {
+            "selected": [
+                (r.extras.get("placement_atlas") or {}).get("selected")
+                for r in records],
+            "gate": [
+                (r.extras.get("placement_atlas") or {}).get("gate")
+                for r in records],
+            "n_selected_reachable": sum(
+                1 for r in records
+                if ((r.extras.get("placement_atlas") or {})
+                    .get("selected") or {}).get("atlas_status") in (2, 3)),
+        },
     }
     with open(os.path.join(out, "suite.json"), "w", encoding="utf-8") as handle:
         json.dump(payload, handle, indent=2, sort_keys=True, default=str)

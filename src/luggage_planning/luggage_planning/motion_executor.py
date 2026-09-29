@@ -12,6 +12,8 @@ Segment routing (docs/plans/closed_loop_pick_retreat_nodes.md):
                     (MoveIt TOTG execute stays off; Huayan CollisionStop)
     cartesian    -> GetCartesianPath geometry, wrist/excursion gates,
                     occupancy sweep, then rest-to-rest ExecuteTrajectory
+    joint_path   -> dense the selector's joint knots, FK-sweep occupancy,
+                    then rest-to-rest ExecuteTrajectory. No RRTConnect.
     named pose   -> handled by the node via plain FJT (see motion_planner_node)
 
 ``keep_tool_down`` adds an orientation constraint (tool Z down).
@@ -23,6 +25,7 @@ from __future__ import division
 
 import math
 import threading
+import time
 from dataclasses import dataclass
 
 from luggage_planning.joint6_hold import (
@@ -35,7 +38,7 @@ from luggage_planning.ros_clock_wait import wait_event
 from luggage_planning.trajectory_timing import time_parameterize_cartesian
 
 from builtin_interfaces.msg import Duration as DurationMsg
-from geometry_msgs.msg import Point as PointMsg, PoseStamped
+from geometry_msgs.msg import Pose as PoseMsg, PoseStamped
 from moveit_msgs.action import ExecuteTrajectory, MoveGroup
 from moveit_msgs.msg import (
     BoundingVolume,
@@ -46,9 +49,11 @@ from moveit_msgs.msg import (
     OrientationConstraint,
     PositionConstraint,
     PositionIKRequest,
+    RobotTrajectory,
 )
 from moveit_msgs.srv import GetCartesianPath, GetPositionFK, GetPositionIK
 from shape_msgs.msg import SolidPrimitive
+from trajectory_msgs.msg import JointTrajectoryPoint
 
 # Tool-Z (suction normal) pointing at world -Z: quaternion (x=1, w=0).
 TOOL_DOWN_QUAT = (1.0, 0.0, 0.0, 0.0)
@@ -75,20 +80,18 @@ _CARTESIAN_EXCURSION_RAD_PER_M = 3.0
 # 9 mm traverse reads 2.07 rad/m for 0.02 rad of motion), so short hops are
 # judged against the floor instead.
 _CARTESIAN_EXCURSION_MIN_PATH_M = 0.05
-# The wrist is degenerate at elfin_joint5 = k*pi, where joint4 and joint6
-# become collinear and a small end-effector change can demand a ~pi sweep of
-# both. Across the 45 recorded segments in motion_occ/2026-09-21_* the two
-# sets separate exactly: every segment whose joint5 track crossed a k*pi
-# boundary was a wrist flip (|dj5| 3.12-6.28 rad, closest approach <= 0.069
-# rad), and every segment that did not cross stayed >= 0.454 rad away. So the
-# crossing test alone classifies the recorded set with no threshold. The
-# margin below is the backstop for a sparse waypoint chain that could step
-# over a boundary without landing near it; it sits between the two clusters
-# (3.6x above the rejected set, 1.8x below the accepted set). Note 0.454 rad
-# is an accepted segment, so a margin at 0.50 would refuse a path that
-# provably did not flip.
+# j5 and j6 are not refuse gates. A keep_tool_down segment only requires
+# the suction normal to stay within tool_down_abs_tol of world -Z; yaw
+# about that axis is free, so either wrist branch may be used.
+# wrist_margin and j6_rotation stay in the boundary dump.
 _WRIST_JOINT_INDEX = 4
-_WRIST_SINGULARITY_MARGIN_RAD = 0.25
+_WRIST_SINGULARITY_MARGIN_RAD = 0.50
+_J6_JOINT_INDEX = 5
+_J6_ROTATION_LIMIT_RAD = 2.50
+_TOOL_DOWN_ABS_TOL = 0.05
+# Diagnostic only: max per-joint |seed-goal|. Not a refuse gate.
+_POSE_TARGET_MAX_JOINT_DELTA_RAD = 1.50
+_WRIST_FREE_SEGMENTS_DEFAULT = ()
 
 
 @dataclass
@@ -117,21 +120,6 @@ class _ExcursionRejectedPlan(object):
     """
 
     excursion_rejected = True
-    solution = None
-
-    def __init__(self, reason, measurement):
-        self.reason = str(reason)
-        self.measurement = dict(measurement)
-
-
-class _WristSingularPlan(object):
-    """A solution that reconfigures or operates inside the wrist singularity.
-
-    Distinct from ``_ExcursionRejectedPlan`` because the excursion ratio can
-    look plausible while joint5 still steps across a branch boundary.
-    """
-
-    wrist_singular = True
     solution = None
 
     def __init__(self, reason, measurement):
@@ -184,14 +172,17 @@ def _wrist_cell(value):
     return math.floor(float(value) / math.pi)
 
 
-def wrist_singularity(points, margin_rad=_WRIST_SINGULARITY_MARGIN_RAD,
-                      joint_index=_WRIST_JOINT_INDEX):
-    """Wrist degeneracy check for one solution's joint5 track.
+def wrist_margin(points, margin_rad=_WRIST_SINGULARITY_MARGIN_RAD,
+                 joint_index=_WRIST_JOINT_INDEX):
+    """Closest approach of joint5 to k*pi, plus a branch-crossing flag.
 
     ``points`` are objects with ``positions`` (a JointTrajectory) or plain
     joint vectors. Returns ``None`` when there is nothing to judge, otherwise
     a dict with the closest approach to k*pi, whether the track crosses a
-    branch boundary, and ``ok``.
+    branch boundary, and ``ok``. ``ok`` requires both staying at least
+    ``margin_rad`` from every k*pi and not changing [k*pi, (k+1)*pi) cell:
+    a two-point seed-to-goal pair parked at +/-pi/2 has a large closest
+    approach but still reconfigures through the singularity.
     """
     rows = [list(getattr(p, "positions", p)) for p in (points or [])]
     track = [float(r[joint_index]) for r in rows if len(r) > joint_index]
@@ -211,19 +202,82 @@ def wrist_singularity(points, margin_rad=_WRIST_SINGULARITY_MARGIN_RAD,
     }
 
 
-def wrist_singularity_reason(measurement):
-    """Human-readable refusal text for a failed ``wrist_singularity``."""
-    if measurement["crosses_branch"]:
-        return (
-            "wrist branch change: %s crosses a multiple of pi (%.3f rad of "
-            "travel, closest approach %.4f rad)" % (
-                measurement["joint"], measurement["delta_rad"],
-                measurement["margin_rad"]))
+# Name used in the first draft of this gate; tests and callers use wrist_margin.
+wrist_singularity = wrist_margin
+
+
+def j6_rotation(points, limit_rad=_J6_ROTATION_LIMIT_RAD,
+                joint_index=_J6_JOINT_INDEX):
+    """Total |d j6| along a track. Dump only; not a refuse gate."""
+    rows = [list(getattr(p, "positions", p)) for p in (points or [])]
+    track = [float(r[joint_index]) for r in rows if len(r) > joint_index]
+    if len(track) < 2:
+        return None
+    travel = sum(abs(b - a) for a, b in zip(track, track[1:]))
+    net = abs(track[-1] - track[0])
+    return {
+        "joint": (JOINTS[joint_index] if joint_index < len(JOINTS)
+                  else "joint%d" % joint_index),
+        "travel_rad": round(travel, 4),
+        "net_rad": round(net, 4),
+        "limit_rad": float(limit_rad),
+        "ok": travel <= float(limit_rad),
+    }
+
+
+def pose_target_joint_delta(seed, goal,
+                            limit_rad=_POSE_TARGET_MAX_JOINT_DELTA_RAD,
+                            joint_names=None):
+    """Max per-joint |delta| from seed to an IK goal.
+
+    Dump diagnostic only. j5 and j6 travel are not refuse reasons.
+    """
+    if not seed or not goal or len(seed) != len(goal):
+        return None
+    names = list(joint_names or JOINTS)
+    deltas = [abs(float(a) - float(b)) for a, b in zip(seed, goal)]
+    worst = max(range(len(deltas)), key=lambda index: deltas[index])
+    value = deltas[worst]
+    return {
+        "joint": names[worst] if worst < len(names) else "joint%d" % worst,
+        "max_rad": round(value, 4),
+        "limit_rad": float(limit_rad),
+        "ok": value <= float(limit_rad),
+    }
+
+
+def _quat_mul(a, b):
+    """Hamilton product of (x, y, z, w) tuples."""
+    ax, ay, az, aw = a
+    bx, by, bz, bw = b
     return (
-        "wrist near singularity: %s within %.4f rad of a multiple of pi "
-        "(limit %.3f)" % (
-            measurement["joint"], measurement["margin_rad"],
-            measurement["margin_limit_rad"]))
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    )
+
+
+def equivalent_tool_down_pose(pose):
+    """Same position, tool yaw + pi (rectangular payload is invariant).
+
+    Rotate 180 deg about the tool Z axis so keep_tool_down IK can try both
+    wrist branches without changing the payload heading.
+    """
+    q = (
+        float(pose.orientation.x), float(pose.orientation.y),
+        float(pose.orientation.z), float(pose.orientation.w),
+    )
+    x, y, z, w = _quat_mul(q, (0.0, 0.0, 1.0, 0.0))
+    out = type(pose)()
+    out.position.x = float(pose.position.x)
+    out.position.y = float(pose.position.y)
+    out.position.z = float(pose.position.z)
+    out.orientation.x = x
+    out.orientation.y = y
+    out.orientation.z = z
+    out.orientation.w = w
+    return out
 
 
 def _sec_to_duration(sec):
@@ -283,9 +337,20 @@ class MotionExecutor:
                  cartesian_avoid_collisions=True,
                  cartesian_excursion_rad_per_m=_CARTESIAN_EXCURSION_RAD_PER_M,
                  wrist_singularity_margin_rad=_WRIST_SINGULARITY_MARGIN_RAD,
-                 tool_down_abs_tol=0.05,
+                 wrist_free_segments=_WRIST_FREE_SEGMENTS_DEFAULT,
+                 pose_target_max_joint_delta_rad=_POSE_TARGET_MAX_JOINT_DELTA_RAD,
+                 j6_rotation_limit_rad=_J6_ROTATION_LIMIT_RAD,
+                 tool_down_abs_tol=_TOOL_DOWN_ABS_TOL,
+                 atlas_seed_provider=None,
+                 atlas_mode="miss-retry",
+                 atlas_max_seeds=3,
+                 atlas_fk_verify_tol_m=0.03,
+                 atlas_submit_mode="reseed",
                  velocity_scaling=_VEL_SCALE,
-                 acceleration_scaling=_ACC_SCALE):
+                 acceleration_scaling=_ACC_SCALE,
+                 joint_path_continuity_rad=1.2,
+                 cartesian_joint_fallback=None,
+                 align_retry_enabled=True):
         self._node = node
         self._group = str(group_name)
         self._link = str(link_name)
@@ -298,8 +363,31 @@ class MotionExecutor:
         self._avoid_collisions = bool(cartesian_avoid_collisions)
         self._excursion_limit = float(cartesian_excursion_rad_per_m)
         self._wrist_margin = float(wrist_singularity_margin_rad)
+        if wrist_free_segments is None:
+            wrist_free_segments = _WRIST_FREE_SEGMENTS_DEFAULT
+        self._wrist_free = {str(name).strip()
+                            for name in wrist_free_segments}
+        self._wrist_free.discard("")
+        self._pose_target_max_delta = float(pose_target_max_joint_delta_rad)
+        self._j6_limit = float(j6_rotation_limit_rad)
+        # Reachability-atlas seed chain (see luggage_planning.atlas_runtime):
+        # miss-retry re-seeds KDL after an unseeded miss; always-first tries
+        # seeds first; joint_goal additionally allows an FK-verified seed to
+        # become the goal without an IK service hit.
+        self._atlas_provider = atlas_seed_provider
+        self._atlas_mode = str(atlas_mode or "miss-retry")
+        self._atlas_max_seeds = int(atlas_max_seeds)
+        self._atlas_fk_tol = float(atlas_fk_verify_tol_m)
+        self._atlas_submit_mode = str(atlas_submit_mode or "reseed")
         self._vel_scale = float(velocity_scaling)
         self._acc_scale = float(acceleration_scaling)
+        self._joint_path_continuity = float(joint_path_continuity_rad)
+        # Deterministic re-solve for no-fallback cartesian segments rejected
+        # by the excursion gate or a sub-threshold fraction (see
+        # _cartesian_refine_fallback). Node-injected because the refine
+        # needs the URDF/scene; the executor stays frame-agnostic.
+        self._cartesian_joint_fallback = cartesian_joint_fallback
+        self._align_retry_enabled = bool(align_retry_enabled)
         self._tool_down_abs_tol = float(tool_down_abs_tol)
         # Set per execute_segment call (goals are serialized: the stack
         # never runs two motion segments at once, move_group would refuse
@@ -334,6 +422,9 @@ class MotionExecutor:
         self._last_boundary = {}
         self._cartesian_excursion = None
         self._wrist_measurement = None
+        self._j6_measurement = None
+        self._pose_target_joint_delta = None
+        self._atlas_record = None
 
     # ------------------------------------------------------------------
 
@@ -384,6 +475,15 @@ class MotionExecutor:
     def last_boundary(self):
         return dict(self._last_boundary or {})
 
+    def _reset_boundary_measurements(self):
+        self._cartesian_excursion = None
+        self._wrist_measurement = None
+        self._j6_measurement = None
+        self._pose_target_joint_delta = None
+        self._atlas_record = None
+        self._cartesian_fallback_record = None
+        self._align_retry_record = None
+
     def _stamp_boundary(self, result, name):
         traj = robot_traj_to_dict(self._planned_traj)
         result.trajectory = traj
@@ -403,6 +503,23 @@ class MotionExecutor:
         if self._cartesian_excursion is not None:
             self._last_boundary["cartesian_excursion"] = dict(
                 self._cartesian_excursion)
+        if self._wrist_measurement is not None:
+            self._last_boundary["wrist_margin"] = dict(self._wrist_measurement)
+        if self._j6_measurement is not None:
+            self._last_boundary["j6_rotation"] = dict(self._j6_measurement)
+        if self._pose_target_joint_delta is not None:
+            self._last_boundary["pose_target_joint_delta"] = dict(
+                self._pose_target_joint_delta)
+        atlas_record = getattr(self, "_atlas_record", None)
+        if atlas_record is not None:
+            self._last_boundary["atlas"] = dict(atlas_record)
+        fallback_record = getattr(self, "_cartesian_fallback_record", None)
+        if fallback_record is not None:
+            self._last_boundary["cartesian_joint_fallback"] = dict(
+                fallback_record)
+        align_record = getattr(self, "_align_retry_record", None)
+        if align_record is not None:
+            self._last_boundary["align_retry"] = dict(align_record)
         if self._occupancy is not None:
             from luggage_planning.occupancy_place_paths import (
                 occupancy_collision_boxes)
@@ -427,7 +544,7 @@ class MotionExecutor:
         """
         self._cancel_check = cancel_check
         self._planned_traj = None
-        self._cartesian_excursion = None
+        self._reset_boundary_measurements()
         self._start_joints = list(current_joints or [])
         try:
             result = self._execute_segment_inner(
@@ -437,9 +554,205 @@ class MotionExecutor:
         finally:
             self._cancel_check = None
 
+    def _robot_trajectory(self, knots):
+        trajectory = RobotTrajectory()
+        trajectory.joint_trajectory.joint_names = list(JOINTS)
+        for knot in knots:
+            point = JointTrajectoryPoint()
+            point.positions = [float(v) for v in knot]
+            trajectory.joint_trajectory.points.append(point)
+        return trajectory
+
+    def _run_joint_path(self, segment_msg, feedback_cb, execute_timeout):
+        """Execute selector joint knots. Sweep failures do not fall back to RRT."""
+        from luggage_planning.joint_path import JointPathError, validate_joint_path
+        from luggage_planning.place_selection_client import read_joint_knots
+
+        name = str(getattr(segment_msg, "name", "") or "")
+        knots = read_joint_knots(segment_msg)
+        continuity = float(getattr(self, "_joint_path_continuity", 1.2))
+
+        def fk(joints):
+            return self._fk_xyz(JOINTS, joints)
+
+        def sweep(points):
+            return self._occupancy_ok_points(points)
+
+        try:
+            if self._occupancy is None:
+                dense = validate_joint_path(knots, continuity)
+            else:
+                dense = validate_joint_path(
+                    knots, continuity, fk_fn=fk, sweep_fn=sweep, fk_stride=4)
+        except JointPathError as exc:
+            return self._result(
+                False, "PLACE_PATH_INFEASIBLE %s" % exc.reason, 0.0)
+        trajectory = self._robot_trajectory(dense)
+        self._planned_traj = trajectory
+        return self._execute_robot_trajectory(
+            trajectory, name, 1.0, feedback_cb, execute_timeout)
+
+    def _cartesian_refine_fallback(self, segment_msg, feedback_cb,
+                                   execute_timeout, current_joints,
+                                   why, fraction):
+        """Deterministic re-solve for a rejected no-fallback cartesian leg.
+
+        GetCartesianPath is one seeded solve with jump detection off, so it
+        can stall mid-descent after drifting to a different IK branch (the
+        2026-09-27 n=3 insert: j6 0.771 rad over 5.4 cm at fraction 0.244
+        while a continuous branch from the same state needs j6 -0.017). The
+        node-injected provider re-solves the goal offline from the live
+        joints -- in effect choosing the branch continuous with the current
+        arm -- and the dense path must clear the SAME excursion bar before
+        execution, so the fallback cannot legitimise a bad re-solve.
+
+        Returns ``None`` to keep the original failure (fail-closed).
+        """
+        from luggage_planning.joint_path import JointPathError, validate_joint_path
+
+        record = {"used": False, "rejected_for": str(why),
+                  "fraction": round(float(fraction), 4)}
+        self._cartesian_fallback_record = record
+        try:
+            info = self._cartesian_joint_fallback(segment_msg, current_joints)
+        except Exception as exc:  # noqa: BLE001 - provider boundary
+            record["reason"] = "provider_error"
+            record["error"] = str(exc)[:200]
+            return None
+        if not info or not info.get("knots"):
+            record["reason"] = "refine_failed"
+            return None
+        knots = [[float(v) for v in row] for row in info["knots"]]
+        continuity = float(getattr(self, "_joint_path_continuity", 1.2))
+
+        def fk(joints):
+            return self._fk_xyz(JOINTS, joints)
+
+        def sweep(points):
+            return self._occupancy_ok_points(points)
+
+        try:
+            if self._occupancy is None:
+                dense = validate_joint_path(knots, continuity)
+            else:
+                dense = validate_joint_path(
+                    knots, continuity, fk_fn=fk, sweep_fn=sweep, fk_stride=4)
+        except JointPathError as exc:
+            record["reason"] = "joint_path_error:%s" % exc.reason
+            return None
+        path_len = max(
+            float(info.get("fk_path_len") or 0.0),
+            _CARTESIAN_EXCURSION_MIN_PATH_M)
+        for idx in range(len(JOINTS)):
+            variation = sum(
+                abs(b[idx] - a[idx]) for a, b in zip(dense, dense[1:]))
+            if variation / path_len > self._excursion_limit:
+                record["reason"] = "excursion_recheck_joint%d" % (idx + 1)
+                record["fk_path_len_m"] = round(path_len, 4)
+                return None
+        record.update({"used": True, "n_dense": len(dense),
+                       "fk_path_len_m": round(path_len, 4)})
+        self._notify(feedback_cb, "planning", segment_msg.name, fraction,
+                     "%s; cartesian joint fallback" % why)
+        trajectory = self._robot_trajectory(dense)
+        self._planned_traj = trajectory
+        result = self._execute_robot_trajectory(
+            trajectory, str(getattr(segment_msg, "name", "") or ""), 1.0,
+            feedback_cb, execute_timeout)
+        result.message = "%s (cartesian joint fallback from %s)" % (
+            result.message, why)
+        result.fraction = float(fraction)
+        return result
+
+    def _align_then_retry(self, segment_msg, feedback_cb,
+                          execute_timeout, current_joints, why, fraction):
+        """Rotate the wrist onto the goal heading in place, then re-descend.
+
+        The carry does not constrain the arrival branch, so the tool can
+        reach the descent start with its heading ~0.8 rad off the insert
+        goal's place_yaw; with j5 pinned near pi/2 for tool-down that
+        difference is pure j6, and paying it inside a 5-20 cm cartesian
+        descent is exactly the unwind the excursion gate refuses
+        (2026-09-29 v3 trial1: 0.837 rad, 14.3 rad/m; the joint fallback
+        also correctly refuses it as a branch jump). This step pays it as
+        an in-place rotation (pose_target at the CURRENT end-effector
+        position with the goal orientation), then re-runs the descent.
+
+        Returns ``None`` to keep the original failure (fail-closed).
+        """
+        from types import SimpleNamespace
+
+        excursion = self._cartesian_excursion or {}
+        record = {
+            "trigger": str(why),
+            "joint": excursion.get("joint"),
+            "excursion_rad": excursion.get("excursion_rad"),
+            "fraction": round(float(fraction), 4),
+        }
+        self._align_retry_record = record
+        pos = self._fk_xyz(JOINTS, [float(v) for v in (current_joints or [])])
+        if not pos:
+            record["reason"] = "fk_unavailable"
+            return None
+        goal = segment_msg.target_pose
+        orientation = (
+            float(getattr(goal.orientation, "x", 0.0)),
+            float(getattr(goal.orientation, "y", 0.0)),
+            float(getattr(goal.orientation, "z", 0.0)),
+            float(getattr(goal.orientation, "w", 1.0)))
+        align_pose = type(goal)()
+        try:
+            align_pose.position.x = float(pos[0])
+            align_pose.position.y = float(pos[1])
+            align_pose.position.z = float(pos[2])
+            align_pose.orientation.x = orientation[0]
+            align_pose.orientation.y = orientation[1]
+            align_pose.orientation.z = orientation[2]
+            align_pose.orientation.w = orientation[3]
+        except AttributeError:
+            # Stand-in pose objects (tests) have no typed sub-fields.
+            align_pose = SimpleNamespace(
+                position=SimpleNamespace(
+                    x=float(pos[0]), y=float(pos[1]), z=float(pos[2])),
+                orientation=SimpleNamespace(
+                    x=orientation[0], y=orientation[1],
+                    z=orientation[2], w=orientation[3]))
+        align = SimpleNamespace(
+            name="wrist_align", type="pose_target", target_pose=align_pose,
+            keep_tool_down=True, allow_ompl_fallback=False)
+        self._notify(feedback_cb, "planning", segment_msg.name, fraction,
+                     "%s; wrist align-then-retry" % why)
+        align_result = self._run_pose_target(
+            align, feedback_cb, execute_timeout, current_joints)
+        record["align_ok"] = bool(align_result.success)
+        if not align_result.success:
+            record["reason"] = "align_failed"
+            return None
+        fraction2, plan2 = self._plan_cartesian(segment_msg, feedback_cb)
+        record["retry_fraction"] = (
+            None if plan2 is None else round(float(fraction2), 4))
+        required = max(
+            self._min_fraction,
+            float(getattr(segment_msg,
+                          "required_cartesian_fraction", 0.0) or 0.0))
+        if (plan2 is None or getattr(plan2, "excursion_rejected", False)
+                or getattr(plan2, "occupancy_blocked", False)
+                or fraction2 < required):
+            record["retry_ok"] = False
+            return None
+        record["retry_ok"] = True
+        result = self._execute_trajectory(
+            plan2, segment_msg, fraction2, feedback_cb, execute_timeout)
+        result.message = "%s (wrist align-then-retry from %s)" % (
+            result.message, why)
+        return result
+
     def _execute_segment_inner(self, segment_msg, feedback_cb,
                                execute_timeout, current_joints):
         seg_type = str(segment_msg.type)
+        if seg_type == "joint_path":
+            return self._run_joint_path(
+                segment_msg, feedback_cb, execute_timeout)
         if seg_type == "pose_target":
             return self._run_pose_target(segment_msg, feedback_cb,
                                          execute_timeout, current_joints)
@@ -450,22 +763,35 @@ class MotionExecutor:
             occupancy_blocked = bool(getattr(plan, "occupancy_blocked", False))
             excursion_rejected = bool(
                 getattr(plan, "excursion_rejected", False))
-            wrist_singular = bool(getattr(plan, "wrist_singular", False))
             required = max(
                 self._min_fraction,
                 float(getattr(segment_msg,
                               "required_cartesian_fraction", 0.0) or 0.0))
             need_fallback = (
-                occupancy_blocked or excursion_rejected or wrist_singular
+                occupancy_blocked or excursion_rejected
                 or fraction < required)
             if need_fallback:
                 if occupancy_blocked:
                     why = "occupancy blocked"
-                elif excursion_rejected or wrist_singular:
+                elif excursion_rejected:
                     why = plan.reason
                 else:
                     why = "cartesian %.3f < %.3f" % (
                         fraction, self._min_fraction)
+                if (excursion_rejected and self._align_retry_enabled
+                        and str(getattr(segment_msg, "name", "")) in (
+                            "insert", "descend")
+                        and bool(getattr(segment_msg, "keep_tool_down", False))
+                        and str((self._cartesian_excursion or {}).get(
+                            "joint", "")) in ("elfin_joint5", "elfin_joint6")):
+                    # Wrist-only unwind on a descent: the carry left the
+                    # tool's heading off the goal's; pay the rotation in
+                    # place first instead of inside the descent.
+                    aligned = self._align_then_retry(
+                        segment_msg, feedback_cb, execute_timeout,
+                        current_joints, why, fraction)
+                    if aligned is not None:
+                        return aligned
                 if (segment_msg.allow_ompl_fallback
                         and required <= self._min_fraction):
                     self._notify(feedback_cb, "planning", segment_msg.name,
@@ -473,11 +799,42 @@ class MotionExecutor:
                     fallback = self._run_pose_target(
                         segment_msg, feedback_cb, execute_timeout,
                         current_joints)
+                    if fallback.success:
+                        fallback.message = "%s (fallback from %s)" % (
+                            fallback.message, why)
+                        fallback.fraction = fraction
+                        fallback.used_ompl_fallback = True
+                        return fallback
+                    # OMPL failed too (e.g. 2026-09-27 box3 transit: KDL
+                    # -31 with no atlas seeds): the deterministic polyline
+                    # re-solve is the last exit before failing the leg.
+                    if (not occupancy_blocked
+                            and callable(self._cartesian_joint_fallback)
+                            and current_joints):
+                        joint = self._cartesian_refine_fallback(
+                            segment_msg, feedback_cb, execute_timeout,
+                            current_joints,
+                            "%s; OMPL fallback failed (%s)" % (
+                                why, fallback.message),
+                            fraction)
+                        if joint is not None:
+                            return joint
                     fallback.message = "%s (fallback from %s)" % (
                         fallback.message, why)
                     fallback.fraction = fraction
                     fallback.used_ompl_fallback = True
                     return fallback
+                if (not occupancy_blocked
+                        and callable(self._cartesian_joint_fallback)
+                        and current_joints):
+                    # insert/descend/retreat class: the cartesian solve
+                    # stalled or drifted branches, OMPL is off by design --
+                    # re-solve deterministically from the live joints.
+                    fallback = self._cartesian_refine_fallback(
+                        segment_msg, feedback_cb, execute_timeout,
+                        current_joints, why, fraction)
+                    if fallback is not None:
+                        return fallback
                 if occupancy_blocked:
                     return self._result(
                         False, "PLACE_PATH_INFEASIBLE occupancy blocked cartesian",
@@ -485,9 +842,6 @@ class MotionExecutor:
                 if excursion_rejected:
                     return self._result(
                         False, "PLACE_PATH_EXCURSION %s" % why, fraction)
-                if wrist_singular:
-                    return self._result(
-                        False, "PLACE_PATH_WRIST_SINGULAR %s" % why, fraction)
                 return self._result(
                     False,
                     "cartesian fraction %.3f below %.3f and no OMPL fallback"
@@ -505,7 +859,10 @@ class MotionExecutor:
 
     def probe_segment(self, segment_msg, start_joints=None):
         """IK + optional cartesian fraction, no execution (dry-run)."""
-        ik = self._ik_joints(segment_msg.target_pose, start_joints)
+        self._reset_boundary_measurements()
+        ik = self._ik_joints(
+            segment_msg.target_pose, start_joints,
+            keep_tool_down=bool(getattr(segment_msg, "keep_tool_down", False)))
         record = {
             "name": str(segment_msg.name),
             "type": str(segment_msg.type),
@@ -514,6 +871,23 @@ class MotionExecutor:
             "fraction": None,
             "cartesian_ok": None,
         }
+        if self._pose_target_joint_delta is not None:
+            record["pose_target_joint_delta"] = dict(
+                self._pose_target_joint_delta)
+        atlas_record = getattr(self, "_atlas_record", None)
+        if atlas_record is not None:
+            record["atlas"] = dict(atlas_record)
+        if self._j6_measurement is not None:
+            record["j6_rotation"] = dict(self._j6_measurement)
+        if start_joints and ik is not None:
+            measurement = self._wrist_check(
+                [list(start_joints), list(ik)], JOINTS)
+            if measurement is not None:
+                record["wrist_margin"] = dict(measurement)
+            j6 = self._j6_check(
+                [list(start_joints), list(ik)], JOINTS)
+            if j6 is not None:
+                record["j6_rotation"] = dict(j6)
         if str(segment_msg.type) == "cartesian":
             fraction, plan = self._plan_cartesian(
                 segment_msg, None, start_joints=start_joints)
@@ -524,6 +898,10 @@ class MotionExecutor:
                 and fraction >= self._min_fraction)
             if self._cartesian_excursion is not None:
                 record["cartesian_excursion"] = dict(self._cartesian_excursion)
+            if self._wrist_measurement is not None:
+                record["wrist_margin"] = dict(self._wrist_measurement)
+            if self._j6_measurement is not None:
+                record["j6_rotation"] = dict(self._j6_measurement)
         return record
 
     # ------------------------------------------------------------------
@@ -541,15 +919,12 @@ class MotionExecutor:
         primitive.type = SolidPrimitive.SPHERE
         primitive.dimensions = [0.005]  # 5 mm position tolerance
         box.primitives = [primitive]
-        center = PointMsg()
-        center.x = target.position.x
-        center.y = target.position.y
-        center.z = target.position.z
-        box.primitive_poses = [target]
-        box.primitive_poses[0].orientation.x = 0.0
-        box.primitive_poses[0].orientation.y = 0.0
-        box.primitive_poses[0].orientation.z = 0.0
-        box.primitive_poses[0].orientation.w = 1.0
+        center = PoseMsg()
+        center.position.x = float(target.position.x)
+        center.position.y = float(target.position.y)
+        center.position.z = float(target.position.z)
+        center.orientation.w = 1.0
+        box.primitive_poses = [center]
         pos.constraint_region = box
         pos.weight = 1.0
         constraints.position_constraints = [pos]
@@ -557,40 +932,70 @@ class MotionExecutor:
         orient = OrientationConstraint()
         orient.header.frame_id = self._frame
         orient.link_name = self._link
-        orient.orientation = target.orientation
+        orient.orientation.x = float(target.orientation.x)
+        orient.orientation.y = float(target.orientation.y)
+        orient.orientation.z = float(target.orientation.z)
+        orient.orientation.w = float(target.orientation.w)
         orient.absolute_x_axis_tolerance = 0.05
         orient.absolute_y_axis_tolerance = 0.05
         orient.absolute_z_axis_tolerance = 0.05
         orient.weight = 1.0
-        constraints.orientation_constraints = [orient]
-
         if segment_msg.keep_tool_down:
-            down = OrientationConstraint()
-            down.header.frame_id = self._frame
-            down.link_name = self._link
-            down.orientation.x, down.orientation.y = TOOL_DOWN_QUAT[:2]
-            down.orientation.z, down.orientation.w = TOOL_DOWN_QUAT[2:]
-            down.absolute_x_axis_tolerance = self._tool_down_abs_tol
-            down.absolute_y_axis_tolerance = self._tool_down_abs_tol
-            down.absolute_z_axis_tolerance = 3.14  # yaw free
-            down.weight = 1.0
-            constraints.orientation_constraints.append(down)
+            # Roll/pitch within tool_down_abs_tol of world -Z. Yaw is free,
+            # so j5/j6 may change branch as long as the suction normal
+            # stays down.
+            constraints.orientation_constraints = [
+                self._tool_down_constraint()]
+        else:
+            constraints.orientation_constraints = [orient]
 
         return constraints
+
+    def _tool_down_constraint(self):
+        down = OrientationConstraint()
+        down.header.frame_id = self._frame
+        down.link_name = self._link
+        down.orientation.x, down.orientation.y = TOOL_DOWN_QUAT[:2]
+        down.orientation.z, down.orientation.w = TOOL_DOWN_QUAT[2:]
+        down.absolute_x_axis_tolerance = self._tool_down_abs_tol
+        down.absolute_y_axis_tolerance = self._tool_down_abs_tol
+        down.absolute_z_axis_tolerance = math.pi
+        down.weight = 1.0
+        return down
 
     def _run_pose_target(self, segment_msg, feedback_cb, execute_timeout,
                          current_joints=None):
         self._notify(feedback_cb, "planning", segment_msg.name, 0.0)
-        ik_joints = self._ik_joints(segment_msg.target_pose, current_joints)
-        if ik_joints is not None and self._wrist_blocked(
-                current_joints, ik_joints):
-            return self._result(
-                False, "PLACE_PATH_WRIST_SINGULAR %s (no pose-constraint fallback)"
-                % wrist_singularity_reason(self._wrist_measurement))
+        ik_joints = self._ik_joints(
+            segment_msg.target_pose, current_joints,
+            keep_tool_down=bool(getattr(segment_msg, "keep_tool_down", False)))
         if ik_joints is not None:
-            return self._run_joint_goal(
+            result = self._run_joint_goal(
                 ik_joints, feedback_cb, execute_timeout, "IK joint goal",
                 seed_joints=current_joints, segment_msg=segment_msg)
+            # A FK-verified atlas goal can still lose to a narrow-passage
+            # transit (pickup_box clipping the container on the way in,
+            # 2026-09-24 smoke): each seed is a different final posture,
+            # so try the remaining verified goals before giving up.
+            queue = list(getattr(self, "_atlas_joint_goal_queue", None) or [])
+
+            def _cancelled():
+                check = getattr(self, "_cancel_check", None)
+                return check is not None and check()
+
+            while not result.success and queue and not _cancelled():
+                alt = queue.pop(0)
+                note = "atlas joint goal fk_err=%.3f" % alt["fk_error_m"]
+                result = self._run_joint_goal(
+                    alt["joints"], feedback_cb, execute_timeout, note,
+                    seed_joints=current_joints, segment_msg=segment_msg)
+                if result.success:
+                    record = getattr(self, "_atlas_record", None) or {}
+                    record["outcome"] = "joint_goal_alt"
+                    record["fk_error_m"] = alt["fk_error_m"]
+                    self._atlas_record = record
+            self._atlas_joint_goal_queue = []
+            return result
         # Pose-constraint OMPL cannot sample a pose KDL already rejected
         # and can wrap a joint by ±2π.
         return self._result(
@@ -609,24 +1014,21 @@ class MotionExecutor:
             wrapped = [
                 _wrap_near(cur, tgt) for cur, tgt in zip(current_joints, wrapped)]
         result = self._run_joint_goal(
-            wrapped, feedback_cb, execute_timeout, "named joint goal")
+            wrapped, feedback_cb, execute_timeout, "named joint goal",
+            seed_joints=current_joints)
         return self._stamp_boundary(result, "named_joint")
 
     def _run_joint_goal(self, positions, feedback_cb, execute_timeout, note,
-                        seed_joints=None, enforce_wrist=True, segment_msg=None):
-        """Plan/execute a joint goal, refusing a wrist-branch change.
+                        seed_joints=None, segment_msg=None):
+        """Plan/execute a joint goal.
 
-        The seed-to-goal pair is checked before anything is sent: a joint
-        goal on the far side of joint5 = k*pi cannot be reached without
-        reconfiguring through the singularity, whatever path the planner
-        picks. This is the pose_target counterpart of the cartesian gate;
-        motion_occ/2026-09-21_* transit segments planned and executed a
-        3.12-3.16 rad joint5 flip here with no check at all.
+        j5 and j6 travel are recorded, not refused. A keep_tool_down
+        pose target already selected an IK solution whose suction normal
+        is down. Pick segments still pin J6 before execution.
         """
-        if enforce_wrist and self._wrist_blocked(seed_joints, positions):
-            return self._result(
-                False, "PLACE_PATH_WRIST_SINGULAR %s (%s)" % (
-                    wrist_singularity_reason(self._wrist_measurement), note))
+        if seed_joints and len(seed_joints) == len(positions):
+            self._wrist_check([list(seed_joints), list(positions)], JOINTS)
+            self._j6_check([list(seed_joints), list(positions)], JOINTS)
         self._notify(feedback_cb, "planning", note, 0.0)
         goal = MoveGroup.Goal()
         goal.request.group_name = self._group
@@ -650,16 +1052,182 @@ class MotionExecutor:
             return self._result(False, "MoveGroup execution timeout")
         result = getattr(wrapped, "result", wrapped)
         return self._finish_move_group(
-            result, note, segment_msg, feedback_cb, execute_timeout, "",
-            enforce_wrist=enforce_wrist)
+            result, note, segment_msg, feedback_cb, execute_timeout, "")
 
-    def _ik_joints(self, pose, current_joints):
+    def _ik_joints(self, pose, current_joints, keep_tool_down=False):
         """IK seeded at the current arm, then wrap each joint nearest current.
 
-        OMPL pose-constraint sampling otherwise returns a ±2π equivalent of
-        joint1 (limits are ±6.28) and the controller times out 4 rad away.
+        For a keep_tool_down target, also solve the equivalent yaw+pi
+        quaternion (identical for a rectangular payload) and keep the
+        solution with the smaller max per-joint delta from the seed.
+        j5 and j6 are not filtered. ``_wrap_near`` only folds k*2pi.
+
+        OMPL pose-constraint sampling otherwise returns a +/-2pi equivalent of
+        joint1 (limits are +/-6.28) and controller times out 4 rad away.
+
+        Atlas chain (``atlas_seed_provider``): miss-retry re-solves through
+        the provider's seeds when the unseeded pass finds nothing;
+        always-first runs the seeds before the unseeded pass. When every IK
+        pass is empty and submit_mode allows joint_goal, a seed whose FK
+        lands within ``atlas_fk_verify_tol_m`` of the target position is
+        returned as the joint goal directly (the descend/traverse legs
+        absorb the residual, as the executed 1838 transit showed). Every
+        step lands in the boundary dump as ``atlas``.
         """
-        self._last_ik_code = 0
+        poses = [pose]
+        if keep_tool_down:
+            poses.append(equivalent_tool_down_pose(pose))
+        provider = getattr(self, "_atlas_provider", None)
+        record = {
+            "tried": False, "outcome": "", "status": None,
+            "status_name": None, "cell": None, "n_seeds": 0,
+        }
+        self._atlas_record = record if callable(provider) else None
+        cached_seeds = []
+
+        def _provider_seeds():
+            if cached_seeds or not callable(provider):
+                return cached_seeds
+            try:
+                info = provider(pose) or {}
+            except Exception as exc:  # noqa: BLE001 - atlas must never break IK
+                info = {}
+                node = getattr(self, "_node", None)
+                logger = getattr(node, "get_logger", None)
+                if logger is not None:
+                    logger().warning("atlas seed provider error: %s" % exc)
+            rows = [list(row) for row in (info.get("seeds") or [])
+                    if row and len(row) == len(JOINTS)]
+            if info.get("refined"):
+                # Node-side refine curates the list (atlas branches + the
+                # live-arm family); truncating here would drop the family
+                # whose hull corridor actually plans (2026-09-24 smoke22).
+                cached_seeds.extend(rows)
+            else:
+                cached_seeds.extend(rows[:max(0, int(self._atlas_max_seeds))])
+            record["tried"] = True
+            record["refined"] = bool(info.get("refined"))
+            record["status"] = info.get("status")
+            record["status_name"] = info.get("status_name")
+            record["cell"] = info.get("seed_cell") or info.get("cell")
+            record["n_seeds"] = len(cached_seeds)
+            if not cached_seeds:
+                record["outcome"] = "no_seeds"
+            return cached_seeds
+
+        solutions = []
+
+        def _solve(label, seeds):
+            hits = 0
+            for seed in seeds:
+                for candidate in poses:
+                    solved = self._query_ik(candidate, seed)
+                    if solved is not None:
+                        solutions.append(solved)
+                        hits += 1
+            if hits:
+                record["outcome"] = label
+            return hits
+
+        if callable(provider) and self._atlas_mode == "always-first":
+            _solve("always_first", _provider_seeds())
+        if not solutions:
+            _solve("unseeded", [current_joints])
+        if (not solutions and callable(provider)
+                and self._atlas_mode != "always-first"):
+            _solve("seeded", _provider_seeds())
+        if not solutions and not record["outcome"]:
+            record["outcome"] = "no_solution"
+
+        self._pose_target_joint_delta = {
+            "n_solutions": 0,
+            "ok": False,
+            "max_rad": None,
+            "limit_rad": float(self._pose_target_max_delta),
+        }
+        self._j6_measurement = None
+        if not solutions and callable(provider) and \
+                "joint_goal" in self._atlas_submit_mode:
+            target = (float(pose.position.x), float(pose.position.y),
+                      float(pose.position.z))
+            verified = []
+            # Offline-refined seeds (node-side scipy) already carry their FK
+            # residual; the service round-trip only loses seeds under load
+            # (2026-09-24 smoke22: the working live-family goal dropped by
+            # an _fk_xyz timeout).
+            refined = bool(record.get("refined"))
+            for seed in _provider_seeds():
+                if refined:
+                    verified.append({"joints": list(seed),
+                                     "fk_error_m": 0.0})
+                    continue
+                fk = self._fk_xyz(JOINTS, seed)
+                if fk is None:
+                    continue
+                error = math.sqrt(sum(
+                    (fk[i] - target[i]) ** 2 for i in range(3)))
+                if error <= float(self._atlas_fk_tol):
+                    verified.append({"joints": list(seed),
+                                     "fk_error_m": round(error, 4)})
+            # Fold every goal onto the wrap nearest the live arm: a
+            # k*2pi-distant j5/j6 is the same pose but a 6 rad unwind for
+            # the next cartesian leg (2026-09-24 smoke18: insert rejected
+            # j6 6.0 rad over 7 cm purely from the wrap).
+            if current_joints and len(current_joints) == len(JOINTS):
+                for item in verified:
+                    item["joints"] = [
+                        _wrap_near(cur, tgt) for cur, tgt in zip(
+                            current_joints, item["joints"])]
+            verified.sort(key=lambda item: item["fk_error_m"])
+            self._atlas_joint_goal_queue = verified[1:]
+            if verified:
+                record["outcome"] = "joint_goal"
+                record["fk_error_m"] = verified[0]["fk_error_m"]
+                record["n_joint_goals"] = len(verified)
+                solutions.append(verified[0]["joints"])
+        if not solutions:
+            return None
+        if not current_joints or len(current_joints) != len(JOINTS):
+            self._pose_target_joint_delta["n_solutions"] = len(solutions)
+            return solutions[0]
+
+        def _max_delta(sol):
+            return max(
+                abs(float(a) - float(b))
+                for a, b in zip(current_joints, sol))
+
+        chosen = min(solutions, key=_max_delta)
+        measurement = pose_target_joint_delta(
+            current_joints, chosen, self._pose_target_max_delta)
+        if measurement is not None:
+            measurement["n_solutions"] = len(solutions)
+        self._pose_target_joint_delta = measurement
+        self._j6_check([list(current_joints), list(chosen)], JOINTS)
+        self._wrist_check([list(current_joints), list(chosen)], JOINTS)
+        return chosen
+
+    def _query_ik(self, pose, current_joints):
+        """One GetPositionIK call, wrapped nearest the seed."""
+        self._ik_t0 = time.monotonic()
+        self._ik_target = (float(pose.position.x), float(pose.position.y),
+                           float(pose.position.z))
+        return self._query_ik_inner(pose, current_joints)
+
+    def _log_ik_call(self, seed, verdict):
+        node = getattr(self, "_node", None)
+        logger = getattr(node, "get_logger", None)
+        if logger is None:
+            return
+        logger().info(
+            "compute_ik %s seed=%s target=(%.3f, %.3f, %.3f) %.2fs"
+            % (verdict,
+               [round(float(v), 2) for v in (seed or [])][:6],
+               getattr(self, "_ik_target", (0, 0, 0))[0],
+               getattr(self, "_ik_target", (0, 0, 0))[1],
+               getattr(self, "_ik_target", (0, 0, 0))[2],
+               time.monotonic() - getattr(self, "_ik_t0", time.monotonic())))
+
+    def _query_ik_inner(self, pose, current_joints):
         if not self._ik.wait_for_service(timeout_sec=2.0):
             self._last_ik_code = -1
             return None
@@ -675,15 +1243,25 @@ class MotionExecutor:
         request.ik_request.timeout = DurationMsg(sec=1, nanosec=0)
         stamped = PoseStamped()
         stamped.header.frame_id = self._frame
-        stamped.pose = pose
+        gm = PoseMsg()
+        gm.position.x = float(pose.position.x)
+        gm.position.y = float(pose.position.y)
+        gm.position.z = float(pose.position.z)
+        gm.orientation.x = float(pose.orientation.x)
+        gm.orientation.y = float(pose.orientation.y)
+        gm.orientation.z = float(pose.orientation.z)
+        gm.orientation.w = float(pose.orientation.w)
+        stamped.pose = gm
         request.ik_request.pose_stamped = stamped
         future = self._ik.call_async(request)
         response = self._wait_future(future, 3.0)
         if response is None:
             self._last_ik_code = -1
+            self._log_ik_call(current_joints, "future_timeout")
             return None
         self._last_ik_code = int(response.error_code.val)
         if response.error_code.val != MoveItErrorCodes.SUCCESS:
+            self._log_ik_call(current_joints, "code=%d" % self._last_ik_code)
             return None
         by_name = dict(zip(
             response.solution.joint_state.name,
@@ -711,7 +1289,7 @@ class MotionExecutor:
         return constraints
 
     def _finish_move_group(self, result, note, segment_msg, feedback_cb,
-                           execute_timeout, unimplemented, enforce_wrist=True):
+                           execute_timeout, unimplemented):
         code = int(result.error_code.val)
         traj = getattr(result, "planned_trajectory", None)
         if traj is not None:
@@ -720,19 +1298,13 @@ class MotionExecutor:
             return self._result(
                 False, "MoveGroup error_code=%s (%s)" % (code, note),
                 error_code=code)
-        # Backstop for every MoveGroup route: the pose-constraint fallback and
-        # the cartesian OMPL fallback both reach here, and neither is bound by
-        # the pre-send seed check.
+        # j5 proximity and j6 travel are recorded. Neither refuses.
         joint_traj = getattr(traj, "joint_trajectory", None)
-        if enforce_wrist and joint_traj is not None:
-            measurement = self._wrist_check(
-                list(getattr(joint_traj, "points", None) or []),
-                getattr(joint_traj, "joint_names", None))
-            if measurement is not None and not measurement["ok"]:
-                return self._result(
-                    False, "PLACE_PATH_WRIST_SINGULAR %s (%s)" % (
-                        wrist_singularity_reason(measurement), note),
-                    fraction=1.0, error_code=code)
+        if joint_traj is not None:
+            points = list(getattr(joint_traj, "points", None) or [])
+            names = getattr(joint_traj, "joint_names", None)
+            self._wrist_check(points, names)
+            self._j6_check(points, names)
         if self._occupancy is not None:
             ok, sweep_msg = self._occupancy_ok_robot_traj(traj)
             if not ok:
@@ -964,12 +1536,18 @@ class MotionExecutor:
         # centimetres; that ratio is not the path that will be sent.
         self._hold_pick_joint6(
             getattr(response, "solution", None), segment_msg)
-        rejected = self._reject_for_excursion(waypoints, response, fraction)
-        if rejected is not None:
-            return fraction, rejected
-        rejected = self._reject_for_wrist(response)
-        if rejected is not None:
-            return fraction, rejected
+        return self._judge_cartesian_response(
+            segment_msg, waypoints, response, fraction)
+
+    def _judge_cartesian_response(self, segment_msg, waypoints, response,
+                                  fraction):
+        """Apply the excursion gate. j5 and j6 are recorded, not refused."""
+        rejected_exc = self._reject_for_excursion(
+            waypoints, response, fraction)
+        self._record_wrist(response)
+        self._record_j6(response)
+        if rejected_exc is not None:
+            return fraction, rejected_exc
         return fraction, response
 
     def _reject_for_excursion(self, waypoints, response, fraction):
@@ -1005,30 +1583,32 @@ class MotionExecutor:
                 measurement["path_len_m"]))
         return _ExcursionRejectedPlan(reason, measurement)
 
-    def _reject_for_wrist(self, response):
-        """``_WristSingularPlan`` when the solution reconfigures the wrist.
-
-        Records the measurement either way so a boundary dump shows the
-        closest approach of an accepted path, not only of a refused one.
-        """
+    def _record_wrist(self, response):
+        """Dump-only j5 measurement. Never refuses."""
         self._wrist_measurement = None
         solution = getattr(response, "solution", None)
         if solution is None:
             return None
         joint_traj = getattr(solution, "joint_trajectory", solution)
-        measurement = self._wrist_check(
+        return self._wrist_check(
             list(getattr(joint_traj, "points", None) or []),
             getattr(joint_traj, "joint_names", None))
-        if measurement is None or measurement["ok"]:
+
+    def _record_j6(self, response):
+        """Dump-only j6 travel. Never refuses."""
+        self._j6_measurement = None
+        solution = getattr(response, "solution", None)
+        if solution is None:
             return None
-        return _WristSingularPlan(
-            wrist_singularity_reason(measurement), measurement)
+        joint_traj = getattr(solution, "joint_trajectory", solution)
+        return self._j6_check(
+            list(getattr(joint_traj, "points", None) or []),
+            getattr(joint_traj, "joint_names", None))
 
     def _wrist_check(self, points, joint_names=None):
-        """``wrist_singularity`` over ``points``, resolving the joint index.
+        """``wrist_margin`` over ``points``, resolving the joint index.
 
-        A trajectory that does not carry joint5 (a partial-group solution)
-        is not judged rather than judged against the wrong column.
+        Dump-only. A trajectory that does not carry joint5 is not judged.
         """
         names = list(joint_names or [])
         index = _WRIST_JOINT_INDEX
@@ -1037,19 +1617,26 @@ class MotionExecutor:
             if wrist not in names:
                 return None
             index = names.index(wrist)
-        measurement = wrist_singularity(
+        measurement = wrist_margin(
             points, margin_rad=self._wrist_margin, joint_index=index)
         if measurement is not None:
             self._wrist_measurement = measurement
         return measurement
 
-    def _wrist_blocked(self, seed_joints, goal_joints):
-        """True when seed -> goal cannot avoid a wrist reconfiguration."""
-        if not seed_joints or len(seed_joints) != len(goal_joints):
-            return False
-        measurement = self._wrist_check(
-            [list(seed_joints), list(goal_joints)], JOINTS)
-        return measurement is not None and not measurement["ok"]
+    def _j6_check(self, points, joint_names=None):
+        """``j6_rotation`` over ``points``, resolving the joint index."""
+        names = list(joint_names or [])
+        index = _J6_JOINT_INDEX
+        if names:
+            flange = JOINTS[_J6_JOINT_INDEX]
+            if flange not in names:
+                return None
+            index = names.index(flange)
+        measurement = j6_rotation(
+            points, limit_rad=self._j6_limit, joint_index=index)
+        if measurement is not None:
+            self._j6_measurement = measurement
+        return measurement
 
     def _retime_cartesian_solution(self, plan_response):
         """Time a GetCartesianPath solution with the site rest-to-rest cap.
