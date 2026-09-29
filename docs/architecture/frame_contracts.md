@@ -200,3 +200,58 @@ Runtime labels cannot prove numeric truth. Independent geometric oracles are
 required because even a transform roundtrip can pass when both sides share the
 same wrong convention. Live integration and dump windows follow
 [debug-evidence](../../.cursor/rules/debug-evidence.mdc).
+
+## ST02 v2 ROS binding substrate
+
+The generated types `FrameIdentityV2`, `PoseContractV2`, `WaypointArrayV2`,
+`SurfaceContractV2`, `JointTrajectoryContractV2`, and `BoundaryDiagnosticV2`
+implement the plain-record boundaries above. `ValidatePoseV2` reserves
+`/frame_contracts/v2/validate_pose`; ST02 installs its type only, not a server.
+All existing v1 types/endpoints retain their previous semantics. No automatic
+v1 conversion, producer switch or runtime inventory completion is implied.
+
+`luggage_description.ros_frame_bindings` is a dedicated ROS boundary layer;
+`frame_contracts`, `frame_sequence_contracts`, `frame_transforms`, and
+`frame_diagnostics` remain ROS-free. Perception and planning expose explicit
+profile adapters in their respective `frame_message_adapters` modules. Adapters
+must run before any publish, plan/execute, vacuum, or occupancy side effect.
+A successful conversion returns fresh objects; an invalid payload raises
+`BoundaryContractError` with the original `ContractError.code` and a structured
+`.diagnostic`. Unsupported extra record fields are rejected rather than silently
+losing provenance. Callers must extend the versioned schema before adding fields.
+
+Every caller supplies an independent `BoundaryContext`: interface, producer,
+consumer, expected request and scene, frame/reference/time basis, and (for maps
+or paths) expected hull and map revision. Expected identities must come from
+the consumer's admitted request/scene/map, never be copied from untrusted input
+as a way to bypass comparison. Diagnostics retain declared and expected values,
+including malformed or absent stamps, for both rejection and acceptance.
+
+- `stamp_valid=false` means absent; `true` with `stamp_ns=0` is a valid epoch.
+  Nanoseconds are uint64 and are never converted through float seconds.
+- Cartesian poses retain all quaternion components and explicit reference and
+  orientation semantics. Paths are nonempty ordered poses, each with its own
+  stamp/time basis. All share the admitted frame, scene and request; each pose
+  is validated against the chosen profile's permitted time bases. The path's
+  own envelope is validated against the caller's expected time basis.
+- Surfaces carry row-major dimensions and a `valid` bit per cell. Invalid cells
+  use wire z=0 only as a canonical encoding, decode to `None`, and must retain
+  `state=unknown, confidence=unknown`. Inconsistent validity, nonfinite payloads
+  or an unflagged derived-height array fail. No adapter treats wire zero as
+  measured floor support. Optional relative heights retain explicit presence.
+- Joint-space records retain unique joint names/order and full position,
+  optional velocity/acceleration/effort arrays and strictly increasing duration.
+  Angles use radians; point arrays must match joint count. There is no Cartesian
+  frame/reference/length-unit field. The nested standard JointTrajectory header
+  must remain empty/zero: its timestamp authority is the v2 envelope.
+- `rotate_covariance3` transports a finite symmetric row-major 3x3 positional or
+  vector covariance as R C R^T. It is not a 6D pose covariance conversion or an
+  uncertainty estimator. Normals/vectors rotate without translation. Full SE(3)
+  math and the separate horizontal-container admission restriction remain intact.
+
+The executable gate is
+`src/luggage_planning/test/test_frame_migration_messages.py`, run against an
+isolated installed Humble build with actual generated-message serialization.
+Set `FRAME_MIGRATION_CASE_LOG` to preserve per-case inputs/outputs/diagnostics.
+Live F01--F24 adoption remains pending until each producer/consumer chain earns
+its later runtime proof; shared serialization is not that proof.

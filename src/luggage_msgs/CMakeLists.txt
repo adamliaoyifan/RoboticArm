@@ -9,6 +9,13 @@ find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/FrameIdentityV2.msg"
+  "msg/PoseContractV2.msg"
+  "msg/WaypointArrayV2.msg"
+  "msg/SurfaceContractV2.msg"
+  "msg/JointTrajectoryContractV2.msg"
+  "msg/BoundaryDiagnosticV2.msg"
+  "srv/ValidatePoseV2.srv"
   "msg/DetectedLuggage.msg"
   "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"
