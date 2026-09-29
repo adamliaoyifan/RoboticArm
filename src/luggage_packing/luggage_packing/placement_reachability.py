@@ -10,9 +10,12 @@ Two conventions must match ``reachability_atlas_builder`` and
 
   - the queried point is the *suction contact* at the box top, in
     ``container_link``: ``(lx, ly, floor_z + peak + box_height)``;
-  - yaw is reduced modulo pi. The grid stores yaw bins ``[0, pi/2]`` because a
-    tool-down footprint is pi-symmetric, so a pi-equivalent wrist branch must
-    reuse the same cell instead of falling off the grid as a yaw mismatch.
+  - yaw: a v2 atlas (ST06/F14) stores DIRECTED concrete-tool bins with 2pi
+    period, so the hook queries BOTH pi-equivalent grasps (``box_yaw`` and
+    ``box_yaw + pi``) and hard-rejects only when both branches are
+    confidently unreachable interior cells -- a failed branch never
+    certifies its pi twin. A v1 atlas (pi-folded bins, no contract block)
+    keeps the legacy single folded query.
 """
 
 from __future__ import division
@@ -49,8 +52,23 @@ def atlas_contact_point(candidate, floor_z):
 
 
 def atlas_query_yaw(candidate):
-    """Container-relative yaw reduced to [0, pi) to match the atlas yaw bins."""
+    """Container-relative yaw reduced to [0, pi) to match v1 atlas bins."""
     return float(candidate.get("box_yaw", 0.0)) % math.pi
+
+
+def atlas_query_yaws(atlas, candidate):
+    """Query yaws for one candidate grasp under the artifact's semantics.
+
+    v2 directed artifact: the DIRECTED box yaw (no fold) and its pi twin,
+    both snapped per ``atlas_runtime``. v1 artifact (or a bare test stub):
+    the legacy folded yaw alone.
+    """
+    box_yaw = float(candidate.get("box_yaw", 0.0))
+    try:
+        from luggage_planning.atlas_runtime import directed_yaw_candidates
+    except ImportError:  # pragma: no cover - planning package missing
+        return [box_yaw % math.pi]
+    return directed_yaw_candidates(atlas, box_yaw)
 
 
 def payload_atlas_path(atlas_dir, basename, box_size):
@@ -132,6 +150,8 @@ def annotate_with_atlas(candidates, atlas, floor_z):
 
     ``atlas`` must expose ``query(x, y, z, yaw)`` returning a result with
     ``status`` and ``hard_reject_safe`` (``reachability_atlas.ReachabilityAtlas``).
+    On a v2 directed artifact both pi-equivalent grasps are queried and only
+    a candidate whose BOTH branches are confidently unreachable is dropped.
     Candidates the atlas cannot speak to (out of grid, unknown cell) are kept
     with a neutral-to-low prior so the MoveIt filter still gets a chance.
 
@@ -147,18 +167,33 @@ def annotate_with_atlas(candidates, atlas, floor_z):
     rejected = 0
     for candidate in candidates:
         x, y, z = atlas_contact_point(candidate, floor_z)
-        result = atlas.query(x, y, z, atlas_query_yaw(candidate))
+        result, all_hard_reject = _query_grasp(atlas, candidate, x, y, z)
         status = int(result.status)
         candidate["reachability_prior"] = ATLAS_PRIOR_BY_STATUS.get(status, 0.0)
         candidate["atlas_status"] = status
         candidate["atlas_contact_z"] = round(z, 4)
-        if result.hard_reject_safe:
+        if all_hard_reject:
             candidate["feasible"] = False
             candidate["reason"] = "atlas_unreachable"
             rejected += 1
             continue
         kept.append(candidate)
     return kept, rejected
+
+
+def _query_grasp(atlas, candidate, x, y, z):
+    """One grasp query under the artifact's yaw semantics.
+
+    Prefers the atlas' own both-branch query (v2 semantics layer); a bare
+    stub with only ``query`` falls back to the single folded query.
+    """
+    pair_query = getattr(atlas, "query_pi_equivalents", None)
+    if callable(pair_query):
+        result, all_hard = pair_query(x, y, z, float(
+            candidate.get("box_yaw", 0.0)))
+        return result, all_hard
+    result = atlas.query(x, y, z, atlas_query_yaw(candidate))
+    return result, bool(result.hard_reject_safe)
 
 
 def solver_contact_point(candidate, floor_z, inner_h):
@@ -191,7 +226,7 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
 
     Returns ``hook(candidates) -> (candidates, report)``.
     """
-    from luggage_planning.atlas_runtime import snap_yaw_to_bin
+    from luggage_planning.atlas_runtime import directed_yaw_candidates
 
     offset = [float(v) for v in (query_offset or (0.0, 0.0, 0.0))]
 
@@ -216,20 +251,30 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
 
         for candidate in candidates:
             x, y, z = solver_contact_point(candidate, floor_z, inner_h)
-            bin_yaw, _ = snap_yaw_to_bin(
-                atlas, atlas_query_yaw(candidate))
-            result = atlas.query(
-                x + offset[0], y + offset[1], z + offset[2], bin_yaw)
+            # ST06: query the DIRECTED box yaw and, on a v2 artifact, its
+            # pi twin too. The hard reject needs both branches confidently
+            # unreachable; the best verdict annotates the candidate.
+            yaws = directed_yaw_candidates(
+                atlas, float(candidate.get("box_yaw", 0.0)))
+            results = [
+                atlas.query(
+                    x + offset[0], y + offset[1], z + offset[2], bin_yaw)
+                for bin_yaw in yaws]
+            result = _best_result(results)
+            all_hard_reject = bool(results) and all(
+                r.hard_reject_safe for r in results)
             status = int(result.status)
             prior = ATLAS_PRIOR_BY_STATUS.get(status, 0.0)
             candidate["reachability_prior"] = prior
             candidate["atlas_status"] = status
             candidate["atlas_status_name"] = str(result.reason)
             candidate["atlas_contact_z"] = round(z, 4)
+            candidate["atlas_yaw_bins_queried"] = [
+                round(float(v), 6) for v in yaws]
             bump(str(result.reason))
             if dump_only:
                 continue
-            if hard_reject and result.hard_reject_safe:
+            if hard_reject and all_hard_reject:
                 candidate["feasible"] = False
                 candidate["reason"] = "atlas_unreachable"
                 report["n_hard_rejected"] += 1
@@ -240,3 +285,19 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
         return candidates, report
 
     return hook
+
+
+def _best_result(results):
+    """Best of the directed-branch results; ties keep the earlier branch."""
+    def rank(result):
+        return (
+            1 if int(result.status) in (2, 3) else 0,
+            1 if (result.contact_seeds or result.transit_seeds) else 0,
+            int(result.status),
+        )
+
+    best = results[0]
+    for result in results[1:]:
+        if rank(result) > rank(best):
+            best = result
+    return best

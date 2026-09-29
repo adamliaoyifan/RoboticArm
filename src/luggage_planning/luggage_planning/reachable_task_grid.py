@@ -5,6 +5,14 @@ Disk layout is the one in
 ``docs/agents/eng/2026-09-24_1521_reachable-grid-design.md``. Cells are not
 Python objects. ``occupied_count`` and ``opening_hops`` are session memory
 and are not written into the npz.
+
+ST06/F14: this task grid keeps its ORIGINAL v1 semantics -- pi-folded yaw
+bins sampled in base_link, no contract block. It has no runtime consumer
+(the unified selector and the motion seed chain read the reachability
+atlas); it is explicitly v1-isolated and must never be relabelled as a v2
+directed concrete-tool artifact. Every artifact written by this module
+carries ``semantics: v1_pi_folded``, and loads expose the marker so a
+future consumer can refuse instead of guessing.
 """
 
 from __future__ import division
@@ -21,6 +29,10 @@ MARGINAL = 2
 REACHABLE = 3
 
 OBSERVE_SEED = np.array([0.0, -1.57, 1.57, math.pi, 1.57, 0.0], dtype=np.float64)
+
+# ST06: explicit legacy semantics marker written into every task-grid
+# artifact and asserted on load (see module docstring).
+V1_SEMANTICS = "v1_pi_folded"
 
 
 def ang_diff(a, b):
@@ -65,6 +77,8 @@ def load_workspace(path):
 
 
 def save_task_grid(npz_path, yaml_path, status, contact_seeds, transit_seeds, meta):
+    saved_meta = dict(meta)
+    saved_meta["semantics"] = V1_SEMANTICS
     np.savez_compressed(
         npz_path,
         status=np.asarray(status, dtype=np.uint8),
@@ -72,12 +86,15 @@ def save_task_grid(npz_path, yaml_path, status, contact_seeds, transit_seeds, me
         transit_seeds=np.asarray(transit_seeds, dtype=np.float64),
     )
     with open(yaml_path, "w", encoding="utf-8") as handle:
-        yaml.safe_dump(dict(meta), handle, sort_keys=False)
+        yaml.safe_dump(saved_meta, handle, sort_keys=False)
 
 
 def load_task_grid(npz_path, yaml_path):
     with open(yaml_path, "r", encoding="utf-8") as handle:
         meta = yaml.safe_load(handle)
+    # ST06: expose the declared semantics; artifacts written before the
+    # marker are v1 by construction (no v2 writer ever existed here).
+    meta.setdefault("semantics", V1_SEMANTICS)
     data = np.load(npz_path)
     status = np.asarray(data["status"], dtype=np.uint8)
     return {

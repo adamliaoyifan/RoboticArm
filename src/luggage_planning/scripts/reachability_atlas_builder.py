@@ -65,6 +65,14 @@ from luggage_planning.reachability_wavefront import (  # noqa: E402
     joint_interpolation_samples,
     select_distinct_branches,
 )
+from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+    DIRECTED_YAW_BINS,
+    atlas_contract_record,
+    container_yaw_offset,
+    geometry_hash as _contract_geometry_hash,
+    payload_hash as _contract_payload_hash,
+    tool_target_in_base,
+)
 
 try:  # Keep the pure wavefront helpers importable without a ROS installation.
     import rospy
@@ -237,8 +245,11 @@ class ReachabilityAtlasBuilder:
             "~scene_tf_config", resolve_scene_tf_config_path())
         self._scene_config = load_scene_tf_config(self._scene_tf_path)
         self._resolution = float(rospy.get_param("~resolution_xyz", 0.15))
+        # ST06/F14: DIRECTED container-frame concrete-tool bins with 2pi
+        # period (0 and pi are distinct branches). The legacy [0, pi/2]
+        # pi-folded sampling is v1; it is not relabelled, it is rebuilt.
         self._yaw_bins = [float(y) for y in rospy.get_param(
-            "~yaw_bins", [0.0, math.pi / 2])]
+            "~yaw_bins", list(DIRECTED_YAW_BINS))]
         # Nominal same-column lift. High contacts shrink it via
         # adaptive_lift_clearance so the carry stays at or below safe_tool_z.
         self._transit_clearance = float(rospy.get_param(
@@ -325,6 +336,10 @@ class ReachabilityAtlasBuilder:
         self._container_xyz = [float(v) for v in base_xyz]
         self._container_rpy = [float(v) for v in base_rpy]
         self._container_R = _rpy_to_matrix(self._container_rpy)
+        # ST06: the yaw bins are container-frame directed tool yaws; IK
+        # still solves in base_link, so the mapping needs the constant Z
+        # offset of the (horizontal) container in base_link.
+        self._container_yaw_offset = container_yaw_offset(self._container_rpy)
         self._opening_axis, self._opening_sign = container_opening_side(
             self._scene_config)
 
@@ -385,21 +400,18 @@ class ReachabilityAtlasBuilder:
         return tuple(seeds)
 
     def _construct_base_pose(self, x, y, z, yaw):
-        """Construct suction_contact_frame target pose in base_link."""
-        # Position: container_link (x,y,z) -> base_link.
-        local_pos = (x, y, z)
-        base_pos = (
-            self._container_xyz[0] + self._container_R[0][0] * x + self._container_R[0][1] * y + self._container_R[0][2] * z,
-            self._container_xyz[1] + self._container_R[1][0] * x + self._container_R[1][1] * y + self._container_R[1][2] * z,
-            self._container_xyz[2] + self._container_R[2][0] * x + self._container_R[2][1] * y + self._container_R[2][2] * z,
-        )
-        # Orientation is defined entirely in base_link and exactly matches
-        # placement_motion_filter_node._tool_down_quaternion().  Container
-        # roll/pitch/yaw must not tilt the suction normal away from base -Z.
-        base_yaw_quat = (
-            0.0, 0.0, math.sin(yaw * 0.5), math.cos(yaw * 0.5))
-        base_quat = _quat_multiply(base_yaw_quat, self._tool_down)
-        return base_pos, base_quat
+        """Construct suction_contact_frame target pose in base_link.
+
+        ``yaw`` is the DIRECTED container-frame tool yaw (ST06/F14); it is
+        mapped through the scene-config container rotation before composing
+        the base-frame tool-down rotation, exactly as
+        ``atlas_frame_contracts.tool_target_in_base`` defines the advertised
+        target. Container roll/pitch must not tilt the suction normal away
+        from base -Z (enforced by ``container_yaw_offset`` at init).
+        """
+        return tool_target_in_base(
+            x, y, z, yaw, self._container_xyz, self._container_rpy,
+            self._tool_down)
 
     def _ensure_offline_ik(self):
         """Load the deterministic FK/IK model once per build."""
@@ -743,6 +755,11 @@ class ReachabilityAtlasBuilder:
         contact_seeds = np.full(
             shape4 + (self._max_branches, 6), np.nan, dtype=np.float64)
         transit_seeds = np.full_like(contact_seeds, np.nan)
+        # ST06: per-branch lift the transit seed was solved at (vertical
+        # branches) or NaN (internal branches carry the predecessor pose).
+        # The FK certifier reconstructs exact transit targets from this.
+        transit_lift = np.full(
+            shape4 + (self._max_branches,), np.nan, dtype=np.float32)
         lift_clearance = np.full(shape4, np.nan, dtype=np.float32)
         branch_kind = np.zeros(shape4, dtype=np.uint8)
         solution_count = np.zeros(shape4, dtype=np.uint8)
@@ -874,6 +891,9 @@ class ReachabilityAtlasBuilder:
                         branch["transit"])
                     contact_seeds[ix, iy, iz, iyaw, branch_index] = (
                         branch["contact"])
+                    transit_lift[ix, iy, iz, iyaw, branch_index] = (
+                        branch["lift_clearance"]
+                        if branch["kind"] == BRANCH_VERTICAL else np.nan)
                 return True
 
             deterministic_wavefront(
@@ -945,9 +965,24 @@ class ReachabilityAtlasBuilder:
             "offset": list(self._payload_offset) if self._payload_enabled else None,
             "touch_links": list(self._payload_touch_links) if self._payload_enabled else None,
         }
+        # ST06/F14 v2 contract block. The identity hashes reproduce from the
+        # artifact's own geometry/payload sections, so an existing v1 NPZ
+        # cannot be relabelled as v2 by stamping metadata onto it.
+        scene_tf_hash = _file_hash(scene_tf_path)
+        urdf_hash = hashlib.md5(urdf.encode()).hexdigest()
+        contract = atlas_contract_record(
+            self._yaw_bins,
+            scene_tf_hash,
+            urdf_hash,
+            _contract_geometry_hash(
+                [self._inner_l, self._inner_w, self._inner_h],
+                self._floor_z, self._ceiling_z, opening_side),
+            _contract_payload_hash(payload_section),
+        )
         meta = {
-            "atlas_version": "2.0",
-            "schema_version": 2,
+            "atlas_version": "3.0",
+            "schema_version": 3,
+            "contract": contract,
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "computation_time_sec": round(elapsed, 2),
             "mode": mode,
@@ -976,8 +1011,8 @@ class ReachabilityAtlasBuilder:
             },
             "dependencies": {
                 "robot_model": rospy.get_param("/robot_name", "elfin_s20_with_camera"),
-                "scene_tf_hash": _file_hash(scene_tf_path),
-                "urdf_hash": hashlib.md5(urdf.encode()).hexdigest(),
+                "scene_tf_hash": scene_tf_hash,
+                "urdf_hash": urdf_hash,
                 "ik_link": self._ik_link,
                 "ik_group": self._ik_group,
             },
@@ -988,6 +1023,7 @@ class ReachabilityAtlasBuilder:
                 "origin": [-self._inner_l * 0.5, -self._inner_w * 0.5, self._z_min_offset],
                 "size": [nx, ny, nz],
                 "yaw_bins": self._yaw_bins,
+                "yaw_semantics": "directed_container_2pi",
                 "transit_clearance": self._transit_clearance,
                 "lift_policy": {
                     "nominal": self._transit_clearance,
@@ -1028,6 +1064,7 @@ class ReachabilityAtlasBuilder:
             "transit_ik": transit_ik,
             "contact_seeds": contact_seeds,
             "transit_seeds": transit_seeds,
+            "transit_lift": transit_lift,
             "lift_clearance": lift_clearance,
             "branch_kind": branch_kind,
             "solution_count": solution_count,

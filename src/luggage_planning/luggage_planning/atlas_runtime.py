@@ -25,6 +25,12 @@ from luggage_planning.reachability_atlas import (
     ReachabilityAtlas,
     STATUS_NAMES,
 )
+from luggage_planning.atlas_frame_contracts import (
+    geometry_hash as _contract_geometry_hash,
+    payload_hash as _contract_payload_hash,
+    snap_yaw_directed,
+    wrapped_yaw_error,
+)
 
 CONFIG_NAME = "atlas_runtime.yaml"
 
@@ -207,6 +213,46 @@ def compute_urdf_hash(urdf_text):
 
 
 ATLAS_IDENTITY_UNVERIFIED = "ATLAS_IDENTITY_UNVERIFIED"
+ATLAS_SEMANTICS_MISMATCH = "ATLAS_SEMANTICS_MISMATCH"
+
+
+def atlas_contract_record(atlas):
+    """Contract block of a (possibly wrapped) atlas, or None for v1.
+
+    Accepts ``ReachabilityAtlas`` and ``QuerySemantics`` alike; a plain test
+    stub without the attribute is treated as v1.
+    """
+    record = getattr(atlas, "contract_record", None)
+    return dict(record) if isinstance(record, dict) else None
+
+
+def snap_yaw_for_atlas(atlas, yaw):
+    """Snap ``yaw`` per the artifact's own semantics.
+
+    v2 directed artifacts (contract block present) snap over 2pi without a
+    pi fold: 0 and pi stay distinct branches. v1 artifacts keep the legacy
+    pi-fold onto their bins. Returns ``(bin_yaw, true_error_rad)``.
+    """
+    if atlas_contract_record(atlas) is not None:
+        return snap_yaw_directed(yaw, atlas.yaw_bins or [0.0])
+    return snap_yaw_to_bin(atlas, yaw)
+
+
+def directed_yaw_candidates(atlas, yaw):
+    """Query yaws for one grasp: the directed yaw and its pi twin (v2).
+
+    v1 keeps the single folded yaw. Both are already snapped per the
+    artifact's semantics, so ``query`` sees no yaw mismatch.
+    """
+    if atlas_contract_record(atlas) is None:
+        folded, _err = snap_yaw_to_bin(atlas, yaw)
+        return [folded]
+    first, _err = snap_yaw_directed(yaw, atlas.yaw_bins or [0.0])
+    second, _err2 = snap_yaw_directed(
+        float(yaw) + math.pi, atlas.yaw_bins or [0.0])
+    if abs(wrapped_yaw_error(first, second)) < 1e-9:
+        return [first]
+    return [first, second]
 
 
 def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
@@ -260,7 +306,9 @@ def certification_block_reason(cfg, diagnostics):
 
     Empty means the caller may use the loaded atlas, or the policy is not
     the fail-closed certification policy. ``dump_only`` records without
-    deciding, so a missing atlas does not fail the request.
+    deciding, so a missing atlas does not fail the request. A semantics
+    refusal (v1 artifact under strict, ST06) reports
+    ``ATLAS_SEMANTICS_MISMATCH`` instead of the identity reason.
     """
     cfg = cfg or {}
     if not cfg.get("enabled"):
@@ -270,6 +318,9 @@ def certification_block_reason(cfg, diagnostics):
     placement = cfg.get("placement") or {}
     if placement.get("dump_only"):
         return ""
+    semantics = str((diagnostics or {}).get("semantics") or "")
+    if semantics:
+        return semantics
     if (diagnostics or {}).get("loaded"):
         return ""
     return ATLAS_IDENTITY_UNVERIFIED
@@ -414,12 +465,15 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
 
     Returns (atlas_or_None, diagnostics). warn keeps the atlas loaded and
     notes a supplied-hash mismatch. strict refuses to load when either
-    hash is missing or does not match the atlas metadata.
+    hash is missing or does not match the atlas metadata, when the artifact
+    is pi-folded v1 (ST06: strict never runs old semantics), or when the v2
+    contract block does not validate against the identity reproduced from
+    the artifact's own geometry/payload sections (a relabelled v1 cannot).
     """
     diagnostics = {
         "npz": None, "meta": None, "hash_policy": cfg.get("hash_policy"),
         "scene_tf_ok": True, "urdf_ok": True, "hash_message": "ok",
-        "loaded": False, "reason": "",
+        "loaded": False, "reason": "", "semantics": "",
     }
     files = resolve_atlas_files(cfg, box_size)
     if files is None:
@@ -435,6 +489,14 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
     atlas = ReachabilityAtlas.load(npz_path, meta_path)
     policy = str(cfg.get("hash_policy") or "warn")
     if policy != "off":
+        contract = atlas.contract_record
+        if policy == "strict" and contract is None:
+            # ST06: strict certification requires directed 2pi concrete-tool
+            # semantics. A v1 artifact is never relabelled to pass; it is
+            # refused before any query or seed use.
+            diagnostics["reason"] = "atlas_semantics_v1_strict"
+            diagnostics["semantics"] = ATLAS_SEMANTICS_MISMATCH
+            return None, diagnostics
         ok, message, scene_ok, urdf_ok = identity_verdict(
             atlas.meta.get("dependencies") or {},
             scene_tf_hash, urdf_hash, policy=policy)
@@ -450,9 +512,59 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
             sys.stderr.write(
                 "luggage_planning: atlas %s (%s); continuing (warn)\n"
                 % (message, os.path.basename(npz_path)))
+        if contract is not None:
+            verdict, contract_message = verify_atlas_contract(
+                atlas, scene_tf_hash, urdf_hash, policy=policy)
+            diagnostics["contract_ok"] = verdict
+            diagnostics["contract_message"] = contract_message
+            if not verdict:
+                if policy == "strict":
+                    diagnostics["reason"] = "atlas_contract_strict"
+                    diagnostics["semantics"] = ATLAS_IDENTITY_UNVERIFIED
+                    return None, diagnostics
+                sys.stderr.write(
+                    "luggage_planning: atlas contract %s (%s); continuing "
+                    "(warn)\n" % (contract_message, os.path.basename(npz_path)))
     diagnostics["loaded"] = True
     diagnostics["reason"] = "ok"
     return atlas, diagnostics
+
+
+def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
+                          policy="warn"):
+    """Validate the artifact contract against its own identity blocks.
+
+    The expected identity is reproduced from the artifact's geometry and
+    payload sections (plus the live scene/URDF hashes when supplied), so a
+    contract block whose hashes disagree with the arrays it certifies is a
+    relabel, not an identity. Returns ``(ok, message)``.
+    """
+    from luggage_description.frame_contracts import (
+        ContractError, validate_atlas)
+    meta = atlas.meta or {}
+    deps = meta.get("dependencies") or {}
+    container = meta.get("container") or {}
+    payload = meta.get("payload") or {}
+    expected = {
+        "scene_revision": str(deps.get("scene_tf_hash") or ""),
+        "geometry_hash": _contract_geometry_hash(
+            container.get("inner_dimensions") or (0.0, 0.0, 0.0),
+            container.get("floor_z", 0.0),
+            container.get("ceiling_z", 0.0),
+            container.get("opening_side", "")),
+        "urdf_hash": str(deps.get("urdf_hash") or ""),
+        "payload_hash": _contract_payload_hash(payload),
+    }
+    try:
+        validate_atlas(atlas.contract_record, expected)
+    except ContractError as exc:
+        return False, str(getattr(exc, "code", exc)) + ": " + str(
+            getattr(exc, "field", ""))
+    if scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
+        return False, "scene identity differs from the live scene"
+    if urdf_hash and expected["urdf_hash"] != str(urdf_hash):
+        return False, "urdf identity differs from the live model"
+    return True, "ok"
 
 
 def _seed_rows_ok(seed):
@@ -515,6 +627,33 @@ class QuerySemantics(object):
     @property
     def meta(self):
         return self._inner.meta
+
+    @property
+    def contract_record(self):
+        return getattr(self._inner, "contract_record", None)
+
+    def query_pi_equivalents(self, x, y, z, yaw, yaw_tolerance=None):
+        """Both-directed-grasp query through the semantics layer.
+
+        See ``ReachabilityAtlas.query_pi_equivalents``; each branch query is
+        re-anchored/promoted like a direct ``query`` here.
+        """
+        first = self.query(x, y, z, yaw, yaw_tolerance=yaw_tolerance)
+        contract = self.contract_record
+        if not isinstance(contract, dict):
+            return first, bool(first.hard_reject_safe)
+        second = self.query(
+            x, y, z, float(yaw) + math.pi, yaw_tolerance=yaw_tolerance)
+
+        def rank(result):
+            return (
+                1 if int(result.status) in (2, 3) else 0,
+                1 if (result.contact_seeds or result.transit_seeds) else 0,
+                int(result.status),
+            )
+
+        best = first if rank(first) >= rank(second) else second
+        return best, bool(first.hard_reject_safe and second.hard_reject_safe)
 
     def _floor_feasible_z(self, z):
         """Re-anchor z onto the lowest cell whose centre clears the floor.
@@ -655,7 +794,7 @@ def atlas_seeds_for_query(atlas, x, y, z, yaw, seed_set="transit",
         return empty
     offset = [float(v) for v in (query_offset or (0.0, 0.0, 0.0))]
     base = [float(x) + offset[0], float(y) + offset[1], float(z) + offset[2]]
-    bin_yaw, yaw_err = snap_yaw_to_bin(atlas, yaw)
+    bin_yaw, yaw_err = snap_yaw_for_atlas(atlas, yaw)
 
     def _query_at(point):
         result = atlas.query(point[0], point[1], point[2], bin_yaw)

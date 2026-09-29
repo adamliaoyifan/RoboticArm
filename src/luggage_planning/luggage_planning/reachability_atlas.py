@@ -68,6 +68,12 @@ class ReachabilityAtlas:
             meta: dict with grid definition and metadata.
         """
         self._meta = dict(meta)
+        # ST06/F14: a v2+ artifact carries the directed-concrete-tool
+        # contract block (validated by frame_contracts.validate_atlas at
+        # build time). Its presence switches the query layer to DIRECTED
+        # 2pi semantics; v1/v2 artifacts keep the pi-folded behavior.
+        contract = meta.get("contract")
+        self._contract = dict(contract) if isinstance(contract, dict) else None
         grid = meta["grid"]
         self._resolution = float(grid["resolution_xyz"])
         self._origin = [float(v) for v in grid["origin"]]
@@ -224,8 +230,12 @@ class ReachabilityAtlas:
         np.savez_compressed(npz_path, **payload)
         os.makedirs(os.path.dirname(meta_path) or ".", exist_ok=True)
         saved_meta = dict(self._meta)
-        saved_meta["atlas_version"] = "2.0"
-        saved_meta["schema_version"] = 2
+        if self._contract is not None:
+            saved_meta["atlas_version"] = "3.0"
+            saved_meta["schema_version"] = 3
+        else:
+            saved_meta["atlas_version"] = "2.0"
+            saved_meta["schema_version"] = 2
         with open(meta_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(
                 saved_meta, f, default_flow_style=False, sort_keys=False)
@@ -410,11 +420,44 @@ class ReachabilityAtlas:
         Returns:
             (reachable: bool, seed_joints: list[float] or None)
         """
-        # Infinite yaw tolerance preserves the v1 nearest-bin behavior.
-        result = self.query(x, y, z, yaw, yaw_tolerance=float("inf"))
+        # Infinite yaw tolerance preserves the v1 nearest-bin behavior. On a
+        # directed artifact both pi-equivalent branches are consulted: the
+        # tool yaw and its pi twin are distinct concrete poses, and the
+        # pi-symmetric question "is this grasp reachable from either side"
+        # is answered here rather than by folding the artifact.
+        result, _all_hard = self.query_pi_equivalents(
+            x, y, z, yaw, float("inf"))
         reachable = result.status in (MARGINAL, REACHABLE)
         seed = result.contact_seeds[0] if result.contact_seeds else None
         return reachable, seed
+
+    def query_pi_equivalents(self, x, y, z, yaw, yaw_tolerance=None):
+        """Best directed verdict over the yaw and its pi twin.
+
+        Returns ``(best_result, all_hard_reject)``. A v1 artifact (no
+        contract block) answers with the single folded query and its own
+        ``hard_reject_safe``. On a directed artifact the two pi-equivalent
+        grasps are distinct concrete branches: the best verdict prefers a
+        reachable status, then a seeded one, then the higher status (ties
+        keep the named yaw's branch), and ``all_hard_reject`` is true only
+        when BOTH branches are confidently unreachable interior cells -- a
+        failed branch never certifies its pi twin unreachable.
+        """
+        first = self.query(x, y, z, yaw, yaw_tolerance=yaw_tolerance)
+        if self._contract is None:
+            return first, bool(first.hard_reject_safe)
+        second = self.query(x, y, z, float(yaw) + math.pi,
+                            yaw_tolerance=yaw_tolerance)
+
+        def rank(result):
+            return (
+                1 if result.status in (MARGINAL, REACHABLE) else 0,
+                1 if (result.contact_seeds or result.transit_seeds) else 0,
+                int(result.status),
+            )
+
+        best = first if rank(first) >= rank(second) else second
+        return best, bool(first.hard_reject_safe and second.hard_reject_safe)
 
     def is_marginal(self, x, y, z, yaw=0.0, threshold=0.1):
         """Check if a cell is marginal by status or joint-limit margin."""
@@ -447,7 +490,7 @@ class ReachabilityAtlas:
             y = cand.get(y_key, 0.0)
             z = cand.get(z_key, 0.0)
             yaw = cand.get(yaw_key, 0.0)
-            result = self.query(x, y, z, yaw, yaw_tolerance=float("inf"))
+            result = self.query_pi_equivalents(x, y, z, yaw, float("inf"))[0]
             ok = result.status in (MARGINAL, REACHABLE)
             seed = result.contact_seeds[0] if result.contact_seeds else None
             cand["atlas_reachable"] = ok
@@ -486,16 +529,16 @@ class ReachabilityAtlas:
         """
         accepted, rejected = [], []
         for cand in candidates:
-            result = self.query(
+            result, all_hard_reject = self.query_pi_equivalents(
                 cand.get(x_key, 0.0), cand.get(y_key, 0.0),
                 cand.get(z_key, 0.0), cand.get(yaw_key, 0.0))
             cand["atlas_status"] = result.status
             cand["atlas_status_name"] = STATUS_NAMES[result.status]
-            cand["atlas_hard_reject_safe"] = result.hard_reject_safe
+            cand["atlas_hard_reject_safe"] = all_hard_reject
             cand["contact_atlas_seeds"] = result.contact_seeds
             cand["transit_atlas_seeds"] = result.transit_seeds
             cand["reachability_prior"] = result.score
-            if result.hard_reject_safe:
+            if all_hard_reject:
                 rejected.append(cand)
             else:
                 accepted.append(cand)
@@ -506,6 +549,16 @@ class ReachabilityAtlas:
     @property
     def meta(self):
         return self._meta
+
+    @property
+    def contract_record(self):
+        """v2 directed-contract block, or None on a pi-folded v1 artifact."""
+        return dict(self._contract) if self._contract is not None else None
+
+    @property
+    def directed(self):
+        """True when the artifact stores directed 2pi concrete-tool bins."""
+        return self._contract is not None
 
     @property
     def yaw_bins(self):

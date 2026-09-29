@@ -375,7 +375,7 @@ class MotionPlannerNode(Node):
                self._scene_tf_hash, urdf_hash)
         if key not in self._atlas_cache:
             self._atlas_cache[key] = load_runtime_atlas(
-                self._atlas_cfg, box_size=list(key),
+                self._atlas_cfg, box_size=list(key[0]),
                 scene_tf_hash=self._scene_tf_hash,
                 urdf_hash=urdf_hash)[0]
         atlas = self._atlas_cache[key]
@@ -392,8 +392,11 @@ class MotionPlannerNode(Node):
         xyz = self._world_to_map([
             float(pose.position.x), float(pose.position.y),
             float(pose.position.z)])
-        yaw = tool_down_yaw(
-            float(pose.orientation.x), float(pose.orientation.y))
+        # ST06/F16 seed side: the atlas bins are DIRECTED container-frame
+        # tool yaws, so the world-frame tool yaw must be re-expressed about
+        # container +Z before any bin snap (a raw world yaw would name the
+        # wrong branch on a rotated scene).
+        yaw = self._container_tool_yaw(pose.orientation)
         found = atlas_seeds_for_query(
             atlas, xyz[0], xyz[1], xyz[2], yaw,
             seed_set=str(motion.get("seed_set", "transit")),
@@ -422,6 +425,19 @@ class MotionPlannerNode(Node):
             found["seeds"] = self._refine_atlas_seeds(
                 pose, seeds, lift if inside else 0.0)
         return found
+
+    def _container_tool_yaw(self, quat):
+        """Directed tool yaw about container +Z from a world orientation.
+
+        ``tool_down_yaw`` names the yaw about the world Z axis; the atlas
+        bins are container-frame, so the container's own yaw in world is
+        removed before the snap. Horizontal scenes make this a plain
+        subtraction.
+        """
+        world_yaw = tool_down_yaw(
+            float(quat.x), float(quat.y))
+        _origin, rpy = origin_in_world(self._scene)
+        return world_yaw - float(rpy[2])
 
     def _live_arm_joints(self):
         with self._joint_lock:

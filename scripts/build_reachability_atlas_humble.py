@@ -11,6 +11,7 @@ The Gazebo + move_group + scene_manager stack must already be up.
 from __future__ import division
 
 import argparse
+import math
 import os
 import sys
 import time
@@ -261,6 +262,10 @@ def build_one(node, output_dir, payload=None, scene_tf=""):
         "~safe_tool_z": 1.55,
         "~min_lift": 0.06,
         "~atlas_prefix": "s20",
+        # ST06/F14: four DIRECTED container-frame concrete-tool bins
+        # (0 and pi distinct, 2pi period). The v1 [0, pi/2] pi-folded
+        # sampling is not relabelled -- every profile is rebuilt.
+        "~yaw_bins": [0.0, math.pi / 2.0, math.pi, 3.0 * math.pi / 2.0],
         "~payload_enabled": payload is not None,
     }
     if scene_tf:
@@ -268,6 +273,12 @@ def build_one(node, output_dir, payload=None, scene_tf=""):
     description = _robot_description(node)
     if description:
         params["/robot_description"] = description
+        # ST06: the exact robot_description bytes the stack built against.
+        # The FK certifier md5s this capture and compares it with the
+        # artifact contract urdf_hash (model identity, not a relabel).
+        capture = os.path.join(output_dir, "robot_description.xml")
+        with open(capture, "w", encoding="utf-8") as handle:
+            handle.write(description)
     if payload is not None:
         length, width, height = payload
         params["~payload_size"] = [length, width, height]
