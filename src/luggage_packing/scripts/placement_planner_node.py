@@ -506,6 +506,11 @@ class PlacementPlannerNode(Node):
             "floor_z": 0.0,
             "center_base": [0.0, 0.0, floor + 0.5 * inner_h],
             "yaw": 0.0,
+            # The admitted revision travels with the view: ComputePlacementV2
+            # compares requests against the ACTIVE surface's revision — a
+            # conversion that dropped it would read 0 and stale-reject every
+            # request planned against the very map this node just admitted.
+            "map_revision": int(record["map_revision"]),
             "height": heights,
             "state": states,
             "confidence": confidence,

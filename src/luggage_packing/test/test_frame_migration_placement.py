@@ -676,6 +676,83 @@ class FrameMigrationPlacement(unittest.TestCase):
                              v1_dict['map_revision'])
             observed.update(rejected=stub._rejected_maps)
 
+    def test_review3_v2_surface_to_service_continuity(self):
+        # Round-3 P1 regression: the admitted v2 map's revision must
+        # survive the internal conversion. Chain a REAL mapper publication
+        # through the REAL subscriber callback into the REAL service gate:
+        # a request planned against the admitted revision reaches the
+        # solver and echoes that revision; a stale request rejects with
+        # the true resulting revision (never 0 for an admitted map).
+        from luggage_msgs.srv import ComputePlacementV2
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+
+        module = self._planner_module()
+        planner = module['PlacementPlannerNode']
+        mapper = CargoVolumeMapper(
+            (1.0, 0.6, 0.8), (0.0, 0.0, .53 + 0.4), 0.0, resolution=0.05)
+        mapper.mark_placed_box([0.0, 0.0, .53 + 0.16], [0.2, 0.2, 0.2],
+                               measured_source='verify_placed_box')
+        stub, errors = self._planner_stub(module, mapper, v2_mode=True)
+        import types as types_module
+        stub._placed_aabbs_v2 = lambda *a: []
+        stub._allowed_yaws = [0.0]
+        stub._params = {}
+        stub._atlas_hook = lambda size: None
+        stub._active_surface = types_module.MethodType(
+            planner._active_surface, stub)
+
+        with case('review3/surface-to-service-continuity',
+                  {}) as observed:
+            revision = mapper._revision
+            message = self._wire_surface(
+                mapper, revision, 'map-rev-%d' % revision)
+            planner._on_surface_v2(stub, message)
+            self.assertIsNotNone(stub._surface, errors)
+            # The conversion keeps the admitted revision.
+            self.assertEqual(stub._surface['map_revision'], revision)
+
+            def request(expected):
+                req = ComputePlacementV2.Request()
+                req.height_measured = True
+                req.box_wdh = [.8, .5, .32]
+                req.geometry_hash = mapper.geometry_hash
+                req.expected_map_revision = expected
+                return req
+
+            handle = planner._handle_v2
+            globals_ = handle.__globals__
+            original_solver = globals_['solve_placement']
+            calls = []
+
+            def spy(*args, **kwargs):
+                calls.append(True)
+                return {'success': False, 'reason_code': 'SPY',
+                        'message': 'spy'}
+
+            try:
+                globals_['solve_placement'] = spy
+                # Matching request: the gate passes, the solver is
+                # entered, the response echoes the ADMITTED revision.
+                response = handle(stub, request(revision),
+                                  ComputePlacementV2.Response())
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(response.resulting_map_revision, revision)
+                observed.update(matching_solver_calls=len(calls),
+                                resulting=response.resulting_map_revision)
+                # Stale request: rejected before the solver with the true
+                # resulting revision — the round-3 defect reported 0 here.
+                calls.clear()
+                response = handle(stub, request(revision + 1),
+                                  ComputePlacementV2.Response())
+                self.assertEqual(len(calls), 0)
+                self.assertFalse(response.success)
+                self.assertEqual(response.reason_code, 'STALE_MAP_REVISION')
+                self.assertEqual(response.resulting_map_revision, revision)
+                observed.update(stale_solver_calls=0,
+                                stale_resulting=response.resulting_map_revision)
+            finally:
+                globals_['solve_placement'] = original_solver
+
     def test_review_expected_map_revision_gate(self):
         # R4 regression, callback level: a request planned against a
         # different map revision is rejected before the solver with zero
