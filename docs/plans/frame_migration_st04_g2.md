@@ -56,15 +56,16 @@ hardware motion, master merge or shared-worktree edits.
   (`fill_unoccupied_as_free` stays GT-only and uncalled by the node).
 - **Raster rule (deferred item, now declared)**: cells are half-open
   `[origin + i·r, origin + (i+1)·r)`. A committed box's occupancy is
-  defined as the cells containing at least one of its interior sample
-  points (`(k+0.5)/n` per axis over the extent, `n = ceil(extent/r)+1`) —
-  the mapper's existing deterministic rule, here computed independently as
-  an exact oracle (point-in-oriented-rectangle per sample). Against the
-  exact oriented-footprint polygon intersection: every cell whose
-  intersection area is ≥ half the cell area must be marked; any extra
-  marked cell must have its interior intersected by the footprint boundary
-  (conservative skirt). Per-cell comparison, zero unexplained mismatch;
-  never only array sums.
+  **exactly** the set of cells whose half-open square intersects the
+  oriented footprint rectangle with positive area; vertical occupancy
+  spans exactly the voxel layers the z-interval overlaps (half-open
+  layers). The historical interior-sample lattice is replaced by this
+  exact-intersection rasterization in `_rasterize_placed_box`: the sample
+  lattice's half-diagonal exceeded the cell size, so it could miss large
+  diagonal slivers and provided no defensible area bound. The acceptance
+  oracle recomputes the intersection per cell with independent polygon
+  math and requires set equality (per cell, zero mismatch; never only
+  array sums).
 
 ## Decision-complete acceptance
 
@@ -88,17 +89,17 @@ python3 scripts/check_frame_contracts.py --mode migration --output EVIDENCE/st04
 ```
 
 Matrix: yaw 0, pi/2, pi, atan2(4,3); translation (0,0,0)/(1.5,-0.4,0.2);
-floor .53/.71; support 0/.30; grasp offsets not applicable to the map
-boundary (named inapplicable); WDH .80/.50/.32 — 4·2·2·2 = 64 surface
-cases. Each case: build a mapper at the case geometry, commit one
-non-square placed box through the v2 ledger service record, emit
-`surface_contract_v2`, serialize via real `SurfaceContractV2`, decode, and
-check per-cell: occupied/free/unknown survive add→serialize→read; v2
-surface equals v1 height + floor (dual datum agreement ≤1e-9 on every
-non-null cell; unknown cells are None in v2 and exactly the v1 unknown
-set); raster occupancy equals the independent sample oracle exactly and
-satisfies the declared polygon-intersection bounds (per-cell mismatch
-count 0).
+floor .53/.71; support 0/.30; commit position (0.05,-0.03)/(-0.18,0.12);
+WDH .80/.50/.32. Grasp offsets are not applicable to the map boundary
+(named inapplicable); the commit position is the fifth factor, so the
+common matrix keeps 4·2·2·2·2 = 64 surface cases. Each case: build a
+mapper at the case geometry, commit one non-square placed box through the
+v2 ledger path, emit `surface_contract_v2`, serialize via real
+`SurfaceContractV2`, decode, and check per-cell: occupied/free/unknown
+survive add→serialize→read; v2 surface equals v1 height + floor (dual
+datum agreement ≤1e-9 on every non-null cell; unknown cells are None in
+v2 and exactly the v1 unknown set); raster occupancy equals the
+independent exact-intersection oracle per cell (mismatch count 0).
 
 Ledger semantics: duplicate v2 commits are idempotent (no revision bump);
 `expected_map_revision` mismatch rejects (stale revision, no mutation);
