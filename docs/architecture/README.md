@@ -15,6 +15,9 @@ preference.
   depth and Livox Mid-360 point clouds.
 - [Container geometry](container_geometry.md): authoritative usable-space hull,
   descriptor/hash identity, and exact clipped geometry semantics.
+- [Frame contracts](frame_contracts.md): staged v2 interface inventory, strict
+  offline checks and geometric comparison cases; live migration is gated
+  separately and is not implied by an offline pass.
 - [Placement](placement.md): live candidate generation, stacking on known
   support, flatten-first scoring, occupancy-aware place motion, and how
   the solver reads `surface_2d`.
