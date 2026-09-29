@@ -114,8 +114,9 @@ scene revision. Its translation includes actual lateral contact offset, not only
 half box height. The caller must bind the grasp to the correct measured object
 and selected directed box representative; this utility is not an object-identity
 or grasp-authorization gate. `rotate_vector` rotates normals/offsets without
-adding an origin translation. Covariance and uncertainty transport are not yet
-implemented by this baseline and remain part of the relevant migration rows.
+adding an origin translation. ST02 adds explicit 3x3 positional/vector covariance
+rotation; full 6D pose covariance and uncertainty propagation remain work for
+the relevant migration rows.
 
 ## Interface inventory
 

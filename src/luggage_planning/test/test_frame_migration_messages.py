@@ -260,11 +260,24 @@ class FrameMigrationMessages(unittest.TestCase):
             ('wire-no-frame', 'frame_id', '', 'MISSING_IDENTITY'),
             ('wire-missing-stamp', 'stamp_valid', False, 'INVALID_STAMP'),
             ('wire-version', 'contract_version', 1, 'CONTRACT_VERSION_MISMATCH'),
+            ('wire-units', 'length_unit', 'mm', 'UNIT_MISMATCH'),
+            ('wire-stale-scene', 'scene_revision', 'stale', 'CALIBRATION_REVISION_MISMATCH'),
+            ('wire-time-basis', 'time_basis', 'robot_state', 'TIME_BASIS_MISMATCH'),
         ]:
             message = planning_pose_to_message(slot_record(), 'slot', ctx)
             setattr(message.identity, field, value)
-            self.reject(name, code, {'field': field, 'value': value},
+            self.reject(name, code, {'fixture': slot_record(), 'field': field, 'value': value, 'serialized_hex': serialize_message(message).hex()},
                         lambda: planning_pose_from_message(wire(message), 'slot', ctx))
+
+        for name, code, mutation in [
+            ('wire-wrong-reference', 'POSE_REFERENCE_MISMATCH', lambda m: setattr(m, 'reference', 'surface_contact')),
+            ('wire-nonfinite-pose', 'INVALID_NUMERIC_PAYLOAD', lambda m: setattr(m.pose.position, 'x', math.nan)),
+            ('wire-nonunit-quaternion', 'INVALID_QUATERNION', lambda m: setattr(m.pose.orientation, 'w', 2.)),
+        ]:
+            msg = planning_pose_to_message(slot_record(), 'slot', ctx)
+            mutation(msg)
+            self.reject(name, code, {'fixture': slot_record(), 'serialized_hex': serialize_message(msg).hex()},
+                        lambda: planning_pose_from_message(wire(msg), 'slot', ctx))
 
     def test_surface_negatives(self):
         ctx = context(surface_record(), 'F06')
@@ -290,7 +303,7 @@ class FrameMigrationMessages(unittest.TestCase):
         for name, field, value, code in mutations:
             msg = measured_surface_to_message(surface_record(), ctx)
             setattr(msg, field, value)
-            self.reject(name, code, {'field': field, 'value': value},
+            self.reject(name, code, {'fixture': surface_record(), 'field': field, 'value': value, 'serialized_hex': serialize_message(msg).hex()},
                         lambda: measured_surface_from_message(wire(msg), ctx))
 
     def test_waypoint_negatives(self):
@@ -310,7 +323,7 @@ class FrameMigrationMessages(unittest.TestCase):
             self.reject(name, code, data, lambda: cartesian_path_to_message(data, 'motion', ctx))
         msg = cartesian_path_to_message(path, 'motion', ctx)
         msg.waypoints[0].identity.request_id = 'other'
-        self.reject('wire-mixed-waypoint-request', 'REQUEST_IDENTITY_MISMATCH', {'path': path, 'request_override': 'other'},
+        self.reject('wire-mixed-waypoint-request', 'REQUEST_IDENTITY_MISMATCH', {'path': path, 'request_override': 'other', 'serialized_hex': serialize_message(msg).hex()},
                     lambda: cartesian_path_from_message(wire(msg), 'motion', ctx))
 
     def test_joint_negatives(self):
@@ -339,7 +352,7 @@ class FrameMigrationMessages(unittest.TestCase):
         ]:
             msg = joint_path_to_message(joint_record(), ctx)
             mutation(msg)
-            self.reject(name, code, {'joint_fixture': joint_record(), 'mutation': name},
+            self.reject(name, code, {'joint_fixture': joint_record(), 'mutation': name, 'serialized_hex': serialize_message(msg).hex()},
                         lambda: joint_path_from_message(wire(msg), ctx))
 
     def test_orientation_and_full_se3(self):
