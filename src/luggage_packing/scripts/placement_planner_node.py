@@ -88,6 +88,16 @@ from luggage_description.ros_frame_bindings.surfaces import (
 from luggage_msgs.msg import SurfaceContractV2
 from luggage_msgs.srv import ComputePlacementV2
 
+#: Correlation identity the cargo mapper stamps on every v2 surface
+#: publication (one per map revision). Mirrors the mapper-side producer
+#: constant; the cross-side regression test pins the two equal, and a
+#: mismatch fails closed here.
+SURFACE_V2_REQUEST_TEMPLATE = "map-rev-%d"
+
+#: A ComputePlacementV2 request whose declared map revision does not match
+#: the admitted surface is stale: it was planned against a different map.
+CODE_STALE_MAP_REVISION = "STALE_MAP_REVISION"
+
 
 def yaw_from_quaternion(q):
     return math.atan2(
@@ -209,6 +219,11 @@ class PlacementPlannerNode(Node):
         self._hull = descriptor_from_scene_config(self._scene)
         self._geometry_hash = str(self._hull.geometry_hash)
         self._rejected_maps = 0
+        # Highest map revision admitted through either surface transport
+        # (None = no map admitted yet). The v2 subscription enforces strict
+        # progression against it; ComputePlacementV2 checks requests against
+        # the active surface's revision.
+        self._admitted_map_revision = None
         # Atlas handles keyed by requested box size (payload selection is
         # per-request; see atlas_runtime.resolve_atlas_files).
         self._atlas_cache = {}
@@ -347,6 +362,11 @@ class PlacementPlannerNode(Node):
                    self._rejected_maps))
             return
         self._surface = surface
+        # Mirror the v2 progression bookkeeping on the v1 transport: the
+        # two topics carry the same mapper state, so the admitted revision
+        # must advance with whichever transport delivered the newer map.
+        if isinstance(surface.get("map_revision"), int):
+            self._admitted_map_revision = int(surface["map_revision"])
 
     def _floor_prior_surface(self):
         """Match cargo_volume_mapper.surface_map_2d: floor-relative height.
@@ -380,22 +400,48 @@ class PlacementPlannerNode(Node):
     # ------------------------------------------------------------------
     # ST05 v2 surface ingest + ComputePlacementV2 (F07/F08 producer)
 
-    def _surface_context(self, request_id="surface-v2"):
+    def _surface_context(self, request_id, map_revision):
         return BoundaryContext(
             "F06", "cargo_volume_mapper", "placement_planner",
-            request_id, self._frame_scene_revision, "container_link", "",
-            "scene", geometry_hash=self._geometry_hash, map_revision=None)
+            str(request_id), self._frame_scene_revision, "container_link",
+            "", "scene", geometry_hash=self._geometry_hash,
+            map_revision=int(map_revision))
 
     def _on_surface_v2(self, msg):
         """Ingest the v2 surface record beside the v1 JSON topic.
 
-        Same fail-closed geometry-hash gate as the v1 path; the record is
-        normalized to the solver's internal floor-relative view with the
-        planner's scene-derived inner dimensions (consumer-supplied
-        geometry identity).
+        Subscriber admission policy (checked before the strict adapter):
+        correlation identity — the mapper stamps every publication with
+        ``map-rev-<revision>``, so a message whose request_id disagrees
+        with its claimed revision is not the mapper's map — and strict
+        revision progression: a revision older than or equal to the
+        admitted one is a stale or reordered duplicate, never re-ingested.
+        Scene and hull binding stay inside ``surface_from_message`` with
+        consumer-owned identities (this node's configured scene revision
+        and hull hash, never values copied from the message); the decoded
+        record's hull is re-checked below on top of the strict validation.
         """
+        claimed_revision = int(getattr(msg, "map_revision", -1))
+        expected_request = SURFACE_V2_REQUEST_TEMPLATE % claimed_revision
+        if str(msg.identity.request_id or "") != expected_request:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: correlation %r != expected %r "
+                "(revision %d, rejected=%d)"
+                % (msg.identity.request_id, expected_request,
+                   claimed_revision, self._rejected_maps))
+            return
+        admitted = self._admitted_map_revision
+        if admitted is not None and claimed_revision <= admitted:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: stale/reordered revision %d <= "
+                "admitted %d (rejected=%d)"
+                % (claimed_revision, admitted, self._rejected_maps))
+            return
         try:
-            record = surface_from_message(msg, self._surface_context())
+            record = surface_from_message(
+                msg, self._surface_context(expected_request, claimed_revision))
         except ContractError as error:
             self._rejected_maps += 1
             self.get_logger().error(
@@ -409,6 +455,7 @@ class PlacementPlannerNode(Node):
                 % (record.get("geometry_hash"), self._geometry_hash))
             return
         self._surface = self._surface_view_from_record(record)
+        self._admitted_map_revision = claimed_revision
 
     def _surface_view_from_record(self, record):
         """Normalize one v2 surface record into the solver's internal view.
@@ -536,6 +583,22 @@ class PlacementPlannerNode(Node):
                                 % (CODE_CARGO_MAP_GEOMETRY_MISMATCH,
                                    requested_hash, self._geometry_hash))
             return response
+        # Map-identity gate before any solver call: a request planned
+        # against a different map revision is stale, whatever the solver
+        # would find on the current one. The floor prior carries revision
+        # 0; a first-box request against no admitted map matches 0.
+        surface = self._active_surface()
+        active_revision = int(surface.get("map_revision") or 0)
+        requested_revision = int(request.expected_map_revision or 0)
+        if requested_revision != active_revision:
+            response.success = False
+            response.reason_code = CODE_STALE_MAP_REVISION
+            response.resulting_map_revision = active_revision
+            response.message = (
+                "%s: request planned against map revision %d, planner map "
+                "is revision %d" % (CODE_STALE_MAP_REVISION,
+                                    requested_revision, active_revision))
+            return response
         size = [max(0.0, float(v)) for v in request.box_wdh]
         if any(v <= 0.0 for v in size):
             response.success = False
@@ -550,7 +613,6 @@ class PlacementPlannerNode(Node):
             response.reason_code = "PLACED_SLOT_REJECTED"
             response.message = str(error)
             return response
-        surface = self._active_surface()
         result = solve_placement(
             surface, size,
             allowed_yaws=self._allowed_yaws,

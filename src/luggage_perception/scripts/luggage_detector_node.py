@@ -1750,18 +1750,19 @@ class LuggageDetector(Node):
         detected = getattr(frame, "box", None)
         if detected is None:
             return
-        stamp_sec = adapters.stamp_to_sec(detected.header.stamp)
         stamp_ns = (int(detected.header.stamp.sec) * 1_000_000_000
                     + int(detected.header.stamp.nanosec))
         request_id = "detect-%d" % stamp_ns
         yaw_source = ""
         try:
+            # Integer nanoseconds end to end: a float-seconds round-trip
+            # at epoch scale cannot carry the measured nanoseconds.
             record, yaw_source = detection_boundary(
                 (detected.pose.position.x, detected.pose.position.y,
                  detected.pose.position.z),
                 2.0 * math.atan2(detected.pose.orientation.z,
                                  detected.pose.orientation.w),
-                stamp_sec, self._frame_scene_revision, request_id,
+                stamp_ns, self._frame_scene_revision, request_id,
                 frame_id=self._world_frame,
                 yaw_valid=bool(detected.yaw_valid),
                 fallback_yaw=float(
@@ -1776,7 +1777,7 @@ class LuggageDetector(Node):
                 for candidate in detected.suction_candidates:
                     candidate_id = str(candidate.candidate_id)
                     contact = contact_boundary(
-                        candidate, stamp_sec,
+                        candidate, stamp_ns,
                         self._frame_scene_revision,
                         request_id, frame_id=self._world_frame)
                     candidate_context = BoundaryContext(

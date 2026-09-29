@@ -500,6 +500,168 @@ class FrameMigrationMap(unittest.TestCase):
             observed.update(unknown_before=unknown_before,
                             free_after=free_after)
 
+    def test_review_sensor_evidence_survives_geometry_removal(self):
+        # R3 regression: sensor evidence and committed geometry retract
+        # independently. The overlapping orderings (sensor after the
+        # commit, sensor before the commit) both keep the sensor's word;
+        # a cell only geometry ever touched still clears to unknown.
+        center = [0.0, 0.0, .53 + 0.5 * WDH[2]]
+        with case('review/sensor-after-geometry-overlap', {}) as observed:
+            mapper = make_mapper(.53)
+            self.assertTrue(mapper.mark_placed_box(
+                center, list(WDH), measured_source='verify_placed_box'))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            mapper.mark_occupied_world(*center, source=SOURCE_SENSOR,
+                                       label=42, instance_id=3)
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 2, 42))
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 42))
+            observed.update(voxel=list(voxel))
+        with case('review/sensor-before-geometry-overlap', {}) as observed:
+            mapper = make_mapper(.53)
+            mapper.mark_occupied_world(*center, source=SOURCE_SENSOR,
+                                       label=7, instance_id=1)
+            self.assertTrue(mapper.mark_placed_box(center, list(WDH)))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 7))
+            observed.update(voxel=list(voxel))
+        with case('review/remaining-box-and-sensor', {}) as observed:
+            # Two boxes overlapping one voxel that also carries a sensor
+            # observation: removing either box keeps the cell occupied
+            # (the other box and/or the sensor own it); removing both
+            # still leaves the sensor's word.
+            mapper = make_mapper(.53)
+            first = [0.0, 0.0, .53 + 0.5 * WDH[2]]
+            # Distinct for the ledger matcher (offset > 0.05 m tolerance)
+            # but overlapping in footprint cells.
+            second = [0.12, 0.0, .53 + 0.5 * WDH[2]]
+            mapper.mark_placed_box(first, list(WDH),
+                                   measured_source='verify_placed_box')
+            mapper.mark_placed_box(second, list(WDH),
+                                   measured_source='verify_placed_box')
+            mapper.mark_occupied_world(*first, source=SOURCE_SENSOR,
+                                       label=9)
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*first))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(first, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual(mapper._grid[idx], 2)
+            self.assertTrue(mapper.unmark_placed_box(second, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 9))
+            observed.update(voxel=list(voxel))
+        with case('review/pure-geometry-cell-clears', {}) as observed:
+            mapper = make_mapper(.53)
+            self.assertTrue(mapper.mark_placed_box(center, list(WDH)))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (0, 0, 0))
+            observed.update(voxel=list(voxel))
+
+    def test_review_v2_commit_provenance_gate(self):
+        # R2 regression, callback level: the v2 ledger is measured-commit
+        # only. An absent hull identity or an unmeasured provenance
+        # ("planned") must fail before any map mutation — nothing enters
+        # the ledger and nothing is relabelled verified_geometry.
+        import runpy
+        import types as types_module
+        from luggage_description.ros_frame_bindings.poses import pose_to_message
+        from luggage_msgs.srv import AddPlacedBoxV2
+
+        module = runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'cargo_volume_mapper_node.py'))
+        MapperNode = module['CargoVolumeMapperNode']
+        slot = dict(
+            contract_version=2, kind='pose', frame_id='container_link',
+            length_unit='m', stamp_ns=1, time_basis='scene',
+            scene_revision=SCENE, request_id='prov-1',
+            reference='box_center', orientation_semantics='box_axis_pi',
+            position=[0.0, 0.0, .53 + 0.5 * WDH[2]],
+            quaternion_xyzw=[0., 0., 0., 1.])
+        context = BoundaryContext(
+            'F19', 'v2_client', 'cargo_volume_mapper_node', 'prov-1',
+            SCENE, 'container_link', 'box_center', 'scene')
+
+        def make_node(mapper):
+            published = []
+            node = types_module.SimpleNamespace(
+                _mapper=mapper, _geometry_hash=mapper.geometry_hash,
+                _frame_scene_revision=SCENE,
+                _publish_all=lambda: published.append(True))
+            for name in ('_decode_slot_v2', '_ledger_guard', '_on_add_v2'):
+                setattr(node, name, types_module.MethodType(
+                    getattr(MapperNode, name), node))
+            return node, published
+
+        cases = [
+            ('planned-no-hull', 'planned', ''),
+            ('planned-with-hull', 'planned', 'hash'),
+            ('measured-no-hull', 'verify_placed_box', ''),
+        ]
+        for name, measured_source, hash_kind in cases:
+            with self.subTest(name=name), \
+                    case('review/v2-commit-gate/' + name,
+                         {'measured_source': measured_source,
+                          'hash': hash_kind}) as observed:
+                mapper = make_mapper(.53)
+                node, published = make_node(mapper)
+                request = AddPlacedBoxV2.Request()
+                request.slot_pose = pose_to_message(slot, 'slot', context)
+                request.size_wdh = list(WDH)
+                request.measured_source = measured_source
+                request.geometry_hash = (
+                    mapper.geometry_hash if hash_kind == 'hash' else '')
+                request.expected_map_revision = mapper._revision
+                revision_before = mapper._revision
+                response = MapperNode._on_add_v2(
+                    node, request, AddPlacedBoxV2.Response())
+                self.assertFalse(response.success, response.message)
+                self.assertEqual(mapper._revision, revision_before)
+                self.assertEqual(mapper.commit_ledger(), [])
+                self.assertEqual(published, [])
+                confidences = {
+                    value for row in mapper.surface_contract_v2(
+                        SCENE, 'prov-check')['confidence'] for value in row}
+                self.assertNotIn('verified_geometry', confidences)
+                observed.update(message=response.message)
+        # The declared measured provenance still commits and is the only
+        # path that may relabel geometry as verified.
+        with case('review/v2-commit-gate/measured-commit',
+                  {'measured_source': 'verify_placed_box'}) as observed:
+            mapper = make_mapper(.53)
+            node, published = make_node(mapper)
+            request = AddPlacedBoxV2.Request()
+            request.slot_pose = pose_to_message(slot, 'slot', context)
+            request.size_wdh = list(WDH)
+            request.measured_source = 'verify_placed_box'
+            request.geometry_hash = mapper.geometry_hash
+            request.expected_map_revision = mapper._revision
+            response = MapperNode._on_add_v2(
+                node, request, AddPlacedBoxV2.Response())
+            self.assertTrue(response.success, response.message)
+            self.assertEqual(published, [True])
+            ledger = mapper.commit_ledger()
+            self.assertEqual(ledger[0]['measured_source'],
+                             'verify_placed_box')
+            confidences = {
+                value for row in mapper.surface_contract_v2(
+                    SCENE, 'prov-ok')['confidence'] for value in row}
+            self.assertIn('verified_geometry', confidences)
+            observed.update(revision=mapper._revision)
+
 
 if __name__ == '__main__':
     unittest.main()

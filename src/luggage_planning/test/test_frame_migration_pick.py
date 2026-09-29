@@ -38,8 +38,8 @@ from luggage_planning.pick_frame_contracts import (
 )
 from luggage_planning.pose import Point, Pose
 from luggage_planning.suction_candidate_selection import (
-    SUCTION_REJECT_TF, contact_record_admission,
-    observation_identity_consistent,
+    SUCTION_REJECT_TF, ProbeRecord, contact_record_admission,
+    judge_probe, observation_identity_consistent,
 )
 from luggage_planning.suction_candidate_waypoints import (
     attach_pose_error, pose_along_normal, quat_rotate,
@@ -462,6 +462,168 @@ class FrameMigrationPick(unittest.TestCase):
             self.assert_quaternion(decoded['quaternion_xyzw'],
                                    [0., 0., 0., 1.])
             observed.update(sign_equivalent=True)
+
+    def test_snapshot_freeze_mutation_independence(self):
+        # R5 regression: the frozen approach snapshot owns its pose and
+        # grasp. Mutating the caller's input pose, the returned retry
+        # target, or the exported grasp view must never rewrite history.
+        candidate = make_candidate('C000_000', 1)
+        detection = make_detection([candidate])
+        approach = pose_along_normal(
+            candidate.contact, (0., 0., 1.), 0.10)
+        with case('review/snapshot-freeze', {}) as observed:
+            snapshot = approach_snapshot(approach, candidate, detection,
+                                         scene_revision='scene-A')
+            frozen = (snapshot.target_pose.position.x,
+                      snapshot.target_pose.position.y,
+                      snapshot.target_pose.position.z)
+            approach.position.x = 123.0
+            self.assertEqual(snapshot.target_pose.position.x, frozen[0])
+            retry = retry_segment_from_snapshot(snapshot)
+            self.assertIsNot(retry.target_pose, snapshot.target_pose)
+            self.assertIsNot(retry.target_pose, approach)
+            retry.target_pose.position.y = 456.0
+            self.assertEqual(snapshot.target_pose.position.y, frozen[1])
+            self.assertEqual(approach.position.y, 0.0)
+            # Two retries never share a pose object either.
+            second = retry_segment_from_snapshot(snapshot)
+            second.target_pose.position.z = 789.0
+            self.assertEqual(retry.target_pose.position.z, frozen[2])
+            # The exported view is a detached copy of the grasp.
+            view = snapshot.as_dict()
+            if view['grasp'] is not None:
+                view['grasp']['translation'][0] = -5.0
+                self.assertNotEqual(
+                    snapshot.grasp['translation'][0], -5.0)
+            observed.update(snapshot=list(frozen))
+
+    def test_judge_probe_admits_v2_record_before_effects(self):
+        # Real-caller wiring: judge_probe admits a supplied v2 contact
+        # record FIRST — a boundary violation rejects before the probe
+        # records are even considered, carrying the exact contract code.
+        candidate = make_candidate('C000_000', 1)
+        good = contact_boundary(
+            _contact_candidate((.65, 0.0, .85)), STAMP_SEC, SCENE,
+            'gate-wire')
+        stale = copy.deepcopy(good)
+        stale['scene_revision'] = 'scene-old'
+        record = ProbeRecord(candidate_id='C000_000', segment_name='approach',
+                             ik_ok=True, fraction=1.0, moveit_error_code=1)
+        with case('review/judge-probe-v2-admission', {}) as observed:
+            self.assertIsNone(judge_probe(
+                candidate, [record], contact_record=good,
+                scene_revision=SCENE))
+            reason = judge_probe(candidate, [record],
+                                 contact_record=stale,
+                                 scene_revision=SCENE)
+            self.assertEqual(reason[0], SUCTION_REJECT_TF)
+            self.assertTrue(reason[1].startswith(
+                'CALIBRATION_REVISION_MISMATCH'), reason)
+            # Admission runs before probe evaluation: even a failing IK
+            # record cannot mask the boundary rejection.
+            failing = ProbeRecord(candidate_id='C000_000',
+                                  segment_name='approach', ik_ok=False,
+                                  fraction=-1.0, moveit_error_code=1)
+            reason = judge_probe(candidate, [failing],
+                                 contact_record=stale,
+                                 scene_revision=SCENE)
+            self.assertTrue(reason[1].startswith(
+                'CALIBRATION_REVISION_MISMATCH'), reason)
+            observed.update(reason=reason)
+
+    def test_session_gate_rejects_stale_v2_record_zero_effects(self):
+        # Real-caller test through the session's own selection step: the
+        # ports supply the v2 contact record; a stale scene record rejects
+        # the first candidate with zero MOTION/VACUUM effects for it (the
+        # planning-space probes are the judge's inputs, not effects), and
+        # the next (clean) candidate is selected normally.
+        stale_first = make_candidate('C001_001', 1)
+        clean_second = make_candidate('C002_001', 2)
+        good = contact_boundary(
+            _contact_candidate((.65, 0.0, .85)), STAMP_SEC, SCENE,
+            'session-wire')
+        stale = copy.deepcopy(good)
+        stale['scene_revision'] = 'scene-old'
+
+        class RecordPorts:
+            def __init__(self, base, records):
+                self._base = base
+                self._records = records
+
+            def __getattr__(self, name):
+                return getattr(self._base, name)
+
+            def contact_record(self, candidate_id):
+                return self._records.get(candidate_id)
+
+        ports = RecordPorts(
+            make_ports([stale_first, clean_second]),
+            {'C001_001': stale, 'C002_001': good})
+        session = PickSession(
+            ports, SessionConfig(scene_revision=SCENE, dry_run=True,
+                                 contact_model_version=1,
+                                 contact_model_hash='abc123'))
+        with case('review/session-v2-record-gate', {}) as observed:
+            result = session.run_request(
+                make_detection([stale_first, clean_second]))
+            executed_ids = [candidate_id
+                            for candidate_id, _ in ports.motion.executed]
+            self.assertNotIn('C001_001', executed_ids)
+            self.assertNotIn('C001_001',
+                             ports.vacuum.enable_candidates)
+            self.assertIn('C002_001', executed_ids)
+            rejected = [row for row in session._trace
+                        if row.get('kind') == 'io'
+                        and row.get('name') == 'candidate_rejected']
+            self.assertTrue(rejected)
+            self.assertTrue(any(
+                'CALIBRATION_REVISION_MISMATCH' in str(row) for row in
+                rejected), rejected)
+            observed.update(executed_ids=executed_ids,
+                            n_rejected=len(rejected),
+                            exit_code=result.exit_code)
+
+    def test_hardware_driver_supplies_scene_revision(self):
+        # Real wiring: the hardware driver forwards --frame-scene-revision
+        # into SessionConfig and exposes the scene_revision port the retry
+        # guard consumes (previously neither existed, so F10 recovery on
+        # hardware silently skipped the stale-scene check).
+        import runpy
+        import types as types_module
+        driver_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'hardware_pick_driver.py')
+        module = runpy.run_path(driver_path)
+        args = types_module.SimpleNamespace(
+            max_candidates=3, release_low_hold_sec=0.5,
+            release_deadline_sec=2.0, reverse_min_m=0.08,
+            required_cartesian_fraction=1.0, request_deadline_sec=180.0,
+            no_scene=False, use_vacuum=True, dry_run=False, dry_run_count=10,
+            frame_scene_revision='scene-hw-17')
+        model = types_module.SimpleNamespace(
+            model_version=1, identity_hash='abc123')
+        with case('review/hardware-driver-scene-revision',
+                  {'frame_scene_revision':
+                   args.frame_scene_revision}) as observed:
+            config = module['HardwarePickDriver']._session_config(
+                types_module.SimpleNamespace(_args=args), model)
+            self.assertEqual(config.scene_revision, 'scene-hw-17')
+            ports = types_module.SimpleNamespace()
+            ports.scene_revision = types_module.MethodType(
+                module['RosPickSessionPorts'].scene_revision,
+                types_module.SimpleNamespace(
+                    _driver=types_module.SimpleNamespace(_args=args)))
+            self.assertEqual(ports.scene_revision(), 'scene-hw-17')
+            # Undeclared stays empty (wiring gap the session reports).
+            empty_args = types_module.SimpleNamespace(
+                frame_scene_revision='')
+            ports_empty = types_module.SimpleNamespace()
+            ports_empty.scene_revision = types_module.MethodType(
+                module['RosPickSessionPorts'].scene_revision,
+                types_module.SimpleNamespace(
+                    _driver=types_module.SimpleNamespace(_args=empty_args)))
+            self.assertEqual(ports_empty.scene_revision(), '')
+            observed.update(config_scene_revision=config.scene_revision)
 
 
 class _ContactPose:

@@ -387,6 +387,146 @@ class FrameMigrationPerception(unittest.TestCase):
                 math.isfinite(v) for v in opening['normal']))
             observed.update(normal=opening['normal'])
 
+    def test_opening_width_axis_orientation(self):
+        # R6 regression: the aperture quaternion must carry the full basis
+        # (+X width axis, +Z normal), not the normal-only shortest arc — a
+        # non-square aperture keeps its width direction in world.
+        matrix = ((0., (0., 0., 1.), (0., 1., 0.)),
+                  (math.pi / 4, (0., 0., 1.), (math.cos(math.pi / 4),
+                                               math.sin(math.pi / 4), 0.)),
+                  (math.pi / 2, (0., 0., 1.), (0., 1., 0.)),
+                  (math.atan2(4, 3), (0., math.sin(.2), math.cos(.2)),
+                   (math.cos(math.atan2(4, 3)), math.sin(math.atan2(4, 3)),
+                    0.)))
+        for index, (in_plane, normal, width_axis) in enumerate(matrix):
+            with self.subTest(index=index), case(
+                    'review/opening-width-axis/%d' % index,
+                    {'in_plane': in_plane, 'normal': list(normal),
+                     'width_axis': list(width_axis)}) as observed:
+                estimate = make_estimate(
+                    (.4, -.2, 1.1), normal=normal, width=2.0, height=1.0)
+                # make_estimate seeds the width axis from +X; override with
+                # the declared in-plane axis of this case.
+                estimate.width_axis = np.asarray(width_axis, dtype=np.float64)
+                opening = opening_boundary(estimate, 'world', SCENE,
+                                           'width-%d' % index)
+                quaternion = opening['quaternion_xyzw']
+                # Independent oracle: reconstruct the world vertices with
+                # the hand-rolled rotation and compare against the
+                # estimator's own geometry (width along the declared axis,
+                # height perpendicular, both in the aperture plane). A
+                # declared axis not exactly perpendicular to the normal is
+                # orthogonalized — the aperture plane owns the geometry.
+                world = [_rotate_by(quaternion, vertex) for vertex in
+                         opening['aperture_vertices_opening']]
+                normal_v = np.asarray(normal, dtype=np.float64)
+                normal_v = normal_v / np.linalg.norm(normal_v)
+                axis_w = np.asarray(width_axis, dtype=np.float64)
+                axis_w = axis_w - normal_v * float(np.dot(axis_w, normal_v))
+                axis_w = axis_w / np.linalg.norm(axis_w)
+                along_w = [float(np.dot(v[:3], axis_w)) for v in world]
+                self.assertAlmostEqual(max(along_w) - min(along_w), 2.0,
+                                       places=9)
+                axis_h = np.cross(normal_v, axis_w)
+                axis_h = axis_h / np.linalg.norm(axis_h)
+                along_h = [float(np.dot(v[:3], axis_h)) for v in world]
+                self.assertAlmostEqual(max(along_h) - min(along_h), 1.0,
+                                       places=9)
+                # +Z stays the outward normal; +X maps onto the width axis.
+                mapped_z = _rotate_by(quaternion, (0., 0., 1.))
+                for a, b in zip(mapped_z, normal):
+                    self.assertAlmostEqual(a, b, places=9)
+                mapped_x = _rotate_by(quaternion, (1., 0., 0.))
+                dot = sum(a * b for a, b in zip(mapped_x, axis_w))
+                self.assertAlmostEqual(dot, 1.0, places=9)
+                observed.update(quaternion=quaternion,
+                                width_extent=max(along_w) - min(along_w),
+                                height_extent=max(along_h) - min(along_h))
+        # The review counterexample itself: a 1x2 world opening must not
+        # come back as 2x1.
+        estimate = make_estimate((0., 0., 1.0), normal=(0., 0., 1.),
+                                 width=2.0, height=1.0)
+        estimate.width_axis = np.array([0., 1., 0.])
+        opening = opening_boundary(estimate, 'world', SCENE, 'width-probe')
+        world = [_rotate_by(opening['quaternion_xyzw'], v) for v in
+                 opening['aperture_vertices_opening']]
+        x_extent = max(v[0] for v in world) - min(v[0] for v in world)
+        y_extent = max(v[1] for v in world) - min(v[1] for v in world)
+        with case('review/opening-width-axis/probe-counterexample',
+                  {'x_extent': x_extent, 'y_extent': y_extent}):
+            self.assertAlmostEqual(x_extent, 1.0, places=9)
+            self.assertAlmostEqual(y_extent, 2.0, places=9)
+        # A width axis parallel to the normal is a degenerate aperture
+        # plane: rejected, never silently rotated.
+        degenerate = make_estimate((0., 0., 1.0), normal=(0., 0., 1.))
+        degenerate.width_axis = np.array([0., 0., 1.])
+        self.reject('width-axis-parallel-to-normal',
+                    'INVALID_NUMERIC_PAYLOAD',
+                    {'width_axis': [0., 0., 1.]},
+                    lambda: opening_boundary(degenerate, DEPTH_FRAME, SCENE,
+                                             'width-bad'))
+
+    def test_acquisition_stamp_integer_identity(self):
+        # R7 regression: an epoch-scale acquisition stamp survives exactly
+        # in integer nanoseconds; float seconds are a transport form that
+        # already lost the nanoseconds before any conversion runs.
+        from luggage_perception.frame_boundary_records import (
+            stamp_ns as stamp_ns_exact, stamp_ns_from_sec_nanosec,
+        )
+
+        class RosTime:
+            def __init__(self, sec, nanosec):
+                self.sec, self.nanosec = sec, nanosec
+
+        sec, nanosec = 1720000000, 123456789
+        expected = 1720000000123456789
+        with case('review/stamp-epoch-identity',
+                  {'sec': sec, 'nanosec': nanosec}) as observed:
+            self.assertEqual(stamp_ns_from_sec_nanosec(sec, nanosec),
+                             expected)
+            self.assertEqual(stamp_ns_exact(expected), expected)
+            self.assertEqual(stamp_ns_exact(RosTime(sec, nanosec)),
+                             expected)
+            # Adjacent nanoseconds stay distinct through every exact form.
+            self.assertEqual(
+                stamp_ns_exact(RosTime(sec, nanosec + 1)), expected + 1)
+            self.assertNotEqual(
+                stamp_ns_exact(RosTime(sec, nanosec)),
+                stamp_ns_exact(RosTime(sec, nanosec + 1)))
+            # The float transport form is documented lossy at this scale —
+            # the exact forms above are the ones the publisher uses.
+            self.assertEqual(stamp_ns_from_seconds(sec + nanosec * 1e-9),
+                             expected - 21)
+            observed.update(expected_ns=expected,
+                            float_transport_ns=expected - 21)
+        # The builder keeps whichever exact form it is given: int ns and
+        # the ROS-time object produce identical records, and the record
+        # survives real serialization with its nanoseconds intact.
+        record_int, _ = detection_boundary(
+            (.5, -.25, .8), .3, expected, SCENE, 'stamp-epoch-int')
+        record_time, _ = detection_boundary(
+            (.5, -.25, .8), .3, RosTime(sec, nanosec), SCENE,
+            'stamp-epoch-time')
+        self.assertEqual(record_int['stamp_ns'], expected)
+        self.assertEqual(record_time['stamp_ns'], expected)
+        with case('review/stamp-roundtrip-serialization',
+                  {'stamp_ns': expected}) as observed:
+            message = detection_to_message(
+                record_int, context(record_int, 'F03'))
+            decoded = detection_from_message(
+                wire(message), context(record_int, 'F03'))
+            self.assertEqual(decoded['stamp_ns'], expected)
+            adjacent, _ = detection_boundary(
+                (.5, -.25, .8), .3, expected + 1, SCENE, 'stamp-adjacent')
+            decoded_adjacent = detection_from_message(
+                wire(detection_to_message(adjacent,
+                                          context(adjacent, 'F03'))),
+                context(adjacent, 'F03'))
+            self.assertEqual(decoded_adjacent['stamp_ns'], expected + 1)
+            self.assertNotEqual(decoded['stamp_ns'],
+                                decoded_adjacent['stamp_ns'])
+            observed.update(adjacent_ns=expected + 1)
+
     def assert_quaternion_exact(self, actual, expected):
         self.assertEqual([round(v, 12) for v in actual],
                          [round(v, 12) for v in expected])

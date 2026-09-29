@@ -432,7 +432,15 @@ class PickSession:
             reason = judge_probe(
                 candidate, records,
                 required_fraction=self._config.required_cartesian_fraction,
-                planning_frame=self._config.planning_frame)
+                planning_frame=self._config.planning_frame,
+                contact_record=self._contact_record_for(candidate_id),
+                scene_revision=self._config.scene_revision)
+            # v2 admission rejections carry their exact contract code as
+            # the detail (``(category, "CODE:field")``); probe rejections
+            # stay the plain documented reason strings.
+            admission_detail = ""
+            if isinstance(reason, tuple):
+                reason, admission_detail = str(reason[0]), str(reason[1])
             if reason is None:
                 self._selection = record_attempt(self._selection, candidate_id)
                 self._segments[candidate_id] = segments
@@ -441,7 +449,7 @@ class PickSession:
                 self._feed(RetryEvent(RetryEventType.CANDIDATE_SELECTED,
                                       candidate_id=candidate_id))
                 return
-            detail = "; ".join(
+            detail = admission_detail or "; ".join(
                 "%s ik=%s frac=%.3f code=%d" % (
                     record.segment_name, record.ik_ok, record.fraction,
                     record.moveit_error_code)
@@ -449,7 +457,7 @@ class PickSession:
             self._selection = record_rejection(
                 self._selection, candidate_id, reason, detail)
             self._emit("io", "candidate_rejected", candidate_id=candidate_id,
-                       reason=reason)
+                       reason=reason, detail=detail)
             self._feed(RetryEvent(
                 RetryEventType.CANDIDATE_REJECTED, candidate_id=candidate_id,
                 reason_code=reason, detail=detail))
@@ -599,6 +607,19 @@ class PickSession:
         self._feed(RetryEvent(RetryEventType.RECOVERY_VERIFIED))
 
     # -- helpers -------------------------------------------------------------------
+
+    def _contact_record_for(self, candidate_id):
+        """Optional v2 contact record for this candidate (F04 admission).
+
+        Ports may expose ``contact_record(candidate_id) -> record|None``.
+        A supplied record is admitted by ``judge_probe`` before any probe
+        effect; a missing port (v1 deployments, no v2 candidate stream
+        yet) keeps the unchanged v1 string-compare path.
+        """
+        port = getattr(self._ports, "contact_record", None)
+        if not callable(port):
+            return None
+        return port(candidate_id)
 
     def _result(self, exit_code: int) -> SessionResult:
         model = self._model

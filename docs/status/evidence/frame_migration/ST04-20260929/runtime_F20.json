@@ -1,19 +1,21 @@
 {
   "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_map.py -v",
   "contract_version": 2,
-  "interface_contract_sha256": "0ea8ac5104601a529b9694ab097611292abfab3c460605bc3c5844bb43aac184",
+  "interface_contract_sha256": "2c7a6b87668d39b8e3fcffa90ca356799e254b1fe723e26eb683a54c8dabb4d5",
   "interface_id": "F20",
   "kind": "runtime_boundary",
   "observations": [
     "64 matrix cases keep unknown as unknown through commit->serialize->read; placed-and-removed boxes never promote cells to free",
-    "IntegrateCargoView v1 service and its schema/hash/revision/stamp checks unchanged (18/18 existing suite); fill_unoccupied_as_free stays GT-only and uncalled by the node"
+    "IntegrateCargoView v1 service and its schema/hash/revision/stamp checks unchanged (18/18 existing suite); fill_unoccupied_as_free stays GT-only and uncalled by the node",
+    "review repair R3 coverage: the sensor-evidence overlay keeps integrated sensor observations independently retractable from committed geometry"
   ],
-  "sample_count": 66,
+  "sample_count": 97,
   "source_sha256": {
     "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
     "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
     "src/luggage_msgs/srv/IntegrateCargoView.srv": "b7cd530c3838f2035923cd44baf7040e3874f7d61ff400d0255856350169acb8",
-    "src/luggage_perception/luggage_perception/cargo_view_integration.py": "a59bc0e9484c1a17f83701ff783483dab43db5e6288cdf55bc0aa12730cc0f43"
+    "src/luggage_perception/luggage_perception/cargo_view_integration.py": "a59bc0e9484c1a17f83701ff783483dab43db5e6288cdf55bc0aa12730cc0f43",
+    "src/luggage_perception/luggage_perception/cargo_volume_mapper.py": "8b23b270e34c8cc5a78ba38047e7d43c0f2a6469cecec75e8c944db5a67c5325"
   },
   "status": "pass"
 }

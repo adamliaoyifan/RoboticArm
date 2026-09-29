@@ -7,6 +7,7 @@ alongside the recorded approach pose; retry rebuilds only from that
 snapshot. Nothing here looks up TF, defaults a frame or repairs input.
 """
 
+import copy
 from dataclasses import dataclass
 from typing import Optional
 
@@ -56,7 +57,13 @@ def grasp_transform(box_center_world, box_quaternion_xyzw, contact_world,
 
 @dataclass(frozen=True)
 class ApproachSnapshot:
-    """F10 retry snapshot: everything retry needs, frozen at record time."""
+    """F10 retry snapshot: everything retry needs, frozen at record time.
+
+    The stored pose and grasp are private deep copies: a frozen dataclass
+    alone does not stop nested mutation of the caller's pose, and the
+    recorded target must stay bit-for-bit regardless of what the caller or
+    a later retry does to their objects.
+    """
 
     target_pose: object                 # exact approach segment target (world)
     link_name: str = SUCTION_TARGET_LINK
@@ -71,7 +78,7 @@ class ApproachSnapshot:
             "link_name": self.link_name,
             "candidate_id": self.candidate_id,
             "approach_normal": list(self.approach_normal),
-            "grasp": dict(self.grasp) if self.grasp else None,
+            "grasp": copy.deepcopy(self.grasp) if self.grasp else None,
             "scene_revision": self.scene_revision,
             "stamp_ns": self.stamp_ns,
         }
@@ -83,7 +90,9 @@ def approach_snapshot(target_pose, candidate, detection, scene_revision="",
 
     ``detection`` is the session ``DetectionView``; the grasp transform is
     stored only when the detection actually carried box geometry (measured
-    provenance retained, never invented).
+    provenance retained, never invented). The pose and grasp are captured
+    as independent copies — mutating the caller's pose afterwards cannot
+    rewrite history.
     """
     grasp = None
     box_center = getattr(detection, "box_xyz", None)
@@ -97,16 +106,23 @@ def approach_snapshot(target_pose, candidate, detection, scene_revision="",
             (contact.orientation.x, contact.orientation.y,
              contact.orientation.z, contact.orientation.w),
             scene_revision)
+    # Exact stamp preference: an integer-nanosecond field wins over the
+    # float-seconds transport form (epoch floats cannot carry nanoseconds).
     stamp = 0
-    detection_stamp = getattr(detection, "stamp", None)
-    if detection_stamp is not None:
-        stamp = int(round(float(detection_stamp) * 1e9))
+    detection_stamp_ns = getattr(detection, "stamp_ns", None)
+    if isinstance(detection_stamp_ns, int) and not isinstance(
+            detection_stamp_ns, bool):
+        stamp = detection_stamp_ns
+    else:
+        detection_stamp = getattr(detection, "stamp", None)
+        if detection_stamp is not None:
+            stamp = int(round(float(detection_stamp) * 1e9))
     return ApproachSnapshot(
-        target_pose=target_pose,
+        target_pose=copy.deepcopy(target_pose),
         link_name=str(link_name),
         candidate_id=str(getattr(candidate, "candidate_id", "")),
         approach_normal=tuple(candidate_normal(contact.orientation)),
-        grasp=grasp,
+        grasp=copy.deepcopy(grasp) if grasp is not None else None,
         scene_revision=str(scene_revision),
         stamp_ns=stamp,
     )
@@ -117,8 +133,10 @@ def retry_segment_from_snapshot(snapshot, attach_pose=None,
     """Retry segment rebuilt strictly from the recorded snapshot.
 
     The target is the snapshot pose bit-for-bit; no TF query, no latest
-    candidate state. The reverse-distance guard uses the snapshot's frozen
-    normal, so a mutated live candidate cannot stretch the retreat.
+    candidate state. The returned segment carries its own copy — mutating
+    the retry target cannot rewrite the frozen snapshot either. The
+    reverse-distance guard uses the snapshot's frozen normal, so a mutated
+    live candidate cannot stretch the retreat.
     """
     if attach_pose is not None and snapshot.approach_normal:
         delta = (snapshot.target_pose.position.x - attach_pose.position.x,
@@ -133,7 +151,7 @@ def retry_segment_from_snapshot(snapshot, attach_pose=None,
                 % (distance, float(reverse_min_m)))
     return MotionSegment(
         name="retry_reverse", type="cartesian",
-        target_pose=snapshot.target_pose,
+        target_pose=copy.deepcopy(snapshot.target_pose),
         allow_ompl_fallback=False, required_cartesian_fraction=1.0,
     )
 

@@ -87,6 +87,18 @@ from luggage_perception.cargo_view_integration import (
 )
 
 
+#: Declared measured-commit provenance vocabulary for AddPlacedBoxV2 (F19).
+#: A v2 ledger commit is a *measured* statement — the box was placed and
+#: measured back. ``verify_placed_box`` is the VerifyPlacedBox readback
+#: producer; anything else (notably ``planned``) is an intent, not a
+#: measurement, and must never enter the ledger as verified geometry.
+V2_MEASURED_SOURCES = ("verify_placed_box",)
+
+#: Correlation identity the mapper stamps on every v2 surface publication
+#: (one per map revision); v2 subscribers can verify it without latest-TF.
+SURFACE_V2_REQUEST_TEMPLATE = "map-rev-%d"
+
+
 def _stamp_to_tf_time(stamp):
     return rclpy.time.Time(
         seconds=int(stamp.sec), nanoseconds=int(stamp.nanosec))
@@ -461,7 +473,7 @@ class CargoVolumeMapperNode(Node):
             try:
                 record = self._mapper.surface_contract_v2(
                     self._frame_scene_revision,
-                    "map-rev-%d" % int(self._mapper._revision))
+                    SURFACE_V2_REQUEST_TEMPLATE % int(self._mapper._revision))
                 self._surface_v2_pub.publish(
                     measured_surface_to_message(record, self._surface_context()))
             except BoundaryContractError as error:
@@ -474,7 +486,7 @@ class CargoVolumeMapperNode(Node):
     def _surface_context(self):
         return BoundaryContext(
             "F06", "cargo_volume_mapper_node", "surface_v2_subscribers",
-            "map-rev-%d" % int(self._mapper._revision),
+            SURFACE_V2_REQUEST_TEMPLATE % int(self._mapper._revision),
             self._frame_scene_revision, "container_link", "",
             "scene", geometry_hash=self._geometry_hash,
             map_revision=int(self._mapper._revision))
@@ -491,7 +503,13 @@ class CargoVolumeMapperNode(Node):
 
     def _ledger_guard(self, expected_map_revision, geometry_hash,
                       response=None):
-        """Reject stale revision / foreign hull before any map mutation."""
+        """Reject stale revision / absent or foreign hull before any mutation.
+
+        The v2 boundary is measured-commit-only: the hull identity is a
+        required, nonempty field — an absent ``geometry_hash`` is a missing
+        identity, not an unconstrained commit. (v1 callbacks do not pass
+        through this guard; their legacy semantics are unchanged.)
+        """
         stats = self._mapper.stats()
         if int(expected_map_revision) != int(stats["map_revision"]):
             if response is not None:
@@ -500,7 +518,12 @@ class CargoVolumeMapperNode(Node):
                     expected_map_revision, stats["map_revision"])
             return False
         incoming = str(geometry_hash or "")
-        if incoming and incoming != self._geometry_hash:
+        if not incoming:
+            if response is not None:
+                response.success = False
+                response.message = "geometry_hash required for v2 commits"
+            return False
+        if incoming != self._geometry_hash:
             if response is not None:
                 response.success = False
                 response.message = "geometry hash mismatch"
@@ -520,6 +543,15 @@ class CargoVolumeMapperNode(Node):
                 request.expected_map_revision, request.geometry_hash,
                 response):
             return response
+        measured_source = str(request.measured_source or "")
+        if measured_source not in V2_MEASURED_SOURCES:
+            # The v2 ledger records measured commits only: an unmeasured
+            # intent ("planned") must not become verified geometry.
+            response.success = False
+            response.message = (
+                "measured_source %r is not a declared measured provenance "
+                "(one of %s)" % (measured_source, list(V2_MEASURED_SOURCES)))
+            return response
         yaw = 2.0 * math.atan2(slot["quaternion_xyzw"][2],
                                 slot["quaternion_xyzw"][3])
         try:
@@ -529,8 +561,7 @@ class CargoVolumeMapperNode(Node):
                 slot["position"], yaw, list(request.size_wdh),
                 source_frame="container_link")
             added = self._mapper.mark_placed_box(
-                center, size, yaw=yaw_c,
-                measured_source=str(request.measured_source or ""))
+                center, size, yaw=yaw_c, measured_source=measured_source)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "mark failed: %s" % exc

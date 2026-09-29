@@ -491,6 +491,198 @@ class FrameMigrationPlacement(unittest.TestCase):
         foreign['geometry_hash'] = 'wrong-hull'
         self.assertNotEqual(foreign['geometry_hash'], 'sha256:test-hull')
 
+    # ------------------------------------------------------------------
+    # Review regressions (ST03-ST05 review): subscriber admission and the
+    # map-identity gate, at callback level on the real node methods.
+
+    def _planner_module(self):
+        import runpy
+        return runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'placement_planner_node.py'))
+
+    def _mapper_module(self):
+        import runpy
+        return runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(
+                __file__))), '..', 'luggage_perception', 'scripts',
+            'cargo_volume_mapper_node.py'))
+
+    def _planner_stub(self, module, mapper):
+        import types as types_module
+        errors = []
+        stub = types_module.SimpleNamespace(
+            _frame_scene_revision=SCENE,
+            _geometry_hash=mapper.geometry_hash,
+            _rejected_maps=0, _surface=None, _admitted_map_revision=None,
+            _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
+                         float(mapper.inner_h)),
+            _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
+            get_logger=lambda: types_module.SimpleNamespace(
+                error=errors.append))
+        planner = module['PlacementPlannerNode']
+        for name in ('_surface_context', '_surface_view_from_record',
+                     '_on_surface_v2'):
+            setattr(stub, name,
+                    types_module.MethodType(getattr(planner, name), stub))
+        return stub, errors
+
+    @staticmethod
+    def _wire_surface(mapper, revision, request_id):
+        from luggage_description.frame_diagnostics import BoundaryContext
+        from luggage_description.ros_frame_bindings.surfaces import (
+            surface_to_message,
+        )
+        record = mapper.surface_contract_v2(SCENE, request_id)
+        record['map_revision'] = int(revision)
+        context = BoundaryContext(
+            'F06', 'cargo_volume_mapper', 'placement_planner',
+            request_id, SCENE, 'container_link', '', 'scene',
+            geometry_hash=mapper.geometry_hash, map_revision=int(revision))
+        return surface_to_message(record, context)
+
+    def test_review_v2_surface_admission_policy(self):
+        # R1 regression, callback level: a real mapper-built v2 surface
+        # (exact publisher correlation scheme, real serialization) is
+        # admitted; duplicates, older revisions and forged correlations
+        # are rejected before the strict adapter.
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+
+        module = self._planner_module()
+        self.assertEqual(module['SURFACE_V2_REQUEST_TEMPLATE'],
+                         self._mapper_module()[
+                             'SURFACE_V2_REQUEST_TEMPLATE'])
+
+        def fresh_map(floor=.53):
+            mapper = CargoVolumeMapper(
+                (1.0, 0.6, 0.8), (0.0, 0.0, floor + 0.4), 0.0,
+                resolution=0.05)
+            mapper.mark_placed_box([0.0, 0.0, floor + 0.16],
+                                   [0.2, 0.2, 0.2],
+                                   measured_source='verify_placed_box')
+            return mapper
+
+        with case('review/surface-v2-admission/valid',
+                  {}) as observed:
+            mapper = fresh_map()
+            stub, errors = self._planner_stub(module, mapper)
+            revision = mapper._revision
+            message = self._wire_surface(
+                mapper, revision, 'map-rev-%d' % revision)
+            module['PlacementPlannerNode']._on_surface_v2(stub, message)
+            self.assertIsNotNone(stub._surface, errors)
+            self.assertEqual(stub._admitted_map_revision, revision)
+            self.assertEqual(stub._rejected_maps, 0)
+            observed.update(admitted_revision=revision)
+
+        policy = [
+            ('duplicate', lambda m, s: (m._revision,
+                                        'map-rev-%d' % m._revision)),
+            ('reordered-older',
+             lambda m, s: (s._admitted_map_revision - 1,
+                           'map-rev-%d' % (s._admitted_map_revision - 1))),
+        ]
+        for name, build in policy:
+            with self.subTest(name=name), \
+                    case('review/surface-v2-admission/' + name,
+                         {}) as observed:
+                mapper = fresh_map()
+                stub, errors = self._planner_stub(module, mapper)
+                accepted = self._wire_surface(
+                    mapper, mapper._revision, 'map-rev-%d' % mapper._revision)
+                module['PlacementPlannerNode']._on_surface_v2(stub, accepted)
+                self.assertEqual(stub._rejected_maps, 0)
+                revision, request = build(mapper, stub)
+                message = self._wire_surface(mapper, revision, request)
+                kept_surface, kept_revision = (stub._surface,
+                                               stub._admitted_map_revision)
+                module['PlacementPlannerNode']._on_surface_v2(stub, message)
+                self.assertEqual(stub._rejected_maps, 1, errors)
+                self.assertIs(stub._surface, kept_surface)
+                self.assertEqual(stub._admitted_map_revision,
+                                 kept_revision)
+                observed.update(rejected_revision=revision)
+
+        with case('review/surface-v2-admission/correlation',
+                  {}) as observed:
+            mapper = fresh_map()
+            stub, errors = self._planner_stub(module, mapper)
+            message = self._wire_surface(mapper, mapper._revision,
+                                         'map-rev-%d' % mapper._revision)
+            message.identity.request_id = 'not-the-scheme'
+            module['PlacementPlannerNode']._on_surface_v2(stub, message)
+            self.assertEqual(stub._rejected_maps, 1, errors)
+            self.assertIsNone(stub._surface)
+            observed.update(revision=mapper._revision)
+
+    def test_review_expected_map_revision_gate(self):
+        # R4 regression, callback level: a request planned against a
+        # different map revision is rejected before the solver with zero
+        # solver calls; a matching revision (including the revision-0
+        # floor prior) proceeds.
+        from luggage_msgs.srv import ComputePlacementV2
+
+        module = self._planner_module()
+        planner = module['PlacementPlannerNode']
+        handle = planner._handle_v2
+        globals_ = handle.__globals__
+        original_solver = globals_['solve_placement']
+        calls = []
+
+        def spy(*args, **kwargs):
+            calls.append(dict(args=args, kwargs=kwargs))
+            return {'success': False, 'reason_code': 'SPY_NOT_REACHED',
+                    'message': 'spy'}
+
+        import types as types_module
+
+        def make_stub(active_revision):
+            return types_module.SimpleNamespace(
+                _geometry_hash='hull', _v2_request_seq=0,
+                _placed_aabbs_v2=lambda *a: [],
+                _active_surface=lambda: {'map_revision': active_revision},
+                _allowed_yaws=[0.0], _params={},
+                _atlas_hook=lambda size: None)
+
+        def request(revision):
+            req = ComputePlacementV2.Request()
+            req.height_measured = True
+            req.box_wdh = [.8, .5, .32]
+            req.geometry_hash = 'hull'
+            req.expected_map_revision = revision
+            return req
+
+        scenarios = [
+            ('stale', 7, 999),
+            ('older', 7, 3),
+            ('missing-vs-map', 7, 0),
+            ('floor-prior-match', 0, 0),
+            ('floor-prior-stale', 0, 2),
+        ]
+        try:
+            for name, active, expected in scenarios:
+                with self.subTest(name=name), \
+                        case('review/map-revision-gate/' + name,
+                             {'active': active,
+                              'expected': expected}) as observed:
+                    globals_['solve_placement'] = spy
+                    calls.clear()
+                    response = handle(make_stub(active), request(expected),
+                                      ComputePlacementV2.Response())
+                    if expected != active:
+                        self.assertEqual(len(calls), 0)
+                        self.assertFalse(response.success)
+                        self.assertEqual(response.reason_code,
+                                         'STALE_MAP_REVISION')
+                        self.assertEqual(response.resulting_map_revision,
+                                         active)
+                    else:
+                        self.assertEqual(len(calls), 1)
+                    observed.update(solver_calls=len(calls),
+                                    reason=response.reason_code)
+        finally:
+            globals_['solve_placement'] = original_solver
+
 
 if __name__ == '__main__':
     unittest.main()

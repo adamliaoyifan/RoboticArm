@@ -1,20 +1,22 @@
 {
   "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_perception.py -v",
   "contract_version": 2,
-  "interface_contract_sha256": "0a0f76bfafb94dc2a03908c430a641efcd5596745191e2715af1ff82abd0cecc",
+  "interface_contract_sha256": "9bbe2b23f5afca1c09f6e3124c6f9f724bbdcaf2827e002a0f609725c30cf854",
   "interface_id": "F05",
   "kind": "runtime_boundary",
   "observations": [
     "64 matrix cases: explicit-frame opening records with nested aperture vertices agreeing with an independent analytic transform",
     "covariance rotation matches the analytic diagonal-anisotropic oracle; position-only translation defect detected",
-    "no new ROS topic by plan: the only ROS consumer is the ST07 sweep; ROS1 exploration node recorded as F24 legacy"
+    "no new ROS topic by plan: the only ROS consumer is the ST07 sweep; ROS1 exploration node recorded as F24 legacy",
+    "review repair R6: the opening quaternion is the full aperture basis (width axis + normal), not the normal-only shortest arc; non-square apertures keep their width direction, degenerate axes reject"
   ],
-  "sample_count": 66,
+  "sample_count": 95,
   "source_sha256": {
     "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
     "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
     "src/luggage_msgs/msg/ContainerOpeningEstimate.msg": "27064311685627567b93d9bae1d4de4089d7e631a2fdf448e23cbbdc357fc1fb",
-    "src/luggage_perception/luggage_perception/container_opening_estimator.py": "0b52e69294ca989aedea5f30b3497ed1f44e539f11d6d7d4a0686c1a0235d1df"
+    "src/luggage_perception/luggage_perception/container_opening_estimator.py": "0b52e69294ca989aedea5f30b3497ed1f44e539f11d6d7d4a0686c1a0235d1df",
+    "src/luggage_perception/luggage_perception/frame_boundary_records.py": "0e5075aa22b12960bd2ae2ba73104a460b2711d26aaff811d6afc375cfd2a1b2"
   },
   "status": "pass"
 }

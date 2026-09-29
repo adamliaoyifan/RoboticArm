@@ -176,6 +176,15 @@ class CargoVolumeMapper:
         self._source = [SOURCE_NONE] * total
         self._labels = [0] * total
         self._instance_ids = [0] * total
+        # Independent sensor evidence: the sensor's latest classification,
+        # label and instance per voxel. A geometry commit may overlay these
+        # cells (SOURCE_GEOMETRY); removal must restore the sensor's word,
+        # not erase it. Kept in parallel to _source so geometry and sensor
+        # evidence retract independently.
+        self._sensor_seen = [False] * total
+        self._sensor_state = [UNKNOWN] * total
+        self._sensor_labels = [0] * total
+        self._sensor_instance_ids = [0] * total
 
     def _build_active_mask(self):
         """Index the enclosing AABB; deactivate voxels outside the 7-face hull."""
@@ -319,19 +328,8 @@ class CargoVolumeMapper:
         vox = self._local_to_voxel(*local)
         if vox is None:
             return
-        idx = self._index(*vox)
-        if source == SOURCE_GEOMETRY:
-            self._grid[idx] = self._occupancy.force_occupied(
-                idx, lock_geometry=True
-            )
-        else:
-            self._grid[idx] = self._occupancy.apply_hit(idx)
-        if self._source[idx] == SOURCE_NONE:
-            self._source[idx] = source
-        # Sensor observations overwrite geometry-inferred labels.
-        if source == SOURCE_SENSOR or self._labels[idx] == 0:
-            self._labels[idx] = int(label)
-            self._instance_ids[idx] = int(instance_id)
+        self.mark_occupied_voxel(
+            *vox, source=source, label=label, instance_id=instance_id)
 
     def mark_occupied_voxel(self, ix, iy, iz, source=SOURCE_SENSOR,
                             label=0, instance_id=0):
@@ -346,11 +344,26 @@ class CargoVolumeMapper:
             )
         else:
             self._grid[idx] = self._occupancy.apply_hit(idx)
+            # Sensor evidence is recorded independently of the current
+            # source owner, so a later geometry commit + removal restores
+            # the sensor's word instead of erasing it.
+            self._sensor_seen[idx] = True
+            self._sensor_state[idx] = self._grid[idx]
+            self._sensor_labels[idx] = int(label)
+            self._sensor_instance_ids[idx] = int(instance_id)
         if self._source[idx] == SOURCE_NONE:
             self._source[idx] = source
+        # Sensor observations overwrite geometry-inferred labels.
         if source == SOURCE_SENSOR or self._labels[idx] == 0:
             self._labels[idx] = int(label)
             self._instance_ids[idx] = int(instance_id)
+
+    def _forget_sensor_evidence(self, idx):
+        """A miss superseded the sensor's own hit on this voxel."""
+        self._sensor_seen[idx] = False
+        self._sensor_state[idx] = UNKNOWN
+        self._sensor_labels[idx] = 0
+        self._sensor_instance_ids[idx] = 0
 
     def mark_free_world(self, x, y, z):
         local = self._world_to_local(x, y, z)
@@ -363,6 +376,7 @@ class CargoVolumeMapper:
             self._source[idx] = SOURCE_NONE
             self._labels[idx] = 0
             self._instance_ids[idx] = 0
+            self._forget_sensor_evidence(idx)
 
     def _raycast_indices(self, origin, hit):
         ox, oy, oz = origin
@@ -431,6 +445,7 @@ class CargoVolumeMapper:
                 self._source[idx] = SOURCE_NONE
                 self._labels[idx] = 0
                 self._instance_ids[idx] = 0
+                self._forget_sensor_evidence(idx)
         for x, y, z, lbl, iid in hit_records.values():
             self.mark_occupied_world(
                 x, y, z, label=lbl, instance_id=iid
@@ -577,12 +592,32 @@ class CargoVolumeMapper:
         return True
 
     def _retract_geometry_voxels(self):
-        """Clear SOURCE_GEOMETRY voxels only; sensor state is untouched."""
+        """Retract geometry evidence only; sensor evidence is restored.
+
+        A committed box overlays its voxels with SOURCE_GEOMETRY. Removing
+        it clears those voxels to unknown — unless the sensor had its own
+        word on the same voxel (hit before or after the commit): the
+        sensor's recorded classification, label and instance are restored,
+        so removal never erases an independent observation.
+        """
         total = self.nx * self.ny * self.nz
         for idx in range(total):
             if self._source[idx] != SOURCE_GEOMETRY:
                 continue
             self._occupancy.clear(idx)
+            if self._sensor_seen[idx]:
+                if self._sensor_state[idx] == OCCUPIED:
+                    self._grid[idx] = self._occupancy.force_occupied(
+                        idx, lock_geometry=False)
+                elif self._sensor_state[idx] == FREE:
+                    self._grid[idx] = self._occupancy.apply_miss(idx)
+                else:
+                    self._grid[idx] = self._occupancy.state_at(idx)
+                self._source[idx] = SOURCE_SENSOR
+                self._labels[idx] = self._sensor_labels[idx]
+                if self._instance_ids:
+                    self._instance_ids[idx] = self._sensor_instance_ids[idx]
+                continue
             self._grid[idx] = UNKNOWN
             self._source[idx] = SOURCE_NONE
             self._labels[idx] = 0

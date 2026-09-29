@@ -116,6 +116,15 @@ class RosPickSessionPorts:
     def now(self):
         return time.monotonic()
 
+    def scene_revision(self):
+        """Configured scene revision (F10 stale-calibration identity).
+
+        Empty when the deployment did not declare one — the session then
+        reports the wiring gap instead of silently passing.
+        """
+        return str(getattr(self._driver._args, "frame_scene_revision",
+                           "") or "")
+
     def sleep(self, dt):
         time.sleep(max(0.0, dt))
 
@@ -484,6 +493,8 @@ class HardwarePickDriver(Node):
             use_scene=(not self._args.no_scene),
             use_vacuum=bool(self._args.use_vacuum),
             planning_frame="world",
+            scene_revision=str(getattr(self._args, "frame_scene_revision",
+                                       "") or ""),
             contact_model_version=model.model_version,
             contact_model_hash=model.identity_hash,
             dry_run=bool(self._args.dry_run),
@@ -678,6 +689,10 @@ def main(argv=None):
     parser.add_argument(
         "--trace-out", default="",
         help="Write the session JSONL trace to this path (evidence).")
+    parser.add_argument(
+        "--frame-scene-revision", default="",
+        help="Scene revision the pick session runs under (F04/F10 "
+             "admission; empty disables v2 boundary checks).")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
 
