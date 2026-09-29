@@ -77,6 +77,16 @@ from luggage_description.container_geometry import (
     descriptor_from_scene_config,
     y_max_at_z,
 )
+from luggage_description.frame_contracts import ContractError
+from luggage_description.frame_diagnostics import BoundaryContext
+from luggage_description.ros_frame_bindings.poses import (
+    pose_from_message, pose_to_message,
+)
+from luggage_description.ros_frame_bindings.surfaces import (
+    surface_from_message,
+)
+from luggage_msgs.msg import SurfaceContractV2
+from luggage_msgs.srv import ComputePlacementV2
 
 
 def yaw_from_quaternion(q):
@@ -223,6 +233,19 @@ class PlacementPlannerNode(Node):
         self._last_pub = self.create_publisher(
             String, "/placement_planner/last_result", map_qos)
 
+        # ST05: v2 surface ingest and ComputePlacementV2 are enabled only by
+        # an explicit scene revision; unset leaves v1 behavior untouched.
+        self.declare_parameter("frame_scene_revision", "")
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        if self._frame_scene_revision:
+            self.create_subscription(
+                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+                self._on_surface_v2, map_qos, callback_group=group)
+            self.create_service(
+                ComputePlacementV2, "/placement_planner/compute_placement_v2",
+                self._handle_v2, callback_group=group)
+
         self.create_service(
             ComputePlacement, "/placement_planner/compute_placement",
             self._handle, callback_group=group)
@@ -354,6 +377,213 @@ class PlacementPlannerNode(Node):
     def _active_surface(self):
         return self._surface or self._floor_prior_surface()
 
+    # ------------------------------------------------------------------
+    # ST05 v2 surface ingest + ComputePlacementV2 (F07/F08 producer)
+
+    def _surface_context(self, request_id="surface-v2"):
+        return BoundaryContext(
+            "F06", "cargo_volume_mapper", "placement_planner",
+            request_id, self._frame_scene_revision, "container_link", "",
+            "scene", geometry_hash=self._geometry_hash, map_revision=None)
+
+    def _on_surface_v2(self, msg):
+        """Ingest the v2 surface record beside the v1 JSON topic.
+
+        Same fail-closed geometry-hash gate as the v1 path; the record is
+        normalized to the solver's internal floor-relative view with the
+        planner's scene-derived inner dimensions (consumer-supplied
+        geometry identity).
+        """
+        try:
+            record = surface_from_message(msg, self._surface_context())
+        except ContractError as error:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map (%s %s, rejected=%d)"
+                % (error.code, error.field, self._rejected_maps))
+            return
+        if str(record.get("geometry_hash") or "") != self._geometry_hash:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: geometry_hash %s != planner %s"
+                % (record.get("geometry_hash"), self._geometry_hash))
+            return
+        self._surface = self._surface_view_from_record(record)
+
+    def _surface_view_from_record(self, record):
+        """Normalize one v2 surface record into the solver's internal view.
+
+        The solver's internal representation stays floor-relative (support
+        quantities are derived locally); the v2 container-origin datum is
+        converted once, here, with the planner's declared inner size.
+        """
+        inner_l, inner_w, inner_h = self._inner_size
+        floor = float(record["floor_z_container"])
+        resolution = float(record["resolution_m"])
+        heights, states, confidence = [], [], []
+        inverse = {"sensor": "sensor", "verified_geometry": "geometry"}
+        for row_z, row_s, row_c in zip(record["surface_z_container"],
+                                       record["state"],
+                                       record["confidence"]):
+            h_row, s_row, c_row = [], [], []
+            for top, state, source in zip(row_z, row_s, row_c):
+                if top is None:
+                    h_row.append(0.0)
+                    s_row.append("unknown")
+                    c_row.append("none")
+                else:
+                    h_row.append(float(top) - floor)
+                    s_row.append(str(state))
+                    c_row.append(inverse.get(str(source), "sensor"))
+            heights.append(h_row)
+            states.append(s_row)
+            confidence.append(c_row)
+        return {
+            "geometry_hash": str(record["geometry_hash"]),
+            "geometry_descriptor": dict(self._hull.descriptor()),
+            "resolution": resolution,
+            "nx": len(heights), "ny": len(heights[0]) if heights else 0,
+            "inner_size": [inner_l, inner_w, inner_h],
+            "floor_z": 0.0,
+            "center_base": [0.0, 0.0, floor + 0.5 * inner_h],
+            "yaw": 0.0,
+            "height": heights,
+            "state": states,
+            "confidence": confidence,
+        }
+
+    def _slot_record(self, candidate, request_id):
+        """Slot-profile record (container box center) for one candidate."""
+        center = candidate["center_container"]
+        yaw = float(candidate["box_yaw"])
+        return {
+            "contract_version": 2,
+            "frame_id": "container_link",
+            "length_unit": "m",
+            "stamp_ns": 0,
+            "time_basis": "scene",
+            "scene_revision": self._frame_scene_revision,
+            "request_id": str(request_id),
+            "kind": "pose",
+            "reference": "box_center",
+            "orientation_semantics": "box_axis_pi",
+            "position": [float(center[0]), float(center[1]),
+                         float(center[2])],
+            "quaternion_xyzw": [0.0, 0.0,
+                                math.sin(yaw * 0.5), math.cos(yaw * 0.5)],
+        }
+
+    def _slot_message(self, candidate, request_id):
+        record = self._slot_record(candidate, request_id)
+        context = BoundaryContext(
+            "F07", "placement_planner", "v2_client", str(request_id),
+            self._frame_scene_revision, "container_link", "box_center",
+            "scene", geometry_hash=self._geometry_hash, map_revision=None)
+        return pose_to_message(record, "slot", context), record
+
+    def _placed_aabbs_v2(self, placed_messages, sizes_flat):
+        """Floor-relative AABBs from v2 placed slot records."""
+        aabbs = []
+        inner_h = self._inner_size[2]
+        sizes = [sizes_flat[i:i + 3] for i in range(0, len(sizes_flat), 3)]
+        for index, message in enumerate(placed_messages or []):
+            context = BoundaryContext(
+                "F07", "v2_client", "placement_planner",
+                str(message.identity.request_id or "placed-%d" % index),
+                self._frame_scene_revision, "container_link", "box_center",
+                "scene", geometry_hash=self._geometry_hash,
+                map_revision=None)
+            try:
+                record = pose_from_message(message, "slot", context)
+            except ContractError as error:
+                raise ValueError("placed[%d] rejected (%s %s)"
+                                 % (index, error.code, error.field))
+            w, d, h = (float(v) for v in sizes[index]) if index < len(sizes) \
+                else (0.0, 0.0, 0.0)
+            if w <= 0.0 or d <= 0.0 or h <= 0.0:
+                raise ValueError("placed[%d] needs positive wdh" % index)
+            yaw = 2.0 * math.atan2(record["quaternion_xyzw"][2],
+                                    record["quaternion_xyzw"][3])
+            rotated = abs(abs(yaw) - math.pi / 2.0) < math.radians(10.0)
+            footprint_l = d if rotated else w
+            footprint_w = w if rotated else d
+            z_rel = float(record["position"][2]) - self._floor_z
+            x, y = float(record["position"][0]), float(record["position"][1])
+            aabbs.append((
+                x - footprint_l * 0.5, y - footprint_w * 0.5,
+                max(0.0, z_rel - h * 0.5),
+                x + footprint_l * 0.5, y + footprint_w * 0.5,
+                min(inner_h, z_rel + h * 0.5),
+            ))
+        return aabbs
+
+    def _handle_v2(self, request, response):
+        """ComputePlacementV2: container box-center slot semantics."""
+        response.geometry_hash = self._geometry_hash
+        self._v2_request_seq = getattr(self, "_v2_request_seq", 0) + 1
+        request_id = "place-v2-%d" % self._v2_request_seq
+        if not bool(request.height_measured):
+            response.success = False
+            response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
+            response.message = ("DETECT_FULL_GEOMETRY_REQUIRED: V2 needs "
+                                "declared measured geometry")
+            return response
+        requested_hash = str(request.geometry_hash or "")
+        if requested_hash and requested_hash != self._geometry_hash:
+            response.success = False
+            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
+            response.message = ("%s: request pinned %s, planner hull is %s"
+                                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+                                   requested_hash, self._geometry_hash))
+            return response
+        size = [max(0.0, float(v)) for v in request.box_wdh]
+        if any(v <= 0.0 for v in size):
+            response.success = False
+            response.reason_code = "INVALID_BOX_SIZE"
+            response.message = "box_wdh must be positive"
+            return response
+        try:
+            placed_aabbs = self._placed_aabbs_v2(
+                list(request.placed), list(request.placed_wdh_flat))
+        except ValueError as error:
+            response.success = False
+            response.reason_code = "PLACED_SLOT_REJECTED"
+            response.message = str(error)
+            return response
+        surface = self._active_surface()
+        result = solve_placement(
+            surface, size,
+            allowed_yaws=self._allowed_yaws,
+            params=self._params,
+            candidate_validator=lambda candidate: self._constraint_verdict(
+                candidate, placed_aabbs, size),
+            atlas_annotate=self._atlas_hook(size))
+        response.resulting_map_revision = int(
+            surface.get("map_revision") or 0)
+        if not result["success"]:
+            response.success = False
+            response.reason_code = result["reason_code"]
+            response.message = result["message"]
+            return response
+        best = result["selected"]
+        slot_message, _record = self._slot_message(best, request_id)
+        response.slot = slot_message
+        response.success = True
+        response.reason_code = ""
+        response.message = result["message"]
+        want = int(request.max_candidates or 0)
+        if want <= 0:
+            want = int(self.get_parameter("max_candidates").value)
+        response.candidates = []
+        response.candidate_scores = []
+        response.candidate_reasons = []
+        for candidate in ranked_feasible_candidates(result, want):
+            message, _record = self._slot_message(candidate, request_id)
+            response.candidates.append(message)
+            response.candidate_scores.append(float(candidate.get("score", 0.0)))
+            response.candidate_reasons.append(str(candidate.get("reason", "")))
+        return response
+
     def _atlas_for(self, size):
         """Cached (atlas, diagnostics) for one requested box size."""
         if not self._atlas_cfg.get("enabled"):
@@ -459,6 +689,7 @@ class PlacementPlannerNode(Node):
             inner_size=self._inner_size,
             smallest_size=smallest_size,
             hull=hull,
+            floor_z=self._floor_z,
         )
 
     def _publish_last(self, payload):

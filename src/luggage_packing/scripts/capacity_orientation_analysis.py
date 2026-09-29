@@ -303,6 +303,7 @@ def make_validator(ctx, placed_aabbs, smallest_size):
             inner_size=ctx.inner_size,
             smallest_size=smallest_size,
             hull=hull,
+            floor_z=ctx.floor_z,
         )
 
     return validator

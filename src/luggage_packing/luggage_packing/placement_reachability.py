@@ -164,13 +164,16 @@ def annotate_with_atlas(candidates, atlas, floor_z):
 def solver_contact_point(candidate, floor_z, inner_h):
     """Container_link contact point for a placement_solver candidate.
 
-    Solver candidates do not carry ``peak`` (that key belongs to the
-    packing_replay rows ``atlas_contact_point`` was written for); recover it
-    from the AABB convention of placement_solver.candidate_aabb:
-    peak = center_local.z + inner_h/2 - box_h/2.
+    ST05: solver candidates carry ``center_container`` (box center above
+    the container floor), so the contact z is center + h/2 with no
+    volume-center inversion. The legacy ``center_local`` path stays for
+    pre-ST05 replay rows.
     """
-    local = candidate["center_local"]
     box_height = float(candidate["size"][2])
+    center = candidate.get("center_container")
+    if center is not None:
+        return float(center[0]), float(center[1]), float(center[2]) + box_height / 2.0
+    local = candidate["center_local"]
     peak = float(local[2]) + float(inner_h) / 2.0 - box_height / 2.0
     return float(local[0]), float(local[1]), float(floor_z) + peak + box_height
 

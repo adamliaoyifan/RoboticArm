@@ -1,0 +1,22 @@
+# F07/F08 v2: placement with explicit container box-center semantics.
+# placed[] are slot-profile records (container_link box centers, box_axis_pi
+# yaw); the response slot/candidates use the same meaning. placed sizes ride
+# the parallel flat array (3 per placed box, WDH). height_measured carries
+# the E0/E4 measured-geometry gate the v1 DetectedLuggage box expressed.
+float64[3] box_wdh
+bool height_measured
+luggage_msgs/PoseContractV2[] placed
+float64[] placed_wdh_flat
+string geometry_hash
+uint64 expected_map_revision
+uint32 max_candidates
+---
+bool success
+string message
+string reason_code
+string geometry_hash
+luggage_msgs/PoseContractV2 slot
+luggage_msgs/PoseContractV2[] candidates
+float64[] candidate_scores
+string[] candidate_reasons
+uint64 resulting_map_revision

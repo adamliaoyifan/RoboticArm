@@ -18,6 +18,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ValidatePoseV2.srv"
   "srv/AddPlacedBoxV2.srv"
   "srv/RemovePlacedBoxV2.srv"
+  "srv/ComputePlacementV2.srv"
   "msg/DetectedLuggage.msg"
   "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"

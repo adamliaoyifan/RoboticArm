@@ -21,13 +21,16 @@ PARAMS = {"top_n": 100, "keep_rejected": 100}
 
 
 def surface(height=0.0, inner_h=0.5, nx=6, ny=4, resolution=0.1):
+    # ST05: the volume center sits above the container floor the hook
+    # declares (0.53), keeping the fixture datum-consistent with
+    # make_atlas_annotate(floor_z=0.53).
     return {
         "map_revision": 1,
         "resolution": resolution,
         "nx": nx, "ny": ny,
         "inner_size": [nx * resolution, ny * resolution, inner_h],
         "floor_z": 0.0,
-        "center_base": [0.0, 0.0, inner_h * 0.5],
+        "center_base": [0.0, 0.0, 0.53 + inner_h * 0.5],
         "yaw": 0.0,
         "height": [[height] * ny for _ in range(nx)],
         "state": [["free"] * ny for _ in range(nx)],

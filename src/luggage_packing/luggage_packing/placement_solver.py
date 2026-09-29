@@ -20,6 +20,8 @@ from __future__ import division
 
 import math
 
+from luggage_packing.placement_legacy_v1 import v1_candidate_view
+
 
 REASON_OVERLAP = "overlap"
 REASON_OUTSIDE_APERTURE = "outside_aperture"
@@ -61,18 +63,34 @@ PLACEMENT_REASON_CODES = frozenset((
     CODE_DETECT_FULL_GEOMETRY_REQUIRED, CODE_ATLAS_IDENTITY_UNVERIFIED))
 
 
-def candidate_aabb(candidate, inner_h):
-    """Return a candidate AABB in floor-relative container coordinates."""
-    local = candidate.get("center_local") or [0.0, 0.0, 0.0]
+def candidate_aabb(candidate, inner_h, floor_z=0.0):
+    """Candidate AABB in floor-relative container coordinates (ST05).
+
+    Derived from the container box center: ``z_rel = center_container.z -
+    floor_z`` (z=0 at the container floor). ``floor_z`` is the floor's
+    elevation in the same container frame as ``center_container`` — the
+    internal constraint chain (hull/overlap/corridor) stays floor-relative
+    by design; support-relative quantities are derived locally, never
+    re-embedded. The legacy ``center_local`` path (volume-centered,
+    pre-ST05 replay rows) is honored when a candidate carries no
+    container center.
+    """
+    center = candidate.get("center_container")
+    if center is not None:
+        cx, cy = float(center[0]), float(center[1])
+        cz = float(center[2]) - float(floor_z)
+    else:
+        local = candidate.get("center_local") or [0.0, 0.0, 0.0]
+        cx, cy = float(local[0]), float(local[1])
+        cz = float(local[2]) + float(inner_h) * 0.5
     footprint = candidate.get("footprint") or candidate["size"][:2]
     height = float(candidate["size"][2])
-    center_z = float(local[2]) + float(inner_h) * 0.5
     half_l = float(footprint[0]) * 0.5
     half_w = float(footprint[1]) * 0.5
     half_h = height * 0.5
     return (
-        float(local[0]) - half_l, float(local[1]) - half_w, center_z - half_h,
-        float(local[0]) + half_l, float(local[1]) + half_w, center_z + half_h,
+        cx - half_l, cy - half_w, cz - half_h,
+        cx + half_l, cy + half_w, cz + half_h,
     )
 
 
@@ -87,7 +105,8 @@ def aabb_overlap(a, b, tolerance=1e-9):
 
 def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None,
+        floor_z=0.0):
     """Return ``(reason, capacity_ok)`` for one candidate.
 
     ``reason`` is ``None`` when every gate passes, otherwise the first reject
@@ -100,7 +119,7 @@ def placement_constraint_verdict(
     injected geometry-kernel callback makes this function ROS-free without
     duplicating the authoritative seven-face hull implementation.
     """
-    box = candidate_aabb(candidate, inner_h)
+    box = candidate_aabb(candidate, inner_h, floor_z=floor_z)
     outside_aperture = (
         aperture_y is not None
         and (box[1] < float(aperture_y[0]) - 1e-6
@@ -139,12 +158,13 @@ def placement_constraint_verdict(
 
 def placement_constraint_reason(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None,
+        floor_z=0.0):
     """Return the first hard-constraint reject reason, or ``None``."""
     reason, _capacity_ok = placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=placed_aabbs, aperture_y=aperture_y,
         hull_contains=hull_contains, inner_size=inner_size,
-        smallest_size=smallest_size, hull=hull)
+        smallest_size=smallest_size, hull=hull, floor_z=floor_z)
     return reason
 
 
@@ -221,13 +241,6 @@ def _support_ratio(cell_heights, peak, tol):
     return float(contact) / float(len(cell_heights))
 
 
-def _local_to_base(center_base, yaw, lx, ly, lz):
-    bx = center_base[0] + math.cos(yaw) * lx - math.sin(yaw) * ly
-    by = center_base[1] + math.sin(yaw) * lx + math.cos(yaw) * ly
-    bz = center_base[2] + lz
-    return [bx, by, bz]
-
-
 def _validator_verdict(candidate_validator, candidate):
     """Normalize a validator result to ``(reason, capacity_ok)``.
 
@@ -299,8 +312,10 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
                 lx = -half_l + (ix0 + cells_x * 0.5) * resolution
                 ly = -half_w + (iy0 + cells_y * 0.5) * resolution
-                lz = -half_h + peak + box_h * 0.5
-                center_base_xyz = _local_to_base(center_base, map_yaw, lx, ly, lz)
+                # ST05 F07: the slot truth is the container box center with
+                # z = floor + support + h/2; the historical volume-centered
+                # fields are derived by the single legacy decoder below.
+                floor_container_z = center_base[2] - half_h
 
                 feasible = True
                 reason = "ok"
@@ -341,9 +356,8 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                 )
 
                 candidate = {
-                    "center_base": center_base_xyz,
-                    "center_local": [lx, ly, lz],
-                    "yaw": map_yaw + box_yaw,
+                    "center_container": [lx, ly,
+                                         floor_container_z + peak + box_h * 0.5],
                     "box_yaw": box_yaw,
                     "footprint": [footprint_l, footprint_w],
                     "size": [box_l, box_w, box_h],
@@ -359,6 +373,7 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                     "reason": reason,
                     "capacity_feasible": clearance_ok,
                 }
+                v1_candidate_view(candidate, surface_map)
                 if clearance_ok:
                     # Run the geometry gates even when an observation gate
                     # already rejected the slot: capacity_feasible must not
