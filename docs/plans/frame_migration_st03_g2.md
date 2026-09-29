@@ -15,12 +15,14 @@ endpoints enabled in this stage:
 
 - `/luggage/detection/luggage_v2` : `luggage_msgs/PoseContractV2` (profile
   `detection`), published by `luggage_detector_node` alongside the unchanged
-  v1 `DetectedLuggage` topic. Record carries world box center, body-axes
-  dimensions through the existing adapter payload fields, `orientation_semantics=
-  box_axis_pi`, `time_basis=acquisition`, the true cloud stamp, scene revision
-  and request id from the detection request. When PCA yaw is invalid
-  (near-square footprint), the record uses the declared `yaw_fallback` provenance
-  already produced by the estimator; no measured orientation is invented.
+  v1 `DetectedLuggage` topic. `PoseContractV2` carries identity, reference,
+  orientation semantics and pose only; body-axes dimensions continue to travel
+  on the v1 message, byte-stable. The v2 record carries world box center,
+  `orientation_semantics=box_axis_pi`, `time_basis=acquisition`, the true cloud
+  stamp, scene revision and request id from the detection request. When PCA yaw
+  is invalid (near-square footprint), the record uses the declared `yaw_fallback`
+  provenance already produced by the estimator; no measured orientation is
+  invented.
 - `/luggage/suction/candidates_v2` : `luggage_msgs/PoseContractV2` (profile
   `contact`), one message per selected candidate, world surface-contact point,
   `orientation_semantics=surface_normal` (+Z outward normal), observation
