@@ -9,6 +9,8 @@ from luggage_description.frame_contracts import (
     finite_number,
     require_equal,
     validate_pose,
+    vector,
+    unit_quaternion,
 )
 from luggage_description.frame_diagnostics import at_boundary, validate_context
 from luggage_description.frame_transforms import box_to_tool_target
@@ -48,7 +50,7 @@ def _size(box):
     return [width, depth, height]
 
 
-def _agree_pose(box_pose, measured):
+def require_measured_pose_agreement(box_pose, measured):
     require_equal(box_pose, "frame_id", measured.get("header_frame", "world"),
                   "FRAME_CONTRACT_MISMATCH")
     if int(box_pose["stamp_ns"]) != int(measured["stamp_ns"]):
@@ -78,7 +80,7 @@ def _freeze(tool_pose, box_pose, measured, grasp, generation, expected_generatio
     if int(generation) != int(expected_generation):
         raise ContractError(
             "GRASP_BINDING_MISMATCH", "generation", expected_generation, generation)
-    _agree_pose(box_pose, measured)
+    require_measured_pose_agreement(box_pose, measured)
     size = _size(measured)
     def _unit(quaternion):
         norm = math.sqrt(sum(float(v) * float(v) for v in quaternion))
@@ -146,3 +148,34 @@ def compose_box_world(attachment, tool_position, tool_quaternion):
 
 def planning_pose_unchanged(before, after):
     return before == after
+
+
+def admit_release(attachment, final_tool, *, request_id, scene_revision,
+                  box_id, generation, expected_generation):
+    """Validate all measured release evidence before invoking a detach backend."""
+    if not isinstance(request_id, str) or not request_id.strip():
+        raise ContractError("MISSING_IDENTITY", "request_id", "nonempty", request_id)
+    if not scene_revision or not box_id:
+        raise ContractError("MISSING_IDENTITY", "release", "scene and box identity", box_id)
+    if not attachment or not final_tool:
+        raise ContractError("MISSING_IDENTITY", "release", "attachment and measured tool pose", None)
+    for field, expected in (("scene_revision", scene_revision), ("box_id", box_id),
+                            ("generation", int(generation))):
+        require_equal(attachment, field, expected, "GRASP_BINDING_MISMATCH")
+    if int(generation) != int(expected_generation):
+        raise ContractError("GRASP_BINDING_MISMATCH", "generation", expected_generation, generation)
+    validate_pose(final_tool, "motion", scene_revision)
+    require_equal(final_tool, "request_id", request_id, "REQUEST_IDENTITY_MISMATCH")
+    require_equal(final_tool, "time_basis", "acquisition", "INVALID_STAMP")
+    vector(attachment.get("t_tool_box_translation"), 3, "t_tool_box_translation")
+    unit_quaternion(attachment.get("t_tool_box_quaternion"), "t_tool_box_quaternion")
+    if type(attachment.get("tool_stamp_ns")) is not int or attachment["tool_stamp_ns"] < 0:
+        raise ContractError("INVALID_STAMP", "tool_stamp_ns", "attachment acquisition stamp", attachment.get("tool_stamp_ns"))
+    if final_tool["stamp_ns"] < attachment["tool_stamp_ns"]:
+        raise ContractError("INVALID_STAMP", "stamp_ns", "at or after attachment", final_tool["stamp_ns"])
+    position, quaternion = compose_box_world(
+        attachment, final_tool["position"], final_tool["quaternion_xyzw"])
+    return dict(accepted=True, code="OK", request_id=request_id,
+                scene_revision=scene_revision, box_id=box_id, generation=int(generation),
+                stamp_ns=final_tool["stamp_ns"], box_position=position,
+                box_quaternion_xyzw=quaternion)

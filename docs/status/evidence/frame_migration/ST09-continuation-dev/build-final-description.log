@@ -1,0 +1,148 @@
+Starting >>> luggage_description
+--- output: luggage_description
+Built target ament_cmake_python_copy_luggage_description_setup
+Built target ament_cmake_python_copy_luggage_description
+running egg_info
+writing luggage_description.egg-info/PKG-INFO
+writing dependency_links to luggage_description.egg-info/dependency_links.txt
+writing top-level names to luggage_description.egg-info/top_level.txt
+reading manifest file 'luggage_description.egg-info/SOURCES.txt'
+writing manifest file 'luggage_description.egg-info/SOURCES.txt'
+Built target ament_cmake_python_build_luggage_description_egg
+-- Install configuration: ""
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/pythonpath.sh
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/pythonpath.dsv
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description-0.0.1-py3.10.egg-info
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description-0.0.1-py3.10.egg-info/SOURCES.txt
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description-0.0.1-py3.10.egg-info/PKG-INFO
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description-0.0.1-py3.10.egg-info/top_level.txt
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description-0.0.1-py3.10.egg-info/dependency_links.txt
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/log_level_utils.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/xacro_robot_with_scene_base.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/box_catalog_utils.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/__init__.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/runtime_profile.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/frame_diagnostics.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/zero_joint_state_publisher.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/suitcase_visual.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_assets.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/runtime_readiness.py
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/runtime_manifest.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/runtime.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/__init__.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/diagnostics.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/surfaces.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/poses.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/joints.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/identity.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/_share.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/livox_d555_align.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/launch_profile.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/joint_angle_utils.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/frame_contracts.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/step_features.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/__init__.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/board.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/geometry.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/register.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/pipeline.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1/mount_features.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/frame_sequence_contracts.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_mesh_utils.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/container_geometry.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/suction_contact_model.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/frame_dump.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/exploration_config_utils.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/frame_transforms.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_config_utils.py
+Listing '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description'...
+Listing '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/he1'...
+Listing '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings'...
+Compiling '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/ros_frame_bindings/runtime.py'...
+Compiling '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/runtime_manifest.py'...
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/scene_tf_deploy.yaml
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/suction_flange_origin.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/vacuum_hardware.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/robot_self_filter.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/box_catalog.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/scene_tf.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/suction_flange.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/handeye_cc600_20260911_21-38.json
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/MID360s_config.json.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/S30_with_camera.srdf
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/scene_tf.yaml
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/eef_mount_adapter_origin.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/robot_poses.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/robot_poses.site.yaml
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/vacuum_gripper.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/S20_with_camera.srdf
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/suitcase.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/realsense_d435_mount.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/eef_mount_adapter.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/mid360_origin.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/exploration.yaml.example
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/realsense_d435.yaml
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/camera_mount_origin.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/config/suction_contact_model.yaml
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/elfin_s30_with_camera.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/elfin_s30_with_camera_tune.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/elfin_s20_with_camera_tune.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/eef_sensor_mount.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/suction_flange_tune_chain.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/realsense_d435.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/camera_mount_tune_chain.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/suction_panel_mount.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/vacuum_gripper.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/elfin_s20_with_camera.urdf.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/urdf/adapter_mount_tune_chain.xacro
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/launch
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/launch/scene_hardware.launch.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/launch/scene.launch.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/launch/scene_tf.launch.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/launch/mid360.launch.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/arm_realsense
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/arm_realsense/arm_realsense_v1.3.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel/p05.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel/p03.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel/p04.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel/p01.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/suction_panel/p02.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/airport_container_real
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/airport_container_real/container_visual.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/airport_container_real/container_collision.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/meshes/airport_container_real/container_collision_physics.stl
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/container_tf_publisher
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/scene_assets_node
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/xacro_robot_with_scene_base
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/zero_joint_state_publisher
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/generate_sized_suitcases.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/he1_d555_cad_seed.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/write_handeye_layer3.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/lib/luggage_description/align_livox_to_d555.py
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/ament_index/resource_index/package_run_dependencies/luggage_description
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/ament_index/resource_index/parent_prefix_path/luggage_description
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/ament_prefix_path.sh
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/ament_prefix_path.dsv
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/path.sh
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/environment/path.dsv
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/local_setup.bash
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/local_setup.sh
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/local_setup.zsh
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/local_setup.dsv
+-- Installing: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/package.dsv
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/ament_index/resource_index/packages/luggage_description
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/cmake/luggage_descriptionConfig.cmake
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/cmake/luggage_descriptionConfig-version.cmake
+-- Up-to-date: /tmp/elfin-st09-g3/install/continuation-full/luggage_description/share/luggage_description/package.xml
+---
+Finished <<< luggage_description [0.20s]
+
+Summary: 1 package finished [0.27s]

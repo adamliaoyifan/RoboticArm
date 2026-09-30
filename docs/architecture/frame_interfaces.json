@@ -13,7 +13,9 @@
       "target": "shared full pose transforms; scene identity; explicit horizontal-container gate",
       "sources": [
         "src/luggage_description/luggage_description/scene_tf_config_utils.py",
-        "src/luggage_description/scripts/container_tf_publisher"
+        "src/luggage_description/scripts/container_tf_publisher",
+        "src/luggage_description/luggage_description/scene_tf_publisher.py",
+        "src/luggage_planning/luggage_planning/scene_box_v2.py"
       ],
       "checks": [
         "translate_rotate90",
@@ -187,7 +189,7 @@
         "translate_rotate180"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F08.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F08.json"
     },
     {
       "id": "F09",
@@ -245,7 +247,8 @@
         "src/luggage_planning/luggage_planning/waypoint_generator.py",
         "src/luggage_planning/scripts/waypoint_generator_node.py",
         "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
-        "src/luggage_planning/luggage_planning/place_tcp.py"
+        "src/luggage_planning/luggage_planning/place_tcp.py",
+        "src/luggage_planning/luggage_planning/place_service.py"
       ],
       "checks": [
         "offcenter_grasp",
@@ -254,7 +257,7 @@
         "normal_not_translated"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F11.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F11.json"
     },
     {
       "id": "F12",
@@ -307,7 +310,7 @@
         "tool_pi_distinct"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F13.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F13.json"
     },
     {
       "id": "F14",
@@ -379,7 +382,7 @@
         "zero_quaternion"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST08-20260930/runtime_F15.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F15.json"
     },
     {
       "id": "F16",
@@ -452,7 +455,7 @@
         "tool_sign_equivalent"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST08-20260930/runtime_F18.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F18.json"
     },
     {
       "id": "F19",
@@ -509,7 +512,15 @@
       "sources": [
         "src/luggage_planning/launch/hardware_pick.launch.py",
         "src/luggage_gazebo/launch/sim_world.launch.py",
-        "src/luggage_planning/scripts/hardware_pick_driver.py"
+        "src/luggage_planning/scripts/hardware_pick_driver.py",
+        "src/luggage_description/luggage_description/runtime_manifest.py",
+        "src/luggage_description/luggage_description/runtime_profile.py",
+        "src/luggage_description/luggage_description/runtime_readiness.py",
+        "src/luggage_description/luggage_description/ros_frame_bindings/runtime.py",
+        "src/luggage_msgs/msg/RuntimeIdentityV2.msg",
+        "src/luggage_msgs/msg/RuntimeEndpointV2.msg",
+        "src/luggage_msgs/msg/RuntimeArtifactV2.msg",
+        "src/luggage_msgs/msg/RuntimePackageV2.msg"
       ],
       "checks": [
         "old_version",
@@ -555,7 +566,9 @@
       "sources": [
         "src/luggage_gazebo/luggage_gazebo/place_gt_dump.py",
         "src/luggage_gazebo/scripts/scene_viz_node.py",
-        "src/luggage_packing/luggage_packing/free_space_model.py"
+        "src/luggage_packing/luggage_packing/free_space_model.py",
+        "src/luggage_description/luggage_description/frame_dump.py",
+        "src/luggage_gazebo/luggage_gazebo/frame_dump.py"
       ],
       "checks": [
         "surface_relative_datum",

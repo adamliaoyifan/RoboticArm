@@ -102,9 +102,7 @@ def validate_identity(identity):
     endpoints = identity["endpoints"]
     if not isinstance(endpoints, dict):
         reject("ENDPOINT_TYPE_MISMATCH", "endpoints", "endpoint/type mapping", endpoints)
+    from .runtime_manifest import validate_endpoint_type
     for name, message_type in endpoints.items():
-        if (not isinstance(name, str) or not name.startswith("/")
-                or not isinstance(message_type, str) or "/" not in message_type
-                or not message_type.endswith("V2")):
-            reject("ENDPOINT_TYPE_MISMATCH", str(name), "absolute endpoint with v2 type", message_type)
+        validate_endpoint_type(name, message_type)
     return deepcopy(identity)

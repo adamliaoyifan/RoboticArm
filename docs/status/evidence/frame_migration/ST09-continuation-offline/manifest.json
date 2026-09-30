@@ -1,0 +1,215 @@
+{
+  "schema": "st09.verification/1",
+  "mode": "offline",
+  "started_at": "2026-09-30T13:42:31.185937+00:00",
+  "workspace": "/tmp/elfin-st09-g3",
+  "install": "/tmp/elfin-st09-g3/install/continuation-full",
+  "revision": "009115e6513701388ae19515c5e12bcde0f23869",
+  "dirty": "M docs/agents/eng/2026-09-30_2035_st09-g3.md\n M docs/architecture/frame_contracts.md\n M docs/architecture/frame_interfaces.json\n M scripts/frame_migration_st09_verify.py\n M src/luggage_description/luggage_description/runtime_profile.py\n M src/luggage_description/luggage_description/runtime_readiness.py\n M src/luggage_gazebo/luggage_gazebo/frame_dump.py\n M src/luggage_msgs/CMakeLists.txt\n M src/luggage_planning/luggage_planning/attachment_frame_adapters.py\n M src/luggage_planning/luggage_planning/attachment_frame_contracts.py\n M src/luggage_planning/luggage_planning/place_service.py\n M src/luggage_planning/scripts/vacuum_controller_node.py\n?? src/luggage_description/luggage_description/frame_dump.py\n?? src/luggage_description/luggage_description/ros_frame_bindings/runtime.py\n?? src/luggage_description/luggage_description/runtime_manifest.py\n?? src/luggage_description/test/test_runtime_identity_wire.py\n?? src/luggage_description/test/test_runtime_readiness.py\n?? src/luggage_gazebo/test/test_st09_verification_outcome.py\n?? src/luggage_msgs/msg/RuntimeArtifactV2.msg\n?? src/luggage_msgs/msg/RuntimeEndpointV2.msg\n?? src/luggage_msgs/msg/RuntimeIdentityV2.msg\n?? src/luggage_msgs/msg/RuntimePackageV2.msg\n?? src/luggage_planning/test/test_st09_release.py\n?? src/luggage_planning/test/test_st09_typed_build.py",
+  "ros_domain_id": 7,
+  "commands": [
+    {
+      "name": "environment",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "-c",
+        "import json,os,sys,luggage_description,luggage_gazebo; print(json.dumps(dict(python=sys.version,environment={k:os.environ.get(k) for k in ('ROS_DOMAIN_ID','ROS_DISTRO','RMW_IMPLEMENTATION','AMENT_PREFIX_PATH','PYTHONPATH')},description=luggage_description.__file__,gazebo=luggage_gazebo.__file__),indent=2))"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 0,
+      "elapsed_seconds": 0.21391978720203042
+    },
+    {
+      "name": "tools",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "src/luggage_gazebo/test",
+        "-p",
+        "test_frame_migration_tools.py",
+        "-v"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 0,
+      "elapsed_seconds": 0.4226464759558439
+    },
+    {
+      "name": "execution",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "-m",
+        "pytest",
+        "src/luggage_planning/test/test_frame_migration_execution.py",
+        "-q",
+        "--tb=short"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 0,
+      "elapsed_seconds": 1.2715574798639864
+    },
+    {
+      "name": "contracts",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        "src/luggage_description/test",
+        "-p",
+        "test_frame_contracts.py",
+        "-v"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 0,
+      "elapsed_seconds": 0.31964216916821897
+    },
+    {
+      "name": "checker-baseline",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "scripts/check_frame_contracts.py",
+        "--mode",
+        "baseline",
+        "--output",
+        "/tmp/elfin-st09-g3/docs/status/evidence/frame_migration/ST09-continuation-offline/checker-baseline"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 0,
+      "elapsed_seconds": 0.2139713040087372
+    },
+    {
+      "name": "checker-migration",
+      "argv": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexec \"$@\"",
+        "st09",
+        "python3",
+        "scripts/check_frame_contracts.py",
+        "--mode",
+        "migration",
+        "--output",
+        "/tmp/elfin-st09-g3/docs/status/evidence/frame_migration/ST09-continuation-offline/checker-migration"
+      ],
+      "deadline_seconds": 180,
+      "exit_code": 2,
+      "elapsed_seconds": 0.21930768410675228
+    }
+  ],
+  "missing": [
+    "matched base/candidate affected-package regression and collected-node comparison",
+    "all six driver adapters and scene/TF geometry boundaries",
+    "behavioral mutation sensitivity and refreshed affected interface proofs"
+  ],
+  "teardown": "no processes launched",
+  "status": "not_evaluated",
+  "failed_commands": [],
+  "elapsed_seconds": 2.667800680967048,
+  "completed_at": "2026-09-30T13:42:33.853738+00:00",
+  "artifacts": [
+    {
+      "path": "cases.jsonl",
+      "bytes": 247972,
+      "sha256": "dfc77f7eee27862a0abe3d5f9bc759083c58882b4654619d8201d1d7f9dc5f3f"
+    },
+    {
+      "path": "checker-baseline/cases.json",
+      "bytes": 72878,
+      "sha256": "4491523351d7f5e5af12627df450e3c260d3fe4c1f9bd20f4092405e1341017a"
+    },
+    {
+      "path": "checker-baseline/inventory.json",
+      "bytes": 26590,
+      "sha256": "6392831b73288143737556123df1397166ed0bf373517d7c23406f59167bdf6f"
+    },
+    {
+      "path": "checker-baseline/suite.json",
+      "bytes": 19348,
+      "sha256": "02e5540c5ea5162fec9acfc931f4b346654e32e23fdc9b1ddb38823c4e431a05"
+    },
+    {
+      "path": "checker-baseline/summary.json",
+      "bytes": 824,
+      "sha256": "ea53bebbd91eb72863f342c0eeed5b56c1e9d79d7b94ab6f0757ba4c6d69fb48"
+    },
+    {
+      "path": "checker-baseline.log",
+      "bytes": 252,
+      "sha256": "ca4a062a329169f0694238cbabb0320a5bf559925e0ab50d56500a04e36336ca"
+    },
+    {
+      "path": "checker-migration/cases.json",
+      "bytes": 72882,
+      "sha256": "4ac3d0952756caa32c16dab673a8fef6cac828af32eeb89f7e1074533edfe141"
+    },
+    {
+      "path": "checker-migration/inventory.json",
+      "bytes": 26590,
+      "sha256": "6392831b73288143737556123df1397166ed0bf373517d7c23406f59167bdf6f"
+    },
+    {
+      "path": "checker-migration/suite.json",
+      "bytes": 19348,
+      "sha256": "02e5540c5ea5162fec9acfc931f4b346654e32e23fdc9b1ddb38823c4e431a05"
+    },
+    {
+      "path": "checker-migration/summary.json",
+      "bytes": 825,
+      "sha256": "0ee36df26bf114bb5c763ca4d3cc4f833385497e37e982e1aff3721945fbc64d"
+    },
+    {
+      "path": "checker-migration.log",
+      "bytes": 253,
+      "sha256": "62654c49e2e577fe5f6b95dc7575fa365be5806c76f55b3c9b342f512e16fcc4"
+    },
+    {
+      "path": "contracts.log",
+      "bytes": 1606,
+      "sha256": "96651e843616061f2338298601afd9c65e4288a23f28c36b8d7a992500d927c7"
+    },
+    {
+      "path": "environment.log",
+      "bytes": 1910,
+      "sha256": "c07899dc9172620c6dd4f34735ca3f8f2ade19396995664c82620c48857d783f"
+    },
+    {
+      "path": "execution.log",
+      "bytes": 99,
+      "sha256": "145ab1cc5bb1d6f016c178a6b1e6e7fba6cfb4113d3446c68b5e4c1646776941"
+    },
+    {
+      "path": "ros-logs/2026-09-30-21-42-31-769938-adamliao-X870-EAGLE-WIFI7-26/launch.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tools.log",
+      "bytes": 916,
+      "sha256": "eb64edaaf189a3db2eb51a27abff924cad74b256db062ab63b9ed59a851622b8"
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+......................................F..........FF.................................. [ 42%]
+....F................................................................... [ 78%]
+............................................                             [100%]
+=================================== FAILURES ===================================
+______ FrameContractTests.test_each_interface_has_sources_and_known_cases ______
+src/luggage_description/test/test_frame_contracts.py:59: in test_each_interface_has_sources_and_known_cases
+    self.assertEqual(
+E   AssertionError: 10 != 5 : [{'id': 'F01', 'state': 'pending', 'reason': 'runtime boundary adoption not verified'}, {'id': 'F08', 'state': 'verified', 'reason': 'proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)'}, {'id': 'F11', 'state': 'verified', 'reason': 'proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)'}, {'id': 'F13', 'state': 'verified', 'reason': 'proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)'}, {'id': 'F15', 'state': 'verified', 'reason': 'proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)'}, {'id': 'F18', 'state': 'verified', 'reason': 'proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)'}, {'id': 'F21', 'state': 'pending', 'reason': 'runtime boundary adoption not verified'}, {'id': 'F22', 'state': 'pending', 'reason': 'runtime boundary adoption not verified'}, {'id': 'F23', 'state': 'pending', 'reason': 'runtime boundary adoption not verified'}, {'id': 'F24', 'state': 'pending', 'reason': 'runtime boundary adoption not verified'}]
+_________________ HandeyeLayer3Test.test_roundtrip_end_optical _________________
+src/luggage_description/test/test_handeye_layer3.py:30: in test_roundtrip_end_optical
+    T3 = layer3_from_end_optical(T_x)
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:136: in layer3_from_end_optical
+    T_adp = T_end_adapter(config_dir)
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:103: in T_end_adapter
+    xyz1, rpy1 = parse_xacro_xyz_rpy(
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:89: in parse_xacro_xyz_rpy
+    text = open(path, encoding="utf-8").read()
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/../config/suction_flange_origin.xacro'
+__________ HandeyeLayer3Test.test_xacro_preserves_frozen_end_optical ___________
+src/luggage_description/test/test_handeye_layer3.py:36: in test_xacro_preserves_frozen_end_optical
+    frozen = freeze_from_handeye_json(JSON)
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:168: in freeze_from_handeye_json
+    T3 = layer3_from_end_optical(T_x, config_dir)
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:136: in layer3_from_end_optical
+    T_adp = T_end_adapter(config_dir)
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:103: in T_end_adapter
+    xyz1, rpy1 = parse_xacro_xyz_rpy(
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:89: in parse_xacro_xyz_rpy
+    text = open(path, encoding="utf-8").read()
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/../config/suction_flange_origin.xacro'
+____________ TestLivoxD555Align.test_xacro_mount_roundtrips_optical ____________
+src/luggage_description/test/test_livox_d555_align.py:43: in test_xacro_mount_roundtrips_optical
+    T = T_adapter_livox_from_xacro()
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/livox_d555_align.py:207: in T_adapter_livox_from_xacro
+    return T_cad_mount(config_dir).dot(T_handbook_optical())
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/livox_d555_align.py:202: in T_cad_mount
+    xyz, rpy = parse_xacro_xyz_rpy(path, "mid360_mount_xyz", "mid360_mount_rpy")
+install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/handeye_layer3.py:89: in parse_xacro_xyz_rpy
+    text = open(path, encoding="utf-8").read()
+E   FileNotFoundError: [Errno 2] No such file or directory: '/tmp/elfin-st09-g3/install/continuation-full/luggage_description/local/lib/python3.10/dist-packages/luggage_description/../config/mid360_origin.xacro'
+=============================== warnings summary ===============================
+src/luggage_description/test/test_he1_cad_seed.py::BoardTests::test_pdf_page_size
+  Warning: the load_module() method is deprecated and slated for removal in Python 3.12; use exec_module() instead
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED src/luggage_description/test/test_frame_contracts.py::FrameContractTests::test_each_interface_has_sources_and_known_cases
+FAILED src/luggage_description/test/test_handeye_layer3.py::HandeyeLayer3Test::test_roundtrip_end_optical
+FAILED src/luggage_description/test/test_handeye_layer3.py::HandeyeLayer3Test::test_xacro_preserves_frozen_end_optical
+FAILED src/luggage_description/test/test_livox_d555_align.py::TestLivoxD555Align::test_xacro_mount_roundtrips_optical
+4 failed, 197 passed, 1 warning, 59 subtests passed in 2.84s

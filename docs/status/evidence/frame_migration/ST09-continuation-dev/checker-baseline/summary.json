@@ -1,0 +1,40 @@
+{
+  "mode": "baseline",
+  "baseline_pass": false,
+  "migration_ready": false,
+  "case_count": 50,
+  "failed_cases": [
+    "existing_base_helper"
+  ],
+  "errors": [],
+  "interface_count": 24,
+  "pending_interfaces": [
+    {
+      "id": "F01",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F21",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F22",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F23",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F24",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    }
+  ],
+  "runtime_execution": "not_evaluated",
+  "exit_code": 1
+}

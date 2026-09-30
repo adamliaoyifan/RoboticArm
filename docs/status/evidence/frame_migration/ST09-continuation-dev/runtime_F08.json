@@ -1,0 +1,35 @@
+{
+  "interface_id": "F08",
+  "kind": "runtime_boundary",
+  "status": "pass",
+  "contract_version": 2,
+  "command": "python3 -m pytest -q src/luggage_description/test/test_runtime_readiness.py src/luggage_description/test/test_runtime_identity_wire.py src/luggage_planning/test/test_st09_release.py src/luggage_planning/test/test_st09_typed_build.py src/luggage_planning/test/test_frame_migration_execution.py src/luggage_planning/test/test_frame_migration_selector.py src/luggage_gazebo/test/test_frame_migration_tools.py --tb=short",
+  "observations": [
+    "SelectPlacePathV2 keeps the surface map_revision and geometry_hash and compares them with the request before selection.",
+    "stale revision returns MAP_REVISION_MISMATCH. A wrong surface hash returns GEOMETRY_IDENTITY_MISMATCH.",
+    "valid=false with non-canonical z returns INVALID_GRID. valid=false with canonical z and state=free returns UNKNOWN_SURFACE_HAS_VALUE.",
+    "grasp contract_version 1 returns CONTRACT_VERSION_MISMATCH. stamp_valid=false returns INVALID_STAMP.",
+    "An empty state array and a flagged empty height_above_floor array return INVALID_GRID. select_place_v2 is not called.",
+    "A legal unknown cell (valid=false, z=0, state=unknown) decodes to None and is not measured floor support.",
+    "A wrong container source frame returns FRAME_CONTRACT_MISMATCH and a NaN translation returns INVALID_NUMERIC_PAYLOAD before select_place_v2."
+  ],
+  "sample_count": 8,
+  "interface_contract_sha256": "8732615dfb65352792253292025dee210adf643f65b93520be13de524ac6a184",
+  "source_sha256": {
+    "src/luggage_msgs/msg/SlotSpec.msg": "f2cf303e2c94919955ead305dd9fa2f8224d820fb30bbcd186ba6beb8c1bf16e",
+    "src/luggage_msgs/srv/ComputePlacement.srv": "a025221eb64cc1fcfb4d642098c49f79c03482eb78acf0b7d3bc5ad214764ef2",
+    "src/luggage_msgs/srv/BuildMotionSequence.srv": "a6184a7d7757a83b141ec0e94f0d8a603dbb143464033ae0fbe7934ee4e5d007",
+    "src/luggage_planning/scripts/waypoint_generator_node.py": "51aafeba8ad5f74b2ce07ded5d39b9a6e908532989fa34fe0e05f5a881df0718",
+    "src/luggage_planning/scripts/trajectory_selector_node.py": "25d8fcb3b1141110a2410305eb9553bbad354c785f73215347298bfe6aa3e170",
+    "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
+    "src/luggage_msgs/srv/SelectPlacePathV2.srv": "8bb8d61164f823264db97ff8df2af8c8799522cfb89dd0ae4f9951c8f75642ae",
+    "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
+    "src/luggage_planning/luggage_planning/place_service.py": "db6a9c7bc58831ead19f75370ba9533c44c9bce9d8877e7f0c1dcf3946a2e5cc",
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+  },
+  "prior_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F08.json",
+  "test_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/final-boundaries.log",
+  "boundary_trace": "docs/status/evidence/frame_migration/ST09-continuation-dev/boundaries.jsonl",
+  "limits": "Boundary-level regression only; not F21 production graph adoption or ST09 release."
+}

@@ -10,6 +10,10 @@ find_package(trajectory_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FrameIdentityV2.msg"
+  "msg/RuntimeArtifactV2.msg"
+  "msg/RuntimeEndpointV2.msg"
+  "msg/RuntimePackageV2.msg"
+  "msg/RuntimeIdentityV2.msg"
   "msg/PoseContractV2.msg"
   "msg/WaypointArrayV2.msg"
   "msg/SurfaceContractV2.msg"

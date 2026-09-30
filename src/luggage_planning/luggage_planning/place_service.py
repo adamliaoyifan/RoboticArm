@@ -348,6 +348,36 @@ def _copy_segments(segments):
     return copied
 
 
+def _build_motion_messages(segments, identity):
+    """Encode each generated leg, preserving its target, waypoints and policy."""
+    from luggage_planning.motion_frame_adapters import message_from_admitted
+    from luggage_planning.motion_frame_contracts import TARGET_LINK, ExecutionContext
+    boundary = BoundaryContext(
+        interface_id="F15", producer="waypoint_generator", consumer="motion_executor",
+        request_id=identity["request_id"], scene_revision=identity["scene_revision"],
+        frame_id="world", reference="suction_contact_frame", time_basis=identity["time_basis"])
+    context = ExecutionContext(boundary, TARGET_LINK, "world")
+
+    def pose_record(pose):
+        return dict(contract_version=2, kind="pose", frame_id="world", length_unit="m",
+                    request_id=identity["request_id"], scene_revision=identity["scene_revision"],
+                    stamp_ns=identity["stamp_ns"], time_basis=identity["time_basis"],
+                    reference="suction_contact_frame", orientation_semantics="tool_quaternion",
+                    position=[pose.position.x, pose.position.y, pose.position.z],
+                    quaternion_xyzw=[pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w])
+
+    return [message_from_admitted(dict(
+        contract_version=2, request_id=identity["request_id"], scene_revision=identity["scene_revision"],
+        stamp_ns=identity["stamp_ns"], time_basis=identity["time_basis"], name=segment.name,
+        segment_type=segment.type, target_link=TARGET_LINK, policy_valid=True,
+        keep_tool_down=segment.keep_tool_down, keep_camera_down=segment.keep_camera_down,
+        lock_wrist=segment.lock_wrist, allow_ompl_fallback=segment.allow_ompl_fallback,
+        required_cartesian_fraction=segment.required_cartesian_fraction,
+        target_pose=pose_record(segment.target_pose),
+        waypoints=[pose_record(pose) for pose in segment.waypoints], joint_trajectory=None), context)
+        for segment in segments]
+
+
 def handle_build_v2(request, response, pick=None):
     phase = str(request.phase or "")
     try:
@@ -362,7 +392,16 @@ def handle_build_v2(request, response, pick=None):
             if int(request.pick_pose.identity.contract_version) == 0:
                 raise ContractError(
                     "MISSING_IDENTITY", "pick_pose", "detection pose", None)
+            context = BoundaryContext(
+                interface_id="F11", producer="driver", consumer="waypoint_generator",
+                request_id=str(request.request_id), scene_revision=str(request.scene_revision),
+                frame_id="world", reference="box_center", time_basis="acquisition")
+            pick_record = pose_from_message(request.pick_pose, "detection", context)
+            from luggage_planning.attachment_frame_adapters import measured_dict
+            from luggage_planning.attachment_frame_contracts import require_measured_pose_agreement
+            require_measured_pose_agreement(pick_record, measured_dict(request.pick, request.pick.id))
             segments = build_sequence(pick, None, "pick")
+            response.motion_segments = _build_motion_messages(segments, pick_record)
             response.segments = _copy_segments(segments)
             response.success = bool(segments)
             response.message = "pick delegated"
@@ -387,6 +426,7 @@ def handle_build_v2(request, response, pick=None):
             stamp, scene)
         segments, contact = build_place_legs_v2(
             slot, grasp, transform, _require_box_wdh(request.box_wdh))
+        response.motion_segments = _build_motion_messages(segments, slot)
         response.segments = _copy_segments(segments)
         response.success = bool(segments)
         response.message = "%d place legs" % len(segments)
@@ -399,6 +439,8 @@ def handle_build_v2(request, response, pick=None):
         contact_record["quaternion_xyzw"] = contact["quaternion_xyzw"]
         response.contact_pose = pose_message(contact_record)
     except ContractError as exc:
+        response.motion_segments = []
+        response.segments = []
         response.success = False
         response.reason_code = exc.code
         response.message = exc.code

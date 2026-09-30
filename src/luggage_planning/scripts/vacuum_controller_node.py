@@ -354,26 +354,8 @@ class VacuumControllerNode(Node):
         def resolve_tool(stamp_ns):
             # Enable uses the acquisition stamp. Disable may use the current
             # measured tool pose. Neither path reads the physics ground truth.
-            if stamp_ns is None:
-                pose = self._panel_pose()
-                if pose is None:
-                    return None
-                return {
-                    "contract_version": 2,
-                    "kind": "pose",
-                    "frame_id": "world",
-                    "length_unit": "m",
-                    "time_basis": "acquisition",
-                    "scene_revision": revision,
-                    "request_id": str(request.request_id),
-                    "stamp_ns": 0,
-                    "reference": "suction_contact_frame",
-                    "orientation_semantics": "tool_quaternion",
-                    "position": list(pose[0]),
-                    "quaternion_xyzw": list(pose[1]),
-                }
             try:
-                stamp = rclpy.time.Time(nanoseconds=int(stamp_ns))
+                stamp = rclpy.time.Time() if stamp_ns is None else rclpy.time.Time(nanoseconds=int(stamp_ns))
                 transform = self._tf_buffer.lookup_transform(
                     WORLD, self._panel_frame, stamp)
             except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
@@ -389,7 +371,8 @@ class VacuumControllerNode(Node):
                 "time_basis": "acquisition",
                 "scene_revision": revision,
                 "request_id": str(request.request_id),
-                "stamp_ns": int(stamp_ns),
+                "stamp_ns": (int(transform.header.stamp.sec) * 10**9
+                             + int(transform.header.stamp.nanosec)),
                 "reference": "suction_contact_frame",
                 "orientation_semantics": "tool_quaternion",
                 "position": [translation.x, translation.y, translation.z],

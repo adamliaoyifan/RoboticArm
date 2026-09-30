@@ -1,0 +1,30 @@
+{
+  "interface_id": "F11",
+  "kind": "runtime_boundary",
+  "status": "pass",
+  "contract_version": 2,
+  "command": "python3 -m pytest -q src/luggage_description/test/test_runtime_readiness.py src/luggage_description/test/test_runtime_identity_wire.py src/luggage_planning/test/test_st09_release.py src/luggage_planning/test/test_st09_typed_build.py src/luggage_planning/test/test_frame_migration_execution.py src/luggage_planning/test/test_frame_migration_selector.py src/luggage_gazebo/test/test_frame_migration_tools.py --tb=short",
+  "observations": [
+    "64 container yaw/translation/floor/support/grasp cases match an independent SciPy oracle within 1e-9.",
+    "slot_from_contract matches transform_pose within 1e-9.",
+    "Off-center grasp moves TCP xy off the box top center. A rotated lift does not add the container origin.",
+    "Place contact is the world TCP. Insertion, transit, and retreat lengths stay on the existing clearance helpers.",
+    "container_transform_dict admits only container_link to world, finite translation, and a null or integer stamp before selection.",
+    "Both pick/place BuildMotionSequenceV2 responses have typed motion_segments; 64 generated-leg cases preserve full target/waypoint poses and policy through CDR, with exact nanoseconds."
+  ],
+  "sample_count": 64,
+  "interface_contract_sha256": "5845024b6aca76068bb0dec125249cbb13cefe1da06f0bc92150dfe82a6e3fe5",
+  "source_sha256": {
+    "src/luggage_planning/luggage_planning/waypoint_generator.py": "0f77f7932c37b0d0ef6e7a447e2bd12e7d64c830efb5261e95057bf28f863d13",
+    "src/luggage_planning/scripts/waypoint_generator_node.py": "51aafeba8ad5f74b2ce07ded5d39b9a6e908532989fa34fe0e05f5a881df0718",
+    "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
+    "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
+    "src/luggage_planning/luggage_planning/place_service.py": "db6a9c7bc58831ead19f75370ba9533c44c9bce9d8877e7f0c1dcf3946a2e5cc",
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+  },
+  "prior_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F11.json",
+  "test_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/final-boundaries.log",
+  "boundary_trace": "docs/status/evidence/frame_migration/ST09-continuation-dev/boundaries.jsonl",
+  "limits": "Boundary-level regression only; not F21 production graph adoption or ST09 release."
+}

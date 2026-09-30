@@ -265,11 +265,24 @@ identity records. Sim and hardware launch profiles share that resolver.
 `runtime_readiness.ReadinessGate` is a ROS-free consumer admission primitive:
 missing peers/endpoint graphs disable admission; restart, changed identity,
 expired lease, duplicate provider or mixed type revoke readiness. A v1 request
-cannot pass this primitive. It does not itself collect process reports, wrap
+cannot pass this primitive. Heartbeat metadata and readiness are excluded from
+immutable fingerprints. A heartbeat arriving after a lease gap revokes admission
+even if no request was made during the gap. Explicit `readmit` increments the
+admission generation and requires fresh reports; old request tokens remain
+invalid. This operation does not authorize a cycle or release carried payload.
+
+`runtime_manifest` defines `luggage.runtime_manifest/2`: exact registered types,
+provider/client ownership, process configuration and artifact pins. Application
+artifacts must resolve under the isolated install; explicitly labelled and pinned
+system artifacts resolve under the configured ROS root. Standard interfaces retain
+their exact standard types. `RuntimeIdentityV2` reports local loaded provenance;
+its steady-clock publisher runs at 4 Hz regardless of readiness or simulation
+clock progress. It does not itself collect process reports, wrap
 production entrypoints, or prove runtime adoption. F21 remains pending until
 those integrations have real graph evidence.
 
-`luggage_gazebo.frame_dump` defines `luggage.frame_dump/2`. It joins pose/surface
+`luggage_description.frame_dump` (with a compatibility import at
+`luggage_gazebo.frame_dump`) defines `luggage.frame_dump/2`. It joins pose/surface
 identities to independently supplied consumer expectations, stores body X/Y/Z
 sizes and a world transform snapshot, preserves exact acquisition nanoseconds
 and unknown cells, and distinguishes `measured` from `gt_reference`. Writes are

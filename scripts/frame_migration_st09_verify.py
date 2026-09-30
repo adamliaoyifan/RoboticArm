@@ -11,6 +11,21 @@ import subprocess
 import time
 
 
+def verification_outcome(commands, missing):
+    """Execution/assertion failures take precedence over incomplete coverage.
+
+    Only the migration checker's documented exit 2 means incomplete migration;
+    pytest exit 2, timeout and every other nonzero command remain failures.
+    """
+    incomplete = [entry["name"] for entry in commands
+                  if entry["name"] == "checker-migration" and entry.get("exit_code") == 2]
+    failed = [entry["name"] for entry in commands
+              if entry.get("exit_code") != 0 and entry["name"] not in incomplete]
+    if failed:
+        return "fail", failed
+    return ("not_evaluated" if missing or incomplete else "pass"), failed
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("mode", choices=("offline", "graph", "rehearsal", "all"))
@@ -74,9 +89,13 @@ def main():
             manifest["missing"].append("production consumer identity enforcement and sim/deploy graph harness: three healthy startups and all fault cases")
         if args.mode in ("rehearsal", "all"):
             manifest["missing"].append("immutable wired candidate and executable frozen capture configuration required before Gazebo rehearsal")
-        failed = [entry["name"] for entry in manifest["commands"] if entry.get("exit_code") != 0]
-        manifest["failed_commands"] = failed
-        manifest["status"] = "not_evaluated" if manifest["missing"] else "fail" if failed else "pass"
+        manifest["status"], manifest["failed_commands"] = verification_outcome(
+            manifest["commands"], manifest["missing"])
+    except Exception as error:
+        import traceback
+        manifest["status"] = "fail"
+        manifest["execution_error"] = str(error)
+        (out / "execution-error.log").write_text(traceback.format_exc())
     finally:
         manifest["elapsed_seconds"] = time.monotonic() - started
         manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
@@ -85,7 +104,7 @@ def main():
                                  for path in sorted(out.rglob("*")) if path.is_file() and path.name != "manifest.json"]
         save()
     print(json.dumps(dict(status=manifest["status"], missing=manifest["missing"], output=str(out))))
-    return 0 if manifest["status"] == "pass" else 2
+    return {"pass": 0, "fail": 1, "not_evaluated": 2}[manifest["status"]]
 
 
 if __name__ == "__main__":
