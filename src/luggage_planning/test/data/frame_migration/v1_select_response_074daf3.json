@@ -1,0 +1,228 @@
+{
+ "base": "074daf34c4df1c42bf2e3a7f58711e367ba72375",
+ "success": true,
+ "reason_code": "",
+ "slot_index": 0,
+ "selection_id": "",
+ "path_source": "",
+ "winner": {
+  "slot_index": 0,
+  "yaw": 0.3,
+  "selection_id": "",
+  "path_source": "",
+  "waypoints": [
+   [
+    -0.6,
+    -0.4,
+    1.5
+   ],
+   [
+    0.08,
+    -0.66,
+    1.2
+   ]
+  ],
+  "segments": {
+   "transit": {
+    "type": "cartesian",
+    "waypoints": [
+     [
+      -0.6,
+      -0.4,
+      1.5
+     ],
+     [
+      0.08,
+      -0.66,
+      1.2
+     ]
+    ],
+    "joint_knots": [],
+    "allow_ompl_fallback": true
+   },
+   "traverse": {
+    "type": "cartesian",
+    "waypoints": [
+     [
+      -0.6,
+      -0.4,
+      1.5
+     ],
+     [
+      0.08,
+      -0.66,
+      1.2
+     ]
+    ],
+    "joint_knots": [],
+    "allow_ompl_fallback": true
+   }
+  }
+ },
+ "rows": [
+  {
+   "feasible": false,
+   "method": "direct",
+   "slot_index": 0,
+   "reason": "occupancy_collision",
+   "waypoints": [
+    [
+     -0.6,
+     -0.4,
+     1.5
+    ],
+    [
+     0.08,
+     -0.66,
+     1.2
+    ]
+   ],
+   "first_hit_cell": [
+    19,
+    8
+   ],
+   "path_hash": "base-direct"
+  },
+  {
+   "feasible": true,
+   "method": "direct",
+   "slot_index": 0,
+   "reason": "",
+   "waypoints": [
+    [
+     -0.6,
+     -0.4,
+     1.5
+    ],
+    [
+     0.08,
+     -0.66,
+     1.2
+    ]
+   ],
+   "path_hash": "base-direct",
+   "selected": true
+  }
+ ],
+ "rows_json": [
+  {
+   "feasible": false,
+   "method": "direct",
+   "slot_index": 0,
+   "reason": "occupancy_collision",
+   "waypoints": [
+    [
+     -0.6,
+     -0.4,
+     1.5
+    ],
+    [
+     0.08,
+     -0.66,
+     1.2
+    ]
+   ],
+   "first_hit_cell": [
+    19,
+    8
+   ],
+   "path_hash": "base-direct"
+  },
+  {
+   "feasible": true,
+   "method": "direct",
+   "slot_index": 0,
+   "reason": "",
+   "waypoints": [
+    [
+     -0.6,
+     -0.4,
+     1.5
+    ],
+    [
+     0.08,
+     -0.66,
+     1.2
+    ]
+   ],
+   "path_hash": "base-direct",
+   "selected": true
+  }
+ ],
+ "segments": [
+  {
+   "name": "transit",
+   "type": "cartesian",
+   "keep_tool_down": true,
+   "keep_camera_down": false,
+   "allow_ompl_fallback": true,
+   "lock_wrist": false,
+   "waypoints": [
+    {
+     "position": [
+      0.9,
+      -0.4,
+      1.5
+     ],
+     "quaternion_xyzw": [
+      0.9887710779360422,
+      0.14943813247359922,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "target_pose": {
+    "position": [
+     1.58,
+     -0.66,
+     1.2
+    ],
+    "quaternion_xyzw": [
+     0.9887710779360422,
+     0.14943813247359922,
+     0.0,
+     0.0
+    ]
+   },
+   "joint_waypoints": []
+  },
+  {
+   "name": "traverse",
+   "type": "cartesian",
+   "keep_tool_down": true,
+   "keep_camera_down": false,
+   "allow_ompl_fallback": true,
+   "lock_wrist": false,
+   "waypoints": [
+    {
+     "position": [
+      0.9,
+      -0.4,
+      1.5
+     ],
+     "quaternion_xyzw": [
+      0.9887710779360422,
+      0.14943813247359922,
+      0.0,
+      0.0
+     ]
+    }
+   ],
+   "target_pose": {
+    "position": [
+     1.58,
+     -0.66,
+     1.2
+    ],
+    "quaternion_xyzw": [
+     0.9887710779360422,
+     0.14943813247359922,
+     0.0,
+     0.0
+    ]
+   },
+   "joint_waypoints": []
+  }
+ ]
+}

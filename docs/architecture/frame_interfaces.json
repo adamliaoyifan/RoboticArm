@@ -187,7 +187,7 @@
     "translate_rotate180"
    ],
    "migration_state": "verified",
-   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F08.json"
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F08.json"
   },
   {
    "id": "F09",
@@ -307,7 +307,7 @@
     "tool_pi_distinct"
    ],
    "migration_state": "verified",
-   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F13.json"
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F13.json"
   },
   {
    "id": "F14",

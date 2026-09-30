@@ -589,38 +589,38 @@ class AtlasBins(unittest.TestCase):
 
 
 class V1Bytes(unittest.TestCase):
-    def test_v1_segment_bytes_unchanged(self):
-        winner = {
-            "slot_index": 0,
-            "yaw": 0.3,
-            "waypoints": [(-0.6, -0.4, 1.5), (0.08, -0.66, 1.2)],
-            "segments": {
-                "transit": {"type": "cartesian",
-                            "waypoints": [(-0.6, -0.4, 1.5), (0.08, -0.66, 1.2)],
-                            "joint_knots": [], "allow_ompl_fallback": True},
-                "traverse": {"type": "cartesian",
-                             "waypoints": [(-0.6, -0.4, 1.5), (0.08, -0.66, 1.2)],
-                             "joint_knots": [], "allow_ompl_fallback": True},
-            },
+    def test_v1_response_matches_base_snapshot(self):
+        golden = json.loads((DATA / "v1_select_response_074daf3.json").read_text())
+        self.assertEqual(golden["base"], "074daf34c4df1c42bf2e3a7f58711e367ba72375")
+        winner = golden["winner"]
+        segments = _segments(
+            winner, map_to_world=lambda xyz: [xyz[0] + 1.5, xyz[1], xyz[2]])
+        from luggage_planning.occupancy_place_paths import dump_rows
+        rows_json = json.dumps(dump_rows(golden["rows"]))
+        actual = {
+            "success": True,
+            "reason_code": "",
+            "slot_index": int(winner["slot_index"]),
+            "selection_id": "",
+            "path_source": "",
+            "rows_json": json.loads(rows_json),
+            "segments": _segment_snapshot(segments),
         }
-        segments = _segments(winner, map_to_world=lambda xyz: [xyz[0] + 1.5, xyz[1], xyz[2]])
-        self.assertEqual([seg.name for seg in segments], ["transit", "traverse"])
-        pose = segments[0].target_pose
-        self.assertAlmostEqual(pose.position.x, 0.08 + 1.5)
-        self.assertAlmostEqual(pose.position.y, -0.66)
-        self.assertAlmostEqual(pose.position.z, 1.2)
-        half = 0.15
-        self.assertAlmostEqual(pose.orientation.x, math.cos(half))
-        self.assertAlmostEqual(pose.orientation.y, math.sin(half))
-        self.assertAlmostEqual(pose.orientation.z, 0.0)
-        self.assertAlmostEqual(pose.orientation.w, 0.0)
-        # A second CDR pass is stable and preserves the yaw-only quaternion.
-        raw = serialize_message(segments[0])
-        from rclpy.serialization import deserialize_message
-        from luggage_msgs.msg import MotionSegment
-        back = deserialize_message(raw, MotionSegment)
-        self.assertAlmostEqual(back.target_pose.orientation.w, 0.0)
-        self.assertAlmostEqual(back.target_pose.orientation.z, 0.0)
+        self.assertEqual(actual, {
+            "success": golden["success"],
+            "reason_code": golden["reason_code"],
+            "slot_index": golden["slot_index"],
+            "selection_id": golden["selection_id"],
+            "path_source": golden["path_source"],
+            "rows_json": golden["rows_json"],
+            "segments": golden["segments"],
+        })
+        for seg in segments:
+            self.assertEqual(seg.target_pose.orientation.z, 0.0)
+            self.assertEqual(seg.target_pose.orientation.w, 0.0)
+            for pose in list(seg.waypoints) + [seg.target_pose]:
+                self.assertEqual(pose.orientation.z, 0.0)
+                self.assertEqual(pose.orientation.w, 0.0)
 
 
 class ServiceAgreement(unittest.TestCase):
@@ -633,49 +633,60 @@ class ServiceAgreement(unittest.TestCase):
             "blocked_corridor_detour": (_surface("wall", gap=range(22, 34)), "gap_detour"),
             "blocked_destination": (_surface("wall", gap=None), None),
         }
-        open_case = None
+        live = []
         for name, (surface, method) in surfaces.items():
             with case("service/" + name, {}):
-                request = _request(surface, PORTAL, TARGET, (0, 0, 0.16))
+                wire = _service_surface(surface, "svc")
+                request = _request(wire, PORTAL, TARGET, (0, 0, 0.16))
                 local = select_in_process_v2(request, atlas=None, config=dict(FIXTURE_SELECTOR))
-                message = _to_message(request, surface)
+                message = _to_message(request, wire)
                 response = SelectPlacePathV2.Response()
                 fill_select_response(message, response, atlas=None, config=dict(FIXTURE_SELECTOR))
                 self.assertEqual(bool(response.success), local["success"])
                 self.assertEqual(int(response.slot_index), int(local["slot_index"]))
                 self.assertEqual(str(response.path_hash), local["path_hash"])
+                rows = json.loads(response.rows_json)
+                self.assertEqual(len(rows), len(local["rows"]))
                 if local["success"]:
-                    self.assertEqual(local["method"], method or local["method"])
+                    self.assertEqual(local["method"], method)
                     self.assertGreater(len(response.waypoint_poses), 0)
                     for pose, world in zip(response.waypoint_poses, local["world_waypoints"]):
                         got = [pose.pose.position.x, pose.pose.position.y, pose.pose.position.z]
                         self.assertLessEqual(max(abs(a - b) for a, b in zip(got, world["position"])), 1e-6)
+                        got_q = [pose.pose.orientation.x, pose.pose.orientation.y,
+                                 pose.pose.orientation.z, pose.pose.orientation.w]
+                        self.assertLessEqual(_quat_err(got_q, world["quaternion_xyzw"]), 1e-6)
                         raw = serialize_message(pose.pose)
                         from rclpy.serialization import deserialize_message
                         from geometry_msgs.msg import Pose
                         back = deserialize_message(raw, Pose)
+                        back_q = [back.orientation.x, back.orientation.y,
+                                  back.orientation.z, back.orientation.w]
                         self.assertLessEqual(abs(back.position.x - world["position"][0]), 1e-6)
-                        self.assertNotEqual(
-                            (pose.pose.orientation.x, pose.pose.orientation.y,
-                             pose.pose.orientation.z, pose.pose.orientation.w),
-                            (0.0, 0.0, 0.0, 0.0))
+                        self.assertLessEqual(_quat_err(back_q, world["quaternion_xyzw"]), 1e-6)
+                else:
+                    self.assertEqual(local["reason_code"], "PLACE_PATH_INFEASIBLE")
+                    self.assertTrue(rows)
+                    self.assertTrue(all(
+                        row["reason"] in ("occupancy_collision", "outside_hull")
+                        for row in rows))
                 if method:
                     self.assertEqual(local["method"], method)
-                if name == "open_direct":
-                    open_case = (request, surface, local["path_hash"])
-        # Round-trip the decoded request dict through the same helper.
-        again = request_dict(_to_message(request, surface))
+                live.append((request, wire, local))
+        again = request_dict(_to_message(request, wire))
         self.assertEqual(again["slots"][0]["position"], request["slots"][0]["position"])
+        self.assertIsNone(again["surface"]["surface_z_container"][1][1])
+        self.assertEqual(again["surface"]["state"][1][1], "unknown")
         built = handle_build_v2(_build_message(request), type("R", (), {
             "segments": [], "success": False, "message": "", "reason_code": "",
             "contact_pose": None,
         })())
         self.assertTrue(built.success)
         self.assertIn("descend", [seg.name for seg in built.segments])
-        self._live_open(*open_case)
+        self._live_all(live)
         del pose_message
 
-    def _live_open(self, request, surface, path_hash):
+    def _live_all(self, cases):
         import rclpy
         from rclpy.executors import SingleThreadedExecutor
         from rclpy.node import Node
@@ -695,77 +706,113 @@ class ServiceAgreement(unittest.TestCase):
             executor = SingleThreadedExecutor()
             executor.add_node(server)
             import threading
-            thread = threading.Thread(target=executor.spin, daemon=True)
+            thread = threading.Thread(target=executor.spin)
             thread.start()
-            response = call_select_v2(client, _to_message(request, surface), timeout=5.0)
-            self.assertIsNotNone(response)
-            self.assertTrue(response.success)
-            self.assertEqual(str(response.path_hash), path_hash)
-            executor.shutdown()
+            try:
+                for request, surface, local in cases:
+                    response = call_select_v2(
+                        client, _to_message(request, surface), timeout=5.0)
+                    self.assertIsNotNone(response)
+                    self.assertEqual(bool(response.success), local["success"])
+                    self.assertEqual(str(response.path_hash), local["path_hash"])
+                    self.assertEqual(str(response.reason_code), local["reason_code"])
+            finally:
+                executor.shutdown()
+                thread.join(timeout=5.0)
         finally:
             client.destroy_node()
             server.destroy_node()
-            rclpy.shutdown()
+            if rclpy.ok():
+                rclpy.shutdown()
+
+
+def _tagged(record, request_id):
+    out = dict(record)
+    out["request_id"] = request_id
+    return out
+
+
+def _service_surface(surface, request_id):
+    """Wire-legal copy. Unknown-with-a-numeric-top cannot ride SurfaceContractV2."""
+    record = copy.deepcopy(surface)
+    ceiling = float(record["ceiling_z_container"])
+    for ix, row in enumerate(record["surface_z_container"]):
+        for iy, top in enumerate(row):
+            if record["state"][ix][iy] == "unknown" and top is not None:
+                record["state"][ix][iy] = "occupied"
+                record["surface_z_container"][ix][iy] = ceiling
+                record["confidence"][ix][iy] = "sensor"
+    record.pop("geometry_descriptor", None)
+    record.update(
+        contract_version=2,
+        kind="surface",
+        frame_id="container_link",
+        length_unit="m",
+        stamp_ns=0,
+        time_basis="scene",
+        scene_revision=SCENE,
+        request_id=request_id,
+        height_datum=str(record.get("height_datum") or "container_origin"),
+    )
+    return record
+
+
+def _pose_snapshot(pose):
+    return {
+        "position": [pose.position.x, pose.position.y, pose.position.z],
+        "quaternion_xyzw": [
+            pose.orientation.x, pose.orientation.y,
+            pose.orientation.z, pose.orientation.w],
+    }
+
+
+def _segment_snapshot(segments):
+    out = []
+    for seg in segments:
+        out.append({
+            "name": seg.name,
+            "type": seg.type,
+            "keep_tool_down": bool(seg.keep_tool_down),
+            "keep_camera_down": bool(seg.keep_camera_down),
+            "allow_ompl_fallback": bool(seg.allow_ompl_fallback),
+            "lock_wrist": bool(seg.lock_wrist),
+            "waypoints": [_pose_snapshot(pose) for pose in seg.waypoints],
+            "target_pose": _pose_snapshot(seg.target_pose),
+            "joint_waypoints": [
+                [float(v) for v in point.positions] for point in seg.joint_waypoints],
+        })
+    return json.loads(json.dumps(out))
 
 
 def _to_message(request, surface):
     from luggage_msgs.srv import SelectPlacePathV2
-    from luggage_planning.place_service import pose_message
+    from luggage_description.ros_frame_bindings.surfaces import surface_to_message
+    from luggage_planning.place_service import boundary_context, pose_message
     message = SelectPlacePathV2.Request()
     message.request_id = "svc"
     message.box_wdh = list(request["box_wdh"])
-    message.slots = [pose_message(slot) for slot in request["slots"]]
+    message.slots = [pose_message(_tagged(slot, "svc")) for slot in request["slots"]]
     message.slot_scores = list(request["slot_scores"])
     message.inner_size = list(request["inner_size"])
     message.geometry_hash = request["geometry_hash"]
     message.map_revision = int(request["map_revision"])
-    message.start_tcp = pose_message(request["start_tcp"])
+    message.start_tcp = pose_message(_tagged(request["start_tcp"], "svc"))
     message.grasp = pose_message(_record(
         request["grasp"]["position"], request["grasp"]["quaternion_xyzw"],
         request["grasp"]["reference"], request["grasp"]["orientation_semantics"],
-        "container_link", "grasp"))
+        "container_link", "svc"))
     transform = request["container_transform"]
     message.container_source_frame = transform["source_frame"]
     message.container_target_frame = transform["target_frame"]
     message.container_translation = list(transform["translation"])
     message.container_quaternion_xyzw = list(transform["quaternion_xyzw"])
     message.container_stamp_is_null = True
-    _fill_surface(message.surface, surface)
+    wire = _service_surface(surface, "svc")
+    message.surface = surface_to_message(wire, boundary_context(
+        "svc", SCENE, "container_link", "",
+        geometry_hash=str(wire["geometry_hash"]),
+        map_revision=int(wire["map_revision"])))
     return message
-
-
-def _fill_surface(message, surface):
-    from luggage_planning.place_service import _fill_identity
-    rows = len(surface["surface_z_container"])
-    cols = len(surface["surface_z_container"][0])
-    message.rows = rows
-    message.columns = cols
-    message.height_datum = surface["height_datum"]
-    message.floor_z_container = surface["floor_z_container"]
-    message.ceiling_z_container = surface["ceiling_z_container"]
-    message.origin_xy_container = list(surface["origin_xy_container"])
-    message.resolution_m = surface["resolution_m"]
-    message.geometry_hash = surface["geometry_hash"]
-    message.map_revision = int(surface["map_revision"])
-    identity = {
-        "contract_version": 2, "frame_id": "container_link", "length_unit": "m",
-        "stamp_ns": 0, "time_basis": "scene", "scene_revision": SCENE,
-        "request_id": "surface",
-    }
-    _fill_identity(message.identity, identity)
-    tops, states, confidence, valid = [], [], [], []
-    floor = surface["floor_z_container"]
-    for ix in range(rows):
-        for iy in range(cols):
-            top = surface["surface_z_container"][ix][iy]
-            tops.append(floor if top is None else float(top))
-            states.append(surface["state"][ix][iy])
-            confidence.append(surface["confidence"][ix][iy])
-            valid.append(True)
-    message.surface_z_container = tops
-    message.state = states
-    message.confidence = confidence
-    message.valid = valid
 
 
 def _build_message(request):
@@ -773,11 +820,11 @@ def _build_message(request):
     from luggage_planning.place_service import pose_message
     message = BuildMotionSequenceV2.Request()
     message.phase = "place"
-    message.slot = pose_message(request["slots"][0])
+    message.slot = pose_message(_tagged(request["slots"][0], "svc"))
     message.grasp = pose_message(_record(
         request["grasp"]["position"], request["grasp"]["quaternion_xyzw"],
         request["grasp"]["reference"], request["grasp"]["orientation_semantics"],
-        "container_link", "grasp"))
+        "container_link", "svc"))
     message.box_wdh = list(request["box_wdh"])
     transform = request["container_transform"]
     message.container_source_frame = transform["source_frame"]
@@ -786,6 +833,76 @@ def _build_message(request):
     message.container_quaternion_xyzw = list(transform["quaternion_xyzw"])
     message.container_stamp_is_null = True
     return message
+
+
+class MessageBoundary(unittest.TestCase):
+    def _control(self):
+        surface = _service_surface(_surface("open"), "svc")
+        request = _request(surface, PORTAL, TARGET, (0, 0, 0.16))
+        return _to_message(request, surface)
+
+    def test_generated_message_rejections_skip_selector(self):
+        from unittest.mock import patch
+        from luggage_msgs.srv import SelectPlacePathV2
+        from luggage_planning.place_service import fill_select_response, request_dict
+        mutations = (
+            ("stale_map", lambda msg: setattr(
+                msg.surface, "map_revision", msg.surface.map_revision + 1),
+             "MAP_REVISION_MISMATCH"),
+            ("wrong_hash", lambda msg: setattr(
+                msg.surface, "geometry_hash", "wrong-geometry"),
+             "GEOMETRY_IDENTITY_MISMATCH"),
+            ("invalid_cells", lambda msg: setattr(
+                msg.surface, "valid", [False] * len(msg.surface.valid)),
+             "INVALID_GRID"),
+            ("invalid_state", lambda msg: (
+                setattr(msg.surface, "valid", [False] * len(msg.surface.valid)),
+                setattr(msg.surface, "surface_z_container",
+                        [0.0] * len(msg.surface.surface_z_container))),
+             "UNKNOWN_SURFACE_HAS_VALUE"),
+            ("grasp_v1", lambda msg: setattr(
+                msg.grasp.identity, "contract_version", 1),
+             "CONTRACT_VERSION_MISMATCH"),
+            ("missing_stamp", lambda msg: setattr(
+                msg.slots[0].identity, "stamp_valid", False),
+             "INVALID_STAMP"),
+            ("truncated_surface", lambda msg: setattr(msg.surface, "state", []),
+             "INVALID_GRID"),
+            ("derived_height", lambda msg: (
+                setattr(msg.surface, "has_height_above_floor", True),
+                setattr(msg.surface, "height_above_floor", [])),
+             "INVALID_GRID"),
+        )
+        for name, mutate, code in mutations:
+            with case("message/" + name, {}):
+                message = self._control()
+                mutate(message)
+                with patch("luggage_planning.place_service.select_place_v2") as select:
+                    try:
+                        response = fill_select_response(
+                            message, SelectPlacePathV2.Response(),
+                            atlas=None, config=dict(FIXTURE_SELECTOR))
+                    except Exception as exc:  # noqa: BLE001 - boundary must not escape
+                        self.fail("%s raised %s: %s" % (name, type(exc).__name__, exc))
+                select.assert_not_called()
+                self.assertFalse(response.success)
+                self.assertEqual(response.reason_code, code)
+                self.assertEqual(response.rows_json, "[]")
+        decoded = request_dict(self._control())
+        self.assertIsNone(decoded["surface"]["surface_z_container"][1][1])
+        self.assertEqual(decoded["surface"]["state"][1][1], "unknown")
+        self.assertEqual(decoded["surface"]["confidence"][1][1], "unknown")
+        self.assertAlmostEqual(decoded["surface"]["surface_z_container"][0][0], FLOOR)
+        self.assertEqual(decoded["surface"]["state"][0][0], "free")
+        legal = self._control()
+        index = 2 * legal.surface.columns + 2
+        legal.surface.valid[index] = False
+        legal.surface.surface_z_container[index] = 0.0
+        legal.surface.state[index] = "unknown"
+        legal.surface.confidence[index] = "unknown"
+        decoded = request_dict(legal)
+        self.assertIsNone(decoded["surface"]["surface_z_container"][2][2])
+        self.assertEqual(decoded["surface"]["state"][2][2], "unknown")
 
 
 def dump_fixtures():
