@@ -1,0 +1,4 @@
+[INFO] [1790772780.883408019] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cad1f054ecf5504f177d929b859e87c94aea475ee17d6c77a3d9c1869d100b3d, cloud=/luggage/semantic/cargo_points_untracked)
+[INFO] [1790772780.898281083] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, hash_policy=strict, w=0.3, hard_reject=True)
+[INFO] [1790772780.899639556] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+[ERROR] [1790772780.901138296] [placement_planner]: rejected cargo map: geometry_hash cad1f054ecf5504f177d929b859e87c94aea475ee17d6c77a3d9c1869d100b3d != planner cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856 (rejected=1)

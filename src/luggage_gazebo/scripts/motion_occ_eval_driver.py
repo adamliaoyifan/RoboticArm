@@ -213,23 +213,27 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         """Row probe for ``PlacePathPlanner.plan``: one cartesian carry
         segment per occupancy-feasible row, mirroring the traverse segment
         the winner will execute (tool-down at the slot's place yaw,
-        OMPL fallback allowed). Fail-open: unavailable/timeout leaves the
-        row unprobed (occupancy-only gating), never marks it infeasible.
+        OMPL fallback allowed). A requested probe is mandatory: unavailable
+        or timed-out probes reject the row without execution.
 
-        Returns ``(probe_fn, stats)``; ``probe_fn`` is ``None`` when the
-        service is not up at selection time (stats carries the mode so
-        dumps stay attributable).
+        Returns ``(probe_fn, stats)``. An unavailable service returns a
+        rejecting callback so the selector cannot silently omit the gate.
         """
         stats = {"mode": "on", "probed": 0, "ik_reject": 0,
                  "fraction_reject": 0, "unavailable": 0, "sec": 0.0}
         min_fraction = float(self._planner.cartesian_min_fraction)
+        def reject_probe(row, reason="PLACE_PROBE_UNAVAILABLE"):
+            row.update(ik_ok=False, cartesian_fraction=-1.0,
+                       feasible=False, reason=reason, probe_success=False)
+
         if not self._probe_place.wait_for_service(timeout_sec=5.0):
             stats["mode"] = "service_unavailable"
-            return None, stats
+            return reject_probe, stats
         unavailable = [0]
 
         def probe(row):
             if unavailable[0] >= PLACE_PROBE_MAX_UNAVAILABLE:
+                reject_probe(row)
                 return
             slot = slots[int(row["slot_index"])]
             segment = MotionSegment()
@@ -241,6 +245,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             world = [_map_to_world(self._scene_config, xyz)
                      for xyz in (row.get("waypoints") or [])]
             if not world:
+                reject_probe(row, "PLACE_PROBE_EMPTY_PATH")
                 return
             dest = world[-1]
             segment.target_pose.position.x = float(dest[0])
@@ -262,6 +267,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             if response is None:
                 stats["unavailable"] += 1
                 unavailable[0] += 1
+                reject_probe(row)
                 return
             unavailable[0] = 0
             stats["probed"] += 1
@@ -270,6 +276,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             # fraction stays -1.0 (no cartesian solution) on purpose: the
             # plan() gate rejects it as a sub-threshold fraction.
             row["cartesian_fraction"] = float(response.fraction)
+            row["probe_success"] = row["ik_ok"] and float(response.fraction) >= min_fraction
             if not row["ik_ok"]:
                 stats["ik_reject"] += 1
             elif float(response.fraction) < min_fraction:

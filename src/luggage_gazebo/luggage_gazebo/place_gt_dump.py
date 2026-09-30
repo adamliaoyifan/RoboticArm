@@ -17,6 +17,7 @@ import zlib
 
 from luggage_description.scene_tf_config_utils import (
     _compose,
+    _invert_transform,
     container_aperture_edges_in_container,
     container_hull_local_inside_fn,
     container_in_base_link,
@@ -60,25 +61,38 @@ BOX_PALETTE = (
 
 def mapper_from_scene(config, resolution=DEFAULT_RESOLUTION):
     inner = container_usable_dimensions(config)
-    _xyz, rpy = container_in_base_link(config)
     descriptor = container_inner_geometry_descriptor(config)
     return CargoVolumeMapper(
         inner_size=inner,
-        center_base=container_usable_center_in_base_link(config),
-        yaw=float(rpy[2]),
+        # The migrated mapper rasterizer consumes container coordinates.
+        center_base=[0.0, 0.0, 0.5 * (container_inner_floor_z(config) +
+                                    container_inner_ceiling_z(config))],
+        yaw=0.0,
         resolution=float(resolution),
         hull_local_inside=container_hull_local_inside_fn(config),
         geometry_descriptor=descriptor,
     )
 
 
-def mark_placed_on_mapper(mapper, center_base, size_wdh, yaw=0.0):
-    mapper.mark_placed_box(
-        [float(v) for v in center_base],
-        [float(v) for v in size_wdh],
-        yaw=float(yaw),
-    )
+def mark_placed_on_mapper(mapper, config, center_base, size_wdh, yaw=0.0):
+    """Named base-frame GT adapter; the mapper itself owns container geometry."""
+    from luggage_description.frame_contracts import require_horizontal
+    translation, rotation = container_in_base_link(config)
+    inverse_translation, inverse_rotation = _invert_transform(translation, rotation)
+    center, orientation = _compose(inverse_translation, inverse_rotation,
+                                   list(center_base), [0.0, 0.0, float(yaw)])
+    from luggage_description.scene_tf_publisher import rpy_to_quaternion
+    require_horizontal(rpy_to_quaternion(orientation))
+    mapper.mark_placed_box(center, [float(v) for v in size_wdh], yaw=orientation[2])
     return mapper
+
+
+def _legacy_surface_in_base(mapper, config):
+    """Preserve the declared historical reader metadata after local rasterizing."""
+    surface = mapper.surface_map_2d()
+    surface["center_base"] = container_usable_center_in_base_link(config)
+    surface["yaw"] = container_in_base_link(config)[1][2]
+    return surface
 
 
 def fill_unoccupied_as_free(mapper):
@@ -285,9 +299,9 @@ def build_place_gt(config, box_center_base, box_size, box_yaw,
     """Return occupancy image rows, surface map, stats, and labelled GT cloud."""
     mapper = mapper_from_scene(config, resolution=resolution)
     if box_center_base is not None and box_size is not None:
-        mark_placed_on_mapper(mapper, box_center_base, box_size, yaw=box_yaw or 0.0)
+        mark_placed_on_mapper(mapper, config, box_center_base, box_size, yaw=box_yaw or 0.0)
     fill_unoccupied_as_free(mapper)
-    surface = mapper.surface_map_2d()
+    surface = _legacy_surface_in_base(mapper, config)
     image = occupancy_image_array(surface)
     walls, wall_c = sample_container_inner_cloud(config, spacing=spacing)
     points = list(walls)
@@ -341,8 +355,8 @@ def sample_free_voxels_world(mapper, config, color=FREE_VOXEL_RGB):
                 if mapper._grid[mapper._index(ix, iy, iz)] != FREE:
                     continue
                 local = mapper._voxel_center_local(ix, iy, iz)
-                base = mapper._local_to_world(*local)
-                points.append(xyz_base_link_to_world(config, list(base)))
+                container_point = mapper._local_to_world(*local)
+                points.append(_container_link_to_world(config, list(container_point)))
                 colors.append(color)
     return points, colors
 
@@ -403,10 +417,10 @@ def build_pack_layout(config, boxes, resolution=DEFAULT_RESOLUTION,
             record["pose_base_link"]["yaw"] = yaw_world_to_base_link(
                 config, record["pose_world"]["yaw"])
         mark_placed_on_mapper(
-            mapper, center_base, record["size_wdh"],
+            mapper, config, center_base, record["size_wdh"],
             yaw=record["pose_base_link"]["yaw"])
     fill_unoccupied_as_free(mapper)
-    surface = mapper.surface_map_2d()
+    surface = _legacy_surface_in_base(mapper, config)
     image = occupancy_image_array(surface)
     walls, wall_c = sample_container_inner_cloud(config, spacing=spacing)
     points = list(walls)

@@ -5,7 +5,7 @@
 ``_place_probe_fn`` must mirror the traverse segment the winner executes
 (cartesian, tool-down at the slot's place yaw, OMPL fallback allowed),
 write back ``ik_ok``/``cartesian_fraction`` for PlacePathPlanner's gate,
-fail open on an unavailable service, and stop probing after the circuit
+reject rows on an unavailable service, and stop probing after the circuit
 breaker trips. ``parse_args`` owns the ``--place-probe`` switch without
 leaking it into the shared place parser.
 """
@@ -134,13 +134,13 @@ class PlaceProbeFnTest(unittest.TestCase):
         self.assertEqual(stats["ik_reject"], 1)
         self.assertEqual(stats["fraction_reject"], 0)
 
-    def test_fail_open_leaves_row_untouched(self):
+    def test_unavailable_probe_rejects_row(self):
         driver, _calls = _driver([None])
         probe, stats = driver._place_probe_fn([_slot()])
         row = self._row()
         probe(row)
-        self.assertNotIn("ik_ok", row)
-        self.assertNotIn("cartesian_fraction", row)
+        self.assertFalse(row["ik_ok"])
+        self.assertEqual(row["cartesian_fraction"], -1.0)
         self.assertNotIn("probe_s", row)
         self.assertEqual(stats["unavailable"], 1)
         self.assertEqual(stats["probed"], 0)
@@ -150,7 +150,7 @@ class PlaceProbeFnTest(unittest.TestCase):
         probe, stats = driver._place_probe_fn([_slot()])
         for _ in range(4):
             probe(self._row())
-        # After PLACE_PROBE_MAX_UNAVAILABLE consecutive fail-opens the
+        # After PLACE_PROBE_MAX_UNAVAILABLE consecutive unavailable probes the
         # remaining rows are skipped without further service waits.
         self.assertEqual(stats["unavailable"], mod.PLACE_PROBE_MAX_UNAVAILABLE)
         # Breaker resets on a good response.
@@ -162,11 +162,14 @@ class PlaceProbeFnTest(unittest.TestCase):
         self.assertEqual(stats2["probed"], 1)
         self.assertEqual(stats2["unavailable"], 2)
 
-    def test_service_down_at_selection_returns_no_probe_fn(self):
+    def test_service_down_at_selection_returns_rejecting_probe(self):
         driver, _calls = _driver([])
         driver._probe_place = _FakeClient(up=False)
         probe, stats = driver._place_probe_fn([_slot()])
-        self.assertIsNone(probe)
+        row = self._row()
+        probe(row)
+        self.assertFalse(row["feasible"])
+        self.assertEqual(row["reason"], "PLACE_PROBE_UNAVAILABLE")
         self.assertEqual(stats["mode"], "service_unavailable")
 
     def test_empty_waypoints_never_calls_the_service(self):

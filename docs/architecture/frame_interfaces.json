@@ -280,7 +280,7 @@
         "atlas_pi_fold_rejected"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-repair-20260930/runtime_F12.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-20260930-dev/runtime_F12.json"
     },
     {
       "id": "F13",

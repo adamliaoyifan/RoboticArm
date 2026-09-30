@@ -346,3 +346,15 @@ class TestJointPath(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_requested_probe_cannot_be_bypassed_by_grid_seeds():
+    from luggage_planning.trajectory_selector import _apply_probe_gate
+    row = {"source": "grid", "joint_seeds": [[0.0] * 6], "feasible": True}
+    calls = []
+    def unavailable(candidate):
+        calls.append(candidate)
+    _apply_probe_gate(row, unavailable, 0.95)
+    assert len(calls) == 1
+    assert row["feasible"] is False
+    assert row["reason"] == "PLACE_PROBE_UNAVAILABLE"

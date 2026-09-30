@@ -256,3 +256,36 @@ isolated installed Humble build with actual generated-message serialization.
 Set `FRAME_MIGRATION_CASE_LOG` to preserve per-case inputs/outputs/diagnostics.
 Live F01--F24 adoption remains pending until each producer/consumer chain earns
 its later runtime proof; shared serialization is not that proof.
+
+## ST09 tooling primitives (runtime adoption remains gated)
+
+`runtime_profile` resolves grouped launch YAML with CLI precedence, rejects
+unknown keys and ambiguous duplicate leaf names, and validates complete v2
+identity records. Sim and hardware launch profiles share that resolver.
+`runtime_readiness.ReadinessGate` is a ROS-free consumer admission primitive:
+missing peers/endpoint graphs disable admission; restart, changed identity,
+expired lease, duplicate provider or mixed type revoke readiness. A v1 request
+cannot pass this primitive. It does not itself collect process reports, wrap
+production entrypoints, or prove runtime adoption. F21 remains pending until
+those integrations have real graph evidence.
+
+`luggage_gazebo.frame_dump` defines `luggage.frame_dump/2`. It joins pose/surface
+identities to independently supplied consumer expectations, stores body X/Y/Z
+sizes and a world transform snapshot, preserves exact acquisition nanoseconds
+and unknown cells, and distinguishes `measured` from `gt_reference`. Writes are
+exclusive. The only legacy surface adapter, `surface_floor_relative_v1`, takes
+an explicit `container_link` frame, `floor_relative` datum, floor, ceiling and
+consumer identity; conflicting declarations fail. GT rasterization now explicitly converts base-frame inputs to the mapper's
+container frame and transforms free voxels from container to world. Existing
+GT writers and live visualizers are not yet switched to this envelope, so F23 remains pending.
+
+When a selector receives a probe callback it requires positive IK and fraction
+evidence. Grid seeds do not replace the requested probe. Eval probe service
+loss, timeout or empty paths reject candidates; an explicitly disabled probe
+retains the separately configured occupancy-only behavior.
+
+`integration_acceptance` validates joined two-box evidence and GT-labelled
+metrics separately from measured map acceptance. Its event schema is provisional
+until measured production events and capture windows are frozen after rehearsal.
+The ST09 verification runner reports missing graph/rehearsal obligations as
+`not_evaluated`; that result blocks release and is not a runtime certification.

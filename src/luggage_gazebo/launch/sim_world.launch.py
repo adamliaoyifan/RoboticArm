@@ -114,61 +114,13 @@ def _default_launch_values():
     }
 
 
-def _flatten_profile(data, out=None):
-    if out is None:
-        out = {}
-    if not isinstance(data, dict):
-        return out
-    for key, value in data.items():
-        key = str(key)
-        if isinstance(value, dict):
-            _flatten_profile(value, out)
-        else:
-            out[key] = value
-    return out
-
-
-def _load_profile_config(path):
-    path = str(path or "").strip()
-    if not path:
-        return {}
-    if not os.path.isfile(path):
-        raise RuntimeError("launch profile_config not found: %s" % path)
-    with open(path, "r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-    if not isinstance(data, dict):
-        raise RuntimeError("launch profile_config must be a YAML mapping: %s" % path)
-    return _flatten_profile(data)
-
-
-def _stringify_profile_value(value):
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (list, tuple)):
-        return ",".join(str(v) for v in value)
-    return str(value)
-
-
 def _resolved_launch_config(context):
+    from luggage_description.runtime_profile import load_profile, resolve_profile, launch_text
     defaults = _default_launch_values()
     profile_path = LaunchConfiguration("profile_config").perform(context)
-    profile = _load_profile_config(profile_path)
-    unknown = sorted(set(profile) - set(defaults))
-    if unknown:
-        print(
-            "WARN: sim_world profile ignored unknown keys: %s"
-            % ", ".join(unknown)
-        )
-    cfg = {}
-    for name, default in defaults.items():
-        raw = LaunchConfiguration(name).perform(context)
-        if raw == _PROFILE_SENTINEL:
-            cfg[name] = _stringify_profile_value(profile.get(name, default))
-        else:
-            cfg[name] = raw
-    if profile_path:
-        print("sim_world launch profile: %s" % profile_path)
-    return cfg
+    overrides = {name: LaunchConfiguration(name).perform(context) for name in defaults}
+    resolved = resolve_profile(defaults, load_profile(profile_path), overrides)
+    return {name: launch_text(value) for name, value in resolved.items()}
 
 
 def _as_bool(value):

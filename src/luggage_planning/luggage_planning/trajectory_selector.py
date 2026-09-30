@@ -230,13 +230,17 @@ def _sort_key(row):
 
 
 def _apply_probe_gate(row, probe_fn, min_fraction):
-    if row.get("source") == "grid" and row.get("joint_seeds"):
+    if probe_fn is None and row.get("source") == "grid" and row.get("joint_seeds"):
         row["ik_ok"] = True
         row["cartesian_fraction"] = 1.0
         return
     if probe_fn is None:
         return
     probe_fn(row)
+    if row.get("ik_ok") is None or row.get("cartesian_fraction") is None:
+        row["feasible"] = False
+        row["reason"] = row.get("reason") or "PLACE_PROBE_UNAVAILABLE"
+        return
     if row.get("ik_ok") is False:
         row["feasible"] = False
         row["reason"] = row.get("reason") or "ik_failed"

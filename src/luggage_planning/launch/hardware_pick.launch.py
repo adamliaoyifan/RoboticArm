@@ -174,7 +174,7 @@ def _move_group(context, *args, **kwargs):
     ]
 
 
-def generate_launch_description():
+def _launch_description():
     desc_share = get_package_share_directory("luggage_description")
     perc_share = get_package_share_directory("luggage_perception")
     exec_share = get_package_share_directory("elfin_trajectory_executor")
@@ -501,3 +501,8 @@ def generate_launch_description():
             OpaqueFunction(function=_move_group),
         ]
     )
+
+
+def generate_launch_description():
+    from luggage_description.launch_profile import with_profile
+    return with_profile(_launch_description())
