@@ -70,8 +70,9 @@ class GeometricVariantGenerator(object):
             row = _row(
                 index, score, variant.method, list(variant.waypoints),
                 swept, slot_yaw, source="geometric", seeds=None)
-            row["box_center_waypoints"] = box_center_polyline(
-                variant.waypoints, offset)
+            if offset is not None:
+                row["box_center_waypoints"] = box_center_polyline(
+                    variant.waypoints, offset)
             rows.append(row)
         return rows
 
@@ -138,7 +139,9 @@ class GridPathGenerator(object):
             row = _row(
                 index, score, "grid_" + path.profile, waypoints, swept,
                 slot_yaw, source="grid", seeds=path.seeds)
-            row["box_center_waypoints"] = box_center_polyline(waypoints, offset)
+            if offset is not None:
+                row["box_center_waypoints"] = box_center_polyline(
+                    waypoints, offset)
             row["cells"] = [list(cell) for cell in path.cells]
             rows.append(row)
         diag["n_paths"] = len(rows)

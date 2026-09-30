@@ -12,6 +12,7 @@ import math
 from luggage_description.container_geometry import cuboid_from_inner_size
 from luggage_description.frame_contracts import (
     ContractError,
+    finite_number,
     require_horizontal,
     validate_pose,
 )
@@ -57,19 +58,38 @@ def _pose_dict(position, quaternion):
 
 def container_transform_dict(source_frame, target_frame, translation,
                              quaternion_xyzw, stamp_ns, scene_revision):
+    """Admit a container-to-world transform before any place selection.
+
+    Source is ``container_link`` and target is ``world``. A null stamp is
+    the static scene transform. Translation must be three finite metres.
+    """
     if not isinstance(source_frame, str) or not source_frame.strip():
         raise ContractError(
             "MISSING_IDENTITY", "container_source_frame", "nonempty", source_frame)
     if not isinstance(target_frame, str) or not target_frame.strip():
         raise ContractError(
             "MISSING_IDENTITY", "container_target_frame", "nonempty", target_frame)
-    translation = [float(v) for v in translation]
+    if source_frame != "container_link" or target_frame != "world":
+        raise ContractError(
+            "FRAME_CONTRACT_MISMATCH", "container_transform",
+            ["container_link", "world"], [source_frame, target_frame])
+    if stamp_ns is not None and (type(stamp_ns) is not int or stamp_ns < 0):
+        raise ContractError(
+            "INVALID_STAMP", "container_stamp_ns",
+            "nonnegative integer or explicit null", stamp_ns)
+    values = list(translation)
+    if len(values) != 3:
+        raise ContractError(
+            "INVALID_NUMERIC_PAYLOAD", "translation", "3 finite numbers", values)
+    admitted = [
+        finite_number(float(value), "translation[%d]" % index)
+        for index, value in enumerate(values)]
     quaternion_xyzw = [float(v) for v in quaternion_xyzw]
     require_horizontal(quaternion_xyzw)
     return {
         "source_frame": source_frame,
         "target_frame": target_frame,
-        "translation": translation,
+        "translation": admitted,
         "quaternion_xyzw": quaternion_xyzw,
         "stamp_ns": stamp_ns,
         "scene_revision": scene_revision,
@@ -337,8 +357,15 @@ def select_place_v2(request, atlas=None, config=None, probe_fn=None,
         failed = _fail(reason or PLACE_PATH_INFEASIBLE, counters)
         failed["rows"] = rows
         return failed
-    tcp_record = box_to_tool_target(request["slots"][int(winner["slot_index"])], grasp)
-    world_points = _world_waypoints(tcp_record, winner.get("waypoints") or [], transform)
+    try:
+        tcp_record = box_to_tool_target(
+            request["slots"][int(winner["slot_index"])], grasp)
+        world_points = _world_waypoints(
+            tcp_record, winner.get("waypoints") or [], transform)
+    except ContractError as exc:
+        failed = _fail(exc.code, counters)
+        failed["rows"] = rows
+        return failed
     return {
         "success": True,
         "reason_code": "",

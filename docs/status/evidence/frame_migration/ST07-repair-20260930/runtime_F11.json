@@ -1,0 +1,24 @@
+{
+ "interface_id": "F11",
+ "kind": "runtime_boundary",
+ "status": "pass",
+ "contract_version": 2,
+ "command": "python3 -m pytest -q src/luggage_planning/test/test_frame_migration_selector.py::TcpMatrix",
+ "observations": [
+  "64 container yaw/translation/floor/support/grasp cases match an independent SciPy oracle within 1e-9.",
+  "slot_from_contract matches transform_pose within 1e-9.",
+  "Off-center grasp moves TCP xy off the box top center. A rotated lift does not add the container origin.",
+  "Place contact is the world TCP. Insertion, transit, and retreat lengths stay on the existing clearance helpers.",
+  "container_transform_dict admits only container_link to world, finite translation, and a null or integer stamp before selection."
+ ],
+ "sample_count": 64,
+ "interface_contract_sha256": "7426fbe6f5b2cf7f4971b7e7a4d3361a7242d126195ebbfaf8f84f3070291784",
+ "source_sha256": {
+  "src/luggage_planning/luggage_planning/waypoint_generator.py": "0f77f7932c37b0d0ef6e7a447e2bd12e7d64c830efb5261e95057bf28f863d13",
+  "src/luggage_planning/scripts/waypoint_generator_node.py": "51aafeba8ad5f74b2ce07ded5d39b9a6e908532989fa34fe0e05f5a881df0718",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "07a8a79a3f0236cb9e3ca9b6fb6fcc479c5df42ad04b616698ca0ae7c3778c3b",
+  "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+ }
+}

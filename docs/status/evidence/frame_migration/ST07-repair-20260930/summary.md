@@ -36,4 +36,22 @@ The other six cases return before `select_place_v2`:
   F01, F15, F16, F17, F18, F21, F22, F23, F24
 
 F08 and F13 proofs in this directory replace the `904a6de` proofs. F11 and
-F12 sources are unchanged. No Gazebo and no hardware motion.
+F12 are reissued here after the transform admission change. No Gazebo and no
+hardware motion.
+
+## Second repair
+
+`container_transform_dict` now requires source `container_link`, target
+`world`, three finite translation components, and a null or nonnegative
+integer stamp. Those checks run inside `request_dict`, before
+`select_place_v2`. `wrong_frame` returns `FRAME_CONTRACT_MISMATCH`.
+Translation `[NaN, 0, 0]` returns `INVALID_NUMERIC_PAYLOAD`.
+
+`BuildMotionSequenceV2` rejects any phase other than `pick` or `place`
+with `INVALID_RECORD`, and a non-finite or non-positive `box_wdh` with
+`INVALID_NUMERIC_PAYLOAD`, before `build_place_legs_v2`.
+
+The v1 test calls `TrajectorySelectorNode._select` on one fixed
+`SelectPlacePath` request, once on this tree and once on `074daf3`'s
+occupancy, path candidates, and callback. The two responses reserialize
+to the same CDR. Carry orientations keep z=w=0.

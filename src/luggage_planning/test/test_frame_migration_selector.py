@@ -588,37 +588,146 @@ class AtlasBins(unittest.TestCase):
             self.assertEqual(queries, [])
 
 
-class V1Bytes(unittest.TestCase):
-    def test_v1_response_matches_base_snapshot(self):
-        golden = json.loads((DATA / "v1_select_response_074daf3.json").read_text())
-        self.assertEqual(golden["base"], "074daf34c4df1c42bf2e3a7f58711e367ba72375")
-        winner = golden["winner"]
-        segments = _segments(
-            winner, map_to_world=lambda xyz: [xyz[0] + 1.5, xyz[1], xyz[2]])
-        from luggage_planning.occupancy_place_paths import dump_rows
-        rows_json = json.dumps(dump_rows(golden["rows"]))
-        actual = {
-            "success": True,
-            "reason_code": "",
-            "slot_index": int(winner["slot_index"]),
-            "selection_id": "",
-            "path_source": "",
-            "rows_json": json.loads(rows_json),
-            "segments": _segment_snapshot(segments),
-        }
-        self.assertEqual(actual, {
-            "success": golden["success"],
-            "reason_code": golden["reason_code"],
-            "slot_index": golden["slot_index"],
-            "selection_id": golden["selection_id"],
-            "path_source": golden["path_source"],
-            "rows_json": golden["rows_json"],
-            "segments": golden["segments"],
+V1_BASE = "074daf34c4df1c42bf2e3a7f58711e367ba72375"
+V1_RUNNER = r"""
+import os
+import sys
+root = os.environ["ST07_ROOT"]
+sys.path[:0] = [
+    os.environ["ST07_PKG"],
+    os.environ["ST07_SCRIPTS"],
+    os.path.join(root, "src/luggage_description"),
+]
+from luggage_description.container_geometry import cuboid_from_inner_size
+from luggage_msgs.msg import DetectedLuggage, SlotSpec
+from luggage_msgs.srv import SelectPlacePath
+from luggage_planning.trajectory_selector import TrajectorySelector
+from trajectory_selector_node import TrajectorySelectorNode
+from rclpy.serialization import serialize_message
+
+inner = (1.0, 0.5, 1.0)
+hull = cuboid_from_inner_size(inner, floor_z=0.0)
+desc = hull.descriptor()
+nx, ny = 20, 10
+surface = {
+    "geometry_hash": desc["geometry_hash"],
+    "geometry_descriptor": desc,
+    "map_revision": 3,
+    "resolution": 0.05,
+    "nx": nx,
+    "ny": ny,
+    "inner_size": list(inner),
+    "floor_z": 0.0,
+    "center_base": [0.0, 0.0, 0.5],
+    "yaw": 0.0,
+    "height": [[0.0] * ny for _ in range(nx)],
+    "state": [["free"] * ny for _ in range(nx)],
+    "confidence": [["none"] * ny for _ in range(nx)],
+}
+request = SelectPlacePath.Request()
+request.request_id = "v1-fixed"
+request.geometry_hash = desc["geometry_hash"]
+request.map_revision = 3
+request.box = DetectedLuggage()
+request.box.width = 0.20
+request.box.depth = 0.10
+request.box.height = 0.20
+request.start_pose.position.x = -0.20
+request.start_pose.position.y = 0.0
+request.start_pose.position.z = 0.80
+request.start_pose.orientation.w = 1.0
+slot = SlotSpec()
+slot.place_pose.position.x = 0.20
+slot.place_pose.position.y = 0.0
+slot.place_pose.position.z = 0.60
+slot.place_pose.orientation.w = 1.0
+slot.width = 0.20
+slot.depth = 0.10
+slot.height = 0.20
+request.candidates = [slot]
+request.candidate_scores = [1.0]
+
+class Host(object):
+    def __init__(self):
+        self._surface = surface
+        self._joints = None
+        self._selector = TrajectorySelector({
+            "mode": "unified", "inflate_m": 0.0, "arm_radius_m": 0.0,
+            "max_candidates_per_slot": 5, "probe_budget": 0, "w_arm": 0.0,
         })
-        for seg in segments:
-            self.assertEqual(seg.target_pose.orientation.z, 0.0)
-            self.assertEqual(seg.target_pose.orientation.w, 0.0)
-            for pose in list(seg.waypoints) + [seg.target_pose]:
+        self._scene_tf_hash = "v1-fixed-scene"
+        self._atlas_cfg = {"enabled": False}
+        self._urdf_identity = type("U", (), {"ready": False, "hash": ""})()
+    def _runtime_atlas(self):
+        return None, {"loaded": False, "reason": "disabled"}
+    def _map_to_world(self, xyz):
+        return [float(xyz[0]) + 1.5, float(xyz[1]), float(xyz[2])]
+
+response = SelectPlacePath.Response()
+TrajectorySelectorNode._select(Host(), request, response)
+if not response.success:
+    sys.stderr.write(response.reason_code + "\n" + response.rows_json + "\n")
+    sys.exit(2)
+sys.stdout.write(serialize_message(response).hex())
+"""
+
+
+def _v1_response_cdr(pkg_dir, scripts_dir):
+    import subprocess
+    env = os.environ.copy()
+    env["PYTHONHASHSEED"] = "0"
+    env["ST07_ROOT"] = os.path.dirname(os.path.dirname(os.path.dirname(TEST_DIR)))
+    env["ST07_PKG"] = pkg_dir
+    env["ST07_SCRIPTS"] = scripts_dir
+    proc = subprocess.run(
+        [sys.executable, "-c", V1_RUNNER],
+        env=env, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        raise AssertionError(proc.stderr or proc.stdout)
+    return bytes.fromhex(proc.stdout.strip())
+
+
+class V1Bytes(unittest.TestCase):
+    def test_v1_fixed_request_matches_base_serialization(self):
+        import shutil
+        import subprocess
+        import tempfile
+        root = os.path.dirname(os.path.dirname(os.path.dirname(TEST_DIR)))
+        head_pkg = os.path.join(root, "src", "luggage_planning")
+        head_scripts = os.path.join(head_pkg, "scripts")
+        head = _v1_response_cdr(head_pkg, head_scripts)
+        overlay = tempfile.mkdtemp(prefix="st07-v1-base-")
+        try:
+            pkg = os.path.join(overlay, "luggage_planning")
+            shutil.copytree(
+                os.path.join(head_pkg, "luggage_planning"), pkg)
+            scripts = os.path.join(overlay, "scripts")
+            os.makedirs(scripts)
+            for rel, dest in (
+                    ("src/luggage_planning/luggage_planning/occupancy_place_paths.py",
+                     os.path.join(pkg, "occupancy_place_paths.py")),
+                    ("src/luggage_planning/luggage_planning/path_candidates.py",
+                     os.path.join(pkg, "path_candidates.py")),
+                    ("src/luggage_planning/scripts/trajectory_selector_node.py",
+                     os.path.join(scripts, "trajectory_selector_node.py"))):
+                text = subprocess.check_output(
+                    ["git", "show", "%s:%s" % (V1_BASE, rel)],
+                    cwd=root, text=True)
+                with open(dest, "w", encoding="utf-8") as handle:
+                    handle.write(text)
+            base = _v1_response_cdr(overlay, scripts)
+        finally:
+            shutil.rmtree(overlay)
+        from rclpy.serialization import deserialize_message, serialize_message
+        from luggage_msgs.srv import SelectPlacePath
+        base_msg = deserialize_message(base, SelectPlacePath.Response)
+        head_msg = deserialize_message(head, SelectPlacePath.Response)
+        self.assertEqual(serialize_message(base_msg), serialize_message(head_msg))
+        self.assertTrue(head_msg.success)
+        self.assertGreater(len(head_msg.carry_segments), 0)
+        for segment in head_msg.carry_segments:
+            poses = list(segment.waypoints) + [segment.target_pose]
+            for pose in poses:
                 self.assertEqual(pose.orientation.z, 0.0)
                 self.assertEqual(pose.orientation.w, 0.0)
 
@@ -903,6 +1012,50 @@ class MessageBoundary(unittest.TestCase):
         decoded = request_dict(legal)
         self.assertIsNone(decoded["surface"]["surface_z_container"][2][2])
         self.assertEqual(decoded["surface"]["state"][2][2], "unknown")
+
+    def test_transform_and_build_reject_before_work(self):
+        from unittest.mock import patch
+        from luggage_msgs.srv import BuildMotionSequenceV2, SelectPlacePathV2
+        from luggage_planning.place_service import (
+            fill_select_response, handle_build_v2)
+        surface = _service_surface(_surface("open"), "svc")
+        request = _request(surface, PORTAL, TARGET, (0, 0, 0.16))
+        cases = (
+            ("select_bad_transform_source", True,
+             lambda msg: setattr(msg, "container_source_frame", "wrong_frame"),
+             "FRAME_CONTRACT_MISMATCH"),
+            ("select_nan_transform", True,
+             lambda msg: setattr(msg, "container_translation", [float("nan"), 0.0, 0.0]),
+             "INVALID_NUMERIC_PAYLOAD"),
+            ("build_bad_phase", False,
+             lambda msg: setattr(msg, "phase", "invalid"),
+             "INVALID_RECORD"),
+            ("build_nan_height", False,
+             lambda msg: setattr(msg, "box_wdh", [0.8, 0.5, float("nan")]),
+             "INVALID_NUMERIC_PAYLOAD"),
+        )
+        for name, is_select, mutate, code in cases:
+            with case("boundary/" + name, {}):
+                message = _to_message(request, surface) if is_select else _build_message(request)
+                mutate(message)
+                target = ("luggage_planning.place_service.select_place_v2" if is_select
+                          else "luggage_planning.place_service.build_place_legs_v2")
+                with patch(target) as work:
+                    try:
+                        if is_select:
+                            response = fill_select_response(
+                                message, SelectPlacePathV2.Response(),
+                                atlas=None, config=dict(FIXTURE_SELECTOR))
+                        else:
+                            response = handle_build_v2(
+                                message, BuildMotionSequenceV2.Response())
+                    except Exception as exc:  # noqa: BLE001 - must be a response
+                        self.fail("%s raised %s: %s" % (name, type(exc).__name__, exc))
+                work.assert_not_called()
+                self.assertFalse(response.success)
+                self.assertEqual(response.reason_code, code)
+                if not is_select:
+                    self.assertEqual(list(response.segments), [])
 
 
 def dump_fixtures():

@@ -56,6 +56,24 @@ def _xyz(values):
     return [float(values[0]), float(values[1]), float(values[2])]
 
 
+def _require_box_wdh(values):
+    """Three finite, positive payload dimensions. NaN must not build legs."""
+    numbers = list(values)
+    if len(numbers) != 3:
+        raise ContractError(
+            "INVALID_NUMERIC_PAYLOAD", "box_wdh", "3 positive finite numbers",
+            numbers)
+    admitted = []
+    for index, value in enumerate(numbers):
+        number = finite_number(float(value), "box_wdh[%d]" % index)
+        if number <= 0.0:
+            raise ContractError(
+                "INVALID_NUMERIC_PAYLOAD", "box_wdh[%d]" % index,
+                "positive", number)
+        admitted.append(number)
+    return admitted
+
+
 def _fill_identity(identity, record):
     identity.contract_version = int(record["contract_version"])
     identity.frame_id = str(record["frame_id"])
@@ -228,11 +246,11 @@ def fill_select_response(message, response, atlas=None, config=None,
                          probe_fn=None, moveit_client=None, counters=None):
     try:
         request = request_dict(message)
+        result = select_place_v2(
+            request, atlas=atlas, config=config, probe_fn=probe_fn,
+            moveit_client=moveit_client, counters=counters)
     except ContractError as exc:
         return _reject(response, exc)
-    result = select_place_v2(
-        request, atlas=atlas, config=config, probe_fn=probe_fn,
-        moveit_client=moveit_client, counters=counters)
     response.success = bool(result["success"])
     response.reason_code = str(result["reason_code"])
     response.slot_index = int(result["slot_index"])
@@ -286,6 +304,8 @@ def handle_build_v2(request, response, pick=None):
             response.message = "pick delegated"
             response.reason_code = ""
             return response
+        if phase != "place":
+            raise ContractError("INVALID_RECORD", "phase", "pick or place", phase)
         scene = str(request.slot.identity.scene_revision)
         request_id = _require_request_id(str(request.slot.identity.request_id))
         slot = _admit_slot(request.slot, request_id, scene, "F11")
@@ -298,7 +318,7 @@ def handle_build_v2(request, response, pick=None):
             request.container_translation, request.container_quaternion_xyzw,
             stamp, scene)
         segments, contact = build_place_legs_v2(
-            slot, grasp, transform, _xyz(request.box_wdh))
+            slot, grasp, transform, _require_box_wdh(request.box_wdh))
         response.segments = _copy_segments(segments)
         response.success = bool(segments)
         response.message = "%d place legs" % len(segments)
