@@ -1,0 +1,12 @@
+{
+  "python": "3.10.12 (main, Aug 31 2026, 10:18:17) [GCC 11.4.0]",
+  "environment": {
+    "ROS_DOMAIN_ID": "87",
+    "ROS_DISTRO": "humble",
+    "RMW_IMPLEMENTATION": null,
+    "AMENT_PREFIX_PATH": "/tmp/elfin-st09-g3/install/g4/luggage_gazebo:/tmp/elfin-st09-g3/install/g4/pymoveit2:/tmp/elfin-st09-g3/install/g4/luggage_planning:/tmp/elfin-st09-g3/install/g4/luggage_perception:/tmp/elfin-st09-g3/install/g4/luggage_packing:/tmp/elfin-st09-g3/install/g4/elfin_trajectory_executor:/tmp/elfin-st09-g3/install/g4/luggage_description:/tmp/elfin-st09-g3/install/g4/luggage_msgs:/tmp/elfin-st09-g3/install/g4/elfin_mvp_bringup:/tmp/elfin-st09-g3/install/g4/elfin_moveit_config:/tmp/elfin-st09-g3/install/g4/elfin_description:/tmp/elfin-st09-g3/install/g4/elfin_control:/opt/ros/humble",
+    "PYTHONPATH": "/tmp/elfin-st09-g3/install/g4/luggage_gazebo/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/pymoveit2/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/luggage_planning/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/luggage_perception/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/luggage_packing/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/elfin_trajectory_executor/lib/python3.10/site-packages:/tmp/elfin-st09-g3/install/g4/luggage_description/local/lib/python3.10/dist-packages:/tmp/elfin-st09-g3/install/g4/luggage_msgs/local/lib/python3.10/dist-packages:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages"
+  },
+  "description": "/tmp/elfin-st09-g3/install/g4/luggage_description/local/lib/python3.10/dist-packages/luggage_description/__init__.py",
+  "gazebo": "/tmp/elfin-st09-g3/install/g4/luggage_gazebo/local/lib/python3.10/dist-packages/luggage_gazebo/__init__.py"
+}
