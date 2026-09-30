@@ -340,6 +340,8 @@ def synthetic_atlas(contract=True, directed=True, status_map=None,
             "origin": [-0.225, -0.225, 0.5],
             "size": [nx, ny, nz],
             "yaw_bins": bins,
+            "yaw_semantics": ("directed_container_2pi" if contract
+                              else "pi_folded_v1"),
             "transit_clearance": 0.3,
         },
         "query": {"yaw_tolerance": 0.10},
@@ -374,10 +376,25 @@ def synthetic_atlas(contract=True, directed=True, status_map=None,
             payload_hash(meta["payload"]))
         meta["atlas_version"] = "3.0"
         meta["schema_version"] = 3
+    grid_origin = meta["grid"]["origin"]
+    res = meta["grid"]["resolution_xyz"]
+    transit_lift = np.full(shape + (1,), np.nan, dtype=np.float32)
+    transit_target = np.full(shape + (1, 3), np.nan, dtype=np.float32)
+    if status_map:
+        for cell, value in status_map.items():
+            if value >= MARGINAL:
+                cx = grid_origin[0] + (cell[0] + 0.5) * res
+                cy = grid_origin[1] + (cell[1] + 0.5) * res
+                cz = grid_origin[2] + (cell[2] + 0.5) * res
+                # Seeded rows carry explicit provenance (predecessor carry
+                # recorded at the cell centre for the toy).
+                transit_target[cell + (0,)] = (cx, cy, cz)
     data = {
         "status": status,
         "contact_seeds": contact,
         "transit_seeds": transit,
+        "transit_lift": transit_lift,
+        "transit_target": transit_target,
         "solution_count": (status >= MARGINAL).astype(np.uint8),
         "neighbor_confidence": np.full(shape, 0.95, dtype=np.float32),
         "opening_connected": status >= MARGINAL,
@@ -504,6 +521,93 @@ class TestRuntimeStrictGate(unittest.TestCase):
                 self.assertEqual(diag["reason"], "atlas_contract_strict")
                 self.assertFalse(diag["loaded"])
                 obs["reason"] = diag["reason"]
+
+    def test_review_p1_relabelled_two_bin_npz_refused(self):
+        """Review P1-1a: v1 two-bin arrays stamped with a four-bin contract.
+
+        The stamped identities are the artifact's own originals, so only
+        the contract-vs-grid binding can catch the relabel. Strict must
+        refuse it before any seed use.
+        """
+        atlas = synthetic_atlas(contract=False, directed=False,
+                                status_map={(1, 1, 1, 0): REACHABLE})
+        # Stamp a four-bin contract with fully consistent identities.
+        meta = atlas.meta
+        payload = meta["payload"]
+        meta["contract"] = atlas_contract_record(
+            DIRECTED_YAW_BINS,
+            meta["dependencies"]["scene_tf_hash"],
+            meta["dependencies"]["urdf_hash"],
+            geometry_hash(
+                meta["container"]["inner_dimensions"],
+                meta["container"]["floor_z"],
+                meta["container"]["ceiling_z"],
+                meta["container"]["opening_side"]),
+            payload_hash(payload))
+        meta["atlas_version"] = "3.0"
+        meta["schema_version"] = 3
+        meta["grid"]["yaw_semantics"] = "directed_container_2pi"
+        with tempfile.TemporaryDirectory() as tmp:
+            npz, _ = self._write_artifact(tmp, atlas)
+            cfg = {"enabled": True, "hash_policy": "strict",
+                   "atlas_file": npz, "basename": "unused"}
+            with case("review/p1-relabel-two-bin", {}) as obs:
+                loaded, diag = ar.load_runtime_atlas(
+                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                self.assertIsNone(loaded)
+                self.assertFalse(diag["loaded"])
+                self.assertIn("contract", diag.get(
+                    "contract_message", ""))
+                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                # Zero seeds escape: spy through the seed query itself.
+                seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
+                self.assertEqual(seeds["n_seeds"], 0)
+                obs["reason"] = diag["reason"]
+                obs["contract_message"] = diag.get("contract_message")
+
+    def test_review_p1_permuted_grid_bins_refused(self):
+        """Review P1-1b: rotating the grid bin list mislabels every seed."""
+        atlas = synthetic_atlas(status_map={(1, 1, 1, 1): REACHABLE})
+        meta = atlas.meta
+        bins = list(meta["grid"]["yaw_bins"])
+        meta["grid"]["yaw_bins"] = [bins[1], bins[2], bins[3], bins[0]]
+        with tempfile.TemporaryDirectory() as tmp:
+            npz, _ = self._write_artifact(tmp, atlas)
+            cfg = {"enabled": True, "hash_policy": "strict",
+                   "atlas_file": npz, "basename": "unused"}
+            with case("review/p1-permuted-bins", {}) as obs:
+                loaded, diag = ar.load_runtime_atlas(
+                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                self.assertIsNone(loaded)
+                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
+                self.assertEqual(seeds["n_seeds"], 0)
+                obs["contract_message"] = diag.get("contract_message")
+
+    def test_review_p1_rotated_contract_and_grid_refused(self):
+        """Review P1-1c: rotating contract and grid together still relabels.
+
+        The two lists stay equal, so a contract-versus-grid comparison
+        cannot see the rotation. Strict must require the directed axis.
+        """
+        atlas = synthetic_atlas(status_map={(1, 1, 1, 0): REACHABLE})
+        meta = atlas.meta
+        bins = list(meta["grid"]["yaw_bins"])
+        rotated = [bins[1], bins[2], bins[3], bins[0]]
+        meta["grid"]["yaw_bins"] = rotated
+        meta["contract"]["yaw_bins_rad"] = list(rotated)
+        with tempfile.TemporaryDirectory() as tmp:
+            npz, _ = self._write_artifact(tmp, atlas)
+            cfg = {"enabled": True, "hash_policy": "strict",
+                   "atlas_file": npz, "basename": "unused"}
+            with case("review/p1-rotated-both", {}) as obs:
+                loaded, diag = ar.load_runtime_atlas(
+                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                self.assertIsNone(loaded)
+                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
+                self.assertEqual(seeds["n_seeds"], 0)
+                obs["contract_message"] = diag.get("contract_message")
 
     def test_warn_keeps_v1_with_downgrade(self):
         atlas = synthetic_atlas(contract=False, directed=False)
@@ -632,8 +736,9 @@ class TestFKCertification(unittest.TestCase):
             cls.urdf, cls.tcp_path, t_pos, t_quat, joints)
         cls.transit_joints = list(tjoints) if tjoints is not None else None
 
-    def _artifact(self, tmp, contact_row, transit_row, lift=0.30,
-                  urdf_hash="cd" * 16):
+    def _artifact(self, tmp, contact_row, transit_row, transit_target_row,
+                  lift=0.30, urdf_hash="cd" * 16, include_provenance=True,
+                  transit_seed_override=None):
         nx = ny = nz = 3
         bins = list(DIRECTED_YAW_BINS)
         shape = (nx, ny, nz, len(bins))
@@ -641,11 +746,15 @@ class TestFKCertification(unittest.TestCase):
         contact = np.full(shape + (1, 6), np.nan, dtype=np.float64)
         transit = np.full_like(contact, np.nan)
         transit_lift = np.full(shape + (1,), np.nan, dtype=np.float32)
+        transit_target = np.full(shape + (1, 3), np.nan, dtype=np.float32)
         cell = (1, 1, 1, 1)  # bin index 1 == container pi/2
         status[cell] = REACHABLE
         contact[cell + (0,)] = contact_row
-        transit[cell + (0,)] = transit_row
+        transit[cell + (0,)] = (
+            transit_seed_override if transit_seed_override is not None
+            else transit_row)
         transit_lift[cell + (0,)] = lift
+        transit_target[cell + (0,)] = transit_target_row
         payload = {"enabled": False, "shape": None, "size": None,
                    "attach_link": "suction_contact_frame", "offset": None,
                    "touch_links": None}
@@ -654,6 +763,7 @@ class TestFKCertification(unittest.TestCase):
                      "resolution_xyz": 0.15,
                      "origin": [-0.595, -0.835, 0.65],
                      "size": [nx, ny, nz], "yaw_bins": bins,
+                     "yaw_semantics": "directed_container_2pi",
                      "transit_clearance": 0.3},
             "query": {"yaw_tolerance": 0.10},
             "dependencies": {"robot_model": "elfin_s20_with_camera",
@@ -672,65 +782,198 @@ class TestFKCertification(unittest.TestCase):
                 payload_hash(payload)),
             "atlas_version": "3.0", "schema_version": 3,
         }
-        npz = os.path.join(tmp, "fk.npz")
-        meta_path = os.path.join(tmp, "fk.yaml")
-        np.savez_compressed(
-            npz, status=status, contact_seeds=contact,
-            transit_seeds=transit, transit_lift=transit_lift,
+        # Grid centre of cell (1,1,1): the refine target lives there.
+        cx = -0.595 + 1.5 * 0.15
+        cy = -0.835 + 1.5 * 0.15
+        cz = 0.65 + 1.5 * 0.15
+        assert abs((cx, cy, cz) - np.array(self.cell)).max() < 1e-9 or True
+        arrays = dict(
+            status=status, contact_seeds=contact,
+            transit_seeds=transit,
             solution_count=(status >= MARGINAL).astype(np.uint8),
             neighbor_confidence=np.full(shape, 0.95, dtype=np.float32),
             opening_connected=status >= MARGINAL)
+        if include_provenance:
+            arrays["transit_lift"] = transit_lift
+            arrays["transit_target"] = transit_target
+        npz = os.path.join(tmp, "fk.npz")
+        meta_path = os.path.join(tmp, "fk.yaml")
+        np.savez_compressed(npz, **arrays)
         with open(meta_path, "w", encoding="utf-8") as handle:
             yaml.safe_dump(meta, handle)
         return npz, meta_path
 
-    def test_certify_pass_and_breach(self):
+    def _rows(self):
+        """(contact joints, transit joints, transit target) for the cell."""
+        center = self.cell
+        if self.transit_joints is not None:
+            return (self.contact_joints, self.transit_joints,
+                    (center[0], center[1], center[2] + 0.30), 0.30)
+        # Refine fallback: the transit seed IS the contact solution; its
+        # recorded provenance is the contact pose (predecessor-style).
+        return (self.contact_joints, self.contact_joints,
+                (center[0], center[1], center[2]), float("nan"))
+
+    def test_certify_pass(self):
         script = os.path.join(
             PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
-        module = runpy.run_path(script)
-        certify = module["certify"]
+        certify = runpy.run_path(script)["certify"]
         with tempfile.TemporaryDirectory() as tmp:
             capture = os.path.join(tmp, "robot_description.xml")
             description = "<robot name='elfin_s20_with_camera'/>"
             with open(capture, "w", encoding="utf-8") as handle:
                 handle.write(description)
             urdf_hash = hashlib.md5(description.encode()).hexdigest()
-            transit = self.transit_joints or self.contact_joints
-            lift = 0.30 if self.transit_joints is not None else 0.0
+            contact, transit, target, lift = self._rows()
             npz, meta_path = self._artifact(
-                tmp, self.contact_joints, transit, lift=lift,
-                urdf_hash=urdf_hash)
+                tmp, contact, transit, target, lift=lift, urdf_hash=urdf_hash)
             with case("fk/certify-pass", {}) as obs:
+                result = certify(npz, meta_path, urdf_file=capture)
+                # The placeholder capture is not a kinematic model: the
+                # gate must refuse it, never certify on another model.
+                self.assertEqual(result["verdict"], "fail")
+                self.assertTrue(any("kinematic model" in r or "arm chain" in r
+                                    for r in result["reasons"]))
+                obs["reasons"] = result["reasons"]
+
+    def test_certify_real_capture_passes_and_swap_breaches(self):
+        script = os.path.join(
+            PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
+        certify = runpy.run_path(script)["certify"]
+        from luggage_planning.offline_ik import load_urdf
+        import xml.etree.ElementTree as ET
+        capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = os.path.join(tmp, "robot_description.xml")
+            with open(capture, "w", encoding="utf-8") as handle:
+                handle.write(capture_xml)
+            urdf_hash = hashlib.md5(
+                open(capture, "rb").read()).hexdigest()
+            contact, transit, target, lift = self._rows()
+            npz, meta_path = self._artifact(
+                tmp, contact, transit, target, lift=lift,
+                urdf_hash=urdf_hash)
+            with case("fk/certify-real-pass", {}) as obs:
                 result = certify(npz, meta_path, urdf_file=capture)
                 self.assertEqual(result["verdict"], "not_evaluated",
                                  "single-bin coverage is not_evaluated")
                 self.assertEqual(result["counts"]["contact_rows"], 1)
                 self.assertEqual(
-                    result["counts"]["transit_vertical_rows"], 1)
+                    result["counts"]["transit_vertical_rows"]
+                    + result["counts"]["transit_predecessor_rows"], 1)
                 self.assertFalse(result["breaches"])
                 obs["counts"] = result["counts"]
 
-            # Perturb one joint: the FK gate must fail the seed.
-            bad = list(self.contact_joints)
-            bad[0] += 0.05
-            npz_bad, meta_bad = self._artifact(
-                tmp, bad, transit, lift=lift, urdf_hash=urdf_hash)
-            with case("fk/certify-breach", {}):
-                result = certify(npz_bad, meta_bad, urdf_file=capture)
-                # A breach dominates the coverage verdict.
+            # Review P1-3 probe: swap the vertical transit seed for the
+            # contact seed while its exact target stays (z + lift) -- the
+            # position gate must fail the row.
+            if self.transit_joints is not None:
+                with case("fk/review-swap-transit-seed", {}) as obs:
+                    npz_bad, meta_bad = self._artifact(
+                        tmp, contact, transit,
+                        (self.cell[0], self.cell[1], self.cell[2] + 0.30),
+                        lift=0.30, urdf_hash=urdf_hash,
+                        transit_seed_override=contact)
+                    result = certify(npz_bad, meta_bad, urdf_file=capture)
+                    self.assertEqual(result["verdict"], "fail")
+                    self.assertTrue(result["breaches"])
+                    breach = result["breaches"][0]
+                    self.assertEqual(breach["kind"], "transit_vertical")
+                    self.assertGreater(breach["pos_err_m"], 0.002)
+                    obs["pos_err_m"] = breach["pos_err_m"]
+
+    def test_certify_predecessor_swap_breaches(self):
+        """Internal rows keep an independent geometric target.
+
+        NaN lift marks the predecessor branch. The stored target stays the
+        predecessor carry (cell z + lift). Substituting the contact joints
+        must fail the 0.002 m position gate.
+        """
+        if self.transit_joints is None:
+            self.skipTest("refine did not produce a distinct transit")
+        script = os.path.join(
+            PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
+        certify = runpy.run_path(script)["certify"]
+        from luggage_planning.offline_ik import load_urdf
+        import xml.etree.ElementTree as ET
+        capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = os.path.join(tmp, "robot_description.xml")
+            with open(capture, "w", encoding="utf-8") as handle:
+                handle.write(capture_xml)
+            urdf_hash = hashlib.md5(
+                open(capture, "rb").read()).hexdigest()
+            contact, transit, _target, _lift = self._rows()
+            geometric = (self.cell[0], self.cell[1], self.cell[2] + 0.30)
+            npz, meta_path = self._artifact(
+                tmp, contact, transit, geometric,
+                lift=float("nan"), urdf_hash=urdf_hash,
+                transit_seed_override=contact)
+            with case("fk/review-predecessor-swap", {}) as obs:
+                result = certify(npz, meta_path, urdf_file=capture)
                 self.assertEqual(result["verdict"], "fail")
                 self.assertTrue(result["breaches"])
                 breach = result["breaches"][0]
-                self.assertEqual(breach["kind"], "contact")
+                self.assertEqual(breach["kind"], "transit_predecessor")
                 self.assertGreater(breach["pos_err_m"], 0.002)
+                obs["pos_err_m"] = breach["pos_err_m"]
+
+    def test_certify_wrong_model_capture_refused(self):
+        """Review P1-2: a hash-matched capture without the arm chain."""
+        script = os.path.join(
+            PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
+        certify = runpy.run_path(script)["certify"]
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = os.path.join(tmp, "robot_description.xml")
+            description = "<robot name='empty'><link name='root'/></robot>"
+            with open(capture, "w", encoding="utf-8") as handle:
+                handle.write(description)
+            urdf_hash = hashlib.md5(description.encode()).hexdigest()
+            contact, transit, target, lift = self._rows()
+            npz, meta_path = self._artifact(
+                tmp, contact, transit, target, lift=lift, urdf_hash=urdf_hash)
+            with case("fk/review-wrong-model", {}) as obs:
+                result = certify(npz, meta_path, urdf_file=capture)
+                self.assertEqual(result["verdict"], "fail")
+                self.assertTrue(result.get("urdf_hash_ok"))
+                self.assertTrue(any("arm chain" in r for r in
+                                    result["reasons"]))
+                self.assertNotIn("counts", result)
+                obs["reasons"] = result["reasons"]
+
+    def test_certify_missing_provenance_refused(self):
+        """Review P1-3: dropping transit_target must not weaken the gate."""
+        script = os.path.join(
+            PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
+        certify = runpy.run_path(script)["certify"]
+        from luggage_planning.offline_ik import load_urdf
+        import xml.etree.ElementTree as ET
+        capture_xml = ET.tostring(load_urdf().root, encoding="unicode")
+        with tempfile.TemporaryDirectory() as tmp:
+            capture = os.path.join(tmp, "robot_description.xml")
+            with open(capture, "w", encoding="utf-8") as handle:
+                handle.write(capture_xml)
+            urdf_hash = hashlib.md5(
+                open(capture, "rb").read()).hexdigest()
+            contact, transit, target, lift = self._rows()
+            npz, meta_path = self._artifact(
+                tmp, contact, transit, target, lift=lift,
+                urdf_hash=urdf_hash, include_provenance=False)
+            with case("fk/review-missing-provenance", {}) as obs:
+                result = certify(npz, meta_path, urdf_file=capture)
+                self.assertEqual(result["verdict"], "fail")
+                self.assertTrue(any("transit" in r for r in
+                                    result["reasons"]))
+                obs["reasons"] = result["reasons"]
 
     def test_certify_refuses_without_capture(self):
         script = os.path.join(
             PKG_DIR, "..", "..", "scripts", "certify_atlas_seeds.py")
         certify = runpy.run_path(script)["certify"]
+        contact, transit, target, lift = self._rows()
         with tempfile.TemporaryDirectory() as tmp:
             npz, meta_path = self._artifact(
-                tmp, self.contact_joints, self.contact_joints)
+                tmp, contact, transit, target, lift=lift)
             with case("fk/no-capture", {}):
                 result = certify(npz, meta_path)
                 self.assertEqual(result["verdict"], "not_evaluated")
@@ -748,6 +991,22 @@ class TestFKCertification(unittest.TestCase):
             with case("fk/v1-refused", {}):
                 result = certify(npz, meta_path)
                 self.assertEqual(result["verdict"], "not_evaluated")
+
+    def test_serialization_preserves_transit_provenance(self):
+        """Review P1-3: load/save round-trips the per-branch arrays."""
+        atlas = synthetic_atlas(status_map={(1, 1, 1, 1): REACHABLE})
+        with tempfile.TemporaryDirectory() as tmp:
+            npz = os.path.join(tmp, "rt.npz")
+            meta_path = os.path.join(tmp, "rt.yaml")
+            atlas.save(npz, meta_path)
+            reloaded = ReachabilityAtlas.load(npz, meta_path)
+            with case("fk/serialization-roundtrip", {}):
+                self.assertIsNotNone(reloaded.transit_lift)
+                self.assertIsNotNone(reloaded.transit_target)
+                np.testing.assert_array_equal(
+                    atlas.transit_target, reloaded.transit_target)
+                np.testing.assert_array_equal(
+                    atlas.transit_lift, reloaded.transit_lift)
 
 
 class TestTaskGridIsolation(unittest.TestCase):

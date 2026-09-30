@@ -190,6 +190,27 @@ class ReachabilityAtlas:
         if "branch_kind" in data:
             self._branch_kind = self._grid_array(
                 data.get("branch_kind"), "branch_kind", np.uint8, 0)
+        # ST06 per-branch transit provenance: the lift each vertical
+        # transit seed was solved at, and the exact container-frame target
+        # of EVERY transit seed (internal branches carry their predecessor
+        # carry target). v3 artifacts must round-trip both; the FK
+        # certifier fails closed when a seeded row lacks a target.
+        self._transit_lift = None
+        self._transit_target = None
+        if "transit_lift" in data:
+            lift = np.asarray(data["transit_lift"], dtype=np.float32)
+            if lift.shape != self._shape + (self._nseed,):
+                raise ValueError(
+                    "transit_lift must have shape %r + (nseed,), got %r" % (
+                        self._shape, lift.shape))
+            self._transit_lift = lift
+        if "transit_target" in data:
+            target = np.asarray(data["transit_target"], dtype=np.float32)
+            if target.shape != self._shape + (self._nseed, 3):
+                raise ValueError(
+                    "transit_target must have shape %r + (nseed, 3), got %r"
+                    % (self._shape, target.shape))
+            self._transit_target = target
 
         # Kept for callers that used the v1 private member.
         self._seeds = (
@@ -227,6 +248,10 @@ class ReachabilityAtlas:
             payload["lift_clearance"] = self._lift_clearance
         if self._branch_kind is not None:
             payload["branch_kind"] = self._branch_kind
+        if self._transit_lift is not None:
+            payload["transit_lift"] = self._transit_lift
+        if self._transit_target is not None:
+            payload["transit_target"] = self._transit_target
         np.savez_compressed(npz_path, **payload)
         os.makedirs(os.path.dirname(meta_path) or ".", exist_ok=True)
         saved_meta = dict(self._meta)
@@ -559,6 +584,16 @@ class ReachabilityAtlas:
     def directed(self):
         """True when the artifact stores directed 2pi concrete-tool bins."""
         return self._contract is not None
+
+    @property
+    def transit_lift(self):
+        """Per-branch vertical transit lift (float32 grid + nseed) or None."""
+        return None if self._transit_lift is None else self._transit_lift
+
+    @property
+    def transit_target(self):
+        """Exact container-frame transit target per branch (grid+nseed,3)."""
+        return None if self._transit_target is None else self._transit_target
 
     @property
     def yaw_bins(self):

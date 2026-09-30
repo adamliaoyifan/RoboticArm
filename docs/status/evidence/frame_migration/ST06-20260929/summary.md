@@ -44,13 +44,14 @@
 - Task grid isolation: `reachable_task_grid` writes and exposes an
   explicit `semantics: v1_pi_folded` marker; no runtime consumer, not
   certified v2 (declared deferral, not an omission).
-- FK certification: `scripts/certify_atlas_seeds.py` FKs every stored
-  contact and vertical-transit seed against the independently
-  reconstructed container target (<=0.002 m / <=0.02 rad), gates
-  internal-lift transit seeds on orientation+hull, requires >=1
-  certified reachable seed per directed bin, and md5-verifies the
-  build-time robot_description capture. A breach is never masked by the
-  coverage verdict.
+- FK certification: `scripts/certify_atlas_seeds.py` parses the same
+  `robot_description` capture it md5-checks, and FKs every stored
+  contact, vertical, and predecessor seed against its recorded geometric
+  target (<=0.002 m / <=0.02 rad). Predecessor targets are copied from
+  the vertical parent, not derived from the seed FK. Strict admission
+  requires contract and grid yaw bins to equal the directed bins in
+  order. Every directed bin needs at least one certified reachable seed.
+  A breach is never masked by the coverage verdict.
 
 ## Build campaign (all four profiles rebuilt)
 
@@ -63,10 +64,11 @@ guard):
   pi/2; KNOWN_SEED within 2e-3), no unexplained low-layer drops, iz5/6
   connected not regressed, no REACHABLE at z >= 1.70. Empty-load
   deterministic fingerprint 56292d189360e0850a7e12feb128f4a73aa3b5c2bbabfa2df2cddeb7545b6c36.
-- FK certification x4 (`campaign/fk/<profile>/`): exact-pose rows max
-  2.5e-5 m / 6.3e-6 rad; per directed bin certified reachable seeds
-  729/958/995/828 (empty-load) and 369-607 (payload profiles); zero
-  breaches; internal transit rows meet orientation+hull.
+- FK certification x4 (`campaign/fk/<profile>/`): 7020 / 4078 / 3772 /
+  3332 rows, zero breaches. Empty-load max error 2.52e-5 m / 6.33e-6 rad.
+  Per-bin certified reachable seeds 729/958/995/828 (empty-load) and
+  369-607 (payload profiles). Predecessor rows 883 / 704 / 622 / 567
+  each match a same-bin vertical target with identical transit joints.
 - Scene identity continuous: scene_tf_hash b40c85ae6eb2eabc47d7da2ffb23b72c
   before and after (deps and contract agree).
 
@@ -85,14 +87,40 @@ guard):
   reproduced identically at pristine 20048a5); description 187 passed.
   `test_atlas_runtime` pins updated in-chain to the directed naming
   (container bin pi/2 = legacy base yaw 0; seeds unchanged).
-- Checker: baseline 50/50 exit 0; migration exit 2 with **13 pending**
-  (`migration2/` is the final bundle; `migration/` and
-  `migration_preproof/` are the intermediate pre-proof runs, kept).
+- Checker at the pre-repair head: baseline 50/50 exit 0; migration
+  exit 2 with 13 pending (`migration2/`). `migration/` and
+  `migration_preproof/` are earlier intermediate runs, kept.
+  `migration_repair/` is the closing bundle after the proof refresh.
 - Proofs: F14 verified with `runtime_F14.json` (row sources extended
   with `atlas_frame_contracts.py`, `certify_atlas_seeds.py` and the four
   rebuilt artifact pairs so the proof hashes the certified bytes); F07
   proof refreshed on this tree (`runtime_F07.json`) because
   `placement_reachability.py` gained the directed both-grasps hook.
+
+## Repair 2026-09-30
+
+Reviews required changes on `102404d`. The repair is in this tree:
+
+- Strict admission compares both the contract yaw bins and the grid yaw
+  bins with the directed bins, in order.
+- Vertical branches record the geometric transit target. Internal
+  branches copy that target. The certifier FKs predecessor rows against
+  it and parses the captured URDF bytes it hashes.
+- Stage suite `test_frame_migration_atlas.py`: 32/32, no skips.
+- `runtime_F14.json` rehashed against the repaired sources and the four
+  artifact pairs. `migration_repair/` is exit 2, baseline 50/50, 13
+  pending (F01, F08, F11–F13, F15–F18, F21–F24). F14 is not pending.
+
+## Repair 2026-09-30
+
+Reviews required changes on `102404d` (strict bins, capture-bound FK,
+predecessor provenance). The closing gate on this tree:
+
+- `test_frame_migration_atlas.py`: 32/32, no skips.
+- Four profiles recertified: 7020/4078/3772/3332 rows, zero breaches.
+- `runtime_F14.json` reissued against the 12 sources whose bytes changed.
+- `migration_repair/`: baseline 50/50, exit 2, 13 pending
+  (F01, F08, F11–F13, F15–F18, F21–F24). F14 is not pending.
 
 ## Notes for review
 

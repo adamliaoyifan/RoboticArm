@@ -26,6 +26,7 @@ from luggage_planning.reachability_atlas import (
     STATUS_NAMES,
 )
 from luggage_planning.atlas_frame_contracts import (
+    DIRECTED_YAW_BINS,
     geometry_hash as _contract_geometry_hash,
     payload_hash as _contract_payload_hash,
     snap_yaw_directed,
@@ -530,6 +531,14 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
     return atlas, diagnostics
 
 
+def _is_directed_yaw_axis(bins):
+    """True when ``bins`` is ``DIRECTED_YAW_BINS`` in that order."""
+    if len(bins) != len(DIRECTED_YAW_BINS):
+        return False
+    return all(abs(float(a) - float(b)) <= 1e-9
+               for a, b in zip(bins, DIRECTED_YAW_BINS))
+
+
 def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
                           policy="warn"):
     """Validate the artifact contract against its own identity blocks.
@@ -537,7 +546,12 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
     The expected identity is reproduced from the artifact's geometry and
     payload sections (plus the live scene/URDF hashes when supplied), so a
     contract block whose hashes disagree with the arrays it certifies is a
-    relabel, not an identity. Returns ``(ok, message)``.
+    relabel, not an identity. Both the contract bins and the indexed grid
+    bins must equal ``DIRECTED_YAW_BINS`` in that order. Matching the two
+    lists to each other is not enough: a two-bin NPZ stamped with a
+    four-bin contract, a grid-only rotation, or the same rotation applied
+    to both lists mislabels the sampled axis and fails here. Returns
+    ``(ok, message)``.
     """
     from luggage_description.frame_contracts import (
         ContractError, validate_atlas)
@@ -545,6 +559,7 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
     deps = meta.get("dependencies") or {}
     container = meta.get("container") or {}
     payload = meta.get("payload") or {}
+    grid = meta.get("grid") or {}
     expected = {
         "scene_revision": str(deps.get("scene_tf_hash") or ""),
         "geometry_hash": _contract_geometry_hash(
@@ -560,6 +575,22 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
     except ContractError as exc:
         return False, str(getattr(exc, "code", exc)) + ": " + str(
             getattr(exc, "field", ""))
+    # The loader only checks that the NPZ yaw axis has len(grid.yaw_bins)
+    # entries. Both lists must be the directed sampling axis itself;
+    # equality between a rotated contract and a rotated grid still
+    # mislabels index 0.
+    contract = atlas.contract_record
+    contract_bins = [float(v) for v in contract.get("yaw_bins_rad") or []]
+    grid_bins = [float(v) for v in (
+        atlas.yaw_bins if hasattr(atlas, "yaw_bins")
+        else grid.get("yaw_bins") or [])]
+    if (not _is_directed_yaw_axis(contract_bins)
+            or not _is_directed_yaw_axis(grid_bins)):
+        return False, (
+            "yaw bins are not the directed sampling axis "
+            "(contract=%r grid=%r)" % (contract_bins, grid_bins))
+    if str(grid.get("yaw_semantics") or "") != "directed_container_2pi":
+        return False, "grid yaw semantics marker missing or wrong"
     if scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
         return False, "scene identity differs from the live scene"
     if urdf_hash and expected["urdf_hash"] != str(urdf_hash):

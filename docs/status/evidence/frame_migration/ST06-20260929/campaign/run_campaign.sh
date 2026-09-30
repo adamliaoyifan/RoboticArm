@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ST06 atlas build campaign: four profiles, exclusive stack, gate + FK cert.
 # Usage: bash run_campaign.sh <worktree-root> <evidence-dir>
-set -o pipefail
+set -o pipefail -e
 WS="$(cd "$1" && pwd)"
 EV="$(cd "$2" && pwd)"
 cd "$WS"
@@ -24,12 +24,14 @@ echo "{\"stage\": \"campaign-start\", \"ts\": \"$(date -Is)\", \"ws\": \"$WS\"}"
   > "$EV/lifecycle.jsonl"
 
 # 1. Preserve the v1 artifacts for the gate comparison (evidence too).
-#    Restored from git so a rerun cannot compare against an already-rebuilt
-#    file; the shape guard refuses anything that is not the 2-bin v1.
+#    Pinned to the pre-ST06 revision: once the rebuilt v3 artifacts are
+#    committed, HEAD no longer holds v1. The shape guard refuses anything
+#    that is not the 2-bin v1, and set -e makes the refusal fatal.
+BASELINE_REF="dff51dc05aca25a4dbe17535b82124aaaa9e4ad6"
 for row in "${PROFILES[@]}"; do
   name="${row%%|*}"
-  git show "HEAD:src/luggage_planning/data/reachability_atlas/$name.npz" > "$EV/old/$name.npz" || exit 1
-  git show "HEAD:src/luggage_planning/data/reachability_atlas/$name.yaml" > "$EV/old/$name.yaml" || exit 1
+  git show "$BASELINE_REF:src/luggage_planning/data/reachability_atlas/$name.npz" > "$EV/old/$name.npz" || exit 1
+  git show "$BASELINE_REF:src/luggage_planning/data/reachability_atlas/$name.yaml" > "$EV/old/$name.yaml" || exit 1
 done
 python3 - "$EV" <<'PYGUARD'
 import sys, numpy as np
@@ -49,6 +51,14 @@ PYGUARD
 echo "{\"stage\": \"v1-preserved\", \"ts\": \"$(date -Is)\"}" >> "$EV/lifecycle.jsonl"
 
 # 2. Exclusive stack: gazebo + RSP + move_group + scene_manager, no GUI.
+#    Refuse to launch over orphans: a surviving move_group/RSP from an
+#    earlier teardown answers service discovery and races the builder.
+RESIDUALS="$(pgrep -f 'moveit_ros_move_group|robot_state_publisher|ign gazebo|gz sim|ros2 launch luggage_gazebo' | head -5 || true)"
+if [[ -n "$RESIDUALS" ]]; then
+  echo "{\"stage\": \"residual-stack-refused\", \"pids\": \"$RESIDUALS\", \"ts\": \"$(date -Is)\"}" >> "$EV/lifecycle.jsonl"
+  echo "residual sim/bridge processes ($RESIDUALS); refusing to launch" >&2
+  exit 1
+fi
 (ros2 launch luggage_gazebo sim_world.launch.py \
     gui:=false use_rviz:=false use_motion:=true \
     > "$EV/logs/launch.log" 2>&1 &)
@@ -60,13 +70,17 @@ if [[ -z "$LAUNCH_PID" ]]; then
 fi
 echo "{\"stage\": \"launch\", \"pid\": $LAUNCH_PID, \"ts\": \"$(date -Is)\"}" >> "$EV/lifecycle.jsonl"
 
-# 3. Wait for the two services the builder needs.
+# 3. Wait for the two services the builder needs, then settle: a dying
+#    orphan would vanish from the list again, our own stack stays.
 for i in $(seq 1 60); do
   SV1="$(ros2 service list 2>/dev/null | grep -c '^/check_state_validity' || true)"
   SV2="$(ros2 service list 2>/dev/null | grep -c '^/scene_manager/sync_static_scene' || true)"
   if [[ "$SV1" -ge 1 && "$SV2" -ge 1 ]]; then break; fi
   sleep 5
 done
+sleep 10
+SV1="$(ros2 service list 2>/dev/null | grep -c '^/check_state_validity' || true)"
+SV2="$(ros2 service list 2>/dev/null | grep -c '^/scene_manager/sync_static_scene' || true)"
 echo "{\"stage\": \"services-ready\", \"check_state_validity\": $SV1,
        \"sync_static_scene\": $SV2, \"ts\": \"$(date -Is)\"}" >> "$EV/lifecycle.jsonl"
 if [[ "$SV1" -lt 1 || "$SV2" -lt 1 ]]; then

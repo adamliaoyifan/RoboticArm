@@ -20,8 +20,8 @@ contract:
   geometry_hash: 3460c2f23aa597efe71ad8e66b6b5faf
   urdf_hash: e9577fe58d01f0646dfb10f73a65b7be
   payload_hash: 601288ca876babfb8340ef207ce7fd9b
-generated_at: '2026-09-29T13:49:36'
-computation_time_sec: 163.54
+generated_at: '2026-09-30T03:01:12'
+computation_time_sec: 161.21
 mode: collision_aware
 marginal_joint_margin: 0.1
 query:
@@ -37,7 +37,7 @@ builder:
   state_validity_available: true
   seed_policy: fixed_anchor_connected_warm_start_repair_v1
   ik_solver: offline_ik.refine_to_pose
-  deterministic_fingerprint: 0bffe882e10dddb24f98a4d13b1009d365a30d06253eda0a9449f43c59ba33a5
+  deterministic_fingerprint: 18d47265c48fd0057ca8ca58dd52589cb92d17f9ef58d71b630a8384e21a7a32
   tool_down_tolerance: 0.0
   transit_clearance: 0.3
 dependencies:

@@ -7,11 +7,11 @@ payload detach: False
 [WARN] moveit_commander unavailable (No module named 'moveit_commander'); payload disabled.
 [INFO] Payload attached via ApplyPlanningScene: size=[0.55, 0.4, 0.25] link=suction_contact_frame offset=[0.0, 0.0, 0.125]
 [INFO] Computing deterministic opening wavefront: fixed_seeds=5 max_branches=3 workers=1
-[INFO] Yaw 1/4 complete: connected=227 elapsed=41.5s
-[INFO] Yaw 2/4 complete: connected=234 elapsed=91.0s
-[INFO] Yaw 3/4 complete: connected=240 elapsed=141.5s
-[INFO] Yaw 4/4 complete: connected=222 elapsed=183.7s
-[INFO] Done in 183.7s: reachable=907 marginal=16 unreachable=1093 unknown=3584
+[INFO] Yaw 1/4 complete: connected=227 elapsed=41.3s
+[INFO] Yaw 2/4 complete: connected=234 elapsed=89.8s
+[INFO] Yaw 3/4 complete: connected=240 elapsed=139.6s
+[INFO] Yaw 4/4 complete: connected=222 elapsed=181.4s
+[INFO] Done in 181.4s: reachable=907 marginal=16 unreachable=1093 unknown=3584
 [INFO] Saved atlas to src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.55x0.40x0.25.npz + src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.55x0.40x0.25.yaml
 old
 iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
@@ -39,5 +39,5 @@ iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
  9  1.925     0    0      56     504         0
 low-layer drops are collision on the stored seed, or there were none
 iz7 report only: connected=64 reachable=54 unknown=361 z=1.625
-fingerprint 0ce5d9a2f555c23bac57f50a835b3383df08e272b29d4ed0ecb3658047e1cf14
+fingerprint 34928e990cd0985afddb5f87e64acd4d11458aa89a1f8d2be76b6fab960e16f1
 GATE PASS

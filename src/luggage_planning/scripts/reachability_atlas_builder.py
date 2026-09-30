@@ -538,7 +538,9 @@ class ReachabilityAtlasBuilder:
         yaw = self._yaw_bins[iyaw]
         return x, y, z, yaw
 
-    def _make_branch(self, transit, contact, repair, kind, lift):
+    def _make_branch(self, transit, contact, repair, kind, lift,
+                     transit_target):
+        target = tuple(float(v) for v in transit_target)
         return {
             "transit": tuple(float(v) for v in transit),
             "contact": tuple(float(v) for v in contact),
@@ -547,6 +549,11 @@ class ReachabilityAtlasBuilder:
             "repair": bool(repair),
             "kind": int(kind),
             "lift_clearance": float(lift),
+            # Container-frame pose this transit seed was solved against.
+            # Vertical branches store this cell's (x, y, z + lift). Internal
+            # branches copy the predecessor's already-recorded target. Never
+            # recompute it from the joints being stored.
+            "transit_target": target,
         }
 
     def _try_vertical(self, ix, iy, iz, iyaw, transit_seed, clearance,
@@ -574,17 +581,26 @@ class ReachabilityAtlasBuilder:
             return None, True, True, insertion is None
         return (
             self._make_branch(
-                transit, contact, repair, BRANCH_VERTICAL, clearance),
+                transit, contact, repair, BRANCH_VERTICAL, clearance,
+                (x, y, z + float(clearance))),
             True, True, False)
 
-    def _try_internal(self, ix, iy, iz, iyaw, predecessor, repair=False):
+    def _try_internal(self, ix, iy, iz, iyaw, predecessor, repair=False,
+                      predecessor_target=None):
         """Rise from the predecessor's safe carry straight to this contact.
 
         The stored transit seed stays the predecessor carry so the next cell
-        is not warm-started from a pose against the lid.
+        is not warm-started from a pose against the lid. Its advertised
+        target is the predecessor branch's recorded geometric target, copied
+        as-is.
         """
         x, y, z, yaw = self._cell_target(ix, iy, iz, iyaw)
         if not contact_below_interference(z, INTERFERENCE_TOOL_Z):
+            return None, False, False, False
+        if predecessor_target is None:
+            return None, False, False, False
+        target = tuple(float(v) for v in predecessor_target)
+        if len(target) != 3 or not all(math.isfinite(v) for v in target):
             return None, False, False, False
         contact_pos, contact_quat = self._construct_base_pose(x, y, z, yaw)
         contact = self._solve_ik(contact_pos, contact_quat, predecessor)
@@ -595,7 +611,8 @@ class ReachabilityAtlasBuilder:
             return None, False, True, segment is None
         return (
             self._make_branch(
-                predecessor, contact, repair, BRANCH_INTERNAL_LIFT, 0.0),
+                predecessor, contact, repair, BRANCH_INTERNAL_LIFT, 0.0,
+                target),
             False, True, False)
 
     def compute(self):
@@ -756,10 +773,14 @@ class ReachabilityAtlasBuilder:
             shape4 + (self._max_branches, 6), np.nan, dtype=np.float64)
         transit_seeds = np.full_like(contact_seeds, np.nan)
         # ST06: per-branch lift the transit seed was solved at (vertical
-        # branches) or NaN (internal branches carry the predecessor pose).
-        # The FK certifier reconstructs exact transit targets from this.
+        # branches) or NaN (internal branches carry the predecessor pose),
+        # plus the container-frame target recorded when that branch was
+        # solved. Internal branches copy the predecessor's target; they do
+        # not store FK of the joints being certified.
         transit_lift = np.full(
             shape4 + (self._max_branches,), np.nan, dtype=np.float32)
+        transit_target = np.full(
+            shape4 + (self._max_branches, 3), np.nan, dtype=np.float32)
         lift_clearance = np.full(shape4, np.nan, dtype=np.float32)
         branch_kind = np.zeros(shape4, dtype=np.uint8)
         solution_count = np.zeros(shape4, dtype=np.uint8)
@@ -802,11 +823,12 @@ class ReachabilityAtlasBuilder:
                             predecessor_branch["transit"],
                             predecessor_branch["transit"],
                             False,
+                            predecessor_branch["transit_target"],
                         ))
 
                 attempts = []
                 if is_anchor:
-                    attempts.extend((seed, None, False)
+                    attempts.extend((seed, None, False, None)
                                     for seed in self._fixed_seeds)
                 attempts.extend(propagated)
 
@@ -827,7 +849,8 @@ class ReachabilityAtlasBuilder:
                         return None, False, False, True
 
                 def _run(attempt_list):
-                    for seed, predecessor, repair in attempt_list:
+                    for seed, predecessor, repair, predecessor_target in (
+                            attempt_list):
                         if clearance is not None:
                             result = _call(
                                 lambda seed=seed, predecessor=predecessor,
@@ -840,6 +863,8 @@ class ReachabilityAtlasBuilder:
                         # Opening anchors are not climbed from a lower cell.
                         # The wavefront enters the layer through an interior
                         # neighbor of a lower, already connected cell.
+                        # A vertical success above keeps this cell's own
+                        # (x, y, z + clearance) target, not the predecessor's.
                         if is_anchor or predecessor is None:
                             continue
                         pred_key = tuple(float(v) for v in predecessor)
@@ -847,9 +872,11 @@ class ReachabilityAtlasBuilder:
                             continue
                         internal_tried.add(pred_key)
                         _consume(_call(
-                            lambda predecessor=predecessor, repair=repair:
+                            lambda predecessor=predecessor, repair=repair,
+                            predecessor_target=predecessor_target:
                             self._try_internal(
-                                ix, iy, iz, iyaw, predecessor, repair=repair)))
+                                ix, iy, iz, iyaw, predecessor, repair=repair,
+                                predecessor_target=predecessor_target)))
 
                 _run(attempts)
                 # Fixed seeds are a repair mechanism only after connected
@@ -859,7 +886,8 @@ class ReachabilityAtlasBuilder:
                     for predecessor_cell in predecessors:
                         for predecessor_branch in branch_map[predecessor_cell]:
                             repairs.extend(
-                                (seed, predecessor_branch["transit"], True)
+                                (seed, predecessor_branch["transit"], True,
+                                 predecessor_branch["transit_target"])
                                 for seed in self._fixed_seeds)
                     _run(repairs)
 
@@ -894,6 +922,8 @@ class ReachabilityAtlasBuilder:
                     transit_lift[ix, iy, iz, iyaw, branch_index] = (
                         branch["lift_clearance"]
                         if branch["kind"] == BRANCH_VERTICAL else np.nan)
+                    transit_target[ix, iy, iz, iyaw, branch_index] = (
+                        branch["transit_target"])
                 return True
 
             deterministic_wavefront(
@@ -954,6 +984,10 @@ class ReachabilityAtlasBuilder:
              self._payload_offset, self._payload_attach_link]).encode())
         deterministic_hash.update(np.nan_to_num(lift_clearance, nan=-1.0).tobytes())
         deterministic_hash.update(branch_kind.tobytes())
+        deterministic_hash.update(np.nan_to_num(
+            transit_lift, nan=-1.0).tobytes())
+        deterministic_hash.update(np.nan_to_num(
+            transit_target, nan=0.0).tobytes())
         deterministic_hash.update(str(
             [self._tool_down_tolerance, self._transit_clearance,
              self._safe_tool_z, self._min_lift, "adaptive_v3"]).encode())
@@ -1065,6 +1099,7 @@ class ReachabilityAtlasBuilder:
             "contact_seeds": contact_seeds,
             "transit_seeds": transit_seeds,
             "transit_lift": transit_lift,
+            "transit_target": transit_target,
             "lift_clearance": lift_clearance,
             "branch_kind": branch_kind,
             "solution_count": solution_count,

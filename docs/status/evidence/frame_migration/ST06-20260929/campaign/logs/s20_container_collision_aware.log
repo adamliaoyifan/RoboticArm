@@ -1,15 +1,15 @@
 scene sync: static scene synced (airport_container_real, 8000 triangles)
-payload detach: False
+payload detach: None
 [WARN] Cannot load observe seed: luggage_description
 [INFO] Waiting for state validity service /check_state_validity ...
 [INFO] State validity service ready.
 [INFO] Grid: 10x14x10x4 = 5600 cells (resolution=0.15, avoid_collisions=True)
 [INFO] Computing deterministic opening wavefront: fixed_seeds=5 max_branches=3 workers=1
-[INFO] Yaw 1/4 complete: connected=355 elapsed=53.2s
-[INFO] Yaw 2/4 complete: connected=402 elapsed=112.4s
-[INFO] Yaw 3/4 complete: connected=397 elapsed=173.9s
-[INFO] Yaw 4/4 complete: connected=391 elapsed=229.7s
-[INFO] Done in 229.7s: reachable=1507 marginal=38 unreachable=918 unknown=3137
+[INFO] Yaw 1/4 complete: connected=355 elapsed=53.0s
+[INFO] Yaw 2/4 complete: connected=402 elapsed=111.3s
+[INFO] Yaw 3/4 complete: connected=397 elapsed=172.3s
+[INFO] Yaw 4/4 complete: connected=391 elapsed=227.2s
+[INFO] Done in 227.3s: reachable=1507 marginal=38 unreachable=918 unknown=3137
 [INFO] Saved atlas to src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz + src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.yaml
 old
 iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
@@ -37,5 +37,5 @@ iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
  9  1.925     0    0      56     504         0
 low-layer drops are collision on the stored seed, or there were none
 iz7 report only: connected=73 reachable=66 unknown=354 z=1.625
-fingerprint 56292d189360e0850a7e12feb128f4a73aa3b5c2bbabfa2df2cddeb7545b6c36
+fingerprint 94326698b7f90112369d47d8555d09129fdf6cd8cb522c340dce214788838ce2
 GATE PASS

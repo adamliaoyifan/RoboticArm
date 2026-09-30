@@ -18,13 +18,10 @@
  "counts": {
   "contact_rows": 3510,
   "transit_vertical_rows": 2627,
-  "transit_internal_rows": 883,
-  "nan_rows_skipped": 0
+  "transit_predecessor_rows": 883
  },
- "max_pos_err_m": 0.939747306,
+ "max_pos_err_m": 2.5161e-05,
  "max_rot_err_rad": 6.333e-06,
- "exact_rows_max_pos_err_m": 2.5173e-05,
- "exact_rows_max_rot_err_rad": 6.333e-06,
  "n_rows": 7020,
  "n_breaches": 0
 }
