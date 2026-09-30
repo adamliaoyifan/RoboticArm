@@ -11,7 +11,7 @@
   "blocked_destination rows_json keeps every rejected row. Reasons are occupancy_collision or outside_hull.",
   "BuildMotionSequenceV2 place contact is the TCP. The v1 response snapshot from 074daf3 still has the yaw-only quaternion.",
   "BuildMotionSequenceV2 rejects phase outside pick/place and a NaN box height before build_place_legs_v2.",
-  "The v1 SelectPlacePath callback on one fixed request serializes to the same response as 074daf3."
+  "The v1 SelectPlacePath callback on one fixed request matches 074daf3 on every typed field and on canonical CDR. Raw callback CDR may differ only in zeroed alignment padding."
  ],
  "sample_count": 3,
  "interface_contract_sha256": "b3241607a0dc0b9467b853cc9d467f0785d9a119a210547c357820d3ef444137",

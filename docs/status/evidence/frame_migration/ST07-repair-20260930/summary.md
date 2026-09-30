@@ -53,5 +53,11 @@ with `INVALID_RECORD`, and a non-finite or non-positive `box_wdh` with
 
 The v1 test calls `TrajectorySelectorNode._select` on one fixed
 `SelectPlacePath` request, once on this tree and once on `074daf3`'s
-occupancy, path candidates, and callback. The two responses reserialize
-to the same CDR. Carry orientations keep z=w=0.
+occupancy, path candidates, and callback. Every typed field matches,
+including `rows_json` text and segment order. The acceptance comparison is every typed field, then CDR bytes that
+stay invariant across repeated copies of each side. Bytes that vary
+between copies are alignment padding and are not compared. Raw callback
+CDR is not the gate. On `f4644ac` the two raw buffers were both 2861
+bytes and differed at 20 offsets while every typed field matched.
+A one-character change to `rows_json` fails the comparison. Carry
+orientations keep z=w=0.

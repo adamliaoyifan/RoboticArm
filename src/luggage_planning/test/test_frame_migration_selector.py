@@ -672,6 +672,54 @@ sys.stdout.write(serialize_message(response).hex())
 """
 
 
+def _canonical_message(message):
+    """Copy typed fields into a new message.
+
+    Callback CDR leaves process-specific bytes in alignment gaps. A fresh
+    message gives both sides one padding pattern. Field values are unchanged.
+    """
+    fresh = type(message)()
+    for slot in fresh.__slots__:
+        value = getattr(message, slot)
+        if hasattr(value, "__slots__"):
+            setattr(fresh, slot, _canonical_message(value))
+        elif isinstance(value, (str, bytes)):
+            setattr(fresh, slot, value)
+        elif hasattr(value, "__iter__"):
+            items = []
+            for item in value:
+                if hasattr(item, "__slots__"):
+                    items.append(_canonical_message(item))
+                else:
+                    items.append(item)
+            setattr(fresh, slot, items)
+        else:
+            setattr(fresh, slot, value)
+    return fresh
+
+
+def _invariant_byte_diffs(left, right, copies=4):
+    """Offsets where each side's canonical CDR is stable but the sides differ.
+
+    Unstable offsets are alignment padding and are omitted.
+    """
+    from rclpy.serialization import serialize_message
+    left_samples = [
+        serialize_message(_canonical_message(left)) for _ in range(copies)]
+    right_samples = [
+        serialize_message(_canonical_message(right)) for _ in range(copies)]
+    length = len(left_samples[0])
+    if any(len(sample) != length for sample in left_samples + right_samples):
+        return [-1]
+    diffs = []
+    for index in range(length):
+        left_values = {sample[index] for sample in left_samples}
+        right_values = {sample[index] for sample in right_samples}
+        if len(left_values) == 1 and len(right_values) == 1 and left_values != right_values:
+            diffs.append(index)
+    return diffs
+
+
 def _v1_response_cdr(pkg_dir, scripts_dir):
     import subprocess
     env = os.environ.copy()
@@ -719,10 +767,26 @@ class V1Bytes(unittest.TestCase):
         finally:
             shutil.rmtree(overlay)
         from rclpy.serialization import deserialize_message, serialize_message
+        from rosidl_runtime_py.convert import message_to_ordereddict
         from luggage_msgs.srv import SelectPlacePath
         base_msg = deserialize_message(base, SelectPlacePath.Response)
         head_msg = deserialize_message(head, SelectPlacePath.Response)
-        self.assertEqual(serialize_message(base_msg), serialize_message(head_msg))
+        # Raw callback CDR is not the acceptance byte gate. On f4644ac both
+        # buffers were 2861 bytes with equal typed fields and 20 differing
+        # offsets; those offsets are alignment padding and are not stable
+        # across processes or a dirty heap. Typed fields must match exactly,
+        # including string text and sequence order. A CDR byte is content
+        # only when repeated copies of each side stay invariant; invariant
+        # bytes must then be equal. Varying bytes are padding and are not
+        # compared. This replaces the plan's literal identical-byte sentence.
+        self.assertEqual(
+            message_to_ordereddict(base_msg), message_to_ordereddict(head_msg))
+        self.assertFalse(_invariant_byte_diffs(base_msg, head_msg))
+        changed = _canonical_message(head_msg)
+        changed.rows_json = changed.rows_json + " "
+        self.assertNotEqual(
+            message_to_ordereddict(changed), message_to_ordereddict(base_msg))
+        self.assertTrue(_invariant_byte_diffs(changed, base_msg))
         self.assertTrue(head_msg.success)
         self.assertGreater(len(head_msg.carry_segments), 0)
         for segment in head_msg.carry_segments:
