@@ -1,0 +1,15 @@
+............................................................... [ 49%]
+..................F..............................................        [100%]
+=================================== FAILURES ===================================
+__ TestGeometryIdentityLive.test_matching_geometry_answers_with_its_hull_hash __
+src/luggage_packing/test/test_placement_geometry_identity_live.py:156: in test_matching_geometry_answers_with_its_hull_hash
+    self.assertTrue(response.success, response.message)
+E   AssertionError: False is not true : ATLAS_IDENTITY_UNVERIFIED: urdf hash missing
+----------------------------- Captured stderr call -----------------------------
+[INFO] [1790770368.394252310] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[INFO] [1790770368.410118711] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, hash_policy=strict, w=0.3, hard_reject=True)
+[INFO] [1790770368.411347492] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+=========================== short test summary info ============================
+FAILED src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash
+1 failed, 127 passed, 81 subtests passed in 5.24s
+PYTEST_EXIT:1

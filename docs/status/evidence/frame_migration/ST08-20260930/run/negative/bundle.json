@@ -1,0 +1,54 @@
+{
+  "case_id": "negative/empty-request-id",
+  "commit": "0dadfe0b61f8b43ce9d4455c5f6e1c1a178480ad",
+  "input": {
+    "contract_version": 2,
+    "request_id": "",
+    "scene_revision": "scene-st08",
+    "stamp_ns": 1234500000000,
+    "time_basis": "scene",
+    "name": "transit",
+    "segment_type": "pose_target",
+    "target_link": "suction_contact_frame",
+    "policy_valid": true,
+    "keep_tool_down": true,
+    "keep_camera_down": false,
+    "lock_wrist": false,
+    "allow_ompl_fallback": true,
+    "required_cartesian_fraction": 0.0,
+    "target_pose": {
+      "contract_version": 2,
+      "kind": "pose",
+      "frame_id": "world",
+      "length_unit": "m",
+      "time_basis": "scene",
+      "scene_revision": "scene-st08",
+      "request_id": "req",
+      "stamp_ns": 1234500000000,
+      "reference": "suction_contact_frame",
+      "orientation_semantics": "tool_quaternion",
+      "position": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "quaternion_xyzw": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    "waypoints": [],
+    "joint_trajectory": null
+  },
+  "expected_code": "MISSING_IDENTITY",
+  "actual_code": "MISSING_IDENTITY",
+  "effect_counters": {
+    "execute": 0,
+    "scene": 0,
+    "attach": 0
+  },
+  "traceback": "Traceback (most recent call last):\n  File \"/tmp/elfin-frame-migration-st08/src/luggage_description/luggage_description/frame_diagnostics.py\", line 59, in at_boundary\n    return operation()\n  File \"/tmp/elfin-frame-migration-st08/src/luggage_planning/luggage_planning/motion_frame_contracts.py\", line 325, in <lambda>\n    return at_boundary(payload, context.boundary, lambda: _admit(record, context))\n  File \"/tmp/elfin-frame-migration-st08/src/luggage_planning/luggage_planning/motion_frame_contracts.py\", line 244, in _admit\n    raise ContractError(\"MISSING_IDENTITY\", field, \"nonempty string\", value)\nluggage_description.frame_contracts.ContractError: MISSING_IDENTITY: request_id: expected 'nonempty string', got ''\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<stdin>\", line 34, in <module>\n  File \"/tmp/elfin-frame-migration-st08/src/luggage_planning/luggage_planning/motion_frame_contracts.py\", line 325, in admit_motion_segment\n    return at_boundary(payload, context.boundary, lambda: _admit(record, context))\n  File \"/tmp/elfin-frame-migration-st08/src/luggage_description/luggage_description/frame_diagnostics.py\", line 63, in at_boundary\n    raise BoundaryContractError(error, record, context) from error\nluggage_description.frame_diagnostics.BoundaryContractError: MISSING_IDENTITY: request_id: expected 'nonempty string', got ''\n",
+  "oracle": "empty request_id rejects before any execute/scene/attach effect"
+}

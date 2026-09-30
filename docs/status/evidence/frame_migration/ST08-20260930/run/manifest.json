@@ -1,0 +1,229 @@
+{
+  "run_id": "ST08-20260930/run",
+  "base_revision": "8debda0c49438c7d8688e39fe5684dcf7fea546f",
+  "candidate_revision": "0dadfe0b61f8b43ce9d4455c5f6e1c1a178480ad",
+  "plan_revision": "db62e460da66fffb3f342e070c7e01bcc9068043",
+  "dirty": false,
+  "environment": {
+    "ros": "/opt/ros/humble",
+    "install": "/tmp/elfin-frame-migration-st08/install/st08",
+    "ros_domain_id": 87,
+    "python": "3.10"
+  },
+  "commands": [
+    {
+      "name": "packing-base",
+      "exit": 1,
+      "log": "run/packing/base/pytest.txt"
+    },
+    {
+      "name": "packing-candidate",
+      "exit": 1,
+      "log": "run/packing/candidate/pytest.txt"
+    },
+    {
+      "name": "planning-base",
+      "exit": 0,
+      "log": "run/planning/base/pytest.txt"
+    },
+    {
+      "name": "planning-candidate",
+      "exit": 0,
+      "log": "run/planning/candidate/pytest.txt"
+    },
+    {
+      "name": "execution",
+      "exit": 0,
+      "log": "run/execution/pytest.txt"
+    },
+    {
+      "name": "contracts",
+      "exit": 0,
+      "log": "run/execution/contracts.txt"
+    },
+    {
+      "name": "checker-baseline",
+      "exit": 0,
+      "log": "run/checker/baseline.stdout"
+    },
+    {
+      "name": "checker-migration",
+      "exit": 2,
+      "log": "run/checker/migration.stdout"
+    }
+  ],
+  "case_counts": {
+    "execution_jsonl_rows": 192,
+    "planning_base_node_ids": 678,
+    "planning_candidate_node_ids": 690,
+    "packing_node_ids": 128,
+    "negative_bundle": 1
+  },
+  "negative_reload_joined": true,
+  "capture_complete": true,
+  "replay_possible": true,
+  "missing": [],
+  "bytes_before_manifest": 484586,
+  "files": [
+    {
+      "path": "run/checker/baseline/cases.json",
+      "bytes": 72881
+    },
+    {
+      "path": "run/checker/baseline/inventory.json",
+      "bytes": 25713
+    },
+    {
+      "path": "run/checker/baseline/manifest.json",
+      "bytes": 15883
+    },
+    {
+      "path": "run/checker/baseline/suite.json",
+      "bytes": 19348
+    },
+    {
+      "path": "run/checker/baseline/summary.json",
+      "bytes": 824
+    },
+    {
+      "path": "run/checker/baseline.stdout",
+      "bytes": 273
+    },
+    {
+      "path": "run/checker/migration/cases.json",
+      "bytes": 72872
+    },
+    {
+      "path": "run/checker/migration/inventory.json",
+      "bytes": 25713
+    },
+    {
+      "path": "run/checker/migration/manifest.json",
+      "bytes": 15885
+    },
+    {
+      "path": "run/checker/migration/suite.json",
+      "bytes": 19348
+    },
+    {
+      "path": "run/checker/migration/summary.json",
+      "bytes": 825
+    },
+    {
+      "path": "run/checker/migration.stdout",
+      "bytes": 275
+    },
+    {
+      "path": "run/execution/cases.jsonl",
+      "bytes": 12928
+    },
+    {
+      "path": "run/execution/contracts.txt",
+      "bytes": 76
+    },
+    {
+      "path": "run/execution/pytest.txt",
+      "bytes": 113
+    },
+    {
+      "path": "run/negative/bundle.json",
+      "bytes": 2800
+    },
+    {
+      "path": "run/negative/reload_check.json",
+      "bytes": 157
+    },
+    {
+      "path": "run/packing/base/collect.err",
+      "bytes": 0
+    },
+    {
+      "path": "run/packing/base/env.txt",
+      "bytes": 1509
+    },
+    {
+      "path": "run/packing/base/nodeids.txt",
+      "bytes": 13935
+    },
+    {
+      "path": "run/packing/base/pytest.txt",
+      "bytes": 1545
+    },
+    {
+      "path": "run/packing/candidate/collect.err",
+      "bytes": 0
+    },
+    {
+      "path": "run/packing/candidate/env.txt",
+      "bytes": 1514
+    },
+    {
+      "path": "run/packing/candidate/nodeids.txt",
+      "bytes": 13935
+    },
+    {
+      "path": "run/packing/candidate/pytest.txt",
+      "bytes": 1545
+    },
+    {
+      "path": "run/planning/base/collect.err",
+      "bytes": 0
+    },
+    {
+      "path": "run/planning/base/nodeids.txt",
+      "bytes": 78902
+    },
+    {
+      "path": "run/planning/base/pytest.txt",
+      "bytes": 828
+    },
+    {
+      "path": "run/planning/candidate/collect.err",
+      "bytes": 0
+    },
+    {
+      "path": "run/planning/candidate/nodeids.txt",
+      "bytes": 80105
+    },
+    {
+      "path": "run/planning/candidate/pytest.txt",
+      "bytes": 828
+    },
+    {
+      "path": "run/ros-base/python3_2161780_1790770367494.log",
+      "bytes": 831
+    },
+    {
+      "path": "run/ros-base/python3_2161780_1790770367978.log",
+      "bytes": 591
+    },
+    {
+      "path": "run/ros-base/python3_2161780_1790770368514.log",
+      "bytes": 591
+    },
+    {
+      "path": "run/ros-candidate/python3_2161994_1790770374262.log",
+      "bytes": 831
+    },
+    {
+      "path": "run/ros-candidate/python3_2161994_1790770374747.log",
+      "bytes": 591
+    },
+    {
+      "path": "run/ros-candidate/python3_2161994_1790770375282.log",
+      "bytes": 591
+    },
+    {
+      "path": "run/ros-plan-base/python3_2162366_1790770395555.log",
+      "bytes": 0
+    },
+    {
+      "path": "run/ros-plan-candidate/python3_2162611_1790770399693.log",
+      "bytes": 0
+    },
+    {
+      "path": "run/comparison.json",
+      "bytes": 891
+    }
+  ]
+}
