@@ -65,6 +65,23 @@ def _pose_msg(xyz, quat):
     return pose
 
 
+def build_collision_object_v2(box_id, xyz, quat, box_size, frame_id="world"):
+    """World collision box from an admitted pose. ``frame_id`` is explicit."""
+    return build_collision_object(
+        box_id, xyz, quat, box_size, frame_id, CollisionObject.ADD)
+
+
+def build_add_scene_v2(box_id, xyz, quat, box_size, frame_id="world"):
+    return build_add_scene(box_id, xyz, quat, box_size, frame_id=frame_id)
+
+
+def build_attach_scene_v2(box_id, xyz, quat, box_size, link_name,
+                          touch_links=DEFAULT_TOUCH_LINKS, frame_id="world"):
+    return build_attach_scene(
+        box_id, xyz, quat, box_size, link_name,
+        touch_links=touch_links, frame_id=frame_id)
+
+
 def build_add_scene(box_id, xyz, quat, box_size, frame_id="world"):
     """Collision-only PlanningScene diff adding the box."""
     scene = PlanningScene()
@@ -389,6 +406,17 @@ class PlanningSceneClient(object):
     def detach_and_remove(self, model_name=None, box_id=BOX_OBJECT_ID):
         del model_name
         return self._apply(build_detach_scene(box_id))
+
+    def add_collision_object(self, collision_object, timeout=10.0):
+        scene = PlanningScene()
+        scene.is_diff = True
+        scene.world.collision_objects = [collision_object]
+        return self._apply(scene, timeout=timeout)
+
+    def add_collision_box_v2(self, obj_id, xyz, quat, box_size,
+                             frame_id="world", timeout=10.0):
+        return self.add_collision_object(build_collision_object_v2(
+            obj_id, xyz, quat, box_size, frame_id=frame_id), timeout=timeout)
 
     def add_collision_box(self, obj_id, xyz, quat, box_size,
                           frame_id="world", timeout=10.0):

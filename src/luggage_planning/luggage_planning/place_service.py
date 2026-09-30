@@ -217,6 +217,61 @@ def _carry_segments(world_poses):
     return segments
 
 
+def _typed_motion_segments(world_poses, identity):
+    """MotionSegmentV2 cartesian legs. Existing MotionSegment fields stay too."""
+    from luggage_description.frame_diagnostics import BoundaryContext
+    from luggage_planning.motion_frame_adapters import message_from_admitted
+    from luggage_planning.motion_frame_contracts import TARGET_LINK, ExecutionContext
+    messages = []
+    if not world_poses:
+        return messages
+    boundary = BoundaryContext(
+        interface_id="F15",
+        producer="place_service",
+        consumer="motion_executor",
+        request_id=str(identity["request_id"]),
+        scene_revision=str(identity["scene_revision"]),
+        frame_id="world",
+        reference="suction_contact_frame",
+        time_basis=str(identity.get("time_basis") or "scene"),
+    )
+    context = ExecutionContext(boundary, TARGET_LINK, "world")
+    for name in ("transit", "traverse"):
+        target = dict(identity)
+        target.update(
+            kind="pose", frame_id="world", reference="suction_contact_frame",
+            orientation_semantics="tool_quaternion", length_unit="m",
+            position=list(world_poses[-1]["position"]),
+            quaternion_xyzw=list(world_poses[-1]["quaternion_xyzw"]))
+        waypoints = []
+        for pose in world_poses[:-1]:
+            point = dict(target)
+            point["position"] = list(pose["position"])
+            point["quaternion_xyzw"] = list(pose["quaternion_xyzw"])
+            waypoints.append(point)
+        record = {
+            "contract_version": 2,
+            "request_id": boundary.request_id,
+            "scene_revision": boundary.scene_revision,
+            "stamp_ns": int(identity["stamp_ns"]),
+            "time_basis": boundary.time_basis,
+            "name": name,
+            "segment_type": "cartesian",
+            "target_link": TARGET_LINK,
+            "policy_valid": True,
+            "keep_tool_down": True,
+            "keep_camera_down": False,
+            "lock_wrist": False,
+            "allow_ompl_fallback": True,
+            "required_cartesian_fraction": 0.0,
+            "target_pose": target,
+            "waypoints": waypoints,
+            "joint_trajectory": None,
+        }
+        messages.append(message_from_admitted(record, context))
+    return messages
+
+
 def _waypoint_messages(result, start_record):
     messages = []
     for pose in result["world_waypoints"]:
@@ -262,6 +317,8 @@ def fill_select_response(message, response, atlas=None, config=None,
         response.carry_segments = _carry_segments(result["world_waypoints"])
         response.waypoint_poses = _waypoint_messages(
             result, request["start_tcp"])
+        response.motion_segments = _typed_motion_segments(
+            result["world_waypoints"], request["start_tcp"])
     return response
 
 
@@ -298,12 +355,23 @@ def handle_build_v2(request, response, pick=None):
             if pick is None:
                 raise ContractError(
                     "MISSING_IDENTITY", "pick", "pick observation", None)
+            _require_request_id(str(request.request_id))
+            if not str(request.scene_revision).strip():
+                raise ContractError(
+                    "MISSING_IDENTITY", "scene_revision", "nonempty", request.scene_revision)
+            if int(request.pick_pose.identity.contract_version) == 0:
+                raise ContractError(
+                    "MISSING_IDENTITY", "pick_pose", "detection pose", None)
             segments = build_sequence(pick, None, "pick")
             response.segments = _copy_segments(segments)
             response.success = bool(segments)
             response.message = "pick delegated"
             response.reason_code = ""
             return response
+        if int(request.pick_pose.identity.contract_version) != 0 or str(
+                request.pick_pose.identity.frame_id):
+            raise ContractError(
+                "INVALID_RECORD", "pick_pose", "inactive on place", request.phase)
         if phase != "place":
             raise ContractError("INVALID_RECORD", "phase", "pick or place", phase)
         scene = str(request.slot.identity.scene_revision)

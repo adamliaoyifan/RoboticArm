@@ -1,0 +1,4 @@
+string box_id
+---
+bool success
+string message

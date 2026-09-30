@@ -24,6 +24,33 @@ def _quat_xyzw(box):
     ]
 
 
+def admit_collision_box(record, size_wdh, context, box=None):
+    """Detection-profile world box. A positive size is not measured-support authorization."""
+    from luggage_description.frame_contracts import (
+        ContractError, finite_number, validate_pose,
+    )
+    from luggage_description.frame_diagnostics import validate_context
+    if box is not None and not pick_authorized(box):
+        raise ContractError(
+            DETECT_FULL_GEOMETRY_REQUIRED, "height_source",
+            "measured support", getattr(box, "height_source", None))
+    validate_pose(record, "detection", context.scene_revision)
+    validate_context(record, context)
+    size = []
+    for index, value in enumerate(size_wdh):
+        number = finite_number(float(value), "size_wdh[%d]" % index)
+        if number <= 0.0:
+            raise ContractError("INVALID_NUMERIC_PAYLOAD", "size_wdh", "positive", number)
+        size.append(number)
+    if len(size) != 3:
+        raise ContractError("INVALID_NUMERIC_PAYLOAD", "size_wdh", "3 numbers", size_wdh)
+    return {
+        "position": list(record["position"]),
+        "quaternion_xyzw": list(record["quaternion_xyzw"]),
+        "size_wdh": size,
+    }
+
+
 def pickup_collision_aabb(box):
     """Return ``(center_xyz, quat_xyzw, size_wdh)`` for ``add_pickup_box``.
 

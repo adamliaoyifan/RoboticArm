@@ -16,7 +16,7 @@
  "source_sha256": {
   "src/luggage_planning/luggage_planning/waypoint_generator.py": "0f77f7932c37b0d0ef6e7a447e2bd12e7d64c830efb5261e95057bf28f863d13",
   "src/luggage_planning/scripts/waypoint_generator_node.py": "51aafeba8ad5f74b2ce07ded5d39b9a6e908532989fa34fe0e05f5a881df0718",
-  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "07a8a79a3f0236cb9e3ca9b6fb6fcc479c5df42ad04b616698ca0ae7c3778c3b",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
   "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
   "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
   "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"

@@ -23,10 +23,13 @@ result message says so instead of silently ignoring the flags.
 
 from __future__ import division
 
+import contextvars
 import math
 import threading
 import time
 from dataclasses import dataclass
+
+_V2_ADMITTED = contextvars.ContextVar("motion_v2_admitted", default=None)
 
 from luggage_planning.joint6_hold import (
     joint6_value,
@@ -350,7 +353,8 @@ class MotionExecutor:
                  acceleration_scaling=_ACC_SCALE,
                  joint_path_continuity_rad=1.2,
                  cartesian_joint_fallback=None,
-                 align_retry_enabled=True):
+                 align_retry_enabled=True,
+                 fk_verifier=None):
         self._node = node
         self._group = str(group_name)
         self._link = str(link_name)
@@ -388,6 +392,9 @@ class MotionExecutor:
         # needs the URDF/scene; the executor stays frame-agnostic.
         self._cartesian_joint_fallback = cartesian_joint_fallback
         self._align_retry_enabled = bool(align_retry_enabled)
+        self._fk_verifier = fk_verifier
+        self._v2_lock = threading.Lock()
+        self.fk_submissions = []
         self._tool_down_abs_tol = float(tool_down_abs_tol)
         # Set per execute_segment call (goals are serialized: the stack
         # never runs two motion segments at once, move_group would refuse
@@ -532,6 +539,128 @@ class MotionExecutor:
                 for box in boxes]
         return result
 
+    def _v2_fk_gate(self, joints):
+        """Reject a v2 Cartesian-derived joint goal before any controller call."""
+        admitted = _V2_ADMITTED.get()
+        if admitted is None or admitted.target_pose is None:
+            return None
+        from luggage_planning.motion_frame_contracts import fk_budget
+        ok, message = fk_budget(
+            self._fk_verifier, joints,
+            admitted.target_pose["position"], admitted.target_pose["quaternion_xyzw"])
+        if ok:
+            self.fk_submissions.append([float(v) for v in joints])
+            return None
+        return self._result(False, message, 0.0)
+
+    def _execute_timed_joint_v2(self, admitted, feedback_cb, execute_timeout):
+        """Submit the admitted timed trajectory. Do not densify or retime it."""
+        from luggage_planning.joint_path import JointPathError, validate_joint_path
+        from luggage_planning.motion_frame_adapters import timed_trajectory
+        from moveit_msgs.msg import RobotTrajectory
+
+        names, points = timed_trajectory(admitted)
+        knots = [[float(v) for v in point.positions] for point in points]
+        continuity = float(getattr(self, "_joint_path_continuity", 1.2))
+        try:
+            validate_joint_path(knots, continuity)
+        except JointPathError as exc:
+            return self._result(False, "PLACE_PATH_INFEASIBLE %s" % exc.reason, 0.0)
+        trajectory = RobotTrajectory()
+        trajectory.joint_trajectory.joint_names = list(names)
+        trajectory.joint_trajectory.points = points
+        self._planned_traj = trajectory
+        hook = getattr(self, "_timed_submit", None)
+        if hook is not None:
+            return hook(trajectory)
+        self._notify(feedback_cb, "executing", admitted.name, 1.0)
+        goal = ExecuteTrajectory.Goal()
+        goal.trajectory = trajectory
+        if not self._execute.wait_for_server(timeout_sec=5.0):
+            return self._result(False, "execute_trajectory server unavailable", 1.0)
+        future = self._execute.send_goal_async(goal)
+        handle = self._wait_future(future, 10.0)
+        if handle is None or not handle.accepted:
+            return self._result(False, "ExecuteTrajectory goal rejected", 1.0)
+        wrapped = self._wait_goal(handle, execute_timeout)
+        if wrapped is None:
+            handle.cancel_goal()
+            return self._result(False, "ExecuteTrajectory timeout", 1.0)
+        result = getattr(wrapped, "result", wrapped)
+        code = int(result.error_code.val)
+        if code != MoveItErrorCodes.SUCCESS:
+            return self._result(False, "ExecuteTrajectory error_code=%s" % code, 1.0)
+        return self._result(True, "timed joint path", 1.0, error_code=code)
+
+    def execute_segment_v2(self, record, context, feedback_cb=None,
+                           execute_timeout=45.0, current_joints=None):
+        """Admit, then execute. Joint paths keep their wire timing."""
+        from luggage_description.frame_contracts import ContractError
+        from luggage_planning.motion_frame_adapters import segment_namespace
+        from luggage_planning.motion_frame_contracts import (
+            MOTION_FRAME, assert_canonical_joints, admit_motion_segment,
+        )
+        assert_canonical_joints(JOINTS)
+        admitted = admit_motion_segment(record, context)
+        if self._frame != MOTION_FRAME or self._link != admitted.target_link:
+            raise ContractError(
+                "TARGET_LINK_MISMATCH", "executor",
+                [MOTION_FRAME, admitted.target_link], [self._frame, self._link])
+        if admitted.segment_type == "joint_path":
+            with self._v2_lock:
+                self._cancel_check = None
+                try:
+                    return self._execute_timed_joint_v2(
+                        admitted, feedback_cb, execute_timeout)
+                finally:
+                    self._cancel_check = None
+        token = _V2_ADMITTED.set(admitted)
+        try:
+            with self._v2_lock:
+                return self.execute_segment(
+                    segment_namespace(admitted), feedback_cb, execute_timeout,
+                    current_joints)
+        finally:
+            _V2_ADMITTED.reset(token)
+
+    def probe_segment_v2(self, record, context, start_joints=None):
+        """Admit and probe. Execution and valve clients are not called."""
+        from luggage_description.frame_contracts import ContractError
+        from luggage_planning.motion_frame_adapters import segment_namespace
+        from luggage_planning.motion_frame_contracts import (
+            MOTION_FRAME, admit_motion_segment, fk_budget,
+        )
+        admitted = admit_motion_segment(record, context)
+        if self._frame != MOTION_FRAME or self._link != admitted.target_link:
+            raise ContractError(
+                "TARGET_LINK_MISMATCH", "executor",
+                [MOTION_FRAME, admitted.target_link], [self._frame, self._link])
+        if admitted.segment_type == "joint_path":
+            return {"ik_ok": False, "fraction": None, "message": "joint_path admitted",
+                    "success": True}
+        token = _V2_ADMITTED.set(admitted)
+        try:
+            with self._v2_lock:
+                probed = self.probe_segment(segment_namespace(admitted), start_joints)
+        finally:
+            _V2_ADMITTED.reset(token)
+        joints = probed.get("ik_joints") if isinstance(probed, dict) else None
+        if admitted.segment_type == "pose_target" and joints:
+            ok, message = fk_budget(
+                self._fk_verifier, joints,
+                admitted.target_pose["position"], admitted.target_pose["quaternion_xyzw"])
+            if not ok:
+                probed = dict(probed)
+                probed["ik_ok"] = False
+                probed["message"] = message
+                probed["success"] = False
+                return probed
+        if isinstance(probed, dict):
+            probed = dict(probed)
+            probed.setdefault("success", bool(probed.get("ik_ok")))
+            probed.setdefault("message", "probe")
+        return probed
+
     def execute_segment(self, segment_msg, feedback_cb=None,
                         execute_timeout=45.0, current_joints=None,
                         cancel_check=None):
@@ -652,6 +781,10 @@ class MotionExecutor:
                 return None
         record.update({"used": True, "n_dense": len(dense),
                        "fk_path_len_m": round(path_len, 4)})
+        gate = self._v2_fk_gate(dense[-1])
+        if gate is not None:
+            record["reason"] = gate.message
+            return gate
         self._notify(feedback_cb, "planning", segment_msg.name, fraction,
                      "%s; cartesian joint fallback" % why)
         trajectory = self._robot_trajectory(dense)
@@ -1026,6 +1159,9 @@ class MotionExecutor:
         pose target already selected an IK solution whose suction normal
         is down. Pick segments still pin J6 before execution.
         """
+        gate = self._v2_fk_gate(positions)
+        if gate is not None:
+            return gate
         if seed_joints and len(seed_joints) == len(positions):
             self._wrist_check([list(seed_joints), list(positions)], JOINTS)
             self._j6_check([list(seed_joints), list(positions)], JOINTS)

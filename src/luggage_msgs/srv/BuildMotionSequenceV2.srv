@@ -13,8 +13,12 @@ float64[3] container_translation
 float64[4] container_quaternion_xyzw
 int64 container_stamp_ns
 bool container_stamp_is_null
+string request_id
+string scene_revision
+luggage_msgs/PoseContractV2 pick_pose
 ---
 luggage_msgs/MotionSegment[] segments
+luggage_msgs/MotionSegmentV2[] motion_segments
 bool success
 string message
 string reason_code

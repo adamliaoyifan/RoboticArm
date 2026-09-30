@@ -1,0 +1,16 @@
+# Measured attachment snapshot. v1 VacuumCommand is unchanged.
+# box_pose is the measured world box center at the acquisition stamp.
+# grasp, when has_grasp is true, is the ST07 box-relative transport.
+bool enable
+string request_id
+string scene_revision
+string box_id
+uint64 generation
+luggage_msgs/DetectedLuggage measured_box
+luggage_msgs/PoseContractV2 box_pose
+bool has_grasp
+luggage_msgs/PoseContractV2 grasp
+---
+bool success
+string message
+luggage_msgs/BoundaryDiagnosticV2 diagnostic

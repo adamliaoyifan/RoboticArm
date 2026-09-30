@@ -45,8 +45,8 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
     xyz_world_to_base_link,
 )
-from luggage_msgs.action import GoToRobotPose, PlanMotion
-from luggage_msgs.srv import ProbeMotionSegment
+from luggage_msgs.action import GoToRobotPose, PlanMotion, PlanMotionV2
+from luggage_msgs.srv import ProbeMotionSegment, ProbeMotionSegmentV2
 from luggage_planning.debug_capture import write_failure_capture
 from luggage_planning.atlas_runtime import (
     PARAM_SPEC,
@@ -278,6 +278,7 @@ class MotionPlannerNode(Node):
                 "fk_verify_tol_m", 0.03)),
             atlas_submit_mode=str(self._atlas_cfg["motion"].get(
                 "submit_mode", "reseed")),
+            fk_verifier=self._verify_tcp,
             cartesian_joint_fallback=(
                 self._cartesian_fallback_provider
                 if bool(self.get_parameter("cartesian_joint_fallback").value)
@@ -307,6 +308,15 @@ class MotionPlannerNode(Node):
         self._probe_service = self.create_service(
             ProbeMotionSegment, "/motion_planner/probe_motion_segment",
             self._handle_probe_segment, callback_group=self._group)
+        self._probe_v2_service = self.create_service(
+            ProbeMotionSegmentV2, "/motion_planner/probe_motion_segment_v2",
+            self._handle_probe_segment_v2, callback_group=self._group)
+        self._plan_v2_action = ActionServer(
+            self, PlanMotionV2, "/motion_planner/plan_motion_v2",
+            execute_callback=self._execute_plan_motion_v2,
+            goal_callback=self._accept_goal,
+            cancel_callback=self._accept_cancel,
+            callback_group=self._group)
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -397,11 +407,27 @@ class MotionPlannerNode(Node):
         # container +Z before any bin snap (a raw world yaw would name the
         # wrong branch on a rotated scene).
         yaw = self._container_tool_yaw(pose.orientation)
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.scene_tf_config_utils import base_in_world
+        from luggage_description.scene_tf_publisher import rpy_to_quaternion
+        from luggage_planning.motion_frame_contracts import (
+            framed_query_offset, lift_vector,
+        )
+        origin, rpy = origin_in_world(self._scene)
+        container_quat = rpy_to_quaternion(rpy)
+        _base_origin, base_rpy = base_in_world(self._scene)
+        try:
+            offset = framed_query_offset(
+                self._atlas_cfg.get("query_offset") or (0.0, 0.0, 0.0),
+                motion.get("query_offset_frame", "container_link"),
+                container_quat, rpy_to_quaternion(base_rpy))
+        except ContractError:
+            return None
         found = atlas_seeds_for_query(
             atlas, xyz[0], xyz[1], xyz[2], yaw,
             seed_set=str(motion.get("seed_set", "transit")),
             max_seeds=int(motion.get("max_seeds", 3)),
-            query_offset=self._atlas_cfg.get("query_offset"))
+            query_offset=offset)
         if found.get("seeds") and motion.get("refine", True):
             found["refined"] = True
             # The GT attach hangs the box ~5 mm below + ~8 mm lateral to
@@ -411,7 +437,12 @@ class MotionPlannerNode(Node):
             # compensation; the descend leg's own touch logic finishes.
             lift = float(motion.get("target_z_lift_m", 0.008))
             inside = self._target_in_container(xyz)
+            try:
+                lift_xyz = lift_vector(lift, container_quat) if inside else (0.0, 0.0, 0.0)
+            except ContractError:
+                return None
             found["target_z_lift_m"] = lift if inside else 0.0
+            found["lift_xyz"] = list(lift_xyz)
             # Also refine the live arm state: a different branch family
             # sweeps a different hull corridor (the 1838 transit path came
             # from the current-joints family, not the atlas family), and
@@ -423,7 +454,7 @@ class MotionPlannerNode(Node):
                     for seed in seeds):
                 seeds.append(live)
             found["seeds"] = self._refine_atlas_seeds(
-                pose, seeds, lift if inside else 0.0)
+                pose, seeds, lift if inside else 0.0, lift_xyz=found.get("lift_xyz"))
         return found
 
     def _container_tool_yaw(self, quat):
@@ -456,7 +487,7 @@ class MotionPlannerNode(Node):
         world = self._map_to_world(list(map_xyz))
         return bool(point_inside_container_inner_box(world, self._scene))
 
-    def _refine_atlas_seeds(self, pose, seeds, z_lift_m=0.0):
+    def _refine_atlas_seeds(self, pose, seeds, z_lift_m=0.0, lift_xyz=None):
         """Deterministic offline refine of atlas seeds onto the exact pose.
 
         KDL's random restarts make /compute_ik a lottery for this target
@@ -474,8 +505,12 @@ class MotionPlannerNode(Node):
             path = self._offline_tcp_path(urdf)
             quat = (float(pose.orientation.x), float(pose.orientation.y),
                     float(pose.orientation.z), float(pose.orientation.w))
-            target = (float(pose.position.x), float(pose.position.y),
-                      float(pose.position.z) + float(z_lift_m))
+            if lift_xyz is None:
+                lift_xyz = (0.0, 0.0, float(z_lift_m))
+            target = (
+                float(pose.position.x) + float(lift_xyz[0]),
+                float(pose.position.y) + float(lift_xyz[1]),
+                float(pose.position.z) + float(lift_xyz[2]))
             refined = []
             for seed in seeds:
                 joints, info = refine_to_pose(
@@ -563,16 +598,43 @@ class MotionPlannerNode(Node):
                 "cartesian joint fallback unavailable (%s)" % exc)
             return None
 
+    def _verify_tcp(self, joints):
+        """World TCP of ``joints`` from the installed URDF. Root stays ``world``."""
+        from scipy.spatial.transform import Rotation
+        from luggage_planning.offline_ik import load_urdf
+        urdf = load_urdf(scene_tf_config=str(
+            self.get_parameter("scene_tf_config").value or "") or None)
+        transform = urdf.tcp(list(joints), self._offline_tcp_path(urdf))
+        quat = Rotation.from_matrix(transform[:3, :3]).as_quat()
+        return (
+            [float(v) for v in transform[:3, 3]],
+            [float(v) for v in quat],
+        )
+
+    def _handle_probe_segment_v2(self, request, response):
+        from luggage_planning.motion_v2_service import handle_probe_v2
+        return handle_probe_v2(
+            self._executor_client, request.segment, self._scene_tf_hash,
+            response, link=self._executor_client._link)
+
+    def _execute_plan_motion_v2(self, goal_handle):
+        from luggage_planning.motion_v2_service import handle_plan_v2
+        result = PlanMotionV2.Result()
+        handle_plan_v2(
+            self._executor_client, goal_handle.request.segment,
+            self._scene_tf_hash, result, self._prepare_occupancy,
+            link=self._executor_client._link)
+        if result.success:
+            goal_handle.succeed()
+        else:
+            goal_handle.abort()
+        return result
+
     def _map_to_world(self, xyz):
+        from luggage_description.scene_tf_publisher import rpy_to_quaternion
+        from luggage_planning.motion_frame_contracts import map_container_point
         origin, rpy = origin_in_world(self._scene)
-        yaw = float(rpy[2])
-        c, s = math.cos(yaw), math.sin(yaw)
-        x, y, z = [float(v) for v in xyz]
-        return [
-            origin[0] + c * x - s * y,
-            origin[1] + s * x + c * y,
-            origin[2] + z,
-        ]
+        return map_container_point(xyz, origin, rpy_to_quaternion(rpy))
 
     def _payload_wdh(self):
         """Occupancy-sweep payload box: measured geometry when synced."""
@@ -650,14 +712,24 @@ class MotionPlannerNode(Node):
             snapshot,
             max_objects=int(self.get_parameter("max_occ_objects").value),
             exempt=exempt)
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.scene_tf_publisher import rpy_to_quaternion
+        from luggage_planning.motion_frame_contracts import (
+            compose_orientation, map_container_point,
+        )
+        origin, rpy = origin_in_world(self._scene)
+        container_quat = rpy_to_quaternion(rpy)
         world_boxes = []
         for box in boxes:
-            world_boxes.append({
-                "id": box["id"],
-                "xyz": self._map_to_world(box["xyz"]),
-                "size": box["size"],
-                "quat": box["quat"],
-            })
+            try:
+                world_boxes.append({
+                    "id": box["id"],
+                    "xyz": map_container_point(box["xyz"], origin, container_quat),
+                    "size": box["size"],
+                    "quat": compose_orientation(container_quat, box["quat"]),
+                })
+            except ContractError as exc:
+                return exc.code
         if world_boxes:
             ok, message = self._scene_client.add_collision_boxes(
                 world_boxes, frame_id="world")

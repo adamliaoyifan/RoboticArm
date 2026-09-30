@@ -20,9 +20,9 @@
   "src/luggage_planning/scripts/trajectory_selector_node.py": "25d8fcb3b1141110a2410305eb9553bbad354c785f73215347298bfe6aa3e170",
   "src/luggage_planning/luggage_planning/place_selection_client.py": "ffb22aa2ea6a4d8628d535900964f6163c113767e47e51c811686686a64ef71f",
   "scripts/select_place_path_probe.py": "ba770ab035e3a60fe2458f522ed1eb2bd8ad8ec92942a1cfd01b054a89f0943f",
-  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "07a8a79a3f0236cb9e3ca9b6fb6fcc479c5df42ad04b616698ca0ae7c3778c3b",
-  "src/luggage_msgs/srv/SelectPlacePathV2.srv": "48d5bdb3ec113cdc6c07a129335dfd18cb7346ee5323a478fbd2b6f2fbc0ff0f",
-  "src/luggage_planning/luggage_planning/place_service.py": "6db592ada6b2ea49fa03081c44429231fc645f4904c320f0ee47001336f3866d",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
+  "src/luggage_msgs/srv/SelectPlacePathV2.srv": "8bb8d61164f823264db97ff8df2af8c8799522cfb89dd0ae4f9951c8f75642ae",
+  "src/luggage_planning/luggage_planning/place_service.py": "83268b0b85e8229ca70c964bb67c6e02ad666dce241e4f349b88fa240184a7f1",
   "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
   "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
   "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"

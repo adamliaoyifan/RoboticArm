@@ -1,0 +1,8 @@
+# Slot-profile container_link box center, converted to a world collision box.
+luggage_msgs/PoseContractV2 slot
+float64[3] size_wdh
+string box_id
+---
+bool success
+string message
+luggage_msgs/BoundaryDiagnosticV2 diagnostic

@@ -98,7 +98,8 @@ class HardwareVacuumBackend(VacuumBackend):
         return True, ""
 
     def attach(self, context):
-        del context
+        if isinstance(context, dict) and context.get("attach_record") is not None:
+            self.last_attach_record = context["attach_record"]
         ok, message = self._set_grasp()
         if not ok:
             self.last_error = message
@@ -117,7 +118,8 @@ class HardwareVacuumBackend(VacuumBackend):
         return False, "VACUUM_SEAL_TIMEOUT after %.1fs" % self.seal_timeout_sec
 
     def detach(self, context):
-        del context
+        if isinstance(context, dict) and context.get("detach_record") is not None:
+            self.last_detach_record = context["detach_record"]
         ok, message = self._release()
         self._attached = False
         if not ok:
@@ -189,14 +191,43 @@ class SimVacuumBackend(VacuumBackend):
         self._model_name = None
         self._offset_xyz = None
         self._offset_quat = None
+        self._planning_relation = None
+        self._physical_relation = None
+        self.last_attach_record = None
         self.last_error = ""
 
     def is_attached(self):
         return self._attached
 
+    def planning_box_pose(self, tool_xyz, tool_quat):
+        """Measured relation only. Physics ground truth is not read here."""
+        from luggage_planning.attachment_frame_contracts import compose_box_world
+        if not self._planning_relation:
+            return None
+        return compose_box_world(self._planning_relation, tool_xyz, tool_quat)
+
     def attach(self, context):
         if self._attached:
             return True, "already attached"
+        record = context.get("attach_record") if isinstance(context, dict) else None
+        if record is not None:
+            self.last_attach_record = record
+            self._planning_relation = record
+            self._physical_relation = context.get("physical_relation")
+            self._model_name = context.get("model_name")
+            try:
+                scene_ok, scene_msg = self._scene.attach_pickup_box(
+                    self._model_name, record["box_pose"]["position"],
+                    record["box_pose"]["quaternion_xyzw"], record["size_wdh"],
+                    context.get("attach_link", "suction_contact_frame"))
+            except Exception as exc:  # noqa: BLE001 - backend boundary
+                self.last_error = str(exc)
+                return False, "VACUUM_BACKEND_ERROR: %s" % exc
+            if not scene_ok:
+                self.last_error = scene_msg
+                return False, "VACUUM_BACKEND_ERROR: scene %s" % scene_msg
+            self._attached = True
+            return True, "attached measured %s" % self._model_name
         try:
             self._model_name = context["model_name"]
             self._offset_xyz, self._offset_quat = relative_offset(
@@ -225,8 +256,13 @@ class SimVacuumBackend(VacuumBackend):
         if not self._attached or self._model_name is None:
             return True, ""
         try:
-            xyz, quat = compose_pose(
-                panel_xyz, panel_quat, self._offset_xyz, self._offset_quat)
+            if self._physical_relation is not None:
+                from luggage_planning.attachment_frame_contracts import compose_box_world
+                xyz, quat = compose_box_world(
+                    self._physical_relation, panel_xyz, panel_quat)
+            else:
+                xyz, quat = compose_pose(
+                    panel_xyz, panel_quat, self._offset_xyz, self._offset_quat)
             ok, msg = self._gz.set_model_pose(self._model_name, xyz, quat)
             if not ok:
                 return False, msg

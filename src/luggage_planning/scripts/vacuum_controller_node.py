@@ -31,7 +31,7 @@ from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool
 
 from luggage_msgs.msg import VacuumState
-from luggage_msgs.srv import GetCurrentBox, VacuumCommand
+from luggage_msgs.srv import GetCurrentBox, VacuumCommand, VacuumCommandV2
 
 from luggage_planning.current_box_payload import (
     identity_from_current_box_payload,
@@ -260,6 +260,9 @@ class VacuumControllerNode(Node):
         self.create_service(
             VacuumCommand, "/vacuum/command", self._handle_command,
             callback_group=group)
+        self.create_service(
+            VacuumCommandV2, "/vacuum/command_v2", self._handle_command_v2,
+            callback_group=group)
 
         follow_period = 1.0 / max(1.0, float(
             self.get_parameter("follow_rate_hz").value))
@@ -339,6 +342,63 @@ class VacuumControllerNode(Node):
                 [t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w])
 
     # ------------------------------------------------------------------
+
+    def _handle_command_v2(self, request, response):
+        from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
+        from luggage_planning.atlas_runtime import compute_scene_tf_hash
+        from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
+        path = resolve_scene_tf_config_path(None)
+        revision = compute_scene_tf_hash(path)
+        generation = int(self._identity[1] or 0)
+
+        def resolve_tool(stamp_ns):
+            # Enable uses the acquisition stamp. Disable may use the current
+            # measured tool pose. Neither path reads the physics ground truth.
+            if stamp_ns is None:
+                pose = self._panel_pose()
+                if pose is None:
+                    return None
+                return {
+                    "contract_version": 2,
+                    "kind": "pose",
+                    "frame_id": "world",
+                    "length_unit": "m",
+                    "time_basis": "acquisition",
+                    "scene_revision": revision,
+                    "request_id": str(request.request_id),
+                    "stamp_ns": 0,
+                    "reference": "suction_contact_frame",
+                    "orientation_semantics": "tool_quaternion",
+                    "position": list(pose[0]),
+                    "quaternion_xyzw": list(pose[1]),
+                }
+            try:
+                stamp = rclpy.time.Time(nanoseconds=int(stamp_ns))
+                transform = self._tf_buffer.lookup_transform(
+                    WORLD, self._panel_frame, stamp)
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                    tf2_ros.ExtrapolationException):
+                return None
+            translation = transform.transform.translation
+            rotation = transform.transform.rotation
+            return {
+                "contract_version": 2,
+                "kind": "pose",
+                "frame_id": "world",
+                "length_unit": "m",
+                "time_basis": "acquisition",
+                "scene_revision": revision,
+                "request_id": str(request.request_id),
+                "stamp_ns": int(stamp_ns),
+                "reference": "suction_contact_frame",
+                "orientation_semantics": "tool_quaternion",
+                "position": [translation.x, translation.y, translation.z],
+                "quaternion_xyzw": [rotation.x, rotation.y, rotation.z, rotation.w],
+            }
+
+        return handle_vacuum_command_v2(
+            request, response, scene_revision=revision, generation=generation,
+            resolve_tool=resolve_tool, backend=self._backend)
 
     def _handle_command(self, request, response):
         enable = bool(request.enable)

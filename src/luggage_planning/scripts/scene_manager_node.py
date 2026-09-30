@@ -34,7 +34,9 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
-from luggage_msgs.srv import AddPlacedBox, RemovePlacedBox, SyncStaticScene
+from luggage_msgs.srv import (
+    AddPlacedBox, AddSceneBoxV2, RemovePlacedBox, RemoveSceneBoxV2, SyncStaticScene,
+)
 from luggage_planning.planning_scene_client import (
     BOX_OBJECT_ID,
     PlanningSceneClient,
@@ -77,6 +79,12 @@ class SceneManagerNode(Node):
         self.create_service(
             RemovePlacedBox, "~/remove_placed_box",
             self._handle_remove_placed, callback_group=group)
+        self.create_service(
+            AddSceneBoxV2, "~/add_scene_box_v2",
+            self._handle_add_scene_v2, callback_group=group)
+        self.create_service(
+            RemoveSceneBoxV2, "~/remove_scene_box_v2",
+            self._handle_remove_scene_v2, callback_group=group)
         self.create_service(
             SetBool, "~/set_place_support_touch",
             self._handle_place_support, callback_group=group)
@@ -178,6 +186,23 @@ class SceneManagerNode(Node):
         response.success = ok
         response.message = message if not ok else "added %s" % obj_id
         return response
+
+    def _handle_add_scene_v2(self, request, response):
+        from luggage_description.scene_tf_config_utils import (
+            origin_in_world, resolve_scene_tf_config_path,
+        )
+        from luggage_planning.atlas_runtime import compute_scene_tf_hash
+        from luggage_planning.scene_box_v2 import handle_add_scene_box_v2
+        path = resolve_scene_tf_config_path(
+            str(self.get_parameter("scene_tf_config").value or "") or None)
+        origin, rpy = origin_in_world(self._config())
+        return handle_add_scene_box_v2(
+            request, response, self._scene, compute_scene_tf_hash(path),
+            origin, rpy)
+
+    def _handle_remove_scene_v2(self, request, response):
+        from luggage_planning.scene_box_v2 import handle_remove_scene_box_v2
+        return handle_remove_scene_box_v2(request, response, self._scene)
 
     def _handle_remove_placed(self, request, response):
         obj_id = placed_object_id(request.slot)

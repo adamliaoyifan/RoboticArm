@@ -1,0 +1,14 @@
+# Plan and execute one typed motion segment. v1 PlanMotion is unchanged.
+luggage_msgs/MotionSegmentV2 segment
+---
+bool success
+string message
+float64 fraction
+bool used_ompl_fallback
+int32 moveit_error_code
+string settle_json
+luggage_msgs/BoundaryDiagnosticV2 diagnostic
+---
+string stage
+string segment_name
+float64 fraction
