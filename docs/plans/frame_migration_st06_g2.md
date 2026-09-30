@@ -2,9 +2,12 @@
 
 Parent FRAME-MIGRATION-20260929; owner eng/claude/glm-5.3; prerequisites
 ST04=2 (8b0cd863) and ST05=2 (d147035), both passed, plus the accepted
-review-repair heads f1d4e92 (round 1, Q-20260929-13) and
-20048a5a7004f5f06bb99c568b0d04cfe4bbd796 (round 2, Q-20260929-17 reply).
-This branch is built on 20048a5. The user reassigned ST06 from the queued codex
+review-repair heads f1d4e92 (round 1, Q-20260929-13),
+20048a5a7004f5f06bb99c568b0d04cfe4bbd796 (round 2, Q-20260929-17 reply)
+and dff51dc05aca25a4dbe17535b82124aaaa9e4ad6 (round 3, admitted
+map_revision). Initially built on 20048a5; rebased onto dff51dc when
+round 3 landed, with the F07 proof re-emitted against the round-3
+planner sources. The user reassigned ST06 from the queued codex
 generation 1 to this owner and scoped the certified artifact set to **all four
 profiles** (empty-load + payloads 0.55x0.40x0.25, 0.70x0.45x0.28,
 0.80x0.50x0.32). Supersede queued generation 1 after this plan is committed.

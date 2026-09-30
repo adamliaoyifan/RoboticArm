@@ -14,7 +14,7 @@
  "source_sha256": {
   "src/luggage_packing/luggage_packing/placement_solver.py": "9fe5111abc5de91ce1326d62f53631ede026ffb661c0e4534bd0f7fba55a681b",
   "src/luggage_packing/luggage_packing/placement_reachability.py": "efacf2413e04b374791962a3de6c4e1b89538a13602f298a85bbbc78e0b5f7d7",
-  "src/luggage_packing/scripts/placement_planner_node.py": "19c1c57656b77e7358027a57eeeac6dcea6c5eb60f2bfb6cb38ba4cb4dee8b3f",
+  "src/luggage_packing/scripts/placement_planner_node.py": "43a9ea70d4c630800fa4d56c87767b7f106a99988453be2df184dc6222194745",
   "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
   "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
  }

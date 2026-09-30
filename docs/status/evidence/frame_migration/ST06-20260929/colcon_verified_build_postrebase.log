@@ -1,0 +1,22 @@
+Starting >>> elfin_description
+Starting >>> elfin_control
+Starting >>> luggage_msgs
+Starting >>> pymoveit2
+Finished <<< elfin_control [0.04s]
+Finished <<< elfin_description [0.05s]
+Starting >>> elfin_moveit_config
+Finished <<< elfin_moveit_config [0.03s]
+Finished <<< pymoveit2 [0.19s]
+Finished <<< luggage_msgs [0.23s]
+Starting >>> luggage_description
+Finished <<< luggage_description [0.19s]
+Starting >>> luggage_packing
+Finished <<< luggage_packing [0.18s]
+Starting >>> luggage_perception
+Finished <<< luggage_perception [0.19s]
+Starting >>> luggage_planning
+Finished <<< luggage_planning [0.20s]
+Starting >>> luggage_gazebo
+Finished <<< luggage_gazebo [0.19s]
+
+Summary: 10 packages finished [1.29s]
