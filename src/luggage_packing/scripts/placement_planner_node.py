@@ -273,6 +273,30 @@ class PlacementPlannerNode(Node):
             ComputePlacement, "/placement_planner/compute_placement",
             self._handle, callback_group=group)
 
+        # ST09 F21: when frame_runtime is on, this node publishes its
+        # measured identity, observes peers, and admits placement requests
+        # only against a fully ready v2 graph. Off = legacy byte-identical.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "scene_tf_config": str(
+                        self.get_parameter("scene_tf_config").value or ""),
+                    "frame_scene_revision": self._frame_scene_revision,
+                    "hull_margin": float(self.get_parameter("hull_margin").value),
+                    "atlas_runtime_config": str(
+                        self.get_parameter("atlas_runtime_config").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_packing"])
+
         self.get_logger().info(
             "placement_planner ready (aperture_y=%s, corridor=request_box, "
             "geometry_hash=%s)"
@@ -586,6 +610,16 @@ class PlacementPlannerNode(Node):
         response.geometry_hash = self._geometry_hash
         self._v2_request_seq = getattr(self, "_v2_request_seq", 0) + 1
         request_id = "place-v2-%d" % self._v2_request_seq
+        if getattr(self, "_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._runtime.admit_request(
+                    request_id, endpoint="/placement_planner/compute_placement_v2")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         if not bool(request.height_measured):
             response.success = False
             response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
@@ -645,6 +679,17 @@ class PlacementPlannerNode(Node):
             response.message = result["message"]
             return response
         best = result["selected"]
+        if getattr(self, "_runtime", None) is not None:
+            # Effect boundary: the solver ran asynchronously under the
+            # admission; recheck before committing the slot to the caller.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_effect(admission, request_id)
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         slot_message, _record = self._slot_message(best, request_id)
         response.slot = slot_message
         response.success = True
@@ -787,6 +832,16 @@ class PlacementPlannerNode(Node):
     def _handle(self, request, response):
         box = request.box
         response.geometry_hash = self._geometry_hash
+        if getattr(self, "_runtime", None) is not None:
+            # v1 cannot bypass profile admission: readiness still holds here.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         # E0/E4 contract: packing needs measured full geometry. A top-only
         # detection must not become a collision box inside the container.
         # Catalog size is spawn-only and is never a substitute for height.

@@ -263,6 +263,26 @@ class VacuumControllerNode(Node):
         self.create_service(
             VacuumCommandV2, "/vacuum/command_v2", self._handle_command_v2,
             callback_group=group)
+        # ST09 F21: identity heartbeat + peer readiness. Attachment effects
+        # are admitted per request; refusal preserves backend state (a
+        # carried box is never detached by a gate failure). Off = legacy.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._frame_runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._frame_runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "backend": str(self.get_parameter("backend").value or ""),
+                    "panel_frame": str(
+                        self.get_parameter("panel_frame").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_planning"])
 
         follow_period = 1.0 / max(1.0, float(
             self.get_parameter("follow_rate_hz").value))
@@ -347,6 +367,19 @@ class VacuumControllerNode(Node):
         from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
         from luggage_planning.atlas_runtime import compute_scene_tf_hash
         from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/vacuum/command_v2")
+                # Attachment is the effect: authorize before the backend call.
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         path = resolve_scene_tf_config_path(None)
         revision = compute_scene_tf_hash(path)
         generation = int(self._identity[1] or 0)
@@ -385,6 +418,16 @@ class VacuumControllerNode(Node):
 
     def _handle_command(self, request, response):
         enable = bool(request.enable)
+        if getattr(self, "_frame_runtime", None) is not None:
+            # v1 attachment cannot bypass profile admission; a refusal
+            # leaves backend state (and any carried box) untouched.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         if not enable:
             ok, message = self._backend.detach({})
             self._vacuum_on = False

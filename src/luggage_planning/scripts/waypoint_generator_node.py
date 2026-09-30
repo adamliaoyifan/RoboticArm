@@ -171,6 +171,27 @@ class WaypointGeneratorNode(Node):
         self.create_service(
             BuildMotionSequenceV2, "/waypoint_generator/build_motion_sequence_v2",
             self._handle_v2, callback_group=group)
+        # ST09 F21: identity heartbeat + peer readiness (off = legacy).
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "scene_tf_config": str(
+                        self.get_parameter("scene_tf_config").value or ""),
+                    "world_frame": str(
+                        self.get_parameter("world_frame").value or ""),
+                    "place_slot_frame": str(
+                        self.get_parameter("place_slot_frame").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_planning"])
         self.get_logger().info(
             "waypoint_generator ready (clearances %s, place_slot_frame=%s)"
             % (DEFAULT_PICK_CLEARANCES, self._place_slot_frame))
@@ -287,6 +308,16 @@ class WaypointGeneratorNode(Node):
         return slot, None
 
     def _handle(self, request, response):
+        if getattr(self, "_runtime", None) is not None:
+            # v1 cannot bypass profile admission.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.segments = []
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         try:
             phase = str(request.phase) or "pick"
             candidate_id = str(getattr(request, "suction_candidate_id", "")
@@ -362,10 +393,34 @@ class WaypointGeneratorNode(Node):
         return response
 
     def _handle_v2(self, request, response):
+        if getattr(self, "_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/waypoint_generator/build_motion_sequence_v2")
+            except ContractError as error:
+                response.motion_segments = []
+                response.segments = []
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         pick = None
         if str(request.phase or "") == "pick":
             pick = adapters.pick_from_detected(request.pick)
-        return handle_build_v2(request, response, pick=pick)
+        response = handle_build_v2(request, response, pick=pick)
+        if getattr(self, "_runtime", None) is not None and bool(getattr(response, "success", False)):
+            # Effect boundary: the builder ran under the admission; recheck.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.motion_segments = []
+                response.segments = []
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+        return response
 
     def _handle_candidate(self, request, response, candidate_id):
         """Candidate-driven pick build (plan section C), fail-closed.

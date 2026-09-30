@@ -323,6 +323,32 @@ class MotionPlannerNode(Node):
         self._boundary_pub = self.create_publisher(
             String, "/motion_planner/last_boundary", latch)
 
+        # ST09 F21: identity heartbeat + peer readiness. Motion effects
+        # (PlanMotion/PlanMotionV2 execution, GoToRobotPose FJT dispatch)
+        # are gated below; off = legacy byte-identical.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._frame_runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._frame_runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "scene_tf_config": str(
+                        self.get_parameter("scene_tf_config").value or ""),
+                    "velocity_scaling": float(
+                        self.get_parameter("velocity_scaling").value),
+                    "acceleration_scaling": float(
+                        self.get_parameter("acceleration_scaling").value),
+                    "atlas_runtime_config": str(
+                        self.get_parameter("atlas_runtime_config").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_planning"])
+
         # Do not wait_for_server here: __init__ runs before the executor
         # spins, so discovery of /move_action always times out and the
         # node sits 60 s before advertising PlanMotion. execute_callback
@@ -613,13 +639,53 @@ class MotionPlannerNode(Node):
 
     def _handle_probe_segment_v2(self, request, response):
         from luggage_planning.motion_v2_service import handle_probe_v2
-        return handle_probe_v2(
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request.segment, "request_id", "") or ""),
+                    endpoint="/motion_planner/probe_motion_segment_v2")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
+        response = handle_probe_v2(
             self._executor_client, request.segment, self._scene_tf_hash,
             response, link=self._executor_client._link)
+        if getattr(self, "_frame_runtime", None) is not None and bool(
+                getattr(response, "success", False)):
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request.segment, "request_id", "")
+                                   or ""))
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+        return response
 
     def _execute_plan_motion_v2(self, goal_handle):
         from luggage_planning.motion_v2_service import handle_plan_v2
         result = PlanMotionV2.Result()
+        if getattr(self, "_frame_runtime", None) is not None:
+            # Motion effect: the v2 chain is admitted end to end or refused.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(goal_handle.request.segment, "request_id", "")
+                        or ""),
+                    endpoint="/motion_planner/plan_motion_v2")
+                self._frame_runtime.authorize_effect(
+                    admission, str(
+                        getattr(goal_handle.request.segment, "request_id", "")
+                        or ""))
+            except ContractError as error:
+                goal_handle.abort()
+                result.success = False
+                result.message = "%s: %s" % (error.code, error.field)
+                return result
         handle_plan_v2(
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
@@ -851,6 +917,14 @@ class MotionPlannerNode(Node):
         segment = request.segment
         response.fraction = -1.0
         response.moveit_error_code = 0
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         if not self._executor_client.wait_ready(15.0):
             response.success = False
             response.message = "move_group not ready"
@@ -884,6 +958,18 @@ class MotionPlannerNode(Node):
         segment = goal_handle.request.segment
         result = PlanMotion.Result()
         name = str(segment.name)
+        if getattr(self, "_frame_runtime", None) is not None:
+            # v1 motion cannot bypass profile admission.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                goal_handle.abort()
+                result.success = False
+                result.message = "%s: %s" % (error.code, error.field)
+                self._emit_boundary(name, extra={"kind": "PlanMotion"},
+                                    success=False)
+                return result
         result.fraction = 0.0
         result.used_ompl_fallback = False
         result.moveit_error_code = 0
@@ -1007,6 +1093,16 @@ class MotionPlannerNode(Node):
     def _execute_goto_pose(self, goal_handle):
         result = GoToRobotPose.Result()
         requested = str(goal_handle.request.pose_name)
+        if getattr(self, "_frame_runtime", None) is not None:
+            # FJT dispatch is a motion effect; v1 cannot bypass admission.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                goal_handle.abort()
+                result.success = False
+                result.message = "%s: %s" % (error.code, error.field)
+                return result
 
         def feedback(stage, remaining_error=0.0):
             fb = GoToRobotPose.Feedback()

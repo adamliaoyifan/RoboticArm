@@ -74,6 +74,24 @@ class TrajectorySelectorNode(Node):
         self.create_service(
             SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
             self._select_v2)
+        # ST09 F21: identity heartbeat + peer readiness (off = legacy).
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._frame_runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._frame_runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "scene_tf_config": str(
+                        self.get_parameter("scene_tf_config").value or ""),
+                    "atlas_enabled": bool(self._atlas_cfg.get("enabled")),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_planning"])
         self.get_logger().info("trajectory_selector up")
 
     def _runtime_atlas(self):
@@ -122,6 +140,16 @@ class TrajectorySelectorNode(Node):
         ]
 
     def _select(self, request, response):
+        if getattr(self, "_frame_runtime", None) is not None:
+            # v1 cannot bypass profile admission.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.rows_json = json.dumps({"error": error.code})
+                return response
         surface = self._surface
         if surface is None:
             response.success = False
@@ -206,6 +234,17 @@ class TrajectorySelectorNode(Node):
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/trajectory_selector/select_place_path_v2")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.rows_json = json.dumps({"error": error.code})
+                return response
         atlas, diag = self._runtime_atlas()
         block = certification_block_reason(self._atlas_cfg, diag)
         if block:
@@ -213,7 +252,18 @@ class TrajectorySelectorNode(Node):
             response.reason_code = block
             response.rows_json = json.dumps({"error": block, "atlas": diag})
             return response
-        return handle_select_v2(request, response, atlas=atlas)
+        response = handle_select_v2(request, response, atlas=atlas)
+        if getattr(self, "_frame_runtime", None) is not None and bool(
+                getattr(response, "success", False)):
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.rows_json = json.dumps({"error": error.code})
+        return response
 
 
 def _segments(winner, map_to_world=None):

@@ -138,7 +138,7 @@
         "surface_ragged"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F06.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F06.json"
     },
     {
       "id": "F07",
@@ -160,7 +160,7 @@
         "wrong_reference"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST06-20260929/runtime_F07.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F07.json"
     },
     {
       "id": "F08",
@@ -189,7 +189,7 @@
         "translate_rotate180"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F08.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F08.json"
     },
     {
       "id": "F09",
@@ -257,7 +257,7 @@
         "normal_not_translated"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F11.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F11.json"
     },
     {
       "id": "F12",
@@ -310,7 +310,7 @@
         "tool_pi_distinct"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F13.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F13.json"
     },
     {
       "id": "F14",
@@ -382,7 +382,7 @@
         "zero_quaternion"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F15.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F15.json"
     },
     {
       "id": "F16",
@@ -406,7 +406,7 @@
         "tool_pi_distinct"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST08-20260930/runtime_F16.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F16.json"
     },
     {
       "id": "F17",
@@ -430,7 +430,7 @@
         "wrong_frame"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST08-20260930/runtime_F17.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F17.json"
     },
     {
       "id": "F18",
@@ -455,7 +455,7 @@
         "tool_sign_equivalent"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F18.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F18.json"
     },
     {
       "id": "F19",
@@ -478,7 +478,7 @@
         "surface_dual_conflict"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST04-20260929/runtime_F19.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F19.json"
     },
     {
       "id": "F20",

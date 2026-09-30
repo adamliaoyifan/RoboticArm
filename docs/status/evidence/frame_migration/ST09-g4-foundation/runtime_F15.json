@@ -1,0 +1,36 @@
+{
+ "command": "python3 -m pytest -q src/luggage_description/test/test_runtime_readiness.py src/luggage_description/test/test_runtime_identity_wire.py src/luggage_planning/test/test_st09_release.py src/luggage_planning/test/test_st09_typed_build.py src/luggage_planning/test/test_frame_migration_execution.py src/luggage_planning/test/test_frame_migration_selector.py src/luggage_gazebo/test/test_frame_migration_tools.py --tb=short",
+ "contract_version": 2,
+ "interface_contract_sha256": "a58ffe9e24f5aee6c91ec061f63c1d24682e0e68a717fa1be314f741581a39a5",
+ "interface_id": "F15",
+ "kind": "runtime_boundary",
+ "limits": "Boundary-level regression only; production graph adoption (F21) and ST09 release remain open.",
+ "observations": [
+  "Boundary suite green after ST09 g4 node admission wiring: 192 boundary samples, handler gates fail closed with zero effects; v1 byte-equivalence tests unchanged.",
+  "g4 additions: shared NodeRuntime publishes RuntimeIdentityV2 and gates node effects on peer readiness; no handler change when frame_runtime is off."
+ ],
+ "prior_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F15.json",
+ "sample_count": 192,
+ "source_sha256": {
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+  "src/luggage_msgs/action/PlanMotion.action": "f0421cb74fa99417c4dd16c914d271721c8e2b0a919a79c6d0c0e7e58e38abdc",
+  "src/luggage_msgs/action/PlanMotionV2.action": "adc58316e344dbb003050938ab6129db9ad9f392caa2f485418b7671df3c30af",
+  "src/luggage_msgs/msg/MotionSegment.msg": "d74add52d6ef4ae5a343a41094910e6e7084431134ca2f37745d009f24741d08",
+  "src/luggage_msgs/msg/MotionSegmentV2.msg": "89eeddbcd9c75f1d07f181a06435aa4ccbc9be7dd0bf4673a2f7fe2493dbc49a",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
+  "src/luggage_msgs/srv/ProbeMotionSegment.srv": "42889b51db9233faeca0a25e654f211eefda4b980f4c8d8ced8d669303996764",
+  "src/luggage_msgs/srv/ProbeMotionSegmentV2.srv": "359760710e186b225d77626c1a7b1ec1a93e0bec393623248d91697023547e6f",
+  "src/luggage_msgs/srv/SelectPlacePathV2.srv": "8bb8d61164f823264db97ff8df2af8c8799522cfb89dd0ae4f9951c8f75642ae",
+  "src/luggage_planning/luggage_planning/motion_executor.py": "182ca2989e80fd28aba11e3925b8d0f6d1a64cd605acbea0969a8e44581ec648",
+  "src/luggage_planning/luggage_planning/motion_frame_adapters.py": "c62b6b2985861de250cb5f41a9cbce6bd614ab801bdbefca1e365e1a4b49a94a",
+  "src/luggage_planning/luggage_planning/motion_frame_contracts.py": "f000e70a679ee5caab7010c9d8f6ee760b3a58b5eb62a882a583b34ce68d7ab3",
+  "src/luggage_planning/luggage_planning/motion_v2_service.py": "b7d84a05bd4e4656a89c8e4823a0b440fc86c2c3e775652db0460cf73c8a7298",
+  "src/luggage_planning/luggage_planning/place_service.py": "db6a9c7bc58831ead19f75370ba9533c44c9bce9d8877e7f0c1dcf3946a2e5cc",
+  "src/luggage_planning/luggage_planning/pose.py": "4c9ccee371f9af7648a54038642c1b895801e9c365444cb49c901af2ec7b08e3",
+  "src/luggage_planning/luggage_planning/ros_message_adapters.py": "77b0237d0218950da5232d9f7258e9b32b07ae58103a0ca1fc7e0e56f066b1c6",
+  "src/luggage_planning/scripts/motion_planner_node.py": "84d97b140c844fa8510e177f5f076ce73748161134b6cbb6ff1c6b3094956b7f"
+ },
+ "status": "pass",
+ "test_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/boundary-suite.log"
+}

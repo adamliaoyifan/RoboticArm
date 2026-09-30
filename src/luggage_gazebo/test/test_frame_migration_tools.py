@@ -233,4 +233,194 @@ class IntegrationExtractor(unittest.TestCase):
             with self.assertRaises(ValueError): capture_window(upstream,downstream)
 
 
+class RuntimeGraphIdentity(unittest.TestCase):
+    """ST09 g4: measured identity assembly and the endpoint ownership graph."""
+
+    def test_registry_profiles_and_rejections(self):
+        from luggage_description.runtime_graph import (
+            DEFAULT_DRIVER_PEER, HARDWARE_STACK_PEERS, RUNTIME_IDENTITY_TOPIC,
+            endpoint_registry, identity_endpoints, live_providers, resolve_peers)
+        sim = resolve_peers(DEFAULT_DRIVER_PEER)
+        self.assertEqual(len(sim), 8)
+        registry = endpoint_registry(sim)
+        names = identity_endpoints(registry)
+        self.assertIn("/placement_planner/compute_placement_v2", names)
+        self.assertIn("/luggage/cargo_map/surface_v2", names)
+        self.assertEqual(registry[RUNTIME_IDENTITY_TOPIC]["provider"], sim)
+        hardware = resolve_peers("hardware_pick_driver",
+                                 stack=HARDWARE_STACK_PEERS)
+        hw_names = identity_endpoints(endpoint_registry(hardware))
+        self.assertIn("/motion_planner/plan_motion_v2", hw_names)
+        for absent in ("/placement_planner/compute_placement_v2",
+                       "/luggage/cargo_map/surface_v2",
+                       "/trajectory_selector/select_place_path_v2"):
+            self.assertNotIn(absent, hw_names)
+        observed = {"motion_planner", "vacuum_controller"}
+        live = live_providers(endpoint_registry(hardware), observed)
+        self.assertEqual(live["/motion_planner/plan_motion_v2"],
+                         ["luggage_msgs/action/PlanMotionV2"])
+        # The absent placement endpoint is not part of this graph at all.
+        self.assertNotIn("/placement_planner/compute_placement_v2", live)
+        self.assertEqual(live[RUNTIME_IDENTITY_TOPIC],
+                         ["luggage_msgs/msg/RuntimeIdentityV2"])
+        self.assertEqual(live_providers(endpoint_registry(hardware), set())[
+            RUNTIME_IDENTITY_TOPIC], [])
+        for bad in ("", "scene_manager"):
+            with self.subTest(driver=bad), self.assertRaises(ContractError):
+                resolve_peers(bad)
+
+    def test_measured_identity_and_rejects(self):
+        import hashlib
+        import yaml
+        from luggage_description.runtime_identity import (
+            actuated_joint_names, build_identity)
+        from luggage_description.runtime_graph import (
+            endpoint_registry, identity_endpoints, resolve_peers)
+        urdf = ('<robot name="S20"><link name="a"/>'
+                '<joint name="joint1" type="revolute">'
+                '<parent link="a"/><child link="b"/><axis xyz="0 0 1"/></joint>'
+                '<joint name="weld" type="fixed">'
+                '<parent link="b"/><child link="c"/></joint></robot>')
+        self.assertEqual(actuated_joint_names(urdf), ["joint1"])
+        scene = {
+            "container": {"inner": {
+                "length": 1.49, "width": 1.97, "floor_z": 0.53,
+                "ceiling_z": 2.01,
+                "chamfer": {"side": "positive_y", "floor_y": 0.55,
+                             "wall_y": 0.9, "wall_z": 0.9}}},
+            "static_transforms": [{
+                "parent": "world", "child": "container_link",
+                "translation": [0.0, 0.0, 0.0], "rotation_rpy": [0.0, 0.0, 0.0]}],
+        }
+        peers = resolve_peers("motion_occ_driver")
+        endpoints = identity_endpoints(endpoint_registry(peers))
+        with tempfile.TemporaryDirectory() as directory:
+            scene_path = Path(directory) / "scene_tf.yaml"
+            scene_path.write_text(yaml.safe_dump(scene))
+            npz = Path(directory) / "atlas.npz"
+            meta = Path(directory) / "atlas.yaml"
+            npz.write_bytes(b"atlas-bytes")
+            meta.write_text("certified: true\n")
+            built = build_identity(
+                scene_tf_config=str(scene_path),
+                calibration_revision="urdf-embedded-d435", urdf_text=urdf,
+                srdf_text="<robot name='S20'/>",
+                tool_link="suction_contact_frame",
+                atlas_files=(str(npz), str(meta)), endpoints=endpoints)
+            # Every hash is measured from the resolved bytes, and the scene
+            # revision is the atlas-builder-compatible file digest.
+            self.assertEqual(built["urdf_sha256"],
+                             hashlib.sha256(urdf.encode()).hexdigest())
+            self.assertEqual(built["atlas_sha256"],
+                             hashlib.sha256(b"atlas-bytes").hexdigest())
+            self.assertEqual(built["scene_revision"],
+                             hashlib.md5(scene_path.read_bytes()).hexdigest())
+            self.assertEqual(built["joint_names"], ["joint1"])
+            json.dumps(built)
+            for mutation, code in (
+                    (lambda i: i.update(atlas_sha256="zz"), "INVALID_IDENTITY_HASH"),
+                    (lambda i: i.update(endpoints={"/x": "luggage_msgs/srv/Nope"}),
+                     "ENDPOINT_TYPE_MISMATCH"),
+                    (lambda i: i.update(joint_names=["j", "j"]),
+                     "JOINT_ORDER_MISMATCH")):
+                broken = dict(built)
+                mutation(broken)
+                from luggage_description.runtime_profile import validate_identity
+                with self.subTest(code=code), self.assertRaises(ContractError):
+                    validate_identity(broken)
+
+    def test_node_runtime_admission_lifecycle(self):
+        """Stub-node NodeRuntime: peers -> READY -> admit -> revoke on restart."""
+        try:
+            import luggage_msgs.msg  # noqa: F401
+            from ament_index_python.packages import get_package_prefix
+        except ImportError:
+            self.skipTest("generated messages / ament index unavailable")
+        import types
+        from luggage_description import runtime_readiness as ready_module
+        from luggage_description.ros_frame_bindings.runtime import NodeRuntime
+        from luggage_description.runtime_graph import (
+            endpoint_registry, identity_endpoints, resolve_peers)
+
+        class StubNode:
+            def __init__(self, name):
+                self._name = name
+                self.warnings = []
+                self.subscriber = None
+
+            def get_name(self):
+                return "/" + self._name
+
+            def get_logger(self):
+                node = self
+                logger = types.SimpleNamespace()
+                logger.warning = lambda message: node.warnings.append(message)
+                logger.info = lambda message: None
+                return logger
+
+            def create_publisher(self, _type, _topic, _qos):
+                return types.SimpleNamespace(publish=lambda _m: None)
+
+            def create_timer(self, _period, _callback, clock=None):
+                return types.SimpleNamespace(cancel=lambda: None)
+
+            def create_subscription(self, _type, _topic, callback, _qos):
+                self.subscriber = callback
+                return types.SimpleNamespace(destroy=lambda: None)
+
+        peers = resolve_peers("motion_occ_driver")
+        identity = dict(contract_version=2,
+                        scene_revision="s", calibration_revision="c",
+                        urdf_sha256="a" * 64, srdf_sha256="b" * 64,
+                        tool_link="suction_contact_frame",
+                        joint_names=["j1"], geometry_hash="g",
+                        atlas_sha256="e" * 64,
+                        atlas_certification_sha256="f" * 64,
+                        endpoints=identity_endpoints(endpoint_registry(peers)))
+        nodes = {}
+        runtimes = {}
+        for peer in peers:
+            nodes[peer] = StubNode(peer)
+            runtimes[peer] = NodeRuntime(
+                nodes[peer], peer=peer, identity=dict(identity),
+                resolved_config={"peer": peer}, peers=peers,
+                modules=[(ready_module, "module", "application")])
+        runtime = runtimes["placement_planner"]
+        # Nothing observed yet: readiness refuses, zero effects possible.
+        self.assertNotEqual(runtime.snapshot()["readiness"], "READY")
+        with self.assertRaises(ContractError):
+            runtime.authorize_legacy_effect()
+        # Every other peer's live heartbeat is decoded and admitted.
+        for peer in peers:
+            if peer == "placement_planner":
+                continue
+            from luggage_description.ros_frame_bindings.runtime import (
+                report_to_message)
+            wire = report_to_message(
+                runtimes[peer].report, runtimes[peer].registry,
+                readiness_code="READY")
+            runtime._on_report(wire)  # noqa: SLF001
+        self.assertEqual(runtime.snapshot()["readiness"], "READY")
+        admission = runtime.admit_request(
+            "request-1", endpoint="/placement_planner/compute_placement_v2")
+        runtime.authorize_effect(admission, "request-1")
+        self.assertEqual(runtime.snapshot()["counters"].get("ADMITTED"), 1)
+        # A restarted peer revokes the gate; effects stay refused.
+        restarted = NodeRuntime(
+            nodes["motion_planner"], peer="motion_planner",
+            identity=dict(identity), resolved_config={"peer": "motion_planner"},
+            peers=peers,
+            modules=[(ready_module, "module", "application")])
+        runtime._on_report(report_to_message(  # noqa: SLF001
+            restarted.report, restarted.registry, readiness_code="READY"))
+        self.assertIn("PEER_RESTART", runtime.snapshot()["counters"])
+        with self.assertRaises(ContractError):
+            runtime.authorize_effect(admission, "request-1")
+        with self.assertRaises(ContractError):
+            runtime.admit_request(
+                "request-2", endpoint="/placement_planner/compute_placement_v2")
+        effects = runtime.snapshot()["counters"].get("EFFECT_AUTHORIZED", 0)
+        self.assertEqual(effects, 1)
+
+
 if __name__=="__main__": unittest.main()

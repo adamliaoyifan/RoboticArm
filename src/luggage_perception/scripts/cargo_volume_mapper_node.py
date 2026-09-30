@@ -213,6 +213,28 @@ class CargoVolumeMapperNode(Node):
                 RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
                 self._on_remove_v2, callback_group=group)
 
+        # ST09 F21: identity heartbeat + peer readiness. Map commits (v1
+        # and v2) and surface publications are gated; off = legacy.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._frame_runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._frame_runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "frame_scene_revision": self._frame_scene_revision,
+                    "cargo_cloud_topic": str(
+                        self.get_parameter("cargo_cloud_topic").value or ""),
+                    "base_frame": str(
+                        self.get_parameter("base_frame").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_perception"])
+
         self._publish_all()
         self.get_logger().info(
             "cargo_volume_mapper ready (inner %.2fx%.2fx%.2f m, res %.2f, "
@@ -308,7 +330,29 @@ class CargoVolumeMapperNode(Node):
         response.resulting_map_revision = int(stats["map_revision"])
         return response
 
+    def _gate_mutation(self, response, request_id="", endpoint=None):
+        """Admission for a map commit; False fills the refusal."""
+        runtime = getattr(self, "_frame_runtime", None)
+        if runtime is None:
+            return True
+        from luggage_description.frame_contracts import ContractError
+        try:
+            if endpoint is None:
+                runtime.authorize_legacy_effect()
+            else:
+                admission = runtime.admit_request(
+                    request_id, endpoint=endpoint)
+                runtime.authorize_effect(admission, request_id)
+        except ContractError as error:
+            response.success = False
+            response.message = "%s: %s" % (error.code, error.field)
+            return False
+        return True
+
     def _on_integrate(self, request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
         stats = self._mapper.stats()
         current_rev = int(stats["map_revision"])
         reason = validate_integrate_request(
@@ -369,6 +413,9 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_add(self, request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
         slot = request.slot
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
@@ -398,6 +445,9 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_remove(self, request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
         slot = request.slot
         size = [max(0.0, float(slot.width)),
                 max(0.0, float(slot.depth)),
@@ -423,6 +473,9 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_reset(self, _request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(response):
+            return response
         self._mapper.reset(preserve_placed=False)
         with self._lock:
             self._clouds.clear()
@@ -531,6 +584,12 @@ class CargoVolumeMapperNode(Node):
         return True
 
     def _on_add_v2(self, request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(
+                response,
+                request_id=str(request.slot_pose.identity.request_id),
+                endpoint="/cargo_map/add_placed_box_v2"):
+            return response
         try:
             slot = self._decode_slot_v2(
                 request.slot_pose, request.slot_pose.identity.request_id)
@@ -575,6 +634,12 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_remove_v2(self, request, response):
+        _gate = getattr(self, "_gate_mutation", None)
+        if _gate is not None and not _gate(
+                response,
+                request_id=str(request.slot_pose.identity.request_id),
+                endpoint="/cargo_map/remove_placed_box_v2"):
+            return response
         try:
             slot = self._decode_slot_v2(
                 request.slot_pose, request.slot_pose.identity.request_id)

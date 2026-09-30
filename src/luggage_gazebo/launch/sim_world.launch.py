@@ -111,6 +111,12 @@ def _default_launch_values():
             "config",
             "robot_poses.yaml.example",
         ),
+        # ST09 F21: the typed v2 runtime chain. On = every peer node
+        # publishes its measured RuntimeIdentityV2 and gates effects on
+        # graph readiness; requires the full chain (no mixed enablement).
+        "frame_runtime": "false",
+        "frame_calibration_revision": "urdf-embedded-d435",
+        "frame_driver_peer": "motion_occ_driver",
     }
 
 
@@ -475,12 +481,64 @@ def _shutdown_unless_clean_exit(event, context):
     ]
 
 
+def _frame_runtime_params(cfg, scene_tf_config, initial_joint_args):
+    """Identity + peer parameters for the v2 runtime chain, or ``{}``.
+
+    The identity is measured at launch resolution time (scene bytes,
+    expanded URDF, final SRDF, resolved atlas files) — never declared.
+    Fails closed on a partial enablement: the v2 chain is all or nothing.
+    """
+    if not _as_bool(cfg["frame_runtime"]):
+        return {}
+    off = [name for name in ("use_motion", "use_cargo_map", "use_packing",
+                             "use_vacuum") if not _as_bool(cfg[name])]
+    if off:
+        raise RuntimeError(
+            "frame_runtime requires the full v2 chain; disabled here: %s "
+            "(no mixed-v2 enablement)" % ", ".join(off))
+    import json
+    from luggage_description.runtime_graph import (
+        endpoint_registry, identity_endpoints, resolve_peers)
+    from luggage_description.runtime_identity import build_identity
+    from luggage_planning.atlas_runtime import (
+        load_atlas_runtime_for_scene, resolve_atlas_files)
+    peers = resolve_peers(cfg["frame_driver_peer"])
+    xacro_path = os.path.join(
+        get_package_share_directory("luggage_description"),
+        "urdf", "elfin_s20_with_camera.urdf.xacro")
+    # Same expansion the robot_description Command performs for RSP and
+    # move_group (scene pose on the joint, gz hardware plugin, named pose).
+    urdf_xml, _pose = expand_and_patch(
+        xacro_path, config_path=scene_tf_config,
+        xacro_args=[
+            "use_gz_sim:=true",
+            "hardware_plugin:=gz_ros2_control/GazeboSimSystem",
+        ] + list(initial_joint_args))
+    identity = build_identity(
+        scene_tf_config=scene_tf_config,
+        calibration_revision=cfg["frame_calibration_revision"],
+        urdf_text=urdf_xml,
+        srdf_text=_gazebo_semantic_description()["robot_description_semantic"],
+        tool_link="suction_contact_frame",
+        atlas_files=resolve_atlas_files(load_atlas_runtime_for_scene(
+            scene_tf_config, str(cfg["atlas_runtime_config"] or "") or None)),
+        endpoints=identity_endpoints(endpoint_registry(peers)))
+    return {
+        "frame_runtime": True,
+        "frame_identity_json": json.dumps(identity, sort_keys=True),
+        "frame_peers": ",".join(peers),
+        "frame_scene_revision": identity["scene_revision"],
+    }
+
+
 def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
     gui = _as_bool(cfg["gui"])
     initial_joint_args = _initial_joint_xacro_args(cfg)
+    frame_params = _frame_runtime_params(cfg, scene_tf_config,
+                                         initial_joint_args)
 
     world_path = os.path.join(
         get_package_share_directory("luggage_gazebo"), "worlds", "airport_loading.sdf"
@@ -583,6 +641,10 @@ def _launch_setup(context):
                 "config", "sensor_preprocessor.yaml",
             ),
             {"use_sim_time": True},
+            # F02 observation admission rides the same scene revision the
+            # runtime chain measured (no-op when frame_runtime is off).
+            {"frame_scene_revision": frame_params.get("frame_scene_revision",
+                                                      "")},
         ],
     )
 
@@ -746,6 +808,7 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 "world_frame": "world",
                 "pickup_object_id": "pickup_box",
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -759,6 +822,7 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 "world_frame": "world",
                 "place_slot_frame": "elfin_base_link",
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -775,6 +839,7 @@ def _launch_setup(context):
                 "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
                 "velocity_scaling": float(cfg["velocity_scaling"]),
                 "acceleration_scaling": float(cfg["acceleration_scaling"]),
+                **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -789,6 +854,7 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
+                **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -848,6 +914,7 @@ def _launch_setup(context):
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_cargo_map"])),
         ),
@@ -865,6 +932,7 @@ def _launch_setup(context):
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
+                **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
@@ -873,7 +941,7 @@ def _launch_setup(context):
             executable="vacuum_controller_node.py",
             name="vacuum_controller",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{"use_sim_time": True, **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(scene_tf_config, robot_description),
@@ -1034,6 +1102,21 @@ def generate_launch_description():
                 "atlas_enabled",
                 "Force the atlas chain on/off for placement and motion "
                 "(empty = yaml default).",
+            ),
+            profile_arg(
+                "frame_runtime",
+                "Start the typed v2 runtime chain (identity heartbeats + "
+                "readiness gating; requires the full stack on).",
+            ),
+            profile_arg(
+                "frame_calibration_revision",
+                "Calibration identity label stamped into the runtime "
+                "identity.",
+            ),
+            profile_arg(
+                "frame_driver_peer",
+                "Driver node name that joins the v2 graph as the client "
+                "peer.",
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),

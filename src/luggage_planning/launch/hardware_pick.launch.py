@@ -77,6 +77,138 @@ def _preprocessor_node(context, *args, **kwargs):
     ]
 
 
+def _frame_runtime_params(context):
+    """ST09 F21 identity/peer parameters for the hardware-plan-only chain.
+
+    The identity is measured at launch resolution (scene bytes, expanded
+    URDF, final SRDF, resolved atlas files). Fails closed on a partial
+    enablement; off (default) leaves the graph byte-identical.
+    """
+    if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
+        return {}
+    off = [name for name in ("start_planning", "start_scene")
+           if not _bool_text(LaunchConfiguration(name).perform(context))]
+    if off:
+        raise RuntimeError(
+            "frame_runtime requires the plan/scene chain; disabled here: %s "
+            "(no mixed-v2 enablement)" % ", ".join(off))
+    import json
+    from luggage_description.runtime_graph import (
+        HARDWARE_STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
+    from luggage_description.runtime_identity import build_identity
+    from luggage_planning.atlas_runtime import (
+        load_atlas_runtime_for_scene, resolve_atlas_files)
+    from luggage_description.xacro_robot_with_scene_base import expand_and_patch
+    scene = LaunchConfiguration("scene_tf_config").perform(context)
+    driver = str(
+        LaunchConfiguration("frame_driver_peer").perform(context)
+        or "hardware_pick_driver")
+    peers = resolve_peers(driver, stack=HARDWARE_STACK_PEERS)
+    xacro_path = os.path.join(
+        get_package_share_directory("luggage_description"),
+        "urdf", "elfin_s20_with_camera.urdf.xacro")
+    # Same expansion the robot_description Command performs (hardware
+    # plugin defaults; no gz arguments on the real cell).
+    urdf_xml, _pose = expand_and_patch(xacro_path, config_path=scene,
+                                       xacro_args=[])
+    atlas_cfg = str(
+        LaunchConfiguration("atlas_runtime_config").perform(context) or "")
+    identity = build_identity(
+        scene_tf_config=scene,
+        calibration_revision=str(
+            LaunchConfiguration("frame_calibration_revision").perform(context)
+            or "d555_site"),
+        urdf_text=urdf_xml,
+        srdf_text=_semantic_srdf()["robot_description_semantic"],
+        tool_link="suction_contact_frame",
+        atlas_files=resolve_atlas_files(
+            load_atlas_runtime_for_scene(scene, atlas_cfg or None)),
+        endpoints=identity_endpoints(endpoint_registry(peers)))
+    return {
+        "frame_runtime": True,
+        "frame_identity_json": json.dumps(identity, sort_keys=True),
+        "frame_peers": ",".join(peers),
+        "frame_scene_revision": identity["scene_revision"],
+    }
+
+
+def _frame_nodes(context, *args, **kwargs):
+    """Planning-chain nodes with the frame runtime parameters attached."""
+    frame = _frame_runtime_params(context)
+    return [
+        Node(
+            package="luggage_planning",
+            executable="scene_manager_node.py",
+            name="scene_manager",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "world_frame": "world",
+                "pickup_object_id": "pickup_box",
+                "auto_sync": True,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="waypoint_generator_node.py",
+            name="waypoint_generator",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "world_frame": "world",
+                "place_slot_frame": "elfin_base_link",
+                "use_perception_approach": False,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="motion_planner_node.py",
+            name="motion_planner",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "atlas_runtime_config": LaunchConfiguration(
+                    "atlas_runtime_config"),
+                "robot_poses_config": LaunchConfiguration("robot_poses_config"),
+                "default_observe_pose": LaunchConfiguration("observe_pose_name"),
+                "named_pose_duration": 8.0,
+                "named_pose_max_vel": 1.0,
+                "velocity_scaling": 0.6,
+                "acceleration_scaling": 0.6,
+                "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="vacuum_controller_node.py",
+            name="vacuum_controller",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "backend": "hardware",
+                "seal_timeout_sec": 8.0,
+                "follow_rate_hz": 10.0,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+    ]
+
+
+def start_planning_of(context):
+    from launch.conditions import IfCondition
+    return IfCondition(LaunchConfiguration("start_planning"))
+
+
 def _semantic_srdf():
     path = os.path.join(
         get_package_share_directory("luggage_description"),
@@ -437,67 +569,25 @@ def _launch_description():
                 }],
                 condition=start_perception,
             ),
-            Node(
-                package="luggage_planning",
-                executable="scene_manager_node.py",
-                name="scene_manager",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
-                    "world_frame": "world",
-                    "pickup_object_id": "pickup_box",
-                    "auto_sync": True,
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_runtime",
+                default_value="false",
+                description=(
+                    "ST09: typed v2 runtime chain on the plan/scene nodes "
+                    "(identity heartbeats + readiness gating)."
+                ),
             ),
-            Node(
-                package="luggage_planning",
-                executable="waypoint_generator_node.py",
-                name="waypoint_generator",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
-                    "world_frame": "world",
-                    "place_slot_frame": "elfin_base_link",
-                    "use_perception_approach": False,
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_calibration_revision",
+                default_value="d555_site",
+                description="Calibration identity label for the runtime identity.",
             ),
-            Node(
-                package="luggage_planning",
-                executable="motion_planner_node.py",
-                name="motion_planner",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
-                    "atlas_runtime_config": LaunchConfiguration(
-                        "atlas_runtime_config"),
-                    "robot_poses_config": LaunchConfiguration("robot_poses_config"),
-                    "default_observe_pose": LaunchConfiguration("observe_pose_name"),
-                    "named_pose_duration": 8.0,
-                    "named_pose_max_vel": 1.0,
-                    "velocity_scaling": 0.6,
-                    "acceleration_scaling": 0.6,
-                    "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_driver_peer",
+                default_value="hardware_pick_driver",
+                description="Driver node name joining the v2 graph as client.",
             ),
-            Node(
-                package="luggage_planning",
-                executable="vacuum_controller_node.py",
-                name="vacuum_controller",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "backend": "hardware",
-                    "seal_timeout_sec": 8.0,
-                    "follow_rate_hz": 10.0,
-                }],
-                condition=start_planning,
-            ),
+            OpaqueFunction(function=_frame_nodes),
             OpaqueFunction(function=_move_group),
         ]
     )
