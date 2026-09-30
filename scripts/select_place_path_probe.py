@@ -20,7 +20,7 @@ from std_msgs.msg import String
 
 from geometry_msgs.msg import Pose
 from luggage_msgs.msg import DetectedLuggage, SlotSpec
-from luggage_msgs.srv import SelectPlacePath
+from luggage_msgs.srv import SelectPlacePath, SelectPlacePathV2
 
 
 class Probe(Node):
@@ -101,7 +101,39 @@ class Probe(Node):
         return out
 
 
+def call_select_v2(node, request, timeout=5.0):
+    """Call the live SelectPlacePathV2 service. Returns the response or None."""
+    client = node.create_client(
+        SelectPlacePathV2, "/trajectory_selector/select_place_path_v2")
+    if not client.wait_for_service(timeout_sec=timeout):
+        return None
+    future = client.call_async(request)
+    rclpy.spin_until_future_complete(node, future, timeout_sec=timeout)
+    return future.result()
+
+
 def main():
+    if "--v2" in sys.argv:
+        rclpy.init()
+        node = Node("select_place_path_probe_v2")
+        try:
+            response = call_select_v2(node, SelectPlacePathV2.Request(), timeout=2.0)
+            if response is None:
+                print(json.dumps({
+                    "ok": False,
+                    "error": "select_place_path_v2 unavailable",
+                }, indent=1, sort_keys=True))
+            else:
+                print(json.dumps({
+                    "ok": bool(response.success),
+                    "reason_code": str(response.reason_code),
+                    "slot_index": int(response.slot_index),
+                    "path_hash": str(response.path_hash),
+                }, indent=1, sort_keys=True))
+        finally:
+            node.destroy_node()
+            rclpy.shutdown()
+        return 0
     rclpy.init()
     node = Probe()
     try:

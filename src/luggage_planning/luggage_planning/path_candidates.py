@@ -9,15 +9,26 @@ from __future__ import division
 
 import math
 
+from luggage_description.frame_transforms import rotate_vector
 from luggage_planning.grid_path_search import search_paths
 from luggage_planning.occupancy_place_paths import (
+    box_center_polyline,
     generate_path_variants,
+    occupancy_polyline,
     sweep_polyline,
 )
 from luggage_planning.reachable_graph import (
     build_reachable_graph,
     grid_disable_reason,
 )
+
+
+def _slot_grasp_offset(slot):
+    translation = slot.get("grasp_translation")
+    quaternion = slot.get("quaternion_xyzw")
+    if translation is None or quaternion is None:
+        return None
+    return rotate_vector(quaternion, translation)
 
 
 def _dist(a, b):
@@ -36,6 +47,7 @@ class GeometricVariantGenerator(object):
         score = float(slot.get("score", 0.0))
         slot_yaw = float(slot.get("yaw", yaw))
         inner_h = float(snapshot.inner_size[2])
+        offset = _slot_grasp_offset(slot)
         variants = generate_path_variants(
             portal, target, snapshot=snapshot,
             opening_tangent=opening_tangent, inner_h=inner_h,
@@ -45,16 +57,22 @@ class GeometricVariantGenerator(object):
             carry_margin=self.weights.get("carry_margin_m"),
             collision_pad=self.weights.get("collision_pad_m"),
             arm_overhead=self.weights.get("arm_overhead_m"),
-            corridor_tool_z=self.weights.get("corridor_tool_z"))
+            corridor_tool_z=self.weights.get("corridor_tool_z"),
+            grasp_offset=offset)
         rows = []
         for variant in variants:
+            samples = occupancy_polyline(
+                variant.waypoints, offset, payload_wdh[2])
             swept = sweep_polyline(
-                snapshot, variant.waypoints, payload_wdh, yaw=slot_yaw,
+                snapshot, samples, payload_wdh, yaw=slot_yaw,
                 arm_radius=self.arm_radius,
                 collision_pad=self.weights.get("collision_pad_m"))
-            rows.append(_row(
+            row = _row(
                 index, score, variant.method, list(variant.waypoints),
-                swept, slot_yaw, source="geometric", seeds=None))
+                swept, slot_yaw, source="geometric", seeds=None)
+            row["box_center_waypoints"] = box_center_polyline(
+                variant.waypoints, offset)
+            rows.append(row)
         return rows
 
 
@@ -94,9 +112,13 @@ class GridPathGenerator(object):
             diag["disabled"] = graph.disabled_reason or "GRID_DISABLED_NO_CELLS"
             return [], diag
 
+        offset = _slot_grasp_offset(slot)
+
         def chord_free(left, right):
+            samples = occupancy_polyline(
+                [left.center, right.center], offset, payload_wdh[2])
             swept = sweep_polyline(
-                snapshot, [left.center, right.center], payload_wdh,
+                snapshot, samples, payload_wdh,
                 yaw=slot_yaw, arm_radius=self.arm_radius)
             return not swept.collides
 
@@ -111,11 +133,12 @@ class GridPathGenerator(object):
             if not waypoints or _dist(portal, waypoints[0]) > 1e-3:
                 waypoints = [tuple(float(v) for v in portal)] + waypoints
             swept = sweep_polyline(
-                snapshot, waypoints, payload_wdh, yaw=slot_yaw,
-                arm_radius=self.arm_radius)
+                snapshot, occupancy_polyline(waypoints, offset, payload_wdh[2]),
+                payload_wdh, yaw=slot_yaw, arm_radius=self.arm_radius)
             row = _row(
                 index, score, "grid_" + path.profile, waypoints, swept,
                 slot_yaw, source="grid", seeds=path.seeds)
+            row["box_center_waypoints"] = box_center_polyline(waypoints, offset)
             row["cells"] = [list(cell) for cell in path.cells]
             rows.append(row)
         diag["n_paths"] = len(rows)

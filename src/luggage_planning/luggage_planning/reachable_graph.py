@@ -104,6 +104,13 @@ def build_reachable_graph(atlas, yaw=0.0, max_joint_step_rad=1.2,
     disabled = grid_disable_reason(atlas)
     if disabled:
         return ReachableGraph({}, {}, {}, disabled)
+    contract = (getattr(atlas, "meta", None) or {}).get("contract") or {}
+    period = contract.get("yaw_period_rad")
+    if period is not None and abs(float(period) - math.pi) <= 1e-6:
+        from luggage_description.frame_contracts import ContractError
+        raise ContractError(
+            "ATLAS_SEMANTICS_MISMATCH", "yaw_period_rad",
+            2.0 * math.pi, period)
     nx, ny, nz, _nyaw = atlas.grid_size
     counts = {}
     nodes = {}

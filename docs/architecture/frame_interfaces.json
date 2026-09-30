@@ -136,7 +136,7 @@
     "surface_ragged"
    ],
    "migration_state": "verified",
-   "runtime_evidence": "docs/status/evidence/frame_migration/ST04-20260929/runtime_F06.json"
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F06.json"
   },
   {
    "id": "F07",
@@ -173,7 +173,11 @@
     "src/luggage_msgs/srv/ComputePlacement.srv",
     "src/luggage_msgs/srv/BuildMotionSequence.srv",
     "src/luggage_planning/scripts/waypoint_generator_node.py",
-    "src/luggage_planning/scripts/trajectory_selector_node.py"
+    "src/luggage_planning/scripts/trajectory_selector_node.py",
+    "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+    "src/luggage_msgs/srv/SelectPlacePathV2.srv",
+    "src/luggage_planning/luggage_planning/place_tcp.py",
+    "src/luggage_planning/luggage_planning/place_service.py"
    ],
    "checks": [
     "missing_frame",
@@ -182,8 +186,8 @@
     "wrong_reference",
     "translate_rotate180"
    ],
-   "migration_state": "pending",
-   "runtime_evidence": null
+   "migration_state": "verified",
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F08.json"
   },
   {
    "id": "F09",
@@ -206,7 +210,7 @@
     "wrong_reference"
    ],
    "migration_state": "verified",
-   "runtime_evidence": "docs/status/evidence/frame_migration/ST03-20260929/runtime_F09.json"
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F09.json"
   },
   {
    "id": "F10",
@@ -239,7 +243,9 @@
    "target": "box-to-tool transform, complete container-to-world pose conversion; distinct clearance lengths",
    "sources": [
     "src/luggage_planning/luggage_planning/waypoint_generator.py",
-    "src/luggage_planning/scripts/waypoint_generator_node.py"
+    "src/luggage_planning/scripts/waypoint_generator_node.py",
+    "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+    "src/luggage_planning/luggage_planning/place_tcp.py"
    ],
    "checks": [
     "offcenter_grasp",
@@ -247,8 +253,8 @@
     "translate_rotate53",
     "normal_not_translated"
    ],
-   "migration_state": "pending",
-   "runtime_evidence": null
+   "migration_state": "verified",
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F11.json"
   },
   {
    "id": "F12",
@@ -263,7 +269,9 @@
     "src/luggage_planning/luggage_planning/trajectory_selector.py",
     "src/luggage_planning/luggage_planning/grid_path_search.py",
     "src/luggage_planning/luggage_planning/reachable_graph.py",
-    "src/luggage_planning/luggage_planning/place_path_planner.py"
+    "src/luggage_planning/luggage_planning/place_path_planner.py",
+    "src/luggage_planning/luggage_planning/occupancy_place_paths.py",
+    "src/luggage_planning/luggage_planning/place_tcp.py"
    ],
    "checks": [
     "nonsquare_width_axis",
@@ -271,8 +279,8 @@
     "surface_phantom_floor",
     "atlas_pi_fold_rejected"
    ],
-   "migration_state": "pending",
-   "runtime_evidence": null
+   "migration_state": "verified",
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F12.json"
   },
   {
    "id": "F13",
@@ -286,7 +294,11 @@
     "src/luggage_msgs/srv/SelectPlacePath.srv",
     "src/luggage_planning/scripts/trajectory_selector_node.py",
     "src/luggage_planning/luggage_planning/place_selection_client.py",
-    "scripts/select_place_path_probe.py"
+    "scripts/select_place_path_probe.py",
+    "src/luggage_msgs/srv/BuildMotionSequenceV2.srv",
+    "src/luggage_msgs/srv/SelectPlacePathV2.srv",
+    "src/luggage_planning/luggage_planning/place_service.py",
+    "src/luggage_planning/luggage_planning/place_tcp.py"
    ],
    "checks": [
     "wrong_reference",
@@ -294,8 +306,8 @@
     "translate_rotate90",
     "tool_pi_distinct"
    ],
-   "migration_state": "pending",
-   "runtime_evidence": null
+   "migration_state": "verified",
+   "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F13.json"
   },
   {
    "id": "F14",

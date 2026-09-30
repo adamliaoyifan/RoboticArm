@@ -44,7 +44,7 @@ from luggage_perception.corridor_audit import (
     corridor_surface_max,
 )
 from luggage_msgs.msg import DetectionFrame
-from luggage_msgs.srv import BuildMotionSequence
+from luggage_msgs.srv import BuildMotionSequence, BuildMotionSequenceV2
 
 from luggage_perception.locked_stamp_window import LockedStampWindow
 from luggage_planning import ros_message_adapters as adapters
@@ -52,6 +52,7 @@ from luggage_planning.reachability_wavefront import (
     SAFE_TOOL_Z,
     container_tool_z_in_frame,
 )
+from luggage_planning.place_service import handle_build_v2
 from luggage_planning.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
@@ -167,6 +168,9 @@ class WaypointGeneratorNode(Node):
         self.create_service(
             BuildMotionSequence, "/waypoint_generator/build_motion_sequence",
             self._handle, callback_group=group)
+        self.create_service(
+            BuildMotionSequenceV2, "/waypoint_generator/build_motion_sequence_v2",
+            self._handle_v2, callback_group=group)
         self.get_logger().info(
             "waypoint_generator ready (clearances %s, place_slot_frame=%s)"
             % (DEFAULT_PICK_CLEARANCES, self._place_slot_frame))
@@ -356,6 +360,12 @@ class WaypointGeneratorNode(Node):
             response.message = "build failed: %s" % exc
             self.get_logger().error(response.message)
         return response
+
+    def _handle_v2(self, request, response):
+        pick = None
+        if str(request.phase or "") == "pick":
+            pick = adapters.pick_from_detected(request.pick)
+        return handle_build_v2(request, response, pick=pick)
 
     def _handle_candidate(self, request, response, candidate_id):
         """Candidate-driven pick build (plan section C), fail-closed.

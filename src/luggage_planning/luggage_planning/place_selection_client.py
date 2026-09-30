@@ -104,3 +104,9 @@ def select_in_process(surface, slots, portal, payload_wdh, atlas=None,
     selector = TrajectorySelector(config) if config else TrajectorySelector.from_yaml()
     return selector.select(
         surface, slots, portal, payload_wdh, atlas=atlas, **kwargs)
+
+
+def select_in_process_v2(request, atlas=None, config=None, **kwargs):
+    """Same conversion and ranking the v2 service uses."""
+    from luggage_planning.place_tcp import select_place_v2
+    return select_place_v2(request, atlas=atlas, config=config, **kwargs)

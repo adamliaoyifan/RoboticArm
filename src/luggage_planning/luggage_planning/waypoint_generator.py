@@ -3,6 +3,7 @@
 
 import math
 
+from luggage_description.frame_transforms import transform_pose
 from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
 from luggage_planning.reachability_wavefront import retreat_height
 
@@ -184,35 +185,20 @@ def slot_from_contract(record, container_in_world):
     BuildMotionSequenceV2/SelectPlacePathV2 endpoints; it is the declared
     meaning those services will carry.
     """
-    yaw = 2.0 * math.atan2(float(record["quaternion_xyzw"][2]),
-                           float(record["quaternion_xyzw"][3]))
     translation, rotation = container_in_world
-    qx, qy, qz, qw = (float(v) for v in rotation)
-    # Orientation: container rotation composed with the box-axis yaw
-    # (Hamilton product, container * box).
-    box_q = (0.0, 0.0, math.sin(yaw * 0.5), math.cos(yaw * 0.5))
-    aw, ax, ay, az = qw, qx, qy, qz
-    bw, bx, by, bz = box_q[3], box_q[0], box_q[1], box_q[2]
-    out_q = (
-        aw * bw - ax * bx - ay * by - az * bz,
-        aw * bx + ax * bw + ay * bz - az * by,
-        aw * by - ax * bz + ay * bw + az * bx,
-        aw * bz + ax * by - ay * bx + az * bw,
-    )
-    # Position: rotate the container-frame offset into world (v' = v +
-    # 2*q x (q x v + w*v)), then translate.
-    vx, vy, vz = (float(record["position"][0]), float(record["position"][1]),
-                  float(record["position"][2]))
-    cross1 = (qy * vz - qz * vy, qz * vx - qx * vz, qx * vy - qy * vx)
-    inner = (cross1[0] + qw * vx, cross1[1] + qw * vy, cross1[2] + qw * vz)
-    cross2 = (qy * inner[2] - qz * inner[1], qz * inner[0] - qx * inner[2],
-              qx * inner[1] - qy * inner[0])
+    world = transform_pose(record, {
+        "source_frame": record.get("frame_id"),
+        "target_frame": "world",
+        "translation": [float(v) for v in translation],
+        "quaternion_xyzw": [float(v) for v in rotation],
+        "stamp_ns": record.get("stamp_ns"),
+        "scene_revision": record.get("scene_revision"),
+    })
+    pos = world["position"]
+    quat = world["quaternion_xyzw"]
     return Pose(
-        position=Point(x=translation[0] + vx + 2.0 * cross2[0],
-                       y=translation[1] + vy + 2.0 * cross2[1],
-                       z=translation[2] + vz + 2.0 * cross2[2]),
-        orientation=Quaternion(x=out_q[1], y=out_q[2], z=out_q[3],
-                               w=out_q[0]),
+        position=Point(x=pos[0], y=pos[1], z=pos[2]),
+        orientation=Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3]),
     )
 
 

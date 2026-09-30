@@ -1,0 +1,27 @@
+{
+  "stage": "ST07",
+  "generation": 2,
+  "base": "daf291a3e2f09f3e6287bf90fc5b7bb8d33f8491",
+  "product_parent": "074daf34c4df1c42bf2e3a7f58711e367ba72375",
+  "branch": "integration/frame-migration-st07-20260929",
+  "capture_complete": true,
+  "replay_possible": true,
+  "gazebo": false,
+  "hardware_motion": false,
+  "case_log_lines": 89,
+  "migration_pending": ["F01", "F15", "F16", "F17", "F18", "F21", "F22", "F23", "F24"],
+  "artifacts": [
+    "summary.md",
+    "manifest.json",
+    "cases.jsonl",
+    "fixtures/",
+    "runtime_F06.json",
+    "runtime_F08.json",
+    "runtime_F09.json",
+    "runtime_F11.json",
+    "runtime_F12.json",
+    "runtime_F13.json",
+    "checker_baseline/",
+    "checker_migration/"
+  ]
+}

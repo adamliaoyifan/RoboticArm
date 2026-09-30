@@ -855,11 +855,129 @@ def _line_cells(snapshot, a, b):
     return cells
 
 
+def box_center_polyline(tcp_points, offset):
+    """TCP samples minus the grasp offset already expressed in this frame."""
+    if offset is None:
+        return [tuple(float(v) for v in point) for point in tcp_points]
+    ox, oy, oz = (float(v) for v in offset)
+    return [(point[0] - ox, point[1] - oy, point[2] - oz) for point in tcp_points]
+
+
+def occupancy_polyline(tcp_points, offset, payload_height):
+    """Box-top samples centered on the box, not on an off-center TCP.
+
+    The sweep hangs the payload in ``[z - height, z]``. ``z`` is the box top,
+    so a lateral grasp offset does not move the footprint.
+    """
+    if offset is None:
+        return [tuple(float(v) for v in point) for point in tcp_points]
+    centers = box_center_polyline(tcp_points, offset)
+    lift = 0.5 * float(payload_height)
+    return [(point[0], point[1], point[2] + lift) for point in centers]
+
+
+def _cross_extent(width, depth, yaw, along, pad):
+    """Payload width perpendicular to ``along``, including the radial pad."""
+    px, py = -along[1], along[0]
+    c, s = math.cos(float(yaw)), math.sin(float(yaw))
+    hw = 0.5 * float(width) + float(pad)
+    hd = 0.5 * float(depth) + float(pad)
+    projections = []
+    for sx in (-hw, hw):
+        for sy in (-hd, hd):
+            x = c * sx - s * sy
+            y = s * sx + c * sy
+            projections.append(x * px + y * py)
+    return max(projections) - min(projections)
+
+
+def _full_height_hits(snapshot, points, payload_wdh, yaw, arm_radius):
+    width, depth, _height = [float(v) for v in payload_wdh]
+    if width <= 1e-6 or depth <= 1e-6:
+        return []
+    inner_h = float(snapshot.inner_size[2])
+    hits = []
+    seen = set()
+    for sample in _sample_polyline(points, snapshot.resolution):
+        for ix, iy, local_fp in _footprint_cells(
+                snapshot, sample, width, depth, yaw, arm_radius):
+            if (ix, iy) in seen or not snapshot.obstacle[ix][iy]:
+                continue
+            dist = _aabb_distance(local_fp, snapshot.cell_aabb_xy(ix, iy))
+            if dist > 1e-6:
+                continue
+            if float(snapshot.column_top[ix][iy]) + 1e-6 < inner_h:
+                continue
+            seen.add((ix, iy))
+            hits.append((ix, iy))
+    return hits
+
+
+def _gap_center(snapshot, hits, along, extent):
+    """Center of the free run nearest the path, or None when none is wide enough."""
+    if not hits:
+        return None
+    inner_h = float(snapshot.inner_size[2])
+    along_x = abs(along[0]) >= abs(along[1])
+    if along_x:
+        wall = max(set(ix for ix, _iy in hits),
+                   key=lambda ix: sum(1 for a, _b in hits if a == ix))
+        count = snapshot.ny
+
+        def blocked(index):
+            return (snapshot.obstacle[wall][index]
+                    and float(snapshot.column_top[wall][index]) + 1e-6 >= inner_h)
+
+        def center(start, stop):
+            first = snapshot.cell_center_map(wall, start)
+            last = snapshot.cell_center_map(wall, stop - 1)
+            return ((first[0] + last[0]) * 0.5, (first[1] + last[1]) * 0.5)
+    else:
+        wall = max(set(iy for _ix, iy in hits),
+                   key=lambda iy: sum(1 for _a, b in hits if b == iy))
+        count = snapshot.nx
+
+        def blocked(index):
+            return (snapshot.obstacle[index][wall]
+                    and float(snapshot.column_top[index][wall]) + 1e-6 >= inner_h)
+
+        def center(start, stop):
+            first = snapshot.cell_center_map(start, wall)
+            last = snapshot.cell_center_map(stop - 1, wall)
+            return ((first[0] + last[0]) * 0.5, (first[1] + last[1]) * 0.5)
+
+    runs = []
+    start = None
+    for index in range(count + 1):
+        free = index < count and not blocked(index)
+        if free and start is None:
+            start = index
+        elif not free and start is not None:
+            runs.append((start, index))
+            start = None
+    if not runs:
+        return None
+    best = None
+    best_dist = None
+    anchor = snapshot.cell_center_map(hits[0][0], hits[0][1])
+    for start, stop in runs:
+        width = (stop - start) * float(snapshot.resolution)
+        if width + 1e-9 < float(extent):
+            continue
+        xy = center(start, stop)
+        dist = math.hypot(xy[0] - anchor[0], xy[1] - anchor[1])
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best = xy
+    return best
+
+
 def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
                            inner_h=None, max_candidates=4, payload_height=0.0,
                            payload_wdh=None, yaw=0.0, arm_radius=None,
                            carry_margin=None, collision_pad=None,
-                           arm_overhead=None, corridor_tool_z=None):
+                           arm_overhead=None, corridor_tool_z=None,
+                           grasp_offset=None):
     """Return at least two geometric variants whenever possible.
 
     ``portal`` / ``target`` are map-frame XYZ (suction frame). ``target`` is
@@ -981,7 +1099,33 @@ def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
                 chosen.append(variant)
             if len(chosen) >= 2:
                 break
-    return chosen[:cap]
+    chosen = chosen[:cap]
+    if snapshot is not None and wdh[0] > 1e-6 and wdh[1] > 1e-6:
+        ox = oy = 0.0
+        if grasp_offset is not None:
+            ox, oy = float(grasp_offset[0]), float(grasp_offset[1])
+        occ_direct = [(portal[0] - ox, portal[1] - oy, portal[2]),
+                      (target[0] - ox, target[1] - oy, target[2])]
+        hits = _full_height_hits(snapshot, occ_direct, wdh, yaw, radius)
+        extent = _cross_extent(wdh[0], wdh[1], yaw, along, radius)
+        center = _gap_center(snapshot, hits, along, extent)
+        if center is not None:
+            via = (center[0] + ox, center[1] + oy, dest[2])
+            if abs(along[0]) >= abs(along[1]):
+                side = (entry[0], via[1], dest[2])
+                step = math.copysign(
+                    0.5 * float(wdh[0]) + radius + snapshot.resolution,
+                    (dest[0] - via[0]) or 1.0)
+                past = (via[0] + step, via[1], dest[2])
+            else:
+                side = (via[0], entry[1], dest[2])
+                step = math.copysign(
+                    0.5 * float(wdh[1]) + radius + snapshot.resolution,
+                    (dest[1] - via[1]) or 1.0)
+                past = (via[0], via[1] + step, dest[2])
+            chosen.append(PathVariant(
+                "gap_detour", [entry, side, via, past, dest]))
+    return chosen
 
 
 def path_length(waypoints):

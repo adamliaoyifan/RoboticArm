@@ -18,7 +18,7 @@ from std_msgs.msg import String
 
 from geometry_msgs.msg import Pose
 from luggage_msgs.msg import MotionSegment
-from luggage_msgs.srv import SelectPlacePath
+from luggage_msgs.srv import SelectPlacePath, SelectPlacePathV2
 from luggage_description.scene_tf_config_utils import (
     load_scene_tf_config,
     origin_in_world,
@@ -33,6 +33,7 @@ from luggage_planning.atlas_runtime import (
 from luggage_planning.urdf_identity import UrdfIdentity
 from luggage_planning.occupancy_place_paths import dump_rows
 from luggage_planning.place_selection_client import write_joint_knots
+from luggage_planning.place_service import handle_select_v2
 from luggage_planning.trajectory_selector import TrajectorySelector
 
 
@@ -70,6 +71,9 @@ class TrajectorySelectorNode(Node):
         self.create_service(
             SelectPlacePath, "/trajectory_selector/select_place_path",
             self._select)
+        self.create_service(
+            SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
+            self._select_v2)
         self.get_logger().info("trajectory_selector up")
 
     def _runtime_atlas(self):
@@ -198,6 +202,18 @@ class TrajectorySelectorNode(Node):
         response.selection_id = str(winner.get("selection_id") or "")
         response.path_source = str(winner.get("path_source") or "")
         return response
+
+    def _select_v2(self, request, response):
+        # World poses come from transform_pose. v1 keeps _segments.
+        # This callback does not execute motion.
+        atlas, diag = self._runtime_atlas()
+        block = certification_block_reason(self._atlas_cfg, diag)
+        if block:
+            response.success = False
+            response.reason_code = block
+            response.rows_json = json.dumps({"error": block, "atlas": diag})
+            return response
+        return handle_select_v2(request, response, atlas=atlas)
 
 
 def _segments(winner, map_to_world=None):
