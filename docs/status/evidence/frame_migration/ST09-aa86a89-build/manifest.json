@@ -1,0 +1,20 @@
+{
+  "candidate_revision": "aa86a89",
+  "base_revision": "1795a69",
+  "plan_revision": "ca8426f",
+  "dirty": false,
+  "command": "colcon --log-base /tmp/elfin-st09-g3/log/aa86a89 build --base-paths src deployment_ws/src --build-base /tmp/elfin-st09-g3/build/aa86a89 --install-base /tmp/elfin-st09-g3/install/aa86a89 --packages-up-to luggage_gazebo luggage_planning luggage_packing luggage_perception elfin_trajectory_executor --executor sequential --cmake-args -DBUILD_TESTING=ON",
+  "environment": {
+    "ros": "/opt/ros/humble",
+    "install": "/tmp/elfin-st09-g3/install/aa86a89",
+    "python": "3.10.12"
+  },
+  "result": "pass",
+  "package_count": 11,
+  "elapsed_seconds": 19.3,
+  "teardown": "no live ROS or Gazebo stack launched",
+  "artifact": {
+    "path": "build.log",
+    "sha256": "e9fd3878a1c16123a3b91fbd055871ea43f889f107fe9c04fce3e21a0b6122cb"
+  }
+}

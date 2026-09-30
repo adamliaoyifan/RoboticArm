@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/tmp/elfin-st09-g3/scripts/frame_migration_st09_verify.py", line 92, in <module>
+    raise SystemExit(main())
+  File "/tmp/elfin-st09-g3/scripts/frame_migration_st09_verify.py", line 27, in main
+    out.mkdir(parents=True, exist_ok=False)
+  File "/usr/lib/python3.10/pathlib.py", line 1175, in mkdir
+    self._accessor.mkdir(self, mode)
+FileExistsError: [Errno 17] File exists: '/tmp/elfin-st09-g3/docs/status/evidence/frame_migration/ST09-aa86a89-verify'
