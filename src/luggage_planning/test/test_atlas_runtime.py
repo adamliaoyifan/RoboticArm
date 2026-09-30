@@ -2,6 +2,7 @@
 
 from __future__ import division
 
+import math
 import os
 import sys
 
@@ -18,17 +19,19 @@ ATLAS_DATA = os.path.normpath(os.path.join(
 REAL_ATLAS = os.path.join(
     ATLAS_DATA, "s20_container_collision_aware_payload_0.55x0.40x0.25.npz")
 
-# The 2026-09-22_1540 failing slot in container_link coordinates. Pins below
-# are against the 2026-09-24 adaptive-lift rebuild: the containment cell
-# [1,1,1,0] is now UNREACHABLE (was UNKNOWN pre-rebuild) and the nearest
-# seeded neighbour moved up to [1,1,2,0] -- the iz2 band carries the seeds.
+# The 2026-09-22_1540 failing slot in container_link coordinates. Pins are
+# against the ST06 directed 4-bin rebuild (2026-09-29): the legacy base-yaw-0
+# branch is now named by the DIRECTED container yaw pi/2 (bin index 1, scene
+# container yaw -pi/2), and the rebuild reproduces the 2026-09-24
+# adaptive-lift seeds there exactly. Container yaw 0 / pi are new branches.
 SLOT_XYZ = (-0.47, -0.735, 0.7771664127331008)
-SLOT_CELL = [1, 1, 1, 0]
-SEED_CELL = [2, 2, 2, 0]
+SLOT_CELL = [1, 1, 1, 1]
+SEED_CELL = [2, 2, 2, 1]
 SEED_CELL_CENTER = (-0.37, -0.61, 0.875)
+SEED_YAW = math.pi / 2.0
 KNOWN_SEED = [0.936, -1.025, 1.268, -1.819, -1.567, -0.635]
 # Nearest seeded neighbour of the slot point (one z-step up, same column).
-NEAREST_SEED_CELL = [1, 1, 2, 0]
+NEAREST_SEED_CELL = [1, 1, 2, 1]
 NEAREST_SEED = [0.858, -1.175, 1.504, -1.904, -1.567, -0.713]
 
 
@@ -244,9 +247,9 @@ def test_atlas_seeds_for_query_known_cell(data_cfg):
     atlas, diag = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
     assert diag["loaded"]
     # Exact slot point: containment cell UNREACHABLE with NaN seeds, the
-    # neighbour fallback supplies three seed families from [1,1,2,0].
+    # neighbour fallback supplies three seed families from [1,1,2,1].
     out = ar.atlas_seeds_for_query(
-        atlas, *SLOT_XYZ, yaw=0.0, seed_set="transit", max_seeds=3)
+        atlas, *SLOT_XYZ, yaw=SEED_YAW, seed_set="transit", max_seeds=3)
     assert out["cell"] == SLOT_CELL
     assert out["status"] == 1                      # UNREACHABLE at exact point
     assert out["status_name"] == "unreachable"
@@ -264,7 +267,7 @@ def test_atlas_seeds_for_query_known_cell(data_cfg):
 def test_atlas_seeds_direct_cell_no_fallback(data_cfg):
     atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
     out = ar.atlas_seeds_for_query(
-        atlas, *SEED_CELL_CENTER, yaw=0.0, seed_set="transit", max_seeds=3)
+        atlas, *SEED_CELL_CENTER, yaw=SEED_YAW, seed_set="transit", max_seeds=3)
     assert out["cell"] == SEED_CELL
     assert out["status"] == 3                      # REACHABLE
     assert out["seed_cell_offset"] == [0, 0, 0]    # no neighbour fallback
@@ -272,19 +275,21 @@ def test_atlas_seeds_direct_cell_no_fallback(data_cfg):
 
 
 @pytest.mark.skipif(not os.path.isfile(REAL_ATLAS), reason="atlas data")
-def test_atlas_seeds_yaw_fold_and_offset(data_cfg):
+def test_atlas_seeds_directed_bins_and_offset(data_cfg):
     atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
-    base = ar.atlas_seeds_for_query(atlas, *SEED_CELL_CENTER, yaw=0.0)
-    # pi (just below float pi) and -pi/2 fold onto the same bins
-    same_pi = ar.atlas_seeds_for_query(
-        atlas, *SEED_CELL_CENTER, yaw=3.14159265)
-    assert same_pi["cell"] == base["cell"]
-    assert same_pi["seeds"][0] == pytest.approx(base["seeds"][0], abs=1e-6)
-    neg = ar.atlas_seeds_for_query(atlas, *SLOT_XYZ, yaw=-1.5707963)
-    assert neg["cell"][3] == 1                     # -pi/2 -> +pi/2 bin
+    base = ar.atlas_seeds_for_query(atlas, *SEED_CELL_CENTER, yaw=SEED_YAW)
+    # ST06: directed 2pi bins -- yaw and yaw+pi name DIFFERENT concrete
+    # branches (the legacy pi fold is gone; 0 and pi stay distinct).
+    twin = ar.atlas_seeds_for_query(
+        atlas, *SEED_CELL_CENTER, yaw=SEED_YAW + math.pi)
+    assert twin["cell"] != base["cell"]
+    assert twin["cell"][3] == 3                    # pi/2 + pi -> 3*pi/2 bin
+    assert twin["seeds"][0] != pytest.approx(base["seeds"][0], abs=1e-6)
+    neg = ar.atlas_seeds_for_query(atlas, *SLOT_XYZ, yaw=-math.pi / 2.0)
+    assert neg["cell"][3] == 3                     # -pi/2 -> 3*pi/2 bin
     # a large offset moves the query to a different cell
     shifted = ar.atlas_seeds_for_query(
-        atlas, *SEED_CELL_CENTER, yaw=0.0, query_offset=(0.3, 0.0, 0.0))
+        atlas, *SEED_CELL_CENTER, yaw=SEED_YAW, query_offset=(0.3, 0.0, 0.0))
     assert shifted["cell"] != base["cell"]
 
 
@@ -375,15 +380,15 @@ def test_query_semantics_floor_reanchor(data_cfg):
     """
     atlas, _ = ar.load_runtime_atlas(data_cfg, box_size=[0.55, 0.40, 0.25])
     sem = ar.QuerySemantics(atlas, floor_z=0.53, box_height=0.25)
-    raw = atlas.query(-0.495, -0.735, 0.7772, 0.0)
-    got = sem.query(-0.495, -0.735, 0.7772, 0.0)
-    assert int(raw.status) == 1 and tuple(raw.indices) == (1, 1, 1, 0)
+    raw = atlas.query(-0.495, -0.735, 0.7772, SEED_YAW)
+    got = sem.query(-0.495, -0.735, 0.7772, SEED_YAW)
+    assert int(raw.status) == 1 and tuple(raw.indices) == (1, 1, 1, 1)
     assert int(got.status) == 3                      # REACHABLE after re-anchor
-    assert tuple(got.indices) == (1, 1, 2, 0)
+    assert tuple(got.indices) == (1, 1, 2, 1)
     assert not got.hard_reject_safe
     # a mid-height feasible query is untouched (no snapshot-to-centre drift)
-    mid_raw = atlas.query(-0.37, -0.61, 1.175, 0.0)
-    mid_sem = sem.query(-0.37, -0.61, 1.175, 0.0)
+    mid_raw = atlas.query(-0.37, -0.61, 1.175, SEED_YAW)
+    mid_sem = sem.query(-0.37, -0.61, 1.175, SEED_YAW)
     assert int(mid_raw.status) == int(mid_sem.status)
     assert tuple(mid_raw.indices) == tuple(mid_sem.indices)
     # without a box height there is nothing to re-anchor against (promote
@@ -391,7 +396,7 @@ def test_query_semantics_floor_reanchor(data_cfg):
     no_h = ar.QuerySemantics(
         atlas, floor_z=0.53, box_height=None,
         opts={"neighbor_promote": False, "strict_interior_reject": False})
-    assert int(no_h.query(-0.495, -0.735, 0.7772, 0.0).status) == 1
+    assert int(no_h.query(-0.495, -0.735, 0.7772, SEED_YAW).status) == 1
 
 
 def _cells_with_reachable_neighbors(atlas):

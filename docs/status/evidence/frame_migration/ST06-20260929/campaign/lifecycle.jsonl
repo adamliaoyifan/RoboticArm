@@ -1,0 +1,22 @@
+{"stage": "campaign-start", "ts": "2026-09-29T21:36:47+08:00", "ws": "/tmp/elfin-frame-migration-st06"}
+{"stage": "v1-preserved", "ts": "2026-09-29T21:36:47+08:00"}
+{"stage": "launch", "pid": 1921506, "ts": "2026-09-29T21:36:52+08:00"}
+{"stage": "services-ready", "check_state_validity": 1,
+       "sync_static_scene": 1, "ts": "2026-09-29T21:36:58+08:00"}
+{"stage": "build", "profile": "s20_container_collision_aware", "ts": "2026-09-29T21:36:58+08:00"}
+{"stage": "build-ok", "profile": "s20_container_collision_aware", "ts": "2026-09-29T21:40:49+08:00"}
+{"stage": "build", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-09-29T21:40:49+08:00"}
+{"stage": "build-ok", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-09-29T21:43:55+08:00"}
+{"stage": "build", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-09-29T21:43:55+08:00"}
+{"stage": "build-ok", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-09-29T21:46:52+08:00"}
+{"stage": "build", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-09-29T21:46:52+08:00"}
+{"stage": "build-ok", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-09-29T21:49:37+08:00"}
+{"stage": "certify", "profile": "s20_container_collision_aware", "ts": "2026-09-29T21:49:37+08:00"}
+{"stage": "certify-ok", "profile": "s20_container_collision_aware", "ts": "2026-09-29T21:49:37+08:00"}
+{"stage": "certify", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-09-29T21:49:37+08:00"}
+{"stage": "certify-ok", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-09-29T21:49:38+08:00"}
+{"stage": "certify", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-09-29T21:49:38+08:00"}
+{"stage": "certify-ok", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-09-29T21:49:38+08:00"}
+{"stage": "certify", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-09-29T21:49:38+08:00"}
+{"stage": "certify-ok", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-09-29T21:49:39+08:00"}
+{"stage": "campaign-done", "status": 0, "ts": "2026-09-29T21:49:51+08:00"}

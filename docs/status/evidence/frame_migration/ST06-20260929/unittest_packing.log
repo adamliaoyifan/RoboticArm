@@ -1,0 +1,30 @@
+............................................................... [ 49%]
+.................F..............................................         [100%]
+=================================== FAILURES ===================================
+__ TestGeometryIdentityLive.test_matching_geometry_answers_with_its_hull_hash __
+
+self = <test_placement_geometry_identity_live.TestGeometryIdentityLive testMethod=test_matching_geometry_answers_with_its_hull_hash>
+
+    def test_matching_geometry_answers_with_its_hull_hash(self):
+        expected = str(container_inner_geometry_descriptor(
+            load_scene_tf_config(self.scene_path))["geometry_hash"])
+        mapper, planner = self._start(self.scene_path, self.scene_path)
+        self.assertEqual(mapper._geometry_hash, expected)
+        self.assertTrue(
+            self._spin_until(lambda: planner._surface is not None, 10.0),
+            "planner never accepted the cargo map")
+        self.assertEqual(
+            str(planner._surface.get("geometry_hash")), expected)
+    
+        response = self._compute(planner, self._request(expected))
+>       self.assertTrue(response.success, response.message)
+E       AssertionError: False is not true : ATLAS_IDENTITY_UNVERIFIED: urdf hash missing
+
+test_placement_geometry_identity_live.py:156: AssertionError
+----------------------------- Captured stderr call -----------------------------
+[INFO] [1790690530.640036184] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[INFO] [1790690530.654774992] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, hash_policy=strict, w=0.3, hard_reject=True)
+[INFO] [1790690530.656151553] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+=========================== short test summary info ============================
+FAILED test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash
+1 failed, 126 passed, 81 subtests passed in 5.16s

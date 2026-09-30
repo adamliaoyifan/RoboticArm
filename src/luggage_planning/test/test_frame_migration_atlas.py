@@ -812,10 +812,10 @@ class TestRebuiltArtifacts(unittest.TestCase):
                 seeds = np.asarray(data["contact_seeds"])
                 for iyaw in range(status.shape[3]):
                     slice_status = status[..., iyaw]
-                    slice_seeds = seeds[..., iyaw]
+                    slice_seeds = seeds[:, :, :, iyaw]
                     seeded_reachable = np.logical_and(
                         slice_status >= MARGINAL,
-                        np.isfinite(slice_seeds).any(axis=-1))
+                        np.isfinite(slice_seeds).any(axis=(-1, -2)))
                     self.assertTrue(
                         seeded_reachable.any(),
                         "%s bin %d carries no sampled reachable seed"

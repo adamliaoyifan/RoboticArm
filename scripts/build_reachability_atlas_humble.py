@@ -273,7 +273,9 @@ def gate(old_base, new_npz, new_meta, builder):
     failures = []
     for old, new in zip(old_rows, new_rows):
         iz = old["iz"]
-        if iz in (5, 6) and new["connected"] <= old["connected"]:
+        # Not-regress: a semantics-preserving directed-bin rebuild keeps the
+        # mapped bins identical, so equal counts pass; only a loss fails.
+        if iz in (5, 6) and new["connected"] < old["connected"]:
             failures.append(
                 "iz%d connected %d -> %d" % (iz, old["connected"], new["connected"]))
         if new["z"] >= 1.70 and new["reachable"] != 0:

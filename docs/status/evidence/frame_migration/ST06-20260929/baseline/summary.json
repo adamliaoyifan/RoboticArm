@@ -1,0 +1,88 @@
+{
+  "mode": "baseline",
+  "baseline_pass": true,
+  "migration_ready": false,
+  "case_count": 50,
+  "failed_cases": [],
+  "errors": [],
+  "interface_count": 24,
+  "pending_interfaces": [
+    {
+      "id": "F01",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F07",
+      "state": "verified",
+      "reason": "proof is incomplete, stale, or wrong kind (offline cases are not runtime proof)"
+    },
+    {
+      "id": "F08",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F11",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F12",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F13",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F14",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F15",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F16",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F17",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F18",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F21",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F22",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F23",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    },
+    {
+      "id": "F24",
+      "state": "pending",
+      "reason": "runtime boundary adoption not verified"
+    }
+  ],
+  "runtime_execution": "not_evaluated",
+  "exit_code": 0
+}

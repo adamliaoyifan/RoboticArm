@@ -156,6 +156,11 @@ def certify(npz_path, meta_path, scene_tf=None, urdf_file=None):
     }
     max_pos_err = 0.0
     max_rot_err = 0.0
+    # Exact-pose rows only (contact + vertical transit); internal transit
+    # rows are gated on orientation + hull, not on a cell-local target, so
+    # they must not inflate the reported position error.
+    exact_max_pos_err = 0.0
+    exact_max_rot_err = 0.0
 
     seeded = np.argwhere(
         np.logical_and(
@@ -237,6 +242,8 @@ def certify(npz_path, meta_path, scene_tf=None, urdf_file=None):
             counts["contact_rows"] += 1
             max_pos_err = max(max_pos_err, pe)
             max_rot_err = max(max_rot_err, re_)
+            exact_max_pos_err = max(exact_max_pos_err, pe)
+            exact_max_rot_err = max(exact_max_rot_err, re_)
             if breach:
                 breaches.append(breach)
             elif row["status"] >= 2:
@@ -249,6 +256,8 @@ def certify(npz_path, meta_path, scene_tf=None, urdf_file=None):
                 row, breach, pe, re_ = certify_row(
                     "transit_vertical", t_q, z + lift, True)
                 counts["transit_vertical_rows"] += 1
+                exact_max_pos_err = max(exact_max_pos_err, pe)
+                exact_max_rot_err = max(exact_max_rot_err, re_)
             else:
                 row, breach, pe, re_ = certify_row(
                     "transit_internal", t_q, z, False)
@@ -282,6 +291,8 @@ def certify(npz_path, meta_path, scene_tf=None, urdf_file=None):
         "counts": counts,
         "max_pos_err_m": round(max_pos_err, 9),
         "max_rot_err_rad": round(max_rot_err, 9),
+        "exact_rows_max_pos_err_m": round(exact_max_pos_err, 9),
+        "exact_rows_max_rot_err_rad": round(exact_max_rot_err, 9),
         "rows": rows,
         "breaches": breaches,
     }

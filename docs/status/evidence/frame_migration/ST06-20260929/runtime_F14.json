@@ -1,0 +1,39 @@
+{
+ "interface_id": "F14",
+ "kind": "runtime_boundary",
+ "status": "pass",
+ "contract_version": 2,
+ "command": "python3 -m pytest src/luggage_planning/test/test_frame_migration_atlas.py -q; python3 scripts/certify_atlas_seeds.py --atlas <profile> --urdf-file src/luggage_planning/data/reachability_atlas/robot_description.xml --output docs/status/evidence/frame_migration/ST06-20260929/campaign/fk/<profile> (all four profiles); campaign: bash docs/status/evidence/frame_migration/ST06-20260929/campaign/run_campaign.sh",
+ "observations": [
+  "64-case analytic matrix (4 container yaws x 2 translations x 2 floors x 2 supports x 2 grasp offsets): advertised container targets -> base agree with independent scipy rotation math <=1e-9 m / <=1e-9 quaternion distance; tool yaw 0/pi are distinct branches while q/-q share a rotation; container roll 0.2 is rejected by the 2.5D admission before any construction",
+  "all four rebuilt artifacts carry the v2 directed contract (validate_atlas fields, yaw_period 2pi, bins [0, pi/2, pi, 3pi/2], scene_revision = scene_tf_hash b40c85ae..., identity hashes reproduced from the artifact's own geometry/payload sections); negatives fire the exact codes (wrong orientation_frame and pi-fold -> ATLAS_SEMANTICS_MISMATCH, stale payload/scene or missing urdf -> ATLAS_IDENTITY_MISMATCH, duplicate bins -> ATLAS_SEMANTICS_MISMATCH)",
+  "strict runtime gate: a v1 artifact is refused with atlas_semantics_v1_strict / ATLAS_SEMANTICS_MISMATCH before any query or seed use (zero seeds); a relabelled contract (stamped block over a changed payload section) is refused with atlas_contract_strict; warn keeps v1 loaded as a declared downgrade",
+  "directed query semantics: query_pi_equivalents consults both pi-equivalent branches (hard reject only when both are confidently unreachable interior cells -- a failed branch never certifies its pi twin); unknown stays unknown; v1 artifacts keep the single folded query byte-identically",
+  "placement hook annotates candidates with both directed grasps (atlas_yaw_bins_queried records the bins) and the stub/legacy path keeps the folded single query; motion seed side re-expresses the world tool yaw in container axes before the bin snap and fixes the box_size cache-key bug",
+  "FK certification (campaign evidence campaign/fk/<profile>): every stored contact and vertical-transit seed reproduces its advertised target under offline FK -- exact-pose rows max 2.5e-5 m / 6.3e-6 rad against the 0.002 m / 0.02 rad limits; internal-lift transit seeds (predecessor carry) meet the orientation+hull contract; every directed bin in every profile carries hundreds of certified reachable seeds (729/958/995/828 empty-load; 369-607 payload bins); zero breaches",
+  "regression gate vs the preserved v1 artifacts: GATE PASS on all four profiles (mapped bins reproduce v1 seed-for-seed -- e.g. the legacy base-yaw-0 branch is now named by container bin pi/2 with KNOWN_SEED unchanged within 2e-3 -- no unexplained low-layer drops, iz5/6 connected not regressed, no REACHABLE at z>=1.70); deterministic fingerprint 56292d18... for the empty-load profile",
+  "task grid stays explicitly v1_pi_folded (semantics marker on write and load); it is isolated legacy with no runtime consumer and is not certified v2"
+ ],
+ "sample_count": 18266,
+ "interface_contract_sha256": "6b846411aa593c4789ffe1a81d393aecdd137ab17c4f7d653ace99ef87a12a2e",
+ "source_sha256": {
+  "src/luggage_planning/scripts/reachability_atlas_builder.py": "3db0089da2305cb4c048c53a229ed2b6fead777c3e5ba1c10b2b75102ee183aa",
+  "scripts/build_reachability_atlas_humble.py": "4d2a38de2535f2e3a2ad37f4f63f51fa9ec3f76491f707ef05a000b7053762e4",
+  "src/luggage_planning/scripts/build_ikfast_task_grid.py": "189746c26a082ebed58db7627ed90410a07cdd7c564f2aef99c3900df6a77706",
+  "src/luggage_planning/luggage_planning/reachable_task_grid.py": "519d954e0eb11e03086ceca73a8f3595ef42ce68a8b6d8f19917196059159da7",
+  "src/luggage_planning/luggage_planning/reachability_atlas.py": "049e7890d22fce56c674711b2ad53634a50fe4170725ea8014ad05161265861b",
+  "src/luggage_planning/luggage_planning/atlas_runtime.py": "dbd7e3873fb232fefbb6e38a030012091433f1b7b2a8639a25102636a3816ff7",
+  "src/luggage_planning/luggage_planning/atlas_frame_contracts.py": "850ba949ab5033872d0f32836e84bd3fd9b90e5b6109e49c22d8a72d4ef905bc",
+  "scripts/certify_atlas_seeds.py": "f0952a605b1ed1446c8140c61de607def4edebfdbb841cdc23e53fe0c3ac6efa",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.npz": "d15548a3e55d1c94ed4aa9eb9bdd5337197b88e919097289f9478775f4f8152a",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware.yaml": "10f44b495d77304a36539c5229c3725e3c40dcbe6ca4c2ab974950d9ff12a09c",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.55x0.40x0.25.npz": "267610d112c03e3e1dbf41e44c3693bbecf899b6a90d6564ac829cece62a685c",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.55x0.40x0.25.yaml": "d6bb9a2f5bae473a4cf3ff92b7bfc40783e5f61310c8fe3b01b3cd85677f6c51",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28.npz": "a3b1db8d39fa31ef971c97a3634462946f0766f856ba1822e81dba62eca13a3a",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28.yaml": "bd1ec49be29267f71291d4ea5f125d24bada6dd51e1e67485b42757119b7cc9a",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.80x0.50x0.32.npz": "dcf623d3c37975f777e1760f8084cd0778594576edb049f5a6c46b02a72266cf",
+  "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.80x0.50x0.32.yaml": "c9af71983f399ac5451667f3e4b30fa625714e0f24867a7517ba566b83d25120",
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+ }
+}

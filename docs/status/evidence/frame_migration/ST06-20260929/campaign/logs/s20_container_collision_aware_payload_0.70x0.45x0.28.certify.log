@@ -1,0 +1,30 @@
+{
+ "artifact": "src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28.npz",
+ "urdf_hash_ok": true,
+ "verdict": "pass",
+ "reasons": [],
+ "yaw_bins_rad": [
+  0.0,
+  1.570796327,
+  3.141592654,
+  4.71238898
+ ],
+ "per_bin_certified_seeds": [
+  421,
+  492,
+  606,
+  367
+ ],
+ "counts": {
+  "contact_rows": 1886,
+  "transit_vertical_rows": 1264,
+  "transit_internal_rows": 622,
+  "nan_rows_skipped": 0
+ },
+ "max_pos_err_m": 1.060660172,
+ "max_rot_err_rad": 5.2e-08,
+ "exact_rows_max_pos_err_m": 1.7e-08,
+ "exact_rows_max_rot_err_rad": 5.2e-08,
+ "n_rows": 3772,
+ "n_breaches": 0
+}

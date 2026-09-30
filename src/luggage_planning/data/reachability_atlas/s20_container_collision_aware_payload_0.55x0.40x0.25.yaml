@@ -1,7 +1,27 @@
-atlas_version: '2.0'
-schema_version: 2
-generated_at: '2026-09-29T04:03:54'
-computation_time_sec: 109.54
+atlas_version: '3.0'
+schema_version: 3
+contract:
+  contract_version: 2
+  position_frame: container_link
+  orientation_frame: container_link
+  reference: suction_contact_frame
+  orientation_semantics: concrete_tool_pose
+  angle_unit: rad
+  length_unit: m
+  height_datum: container_origin
+  tool_down_reference: container_negative_z
+  yaw_period_rad: 6.283185307179586
+  yaw_bins_rad:
+  - 0.0
+  - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  scene_revision: b40c85ae6eb2eabc47d7da2ffb23b72c
+  geometry_hash: 3460c2f23aa597efe71ad8e66b6b5faf
+  urdf_hash: e9577fe58d01f0646dfb10f73a65b7be
+  payload_hash: 867ab60d2390d576c2f974a537f1ab0d
+generated_at: '2026-09-29T13:43:55'
+computation_time_sec: 183.73
 mode: collision_aware
 marginal_joint_margin: 0.1
 query:
@@ -17,13 +37,13 @@ builder:
   state_validity_available: true
   seed_policy: fixed_anchor_connected_warm_start_repair_v1
   ik_solver: offline_ik.refine_to_pose
-  deterministic_fingerprint: 0e77dfe21444f75f20341c4f738465f43efa054a8cccdcefc1342252aacf07ae
+  deterministic_fingerprint: 0ce5d9a2f555c23bac57f50a835b3383df08e272b29d4ed0ecb3658047e1cf14
   tool_down_tolerance: 0.0
   transit_clearance: 0.3
 dependencies:
   robot_model: elfin_s20_with_camera
   scene_tf_hash: b40c85ae6eb2eabc47d7da2ffb23b72c
-  urdf_hash: 85e96b56debd30d8469f7d5a8131d32c
+  urdf_hash: e9577fe58d01f0646dfb10f73a65b7be
   ik_link: suction_contact_frame
   ik_group: elfin_arm
 payload:
@@ -54,6 +74,9 @@ grid:
   yaw_bins:
   - 0.0
   - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  yaw_semantics: directed_container_2pi
   transit_clearance: 0.3
   lift_policy:
     nominal: 0.3
@@ -78,9 +101,9 @@ container:
   - -1.5708
   opening_side: negative_x
 stats:
-  total_cells: 2800
-  reachable_cells: 469
-  marginal_cells: 5
-  unreachable_cells: 547
-  unknown_cells: 1779
-  reachability_rate: 0.1675
+  total_cells: 5600
+  reachable_cells: 907
+  marginal_cells: 16
+  unreachable_cells: 1093
+  unknown_cells: 3584
+  reachability_rate: 0.162
