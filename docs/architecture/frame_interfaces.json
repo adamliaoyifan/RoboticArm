@@ -24,8 +24,8 @@
         "existing_base_helper",
         "container_tilt_rejected"
       ],
-      "migration_state": "pending",
-      "runtime_evidence": null
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F01.json"
     },
     {
       "id": "F02",
@@ -527,8 +527,8 @@
         "missing_version",
         "stale_scene"
       ],
-      "migration_state": "pending",
-      "runtime_evidence": null
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F21.json"
     },
     {
       "id": "F22",
@@ -554,8 +554,8 @@
         "offcenter_grasp",
         "wrong_reference"
       ],
-      "migration_state": "pending",
-      "runtime_evidence": null
+      "migration_state": "verified",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F22.json"
     },
     {
       "id": "F23",
@@ -603,8 +603,8 @@
         "missing_version",
         "wrong_frame"
       ],
-      "migration_state": "pending",
-      "runtime_evidence": null
+      "migration_state": "isolated",
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/runtime_F24.json"
     }
   ]
 }

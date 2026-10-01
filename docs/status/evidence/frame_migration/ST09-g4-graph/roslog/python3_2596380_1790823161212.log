@@ -1,0 +1,3 @@
+[INFO] [1790823161.267891166] [spawner_elfin_arm_controller]: waiting for service /controller_manager/list_controllers to become available...
+[INFO] [1790823161.531018304] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ERROR] [1790823161.531833283] [spawner_elfin_arm_controller]: [91mFailed to configure controller[0m

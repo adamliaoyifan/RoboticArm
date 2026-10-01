@@ -86,7 +86,23 @@ def main():
                 "all six driver adapters and scene/TF geometry boundaries",
                 "behavioral mutation sensitivity and refreshed affected interface proofs"])
         if args.mode in ("graph", "all"):
-            manifest["missing"].append("production consumer identity enforcement and sim/deploy graph harness: three healthy startups and all fault cases")
+            graph_out = out / "graph"
+            run("graph-campaign", [
+                "python3", "scripts/frame_migration_st09_graph.py",
+                "--ws", ws, "--install", install, "--out", graph_out,
+                "--ros-domain-id", args.ros_domain_id,
+                "--runs", ",".join([
+                    "healthy-1", "healthy-2", "healthy-3",
+                    "fault:lease_expiry", "fault:restart", "fault:v1_bypass",
+                    "fault:duplicate_provider", "fault:wrong_overlay",
+                    "fault:stale_atlas"])],
+                timeout=900)
+            run("graph-isolation", [
+                "python3", "scripts/frame_migration_st09_isolation.py",
+                "--install", install,
+                *[part for path in sorted(graph_out.glob("*.nodes.txt"))
+                  for part in ("--graph", path)],
+                "--output", graph_out / "f24-isolation.json"], timeout=300)
         if args.mode in ("rehearsal", "all"):
             manifest["missing"].append("immutable wired candidate and executable frozen capture configuration required before Gazebo rehearsal")
         manifest["status"], manifest["failed_commands"] = verification_outcome(

@@ -1,0 +1,39 @@
+1790823165.1659045 [INFO] [launch]: All log files can be found below docs/status/evidence/frame_migration/ST09-g4-graph/roslog/2026-10-01-10-52-45-165457-adamliao-X870-EAGLE-WIFI7-2596957
+1790823165.1659718 [INFO] [launch]: Default logging verbosity is set to INFO
+1790823165.2994401 [INFO] [container_tf_publisher-1]: process started with pid [2596976]
+1790823165.2995505 [INFO] [robot_state_publisher-2]: process started with pid [2596978]
+1790823165.2995772 [INFO] [ros2_control_node-3]: process started with pid [2596980]
+1790823165.2995982 [INFO] [spawner-4]: process started with pid [2596982]
+1790823165.2996180 [INFO] [move_group-5]: process started with pid [2596984]
+1790823165.2996361 [INFO] [scene_manager_node.py-6]: process started with pid [2596986]
+1790823165.2996533 [INFO] [waypoint_generator_node.py-7]: process started with pid [2596988]
+1790823165.2996702 [INFO] [trajectory_selector_node.py-8]: process started with pid [2596990]
+1790823165.2996869 [INFO] [motion_planner_node.py-9]: process started with pid [2596992]
+1790823165.2997034 [INFO] [cargo_volume_mapper_node.py-10]: process started with pid [2596994]
+1790823165.2997212 [INFO] [placement_planner_node.py-11]: process started with pid [2596996]
+1790823165.2997377 [INFO] [vacuum_controller_node.py-12]: process started with pid [2596998]
+1790823165.2997537 [INFO] [spawner-13]: process started with pid [2597000]
+1790823165.7807693 [ERROR] [spawner-13]: process has died [pid 2597000, exit code 1, cmd '/opt/ros/humble/lib/controller_manager/spawner elfin_arm_controller --controller-manager /controller_manager --controller-manager-timeout 60 --ros-args'].
+1790823166.0908656 [INFO] [spawner-4]: process has finished cleanly [pid 2596982]
+1790823167.8016226 [ERROR] [move_group-5]: process has died [pid 2596984, exit code -11, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_d928l2fe --params-file /tmp/launch_params_q_n8uvwy --params-file /tmp/launch_params_59ufbnlk'].
+1790823169.7520452 [WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+1790823169.7543886 [INFO] [vacuum_controller_node.py-12]: sending signal 'SIGINT' to process[vacuum_controller_node.py-12]
+1790823169.7549043 [INFO] [placement_planner_node.py-11]: sending signal 'SIGINT' to process[placement_planner_node.py-11]
+1790823169.7554519 [INFO] [cargo_volume_mapper_node.py-10]: sending signal 'SIGINT' to process[cargo_volume_mapper_node.py-10]
+1790823169.7560256 [INFO] [motion_planner_node.py-9]: sending signal 'SIGINT' to process[motion_planner_node.py-9]
+1790823169.7564785 [INFO] [trajectory_selector_node.py-8]: sending signal 'SIGINT' to process[trajectory_selector_node.py-8]
+1790823169.7569368 [INFO] [waypoint_generator_node.py-7]: sending signal 'SIGINT' to process[waypoint_generator_node.py-7]
+1790823169.7574453 [INFO] [scene_manager_node.py-6]: sending signal 'SIGINT' to process[scene_manager_node.py-6]
+1790823169.7579789 [INFO] [ros2_control_node-3]: sending signal 'SIGINT' to process[ros2_control_node-3]
+1790823169.7591155 [INFO] [robot_state_publisher-2]: sending signal 'SIGINT' to process[robot_state_publisher-2]
+1790823169.7595620 [INFO] [container_tf_publisher-1]: sending signal 'SIGINT' to process[container_tf_publisher-1]
+1790823169.7867355 [ERROR] [container_tf_publisher-1]: process has died [pid 2596976, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_y4kq749j'].
+1790823169.7871983 [ERROR] [placement_planner_node.py-11]: process has died [pid 2596996, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_yw5amd7p'].
+1790823169.7967038 [ERROR] [trajectory_selector_node.py-8]: process has died [pid 2596990, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_5hycnfud'].
+1790823169.8124638 [ERROR] [scene_manager_node.py-6]: process has died [pid 2596986, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_odrnq43f'].
+1790823169.8132081 [ERROR] [waypoint_generator_node.py-7]: process has died [pid 2596988, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_4fas0908'].
+1790823169.8139682 [ERROR] [vacuum_controller_node.py-12]: process has died [pid 2596998, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_wet1hyd4'].
+1790823169.8194735 [ERROR] [cargo_volume_mapper_node.py-10]: process has died [pid 2596994, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_40y8idg6'].
+1790823169.8244886 [ERROR] [motion_planner_node.py-9]: process has died [pid 2596992, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params__iz5j6mz'].
+1790823169.8637929 [INFO] [robot_state_publisher-2]: process has finished cleanly [pid 2596978]
+1790823169.8769238 [INFO] [ros2_control_node-3]: process has finished cleanly [pid 2596980]

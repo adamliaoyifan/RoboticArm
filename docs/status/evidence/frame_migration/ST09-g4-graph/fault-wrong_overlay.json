@@ -1,0 +1,43 @@
+{
+ "counters": {
+  "WRONG_OVERLAY": 4
+ },
+ "gate_transitions": [
+  {
+   "at_monotonic": 1435648.643084297,
+   "reason": "MISSING_PEER"
+  },
+  {
+   "at_monotonic": 1435649.244925955,
+   "reason": "READY"
+  },
+  {
+   "at_monotonic": 1435651.194632987,
+   "reason": "WRONG_OVERLAY"
+  }
+ ],
+ "healthy": {
+  "ready": true,
+  "startup_seconds": 1.77
+ },
+ "launch_log": "docs/status/evidence/frame_migration/ST09-g4-graph/fault-wrong_overlay.launch.log",
+ "peer_readiness_after_fault": {
+  "cargo_volume_mapper": "WRONG_OVERLAY",
+  "motion_occ_driver": "WRONG_OVERLAY",
+  "motion_planner": "WRONG_OVERLAY",
+  "placement_planner": "WRONG_OVERLAY",
+  "scene_manager": "WRONG_OVERLAY",
+  "trajectory_selector": "WRONG_OVERLAY",
+  "vacuum_controller": "READY",
+  "waypoint_generator": "WRONG_OVERLAY"
+ },
+ "probe_readiness_after_fault": "WRONG_OVERLAY",
+ "rogue": 0,
+ "scenario": "fault-wrong_overlay",
+ "teardown_seconds": 0.21,
+ "teardown_within_budget": true,
+ "v2_call": {
+  "code": "WRONG_OVERLAY",
+  "ok": false
+ }
+}

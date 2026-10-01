@@ -1,0 +1,293 @@
+[INFO] [launch]: All log files can be found below docs/status/evidence/frame_migration/ST09-g4-graph/roslog/2026-10-01-10-52-45-165457-adamliao-X870-EAGLE-WIFI7-2596957
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [container_tf_publisher-1]: process started with pid [2596976]
+[INFO] [robot_state_publisher-2]: process started with pid [2596978]
+[INFO] [ros2_control_node-3]: process started with pid [2596980]
+[INFO] [spawner-4]: process started with pid [2596982]
+[INFO] [move_group-5]: process started with pid [2596984]
+[INFO] [scene_manager_node.py-6]: process started with pid [2596986]
+[INFO] [waypoint_generator_node.py-7]: process started with pid [2596988]
+[INFO] [trajectory_selector_node.py-8]: process started with pid [2596990]
+[INFO] [motion_planner_node.py-9]: process started with pid [2596992]
+[INFO] [cargo_volume_mapper_node.py-10]: process started with pid [2596994]
+[INFO] [placement_planner_node.py-11]: process started with pid [2596996]
+[INFO] [vacuum_controller_node.py-12]: process started with pid [2596998]
+[INFO] [spawner-13]: process started with pid [2597000]
+[ros2_control_node-3] [WARN] [1790823165.313011881] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[ros2_control_node-3] [INFO] [1790823165.313200480] [resource_manager]: Loading hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823165.313429625] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823165.313471044] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823165.313507523] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823165.313512162] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823165.313516240] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823165.313519616] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823165.317057652] [controller_manager]: update rate is 100 Hz
+[ros2_control_node-3] [INFO] [1790823165.317079674] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[ros2_control_node-3] [WARN] [1790823165.317468544] [controller_manager]: Could not enable FIFO RT scheduling policy: with error number <1>(Operation not permitted). See [https://control.ros.org/master/doc/ros2_control/controller_manager/doc/userdoc.html] for details on how to enable realtime scheduling.
+[move_group-5] [WARN] [1790823165.318291258] [move_group.move_group]: Falling back to using the the move_group node namespace (deprecated behavior).
+[robot_state_publisher-2] [INFO] [1790823165.329525195] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-2] [INFO] [1790823165.329590790] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-2] [INFO] [1790823165.329595328] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-2] [INFO] [1790823165.329598123] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-2] [INFO] [1790823165.329600668] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-2] [INFO] [1790823165.329603434] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-2] [INFO] [1790823165.329605988] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-2] [INFO] [1790823165.329608373] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-2] [INFO] [1790823165.329611078] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-2] [INFO] [1790823165.329613322] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-2] [INFO] [1790823165.329615937] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-2] [INFO] [1790823165.329618212] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-2] [INFO] [1790823165.329620456] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-2] [INFO] [1790823165.329622760] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-2] [INFO] [1790823165.329624954] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-2] [INFO] [1790823165.329627169] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-2] [INFO] [1790823165.329629623] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-2] [INFO] [1790823165.329631858] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-2] [INFO] [1790823165.329633972] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-2] [INFO] [1790823165.329636146] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-2] [INFO] [1790823165.329638330] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-2] [INFO] [1790823165.329640604] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-2] [INFO] [1790823165.329642828] [robot_state_publisher]: got segment world
+[move_group-5] [INFO] [1790823165.341870966] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.0235034 seconds
+[move_group-5] [INFO] [1790823165.342119528] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-5] [INFO] [1790823165.342278811] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[ros2_control_node-3] [INFO] [1790823165.587989426] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ros2_control_node-3] [WARN] [1790823165.592295883] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[ros2_control_node-3] [WARN] [1790823165.602682609] [controller_manager]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-13] [INFO] [1790823165.626829586] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[move_group-5] [WARN] [1790823165.627917494] [moveit_ros.robot_model_loader]: No kinematics plugins defined. Fill and load kinematics.yaml!
+[ros2_control_node-3] [INFO] [1790823165.630285366] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ros2_control_node-3] [WARN] [1790823165.630644969] [controller_manager]: 'joints' parameter is empty.
+[ros2_control_node-3] [INFO] [1790823165.630654748] [controller_manager]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ros2_control_node-3] [ERROR] [1790823165.630658735] [controller_manager]: 'command_interfaces' parameter is empty.
+[ros2_control_node-3] [ERROR] [1790823165.630688251] [controller_manager]: After configuring, controller 'elfin_arm_controller' is in state 'unconfigured' , expected inactive.
+[spawner-13] [ERROR] [1790823165.631368845] [spawner_elfin_arm_controller]: [91mFailed to configure controller[0m
+[placement_planner_node.py-11] [INFO] [1790823165.639415453] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, hash_policy=strict, w=0.3, hard_reject=True)
+[placement_planner_node.py-11] [INFO] [1790823165.653750846] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+[container_tf_publisher-1] [INFO] [1790823165.681415590] [container_tf_publisher]: Static TF from /tmp/elfin-st09-g3/install/g4/luggage_description/share/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[spawner-4] [INFO] [1790823165.681519097] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[container_tf_publisher-1] [INFO] [1790823165.681684061] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412
+[trajectory_selector_node.py-8] [INFO] [1790823165.714744502] [trajectory_selector]: trajectory_selector up
+[waypoint_generator_node.py-7] [INFO] [1790823165.723271072] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[scene_manager_node.py-6] [INFO] [1790823165.728261620] [scene_manager]: scene_manager ready
+[ERROR] [spawner-13]: process has died [pid 2597000, exit code 1, cmd '/opt/ros/humble/lib/controller_manager/spawner elfin_arm_controller --controller-manager /controller_manager --controller-manager-timeout 60 --ros-args'].
+[motion_planner_node.py-9] [INFO] [1790823165.820820756] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[vacuum_controller_node.py-12] [INFO] [1790823165.823303356] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+[ros2_control_node-3] [INFO] [1790823165.933268402] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[ros2_control_node-3] [WARN] [1790823165.933801947] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[spawner-4] [INFO] [1790823165.938613434] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ros2_control_node-3] [INFO] [1790823165.939339394] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ros2_control_node-3] [INFO] [1790823165.939373389] [controller_manager]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[spawner-4] [INFO] [1790823165.968516203] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[move_group-5] [INFO] [1790823165.971779597] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-5] [INFO] [1790823165.972643970] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-5] [INFO] [1790823165.974465723] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-5] [INFO] [1790823165.974974931] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-5] [INFO] [1790823165.975062618] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-5] [INFO] [1790823165.975237470] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-5] [INFO] [1790823165.975244854] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-5] [INFO] [1790823165.975397635] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-5] [INFO] [1790823165.975547911] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-5] [WARN] [1790823165.975765624] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-5] [ERROR] [1790823165.975774191] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[INFO] [spawner-4]: process has finished cleanly [pid 2596982]
+[cargo_volume_mapper_node.py-10] [INFO] [1790823166.147919658] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[move_group-5] [INFO] [1790823166.718507076] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'move_group'
+[move_group-5] [INFO] [1790823166.718991567] [moveit.ros_planning.planning_pipeline]: Multiple planning plugins available. You should specify the '~planning_plugin' parameter. Using 'chomp_interface/CHOMPPlanner' for now.
+[move_group-5] [INFO] [1790823166.719787520] [moveit.ros_planning.planning_pipeline]: Using planning interface 'CHOMP'
+[move_group-5] [FATAL] [1790823166.721911879] [moveit_ros.trajectory_execution_manager]: Parameter '~moveit_controller_manager' not specified. This is needed to identify the plugin to use for interacting with controllers. No paths can be executed.
+[move_group-5] [ERROR] [1790823166.721942858] [moveit_ros.trajectory_execution_manager]: Failed to reload controllers: `controller_manager_` does not exist.
+[move_group-5] Stack trace (most recent call last):
+[move_group-5] #9    Object "", at 0xffffffffffffffff, in 
+[move_group-5] #8    Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x5ffa1ccca724, in 
+[move_group-5] #7    Source "../csu/libc-start.c", line 392, in __libc_start_main_impl [0x7e22ae229e3f]
+[move_group-5] #6    Source "../sysdeps/nptl/libc_start_call_main.h", line 58, in __libc_start_call_main [0x7e22ae229d8f]
+[move_group-5] #5    Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x5ffa1ccc92c2, in 
+[move_group-5] #4    Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x7e22aeee0636, in moveit_cpp::MoveItCpp::MoveItCpp(std::shared_ptr<rclcpp::Node> const&, moveit_cpp::MoveItCpp::Options const&)
+[move_group-5] #3    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x7e22ae47b955, in trajectory_execution_manager::TrajectoryExecutionManager::TrajectoryExecutionManager(std::shared_ptr<rclcpp::Node> const&, std::shared_ptr<moveit::core::RobotModel const> const&, std::shared_ptr<planning_scene_monitor::CurrentStateMonitor> const&)
+[move_group-5] #2    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x7e22ae47a4c2, in trajectory_execution_manager::TrajectoryExecutionManager::initialize()
+[move_group-5] #1    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x7e22ae4914fe, in 
+[move_group-5] #0    Object "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30", at 0x7e22ae74eba4, in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::compare(char const*) const
+[move_group-5] Segmentation fault (Address not mapped to object [0x348])
+[trajectory_selector_node.py-8] [WARN] [1790823167.219476039] [trajectory_selector]: runtime identity report rejected (PEER_RESTART vacuum_controller)
+[scene_manager_node.py-6] [WARN] [1790823167.219747906] [scene_manager]: runtime identity report rejected (PEER_RESTART vacuum_controller)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823167.219928089] [cargo_volume_mapper]: runtime identity report rejected (PEER_RESTART vacuum_controller)
+[trajectory_selector_node.py-8] [WARN] [1790823167.220060701] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823167.220277413] [placement_planner]: runtime identity report rejected (PEER_RESTART vacuum_controller)
+[scene_manager_node.py-6] [WARN] [1790823167.220353618] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823167.220357656] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823167.220596319] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823167.220861814] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823167.520812409] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823167.521306188] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823167.521321417] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823167.521465561] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823167.521551785] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[ERROR] [move_group-5]: process has died [pid 2596984, exit code -11, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_d928l2fe --params-file /tmp/launch_params_q_n8uvwy --params-file /tmp/launch_params_59ufbnlk'].
+[trajectory_selector_node.py-8] [WARN] [1790823167.821333728] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823167.821460560] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823167.821536794] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823167.821606226] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823167.821697300] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823167.821796208] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823168.122408330] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823168.122491598] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823168.122919081] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823168.122927226] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823168.122927236] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823168.123052033] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823168.423026681] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823168.423213747] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823168.423220770] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823168.423283469] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823168.423281035] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823168.423330749] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[waypoint_generator_node.py-7] [WARN] [1790823168.423858943] [waypoint_generator]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823168.723591400] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823168.723623522] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823168.723694166] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823168.723833290] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823168.723892633] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[waypoint_generator_node.py-7] [WARN] [1790823168.723943520] [waypoint_generator]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823168.724074449] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823169.024592359] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823169.024832656] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823169.024847764] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[waypoint_generator_node.py-7] [WARN] [1790823169.025218720] [waypoint_generator]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823169.025232466] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823169.025362313] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823169.025399624] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[placement_planner_node.py-11] [WARN] [1790823169.325707931] [placement_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[waypoint_generator_node.py-7] [WARN] [1790823169.325745272] [waypoint_generator]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[trajectory_selector_node.py-8] [WARN] [1790823169.325886010] [trajectory_selector]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[motion_planner_node.py-9] [WARN] [1790823169.325902772] [motion_planner]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[vacuum_controller_node.py-12] [WARN] [1790823169.325961574] [vacuum_controller]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[cargo_volume_mapper_node.py-10] [WARN] [1790823169.325996370] [cargo_volume_mapper]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[scene_manager_node.py-6] [WARN] [1790823169.326079808] [scene_manager]: runtime identity report rejected (ENDPOINT_PROVIDER_MISMATCH registry)
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [vacuum_controller_node.py-12]: sending signal 'SIGINT' to process[vacuum_controller_node.py-12]
+[INFO] [placement_planner_node.py-11]: sending signal 'SIGINT' to process[placement_planner_node.py-11]
+[INFO] [cargo_volume_mapper_node.py-10]: sending signal 'SIGINT' to process[cargo_volume_mapper_node.py-10]
+[INFO] [motion_planner_node.py-9]: sending signal 'SIGINT' to process[motion_planner_node.py-9]
+[INFO] [trajectory_selector_node.py-8]: sending signal 'SIGINT' to process[trajectory_selector_node.py-8]
+[INFO] [waypoint_generator_node.py-7]: sending signal 'SIGINT' to process[waypoint_generator_node.py-7]
+[INFO] [scene_manager_node.py-6]: sending signal 'SIGINT' to process[scene_manager_node.py-6]
+[INFO] [ros2_control_node-3]: sending signal 'SIGINT' to process[ros2_control_node-3]
+[INFO] [robot_state_publisher-2]: sending signal 'SIGINT' to process[robot_state_publisher-2]
+[INFO] [container_tf_publisher-1]: sending signal 'SIGINT' to process[container_tf_publisher-1]
+[ros2_control_node-3] [INFO] [1790823169.751878043] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ros2_control_node-3] [INFO] [1790823169.751918700] [controller_manager]: Shutdown request received....
+[ros2_control_node-3] [INFO] [1790823169.751950170] [controller_manager]: Shutting down all controllers in the controller manager.
+[ros2_control_node-3] [INFO] [1790823169.751958806] [controller_manager]: Deactivating controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823169.751983172] [controller_manager]: Shutting down controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823169.752001347] [controller_manager]: Shutting down controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823169.752014552] [resource_manager]: 'deactivate' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823169.752019481] [resource_manager]: Successful 'deactivate' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823169.752021145] [resource_manager]: 'shutdown' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823169.752023098] [resource_manager]: Successful 'shutdown' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823169.752025353] [controller_manager]: Shutting down the controller manager.
+[robot_state_publisher-2] [INFO] [1790823169.751876209] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[vacuum_controller_node.py-12] Traceback (most recent call last):
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 604, in <module>
+[placement_planner_node.py-11] Traceback (most recent call last):
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1017, in <module>
+[vacuum_controller_node.py-12]     main()
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 597, in main
+[vacuum_controller_node.py-12]     node.destroy_node()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1685, in destroy_node
+[vacuum_controller_node.py-12]     self.destroy_publisher(self._publishers[0])
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1565, in destroy_publisher
+[vacuum_controller_node.py-12]     publisher.destroy()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/publisher.py", line 99, in destroy
+[vacuum_controller_node.py-12]     self.__publisher.destroy_when_not_in_use()
+[vacuum_controller_node.py-12] KeyboardInterrupt
+[placement_planner_node.py-11]     main()
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1012, in main
+[placement_planner_node.py-11]     node.destroy_node()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1687, in destroy_node
+[placement_planner_node.py-11]     self.destroy_subscription(self._subscriptions[0])
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1583, in destroy_subscription
+[placement_planner_node.py-11]     subscription.destroy()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/subscription.py", line 80, in destroy
+[placement_planner_node.py-11]     self.handle.destroy_when_not_in_use()
+[placement_planner_node.py-11] KeyboardInterrupt
+[cargo_volume_mapper_node.py-10] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 691, in <module>
+[cargo_volume_mapper_node.py-10]     main()
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 685, in main
+[cargo_volume_mapper_node.py-10]     node.destroy_node()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1687, in destroy_node
+[cargo_volume_mapper_node.py-10]     self.destroy_subscription(self._subscriptions[0])
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1583, in destroy_subscription
+[cargo_volume_mapper_node.py-10]     subscription.destroy()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/subscription.py", line 80, in destroy
+[cargo_volume_mapper_node.py-10]     self.handle.destroy_when_not_in_use()
+[cargo_volume_mapper_node.py-10] KeyboardInterrupt
+[motion_planner_node.py-9] Traceback (most recent call last):
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1287, in <module>
+[trajectory_selector_node.py-8] Traceback (most recent call last):
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 327, in <module>
+[motion_planner_node.py-9]     main()
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1282, in main
+[motion_planner_node.py-9]     node.destroy_node()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1687, in destroy_node
+[motion_planner_node.py-9]     self.destroy_subscription(self._subscriptions[0])
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1583, in destroy_subscription
+[motion_planner_node.py-9]     subscription.destroy()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/subscription.py", line 80, in destroy
+[motion_planner_node.py-9]     self.handle.destroy_when_not_in_use()
+[motion_planner_node.py-9] KeyboardInterrupt
+[trajectory_selector_node.py-8]     main()
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 322, in main
+[trajectory_selector_node.py-8]     node.destroy_node()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1691, in destroy_node
+[trajectory_selector_node.py-8]     self.destroy_service(self._services[0])
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1615, in destroy_service
+[trajectory_selector_node.py-8]     service.destroy()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/service.py", line 93, in destroy
+[trajectory_selector_node.py-8]     self.__service.destroy_when_not_in_use()
+[trajectory_selector_node.py-8] KeyboardInterrupt
+[waypoint_generator_node.py-7] Traceback (most recent call last):
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 563, in <module>
+[waypoint_generator_node.py-7]     main()
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 556, in main
+[waypoint_generator_node.py-7]     node.destroy_node()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1691, in destroy_node
+[waypoint_generator_node.py-7]     self.destroy_service(self._services[0])
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1615, in destroy_service
+[waypoint_generator_node.py-7]     service.destroy()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/service.py", line 93, in destroy
+[waypoint_generator_node.py-7]     self.__service.destroy_when_not_in_use()
+[waypoint_generator_node.py-7] KeyboardInterrupt
+[scene_manager_node.py-6] Traceback (most recent call last):
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 320, in <module>
+[scene_manager_node.py-6]     main()
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 315, in main
+[scene_manager_node.py-6]     node.destroy_node()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1691, in destroy_node
+[scene_manager_node.py-6]     self.destroy_service(self._services[0])
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1615, in destroy_service
+[ros2_control_node-3] [INFO] [1790823169.758019628] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[scene_manager_node.py-6]     service.destroy()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/service.py", line 93, in destroy
+[scene_manager_node.py-6]     self.__service.destroy_when_not_in_use()
+[scene_manager_node.py-6] KeyboardInterrupt
+[robot_state_publisher-2] [INFO] [1790823169.759166188] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[container_tf_publisher-1] Traceback (most recent call last):
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher", line 5, in <module>
+[container_tf_publisher-1]     main()
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py", line 183, in main
+[container_tf_publisher-1]     node.destroy_node()
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1696, in destroy_node
+[container_tf_publisher-1]     self.__node.destroy_when_not_in_use()
+[container_tf_publisher-1] KeyboardInterrupt
+[ERROR] [container_tf_publisher-1]: process has died [pid 2596976, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_y4kq749j'].
+[ERROR] [placement_planner_node.py-11]: process has died [pid 2596996, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_yw5amd7p'].
+[ERROR] [trajectory_selector_node.py-8]: process has died [pid 2596990, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_5hycnfud'].
+[ERROR] [scene_manager_node.py-6]: process has died [pid 2596986, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_odrnq43f'].
+[ERROR] [waypoint_generator_node.py-7]: process has died [pid 2596988, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_4fas0908'].
+[ERROR] [vacuum_controller_node.py-12]: process has died [pid 2596998, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_wet1hyd4'].
+[ERROR] [cargo_volume_mapper_node.py-10]: process has died [pid 2596994, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_40y8idg6'].
+[ERROR] [motion_planner_node.py-9]: process has died [pid 2596992, exit code -2, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params__iz5j6mz'].
+[INFO] [robot_state_publisher-2]: process has finished cleanly [pid 2596978]
+[INFO] [ros2_control_node-3]: process has finished cleanly [pid 2596980]

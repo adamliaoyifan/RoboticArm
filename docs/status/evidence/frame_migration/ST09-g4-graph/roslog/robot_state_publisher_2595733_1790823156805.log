@@ -1,0 +1,24 @@
+[INFO] [1790823156.834409697] [robot_state_publisher]: got segment camera_color_frame
+[INFO] [1790823156.834510669] [robot_state_publisher]: got segment camera_color_optical_frame
+[INFO] [1790823156.834515218] [robot_state_publisher]: got segment camera_depth_frame
+[INFO] [1790823156.834529245] [robot_state_publisher]: got segment camera_depth_optical_frame
+[INFO] [1790823156.834531830] [robot_state_publisher]: got segment camera_link
+[INFO] [1790823156.834534575] [robot_state_publisher]: got segment d555_link
+[INFO] [1790823156.834537080] [robot_state_publisher]: got segment eef_mount_adapter
+[INFO] [1790823156.834539454] [robot_state_publisher]: got segment elfin_base
+[INFO] [1790823156.834542229] [robot_state_publisher]: got segment elfin_base_link
+[INFO] [1790823156.834545436] [robot_state_publisher]: got segment elfin_dummy_gripper
+[INFO] [1790823156.834548281] [robot_state_publisher]: got segment elfin_end_link
+[INFO] [1790823156.834550535] [robot_state_publisher]: got segment elfin_link1
+[INFO] [1790823156.834553270] [robot_state_publisher]: got segment elfin_link2
+[INFO] [1790823156.834555976] [robot_state_publisher]: got segment elfin_link3
+[INFO] [1790823156.834558390] [robot_state_publisher]: got segment elfin_link4
+[INFO] [1790823156.834561246] [robot_state_publisher]: got segment elfin_link5
+[INFO] [1790823156.834563941] [robot_state_publisher]: got segment elfin_link6
+[INFO] [1790823156.834566185] [robot_state_publisher]: got segment livox_frame
+[INFO] [1790823156.834568499] [robot_state_publisher]: got segment livox_imu_frame
+[INFO] [1790823156.834570784] [robot_state_publisher]: got segment mid360_mount_frame
+[INFO] [1790823156.834573088] [robot_state_publisher]: got segment suction_contact_frame
+[INFO] [1790823156.834575493] [robot_state_publisher]: got segment suction_panel
+[INFO] [1790823156.834577837] [robot_state_publisher]: got segment world
+[INFO] [1790823160.570331205] [rclcpp]: signal_handler(SIGINT/SIGTERM)
