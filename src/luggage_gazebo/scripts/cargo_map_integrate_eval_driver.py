@@ -266,7 +266,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         )
         if getattr(self, "_typed", None) is not None:
             from luggage_description.frame_contracts import ContractError
-            from luggage_gazebo.typed_driver_adapter import pose_segment_message
+            from luggage_planning.typed_driver_adapter import pose_segment_message
             try:
                 motion_segment = pose_segment_message(
                     "cargo_view_aim", t_ws, q_ws,
@@ -326,7 +326,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             )
             if getattr(self, "_typed", None) is not None:
                 from luggage_description.frame_contracts import ContractError
-                from luggage_gazebo.typed_driver_adapter import (
+                from luggage_planning.typed_driver_adapter import (
                     pose_segment_message)
                 try:
                     motion_segment = pose_segment_message(

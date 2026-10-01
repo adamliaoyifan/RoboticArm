@@ -428,7 +428,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
 
     def test_records_match_profiles(self):
         from luggage_description.frame_contracts import validate_pose
-        from luggage_gazebo.typed_driver_adapter import (
+        from luggage_planning.typed_driver_adapter import (
             grasp_record, slot_record, tcp_record)
         slot = slot_record("request", "scene", (0.2, -0.1, 0.7), 0.25)
         validate_pose(slot, "slot", "scene")
@@ -441,7 +441,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
     def test_grasp_forward_roundtrip(self):
         import numpy as np
         from scipy.spatial.transform import Rotation
-        from luggage_gazebo.typed_driver_adapter import grasp_from_attach
+        from luggage_planning.typed_driver_adapter import grasp_from_attach
         box_position = [1.2, -0.4, 0.9]
         box_quaternion = Rotation.from_euler("xyz", [0.0, 0.0, 0.7]).as_quat()
         tool_position = [1.31, -0.35, 1.06]
@@ -461,7 +461,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
 
     def test_container_transform_matches_scene_origin(self):
         import yaml
-        from luggage_gazebo.typed_driver_adapter import (
+        from luggage_planning.typed_driver_adapter import (
             container_transform_fields)
         from luggage_description.scene_tf_config_utils import origin_in_world
         scene = {
@@ -499,7 +499,7 @@ class TypedDriverAdapterTools(unittest.TestCase):
             from luggage_msgs.msg import DetectedLuggage
         except ImportError:
             self.skipTest("generated messages unavailable")
-        from luggage_gazebo.typed_driver_adapter import (
+        from luggage_planning.typed_driver_adapter import (
             detection_record_from_box)
         from luggage_planning.attachment_frame_adapters import measured_dict
         from luggage_planning.attachment_frame_contracts import (

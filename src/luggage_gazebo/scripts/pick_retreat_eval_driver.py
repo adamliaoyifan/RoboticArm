@@ -587,7 +587,7 @@ class PickRetreatEvalDriver(Node):
         self._frame_motion_index = 0
         self._frame_request_seq = 0
         if getattr(args, "frame_runtime", False):
-            from luggage_gazebo.typed_driver_adapter import (
+            from luggage_planning.typed_driver_adapter import (
                 TypedDriverAdapter, adopt_runtime_identity)
             peer = str(getattr(args, "frame_peer", "") or "motion_occ_driver")
             runtime, _registry = adopt_runtime_identity(self, peer=peer)
@@ -611,7 +611,7 @@ class PickRetreatEvalDriver(Node):
         than falling back to a hand-converted slot.
         """
         from luggage_description.frame_contracts import ContractError
-        from luggage_gazebo.typed_driver_adapter import (
+        from luggage_planning.typed_driver_adapter import (
             container_transform_fields)
         slot_record = getattr(self, "_frame_slot_record", None)
         grasp = getattr(self, "_frame_grasp", None)
@@ -636,7 +636,7 @@ class PickRetreatEvalDriver(Node):
         except Exception as exc:  # noqa: BLE001 - grasp capture is best effort
             self.get_logger().warning("frame grasp capture TF failed: %s" % exc)
             return
-        from luggage_gazebo.typed_driver_adapter import grasp_from_attach
+        from luggage_planning.typed_driver_adapter import grasp_from_attach
         self._frame_grasp = grasp_from_attach(
             self._frame_request_id("grasp"), self._frame_scene_revision,
             [float(pick_msg.pose.position.x), float(pick_msg.pose.position.y),
@@ -658,7 +658,7 @@ class PickRetreatEvalDriver(Node):
     def vacuum_command(self, enable, pick_msg=None):
         pick_msg = pick_msg or getattr(self, "_frame_pick_msg", None)
         if self._typed is not None and pick_msg is not None:
-            from luggage_gazebo.typed_driver_adapter import (
+            from luggage_planning.typed_driver_adapter import (
                 detection_record_from_box)
             from luggage_description.frame_contracts import ContractError
             box_id, generation = self._frame_box_identity()

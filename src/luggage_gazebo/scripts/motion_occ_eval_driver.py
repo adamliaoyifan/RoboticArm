@@ -200,7 +200,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             float(response.waypoint_poses[-1].pose.orientation.z),
             float(response.waypoint_poses[-1].pose.orientation.w)]
         from luggage_description.frame_contracts import ContractError
-        from luggage_gazebo.typed_driver_adapter import probe_segment_message
+        from luggage_planning.typed_driver_adapter import probe_segment_message
         try:
             message = probe_segment_message(
                 {"waypoints": waypoints, "target_quaternion_xyzw": quaternion,
@@ -238,7 +238,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             pose_from_message)
         from luggage_msgs.msg import SlotSpec
         from luggage_msgs.srv import GetCargoMapStats
-        from luggage_gazebo.typed_driver_adapter import (
+        from luggage_planning.typed_driver_adapter import (
             container_transform_fields, tcp_record)
 
         if not bool(getattr(pick_msg, "height_valid", False)):

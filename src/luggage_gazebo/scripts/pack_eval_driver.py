@@ -94,6 +94,11 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._dumps = os.path.join(self._out, "dumps")
         os.makedirs(self._dumps, exist_ok=True)
         self._suite_t0 = time.time()
+        self._last_rejected = None
+        self._pending_slot = None
+        self._pending_slot_meta = None
+        self._pending_audit = None
+        self._pending_center_local = None
         # Typed chain (F22): v2 surface + placed-record ledger.
         self._frame_placed_records = []
         self._pending_placed = None
@@ -111,11 +116,6 @@ class PackEvalDriver(PlaceSmokeDriver):
 
     def _on_surface_v2(self, msg):
         self._surface_v2_msg = msg
-        self._last_rejected = None
-        self._pending_slot = None
-        self._pending_slot_meta = None
-        self._pending_audit = None
-        self._pending_center_local = None
 
     def graph_error(self):
         err = super().graph_error()
@@ -185,7 +185,7 @@ class PackEvalDriver(PlaceSmokeDriver):
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_description.ros_frame_bindings.poses import (
             pose_from_message)
-        from luggage_gazebo.typed_driver_adapter import slot_spec_from_record
+        from luggage_planning.typed_driver_adapter import slot_spec_from_record
         surface_msg = getattr(self, "_surface_v2_msg", None)
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]

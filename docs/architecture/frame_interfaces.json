@@ -212,7 +212,7 @@
         "wrong_reference"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST07-20260930/runtime_F09.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F09.json"
     },
     {
       "id": "F10",
@@ -539,7 +539,8 @@
       "current": "multiple hand-written base/world/local conversions",
       "target": "same public contracts; ground truth remains separate oracle; exercise real service path",
       "sources": [
-        "src/luggage_gazebo/luggage_gazebo/typed_driver_adapter.py",
+        "src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+      "src/luggage_gazebo/luggage_gazebo/typed_driver_adapter.py",
       "src/luggage_gazebo/scripts/place_only_eval_driver.py",
         "src/luggage_gazebo/scripts/motion_occ_eval_driver.py",
         "src/luggage_gazebo/scripts/pack_eval_driver.py",
