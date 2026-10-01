@@ -255,14 +255,17 @@ def _robot_description_param(scene_tf_config: str, initial_joint_args):
     }
 
 
-def _robot_state_publisher_actions(scene_tf_config: str, robot_description):
+def _robot_state_publisher_actions(scene_tf_config: str, robot_description,
+                                   frame_scene_revision=""):
     return [
         Node(
             package="luggage_description",
             executable="container_tf_publisher",
             name="container_tf_publisher",
             output="screen",
-            parameters=[{"scene_tf_config": scene_tf_config, "republish_period": 0.0}],
+            parameters=[{"scene_tf_config": scene_tf_config,
+                         "republish_period": 0.0,
+                         "frame_scene_revision": frame_scene_revision}],
         ),
         Node(
             package="robot_state_publisher",
@@ -944,7 +947,10 @@ def _launch_setup(context):
             parameters=[{"use_sim_time": True, **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
-        *_robot_state_publisher_actions(scene_tf_config, robot_description),
+        *_robot_state_publisher_actions(
+            scene_tf_config, robot_description,
+            frame_scene_revision=frame_params.get("frame_scene_revision",
+                                                  "")),
         *_spawn_scene_and_robot(
             scene_tf_config, initial_joint_args,
             watchdog_sec=float(cfg["startup_watchdog_sec"]),

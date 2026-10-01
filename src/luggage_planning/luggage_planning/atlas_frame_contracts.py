@@ -61,17 +61,21 @@ def _quat_multiply(q1, q2):
 def require_horizontal_container(container_rpy, tolerance=_HORIZONTAL_TOL):
     """Reject a tilted container before any target construction.
 
-    The 2.5D admission gate lives at container geometry; this is the atlas
-    copy of that gate. Returns the Z-yaw offset (rad) of the container in
-    base_link on success.
+    Thin atlas-side copy of the container-geometry admission gate
+    (``luggage_description.container_geometry.require_horizontal_rotation``);
+    kept as a ValueError wrapper so atlas callers/tests keep their API.
+    Returns the Z-yaw offset (rad) of the container in base_link on success.
     """
-    roll, pitch, yaw = (float(v) for v in container_rpy)
-    if abs(math.sin(roll)) > tolerance or abs(math.sin(pitch)) > tolerance:
+    from luggage_description.container_geometry import (
+        require_horizontal_rotation,
+    )
+    try:
+        return require_horizontal_rotation(container_rpy, tolerance)
+    except ValueError as error:
         raise ValueError(
             "container is not horizontal (rpy=%r); the 2.5D atlas does not "
-            "sample tilted containers" % (tuple(container_rpy),))
-    # Normalise into (-pi, pi] so base_yaw stays a plain sum downstream.
-    return math.atan2(math.sin(yaw), math.cos(yaw))
+            "sample tilted containers (%s)"
+            % (tuple(float(v) for v in container_rpy), error))
 
 
 def container_yaw_offset(container_rpy):

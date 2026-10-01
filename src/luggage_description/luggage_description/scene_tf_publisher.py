@@ -11,6 +11,7 @@ import math
 
 from luggage_description.scene_tf_config_utils import (
     load_scene_tf_config,
+    require_horizontal_container_scene,
     resolve_scene_tf_config_path,
     static_transforms,
     task_roi_from_scene,
@@ -71,6 +72,23 @@ def to_transform_stamped(payload, stamp=None):
     return msg
 
 
+def scene_identity_payload(config, config_path, revision, container_yaw):
+    """F01 scene identity record (latched topic payload)."""
+    import json
+    from .container_geometry import descriptor_from_scene_config
+    from .runtime_identity import scene_revision_from_path
+    return {
+        "schema": "luggage.scene_identity/2",
+        "scene_revision": str(revision),
+        "measured_scene_file_md5": scene_revision_from_path(config_path),
+        "geometry_hash": descriptor_from_scene_config(config).geometry_hash,
+        "container_yaw": float(container_yaw),
+        "transforms": [
+            {"parent": item["parent"], "child": item["child"]}
+            for item in static_transform_payloads(config)],
+    }
+
+
 class ContainerTfPublisher:
     """rclpy node body. Instantiated after ``rclpy.create_node`` or as Node."""
 
@@ -78,10 +96,15 @@ class ContainerTfPublisher:
         self._node = node
         node.declare_parameter("scene_tf_config", "")
         node.declare_parameter("republish_period", 0.0)
+        # ST09 F01: scene identity publication. An explicit revision turns
+        # the latched identity topic on; the horizontal-container gate is
+        # unconditional (a tilted scene has no 2.5D semantics to publish).
+        node.declare_parameter("frame_scene_revision", "")
         raw_path = node.get_parameter("scene_tf_config").value
         self._config_path = resolve_scene_tf_config_path(raw_path or None)
         self._republish_period = float(node.get_parameter("republish_period").value)
         self._config = load_scene_tf_config(self._config_path)
+        self._container_yaw = require_horizontal_container_scene(self._config)
         self._payloads = static_transform_payloads(self._config)
         self._roi = task_roi_from_scene(self._config)
         self._declare_roi_params(self._roi)
@@ -89,6 +112,17 @@ class ContainerTfPublisher:
         from tf2_ros import StaticTransformBroadcaster
 
         self._broadcaster = StaticTransformBroadcaster(node)
+        self._identity_pub = None
+        revision = str(node.get_parameter("frame_scene_revision").value or "")
+        if revision:
+            from rclpy.qos import (DurabilityPolicy, QoSProfile,
+                                   ReliabilityPolicy)
+            from std_msgs.msg import String
+            self._identity_pub = node.create_publisher(
+                String, "/luggage/scene/identity",
+                QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                           durability=DurabilityPolicy.TRANSIENT_LOCAL))
+        self._revision = revision
         self._publish_all()
         if self._republish_period > 0.0:
             self._timer = node.create_timer(self._republish_period, self._publish_all)
@@ -101,6 +135,15 @@ class ContainerTfPublisher:
     def _publish_all(self):
         stamped = [to_transform_stamped(item) for item in self._payloads]
         self._broadcaster.sendTransform(stamped)
+        if self._identity_pub is not None:
+            import json
+            from std_msgs.msg import String
+            message = String()
+            message.data = json.dumps(
+                scene_identity_payload(self._config, self._config_path,
+                                       self._revision, self._container_yaw),
+                sort_keys=True, allow_nan=False)
+            self._identity_pub.publish(message)
         self._node.get_logger().info(
             "Static TF from %s (%d transforms): %s"
             % (

@@ -346,7 +346,7 @@
         "tool_pi_distinct"
       ],
       "migration_state": "verified",
-      "runtime_evidence": "docs/status/evidence/frame_migration/ST06-20260929/runtime_F14.json"
+      "runtime_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/runtime_F14.json"
     },
     {
       "id": "F15",

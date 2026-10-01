@@ -238,6 +238,18 @@ def origin_in_world(config):
     return world_transform(config, "container_link")
 
 
+def require_horizontal_container_scene(config):
+    """F01 admission: the published container must be horizontal.
+
+    The 2.5D hull, occupancy and atlas semantics all assume a level
+    container in base_link; this is the producer-side gate the publisher
+    and every geometry admission share. Returns the container Z-yaw.
+    """
+    from .container_geometry import require_horizontal_rotation
+    _origin, rpy = origin_in_world(config)
+    return require_horizontal_rotation(rpy)
+
+
 def base_in_world(config):
     return robot_base_in_world(config)
 

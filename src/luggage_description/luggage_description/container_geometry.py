@@ -12,6 +12,25 @@ from typing import Iterable, Sequence
 
 EPS = 1e-9
 
+#: The 2.5D admission gate lives here (container geometry); the atlas keeps
+#: a thin copy. A container that is not horizontal in base_link has no
+#: 2.5D occupancy semantics, so every consumer refuses it before use.
+HORIZONTAL_TOLERANCE = 1e-9
+
+
+def require_horizontal_rotation(rpy, tolerance=HORIZONTAL_TOLERANCE):
+    """Reject a tilted container before any 2.5D admission.
+
+    Returns the container Z-yaw offset (rad, normalized to (-pi, pi]).
+    """
+    roll, pitch, yaw = (float(v) for v in rpy)
+    if abs(math.sin(roll)) > tolerance or abs(math.sin(pitch)) > tolerance:
+        raise ValueError(
+            "container is not horizontal (rpy=%r); the 2.5D container "
+            "geometry does not admit tilted placements"
+            % (tuple(float(v) for v in rpy),))
+    return math.atan2(math.sin(yaw), math.cos(yaw))
+
 
 @dataclass(frozen=True)
 class Chamfer:

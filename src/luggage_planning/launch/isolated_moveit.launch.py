@@ -100,6 +100,7 @@ def _launch(context, *args, **kwargs):
 
 
 def generate_launch_description():
+    from luggage_description.launch_profile import with_profile
     default_scene = PathJoinSubstitution(
         [
             FindPackageShare("luggage_description"),
@@ -107,7 +108,7 @@ def generate_launch_description():
             "scene_tf.yaml.example",
         ]
     )
-    return LaunchDescription(
+    return with_profile(LaunchDescription(
         [
             DeclareLaunchArgument(
                 "scene_tf_config",
@@ -121,4 +122,4 @@ def generate_launch_description():
                 "Do not use ROS_DOMAIN_ID=7 (live sim).")),
             OpaqueFunction(function=_launch),
         ]
-    )
+    ))

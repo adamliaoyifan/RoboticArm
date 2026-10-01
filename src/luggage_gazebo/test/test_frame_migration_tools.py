@@ -522,4 +522,58 @@ class TypedDriverAdapterTools(unittest.TestCase):
         require_measured_pose_agreement(record, measured_dict(box, box.id))
 
 
+class SceneIdentityTools(unittest.TestCase):
+    """ST09 g4 F01: horizontal-container gate and scene identity payload."""
+
+    SCENE = {
+        "world_frame": "world",
+        "robot": {"base_frame": "elfin_base_link"},
+        "container": {"inner": {"length": 1.49, "width": 1.97,
+                                  "floor_z": 0.53, "ceiling_z": 2.01}},
+        "static_transforms": [{
+            "parent": "world", "child": "container_link",
+            "translation": [1.5, -0.4, 0.2], "rotation_rpy": [0.0, 0.0, 0.9]}],
+    }
+
+    def _config(self, rpy=(0.0, 0.0, 0.9)):
+        import copy
+        import yaml
+        scene = copy.deepcopy(self.SCENE)
+        scene["static_transforms"][0]["rotation_rpy"] = list(rpy)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "scene_tf.yaml"
+            path.write_text(yaml.safe_dump(scene))
+            from luggage_description.scene_tf_config_utils import (
+                load_scene_tf_config)
+            yield load_scene_tf_config(str(path)), path
+
+    def test_horizontal_gate(self):
+        from luggage_description.scene_tf_config_utils import (
+            require_horizontal_container_scene)
+        for config, _path in self._config():
+            self.assertAlmostEqual(require_horizontal_container_scene(config),
+                                   0.9, places=12)
+        for tilted in ((0.3, 0.0, 0.9), (0.0, -0.2, 0.9), (0.05, 0.05, 0.0)):
+            for config, _path in self._config(tilted):
+                with self.subTest(rpy=tilted), self.assertRaises(ValueError):
+                    require_horizontal_container_scene(config)
+
+    def test_identity_payload_is_measured(self):
+        import hashlib
+        import json
+        from luggage_description.scene_tf_publisher import (
+            scene_identity_payload)
+        for config, path in self._config():
+            payload = scene_identity_payload(config, str(path), "rev-1", 0.9)
+            self.assertEqual(payload["schema"], "luggage.scene_identity/2")
+            self.assertEqual(payload["scene_revision"], "rev-1")
+            self.assertEqual(
+                payload["measured_scene_file_md5"],
+                hashlib.md5(path.read_bytes()).hexdigest())
+            self.assertEqual(payload["container_yaw"], 0.9)
+            self.assertEqual(payload["transforms"][0]["child"],
+                             "container_link")
+            json.dumps(payload)  # JSON-safe latched payload
+
+
 if __name__=="__main__": unittest.main()
