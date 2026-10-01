@@ -315,10 +315,13 @@ def adopt_runtime_identity(node, *, peer, timeout_sec=10.0):
             joint_names=list(message.joint_names),
             endpoints={name: entry["type"] for name, entry in endpoints.items()})
         validate_identity(identity)
+        import sys as _sys
+        adapter_module = _sys.modules[__name__]
         runtime = NodeRuntime(
             node, peer=peer, identity=identity,
             resolved_config={"driver": str(peer).lstrip("/")},
-            peers=peers)
+            peers=peers,
+            modules=[(adapter_module, "module", "application")])
         return runtime, endpoints
     finally:
         spin_executor.remove_node(node)

@@ -252,6 +252,10 @@ class NodeRuntime:
             self.gate.require_ready(self._providers())
         self._count("GRAPH_READY_CHECK")
 
+    def readiness(self):
+        """Current readiness code without draining the transition log."""
+        return self._readiness()
+
     def _write_transitions(self, transitions):
         if not self.transitions_path or not transitions:
             return
