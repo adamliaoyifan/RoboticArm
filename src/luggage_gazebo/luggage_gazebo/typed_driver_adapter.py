@@ -121,6 +121,43 @@ def grasp_from_attach(request_id, scene_revision, box_position,
     return grasp_record(request_id, scene_revision, translation, quaternion)
 
 
+def pose_segment_message(name, target_position, target_quaternion,
+                         request_id, scene_revision, *,
+                         segment_type="pose_target", keep_tool_down=False,
+                         keep_camera_down=False, allow_ompl_fallback=True,
+                         cartesian_fraction=0.95):
+    """One world-frame target segment as MotionSegmentV2 (no waypoints)."""
+    return probe_segment_message(
+        {"waypoints": [list(target_position)],
+         "target_quaternion_xyzw": list(target_quaternion),
+         "type": segment_type, "keep_tool_down": keep_tool_down,
+         "keep_camera_down": keep_camera_down,
+         "allow_ompl_fallback": allow_ompl_fallback},
+        request_id, scene_revision, name=name,
+        cartesian_fraction=cartesian_fraction)
+
+
+def slot_spec_from_record(record, scene_config, box_wdh):
+    """v1 SlotSpec view of a slot record (container -> base_link, shared
+    scene helpers only). For legacy bookkeeping; the wire stays typed."""
+    from luggage_msgs.msg import SlotSpec
+    from luggage_description.scene_tf_config_utils import _local_point_to_base_link
+    base_xyz = _local_point_to_base_link(list(record["position"]),
+                                         scene_config)
+    yaw = 2.0 * math.atan2(record["quaternion_xyzw"][2],
+                           record["quaternion_xyzw"][3])
+    slot = SlotSpec()
+    slot.place_pose.position.x = float(base_xyz[0])
+    slot.place_pose.position.y = float(base_xyz[1])
+    slot.place_pose.position.z = float(base_xyz[2])
+    slot.place_pose.orientation.z = math.sin(0.5 * yaw)
+    slot.place_pose.orientation.w = math.cos(0.5 * yaw)
+    slot.width = float(box_wdh[0])
+    slot.height = float(box_wdh[2])
+    slot.depth = float(box_wdh[1])
+    return slot
+
+
 def container_transform_fields(scene_config):
     """(source, target, translation, quaternion_xyzw) from the scene config.
 
@@ -177,7 +214,8 @@ def probe_segment_message(record, request_id, scene_revision, *,
         name=name, segment_type=str(record.get("type") or "cartesian"),
         target_link=TARGET_LINK, policy_valid=True,
         keep_tool_down=bool(record.get("keep_tool_down", True)),
-        keep_camera_down=False, lock_wrist=False,
+        keep_camera_down=bool(record.get("keep_camera_down", False)),
+        lock_wrist=False,
         allow_ompl_fallback=bool(record.get("allow_ompl_fallback", True)),
         required_cartesian_fraction=float(cartesian_fraction),
         target_pose=pose(target, record["target_quaternion_xyzw"]),

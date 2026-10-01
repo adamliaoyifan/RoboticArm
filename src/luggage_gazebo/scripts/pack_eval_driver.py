@@ -94,6 +94,23 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._dumps = os.path.join(self._out, "dumps")
         os.makedirs(self._dumps, exist_ok=True)
         self._suite_t0 = time.time()
+        # Typed chain (F22): v2 surface + placed-record ledger.
+        self._frame_placed_records = []
+        self._pending_placed = None
+        self._surface_v2_msg = None
+        if getattr(self, "_typed", None) is not None:
+            from rclpy.qos import (DurabilityPolicy, QoSProfile,
+                                   ReliabilityPolicy)
+            from luggage_msgs.msg import SurfaceContractV2
+            transient = QoSProfile(
+                depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL)
+            self.create_subscription(
+                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+                self._on_surface_v2, transient, callback_group=self._group)
+
+    def _on_surface_v2(self, msg):
+        self._surface_v2_msg = msg
         self._last_rejected = None
         self._pending_slot = None
         self._pending_slot_meta = None
@@ -126,6 +143,8 @@ class PackEvalDriver(PlaceSmokeDriver):
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """ComputePlacement from DetectLuggage, not GetCurrentBox / catalog."""
         del spawn
+        if getattr(self, "_typed", None) is not None:
+            return self._frame_on_detected(pick_msg, trial)
         request = self._compute_request(pick_msg)
         placement = self._call(self._compute, request, timeout=30.0)
         if placement is None or not placement.success:
@@ -155,6 +174,82 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._pending_slot_meta = self._slot_meta(slot)
         self._pending_audit = audit
         self._pending_center_local = center_local
+        trial.extras["placement_from"] = "DetectLuggage"
+        trial.extras["placement_message"] = placement.message or ""
+        return ""
+
+    def _frame_on_detected(self, pick_msg, trial):
+        """Typed ComputePlacementV2 with the driver's placed-record ledger."""
+        import copy as _copy
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.frame_diagnostics import BoundaryContext
+        from luggage_description.ros_frame_bindings.poses import (
+            pose_from_message)
+        from luggage_gazebo.typed_driver_adapter import slot_spec_from_record
+        surface_msg = getattr(self, "_surface_v2_msg", None)
+        box_wdh = [float(pick_msg.width), float(pick_msg.depth),
+                   float(pick_msg.height)]
+        request_id = self._frame_request_id("pack")
+        geometry_hash = str(
+            (surface_msg.geometry_hash if surface_msg is not None else "")
+            or (self._surface_2d or {}).get("geometry_hash") or "")
+        map_revision = int(
+            surface_msg.map_revision if surface_msg is not None else
+            (self._surface_2d or {}).get("map_revision") or 0)
+        placed = [entry["record"] for entry in
+                  getattr(self, "_frame_placed_records", None) or []]
+        placed_flat = [entry["size_wdh"] for entry in
+                       getattr(self, "_frame_placed_records", None) or []]
+        placed_flat = [float(v) for entry in placed_flat for v in entry]
+        try:
+            placement = self._typed.compute_placement(
+                request_id=request_id, box_wdh=box_wdh,
+                height_measured=bool(pick_msg.height_valid),
+                scene_revision=self._frame_scene_revision,
+                placed=placed, placed_wdh_flat=placed_flat,
+                geometry_hash=geometry_hash,
+                expected_map_revision=map_revision)
+        except ContractError as error:
+            placement = None
+            trial.extras["placement"] = "%s: %s" % (error.code, error.field)
+        if placement is None or not placement.success:
+            reason = (placement.message if placement else "COMPUTE_TIMEOUT")
+            reason_code = (
+                str(getattr(placement, "reason_code", "") or "")
+                if placement else "COMPUTE_TIMEOUT")
+            last = dict(self._last_result or {})
+            self._last_rejected = {
+                "seq": trial.index,
+                "size_wdh": box_wdh,
+                "reason_code": reason_code,
+                "n_candidates_total": last.get("n_candidates_total", -1),
+                "n_feasible": last.get("n_feasible", 0),
+                "n_capacity_feasible": last.get("n_capacity_feasible", -1),
+                "reject_histogram": last.get("reject_histogram") or
+                self._parse_histogram(reason),
+            }
+            trial.extras["placement"] = reason
+            trial.extras["placement_from"] = "DetectLuggage"
+            return reason_code or "PLACEMENT_FAILED"
+        context = BoundaryContext(
+            "F07", "typed_driver_adapter", "pack_eval_driver", request_id,
+            self._frame_scene_revision, "container_link", "box_center",
+            "scene")
+        try:
+            record = pose_from_message(placement.slot, "slot", context)
+        except ContractError as error:
+            trial.extras["placement"] = error.code
+            return error.code
+        slot = slot_spec_from_record(record, self._scene_config, box_wdh)
+        self._frame_slot_record = record
+        audit, center_local = self._corridor_audit(slot)
+        self._pending_slot = slot
+        self._pending_slot_meta = self._slot_meta(slot)
+        self._pending_audit = audit
+        self._pending_center_local = center_local
+        self._pending_placed = {
+            "record": record, "size_wdh": box_wdh,
+            "map_revision": map_revision, "geometry_hash": geometry_hash}
         trial.extras["placement_from"] = "DetectLuggage"
         trial.extras["placement_message"] = placement.message or ""
         return ""
@@ -427,9 +522,33 @@ class PackEvalDriver(PlaceSmokeDriver):
             t_commit = time.time()
             cycle = t_commit - t_spawn
             if commit_ok:
-                add = self._call(
-                    self._add_map, self._add_request(self._slot_world_msg(slot)),
-                    timeout=15.0)
+                if getattr(self, "_typed", None) is not None:
+                    pending = getattr(self, "_pending_placed", None) or {}
+                    from luggage_description.frame_contracts import ContractError
+                    try:
+                        add = self._typed.add_placed_box(
+                            slot=pending["record"],
+                            size_wdh=pending["size_wdh"],
+                            measured_source="verify_placed_box",
+                            expected_map_revision=int(
+                                pending.get("map_revision") or 0),
+                            geometry_hash=str(
+                                pending.get("geometry_hash") or ""))
+                    except ContractError as error:
+                        add = None
+                        trial.extras["add_placed"] = "%s: %s" % (
+                            error.code, error.field)
+                    if add is not None:
+                        if not hasattr(self, "_frame_placed_records"):
+                            self._frame_placed_records = []
+                        self._frame_placed_records.append({
+                            "record": pending["record"],
+                            "size_wdh": list(pending["size_wdh"])})
+                else:
+                    add = self._call(
+                        self._add_map,
+                        self._add_request(self._slot_world_msg(slot)),
+                        timeout=15.0)
                 commit_ok = bool(add and add.success)
                 if commit_ok:
                     self._committed_ledger_boxes.append(

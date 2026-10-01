@@ -264,6 +264,21 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             position=Point(x=float(t_ws[0]), y=float(t_ws[1]), z=float(t_ws[2])),
             orientation=Quaternion(x=q_ws[0], y=q_ws[1], z=q_ws[2], w=q_ws[3]),
         )
+        if getattr(self, "_typed", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            from luggage_gazebo.typed_driver_adapter import pose_segment_message
+            try:
+                motion_segment = pose_segment_message(
+                    "cargo_view_aim", t_ws, q_ws,
+                    self._frame_request_id("aim"), self._frame_scene_revision,
+                    segment_type="pose_target", keep_tool_down=False,
+                    keep_camera_down=False, allow_ompl_fallback=True)
+                ok, message, _result = self._typed.plan_motion(
+                    motion_segment, self._args.plan_timeout,
+                    name="PlanMotionV2:cargo_view_aim")
+            except ContractError as error:
+                ok, message = False, "%s: %s" % (error.code, error.field)
+            return ok, message
         ok, message, _result = self.send_action(
             self._plan, PlanMotion.Goal(segment=segment),
             timeout=self._args.plan_timeout,
@@ -309,10 +324,27 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 position=Point(x=t.x, y=t.y, z=z),
                 orientation=Quaternion(x=r.x, y=r.y, z=r.z, w=r.w),
             )
-            ok, last_msg, _result = self.send_action(
-                self._plan, PlanMotion.Goal(segment=segment),
-                timeout=self._args.plan_timeout,
-                name="PlanMotion:cargo_view_lift_%d" % i)
+            if getattr(self, "_typed", None) is not None:
+                from luggage_description.frame_contracts import ContractError
+                from luggage_gazebo.typed_driver_adapter import (
+                    pose_segment_message)
+                try:
+                    motion_segment = pose_segment_message(
+                        "cargo_view_lift_%d" % i, (t.x, t.y, z),
+                        (r.x, r.y, r.z, r.w),
+                        self._frame_request_id("lift"), self._frame_scene_revision,
+                        segment_type="cartesian", keep_tool_down=True,
+                        keep_camera_down=True, allow_ompl_fallback=False)
+                    ok, last_msg, _result = self._typed.plan_motion(
+                        motion_segment, self._args.plan_timeout,
+                        name="PlanMotionV2:cargo_view_lift_%d" % i)
+                except ContractError as error:
+                    ok, last_msg = False, "%s: %s" % (error.code, error.field)
+            else:
+                ok, last_msg, _result = self.send_action(
+                    self._plan, PlanMotion.Goal(segment=segment),
+                    timeout=self._args.plan_timeout,
+                    name="PlanMotion:cargo_view_lift_%d" % i)
             if not ok:
                 after, _err = self.suction_xyz()
                 return (
