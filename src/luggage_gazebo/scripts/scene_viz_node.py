@@ -117,12 +117,22 @@ class SceneVizNode(Node):
             MarkerArray, "/luggage/debug/pickup_box_scene", _latch_qos())
         self._detect_pub = self.create_publisher(
             MarkerArray, "/luggage/debug/detected_box", _latch_qos())
+        # ST09 F23: admitted frame_dump/2 envelopes render through the
+        # shared world-marker payload (validated, never hand-converted).
+        self._dump_pub = self.create_publisher(
+            MarkerArray, "/luggage/debug/frame_dump", _latch_qos())
+        self.declare_parameter("frame_scene_revision", "")
+        self._dump_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
 
         self.create_subscription(
             String, "/luggage/current_box", self._on_current_box, _latch_qos())
         self.create_subscription(
             String, "/luggage/perception/detection/latest",
             self._on_detection, _latch_qos())
+        self.create_subscription(
+            String, "/luggage/frame_dump/viz", self._on_frame_dump,
+            _latch_qos())
         # GT wireframe source: the pull service (viz is an allowed GT
         # consumer); /luggage/current_box only carries identity + measured.
         self._gt_cli = self.create_client(
@@ -295,6 +305,56 @@ class SceneVizNode(Node):
         label.text = "GT %s" % (box.id or "box")
         array.markers.append(label)
         self._box_pub.publish(array)
+
+    def _on_frame_dump(self, msg):
+        """Render one admitted frame_dump/2 envelope as a world marker.
+
+        The payload goes through world_marker_payload (validate + shared
+        transform); with frame_scene_revision pinned the envelope must name
+        the same scene, otherwise the message is refused, not guessed.
+        """
+        from luggage_gazebo.frame_dump import world_marker_payload
+        from luggage_description.frame_contracts import ContractError
+        stamp = _stamp_now(self)
+        array = MarkerArray()
+        array.markers.append(_delete_all(self._world, stamp, "frame_dump"))
+        try:
+            dump = json.loads(msg.data)
+            revision = self._dump_scene_revision or str(
+                dump.get("scene_revision") or "")
+            payload = world_marker_payload(
+                dump, scene_revision=revision,
+                geometry_hash=str(dump.get("geometry_hash") or ""),
+                request_id=str(dump.get("request_id") or ""),
+                map_revision=int(dump.get("map_revision") or 0))
+        except (ValueError, TypeError, KeyError, ContractError) as error:
+            self.get_logger().warning(
+                "frame dump marker refused: %s" % error)
+            self._dump_pub.publish(array)
+            return
+        marker = Marker()
+        marker.header.frame_id = payload["frame_id"]
+        marker.header.stamp = stamp
+        marker.ns = "frame_dump"
+        marker.id = 1
+        marker.type = Marker.CUBE
+        marker.action = Marker.ADD
+        marker.pose.position.x = float(payload["position"][0])
+        marker.pose.position.y = float(payload["position"][1])
+        marker.pose.position.z = float(payload["position"][2])
+        marker.pose.orientation.x = float(payload["quaternion_xyzw"][0])
+        marker.pose.orientation.y = float(payload["quaternion_xyzw"][1])
+        marker.pose.orientation.z = float(payload["quaternion_xyzw"][2])
+        marker.pose.orientation.w = float(payload["quaternion_xyzw"][3])
+        marker.scale.x = max(1e-3, float(payload["scale_xyz"][0]))
+        marker.scale.y = max(1e-3, float(payload["scale_xyz"][1]))
+        marker.scale.z = max(1e-3, float(payload["scale_xyz"][2]))
+        # Measured and GT records never share a marker color.
+        measured = payload["record_kind"] == "measured"
+        marker.color = _rgba_bgr((60, 190, 240) if measured else (240, 90, 60))
+        marker.lifetime.sec = 0
+        array.markers.append(marker)
+        self._dump_pub.publish(array)
 
     def _on_detection(self, msg):
         stamp = _stamp_now(self)

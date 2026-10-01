@@ -576,4 +576,100 @@ class SceneIdentityTools(unittest.TestCase):
             json.dumps(payload)  # JSON-safe latched payload
 
 
+class DumpWiringTools(unittest.TestCase):
+    """ST09 g4 F23: GT envelopes, versioned layout metadata, named adapter."""
+
+    def setUp(self):
+        from luggage_description.scene_tf_config_utils import (
+            load_scene_tf_config, resolve_scene_tf_config_path)
+        self.cfg = load_scene_tf_config(resolve_scene_tf_config_path())
+        self.scene_path = resolve_scene_tf_config_path()
+
+    def test_gt_envelope_write_read_and_marker(self):
+        from luggage_description.runtime_identity import scene_revision_from_path
+        from luggage_gazebo.place_gt_dump import (
+            write_gt_dump, read_gt_dump)
+        from luggage_gazebo.frame_dump import world_marker_payload
+        revision = scene_revision_from_path(self.scene_path)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "gt_place_dump_v2.json"
+            dump = write_gt_dump(
+                str(path), self.cfg, scene_revision=revision,
+                request_id="gt-1", box_center_base=[0.1, -0.2, 0.66],
+                box_size_wdh=[0.55, 0.40, 0.26], box_yaw_base=0.2,
+                resolution=0.1)
+            self.assertEqual(dump["record_kind"], "gt_reference")
+            self.assertEqual(dump["pose_profile"], "slot")
+            again = read_gt_dump(
+                str(path), scene_revision=revision,
+                geometry_hash=dump["geometry_hash"], request_id="gt-1",
+                map_revision=dump["map_revision"])
+            marker = world_marker_payload(
+                again, scene_revision=revision,
+                geometry_hash=dump["geometry_hash"], request_id="gt-1",
+                map_revision=dump["map_revision"])
+            self.assertEqual(marker["record_kind"], "gt_reference")
+            self.assertEqual(marker["frame_id"], "world")
+            # Never overwrites: a second envelope at the same path refuses.
+            with self.assertRaises(FileExistsError):
+                write_gt_dump(
+                    str(path), self.cfg, scene_revision=revision,
+                    request_id="gt-1", box_center_base=[0.1, -0.2, 0.66],
+                    box_size_wdh=[0.55, 0.40, 0.26], box_yaw_base=0.2,
+                    resolution=0.1)
+
+    def test_gt_reader_rejects_measured_records(self):
+        from luggage_gazebo.frame_dump import write_dump
+        measured = dump_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "measured.json"
+            write_dump(str(path), measured, **EXPECTED)
+            from luggage_gazebo.place_gt_dump import read_gt_dump
+            with self.assertRaises(ContractError):
+                read_gt_dump(
+                    str(path), scene_revision=EXPECTED["scene_revision"],
+                    geometry_hash=EXPECTED["geometry_hash"],
+                    request_id=EXPECTED["request_id"],
+                    map_revision=EXPECTED["map_revision"])
+
+    def test_free_space_named_adapter_only(self):
+        from luggage_packing.free_space_model import (
+            FreeSpaceModel, admit_surface_floor_relative_v1)
+        record = {
+            "height": [[0.0, 0.30], [None, 0.10]],
+            "state": [["free", "occupied"], ["unknown", "occupied"]],
+            "confidence": [["sensor", "sensor"], ["unknown", "sensor"]],
+            "origin_xy_container": [-0.7, -0.9],
+            "resolution": 0.5,
+        }
+        identity = dict(scene_revision="scene", geometry_hash="hull",
+                        request_id="request", map_revision=3)
+        admitted = admit_surface_floor_relative_v1(
+            record, floor_z_container=0.53, ceiling_z_container=2.01,
+            **identity)
+        self.assertEqual(admitted["height_datum"], "container_origin")
+        self.assertEqual(admitted["surface_z_container"][1][0], None)
+        self.assertAlmostEqual(admitted["surface_z_container"][0][1], 0.83)
+        model = FreeSpaceModel([1.0, 1.0, 1.48], [0, 0, 1.27],
+                               resolution=0.5)
+        model.merge_admitted_surface(admitted)
+        # Conflicting datums reject before the model ever sees the record.
+        with self.assertRaises(ContractError):
+            admit_surface_floor_relative_v1(
+                dict(record, frame_id="world"), floor_z_container=0.53,
+                ceiling_z_container=2.01, **identity)
+        with self.assertRaises(ContractError):
+            admit_surface_floor_relative_v1(
+                dict(record, height_datum="container_origin"),
+                floor_z_container=0.53, ceiling_z_container=2.01, **identity)
+        # Unknown legacy schemas reject at the adapter itself.
+        from luggage_gazebo.frame_dump import adapt_legacy_surface
+        with self.assertRaises(ContractError):
+            adapt_legacy_surface(
+                record, source_format="surface_world_v0",
+                frame_id="container_link", height_datum="floor_relative",
+                floor_z_container=0.53, ceiling_z_container=2.01,
+                identity=identity)
+
+
 if __name__=="__main__": unittest.main()

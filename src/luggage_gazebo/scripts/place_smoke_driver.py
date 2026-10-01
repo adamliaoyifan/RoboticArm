@@ -229,6 +229,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._scene_config = load_scene_tf_config(
             resolve_scene_tf_config_path(
                 getattr(args, "scene_tf_config", None) or None))
+        self._scene_config_path = resolve_scene_tf_config_path(
+            getattr(args, "scene_tf_config", None) or None)
+        # F23: admitted GT envelopes render through scene_viz (latched).
+        self._dump_viz_pub = self.create_publisher(
+            String, "/luggage/frame_dump/viz",
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self._timeline = []
         self._place_state = "INIT"
         self._segments_log = []
@@ -709,6 +716,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         gt = build_place_gt(
             self._scene_config, center_base, size, yaw_base,
             box_center_world=center_world, box_rpy_world=rpy_world)
+        # F23: the same GT fact as one explicit frame_dump/2 envelope
+        # (record_kind gt_reference), written next to the legacy artifacts.
+        gt["dump_v2"] = self._build_gt_envelope(center_base, size, yaw_base)
         surface = gt["surface_map"]
         trial.extras["place_debug"] = {
             "color_err": color_err,
@@ -732,6 +742,30 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "cloud_rgb": gt["cloud_rgb"],
             "occupancy_meta": gt["surface_map"],
         }
+
+    def _build_gt_envelope(self, center_base, size, yaw_base):
+        """GT dump envelope for this trial, or None with the refusal logged.
+
+        The scene revision is the measured scene-file digest, so the
+        envelope is self-consistent in v1 and frame-runtime modes alike.
+        """
+        from luggage_description.runtime_identity import scene_revision_from_path
+        from luggage_gazebo.place_gt_dump import gt_place_dump
+        self._gt_request_seq = getattr(self, "_gt_request_seq", 0) + 1
+        request_id = "gt-place-%d" % self._gt_request_seq
+        try:
+            return gt_place_dump(
+                self._scene_config,
+                scene_revision=scene_revision_from_path(
+                    self._scene_config_path),
+                request_id=request_id,
+                box_center_base=center_base, box_size_wdh=size,
+                box_yaw_base=yaw_base)
+        except Exception as exc:  # noqa: BLE001 - GT envelope is additive
+            self.get_logger().warning(
+                "gt dump envelope refused (%s); legacy GT artifacts only"
+                % exc)
+            return None
 
     def _scene_box_record(self):
         """Collision box the pick planner had to avoid, as it was added."""
@@ -844,6 +878,28 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 debug["cloud_xyz"], debug.get("cloud_rgb"))
             trial.extras.setdefault("place_debug", {})["gt_ply_points"] = n
             trial.extras.setdefault("place_debug", {})["gt_ply"] = "gt_interior_box.ply"
+            dump_v2 = debug.get("dump_v2")
+            if dump_v2 is not None:
+                from luggage_gazebo.frame_dump import write_dump
+                try:
+                    write_dump(os.path.join(dest, "gt_place_dump_v2.json"),
+                               dump_v2,
+                               scene_revision=dump_v2["scene_revision"],
+                               geometry_hash=dump_v2["geometry_hash"],
+                               request_id=dump_v2["request_id"],
+                               map_revision=dump_v2["map_revision"])
+                    trial.extras.setdefault(
+                        "place_debug", {})["gt_dump_v2"] = "gt_place_dump_v2.json"
+                    viz = String()
+                    viz.data = json.dumps(dump_v2, sort_keys=True,
+                                          allow_nan=False)
+                    self._dump_viz_pub.publish(viz)
+                except FileExistsError:
+                    self.get_logger().warning(
+                        "gt dump v2 already present in %s; not overwritten"
+                        % dest)
+                except OSError as exc:
+                    self.get_logger().warning("gt dump v2 write failed: %s" % exc)
             with open(os.path.join(dest, "trial.json"), "w", encoding="utf-8") as handle:
                 json.dump(trial_to_dict(trial), handle, indent=2, sort_keys=True, default=str)
                 handle.write("\n")
