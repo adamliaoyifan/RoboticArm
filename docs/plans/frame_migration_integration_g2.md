@@ -2,8 +2,12 @@
 
 Parent: `FRAME-MIGRATION-20260929`. Obligations unchanged from
 `docs/plans/frame_migration_stages.md` (§ INTEGRATION); this document makes
-them decision-complete for dispatch. Binding authority for this generation is
-the dispatch row's `plan_revision` pointing at the commit containing this file.
+them decision-complete for dispatch against the ST09 generation-5 candidate.
+Revision 2 (2026-10-01 late): rewritten to match the g5 runtime strategy that
+emerged from rehearsals 32-50 — release-settle with dynamic respawn,
+seeded-hop replanning inside Cartesian legs, the open-loop FJT refusal rule,
+and the cargo-view set that fixes VIEW_EMPTY. Supersedes the revision-1
+draft (`c52bfff`) as the binding text once reviews binds this commit.
 
 - owner: `eng / claude / glm-5.3` (user directive 2026-10-01; supersedes the
   generation-1 projection of `eng / codex / gpt-6` on the same subtask)
@@ -22,13 +26,35 @@ All frozen values come from the ST09 generation-5 P5/P6 release evidence
 1. Handoff manifest: scene, runner, extractors, resolved profile, model,
    atlas, URDF, SRDF, message definitions, replay commands, drift/release
    sample intervals, with content hashes. Hash mismatch invalidates the run.
-2. Expected cycle events for the two-box sequence and the numerical
-   measured-placement thresholds applied by the live extractor.
-3. Capture-health observations: pre/post ring-buffer windows, capture
-   overhead bound, required sensor topics.
+2. Expected cycle-event table for the two-box sequence in **three
+   categories** (the extractor enforces them differently):
+   - **required**: per box — observation, slot, selected_path, probe,
+     execution, attach, release, `release_settle` (settled, dynamic respawn),
+     measured_verification (XY/Z within frozen thresholds), place retreat,
+     place_exit, return, `return_complete`; plus per-view integrate events.
+   - **conditionally allowed**: seeded-hop replans and OMPL fallbacks inside
+     any Cartesian leg (present only when the excursion/wrist gate trips);
+     their presence must carry the gate reason string, their absence must
+     not fail an otherwise healthy leg.
+   - **forbidden**: `VIEW_EMPTY`, `EXIT_FAILED_*`, `PLACE_VERIFY_*`,
+     `PLACE_PATH_EXCURSION` that terminates a leg, `outside_hull`,
+     unexcused MoveIt error codes.
+3. Cargo-view set: the frozen observation poses used for measured
+   integration (whatever g5 froze — lift, portal aim, or a multi-view set).
+   Each frozen view pose MUST ship with: an IK-prevalidated solution at the
+   frozen configuration (no `NO_IK_SOLUTION`/`-31` at freeze time), a
+   rendered visibility pre-check showing nonzero YOLO/mask cargo points
+   from that pose, and the expected `n_sensor_occupied`/coverage thresholds
+   the live extractor applies.
+4. Map-revision chain: the initial `map_revision`, the required increment
+   after box-1 integration, and the minimum revision box-2 planning must
+   consume.
+5. Capture-health observations: pre/post ring-buffer windows, capture
+   overhead bound, required sensor topics, depth-buffer liveness (nonempty
+   at every integration view).
 
-I0 fails closed if any of these is missing, unfrozen, or stale relative to
-`<CANDIDATE>`.
+I0 fails closed if any of these is missing, unfrozen, stale relative to
+`<CANDIDATE>`, or shipped without its pre-validation artifact.
 
 ## Gates
 
@@ -49,7 +75,9 @@ AND over all gates; per-case correctness is 100% with no retry-to-green.
   `cd /tmp/elfin-integration-g2 && source /opt/ros/humble/setup.bash && colcon build`
   (default `--install-base install`), exit 0.
 - Freeze validation: recompute every manifest hash against the worktree
-  files; all match; expected-events and thresholds sections non-empty.
+  files; all match; the event table carries all three categories; every
+  frozen view pose carries its IK and visibility pre-validation artifacts;
+  revision-chain fields present.
 - Artifacts: `INTEGRATION-g2-i0/` with build log, `git rev-parse HEAD`,
   dirty-file count (must be 0), manifest hash table.
 
@@ -66,8 +94,10 @@ python3 -m pytest src/luggage_planning/test src/luggage_gazebo/test -q
 - Analytic thresholds per the common matrix: position/vector error ≤ 1e-9 m
   pure Python, ≤ 1e-6 m through ROS serialization; identity strings, stamps
   and revision IDs exact.
-- Migration checker: exit 0, pending list empty, every proof hash matching
-  the committed source.
+- Migration checker: exit 0, pending list empty (this closes the standing
+  `F23` pending and the two `test_frame_contracts` failures recorded at
+  rehearsals 39-41 — those are g5 P6 obligations and must already be green
+  on `<CANDIDATE>`; INTEGRATION re-verifies rather than inherits them).
 - Standing packing exemption applies only if the suite fails on the ST09
   generation-4 base `2ea7516` and on `<CANDIDATE>` with the identical node
   and `ATLAS_IDENTITY_UNVERIFIED: urdf hash missing` reason, unsuppressed.
@@ -97,16 +127,26 @@ scripts/motion_occ_place_path_run.sh \
 
 Acceptance, in order:
 
-1. Every expected cycle event from the frozen manifest is observed exactly
-   once per box, in sequence (carryon then standard).
-2. The live extractor applies the frozen measured-placement thresholds and
-   both boxes verify within them (this closes the class ST09 g5 was chasing:
-   place verification against slot rest, not TCP-vs-plan).
-3. Serialized frame/pose identities stay consistent at every stage boundary
+1. **Box 1 (carryon)**: every required event observed exactly once in
+   sequence; `release_settle` reports settled with drift within the frozen
+   bound; measured verification passes the frozen XY/Z thresholds; the arm
+   completes place_exit and returns to the observe pose (`return_complete`);
+   the open-loop FJT refusal rule holds (no bare named-pose FJT dispatched
+   while the cup is inside the opening).
+2. **Measured integration (box 1)**: every frozen cargo view executes with
+   a live depth buffer and nonzero YOLO/mask cargo points; aggregate
+   integration yields at least the frozen minimum `n_sensor_occupied`;
+   `map_revision` increments to the frozen box-1 value. `VIEW_EMPTY` in any
+   frozen view is a failure, not a skip.
+3. **Box 2 (standard)**: placement planning consumes `map_revision` ≥ the
+   box-1 resulting revision (recorded in the dump, not asserted from the
+   row); the full box-1 event set repeats; final map revision matches the
+   frozen chain.
+4. Serialized frame/pose identities stay consistent at every stage boundary
    within ROS tolerance.
-4. Bag and capture-health observations match the frozen windows; per-run
+5. Bag and capture-health observations match the frozen windows; per-run
    evidence ≤ 1 GiB, total retained frame-migration evidence ≤ 4 GiB.
-5. Teardown: stop only this stack with `scripts/stop_sim.sh` after evidence
+6. Teardown: stop only this stack with `scripts/stop_sim.sh` after evidence
    is durable.
 
 One deterministic run of the case set; no repetition unless a failure is
@@ -122,7 +162,9 @@ before place, each once:
 - The named `ContractError` code surfaces at the boundary that the freeze
   manifest assigns it to.
 - Zero new motion, vacuum or commit effects: spy/counter evidence must show
-  zero side-effect counts after rejection.
+  zero side-effect counts after rejection. The post-fault arm state must
+  remain recoverable (the egress/return machinery is part of the recovery
+  path and must not wedge).
 - While carrying, the existing vacuum/recovery policy is preserved (no
   silent drop, no forced retry).
 
@@ -134,7 +176,8 @@ the two expected error codes.
 Replay the I3 bag through the frozen replay command from the manifest
 (three paired passes maximum). Median throughput degradation ≤ 10% versus
 the captured live window; frame/pose identity replay matches the frozen
-extractor expectations.
+extractor expectations, including the view integrations (replayed clouds
+must reproduce the same sensor-occupied cell counts within tolerance).
 
 ### I6 -- final proofs and both checkers against final sources
 
@@ -165,11 +208,15 @@ Per `.cursor/rules/debug-evidence.mdc` and the master plan's dump matrix
 (simulation-cycle row): the selected failed case plus its upstream/downstream
 boundaries is the dump unit. Manifest identifies case, stage, first observed
 failure, revision/dirty state, config/seed, artifact files, capture window,
-missing artifacts, replayability. No teardown before the bundle is durable;
-no blind rerun; if required intermediate capture is unavailable, record the
-run as incomplete and add instrumentation before spending another run. A
-failure reproduced identically on `2ea7516` and `<CANDIDATE>` is documented
-as pre-existing, not fixed in place.
+missing artifacts, replayability. For stage-boundary mysteries the view
+frames are part of the required capture: every integration view saves its
+color/depth frame and YOLO/mask counts at failure time (the VIEW_EMPTY
+diagnosis on 2026-10-01 required exactly this tier; do not regress it). No
+teardown before the bundle is durable; no blind rerun; if required
+intermediate capture is unavailable, record the run as incomplete and add
+instrumentation before spending another run. A failure reproduced identically
+on `2ea7516` and `<CANDIDATE>` is documented as pre-existing, not fixed in
+place.
 
 ## Coordination
 
