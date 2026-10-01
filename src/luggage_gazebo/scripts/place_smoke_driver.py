@@ -589,11 +589,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if cartesian_ok is False:
                 return False, "PLACE_FRACTION_%s" % segment.name, rec
             return False, "PLACE_PLAN_%s" % segment.name, rec
-        goal = PlanMotion.Goal()
-        goal.segment = segment
-        ok, message, result = self.send_action(
-            self._plan, goal, timeout=self._args.plan_timeout,
-            name="PlanMotion:%s" % segment.name)
+        if self._typed is not None:
+            # Typed chain: execute the v2 segment paired by build order.
+            segments_v2 = getattr(self, "_frame_motion_segments", None) or []
+            index = getattr(self, "_frame_motion_index", 0)
+            motion_segment = None
+            if index < len(segments_v2):
+                candidate = segments_v2[index]
+                if str(candidate.name) == name:
+                    motion_segment = candidate
+                    self._frame_motion_index = index + 1
+            if motion_segment is None:
+                return False, "TYPED_SEGMENT_MISMATCH:%s" % name, None
+            ok, message, result = self._typed.plan_motion(
+                motion_segment, self._args.plan_timeout,
+                name="PlanMotionV2:%s" % name)
+        else:
+            goal = PlanMotion.Goal()
+            goal.segment = segment
+            ok, message, result = self.send_action(
+                self._plan, goal, timeout=self._args.plan_timeout,
+                name="PlanMotion:%s" % segment.name)
         after = self._sample_tf_box("after_%s" % segment.name)
         fraction = float(getattr(result, "fraction", 0.0) or 0.0) if result else 0.0
         used_fb = bool(getattr(result, "used_ompl_fallback", False)) if result else False
@@ -985,17 +1001,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 base_xyz, self._scene_config, margin=0.0):
             return self._abort(trial, "PLACE_SLOT_INVALID", True, extra=extras)
 
-        req = BuildMotionSequence.Request()
-        req.phase = "place"
-        req.pick = pick_msg
-        req.place_slot = slot
-        built = self.call_srv(self._build, req, timeout=15.0)
+        if self._typed is not None:
+            built, typed_error = self._typed_build_place(pick_msg)
+            if built is None:
+                trial.extras["build"] = typed_error
+                return self._abort(trial, "PLACE_BUILD_FAILED", True,
+                                   extra=extras)
+        else:
+            req = BuildMotionSequence.Request()
+            req.phase = "place"
+            req.pick = pick_msg
+            req.place_slot = slot
+            built = self.call_srv(self._build, req, timeout=15.0)
         if built is None or not built.success:
             trial.extras["build"] = built.message if built else "timeout"
             return self._abort(trial, "PLACE_BUILD_FAILED", True, extra=extras)
         trial.staging_degenerate = "staging_degenerate" in (built.message or "")
         trial.extras["build"] = built.message
         segments = list(built.segments)
+        self._frame_motion_segments = list(
+            getattr(built, "motion_segments", ()) or ())
+        self._frame_motion_index = 0
         trial.segments_planned = len(segments)
         self._set_state("SEQUENCE_BUILT", note=built.message)
 
@@ -1318,21 +1344,43 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if not scene_ok:
                 trial.fail_code = "SCENE_ADD_FAILED"
                 return None
-        req = BuildMotionSequence.Request()
-        req.phase = "pick"
-        req.pick = pick_msg
-        built = self.call_srv(self._build, req, timeout=15.0)
+        if self._typed is not None:
+            self._frame_pick_msg = pick_msg
+            from luggage_description.frame_contracts import ContractError
+            try:
+                built = self._typed.build_pick(
+                    request_id=self._frame_request_id("pick"),
+                    scene_revision=self._frame_scene_revision,
+                    pick_message=pick_msg)
+            except ContractError as error:
+                built = None
+                trial.extras["build_pick"] = "%s: %s" % (error.code, error.field)
+        else:
+            req = BuildMotionSequence.Request()
+            req.phase = "pick"
+            req.pick = pick_msg
+            built = self.call_srv(self._build, req, timeout=15.0)
         if built is None or not built.success:
             trial.fail_code = "BUILD_FAILED"
             trial.extras["build_pick"] = built.message if built else "timeout"
             return None
         segments = list(built.segments)
-        for segment in segments:
-            goal = PlanMotion.Goal()
-            goal.segment = segment
-            ok, message, _res = self.send_action(
-                self._plan, goal, timeout=self._args.plan_timeout,
-                name="PlanMotion:%s" % segment.name)
+        motion_segments = list(getattr(built, "motion_segments", ()) or ())
+        self._frame_motion_segments = motion_segments
+        self._frame_motion_index = 0
+        for segment_index, segment in enumerate(segments):
+            if (self._typed is not None
+                    and segment_index < len(motion_segments)):
+                ok, message, _res = self._typed.plan_motion(
+                    motion_segments[segment_index],
+                    self._args.plan_timeout,
+                    name="PlanMotionV2:%s" % segment.name)
+            else:
+                goal = PlanMotion.Goal()
+                goal.segment = segment
+                ok, message, _res = self.send_action(
+                    self._plan, goal, timeout=self._args.plan_timeout,
+                    name="PlanMotion:%s" % segment.name)
             if not ok:
                 trial.fail_code = "PLAN_%s" % segment.name
                 trial.extras["plan_%s" % segment.name] = message
@@ -1340,12 +1388,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     segments, segment, message)
                 return None
             if segment.name == "attach" and self._args.use_vacuum:
-                vac_ok, vac_msg = self.vacuum_command(True)
+                vac_ok, vac_msg = self.vacuum_command(True, pick_msg=pick_msg)
                 trial.vac_attach = vac_ok
                 trial.extras["vac_attach"] = vac_msg
                 if not vac_ok:
                     trial.fail_code = "VACUUM_ATTACH"
                     return None
+                if self._typed is not None:
+                    self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:
             state = dict(self._vacuum_state or {})
             if not (state.get("attached") and not state.get("fail_reason")):

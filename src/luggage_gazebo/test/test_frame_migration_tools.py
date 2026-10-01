@@ -423,4 +423,103 @@ class RuntimeGraphIdentity(unittest.TestCase):
         self.assertEqual(effects, 1)
 
 
+class TypedDriverAdapterTools(unittest.TestCase):
+    """ST09 g4 F22: driver-side typed records are exact, not hand-converted."""
+
+    def test_records_match_profiles(self):
+        from luggage_description.frame_contracts import validate_pose
+        from luggage_gazebo.typed_driver_adapter import (
+            grasp_record, slot_record, tcp_record)
+        slot = slot_record("request", "scene", (0.2, -0.1, 0.7), 0.25)
+        validate_pose(slot, "slot", "scene")
+        tcp = tcp_record("request", "scene", (0.0, 0.0, 1.2), (1.0, 0, 0, 0))
+        validate_pose(tcp, "map_tcp", "scene")
+        grasp = grasp_record("request", "scene", (0, 0, 0.16), (1.0, 0, 0, 0))
+        self.assertEqual(grasp["reference"], "suction_contact_frame")
+        self.assertEqual(grasp["orientation_semantics"], "box")
+
+    def test_grasp_forward_roundtrip(self):
+        import numpy as np
+        from scipy.spatial.transform import Rotation
+        from luggage_gazebo.typed_driver_adapter import grasp_from_attach
+        box_position = [1.2, -0.4, 0.9]
+        box_quaternion = Rotation.from_euler("xyz", [0.0, 0.0, 0.7]).as_quat()
+        tool_position = [1.31, -0.35, 1.06]
+        tool_quaternion = Rotation.from_euler("xyz", [3.1415, 0.0, 0.7]).as_quat()
+        grasp = grasp_from_attach("request", "scene", box_position,
+                                  box_quaternion, tool_position,
+                                  tool_quaternion)
+        box = Rotation.from_quat(box_quaternion)
+        recovered = box.apply(np.array(grasp["position"], dtype=float)) \
+            + np.array(box_position, dtype=float)
+        self.assertTrue(np.allclose(recovered, tool_position, atol=1e-12))
+        recovered_q = (box * Rotation.from_quat(
+            grasp["quaternion_xyzw"])).as_quat()
+        self.assertTrue(min(np.abs(recovered_q - np.array(tool_quaternion)).max(),
+                            np.abs(recovered_q + np.array(tool_quaternion)).max())
+                        < 1e-12)
+
+    def test_container_transform_matches_scene_origin(self):
+        import yaml
+        from luggage_gazebo.typed_driver_adapter import (
+            container_transform_fields)
+        from luggage_description.scene_tf_config_utils import origin_in_world
+        scene = {
+            "world_frame": "world",
+            "robot": {"base_frame": "elfin_base_link"},
+            "container": {"inner": {"length": 1.49, "width": 1.97,
+                                      "floor_z": 0.53, "ceiling_z": 2.01}},
+            "static_transforms": [{
+                "parent": "world", "child": "container_link",
+                "translation": [1.5, -0.4, 0.2],
+                "rotation_rpy": [0.0, 0.0, 0.9]}],
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "scene_tf.yaml"
+            path.write_text(yaml.safe_dump(scene))
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[2]
+                                   / "luggage_description"))
+            from luggage_description.scene_tf_config_utils import (
+                load_scene_tf_config)
+            config = load_scene_tf_config(str(path))
+        source, target, translation, quaternion = container_transform_fields(
+            config)
+        origin, rpy = origin_in_world(config)
+        self.assertEqual((source, target), ("container_link", "world"))
+        self.assertTrue(all(abs(a - b) < 1e-12
+                            for a, b in zip(translation, origin)))
+        norm = sum(v * v for v in quaternion) ** 0.5
+        self.assertLess(abs(norm - 1.0), 1e-12)
+        yaw = 2.0 * math.atan2(quaternion[2], quaternion[3])
+        self.assertLess(abs(yaw - rpy[2]), 1e-9)
+
+    def test_detection_record_agrees_with_measured_box(self):
+        try:
+            from luggage_msgs.msg import DetectedLuggage
+        except ImportError:
+            self.skipTest("generated messages unavailable")
+        from luggage_gazebo.typed_driver_adapter import (
+            detection_record_from_box)
+        from luggage_planning.attachment_frame_adapters import measured_dict
+        from luggage_planning.attachment_frame_contracts import (
+            require_measured_pose_agreement)
+        from luggage_description.frame_contracts import validate_pose
+        box = DetectedLuggage()
+        box.id = "box-7"
+        box.header.frame_id = "world"
+        box.header.stamp.sec = 1790000000
+        box.header.stamp.nanosec = 42
+        box.pose.position.x, box.pose.position.y, box.pose.position.z = (
+            0.3, -0.7, 0.86)
+        box.pose.orientation.z = math.sin(math.pi / 8.0)
+        box.pose.orientation.w = math.cos(math.pi / 8.0)
+        box.width, box.depth, box.height = 0.5, 0.35, 0.6
+        box.height_valid = True
+        box.height_source = 1
+        record = detection_record_from_box(box, "pick-1", "scene")
+        validate_pose(record, "detection", "scene")
+        require_measured_pose_agreement(record, measured_dict(box, box.id))
+
+
 if __name__=="__main__": unittest.main()

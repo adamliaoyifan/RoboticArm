@@ -170,6 +170,211 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         self.create_subscription(
             String, "/motion_planner/last_boundary", self._on_boundary,
             boundary_qos, callback_group=self._group)
+        # Typed chain (F22): the v2 surface contract rides verbatim from the
+        # mapper into SelectPlacePathV2; hand map/world conversions end here.
+        self._surface_v2_msg = None
+        if getattr(self, "_typed", None) is not None:
+            from luggage_msgs.msg import SurfaceContractV2 as _SurfaceV2
+            transient = QoSProfile(
+                depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                durability=DurabilityPolicy.TRANSIENT_LOCAL)
+            self.create_subscription(
+                _SurfaceV2, "/luggage/cargo_map/surface_v2",
+                self._on_surface_v2, transient, callback_group=self._group)
+
+    def _on_surface_v2(self, msg):
+        self._surface_v2_msg = msg
+
+    def _frame_probe_winner(self, response, request_id, stats):
+        """Fail-closed probe of the selected carry path (probe-on requires
+        success; unavailable or failed probes reject the placement)."""
+        waypoints = [
+            [float(pose.pose.position.x), float(pose.pose.position.y),
+             float(pose.pose.position.z)]
+            for pose in response.waypoint_poses]
+        if not waypoints:
+            return False, "PLACE_PROBE_EMPTY_PATH"
+        quaternion = [
+            float(response.waypoint_poses[-1].pose.orientation.x),
+            float(response.waypoint_poses[-1].pose.orientation.y),
+            float(response.waypoint_poses[-1].pose.orientation.z),
+            float(response.waypoint_poses[-1].pose.orientation.w)]
+        from luggage_description.frame_contracts import ContractError
+        from luggage_gazebo.typed_driver_adapter import probe_segment_message
+        try:
+            message = probe_segment_message(
+                {"waypoints": waypoints, "target_quaternion_xyzw": quaternion,
+                 "type": "cartesian", "keep_tool_down": True,
+                 "allow_ompl_fallback": True},
+                request_id, self._frame_scene_revision)
+            probe_response = self._typed.probe_segment(message)
+        except ContractError as error:
+            return False, error.code
+        stats["probed"] += 1
+        stats["sec"] += 0.0
+        if probe_response is None:
+            stats["unavailable"] += 1
+            return False, "PLACE_PROBE_UNAVAILABLE"
+        if not bool(probe_response.ik_ok):
+            stats["ik_reject"] += 1
+            return False, "PLACE_PROBE_IK_REJECT"
+        min_fraction = float(self._planner.cartesian_min_fraction)
+        if float(probe_response.fraction) < min_fraction:
+            stats["fraction_reject"] += 1
+            return False, "PLACE_PROBE_FRACTION_REJECT"
+        return True, ""
+
+    def _frame_place_slot(self, pick_msg, trial):
+        """Typed v2 chain: ComputePlacementV2 -> SelectPlacePathV2 -> probe.
+
+        The whole sweep runs on the production services; this driver only
+        correlates request ids and refuses fail-open paths. Ground truth
+        stays the separate oracle it always was.
+        """
+        import time as _time
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.frame_diagnostics import BoundaryContext
+        from luggage_description.ros_frame_bindings.poses import (
+            pose_from_message)
+        from luggage_msgs.msg import SlotSpec
+        from luggage_msgs.srv import GetCargoMapStats
+        from luggage_gazebo.typed_driver_adapter import (
+            container_transform_fields, tcp_record)
+
+        if not bool(getattr(pick_msg, "height_valid", False)):
+            trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
+            return None, None
+        surface_msg = self._surface_v2_msg
+        if surface_msg is None:
+            trial.fail_code = trial.fail_code or "SURFACE_V2_MISSING"
+            return None, None
+        stats = self.call_srv(self._stats, GetCargoMapStats.Request(),
+                              timeout=5.0)
+        geometry_hash = str(
+            (stats.geometry_hash if stats else "")
+            or str(surface_msg.geometry_hash or "") or "")
+        box_wdh = [float(pick_msg.width), float(pick_msg.depth),
+                   float(pick_msg.height)]
+        request_id = self._frame_request_id("place")
+        try:
+            placement = self._typed.compute_placement(
+                request_id=request_id, box_wdh=box_wdh,
+                height_measured=True,
+                scene_revision=self._frame_scene_revision,
+                geometry_hash=geometry_hash,
+                expected_map_revision=int(surface_msg.map_revision),
+                max_candidates=5)
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            trial.extras["compute_placement"] = "%s: %s" % (
+                error.code, error.field)
+            return None, None
+        if placement is None or not placement.success:
+            trial.fail_code = trial.fail_code or (
+                getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
+            trial.extras["compute_placement"] = (
+                placement.message if placement else "timeout")
+            return None, None
+        trial.extras["compute_placement"] = placement.message
+        slot_messages = list(placement.candidates) or [placement.slot]
+        scores = list(placement.candidate_scores) or [0.0]
+
+        portal = self._portal_map()
+        start_tcp = tcp_record(request_id, self._frame_scene_revision,
+                               portal, (1.0, 0.0, 0.0, 0.0))
+        grasp = getattr(self, "_frame_grasp", None)
+        if grasp is None:
+            trial.fail_code = trial.fail_code or "TYPED_PLACE_CONTEXT_MISSING"
+            return None, None
+        probe_stats = {"mode": "on", "probed": 0, "ik_reject": 0,
+                       "fraction_reject": 0, "unavailable": 0, "sec": 0.0}
+        try:
+            selection = self._typed.select_place_path(
+                request_id=request_id, box_wdh=box_wdh,
+                slots=slot_messages, slot_scores=scores,
+                surface_message=surface_msg,
+                inner_size=list(self._inner_size),
+                geometry_hash=geometry_hash,
+                map_revision=int(surface_msg.map_revision),
+                start_tcp=start_tcp,
+                start_joints=(_joint_positions(
+                    getattr(self, "_last_joint_state", None)) or []),
+                grasp=grasp,
+                container_transform=container_transform_fields(
+                    self._scene_config))
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            trial.extras["selector_error"] = "%s: %s" % (
+                error.code, error.field)
+            return None, None
+        if selection is None or not selection.success:
+            trial.fail_code = trial.fail_code or (
+                getattr(selection, "reason_code", None)
+                or PLACE_PATH_INFEASIBLE)
+            trial.extras["selector_error"] = (
+                selection.reason_code if selection else "timeout")
+            return None, None
+        if getattr(self._args, "place_probe", "on") == "on":
+            t0 = _time.time()
+            probe_ok, probe_reason = self._frame_probe_winner(
+                selection, request_id, probe_stats)
+            probe_stats["sec"] = round(_time.time() - t0, 3)
+            if not probe_ok:
+                trial.fail_code = trial.fail_code or probe_reason
+                trial.extras["selector"] = {
+                    "reason": probe_reason, "n_slots": len(slot_messages),
+                    "n_rows": 0, "winner_method": None,
+                    "winner_slot": None, "probe": probe_stats}
+                self._dump_selector(trial, [], [], None, probe_reason,
+                                    {}, probe=probe_stats)
+                return None, None
+
+        winner_index = int(selection.slot_index)
+        chosen = slot_messages[winner_index]
+        context = BoundaryContext(
+            "F13", "typed_driver_adapter", "motion_occ_driver", request_id,
+            self._frame_scene_revision, "container_link", "box_center",
+            "scene")
+        try:
+            self._frame_slot_record = pose_from_message(
+                chosen, "slot", context)
+        except ContractError as error:
+            trial.fail_code = trial.fail_code or error.code
+            return None, None
+        self._selected_path = {
+            "method": str(selection.path_source),
+            "selection_id": str(selection.selection_id),
+            "slot_index": winner_index,
+            "waypoints": [
+                [float(pose.pose.position.x), float(pose.pose.position.y),
+                 float(pose.pose.position.z)]
+                for pose in selection.waypoint_poses],
+        }
+        trial.extras["path_source"] = str(selection.path_source)
+        trial.extras["selection_id"] = str(selection.selection_id)
+        trial.extras["selector"] = {
+            "reason": "", "n_slots": len(slot_messages), "n_rows": 0,
+            "winner_method": str(selection.path_source),
+            "winner_slot": winner_index, "probe": probe_stats}
+        # v1 view for the shared trial bookkeeping: container -> base_link
+        # through the shared scene helpers, never hand-rolled.
+        from luggage_description.scene_tf_config_utils import (
+            _local_point_to_base_link)
+        record = self._frame_slot_record
+        base_xyz = _local_point_to_base_link(
+            list(record["position"]), self._scene_config)
+        yaw_container = 2.0 * math.atan2(record["quaternion_xyzw"][2],
+                                          record["quaternion_xyzw"][3])
+        slot = SlotSpec()
+        slot.place_pose.position.x = float(base_xyz[0])
+        slot.place_pose.position.y = float(base_xyz[1])
+        slot.place_pose.position.z = float(base_xyz[2])
+        slot.place_pose.orientation.z = math.sin(0.5 * yaw_container)
+        slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
+        slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
+        self._dump_selector(trial, [], [], self._selected_path,
+                            "", {}, probe=probe_stats)
+        return slot, self._slot_meta(slot)
 
     def _on_boundary(self, msg):
         try:
@@ -338,6 +543,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
         del box_msg
+        if getattr(self, "_typed", None) is not None:
+            return self._frame_place_slot(pick_msg, trial)
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
@@ -519,6 +726,9 @@ def parse_args(argv=None):
     # every other driver reusing it) never sees unknown options.
     local = argparse.ArgumentParser(add_help=False)
     local.add_argument("--place-probe", choices=("on", "off"), default="on")
+    local.add_argument("--frame-runtime", action="store_true",
+                       help="Adopt the v2 runtime chain from the stack graph")
+    local.add_argument("--frame-peer", default="motion_occ_driver")
     local_ns, remaining = local.parse_known_args(argv)
     # MOTION-OCC is an n=2 eval; default it here once. (The old
     # n==3 post-normalization never fired: main() had already appended
@@ -527,6 +737,8 @@ def parse_args(argv=None):
         remaining.extend(["--n", "2"])
     args = parse_integrate_args(remaining)
     args.place_probe = local_ns.place_probe
+    args.frame_runtime = local_ns.frame_runtime
+    args.frame_peer = local_ns.frame_peer
     return args
 
 

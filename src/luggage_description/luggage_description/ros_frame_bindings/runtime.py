@@ -246,6 +246,12 @@ class NodeRuntime:
             self.gate.require_ready(self._providers())
         self._count("LEGACY_EFFECT_AUTHORIZED")
 
+    def require_graph_ready(self):
+        """Client-side enforcement: a driver requests only against a live graph."""
+        with self._lock:
+            self.gate.require_ready(self._providers())
+        self._count("GRAPH_READY_CHECK")
+
     def _write_transitions(self, transitions):
         if not self.transitions_path or not transitions:
             return

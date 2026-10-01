@@ -1,0 +1,478 @@
+"""Shared typed-v2 client adapter for eval and hardware drivers (ST09 F22).
+
+Every driver calls the production v2 endpoints through this one adapter:
+typed request records, request-id correlation, the real service path, and
+graph readiness required before each call. Ground truth stays a separate
+oracle — nothing here reads physics state. The identity is ADOPTED from a
+healthy stack heartbeat, never declared by the driver.
+"""
+import math
+
+from luggage_description.frame_contracts import ContractError
+from luggage_planning.place_service import pose_message
+
+
+# --------------------------------------------------------------------------
+# Typed request records (canonical shapes; the same ones the services admit)
+
+def slot_record(request_id, scene_revision, center, yaw):
+    """Slot profile: container_link box center with box_axis_pi yaw."""
+    return {
+        "contract_version": 2,
+        "frame_id": "container_link",
+        "length_unit": "m",
+        "stamp_ns": 0,
+        "time_basis": "scene",
+        "scene_revision": str(scene_revision),
+        "request_id": str(request_id),
+        "kind": "pose",
+        "reference": "box_center",
+        "orientation_semantics": "box_axis_pi",
+        "position": [float(center[0]), float(center[1]), float(center[2])],
+        "quaternion_xyzw": [0.0, 0.0,
+                            math.sin(0.5 * float(yaw)), math.cos(0.5 * float(yaw))],
+    }
+
+
+def grasp_record(request_id, scene_revision, translation, quaternion_xyzw):
+    """Grasp transport: suction_contact_frame -> box offset of the grasp."""
+    return {
+        "reference": "suction_contact_frame",
+        "orientation_semantics": "box",
+        "position": [float(v) for v in translation],
+        "quaternion_xyzw": [float(v) for v in quaternion_xyzw],
+        "scene_revision": str(scene_revision),
+        "contract_version": 2,
+        "request_id": str(request_id),
+        "frame_id": "suction_contact_frame",
+        "length_unit": "m",
+        "stamp_ns": 0,
+        "time_basis": "scene",
+    }
+
+
+def tcp_record(request_id, scene_revision, position, quaternion_xyzw,
+               time_basis="scene"):
+    """map_tcp profile: suction contact in container_link."""
+    return {
+        "contract_version": 2,
+        "frame_id": "container_link",
+        "length_unit": "m",
+        "stamp_ns": 0,
+        "time_basis": str(time_basis),
+        "scene_revision": str(scene_revision),
+        "request_id": str(request_id),
+        "kind": "pose",
+        "reference": "suction_contact_frame",
+        "orientation_semantics": "tool_quaternion",
+        "position": [float(v) for v in position],
+        "quaternion_xyzw": [float(v) for v in quaternion_xyzw],
+    }
+
+
+def detection_record_from_box(box_message, request_id, scene_revision):
+    """Detection-profile record built FROM the measured box message.
+
+    Position, orientation and stamp are the box's own fields, so the
+    service-side measured-pose agreement check passes by construction.
+    """
+    stamp = box_message.header.stamp
+    return {
+        "contract_version": 2,
+        "frame_id": str(box_message.header.frame_id or "world"),
+        "length_unit": "m",
+        "stamp_ns": int(stamp.sec) * 10 ** 9 + int(stamp.nanosec),
+        "time_basis": "acquisition",
+        "scene_revision": str(scene_revision),
+        "request_id": str(request_id),
+        "kind": "pose",
+        "reference": "box_center",
+        "orientation_semantics": "box_axis_pi",
+        "position": [float(box_message.pose.position.x),
+                     float(box_message.pose.position.y),
+                     float(box_message.pose.position.z)],
+        "quaternion_xyzw": [
+            float(box_message.pose.orientation.x),
+            float(box_message.pose.orientation.y),
+            float(box_message.pose.orientation.z),
+            float(box_message.pose.orientation.w)],
+    }
+
+
+def grasp_from_attach(request_id, scene_revision, box_position,
+                      box_quaternion, tool_position, tool_quaternion):
+    """Box-frame grasp transport measured at attach.
+
+    Exact inverse math on the measured world poses: the box-frame offset
+    of the suction contact and the relative orientation. The same relation
+    the place-leg builder applies forward, so a round trip reproduces the
+    measured TCP to machine precision.
+    """
+    import numpy as np
+    from scipy.spatial.transform import Rotation
+    box_position = np.array(box_position, dtype=float)
+    box_rotation = Rotation.from_quat(
+        [float(v) for v in box_quaternion])
+    translation = box_rotation.inv().apply(
+        np.array(tool_position, dtype=float) - box_position)
+    quaternion = (box_rotation.inv()
+                  * Rotation.from_quat([float(v) for v in tool_quaternion])
+                  ).as_quat()
+    return grasp_record(request_id, scene_revision, translation, quaternion)
+
+
+def container_transform_fields(scene_config):
+    """(source, target, translation, quaternion_xyzw) from the scene config.
+
+    The shared scene helpers own the conversion; drivers never hand-roll it.
+    """
+    from luggage_description.scene_tf_config_utils import origin_in_world
+    origin, rpy = origin_in_world(scene_config)
+    roll, pitch, yaw = (float(v) for v in rpy)
+    cr, sr = math.cos(0.5 * roll), math.sin(0.5 * roll)
+    cp, sp = math.cos(0.5 * pitch), math.sin(0.5 * pitch)
+    cy, sy = math.cos(0.5 * yaw), math.sin(0.5 * yaw)
+    quaternion = (
+        sr * cp * cy - cr * sp * sy,
+        cr * sp * cy + sr * cp * sy,
+        cr * cp * sy - sr * sp * cy,
+        cr * cp * cy + sr * sp * sy,
+    )
+    return ("container_link", "world",
+            [float(v) for v in origin], [float(v) for v in quaternion])
+
+
+def probe_segment_message(record, request_id, scene_revision, *,
+                          name="place_probe", cartesian_fraction=0.95):
+    """MotionSegmentV2 for ProbeMotionSegmentV2 from world waypoints."""
+    from luggage_description.frame_diagnostics import BoundaryContext
+    from luggage_planning.motion_frame_adapters import message_from_admitted
+    from luggage_planning.motion_frame_contracts import (
+        TARGET_LINK, ExecutionContext)
+
+    boundary = BoundaryContext(
+        interface_id="F15", producer="typed_driver_adapter",
+        consumer="motion_planner", request_id=str(request_id),
+        scene_revision=str(scene_revision), frame_id="world",
+        reference="suction_contact_frame", time_basis="scene")
+    context = ExecutionContext(boundary, TARGET_LINK, "world")
+
+    def pose(position, quaternion):
+        return dict(
+            contract_version=2, kind="pose", frame_id="world", length_unit="m",
+            request_id=str(request_id), scene_revision=str(scene_revision),
+            stamp_ns=0, time_basis="scene", reference="suction_contact_frame",
+            orientation_semantics="tool_quaternion",
+            position=[float(v) for v in position],
+            quaternion_xyzw=[float(v) for v in quaternion])
+
+    world = [list(map(float, point)) for point in record["waypoints"]]
+    if not world:
+        raise ContractError("INVALID_NUMERIC_PAYLOAD", "waypoints",
+                            "nonempty world path", [])
+    target = world[-1]
+    segment = dict(
+        contract_version=2, request_id=str(request_id),
+        scene_revision=str(scene_revision), stamp_ns=0, time_basis="scene",
+        name=name, segment_type=str(record.get("type") or "cartesian"),
+        target_link=TARGET_LINK, policy_valid=True,
+        keep_tool_down=bool(record.get("keep_tool_down", True)),
+        keep_camera_down=False, lock_wrist=False,
+        allow_ompl_fallback=bool(record.get("allow_ompl_fallback", True)),
+        required_cartesian_fraction=float(cartesian_fraction),
+        target_pose=pose(target, record["target_quaternion_xyzw"]),
+        waypoints=[pose(point, record["target_quaternion_xyzw"])
+                   for point in world[:-1]],
+        joint_trajectory=None)
+    return message_from_admitted(segment, context)
+
+
+# --------------------------------------------------------------------------
+# Identity adoption from the live graph
+
+def adopt_runtime_identity(node, *, peer, timeout_sec=10.0):
+    """Take identity + peer set from a healthy stack heartbeat.
+
+    Returns ``(runtime, registry)`` with a NodeRuntime for this driver peer.
+    The stack was launched with ``frame_driver_peer`` naming this node; its
+    registry therefore already includes us. A graph that never speaks fails
+    closed with MISSING_PEER.
+    """
+    from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
+    from luggage_description.ros_frame_bindings.runtime import (
+        RuntimeIdentityV2, TOPIC, NodeRuntime, report_from_message)
+    from luggage_description.runtime_graph import RUNTIME_IDENTITY_TOPIC
+    import time as _time
+
+    received = {}
+
+    def on_message(message):
+        received["message"] = message
+
+    subscription = node.create_subscription(
+        RuntimeIdentityV2, TOPIC, on_message,
+        QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE,
+                   durability=DurabilityPolicy.VOLATILE))
+    # Drivers adopt before their main executor claims the node, so a private
+    # single-threaded executor pumps the subscription here.
+    from rclpy.executors import SingleThreadedExecutor
+    spin_executor = SingleThreadedExecutor()
+    spin_executor.add_node(node)
+    try:
+        deadline = _time.monotonic() + float(timeout_sec)
+        while "message" not in received and _time.monotonic() < deadline:
+            spin_executor.spin_once(timeout_sec=0.05)
+        if "message" not in received:
+            raise ContractError("MISSING_PEER", "runtime_identity",
+                                "live stack heartbeat", "none")
+        message = received["message"]
+        endpoints = {}
+        for item in message.endpoints:
+            endpoints[item.name] = {
+                "type": str(item.type_name),
+                "provider": list(item.providers),
+                "clients": list(item.clients),
+            }
+        if RUNTIME_IDENTITY_TOPIC not in endpoints:
+            raise ContractError("MISSING_ENDPOINT", "runtime_identity",
+                                "identity topic in registry", sorted(endpoints))
+        peers = [str(name) for name in
+                 endpoints[RUNTIME_IDENTITY_TOPIC]["provider"]]
+        if str(peer).lstrip("/") not in peers:
+            raise ContractError(
+                "ENDPOINT_PROVIDER_MISMATCH", "frame_driver_peer",
+                "driver named by the graph", peer)
+        from luggage_description.runtime_profile import validate_identity
+        from luggage_description.ros_frame_bindings.runtime import (
+            SCALAR_IDENTITY_FIELDS)
+        identity = {field: getattr(message, field)
+                    for field in SCALAR_IDENTITY_FIELDS}
+        identity.update(
+            contract_version=int(message.contract_version),
+            joint_names=list(message.joint_names),
+            endpoints={name: entry["type"] for name, entry in endpoints.items()})
+        validate_identity(identity)
+        runtime = NodeRuntime(
+            node, peer=peer, identity=identity,
+            resolved_config={"driver": str(peer).lstrip("/")},
+            peers=peers)
+        return runtime, endpoints
+    finally:
+        spin_executor.remove_node(node)
+        node.destroy_subscription(subscription)
+
+
+# --------------------------------------------------------------------------
+# The adapter
+
+class TypedDriverAdapter:
+    """v2 service clients for one driver node, readiness-gated per call."""
+
+    def __init__(self, node, runtime, *, group=None):
+        from luggage_msgs.srv import (
+            AddPlacedBoxV2, BuildMotionSequenceV2, ComputePlacementV2,
+            ProbeMotionSegmentV2, RemovePlacedBoxV2, SelectPlacePathV2,
+            VacuumCommandV2)
+        self.node = node
+        self.runtime = runtime
+        group = group or getattr(node, "_group", None)
+        self._build = node.create_client(
+            BuildMotionSequenceV2, "/waypoint_generator/build_motion_sequence_v2",
+            callback_group=group)
+        from rclpy.action import ActionClient
+        from luggage_msgs.action import PlanMotionV2
+        self._plan = ActionClient(
+            node, PlanMotionV2, "/motion_planner/plan_motion_v2",
+            callback_group=group)
+        self._compute = node.create_client(
+            ComputePlacementV2, "/placement_planner/compute_placement_v2",
+            callback_group=group)
+        self._select = node.create_client(
+            SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
+            callback_group=group)
+        self._probe = node.create_client(
+            ProbeMotionSegmentV2, "/motion_planner/probe_motion_segment_v2",
+            callback_group=group)
+        self._vacuum = node.create_client(
+            VacuumCommandV2, "/vacuum/command_v2", callback_group=group)
+        self._add_placed = node.create_client(
+            AddPlacedBoxV2, "/cargo_map/add_placed_box_v2",
+            callback_group=group)
+        self._remove_placed = node.create_client(
+            RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
+            callback_group=group)
+
+    def _call(self, client, request, timeout_sec):
+        """Readiness-gated synchronous call; None on timeout/unavailable."""
+        self.runtime.require_graph_ready()
+        if not client.wait_for_service(timeout_sec=2.0):
+            raise ContractError("MISSING_ENDPOINT", client.srv_name,
+                                "v2 service", "unavailable")
+        future = client.call_async(request)
+        import time as _time
+        deadline = _time.monotonic() + float(timeout_sec)
+        while not future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.02)
+        if not future.done():
+            raise ContractError(
+                "BOUNDARY_TIMEOUT", client.srv_name, "response", timeout_sec)
+        return future.result()
+
+    # -- placement ---------------------------------------------------------
+    def compute_placement(self, *, request_id, box_wdh, height_measured,
+                          scene_revision, placed=(), placed_wdh_flat=(),
+                          geometry_hash="", expected_map_revision=0,
+                          max_candidates=5):
+        """ComputePlacementV2 with an empty (first-box) placed list by default."""
+        from luggage_msgs.srv import ComputePlacementV2
+        request = ComputePlacementV2.Request()
+        request.box_wdh = [float(v) for v in box_wdh]
+        request.height_measured = bool(height_measured)
+        for record in placed:
+            request.placed.append(pose_message(record))
+        request.placed_wdh_flat = [float(v) for v in placed_wdh_flat]
+        request.geometry_hash = str(geometry_hash)
+        request.expected_map_revision = int(expected_map_revision)
+        request.max_candidates = int(max_candidates)
+        return self._call(self._compute, request, 30.0)
+
+    # -- selection ---------------------------------------------------------
+    def select_place_path(self, *, request_id, box_wdh, slots, slot_scores,
+                          surface_message, inner_size, geometry_hash,
+                          map_revision, start_tcp, start_joints, grasp,
+                          container_transform, excluded_ids=()):
+        """SelectPlacePathV2; the mapper's surface message rides verbatim."""
+        from luggage_msgs.srv import SelectPlacePathV2
+        source, target, translation, quaternion = container_transform
+        request = SelectPlacePathV2.Request()
+        request.request_id = str(request_id)
+        request.box_wdh = [float(v) for v in box_wdh]
+        for record in slots:
+            request.slots.append(pose_message(record))
+        request.slot_scores = [float(v) for v in slot_scores]
+        request.surface = surface_message
+        request.inner_size = [float(v) for v in inner_size]
+        request.geometry_hash = str(geometry_hash)
+        request.map_revision = int(map_revision)
+        request.start_tcp = pose_message(start_tcp)
+        request.start_joints = [float(v) for v in start_joints]
+        request.grasp = pose_message(grasp)
+        request.container_source_frame = str(source)
+        request.container_target_frame = str(target)
+        request.container_translation = [float(v) for v in translation]
+        request.container_quaternion_xyzw = [float(v) for v in quaternion]
+        request.container_stamp_ns = 0
+        request.container_stamp_is_null = True
+        request.excluded_ids = [str(v) for v in excluded_ids]
+        return self._call(self._select, request, 30.0)
+
+    # -- probe ---------------------------------------------------------------
+    def probe_segment(self, segment_message, timeout_sec=10.0):
+        from luggage_msgs.srv import ProbeMotionSegmentV2
+        request = ProbeMotionSegmentV2.Request()
+        request.segment = segment_message
+        return self._call(self._probe, request, timeout_sec)
+
+    # -- attachment ----------------------------------------------------------
+    def vacuum_command(self, *, enable, request_id, scene_revision, box_id,
+                       generation, measured_box=None, box_pose=None,
+                       grasp=None):
+        from luggage_msgs.srv import VacuumCommandV2
+        request = VacuumCommandV2.Request()
+        request.enable = bool(enable)
+        request.request_id = str(request_id)
+        request.scene_revision = str(scene_revision)
+        request.box_id = str(box_id)
+        request.generation = int(generation)
+        if measured_box is not None:
+            request.measured_box = measured_box
+        if box_pose is not None:
+            request.box_pose = pose_message(box_pose)
+        request.has_grasp = grasp is not None
+        if grasp is not None:
+            request.grasp = pose_message(grasp)
+        return self._call(self._vacuum, request, 15.0)
+
+    # -- map commits ---------------------------------------------------------
+    def add_placed_box(self, *, slot, size_wdh, measured_source,
+                       expected_map_revision, geometry_hash):
+        from luggage_msgs.srv import AddPlacedBoxV2
+        request = AddPlacedBoxV2.Request()
+        request.slot_pose = pose_message(slot)
+        request.size_wdh = [float(v) for v in size_wdh]
+        request.measured_source = str(measured_source)
+        request.expected_map_revision = int(expected_map_revision)
+        request.geometry_hash = str(geometry_hash)
+        return self._call(self._add_placed, request, 15.0)
+
+    def remove_placed_box(self, *, slot, size_wdh, expected_map_revision,
+                          geometry_hash):
+        from luggage_msgs.srv import RemovePlacedBoxV2
+        request = RemovePlacedBoxV2.Request()
+        request.slot_pose = pose_message(slot)
+        request.size_wdh = [float(v) for v in size_wdh]
+        request.expected_map_revision = int(expected_map_revision)
+        request.geometry_hash = str(geometry_hash)
+        return self._call(self._remove_placed, request, 15.0)
+
+    # -- waypoint/execution chain ---------------------------------------------
+    def build_pick(self, *, request_id, scene_revision, pick_message):
+        """BuildMotionSequenceV2 pick phase from the measured detection."""
+        from luggage_msgs.srv import BuildMotionSequenceV2
+        request = BuildMotionSequenceV2.Request()
+        request.phase = "pick"
+        request.pick = pick_message
+        request.request_id = str(request_id)
+        request.scene_revision = str(scene_revision)
+        request.pick_pose = pose_message(detection_record_from_box(
+            pick_message, request_id, scene_revision))
+        return self._call(self._build, request, 15.0)
+
+    def build_place(self, *, slot, grasp, box_wdh, container_transform):
+        """BuildMotionSequenceV2 place phase from the admitted slot record."""
+        from luggage_msgs.srv import BuildMotionSequenceV2
+        source, target, translation, quaternion = container_transform
+        request = BuildMotionSequenceV2.Request()
+        request.phase = "place"
+        request.request_id = str(slot["request_id"])
+        request.slot = pose_message(slot)
+        request.grasp = pose_message(grasp)
+        request.box_wdh = [float(v) for v in box_wdh]
+        request.container_source_frame = str(source)
+        request.container_target_frame = str(target)
+        request.container_translation = [float(v) for v in translation]
+        request.container_quaternion_xyzw = [float(v) for v in quaternion]
+        request.container_stamp_ns = 0
+        request.container_stamp_is_null = True
+        return self._call(self._build, request, 15.0)
+
+    def plan_motion(self, motion_segment, timeout_sec, name="PlanMotionV2"):
+        """Execute one typed segment through PlanMotionV2.
+
+        Returns ``(ok, message, result)`` with the same convention as the
+        drivers' v1 send_action helper.
+        """
+        import time as _time
+        self.runtime.require_graph_ready()
+        if not self._plan.wait_for_server(timeout_sec=2.0):
+            return False, "plan_motion_v2 unavailable", None
+        from luggage_msgs.action import PlanMotionV2
+        goal = PlanMotionV2.Goal()
+        goal.segment = motion_segment
+        future = self._plan.send_goal(goal)
+        deadline = _time.monotonic() + float(timeout_sec)
+        while not future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.02)
+        if not future.done():
+            return False, "%s: goal timeout" % name, None
+        handle = future.result()
+        if not handle.accepted:
+            return False, "%s: rejected" % name, None
+        result_future = handle.get_result_async()
+        while not result_future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.02)
+        if not result_future.done():
+            handle.cancel_goal()
+            return False, "%s: result timeout" % name, None
+        result = result_future.result().result
+        return bool(result.success), str(result.message or ""), result

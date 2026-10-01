@@ -572,6 +572,119 @@ class PickRetreatEvalDriver(Node):
                 String, "/vacuum/events_json", self._on_vacuum_events, latch,
                 callback_group=self._group)
 
+        # ST09 F21/F22: typed v2 chain. --frame-runtime adopts the stack's
+        # measured identity from the live graph heartbeat and routes this
+        # driver's service/action calls through the shared typed adapter;
+        # every wire call becomes v2 while trial bookkeeping keeps the v1
+        # response copies. Off (default) is byte-identical legacy.
+        self._typed = None
+        self._frame_runtime_handle = None
+        self._frame_scene_revision = ""
+        self._frame_pick_msg = None
+        self._frame_grasp = None
+        self._frame_slot_record = None
+        self._frame_motion_segments = []
+        self._frame_motion_index = 0
+        self._frame_request_seq = 0
+        if getattr(args, "frame_runtime", False):
+            from luggage_gazebo.typed_driver_adapter import (
+                TypedDriverAdapter, adopt_runtime_identity)
+            peer = str(getattr(args, "frame_peer", "") or "motion_occ_driver")
+            runtime, _registry = adopt_runtime_identity(self, peer=peer)
+            self._frame_runtime_handle = runtime
+            self._frame_scene_revision = str(runtime.identity["scene_revision"])
+            self._typed = TypedDriverAdapter(self, runtime,
+                                             group=self._group)
+            self.get_logger().info(
+                "frame runtime adopted (peer=%s, scene=%s)"
+                % (peer, self._frame_scene_revision[:10]))
+
+    def _frame_request_id(self, prefix):
+        self._frame_request_seq += 1
+        return "%s-%d" % (prefix, self._frame_request_seq)
+
+    def _typed_build_place(self, pick_msg):
+        """BuildMotionSequenceV2 place legs from the adopted chain context.
+
+        The slot record comes from the v2 placement/selection chain and the
+        grasp was measured at attach; anything less fails closed rather
+        than falling back to a hand-converted slot.
+        """
+        from luggage_description.frame_contracts import ContractError
+        from luggage_gazebo.typed_driver_adapter import (
+            container_transform_fields)
+        slot_record = getattr(self, "_frame_slot_record", None)
+        grasp = getattr(self, "_frame_grasp", None)
+        if slot_record is None or grasp is None:
+            return None, "TYPED_PLACE_CONTEXT_MISSING"
+        try:
+            built = self._typed.build_place(
+                slot=slot_record, grasp=grasp,
+                box_wdh=[float(pick_msg.width), float(pick_msg.depth),
+                         float(pick_msg.height)],
+                container_transform=container_transform_fields(
+                    self._scene_config))
+        except ContractError as error:
+            return None, "%s: %s" % (error.code, error.field)
+        return built, ""
+
+    def _frame_capture_grasp(self, pick_msg):
+        """Measure the box-frame grasp transport at attach (TF + detection)."""
+        try:
+            tool_position, tool_quaternion = self._lookup_xyz_quat(
+                "world", "suction_contact_frame")
+        except Exception as exc:  # noqa: BLE001 - grasp capture is best effort
+            self.get_logger().warning("frame grasp capture TF failed: %s" % exc)
+            return
+        from luggage_gazebo.typed_driver_adapter import grasp_from_attach
+        self._frame_grasp = grasp_from_attach(
+            self._frame_request_id("grasp"), self._frame_scene_revision,
+            [float(pick_msg.pose.position.x), float(pick_msg.pose.position.y),
+             float(pick_msg.pose.position.z)],
+            [float(pick_msg.pose.orientation.x),
+             float(pick_msg.pose.orientation.y),
+             float(pick_msg.pose.orientation.z),
+             float(pick_msg.pose.orientation.w)],
+            tool_position, tool_quaternion)
+
+    def _frame_box_identity(self):
+        """(box_id, generation) from the latched current_box payload."""
+        box_id, generation = parse_current_box_payload(
+            (self._current_box_topic.get("payload") if isinstance(
+                getattr(self, "_current_box_topic", None), dict) else None)
+            or "")
+        return str(box_id or ""), int(generation or 0)
+
+    def vacuum_command(self, enable, pick_msg=None):
+        pick_msg = pick_msg or getattr(self, "_frame_pick_msg", None)
+        if self._typed is not None and pick_msg is not None:
+            from luggage_gazebo.typed_driver_adapter import (
+                detection_record_from_box)
+            from luggage_description.frame_contracts import ContractError
+            box_id, generation = self._frame_box_identity()
+            request_id = self._frame_request_id("vacuum")
+            box_pose = detection_record_from_box(
+                pick_msg, request_id, self._frame_scene_revision)
+            try:
+                response = self._typed.vacuum_command(
+                    enable=enable, request_id=request_id,
+                    scene_revision=self._frame_scene_revision,
+                    box_id=box_id, generation=generation,
+                    measured_box=pick_msg, box_pose=box_pose)
+            except ContractError as error:
+                return False, "%s: %s" % (error.code, error.field)
+            if response is None:
+                return False, "vacuum command timeout"
+            return bool(response.success), str(response.message or "")
+        if self._vacuum is None:
+            return False, "no vacuum client"
+        req = VacuumCommand.Request()
+        req.enable = bool(enable)
+        response = self.call_srv(self._vacuum, req, timeout=10.0)
+        if response is None:
+            return False, "vacuum command timeout"
+        return bool(response.success), response.message or ""
+
     def _on_status(self, msg):
         self._status["payload"] = msg.data
         self._status["recv"] = time.time()
@@ -1291,16 +1404,6 @@ class PickRetreatEvalDriver(Node):
         return run_authorization_loop(
             _once, time.sleep, time.monotonic, self._auth_policy())
 
-    def vacuum_command(self, enable):
-        if self._vacuum is None:
-            return False, "no vacuum client"
-        req = VacuumCommand.Request()
-        req.enable = bool(enable)
-        response = self.call_srv(self._vacuum, req, timeout=10.0)
-        if response is None:
-            return False, "vacuum command timeout"
-        return bool(response.success), response.message or ""
-
     def sync_pickup_geometry(self, pick_msg, timeout=5.0):
         """Backfill measured geometry onto the current box instance (CAS).
 
@@ -1581,10 +1684,22 @@ class PickRetreatEvalDriver(Node):
                 fields["fail_code"] = "SCENE_ADD_FAILED"
                 return self.finish_trial(fields, t0, stamp0=stamp0, clear=True)
 
-        req = BuildMotionSequence.Request()
-        req.phase = "pick"
-        req.pick = pick_msg
-        built = self.call_srv(self._build, req, timeout=15.0)
+        if self._typed is not None:
+            self._frame_pick_msg = pick_msg
+            from luggage_description.frame_contracts import ContractError
+            try:
+                built = self._typed.build_pick(
+                    request_id=self._frame_request_id("pick"),
+                    scene_revision=self._frame_scene_revision,
+                    pick_message=pick_msg)
+            except ContractError as error:
+                built = None
+                fields["extras"]["build"] = "%s: %s" % (error.code, error.field)
+        else:
+            req = BuildMotionSequence.Request()
+            req.phase = "pick"
+            req.pick = pick_msg
+            built = self.call_srv(self._build, req, timeout=15.0)
         if built is None or not built.success:
             fields["fail_code"] = "BUILD_FAILED"
             fields["extras"]["build"] = (
@@ -1592,19 +1707,27 @@ class PickRetreatEvalDriver(Node):
             return self.finish_trial(fields, t0, stamp0=stamp0, clear=True)
 
         segments = list(built.segments)
+        motion_segments = list(getattr(built, "motion_segments", ()) or ())
         fields["segments_planned"] = len(segments)
         attach_z = None
         attach_xyz = None
         retreat_xyz = None
         failures = []
         succeeded = 0
-        for segment in segments:
-            goal = PlanMotion.Goal()
-            goal.segment = segment
-            ok, message, _res = self.send_action(
-                self._plan, goal,
-                timeout=self._args.plan_timeout,
-                name="PlanMotion:%s" % segment.name)
+        for segment_index, segment in enumerate(segments):
+            if (self._typed is not None
+                    and segment_index < len(motion_segments)):
+                ok, message, _res = self._typed.plan_motion(
+                    motion_segments[segment_index],
+                    self._args.plan_timeout,
+                    name="PlanMotionV2:%s" % segment.name)
+            else:
+                goal = PlanMotion.Goal()
+                goal.segment = segment
+                ok, message, _res = self.send_action(
+                    self._plan, goal,
+                    timeout=self._args.plan_timeout,
+                    name="PlanMotion:%s" % segment.name)
             if ok:
                 succeeded += 1
             else:
@@ -1630,13 +1753,15 @@ class PickRetreatEvalDriver(Node):
                 else:
                     fields["extras"]["attach_tf"] = tf_err
                 if getattr(self._args, "use_vacuum", False):
-                    vac_ok, vac_msg = self.vacuum_command(True)
+                    vac_ok, vac_msg = self.vacuum_command(True, pick_msg=pick_msg)
                     fields["vac_attach"] = vac_ok
                     fields["extras"]["vac_attach"] = vac_msg
                     if not vac_ok:
                         failures.append(("vacuum_attach", vac_msg))
                         fields["fail_code"] = "VACUUM_ATTACH"
                         break
+                    if self._typed is not None:
+                        self._frame_capture_grasp(pick_msg)
             if segment.name == "pick_retreat":
                 retreat_xyz, tf_err = self.suction_xyz()
                 if retreat_xyz is None:
