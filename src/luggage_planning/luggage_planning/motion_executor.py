@@ -794,9 +794,18 @@ class MotionExecutor:
         return trajectory
 
     def _run_joint_path(self, segment_msg, feedback_cb, execute_timeout):
-        """Execute selector joint knots. Sweep failures do not fall back to RRT."""
+        """Execute joint-path knots. Sweep failures do not fall back to RRT."""
         from luggage_planning.joint_path import JointPathError, validate_joint_path
-        from luggage_planning.place_selection_client import read_joint_knots
+
+        def read_joint_knots(segment):
+            # [ST09-I] the place_selection_client knot carrier is gone;
+            # knots come from the message field or the rebuilt attr.
+            points = list(getattr(segment, "joint_waypoints", None) or [])
+            if points and hasattr(points[0], "positions"):
+                return [[float(v) for v in point.positions]
+                        for point in points]
+            return [list(knot) for knot in
+                    (getattr(segment, "_joint_knots", None) or [])]
 
         name = str(getattr(segment_msg, "name", "") or "")
         knots = read_joint_knots(segment_msg)

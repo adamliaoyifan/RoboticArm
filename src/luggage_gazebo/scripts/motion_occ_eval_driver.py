@@ -1,17 +1,11 @@
 #!/usr/bin/env python3
-"""MOTION-OCC A1: occupancy-aware multi-slot place paths.
+"""MOTION-OCC: occupancy-aware place through the unified route (ST09-I).
 
-n=2 carryon,standard. Occupancy from IntegrateCargoView (no AddPlacedBox).
-Second carry goes through TrajectorySelector (grid paths plus geometric
-variants). joint_path segments do not fall back to RRTConnect. Cartesian
-and OMPL still see occupancy via motion_planner_node injection plus the
-executor re-sweep.
-
-Selection-stage MoveIt probe: rows that pass the occupancy sweep are
-probed via /motion_planner/probe_motion_segment (traverse-equivalent
-cartesian carry segment) before select_trajectory picks the winner.
-``--place-probe off`` restores occupancy-only selection; a missing or
-timing-out service fails open (rows stay unprobed, never rejected).
+Place motion is the certified route from SelectPlacePathV2 (planned,
+certified, and revalidated in the trajectory_selector node); this driver
+correlates request ids, probes winners plan-only, executes the typed
+joint legs, and records evidence. The in-process geometric selection and
+the executor generation bypasses are deleted.
 """
 
 from __future__ import division
@@ -60,18 +54,11 @@ from luggage_gazebo.place_metrics import (  # noqa: E402
     trial_to_dict,
 )
 from luggage_msgs.msg import MotionSegment  # noqa: E402
-from luggage_msgs.srv import ComputePlacement, ProbeMotionSegment  # noqa: E402
+from luggage_msgs.srv import ProbeMotionSegment  # noqa: E402
 from luggage_planning.occupancy_place_paths import (  # noqa: E402
     PLACE_PATH_INFEASIBLE,
     PAYLOAD_SOURCE_MEASURED,
     dump_rows,
-)
-from luggage_planning.place_selection_client import (  # noqa: E402
-    apply_carry_segment,
-)
-from luggage_planning.trajectory_selector import (  # noqa: E402
-    TrajectorySelector,
-    make_arm_ceiling_checker,
 )
 from pick_retreat_eval_driver import _git_meta  # noqa: E402
 
@@ -161,7 +148,6 @@ def _world_to_map(scene, xyz):
 class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
-        self._selector = TrajectorySelector.from_yaml()
         self._atlas = None
         self._atlas_diag = {}
         try:
@@ -182,8 +168,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._scene_tf_hash = compute_scene_tf_hash(scene_path)
             self._atlas_cfg = load_atlas_runtime_for_scene(
                 scene_path, os.environ.get("ATLAS_RUNTIME_CONFIG") or None)
-            if str(self._atlas_cfg.get("hash_policy") or "") == "strict":
-                self._selector.config["hash_policy"] = "strict"
             self._urdf_identity = UrdfIdentity(self)
             if self._atlas_cfg.get("enabled"):
                 self._urdf_identity.start()
@@ -444,6 +428,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 for pose in selection.waypoint_poses],
         }
         self._selected_carry_v2 = list(selection.motion_segments)
+        self._selected_carry_v1 = list(selection.carry_segments)
         trial.extras["path_source"] = str(selection.path_source)
         trial.extras["selection_id"] = str(selection.selection_id)
         trial.extras["selector"] = {
@@ -666,117 +651,18 @@ class MotionOccDriver(CargoMapIntegrateDriver):
 
     def _place_slot_resolved(self, pick_msg, box_msg, trial):
         del box_msg
-        if getattr(self, "_typed", None) is not None:
-            return self._frame_place_slot(pick_msg, trial)
+        if getattr(self, "_typed", None) is None:
+            # [ST09-I] the in-process selection was the geometric bypass;
+            # the typed chain (ComputePlacementV2 -> SelectPlacePathV2
+            # certified route) is the only production path.
+            trial.fail_code = trial.fail_code or "PLANNING_ROUTE_REQUIRED"
+            trial.extras["selector_error"] = (
+                "legacy in-process selection removed (ST09-I)")
+            return None, None
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
-        from luggage_msgs.srv import GetCargoMapStats
-        stats = self.call_srv(self._stats, GetCargoMapStats.Request(), timeout=5.0)
-        request = ComputePlacement.Request()
-        request.box = pick_msg
-        request.max_candidates = 5
-        request.geometry_hash = str(
-            (stats.geometry_hash if stats else "")
-            or (self._surface_2d or {}).get("geometry_hash") or "")
-        placement = self.call_srv(self._compute, request, timeout=30.0)
-        if placement is None or not placement.success:
-            trial.fail_code = trial.fail_code or (
-                getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
-            trial.extras["compute_placement"] = (
-                placement.message if placement else "timeout")
-            return None, None
-        trial.extras["compute_placement"] = placement.message
-        slots = list(placement.candidates) or [placement.slot]
-        scores = list(placement.candidate_scores) or [0.0]
-        cand_dump = []
-        planner_slots = []
-        for i, slot in enumerate(slots):
-            score = float(scores[i]) if i < len(scores) else 0.0
-            cand_dump.append({
-                "index": i,
-                "score": score,
-                "width": float(slot.width),
-                "height": float(slot.height),
-                "depth": float(slot.depth),
-            })
-            planner_slots.append({
-                "index": i,
-                "score": score,
-                "target": self._slot_target_map(slot),
-                "yaw": _quat_yaw(slot.place_pose.orientation),
-            })
-        surface = dict(self._surface_2d or {})
-        probe_fn = None
-        probe_stats = {"mode": "off"}
-        if getattr(self._args, "place_probe", "on") == "on":
-            probe_fn, probe_stats = self._place_probe_fn(slots)
-        start_live = _joint_positions(getattr(self, "_last_joint_state", None))
-        arm_check = None
-        if start_live:
-            lid_world = _map_to_world(
-                self._scene_config,
-                [0.0, 0.0, container_inner_ceiling_z(self._scene_config)])[2]
-            org, _rpy = origin_in_world(self._scene_config)
-            inner = self._scene_config["container"]["inner"]
-            arm_check = make_arm_ceiling_checker(
-                start_live, lid_world,
-                frame_convert=lambda xyz: _map_to_world(
-                    self._scene_config, xyz),
-                footprint=(
-                    float(org[0]) - float(inner["length"]) * 0.5,
-                    float(org[0]) + float(inner["length"]) * 0.5,
-                    float(org[1]) - float(inner["width"]) * 0.5,
-                    float(org[1]) + float(inner["width"]) * 0.5))
-        atlas, atlas_diag = self._runtime_atlas()
-        trial.extras["atlas_identity"] = atlas_diag
-        block = ""
-        if self._certification_block_reason is not None:
-            block = self._certification_block_reason(
-                self._atlas_cfg, atlas_diag)
-        if block:
-            trial.fail_code = block
-            trial.extras["selector_error"] = atlas_diag.get(
-                "hash_message") or atlas_diag.get("reason") or block
-            return None, None
-        urdf_hash = ""
-        if self._urdf_identity is not None and self._urdf_identity.ready:
-            urdf_hash = self._urdf_identity.hash
-        try:
-            winner, rows, reason, _snap = self._selector.select(
-                surface, planner_slots, self._portal_map(),
-                payload_wdh=(
-                    float(pick_msg.width), float(pick_msg.depth),
-                    float(pick_msg.height)),
-                atlas=atlas,
-                expected_hash=str(surface.get("geometry_hash") or "") or None,
-                expected_revision=surface.get("map_revision"),
-                opening_tangent=self._opening_tangent_map(),
-                probe_fn=probe_fn,
-                start_joints=start_live,
-                arm_check=arm_check,
-                scene_tf_hash=self._scene_tf_hash,
-                urdf_hash=urdf_hash,
-            )
-        except Exception as exc:  # noqa: BLE001 - eval boundary
-            trial.fail_code = PLACE_PATH_INFEASIBLE
-            trial.extras["selector_error"] = str(exc)
-            self._dump_selector(trial, cand_dump, [], None, str(exc), surface,
-                                probe=probe_stats)
-            return None, None
-        self._selector_rows = rows
-        self._dump_selector(trial, cand_dump, rows, winner, reason, surface,
-                            probe=probe_stats)
-        if winner is None:
-            trial.fail_code = PLACE_PATH_INFEASIBLE
-            return None, None
-        self._selected_path = winner
-        trial.extras["path_source"] = winner.get("path_source")
-        trial.extras["selection_id"] = winner.get("selection_id")
-        trial.extras["grid"] = (winner.get("diagnostics") or {}).get("slots")
-        slot = slots[int(winner["slot_index"])]
-        trial.extras["placement_atlas"] = self._placement_atlas_extra(slot)
-        return slot, self._slot_meta(slot)
+        return self._frame_place_slot(pick_msg, trial)
 
     def _placement_atlas_extra(self, slot):
         """Atlas status of the selected slot from the placement dump.
@@ -812,43 +698,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         return extra
 
     def _apply_selected_carry(self, segment):
-        """Write the selected cartesian path onto the v1 and v2 carry legs.
-
-        Typed execute sends ``_frame_motion_segments``, not the v1
-        MotionSegment ``apply_carry_segment`` mutates. SelectPlacePathV2
-        already returns world cartesian ``motion_segments``; those replace
-        the built pose_target fly-through. World waypoints must not take
-        a second map->world shift.
-        """
-        selected = self._selected_path
-        if str(segment.name) not in ("transit", "traverse") or not selected:
-            return
-        convert = carry_frame_convert(selected, self._scene_config)
-        waypoints = selected.get("waypoints")
-        name = str(segment.name)
-        spec_type, split = split_carry_waypoints(name, waypoints)
-        if split:
-            apply_carry_segment(
-                segment, {"waypoints": split}, frame_convert=convert)
-            if spec_type:
-                segment.type = spec_type
-                if hasattr(segment, "allow_ompl_fallback"):
-                    segment.allow_ompl_fallback = True
-        if getattr(self, "_typed", None) is None:
-            return
-        segments_v2 = getattr(self, "_frame_motion_segments", None) or []
-        index = getattr(self, "_frame_motion_index", 0)
-        if (index >= len(segments_v2)
-                or str(segments_v2[index].name) != name):
-            return
-        built = segments_v2[index]
-        if not split:
-            return
-        from luggage_planning.typed_driver_adapter import apply_selected_path_to_v2
-        apply_selected_path_to_v2(built, split, frame_convert=convert)
-        if spec_type:
-            built.segment_type = spec_type
-            built.allow_ompl_fallback = True
+        """[ST09-I] no-op: certified route legs carry their own timed
+        trajectories; the driver never rewrites motion specs."""
 
     def _execute_segment(self, segment, trial):
         self._apply_selected_carry(segment)

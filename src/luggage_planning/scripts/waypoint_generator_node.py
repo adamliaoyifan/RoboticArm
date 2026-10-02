@@ -165,6 +165,11 @@ class WaypointGeneratorNode(Node):
         self._tf_listener = tf2_ros.TransformListener(
             self._tf_buffer, self._tf_node, spin_thread=True)
 
+        from sensor_msgs.msg import JointState
+
+        self._joints_live = None
+        self.create_subscription(
+            JointState, "/joint_states", self._on_joint_states, 10)
         self.create_service(
             BuildMotionSequence, "/waypoint_generator/build_motion_sequence",
             self._handle, callback_group=group)
@@ -307,9 +312,80 @@ class WaypointGeneratorNode(Node):
         slot.place_pose = pose
         return slot, None
 
+    def _on_joint_states(self, msg):
+        names = list(msg.name)
+        wanted = ["elfin_joint%d" % i for i in range(1, 7)]
+        if msg.position and all(name in names for name in wanted):
+            self._joints_live = [
+                float(msg.position[names.index(name)]) for name in wanted]
+
+    def _pick_builder(self):
+        """Lazy MoveIt edge builder stack for timed pick legs (ST09-I)."""
+        if getattr(self, "_pick_stack", None) is not None:
+            return self._pick_stack
+        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.reachable_graph import (
+            RouteGraph,
+            make_offline_fk,
+        )
+        urdf = load_urdf(scene_tf_config=str(
+            self.get_parameter("scene_tf_config").value or ""))
+        tcp_path = ("elfin_joint1", "elfin_joint2", "elfin_joint3",
+                    "elfin_joint4", "elfin_joint5", "elfin_joint6",
+                    "suction_contact_frame")
+        fk = make_offline_fk(urdf, tcp_path)
+
+        def refine(position, quaternion, seed):
+            return refine_to_pose(urdf, tcp_path, position, quaternion,
+                                  seed, pos_tol=2e-3, rot_tol=2e-2)
+
+        self._pick_stack = {
+            "graph": RouteGraph(static_identity="st09-i-pick"),
+            "edge_builder": MoveItEdgeAdapter(self),
+            "fk": fk, "refine": refine,
+        }
+        return self._pick_stack
+
+    def _pick_leg_encoder(self):
+        """Encode the frozen pick waypoint ladder as timed joint legs."""
+        def encode(pick, *, request_id, scene_revision, stamp_ns):
+            from luggage_planning.grid_path_search import RoutePlanningError
+            from luggage_planning.route_producer import pick_leg_records
+
+            start_q = getattr(self, "_joints_live", None)
+            if not start_q:
+                raise RoutePlanningError(
+                    "EDGE_BUILD_FAILED",
+                    {"leg": "pick", "reason": "start joints unknown"})
+            stack = self._pick_builder()
+            waypoints = []
+            for segment in build_sequence(
+                    pick, None, "pick",
+                    pick_clearances=self._clearances()):
+                pose = segment.target_pose
+                waypoints.append((
+                    str(segment.name),
+                    (float(pose.position.x), float(pose.position.y),
+                     float(pose.position.z)),
+                    (float(pose.orientation.x), float(pose.orientation.y),
+                     float(pose.orientation.z), float(pose.orientation.w))))
+            return pick_leg_records(
+                waypoints,
+                graph=stack["graph"], edge_builder=stack["edge_builder"],
+                refine=stack["refine"], fk=stack["fk"], start_q=start_q,
+                request_id=request_id, scene_revision=scene_revision,
+                stamp_ns=stamp_ns)
+        return encode
+
     def _handle(self, request, response):
+        """v1 surface preserved as a named refusal (ST09-I).
+
+        Pick waypoints are candidate geometry; timed legs come from the
+        v2 build through the MoveIt edge builder, and place motion comes
+        from the certified route.
+        """
         if getattr(self, "_runtime", None) is not None:
-            # v1 cannot bypass profile admission.
             from luggage_description.frame_contracts import ContractError
             try:
                 self._runtime.authorize_legacy_effect()
@@ -318,78 +394,11 @@ class WaypointGeneratorNode(Node):
                 response.success = False
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
-        try:
-            phase = str(request.phase) or "pick"
-            candidate_id = str(getattr(request, "suction_candidate_id", "")
-                               or "")
-            if candidate_id and phase == "pick":
-                return self._handle_candidate(
-                    request, response, candidate_id)
-            pick = adapters.pick_from_detected(request.pick)
-            place_slot = request.place_slot
-            opening = None
-            fallback_yaw = 0.0
-            notes = []
-            if phase == "place":
-                place_slot, err = self._slot_in_world(place_slot)
-                if err:
-                    response.segments = []
-                    response.success = False
-                    response.message = "place_slot TF %s -> %s failed: %s" % (
-                        self._place_slot_frame, self._world_frame, err)
-                    return response
-                opening = self._opening_info()
-                offset = staging_offset(
-                    opening["normal"],
-                    opening["stage_outward_clearance"])
-                opening["stage_offset"] = offset
-                mag = math.sqrt(sum(v * v for v in offset))
-                if mag < 0.1:
-                    notes.append("staging_degenerate mag=%.3f" % mag)
-                try:
-                    suction = self._tf_buffer.lookup_transform(
-                        self._world_frame, self._suction_frame,
-                        rclpy.time.Time())
-                    q = suction.transform.rotation
-                    fallback_yaw = math.atan2(
-                        2.0 * (q.w * q.z + q.x * q.y),
-                        1.0 - 2.0 * (q.y * q.y + q.z * q.z))
-                except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
-                        tf2_ros.ExtrapolationException):
-                    fallback_yaw = 0.0
-                surface_max = self._corridor_surface_max_world(place_slot)
-                if surface_max is not None:
-                    notes.append("corridor_surface_max=%.3f" % surface_max)
-            else:
-                surface_max = None
-            segments = build_sequence(
-                pick, place_slot, phase,
-                pick_clearances=self._clearances(),
-                place_clearance_z=float(
-                    self.get_parameter("place_clearance_z").value),
-                opening_info=opening,
-                fallback_yaw=fallback_yaw,
-                corridor_surface_max=surface_max,
-                retreat_safe_tool_z=(
-                    self._retreat_safe_tool_z if phase == "place" else None))
-            for segment in segments:
-                truncated = float(getattr(segment, "clearance_truncation_m", 0.0))
-                if truncated > 1e-9:
-                    notes.append("retreat_truncation_m=%.3f" % truncated)
-            response.segments = [adapters.segment_to_msg(s) for s in segments]
-            response.success = bool(segments)
-            message = (
-                "%d segments for phase=%s" % (len(segments), phase)
-                if segments else "empty sequence for phase=%s" % phase)
-            if notes:
-                message = "%s; %s" % (message, "; ".join(notes))
-            response.message = message
-            self._publish_pick_markers(response.segments, phase)
-        except Exception as exc:  # noqa: BLE001 - service boundary
-            response.segments = []
-            response.success = False
-            response.message = "build failed: %s" % exc
-            self.get_logger().error(response.message)
+        response.segments = []
+        response.success = False
+        response.message = "PLANNING_ROUTE_REQUIRED: v1 build removed; " \
+            "use build_motion_sequence_v2 (pick) / select_place_path_v2 " \
+            "(place)"
         return response
 
     def _handle_v2(self, request, response):
@@ -408,7 +417,9 @@ class WaypointGeneratorNode(Node):
         pick = None
         if str(request.phase or "") == "pick":
             pick = adapters.pick_from_detected(request.pick)
-        response = handle_build_v2(request, response, pick=pick)
+        response = handle_build_v2(
+            request, response, pick=pick,
+            pick_encoder=self._pick_leg_encoder())
         if getattr(self, "_runtime", None) is not None and bool(getattr(response, "success", False)):
             # Effect boundary: the builder ran under the admission; recheck.
             from luggage_description.frame_contracts import ContractError
@@ -423,59 +434,12 @@ class WaypointGeneratorNode(Node):
         return response
 
     def _handle_candidate(self, request, response, candidate_id):
-        """Candidate-driven pick build (plan section C), fail-closed.
-
-        A valid top with zero candidates is ``DETECT_NO_SEALABLE_PATCH``;
-        a mismatched or missing candidate id is refused — the legacy
-        box-centre path must not silently take over.
-        """
-        from luggage_planning.suction_candidate_selection import (
-            observation_identity_consistent,
-            rank_candidates,
-        )
-        from luggage_planning.suction_candidate_waypoints import (
-            DETECT_NO_SEALABLE_PATCH,
-            SUCTION_CANDIDATE_NOT_FOUND,
-            build_candidate_pick_segments,
-        )
-
-        views = adapters.suction_candidates_from_detected(request.pick)
-        if not views:
-            response.segments = []
-            response.success = False
-            response.message = DETECT_NO_SEALABLE_PATCH
-            return response
-        ranked = rank_candidates(views)
-        selected = next(
-            (view for view in ranked
-             if view.candidate_id == candidate_id), None)
-        if selected is None:
-            response.segments = []
-            response.success = False
-            response.message = "%s: %s not on observation" % (
-                SUCTION_CANDIDATE_NOT_FOUND, candidate_id)
-            return response
-        stamp, frame = adapters.detected_observation_identity(request.pick)
-        mismatch = observation_identity_consistent(
-            (selected,), stamp, frame, selected.instance_id,
-            selected.generation)
-        if mismatch is not None:
-            response.segments = []
-            response.success = False
-            response.message = "%s: %s" % (mismatch[0], mismatch[1])
-            return response
-        pick = adapters.pick_from_detected(request.pick)
-        segments = build_candidate_pick_segments(
-            selected,
-            pick_clearances=self._clearances(),
-            detection_yaw=pick.yaw,
-            yaw_valid=bool(pick.yaw_valid),
-            fallback_yaw=0.0)
-        response.segments = [adapters.segment_to_msg(s) for s in segments]
-        response.success = bool(segments)
-        response.message = (
-            "%d segments for candidate=%s" % (len(segments), candidate_id))
-        self._publish_pick_markers(response.segments, "pick")
+        """v1 candidate pick build is refused with the v1 surface (ST09-I)."""
+        del candidate_id
+        response.segments = []
+        response.success = False
+        response.message = "PLANNING_ROUTE_REQUIRED: v1 candidate build " \
+            "removed; candidate waypoints feed the v2 pick encoder"
         return response
 
     def _publish_pick_markers(self, segments, phase):

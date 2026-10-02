@@ -612,20 +612,11 @@ class TestFailureTaxonomy:
         assert error.code == "PLANNING_BUDGET_EXHAUSTED"
 
 
-class TestLegacySectionA:
-    """Section A stays byte-compatible for path_candidates."""
+class TestSectionARemoved(object):
+    """[ST09-I integration] Section A was deleted with the geometric
+    selection bypass; the bounded Section B search is the only layer."""
 
-    def test_profiles_and_grid_path_shape(self):
-        from luggage_planning.grid_path_search import GridPath, PROFILES
-
-        class _Cell(object):
-            def __init__(self, index, center, seed, clearance):
-                self.index, self.center = index, center
-                self.seed, self.clearance = seed, clearance
-
-        node = _Cell((0, 0, 0, 0), (0.1, 0.1, 0.1), [0.0] * 6, 0.1)
-        path = GridPath("short", [node])
-        assert PROFILES == ("short", "high", "clear")
-        assert path.cells == [(0, 0, 0, 0)]
-        assert path.waypoints == [(0.1, 0.1, 0.1)]
-        assert path.seeds == [[0.0] * 6]
+    def test_section_a_symbols_are_gone(self):
+        from luggage_planning import grid_path_search as search
+        for name in ("PROFILES", "GridPath", "search_paths", "_dijkstra"):
+            assert not hasattr(search, name), name

@@ -601,13 +601,10 @@ class TestWiring(unittest.TestCase):
         self.assertIn("probe_motion_segment", source)
         self.assertIn("probe_segment", source)
 
-    def test_waypoint_node_handles_candidate_requests(self):
+    def test_waypoint_node_refuses_candidate_requests(self):
         source = self._source(os.path.join(
             "scripts", "waypoint_generator_node.py"))
-        self.assertIn("suction_candidate_id", source)
-        self.assertIn("DETECT_NO_SEALABLE_PATCH", source)
-        self.assertIn("observation_identity_consistent", source)
-
+        self.assertIn("PLANNING_ROUTE_REQUIRED", source)
     def test_executor_refuses_generation_segments(self):
         # [ST09-I] fraction enforcement moved upstream with generation:
         # the route adapter owns cartesian verdicts; the executor refuses

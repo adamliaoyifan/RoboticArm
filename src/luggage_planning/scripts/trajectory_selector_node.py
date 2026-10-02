@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""SelectPlacePath service. The algorithm lives in trajectory_selector.
+"""SelectPlacePath services: the unified route producer (ST09-I).
 
-This node does not execute motion. Callers apply the returned carry
-segments and send them to PlanMotion.
+SelectPlacePathV2 plans, certifies, and returns complete typed joint
+route legs; this node never executes motion. The legacy in-process
+selection is deleted — v1 keeps its frozen surface as a named refusal.
 """
 
 from __future__ import division
@@ -32,9 +33,6 @@ from luggage_planning.atlas_runtime import (
 )
 from luggage_planning.urdf_identity import UrdfIdentity
 from luggage_planning.occupancy_place_paths import dump_rows
-from luggage_planning.place_selection_client import write_joint_knots
-from luggage_planning.place_service import handle_select_v2
-from luggage_planning.trajectory_selector import TrajectorySelector
 
 
 class TrajectorySelectorNode(Node):
@@ -45,7 +43,6 @@ class TrajectorySelectorNode(Node):
         # Launch sets this only when the caller overrides the yaml. The
         # default True leaves atlas_runtime.yaml in charge.
         self.declare_parameter("atlas_enabled", True)
-        self._selector = TrajectorySelector.from_yaml()
         self._surface = None
         self._joints = None
         self._atlas = None
@@ -62,8 +59,6 @@ class TrajectorySelectorNode(Node):
         if not bool(self.get_parameter("atlas_enabled").value):
             self._atlas_cfg = dict(self._atlas_cfg)
             self._atlas_cfg["enabled"] = False
-        if str(self._atlas_cfg.get("hash_policy") or "") == "strict":
-            self._selector.config["hash_policy"] = "strict"
         self._urdf_identity = UrdfIdentity(self)
         if self._atlas_cfg.get("enabled"):
             self._urdf_identity.start()
@@ -81,7 +76,7 @@ class TrajectorySelectorNode(Node):
             SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
             self._select_v2)
         # ST09-I: the unified route producer (off = legacy selection).
-        self.declare_parameter("route_planning", False)
+        self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
         self._route_producer = None
         self._route_planning = bool(
@@ -152,8 +147,12 @@ class TrajectorySelectorNode(Node):
         ]
 
     def _select(self, request, response):
+        """v1 surface preserved as a named refusal (ST09-I).
+
+        The unified route produces complete typed legs on the v2
+        endpoint; the legacy in-process selection was a geometric bypass.
+        """
         if getattr(self, "_frame_runtime", None) is not None:
-            # v1 cannot bypass profile admission.
             from luggage_description.frame_contracts import ContractError
             try:
                 self._frame_runtime.authorize_legacy_effect()
@@ -162,85 +161,10 @@ class TrajectorySelectorNode(Node):
                 response.reason_code = error.code
                 response.rows_json = json.dumps({"error": error.code})
                 return response
-        surface = self._surface
-        if surface is None:
-            response.success = False
-            response.reason_code = "PLACE_PATH_INFEASIBLE"
-            response.rows_json = json.dumps({"error": "surface_2d missing"})
-            return response
-        slots = []
-        scores = list(request.candidate_scores)
-        for index, slot in enumerate(request.candidates):
-            score = float(scores[index]) if index < len(scores) else 0.0
-            pos = slot.place_pose.position
-            ori = slot.place_pose.orientation
-            slots.append({
-                "index": index,
-                "score": score,
-                "target": (float(pos.x), float(pos.y), float(pos.z)),
-                "yaw": math.atan2(
-                    2.0 * (float(ori.w) * float(ori.z)
-                           + float(ori.x) * float(ori.y)),
-                    1.0 - 2.0 * (float(ori.y) ** 2 + float(ori.z) ** 2)),
-            })
-        if not slots and request.box.width > 0.0:
-            response.success = False
-            response.reason_code = "PLACE_PATH_INFEASIBLE"
-            response.rows_json = json.dumps({"error": "no slots"})
-            return response
-        start = request.start_pose.position
-        portal = (float(start.x), float(start.y), float(start.z))
-        payload = (
-            float(request.box.width), float(request.box.depth),
-            float(request.box.height))
-        joints = list(request.start_joints) or self._joints
-        atlas, diag = self._runtime_atlas()
-        block = certification_block_reason(self._atlas_cfg, diag)
-        if block:
-            response.success = False
-            response.reason_code = block
-            response.rows_json = json.dumps({
-                "error": block,
-                "atlas": diag,
-            })
-            return response
-        urdf_hash = (
-            self._urdf_identity.hash if self._urdf_identity.ready else "")
-        try:
-            winner, rows, reason, _snap = self._selector.select(
-                surface, slots, portal, payload, atlas=atlas,
-                expected_hash=str(request.geometry_hash or "") or None,
-                expected_revision=int(request.map_revision),
-                start_joints=joints,
-                excluded_ids=list(request.excluded_candidate_ids),
-                scene_tf_hash=self._scene_tf_hash,
-                urdf_hash=urdf_hash,
-            )
-        except Exception as exc:  # noqa: BLE001 - service boundary
-            response.success = False
-            response.reason_code = "PLACE_PATH_INFEASIBLE"
-            response.rows_json = json.dumps({"error": str(exc)})
-            return response
-        response.rows_json = json.dumps(dump_rows(rows))
-        response.reason_code = reason or ""
-        if winner is None:
-            response.success = False
-            return response
-        try:
-            response.carry_segments = _segments(
-                winner, map_to_world=self._map_to_world)
-        except Exception as exc:  # noqa: BLE001 - service boundary
-            # A crash inside response assembly would surface to the client
-            # as a timeout/future error instead of a diagnosable failure.
-            response.success = False
-            response.reason_code = "PLACE_PATH_INFEASIBLE"
-            response.rows_json = json.dumps(
-                {"error": "segment assembly: %s" % exc})
-            return response
-        response.success = True
-        response.slot_index = int(winner["slot_index"])
-        response.selection_id = str(winner.get("selection_id") or "")
-        response.path_source = str(winner.get("path_source") or "")
+        response.success = False
+        response.reason_code = "PLANNING_ROUTE_REQUIRED"
+        response.rows_json = json.dumps(
+            {"error": "v1 selection removed; use select_place_path_v2"})
         return response
 
     def _route_producer_or_none(self):
@@ -322,34 +246,21 @@ class TrajectorySelectorNode(Node):
                 response.reason_code = error.code
                 response.rows_json = json.dumps({"error": error.code})
                 return response
-        atlas, diag = self._runtime_atlas()
-        if self._route_planning:
-            # Route mode: the atlas is a prior (seeds/gaps), never a gate.
-            producer = self._route_producer_or_none()
-            if producer is None:
-                response.success = False
-                response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
-                return response
-            from luggage_planning.place_service import (
-                fill_select_response_route,
-            )
-            response = fill_select_response_route(
-                request, response, producer=producer)
-        else:
-            block = certification_block_reason(self._atlas_cfg, diag)
-            if block:
-                response.success = False
-                response.reason_code = block
-                response.rows_json = json.dumps(
-                    {"error": block, "atlas": diag})
-                return response
-            from luggage_description.scene_tf_config_utils import (
-                container_inner_geometry_descriptor)
-            response = handle_select_v2(
-                request, response, atlas=atlas,
-                config=self._selector.config,
-                geometry_descriptor=container_inner_geometry_descriptor(
-                    self._scene))
+        self._runtime_atlas()  # prior diagnostics only; never a gate
+        if not self._route_planning:
+            response.success = False
+            response.reason_code = "PLANNING_ROUTE_REQUIRED"
+            response.rows_json = json.dumps(
+                {"error": "route_planning is the only production mode"})
+            return response
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.success = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        from luggage_planning.place_service import fill_select_response_route
+        response = fill_select_response_route(
+            request, response, producer=producer)
         if getattr(self, "_frame_runtime", None) is not None and bool(
                 getattr(response, "success", False)):
             from luggage_description.frame_contracts import ContractError
@@ -361,52 +272,6 @@ class TrajectorySelectorNode(Node):
                 response.reason_code = error.code
                 response.rows_json = json.dumps({"error": error.code})
         return response
-
-
-def _segments(winner, map_to_world=None):
-    """MotionSegment[] for the winner's carry legs, in the WORLD frame.
-
-    The request's slots are map(container)-frame; the executor plans in
-    world, so every waypoint and the target_pose are converted here. A
-    cartesian response without waypoints/target_pose would leave the
-    executor's default zero pose as the goal -- an invalid-target hazard,
-    so the payload is complete by construction. ``map_to_world`` is
-    injectable for tests (None = identity).
-    """
-    import math as _math
-
-    convert = map_to_world or (lambda xyz: [float(v) for v in xyz])
-    out = []
-    for name in ("transit", "traverse"):
-        spec = (winner.get("segments") or {}).get(name) or {}
-        waypoints = list(spec.get("waypoints") or [])
-        yaw = float(winner.get("yaw") or 0.0)
-        half = 0.5 * yaw
-        quat = (_math.cos(half), _math.sin(half), 0.0, 0.0)
-        segment = MotionSegment()
-        segment.name = name
-        segment.type = str(spec.get("type") or "cartesian")
-        segment.allow_ompl_fallback = bool(
-            spec.get("allow_ompl_fallback", False))
-        segment.keep_tool_down = True
-
-        def _fill(pose, xyz):
-            pose.position.x, pose.position.y, pose.position.z = (
-                float(xyz[0]), float(xyz[1]), float(xyz[2]))
-            pose.orientation.x = quat[0]
-            pose.orientation.y = quat[1]
-            pose.orientation.z = quat[2]
-            pose.orientation.w = quat[3]
-
-        for xyz in waypoints[:-1]:
-            pose = Pose()
-            _fill(pose, convert(xyz))
-            segment.waypoints.append(pose)
-        if waypoints:
-            _fill(segment.target_pose, convert(waypoints[-1]))
-        write_joint_knots(segment, spec.get("joint_knots") or [])
-        out.append(segment)
-    return out
 
 
 def main():

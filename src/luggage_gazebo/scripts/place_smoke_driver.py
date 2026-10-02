@@ -1210,38 +1210,34 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 base_xyz, self._scene_config, margin=0.0):
             return self._abort(trial, "PLACE_SLOT_INVALID", True, extra=extras)
 
-        if self._typed is not None:
-            built, typed_error = self._typed_build_place(pick_msg)
-            if built is None:
-                trial.extras["build"] = typed_error
-                return self._abort(trial, "PLACE_BUILD_FAILED", True,
+        route_v2 = list(getattr(self, "_selected_carry_v2", None) or ())
+        route_v1 = list(getattr(self, "_selected_carry_v1", None) or ())
+        if route_v2:
+            # [ST09-I] certified route legs from SelectPlacePathV2 are
+            # the place motion; the fixed-clearance build was a bypass.
+            if len(route_v1) != len(route_v2):
+                return self._abort(trial, "PLACE_ROUTE_LEGS_MISMATCH", True,
                                    extra=extras)
-        else:
-            req = BuildMotionSequence.Request()
-            req.phase = "place"
-            req.pick = pick_msg
-            req.place_slot = slot
-            built = self.call_srv(self._build, req, timeout=15.0)
-        if built is None or not built.success:
-            trial.extras["build"] = built.message if built else "timeout"
-            return self._abort(trial, "PLACE_BUILD_FAILED", True, extra=extras)
-        trial.staging_degenerate = "staging_degenerate" in (built.message or "")
-        trial.extras["build"] = built.message
-        segments = list(built.segments)
-        self._frame_motion_segments = list(
-            getattr(built, "motion_segments", ()) or ())
-        self._frame_motion_index = 0
-        trial.segments_planned = len(segments)
-        self._set_state("SEQUENCE_BUILT", note=built.message)
+            segments = route_v1
+            self._frame_motion_segments = route_v2
+            self._frame_motion_index = 0
+            trial.segments_planned = len(segments)
+            trial.extras["build"] = "certified route (%d legs)" % len(route_v2)
+            self._set_state("SEQUENCE_BUILT", note="certified route")
+        elif self._typed is not None or True:
+            # The build endpoint no longer produces place legs.
+            return self._abort(trial, "PLANNING_ROUTE_REQUIRED", True,
+                               extra=extras)
 
         names = [s.name for s in segments]
-        retreat_seg = None
+        post_release = []
         remaining = []
         for segment in segments:
-            if segment.name == "retreat":
-                retreat_seg = segment
+            if segment.name in ("retreat", "return"):
+                post_release.append(segment)
             else:
                 remaining.append(segment)
+        retreat_seg = post_release[0] if post_release else None
         if any(n in names for n in STAGING_NAMES):
             self._set_state("STAGING")
         state_by_name = {
@@ -1313,11 +1309,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
-            ok, code, rec = self._execute_segment(retreat_seg, trial)
-            if ok:
-                trial.segments_succeeded += 1
-            else:
-                return self._abort(trial, code, False, extra=extras)
+            for post_seg in post_release:
+                ok, code, rec = self._execute_segment(post_seg, trial)
+                if ok:
+                    trial.segments_succeeded += 1
+                else:
+                    return self._abort(trial, code, False, extra=extras)
 
         pose_release, pose_drift, settle = self._poses_after_settle()
         trial.extras["settle"] = {

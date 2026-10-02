@@ -5,7 +5,6 @@ from types import SimpleNamespace
 import unittest
 
 from luggage_planning.motion_executor import MotionExecutor, cartesian_hops
-from luggage_planning.place_selection_client import apply_carry_segment
 
 
 def _executor():
@@ -54,49 +53,6 @@ class _SegmentWithJointField(_Segment):
 
     def get_fields_and_field_types(self):
         return {"joint_waypoints": "trajectory_msgs/JointTrajectoryPoint[]"}
-
-
-class TestCarryHandoff(unittest.TestCase):
-    def test_joint_path_downgrades_without_message_field(self):
-        segment = _Segment()
-        selection = {"segments": {"traverse": {
-            "type": "joint_path",
-            "waypoints": [(0.0, 0.0, 1.0), (0.2, 0.0, 1.0)],
-            "joint_knots": [[0.0] * 6, [0.1] + [0.0] * 5],
-            "allow_ompl_fallback": False,
-        }}}
-        apply_carry_segment(segment, selection)
-        self.assertEqual(segment.type, "cartesian")
-        self.assertTrue(segment.allow_ompl_fallback)
-        self.assertAlmostEqual(segment.target_pose.position.x, 0.2)
-
-    def test_joint_path_survives_with_message_field(self):
-        segment = _SegmentWithJointField()
-        selection = {"segments": {"traverse": {
-            "type": "joint_path",
-            "waypoints": [(0.0, 0.0, 1.0), (0.2, 0.0, 1.0)],
-            "joint_knots": [[0.0] * 6, [0.1] + [0.0] * 5],
-            "allow_ompl_fallback": False,
-        }}}
-        apply_carry_segment(segment, selection)
-        self.assertEqual(segment.type, "joint_path")
-        self.assertFalse(segment.allow_ompl_fallback)
-        self.assertEqual(segment._joint_knots, [[0.0] * 6, [0.1] + [0.0] * 5])
-
-    def test_waypoints_without_spec_become_cartesian(self):
-        segment = _Segment()
-        segment.name = "transit"
-        segment.type = "pose_target"
-        segment.allow_ompl_fallback = False
-        apply_carry_segment(segment, {
-            "waypoint_frame": "world",
-            "waypoints": [(0.86, -0.38, 1.5), (1.005, -0.535, 0.827)],
-        })
-        self.assertEqual(segment.type, "cartesian")
-        self.assertTrue(segment.allow_ompl_fallback)
-        self.assertAlmostEqual(segment.target_pose.position.x, 1.005)
-        self.assertEqual(len(segment.waypoints), 1)
-        self.assertAlmostEqual(segment.waypoints[0].position.x, 0.86)
 
 
 class TestJointPathExecute(unittest.TestCase):

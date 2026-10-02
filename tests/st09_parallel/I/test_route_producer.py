@@ -248,8 +248,8 @@ class TestPlanPlaceRoute:
         assert result["revalidation"].decision is MapDecision.CONTINUE
         names = [leg["name"] for leg in result["legs"]]
         # No opening datum in this fixture, so the portal hop is dropped.
-        assert names[0] == "route_traverse"
-        assert names[-1] == "route_return"
+        assert names[0] == "traverse"
+        assert names[-1] == "return"
 
     def test_legs_admit_as_typed_v2_segments(self):
         from luggage_description.frame_diagnostics import BoundaryContext

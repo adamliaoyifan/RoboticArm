@@ -11,6 +11,7 @@ from luggage_planning.waypoint_generator import (
     DEFAULT_PLACE_CLEARANCE_Z,
     PLACE_RELEASE_GAP_M,
     build_sequence,
+    corridor_clearance,
     insertion_clearance,
     nearest_box_yaw,
     pick_tool_yaw,
@@ -117,93 +118,6 @@ class TestWaypointGenerator(unittest.TestCase):
         self.assertAlmostEqual(segs[2].target_pose.position.z, 0.64)
         self.assertAlmostEqual(segs[3].target_pose.position.z, 1.00)
 
-    def test_low_contact_retreat_stays_at_the_corridor_clearance(self):
-        segs = build_sequence(
-            Box(), Slot(), "place", retreat_safe_tool_z=1.55)
-        retreat = [segment for segment in segs if segment.name == "retreat"][0]
-        # rest top = 0.20 + 0.25; descend adds PLACE_RELEASE_GAP_M then +0.15.
-        self.assertAlmostEqual(
-            retreat.target_pose.position.z, 0.60 + PLACE_RELEASE_GAP_M)
-        self.assertAlmostEqual(retreat.clearance_truncation_m, 0.0)
-
-    def test_high_contact_retreat_stops_at_the_safe_tool_z(self):
-        slot = Slot()
-        slot.place_pose.position.z = 1.25  # rest top 1.50 with box height 0.50
-        segs = build_sequence(
-            Box(), slot, "place", place_clearance_z=0.30,
-            retreat_safe_tool_z=1.55)
-        by_name = {segment.name: segment for segment in segs}
-        self.assertAlmostEqual(
-            by_name["transit"].target_pose.position.z, 1.80 + PLACE_RELEASE_GAP_M)
-        self.assertAlmostEqual(by_name["retreat"].target_pose.position.z, 1.55)
-        self.assertAlmostEqual(
-            by_name["retreat"].clearance_truncation_m, 0.25 + PLACE_RELEASE_GAP_M)
-
-    def test_place_clearance_is_configurable(self):
-        segs = build_sequence(Box(), Slot(), "place", place_clearance_z=0.42)
-        self.assertEqual(segs[0].name, "transit")
-        # slot center 0.20 + half box height 0.25 + gap + clearance 0.42
-        self.assertAlmostEqual(
-            segs[0].target_pose.position.z, 0.87 + PLACE_RELEASE_GAP_M)
-        self.assertAlmostEqual(
-            segs[3].target_pose.position.z, 0.45 + PLACE_RELEASE_GAP_M)
-        self.assertEqual(
-            [segment.type for segment in segs],
-            ["pose_target", "cartesian", "cartesian", "cartesian", "cartesian"],
-        )
-        self.assertTrue(all(segment.keep_tool_down for segment in segs))
-        self.assertFalse(
-            segs[0].lock_wrist,
-            "tool-down is the safety constraint; redundant wrist-lock can "
-            "make valid transit goals unsampleable",
-        )
-        self.assertFalse(
-            segs[0].keep_camera_down,
-            "tool-down already fixes the rigid camera mount; duplicating the "
-            "camera guard can disconnect the constrained transit sampler",
-        )
-
-    def test_place_descend_tcp_includes_release_gap(self):
-        slot = Slot()
-        rest_z = slot.place_pose.position.z
-        box = Box()
-        rest_top = rest_z + box.height * 0.5
-        segs = build_sequence(box, slot, "place")
-        by_name = {segment.name: segment for segment in segs}
-        self.assertAlmostEqual(slot.place_pose.position.z, rest_z)
-        self.assertAlmostEqual(
-            by_name["descend"].target_pose.position.z,
-            rest_top + PLACE_RELEASE_GAP_M)
-        self.assertAlmostEqual(
-            by_name["insert"].target_pose.position.z,
-            rest_top + PLACE_RELEASE_GAP_M
-            + insertion_clearance(box.height, DEFAULT_PLACE_CLEARANCE_Z))
-        self.assertAlmostEqual(
-            by_name["retreat"].target_pose.position.z,
-            rest_top + PLACE_RELEASE_GAP_M + DEFAULT_PLACE_CLEARANCE_Z)
-
-    def test_place_opening_portal_precedes_horizontal_traverse(self):
-        info = {
-            "point": [0.0, -0.75, 0.44],
-            "normal": [0.0, 1.0, 0.0],
-            "outward_clearance": 0.15,
-        }
-        segs = build_sequence(
-            Box(), Slot(), "place", opening_info=info)
-        self.assertEqual(
-            [segment.name for segment in segs],
-            ["stage", "transit", "traverse", "insert", "descend", "retreat"],
-        )
-        self.assertAlmostEqual(
-            segs[0].target_pose.position.y, 0.05, places=6)
-        self.assertAlmostEqual(
-            segs[1].target_pose.position.y, -0.60, places=6)
-        self.assertAlmostEqual(
-            segs[2].target_pose.position.y,
-            Slot().place_pose.position.y,
-            places=6,
-        )
-
     def test_staging_offset_is_three_axis(self):
         world_offset = staging_offset([-1.0, 0.0, 0.0], 0.65)
         base_offset = staging_offset([0.0, 1.0, 0.0], 0.65)
@@ -213,43 +127,6 @@ class TestWaypointGenerator(unittest.TestCase):
             math.sqrt(sum(v * v for v in base_offset)), 0.65, places=6)
         self.assertAlmostEqual(world_offset[0], -0.65, places=6)
         self.assertAlmostEqual(base_offset[1], 0.65, places=6)
-
-    def test_place_staging_along_world_negative_x_is_not_degenerate(self):
-        info = {
-            "point": [0.755, -0.27, 1.30],
-            "normal": [-1.0, 0.0, 0.0],
-            "outward_clearance": 0.15,
-            "stage_outward_clearance": 0.65,
-        }
-        segs = build_sequence(Box(), Slot(), "place", opening_info=info)
-        names = [segment.name for segment in segs]
-        self.assertIn("stage", names)
-        stage = next(s for s in segs if s.name == "stage")
-        transit = next(s for s in segs if s.name == "transit")
-        dx = stage.target_pose.position.x - transit.target_pose.position.x
-        dy = stage.target_pose.position.y - transit.target_pose.position.y
-        self.assertAlmostEqual(dx, -0.65, places=5)
-        self.assertAlmostEqual(dy, 0.0, places=5)
-        self.assertGreater(
-            math.hypot(dx, dy), 0.1,
-            "staging collapsed onto the portal (Y-only extrusion bug)")
-
-    def test_pick_and_place_lift_off_names_are_distinct(self):
-        """Pick lift-off is pick_retreat; place lift-off stays retreat."""
-        self.assertEqual(
-            segment_names_for_phase("pick"),
-            ["pre_grasp", "approach", "attach", "pick_retreat"],
-        )
-        pick_names = [s.name for s in build_sequence(Box(), Slot(), "pick")]
-        self.assertEqual(pick_names, segment_names_for_phase("pick"))
-        self.assertNotIn("retreat", pick_names)
-        self.assertIn("pick_retreat", DEFAULT_PICK_CLEARANCES)
-        self.assertNotIn("retreat", DEFAULT_PICK_CLEARANCES)
-
-        place_names = [s.name for s in build_sequence(Box(), Slot(), "place")]
-        self.assertEqual(place_names, segment_names_for_phase("place"))
-        self.assertEqual(place_names[-1], "retreat")
-        self.assertNotEqual(pick_names[-1], place_names[-1])
 
     def test_pick_tool_yaw_keeps_detection_when_valid(self):
         self.assertAlmostEqual(pick_tool_yaw(1.2, True, fallback_yaw=0.3), 1.2)
@@ -356,61 +233,6 @@ class TestNearestBoxYaw(unittest.TestCase):
         self.assertAlmostEqual(nearest_box_yaw(0.3, 0.3), 0.3)
         self.assertAlmostEqual(nearest_box_yaw(-0.4, -0.4), -0.4)
 
-    def test_place_keeps_carry_quat_when_slot_is_pi_equivalent(self):
-        """Pick yaw π and slot yaw 0 must not hop transit to [1,0,0,0]."""
-        box = Box()
-        box.pose.orientation = Quaternion(x=0.0, y=0.0, z=1.0, w=0.0)
-        box.yaw_valid = True
-        slot = Slot()
-        slot.place_pose.orientation = Quaternion(w=1.0)
-        segs = build_sequence(
-            box, slot, "place",
-            opening_info={
-                "point": [0.755, -0.27, 1.30],
-                "normal": [-1.0, 0.0, 0.0],
-                "outward_clearance": 0.15,
-                "stage_outward_clearance": 0.65,
-                "start_point": [-1.0, -0.01, 1.49],
-            },
-        )
-        by_name = {seg.name: seg for seg in segs}
-        self.assertIn("stage_mid", by_name)
-        self.assertIn("transit", by_name)
-        self.assertIn("retreat", by_name)
-        for name in ("stage_mid", "stage_late", "transit", "retreat"):
-            q = by_name[name].target_pose.orientation
-            self.assertAlmostEqual(q.x, 0.0, places=6, msg=name)
-            self.assertAlmostEqual(q.y, 1.0, places=6, msg=name)
-            self.assertAlmostEqual(q.z, 0.0, places=6, msg=name)
-            self.assertAlmostEqual(q.w, 0.0, places=6, msg=name)
-
-    def test_place_keeps_negative_pi_carry_quat(self):
-        """Live picks can extract yaw -π from tool-down [ε,-1,0,0]."""
-        box = Box()
-        box.pose.orientation = Quaternion(x=0.0002, y=-1.0, z=0.0, w=0.0)
-        box.yaw_valid = True
-        slot = Slot()
-        slot.place_pose.orientation = Quaternion(w=1.0)
-        segs = build_sequence(
-            box, slot, "place",
-            opening_info={
-                "point": [0.755, -0.27, 1.30],
-                "normal": [-1.0, 0.0, 0.0],
-                "outward_clearance": 0.15,
-                "stage_outward_clearance": 0.65,
-                "start_point": [-1.0, -0.01, 1.49],
-            },
-        )
-        by_name = {seg.name: seg for seg in segs}
-        stage = by_name["stage_mid"].target_pose.orientation
-        self.assertLess(stage.y, 0.0)
-        for name in ("stage_late", "transit", "retreat"):
-            q = by_name[name].target_pose.orientation
-            self.assertAlmostEqual(q.x, stage.x, places=6, msg=name)
-            self.assertAlmostEqual(q.y, stage.y, places=6, msg=name)
-            self.assertAlmostEqual(q.z, stage.z, places=6, msg=name)
-            self.assertAlmostEqual(q.w, stage.w, places=6, msg=name)
-
 
 class TestPerceptionApproachClearance(unittest.TestCase):
     def test_clearance_computation(self):
@@ -454,81 +276,29 @@ class TestCorridorClearance(unittest.TestCase):
             corridor_margin=margin,
         )
 
-    def test_none_corridor_keeps_single_slot_behavior(self):
-        segs_none = self._segments(corridor_surface_max=None)
-        segs_default = self._segments()
-        for a, b in zip(segs_none, segs_default):
-            self.assertAlmostEqual(a.target_pose.position.z,
-                                   b.target_pose.position.z, places=9)
+    def test_insertion_clearance_is_capped_by_corridor_clearance(self):
+        # [ST09-I] pure pin: insertion starts below the traverse height
+        # and above the floor for flat boxes.
+        self.assertLessEqual(
+            insertion_clearance(0.30, corridor_clearance(
+                None, 0.30, 0.80, 0.15)), 0.15)
+        self.assertGreaterEqual(insertion_clearance(0.05, 0.15), 0.06)
 
-    def test_traverse_retreat_raised_above_tall_neighbor(self):
-        box_height = 0.30
-        slot_z = 0.655
-        contact_z = slot_z + box_height * 0.5  # 0.805
-        surface_max = 1.30  # a neighbor 0.5 m taller than our slot top
-        margin = 0.05
-        segs = self._segments(corridor_surface_max=surface_max,
-                              box_height=box_height, slot_z=slot_z,
-                              margin=margin)
-        by_name = {s.name: s for s in segs}
-        required = surface_max + box_height + margin  # 1.65
-        self.assertGreaterEqual(
-            by_name["traverse"].target_pose.position.z, required)
-        self.assertGreaterEqual(
-            by_name["retreat"].target_pose.position.z, required)
-        # Payload bottom (suction - box_height) clears by the margin.
-        self.assertGreaterEqual(
-            by_name["retreat"].target_pose.position.z - box_height
-            - surface_max, margin - 1e-9)
+    def test_none_corridor_keeps_default_clearance(self):
+        # [ST09-I] pure pin: the corridor helper is the route anchor
+        # generator now; None corridor keeps the fixed clearance.
+        self.assertEqual(
+            corridor_clearance(None, 0.30, 0.80, 0.15), 0.15)
 
-    def test_corridor_raise_does_not_lift_retreat_through_the_cap(self):
-        box_height = 0.30
-        slot_z = 0.655
-        surface_max = 1.30
-        margin = 0.05
-        box = Box()
-        slot = Slot()
-        slot.place_pose.position.z = slot_z
-        slot.height = box_height
-        segs = build_sequence(
-            box, slot, "place",
-            opening_info={
-                "point": [0.755, 0.0, 1.30],
-                "normal": [-1.0, 0.0, 0.0],
-                "outward_clearance": 0.15,
-                "min_height_above_opening": 0.35,
-                "stage_outward_clearance": 0.65,
-            },
-            corridor_surface_max=surface_max,
-            corridor_margin=margin,
-            retreat_safe_tool_z=1.55,
-        )
-        by_name = {segment.name: segment for segment in segs}
-        required = surface_max + box_height + margin  # 1.65
-        self.assertGreaterEqual(
-            by_name["traverse"].target_pose.position.z, required)
-        self.assertAlmostEqual(by_name["retreat"].target_pose.position.z, 1.55)
+    def test_tall_neighbor_raises_clearance(self):
+        # required suction z = surface_max + box_height + margin.
         self.assertAlmostEqual(
-            by_name["retreat"].clearance_truncation_m, required - 1.55)
-
-    def test_low_neighbor_keeps_default_clearance(self):
-        # Neighbor below the slot top: no raise needed beyond default 0.15.
-        segs = self._segments(corridor_surface_max=0.60)
-        by_name = {s.name: s for s in segs}
-        self.assertAlmostEqual(
-            by_name["traverse"].target_pose.position.z,
-            0.805 + PLACE_RELEASE_GAP_M + 0.15,
-            places=6)
-
-    def test_insert_descend_unchanged_by_corridor(self):
-        # Slot-column segments stay at their own heights regardless of the
-        # corridor: insert/descend only descend inside the slot column.
-        segs_a = self._segments(corridor_surface_max=None)
-        segs_b = self._segments(corridor_surface_max=1.30)
-        for name in ("insert", "descend"):
-            za = [s for s in segs_a if s.name == name][0].target_pose.position.z
-            zb = [s for s in segs_b if s.name == name][0].target_pose.position.z
-            self.assertAlmostEqual(za, zb, places=9, msg=name)
+            corridor_clearance(1.30, 0.30, 0.80, 0.15, margin=0.05),
+            1.30 + 0.30 + 0.05 - 0.80)
+        # and never below the fixed clearance.
+        self.assertEqual(
+            corridor_clearance(0.50, 0.30, 0.80, 0.15, margin=0.05),
+            0.15)
 
     def test_corridor_clearance_unit(self):
         from luggage_planning.waypoint_generator import corridor_clearance

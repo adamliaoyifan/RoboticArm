@@ -25,12 +25,9 @@ from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.identity import identity_from_message
 from luggage_description.ros_frame_bindings.poses import pose_from_message
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
-from luggage_planning.occupancy_place_paths import dump_rows
 from luggage_planning.place_tcp import (
-    build_place_legs_v2,
     container_transform_dict,
     grasp_dict_from_contract,
-    select_place_v2,
 )
 from luggage_planning.waypoint_generator import build_sequence
 
@@ -204,134 +201,6 @@ def request_dict(message):
     }
 
 
-def _carry_segments(world_poses):
-    segments = []
-    for name in ("transit", "traverse"):
-        segment = MotionSegment()
-        segment.name = name
-        segment.type = "cartesian"
-        segment.allow_ompl_fallback = True
-        segment.keep_tool_down = True
-        for pose in world_poses[:-1]:
-            segment.waypoints.append(_pose_msg(pose))
-        if world_poses:
-            segment.target_pose = _pose_msg(world_poses[-1])
-        segments.append(segment)
-    return segments
-
-
-def _typed_motion_segments(world_poses, identity):
-    """MotionSegmentV2 cartesian legs. Existing MotionSegment fields stay too.
-    """
-    from luggage_description.frame_diagnostics import BoundaryContext
-    from luggage_planning.motion_frame_adapters import message_from_admitted
-    from luggage_planning.motion_frame_contracts import TARGET_LINK, ExecutionContext
-    messages = []
-    if not world_poses:
-        return messages
-    boundary = BoundaryContext(
-        interface_id="F15",
-        producer="place_service",
-        consumer="motion_executor",
-        request_id=str(identity["request_id"]),
-        scene_revision=str(identity["scene_revision"]),
-        frame_id="world",
-        reference="suction_contact_frame",
-        time_basis=str(identity.get("time_basis") or "scene"),
-    )
-    context = ExecutionContext(boundary, TARGET_LINK, "world")
-    for name in ("transit", "traverse"):
-        target = dict(identity)
-        target.update(
-            kind="pose", frame_id="world", reference="suction_contact_frame",
-            orientation_semantics="tool_quaternion", length_unit="m",
-            position=list(world_poses[-1]["position"]),
-            quaternion_xyzw=list(world_poses[-1]["quaternion_xyzw"]))
-        waypoints = []
-        for pose in world_poses[:-1]:
-            point = dict(target)
-            point["position"] = list(pose["position"])
-            point["quaternion_xyzw"] = list(pose["quaternion_xyzw"])
-            waypoints.append(point)
-        record = {
-            "contract_version": 2,
-            "request_id": boundary.request_id,
-            "scene_revision": boundary.scene_revision,
-            "stamp_ns": int(identity["stamp_ns"]),
-            "time_basis": boundary.time_basis,
-            "name": name,
-            "segment_type": "cartesian",
-            "target_link": TARGET_LINK,
-            "policy_valid": True,
-            "keep_tool_down": True,
-            "keep_camera_down": False,
-            "lock_wrist": False,
-            "allow_ompl_fallback": True,
-            "required_cartesian_fraction": 0.0,
-            "target_pose": target,
-            "waypoints": waypoints,
-            "joint_trajectory": None,
-        }
-        messages.append(message_from_admitted(record, context))
-    return messages
-
-
-def _waypoint_messages(result, start_record):
-    messages = []
-    for pose in result["world_waypoints"]:
-        record = dict(start_record)
-        record["frame_id"] = "world"
-        record["reference"] = "suction_contact_frame"
-        record["orientation_semantics"] = "tool_quaternion"
-        record["time_basis"] = "scene"
-        record["position"] = list(pose["position"])
-        record["quaternion_xyzw"] = list(pose["quaternion_xyzw"])
-        messages.append(pose_message(record))
-    return messages
-
-
-def _reject(response, exc):
-    response.success = False
-    response.reason_code = exc.code
-    response.slot_index = -1
-    response.selection_id = ""
-    response.path_source = ""
-    response.path_hash = ""
-    response.rows_json = "[]"
-    return response
-
-
-def fill_select_response(message, response, atlas=None, config=None,
-                         probe_fn=None, moveit_client=None, counters=None,
-                         geometry_descriptor=None):
-    try:
-        request = request_dict(message)
-        result = select_place_v2(
-            request, atlas=atlas, config=config, probe_fn=probe_fn,
-            moveit_client=moveit_client, counters=counters,
-            geometry_descriptor=geometry_descriptor)
-    except ContractError as exc:
-        return _reject(response, exc)
-    response.success = bool(result["success"])
-    response.reason_code = str(result["reason_code"])
-    response.slot_index = int(result["slot_index"])
-    response.selection_id = str(result["selection_id"])
-    response.path_source = str(result["path_source"])
-    response.path_hash = str(result["path_hash"])
-    response.rows_json = json.dumps(dump_rows(result.get("rows") or []))
-    if result["success"]:
-        response.carry_segments = _carry_segments(result["world_waypoints"])
-        response.waypoint_poses = _waypoint_messages(
-            result, request["start_tcp"])
-        response.motion_segments = _typed_motion_segments(
-            result["world_waypoints"], request["start_tcp"])
-    return response
-
-
-def handle_select_v2(request, response, **kwargs):
-    return fill_select_response(request, response, **kwargs)
-
-
 def _route_boundary(request_id, scene_revision, time_basis):
     from luggage_description.frame_diagnostics import BoundaryContext
     return BoundaryContext(
@@ -470,7 +339,7 @@ def _build_motion_messages(segments, identity):
         for segment in segments]
 
 
-def handle_build_v2(request, response, pick=None):
+def handle_build_v2(request, response, pick=None, pick_encoder=None):
     phase = str(request.phase or "")
     try:
         if phase == "pick":
@@ -492,11 +361,23 @@ def handle_build_v2(request, response, pick=None):
             from luggage_planning.attachment_frame_adapters import measured_dict
             from luggage_planning.attachment_frame_contracts import require_measured_pose_agreement
             require_measured_pose_agreement(pick_record, measured_dict(request.pick, request.pick.id))
-            segments = build_sequence(pick, None, "pick")
-            response.motion_segments = _build_motion_messages(segments, pick_record)
-            response.segments = _copy_segments(segments)
-            response.success = bool(segments)
-            response.message = "pick delegated"
+            # [ST09-I] pick waypoints are candidates; timed legs come
+            # from the MoveIt edge builder (no pose-spec execution).
+            if pick_encoder is None:
+                raise ContractError(
+                    "PLANNING_ROUTE_REQUIRED", "pick",
+                    "timed pick legs require the edge builder", None)
+            legs = pick_encoder(
+                pick,
+                request_id=str(request.request_id),
+                scene_revision=str(request.scene_revision),
+                stamp_ns=int(pick_record.get("stamp_ns") or 0))
+            response.motion_segments = _route_motion_messages(
+                legs, {"request_id": str(request.request_id),
+                       "scene_revision": str(request.scene_revision)})
+            response.segments = _route_carry_segments(legs, None)
+            response.success = bool(legs)
+            response.message = "pick delegated (%d timed legs)" % len(legs)
             response.reason_code = ""
             return response
         if int(request.pick_pose.identity.contract_version) != 0 or str(
@@ -505,31 +386,11 @@ def handle_build_v2(request, response, pick=None):
                 "INVALID_RECORD", "pick_pose", "inactive on place", request.phase)
         if phase != "place":
             raise ContractError("INVALID_RECORD", "phase", "pick or place", phase)
-        scene = str(request.slot.identity.scene_revision)
-        request_id = _require_request_id(str(request.slot.identity.request_id))
-        slot = _admit_slot(request.slot, request_id, scene, "F11")
-        grasp = grasp_dict_from_contract(
-            _admit_grasp(request.grasp, request_id, scene), scene)
-        stamp = None if request.container_stamp_is_null else int(
-            request.container_stamp_ns)
-        transform = container_transform_dict(
-            request.container_source_frame, request.container_target_frame,
-            request.container_translation, request.container_quaternion_xyzw,
-            stamp, scene)
-        segments, contact = build_place_legs_v2(
-            slot, grasp, transform, _require_box_wdh(request.box_wdh))
-        response.motion_segments = _build_motion_messages(segments, slot)
-        response.segments = _copy_segments(segments)
-        response.success = bool(segments)
-        response.message = "%d place legs" % len(segments)
-        response.reason_code = ""
-        contact_record = dict(slot)
-        contact_record["frame_id"] = "world"
-        contact_record["reference"] = "suction_contact_frame"
-        contact_record["orientation_semantics"] = "tool_quaternion"
-        contact_record["position"] = contact["position"]
-        contact_record["quaternion_xyzw"] = contact["quaternion_xyzw"]
-        response.contact_pose = pose_message(contact_record)
+        # [ST09-I] fixed-clearance place legs were the geometric bypass:
+        # place motion comes from the certified route (SelectPlacePathV2).
+        raise ContractError(
+            "PLANNING_ROUTE_REQUIRED", "phase",
+            "select_place_path_v2 certified route legs", "place")
     except ContractError as exc:
         response.motion_segments = []
         response.segments = []

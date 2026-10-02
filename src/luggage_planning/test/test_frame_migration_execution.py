@@ -169,8 +169,11 @@ class TestMatrix(unittest.TestCase):
                              "tool_quaternion", "world")
             world_poses = [
                 {"position": list(geo["tool"]), "quaternion_xyzw": list(geo["tool_q"])}]
-            from luggage_planning.place_service import _typed_motion_segments
-            message = _typed_motion_segments(world_poses, identity)[0]
+            from luggage_planning.typed_driver_adapter import (
+                pose_segment_message)
+            message = pose_segment_message(
+                "transit", geo["tool"], geo["tool_q"],
+                str(identity["request_id"]), str(identity["scene_revision"]))
             wired = record_from_message(message)
             admitted = admit_motion_segment(wired, _context())
             got = admitted.target_pose["position"]

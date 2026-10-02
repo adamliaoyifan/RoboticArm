@@ -70,34 +70,14 @@ def _graph_with_nodes():
     return graph, node_a, node_b
 
 
-class TestLegacyLayerFrozen:
-    """Section A behaviour is untouched by the Section B additions."""
+class TestLegacyLayerRemoved(object):
+    """[ST09-I integration] the legacy atlas-cell layer is deleted."""
 
-    def test_no_atlas_disables_grid(self):
-        graph = rg.build_reachable_graph(None)
-        assert graph.disabled_reason == "GRID_DISABLED_NO_ATLAS"
-        assert len(graph) == 0
-
-    def test_search_paths_empty_graph(self):
-        from luggage_planning.grid_path_search import search_paths
-        assert search_paths(None, None, (0, 0, 0), (0, 0, 0)) == []
-
-    def test_importable_without_contracts_on_path(self, tmp_path):
-        """The legacy chain must import from a plain install prefix.
-
-        st09_contracts lives at the repo root and is not installed; if
-        Section B imported it at module level, trajectory_selector would
-        break in every production install.
-        """
-        env = os.environ.copy()
-        env["PYTHONPATH"] = str(REPO_ROOT / "src" / "luggage_planning")
-        env.pop("PYTEST_DISABLE_PLUGIN_AUTOLOAD", None)
-        result = subprocess.run(
-            [sys.executable, "-c",
-             "import luggage_planning.reachable_graph;"
-             "import luggage_planning.grid_path_search"],
-            env=env, cwd=str(tmp_path), capture_output=True, text=True)
-        assert result.returncode == 0, result.stderr
+    def test_section_a_symbols_are_gone(self):
+        from luggage_planning import reachable_graph as graph
+        for name in ("build_reachable_graph", "ReachableGraph",
+                     "grid_disable_reason", "cell_center", "AtlasCellNode"):
+            assert not hasattr(graph, name), name
 
 
 class TestNodeIdentity:

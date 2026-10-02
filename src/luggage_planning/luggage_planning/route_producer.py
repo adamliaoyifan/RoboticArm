@@ -57,6 +57,18 @@ from luggage_description.frame_transforms import rotate_vector
 
 CANONICAL_JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))
 
+#: Route edge classes -> the canonical leg names the place cycle's
+#: state/release hooks expect (descend ends the pre-release chain;
+#: retreat/return run after release).
+LEG_NAMES = {
+    "PORTAL_TRANSIT": "transit",
+    "TRAVERSE": "traverse",
+    "INSERT": "insert",
+    "DESCEND": "descend",
+    "RETREAT": "retreat",
+    "RETURN": "return",
+}
+
 #: Frozen route wall budget for one select request, nanoseconds.
 ROUTE_TOTAL_WALL_NS = int(ROUTE_TOTAL_WALL_S * 1_000_000_000)
 
@@ -584,57 +596,111 @@ class RouteProducer(object):
         }
 
 
+def _leg_record(name, trajectory, request_id, scene_revision, stamp_ns):
+    points = [{
+        "positions": [float(v) for v in trajectory.positions[i]],
+        "velocities": [float(v) for v in trajectory.velocities[i]],
+        "accelerations": [float(v) for v in
+                          trajectory.accelerations[i]],
+        "effort": [],
+        "time_from_start_ns": int(trajectory.time_from_start_ns[i]),
+    } for i in range(len(trajectory.positions))]
+    return {
+        "contract_version": 2,
+        "request_id": str(request_id),
+        "scene_revision": str(scene_revision),
+        "stamp_ns": int(stamp_ns),
+        "time_basis": "robot_state",
+        "name": str(name),
+        "segment_type": "joint_path",
+        "target_link": "suction_contact_frame",
+        "policy_valid": True,
+        "keep_tool_down": True,
+        "keep_camera_down": False,
+        "lock_wrist": False,
+        "allow_ompl_fallback": False,
+        "required_cartesian_fraction": 0.0,
+        "target_pose": None,
+        "waypoints": [],
+        "joint_trajectory": {
+            "contract_version": 2,
+            "kind": "joint_trajectory",
+            "request_id": str(request_id),
+            "scene_revision": str(scene_revision),
+            "stamp_ns": int(stamp_ns),
+            "time_basis": "robot_state",
+            "angle_unit": "rad",
+            "joint_names": list(trajectory.joint_names),
+            "points": points,
+        },
+    }
+
+
 def leg_records(route: PlannedRoute, edges: Sequence, request: Mapping,
                 ) -> List[dict]:
     """One admitted ``joint_path`` record per route edge, in order.
 
-    Names carry the edge class so downstream evidence joins read the
-    causal chain (portal_transit .. descend, retreat, return). Times
-    stay exactly the certified per-edge values (each leg is an
-    independent PlanMotionV2 goal starting at its own zero).
+    Names carry the canonical leg names (transit .. descend, then
+    retreat/return after release) so the place cycle's state and release
+    hooks join the causal chain. Times stay exactly the certified
+    per-edge values (each leg is an independent PlanMotionV2 goal
+    starting at its own zero).
     """
     stamp_ns = int((request.get("start_tcp") or {}).get("stamp_ns") or 0)
     legs = []
     for edge in edges:
         edge_class = str(edge.attributes.get("edge_class") or "edge")
-        trajectory = edge.trajectory
-        points = [{
-            "positions": [float(v) for v in trajectory.positions[i]],
-            "velocities": [float(v) for v in trajectory.velocities[i]],
-            "accelerations": [float(v) for v in
-                              trajectory.accelerations[i]],
-            "effort": [],
-            "time_from_start_ns": int(trajectory.time_from_start_ns[i]),
-        } for i in range(len(trajectory.positions))]
-        legs.append({
-            "contract_version": 2,
-            "request_id": str(request["request_id"]),
-            "scene_revision": str(request["scene_revision"]),
-            "stamp_ns": stamp_ns,
-            "time_basis": "robot_state",
-            "name": "route_%s" % edge_class.lower(),
-            "segment_type": "joint_path",
-            "target_link": "suction_contact_frame",
-            "policy_valid": True,
-            "keep_tool_down": True,
-            "keep_camera_down": False,
-            "lock_wrist": False,
-            "allow_ompl_fallback": False,
-            "required_cartesian_fraction": 0.0,
-            "target_pose": None,
-            "waypoints": [],
-            "joint_trajectory": {
-                "contract_version": 2,
-                "kind": "joint_trajectory",
-                "request_id": str(request["request_id"]),
-                "scene_revision": str(request["scene_revision"]),
-                "stamp_ns": stamp_ns,
-                "time_basis": "robot_state",
-                "angle_unit": "rad",
-                "joint_names": list(trajectory.joint_names),
-                "points": points,
-            },
-        })
+        name = LEG_NAMES.get(edge_class, edge_class.lower())
+        legs.append(_leg_record(name, edge.trajectory,
+                                request["request_id"],
+                                request["scene_revision"], stamp_ns))
+    return legs
+
+
+#: Pick waypoints -> edge classes for adapter generation. Pre-attach
+#: motion carries no payload, so the edges plan unloaded through the
+#: same MoveIt builder the carrying route uses (no new generation path).
+PICK_LEG_CLASSES = {
+    "pre_grasp": "PORTAL_TRANSIT",
+    "approach": "TRAVERSE",
+    "attach": "DESCEND",
+    "pick_retreat": "RETREAT",
+}
+
+
+def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
+                     start_q, request_id, scene_revision, stamp_ns):
+    """Certified-shaped timed joint legs for the pick waypoint ladder.
+
+    The waypoint geometry stays the frozen ``build_sequence`` pick
+    phases (a candidate generator, never an execution spec); each hop
+    becomes a MoveIt-built timed edge. Pre-attach motion has no
+    attachment record by definition — the carrying route's
+    certification starts at the measured attach — so these legs carry
+    the same admission contract without an attachment digest.
+    """
+    from luggage_planning.grid_path_search import RoutePlanningError
+    from luggage_planning.reachable_graph import LoadState as _Load
+
+    current_q = tuple(float(v) for v in start_q)
+    position, quaternion = fk(current_q)
+    current = graph.register_node(current_q, position, quaternion,
+                                  "pick_home", _Load.UNLOADED, "pick")
+    legs = []
+    for name, target_position, target_quaternion in pick_waypoints:
+        q, _info = refine(tuple(target_position),
+                          tuple(target_quaternion), list(current_q))
+        if q is None:
+            raise RoutePlanningError(
+                "EDGE_BUILD_FAILED",
+                {"leg": name, "reason": "ik_unavailable"})
+        node = graph.register_node(tuple(q), tuple(target_position),
+                                   tuple(target_quaternion),
+                                   "pick_%s" % name, _Load.UNLOADED, "pick")
+        edge = edge_builder(current, node, PICK_LEG_CLASSES[name])
+        legs.append(_leg_record(name, edge.trajectory, request_id,
+                                scene_revision, stamp_ns))
+        current, current_q = node, tuple(q)
     return legs
 
 
