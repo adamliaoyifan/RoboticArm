@@ -50,4 +50,6 @@ orin_perception_pack_*.tar.gz
 # test-built SDK sample binaries never enter commits.
 build-st09/
 install-st09/
+build-st09-*/
+install-st09-*/
 SDK_sample/CppLinux_SDK/bin/
