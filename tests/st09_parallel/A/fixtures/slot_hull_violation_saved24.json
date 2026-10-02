@@ -1,0 +1,327 @@
+{
+  "box_m": [
+    0.6462,
+    0.4092,
+    0.2768
+  ],
+  "candidates": [
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.42,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.37,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.31999999999999995,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.26999999999999996,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.21999999999999997,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.16999999999999993,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.12,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.06999999999999995,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": -0.019999999999999907,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.030000000000000027,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.08000000000000007,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.13,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.18000000000000005,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.2300000000000001,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.28000000000000014,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.32999999999999996,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.38,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 444.6,
+      "chamfer_top_mm": 119.2,
+      "flat_wall_mm": 9.6,
+      "gate_pass": false,
+      "x": 0.43000000000000005,
+      "y": 0.7900000000000001,
+      "yaw": 0.0,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.52,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.47,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.42,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.37,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.31999999999999995,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    },
+    {
+      "chamfer_bottom_mm": 463.1,
+      "chamfer_top_mm": 137.7,
+      "flat_wall_mm": 28.1,
+      "gate_pass": false,
+      "x": -0.26999999999999996,
+      "y": 0.6900000000000001,
+      "yaw": 1.5707963267948966,
+      "z": 0.6684133703309529
+    }
+  ],
+  "cells": {
+    "free": 30,
+    "occupied": 73,
+    "unknown": 1097
+  },
+  "free_rows_y_span": [
+    [
+      0.965,
+      1.015
+    ]
+  ],
+  "gate_pass_count": 0,
+  "grid": {
+    "extent_m": [
+      1.5,
+      2.0
+    ],
+    "nx": 30,
+    "ny": 40,
+    "origin_local": [
+      -0.745,
+      -0.985
+    ],
+    "resolution": 0.05
+  },
+  "hull": {
+    "ceiling_z": 2.01,
+    "chamfer": {
+      "floor_y": 0.55,
+      "wall_y": 0.985,
+      "wall_z": 0.9
+    },
+    "floor_z": 0.53,
+    "half_x": 0.745,
+    "half_y": 0.985
+  },
+  "hull_valid_center_limits": {
+    "yaw0": 0.345,
+    "yaw90": 0.227
+  },
+  "opening_west_face": {
+    "width_m": 1.326,
+    "y": [
+      -0.928,
+      0.398
+    ],
+    "z_min": 0.597
+  },
+  "reachability": {
+    "atlas_npz": "s20_container_collision_aware_payload_0.70x0.45x0.28.npz",
+    "candidate_contact_status": {
+      "unknown": 24
+    },
+    "contact_z": 0.8068,
+    "grid_histogram": {
+      "marginal": 18,
+      "reachable": 396,
+      "unknown": 558,
+      "unreachable": 228
+    },
+    "note": "all candidate contact points fall in atlas-unknown cells north of the reachable band; unknown neither hard-rejects nor re-scores, so the atlas gate cannot veto them"
+  },
+  "violation_mm": {
+    "binding": "chamfer_bottom_corner",
+    "chamfer_bottom_corner": {
+      "max": 463.1,
+      "min": 444.6
+    },
+    "chamfer_top_corner": {
+      "max": 137.7,
+      "min": 119.2
+    },
+    "flat_wall_top_corner": {
+      "max": 28.1,
+      "min": 9.6
+    }
+  },
+  "wall": "north sloped chamfer face (all 24)"
+}

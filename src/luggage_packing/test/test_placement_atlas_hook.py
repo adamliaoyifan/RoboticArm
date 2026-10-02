@@ -43,18 +43,28 @@ _StubResult = namedtuple(
 
 
 class StubAtlas(object):
-    """Duck-typed atlas: status by (x, y) sign, hard-reject opt-in."""
+    """Duck-typed atlas: status by (x, y) sign, hard-reject opt-in.
+
+    ``axis`` selects which coordinate the stub keys on. The default keeps
+    the historical x-split (right half reachable, left half unknown);
+    ``axis="y"`` splits along +Y/-Y for tests that need the atlas to
+    separate candidates the deep-first ordering key does not (ST09-A S1:
+    selection orders by support layer, then depth — both x-aligned here —
+    so an x-keyed prior can no longer *reorder*; a y-keyed one still can).
+    """
 
     yaw_bins = (0.0, 1.5707963267948966)
 
-    def __init__(self, reject=False):
+    def __init__(self, reject=False, axis="x"):
         self.reject = reject
+        self.axis = axis
         self.queries = []
 
     def query(self, x, y, z, yaw):
         self.queries.append((round(x, 3), round(y, 3), round(z, 3), yaw))
-        # right half of the map reachable, left half unknown
-        if x >= 0.0:
+        coordinate = x if self.axis == "x" else y
+        # positive side reachable, negative side unknown (or unreachable)
+        if coordinate >= 0.0:
             return _StubResult(3, "reachable", False)
         if self.reject:
             return _StubResult(1, "unreachable", True)
@@ -113,15 +123,29 @@ def test_hook_hard_reject_flips_feasible_and_histogram():
 
 
 def test_hook_prior_reorders_selection():
-    atlas = StubAtlas()  # right half reachable, left half unknown
-    # weight large enough that the prior dominates the base score spread
+    # ST09-A S1: selection follows the frozen deep-first key (support layer,
+    # depth, route clearance, score) — both are x-aligned on this fixture,
+    # so an x-keyed prior can no longer change the winner. A y-keyed atlas
+    # separates candidates the ordering key does not, and the weighted
+    # prior must then flip the winner through the score term: the base
+    # confidence spread favours the -Y rows, the prior favours +Y.
+    atlas = StubAtlas(axis="y")  # +Y half reachable, -Y half unknown
     hook = make_atlas_annotate(atlas, 0.53, 2.01, score_weight=5.0)
-    plain = solve_placement(surface(), BOX, allowed_yaws=[0.0], params=PARAMS)
+    split = surface()
+    resolution = split["resolution"]
+    for iy in range(split["ny"]):
+        cell_y = -0.2 + (iy + 0.5) * resolution
+        confidence = "sensor" if cell_y < 0.0 else "geometry"
+        for ix in range(split["nx"]):
+            split["confidence"][ix][iy] = confidence
+    plain = solve_placement(split, BOX, allowed_yaws=[0.0], params=PARAMS)
     ranked = solve_placement(
-        surface(), BOX, allowed_yaws=[0.0], params=PARAMS,
+        split, BOX, allowed_yaws=[0.0], params=PARAMS,
         atlas_annotate=hook)
-    assert plain["selected"]["center_local"] != \
-        ranked["selected"]["center_local"]
+    assert plain["selected"]["center_local"][1] < 0.0
+    assert ranked["selected"]["center_local"] != \
+        plain["selected"]["center_local"]
+    assert ranked["selected"]["center_local"][1] >= 0.0
     assert ranked["selected"]["atlas_status"] == 3
     assert ranked["selected"]["score"] == round(
         ranked["selected"]["score"], 4)

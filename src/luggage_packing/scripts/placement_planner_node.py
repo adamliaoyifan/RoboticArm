@@ -952,6 +952,13 @@ class PlacementPlannerNode(Node):
             "rejected_maps": self._rejected_maps,
             "map_revision": surface.get("map_revision"),
             "floor_prior": self._surface is None,
+            # ST09-A S1 4.3: what a bounded observation stage (ST09-D) must
+            # still see — unknown cells in the selected footprint and entry
+            # corridor, or of the best hypothetical legal window when no
+            # candidate survived (OBSERVATION_REQUIRED).
+            "observation_requirement": result.get("observation_requirement"),
+            "hypothetical_legal_windows": result.get(
+                "hypothetical_legal_windows", []),
             "atlas": {
                 "enabled": bool(self._atlas_cfg.get("enabled")),
                 "diagnostics": atlas_diag,
