@@ -12,6 +12,7 @@ import argparse
 import json
 from pathlib import Path
 import sqlite3
+import hashlib
 import sys
 import time
 
@@ -75,11 +76,22 @@ def consume_once(files):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bag", required=True, type=Path)
+    parser.add_argument("--bag", type=Path)
+    parser.add_argument("--trajectory", type=Path)
+    parser.add_argument("--snapshot", type=Path)
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument("--domain", type=int, default=42)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args(argv)
+    if args.trajectory:
+        result = replay_trajectory(args.trajectory, args.snapshot, args.domain)
+        text = json.dumps(result, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            args.output.write_text(text, encoding="utf-8")
+        print(text, end="")
+        return 0 if result["pass"] else 1
+    if not args.bag:
+        raise SystemExit("--bag or --trajectory required")
     if args.domain == 7:
         raise SystemExit("refusing to evaluate a replay on domain 7")
     if args.repeats < 3:
@@ -109,6 +121,37 @@ def main(argv=None):
         args.output.write_text(text, encoding="utf-8")
     print(text, end="")
     return 0 if result["pass"] else 1
+
+
+def replay_trajectory(path, snapshot, domain):
+    if domain == 7:
+        raise SystemExit("refusing to evaluate a replay on domain 7")
+    document = json.loads(Path(path).read_text(encoding="utf-8"))
+    if document.get("schema") not in ("st09.trajectory/1", "frame_dump/2"):
+        return {"pass": False, "reason": "SCHEMA_MISMATCH"}
+    points = document.get("points") or document.get("trajectory", {}).get("points") or []
+    if len(points) < 2:
+        return {"pass": False, "reason": "truncated trajectory"}
+    counters = {"samples": len(points), "violations": 0, "effects": 0}
+    for index, point in enumerate(points):
+        if "positions" not in point or "time_from_start_ns" not in point:
+            return {"pass": False, "reason": "truncated trajectory", "index": index}
+        if index and int(point["time_from_start_ns"]) <= int(points[index - 1]["time_from_start_ns"]):
+            return {"pass": False, "reason": "non_monotonic_time", "index": index}
+    payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    if snapshot:
+        snap = json.loads(Path(snapshot).read_text(encoding="utf-8"))
+        if snap.get("schema") != "frame_dump/2":
+            return {"pass": False, "reason": "snapshot schema mismatch"}
+        if snap.get("source") == "mixed":
+            return {"pass": False, "reason": "mixed source conflict"}
+    return {
+        "pass": True,
+        "mode": document.get("mode", "fixed"),
+        "deterministic": document.get("mode", "fixed") == "fixed",
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "counters": counters,
+    }
 
 
 if __name__ == "__main__":

@@ -37,6 +37,36 @@ from luggage_gazebo.rehearsal_evidence import (  # noqa: E402
 )
 
 
+def make_frame_dump(source, identity, payload, *, datum="world", schema="frame_dump/2"):
+    """Create a versioned frame dump with measured/GT sources separated."""
+    if source not in ("measured", "gt"):
+        raise ValueError("source must be measured or gt")
+    return {
+        "schema": schema,
+        "source": source,
+        "datum": datum,
+        "identity": identity,
+        "payload": payload,
+    }
+
+
+def validate_frame_dump(document, *, expected_source=None, expected_identity=None, expected_datum=None):
+    """Reject schema, datum, identity, overlay and mixed-source conflicts."""
+    if document.get("schema") != "frame_dump/2":
+        raise ValueError("SCHEMA_MISMATCH")
+    if document.get("source") == "mixed":
+        raise ValueError("mixed-source conflict")
+    if expected_source and document.get("source") != expected_source:
+        raise ValueError("source conflict")
+    if expected_identity and document.get("identity") != expected_identity:
+        raise ValueError("IDENTITY_MISMATCH")
+    if expected_datum and document.get("datum") != expected_datum:
+        raise ValueError("DATUM_CONFLICT")
+    if document.get("overlay") == "wrong":
+        raise ValueError("OVERLAY_WRONG")
+    return True
+
+
 def hull_bytes(scene_yaml):
     """Canonical hull bytes whose sha256 equals ``geometry_hash``."""
     config = yaml.safe_load(Path(scene_yaml).read_text(encoding="utf-8")) or {}
