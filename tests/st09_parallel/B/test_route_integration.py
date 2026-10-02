@@ -37,83 +37,8 @@ CANONICAL_JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))
 
 @pytest.fixture(scope="module")
 def chain(mock_graph):
-    """Real-FK region chain: home -> portal -> approach -> upper -> goal."""
-    try:
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
-        urdf = load_urdf()
-    except Exception as err:
-        pytest.skip("offline_ik unavailable: %s" % err)
-    path = urdf.path_to("suction_contact_frame")
-    fk = make_offline_fk(urdf, path)
-
-    q_home = (0.586, -1.025, 1.268, -1.819, -1.567, -0.635)
-    q_portal = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
-
-    def refined(seed_q, offset):
-        position, quaternion = fk(seed_q)
-        target = (position[0] + offset[0], position[1] + offset[1],
-                  position[2] + offset[2])
-        joints, info = refine_to_pose(urdf, path, target, quaternion, seed_q)
-        if joints is None:
-            pytest.skip("refine did not converge on this host: %r" % (info,))
-        return tuple(joints)
-
-    q_approach = refined(q_portal, (0.10, 0.0, 0.0))
-    q_upper = refined(q_approach, (0.10, 0.0, 0.0))
-    q_goal = refined(q_upper, (0.0, 0.0, -0.05))
-
-    graph = RouteGraph(static_identity="static-integration")
-    home = graph.register_node(q_home, *fk(q_home), "home",
-                               LoadState.CARRYING)
-    graph.register_node(q_portal, *fk(q_portal), "portal",
-                        LoadState.CARRYING)
-    graph.register_node(q_approach, *fk(q_approach), "slot_approach",
-                        LoadState.CARRYING)
-    graph.register_node(q_upper, *fk(q_upper), "slot_upper",
-                        LoadState.CARRYING)
-    graph.register_node(q_upper, *fk(q_upper), "exit", LoadState.UNLOADED)
-    graph.register_node(q_home, *fk(q_home), "home", LoadState.UNLOADED)
-
-    goal_position, goal_quaternion = fk(q_goal)
-    attachment = dataclasses.replace(
-        make_attachment("centered", symmetry="none"),
-        dimensions_wdh=(0.05, 0.05, 0.05),
-        t_tcp_box_translation=(0.0, 0.0, -0.025))
-    candidate = PlacementCandidate(
-        candidate_id="cand-b-int",
-        footprint_class=0,
-        heading_theta=0.0,
-        position_container=(goal_position[0], goal_position[1],
-                            goal_position[2] - 0.02 - 0.025),
-        quaternion_xyzw_container=(0.0, 0.0, 0.0, 1.0),
-        support_layer_z=0.0,
-        depth_m=0.6,
-        verdict=GeometryVerdict.LEGAL,
-        score=1.0,
-        detail={"route_clearance_m": 0.05},
-    )
-    target = PlaceTarget(
-        candidate_id=candidate.candidate_id,
-        heading_theta=0.0,
-        tcp_frame=attachment.tcp_frame,
-        frame_id="world",
-        position=goal_position,
-        quaternion_xyzw=goal_quaternion,
-        attachment_digest=attachment.digest())
-
-    adapter = MoveItEdgeAdapter(mock_graph.node)
-    adapter.wait_ready(timeout_sec=60.0)
-    planner = GraphRoutePlanner(
-        graph, adapter,
-        home_node_id=home.node_id,
-        goal_seeds=lambda _t: [GoalSeed(q_goal, "f1", "integration-seed")],
-        urdf=urdf, tcp_path=path)
-    return {
-        "graph": graph, "planner": planner, "adapter": adapter,
-        "attachment": attachment, "candidate": candidate,
-        "target": target, "q_goal": q_goal,
-        "goal_position": goal_position,
-    }
+    from route_harness import build_route_chain
+    return build_route_chain(mock_graph.node)
 
 
 class TestFullRoute:
@@ -132,7 +57,7 @@ class TestFullRoute:
         assert retreat_classes == ["RETREAT", "RETURN"]
         assert route.planning_revision.startswith("B:")
         assert route.request_id == chain["attachment"].request_id
-        assert route.candidate_id == "cand-b-int"
+        assert route.candidate_id == chain["candidate"].candidate_id
 
     def test_every_edge_is_a_complete_timed_trajectory(self, chain):
         route = chain["planner"].plan_route(
