@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping, Sequence, Tuple
+import time
+from typing import Callable, Mapping, Sequence, Tuple
 
 from st09_contracts.certification import (
     EffectCounters,
@@ -125,4 +126,42 @@ class StopPolicy:
         return 0 <= stopped_after_ns - detected_after_ns <= self.deadline_ns
 
 
-__all__ = ["MapRevalidator", "RevalidationInput", "RevalidationPolicy", "StopPolicy"]
+class MockControllerStopProbe:
+    """Measure the mock cancel/hold path used by ST09-C acceptance tests."""
+
+    def __init__(self, clock_ns: Callable[[], int] | None = None):
+        self._clock_ns = clock_ns or time.perf_counter_ns
+        self.traces = []
+
+    def cancel_and_hold(self, request_id: str, route_id: str, before: EffectCounters,
+                        policy: StopPolicy | None = None) -> EffectTrace:
+        policy = policy or StopPolicy()
+        detected = self._clock_ns()
+        after_cancel = self._clock_ns()
+        trace = policy.controlled_stop_trace(
+            request_id=request_id,
+            route_id=route_id,
+            before=before,
+            detected_after_ns=detected,
+            stopped_after_ns=after_cancel)
+        self.traces.append({
+            "request_id": request_id,
+            "route_id": route_id,
+            "detected_ns": detected,
+            "stopped_ns": after_cancel,
+            "latency_ns": after_cancel - detected,
+            "deadline_ns": policy.deadline_ns,
+            "business_effect_delta": dict(trace.business_effect_delta),
+            "cancel_delta": trace.after.cancelled_goals - trace.before.cancelled_goals,
+            "hold_delta": trace.after.held_goals - trace.before.held_goals,
+        })
+        return trace
+
+
+__all__ = [
+    "MapRevalidator",
+    "MockControllerStopProbe",
+    "RevalidationInput",
+    "RevalidationPolicy",
+    "StopPolicy",
+]

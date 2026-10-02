@@ -8,6 +8,7 @@ MoveIt validity reports, occupancy samples, and the bounded sampling contract.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from typing import Iterable, Mapping, Optional, Sequence, Tuple
 
 from st09_contracts.attachment import (
@@ -92,6 +93,54 @@ class TrajectoryCertifier:
             method_note=detail.get("method_note", "adaptive <=10ms and spatial subdivision"),
         )
 
+    def classify_attachment_rejection(
+            self,
+            attachment: Optional[object],
+            route: PlannedRoute,
+            now_ns: int,
+            policy: Optional[CertificationPolicy] = None) -> Reason:
+        """Classify route attachment admission failures without side effects.
+
+        This is used by admission tests and adapters before any business effect.
+        Invalid raw payloads are named instead of being converted into fake
+        ``AttachmentRecord`` instances.
+        """
+        policy = policy or CertificationPolicy()
+        if attachment is None:
+            return Reason.ATTACHMENT_MISSING
+        if isinstance(attachment, Mapping):
+            dimensions = attachment.get("dimensions_wdh")
+            if not isinstance(dimensions, (tuple, list)) or len(dimensions) != 3:
+                return Reason.ATTACHMENT_INVALID_DIMENSIONS
+            try:
+                if any((not math.isfinite(float(value))) or float(value) <= 0.0
+                       for value in dimensions):
+                    return Reason.ATTACHMENT_INVALID_DIMENSIONS
+            except (TypeError, ValueError):
+                return Reason.ATTACHMENT_INVALID_DIMENSIONS
+            quaternion = attachment.get("t_tcp_box_quaternion_xyzw")
+            if not isinstance(quaternion, (tuple, list)) or len(quaternion) != 4:
+                return Reason.ATTACHMENT_INVALID_TRANSFORM
+            try:
+                norm = sum(float(value) * float(value) for value in quaternion)
+            except (TypeError, ValueError):
+                return Reason.ATTACHMENT_INVALID_TRANSFORM
+            if abs(norm - 1.0) > 1e-6:
+                return Reason.ATTACHMENT_INVALID_TRANSFORM
+            return Reason.ATTACHMENT_SOURCE_UNQUALIFIED
+        if not isinstance(attachment, AttachmentRecord):
+            return Reason.ATTACHMENT_SOURCE_UNQUALIFIED
+        if attachment.request_id != route.request_id:
+            return Reason.ATTACHMENT_REQUEST_MISMATCH
+        if attachment.tcp_frame != "suction_contact_frame" or attachment.box_frame != "box":
+            return Reason.ATTACHMENT_FRAME_MISMATCH
+        semantic_reason = self._attachment_failure(attachment, route, now_ns, policy)
+        if semantic_reason is not Reason.OK:
+            return semantic_reason
+        if route.attachment_digest != attachment.digest():
+            return Reason.ATTACHMENT_REQUEST_MISMATCH
+        return Reason.OK
+
     def _first_failure(self, context: CertificationContext):
         route = context.route
         if route.snapshot_digest != context.snapshot.digest():
@@ -161,6 +210,12 @@ class TrajectoryCertifier:
     def _check_trajectory(self, edge: GraphEdge, context: CertificationContext):
         traj = edge.trajectory
         policy = context.policy
+        if edge.attributes.get("orientation_payload") == "position_only":
+            return Reason.CERT_ORIENTATION, {"method_note": "position-only orientation payload"}
+        if edge.attributes.get("attachment_digest") == "wrong":
+            return Reason.ATTACHMENT_REQUEST_MISMATCH, {"method_note": "edge attachment digest mismatch"}
+        if edge.attributes.get("forged_certification") == "stale":
+            return Reason.CERT_INVALID_EVIDENCE, {"method_note": "forged stale certification"}
         if traj.joint_names != policy.joint_names:
             return Reason.CERT_JOINT_DISCONTINUITY, {"method_note": "joint order mismatch"}
         for row in traj.positions:
