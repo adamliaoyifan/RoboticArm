@@ -15,6 +15,16 @@ import shlex
 import subprocess
 import time
 
+CONFLICT_REASON_CODES = {
+    "UNKNOWN_SCHEMA",
+    "DATUM_CONFLICT",
+    "IDENTITY_MISMATCH",
+    "MIXED_SOURCE_CONFLICT",
+    "OVERLAY_HASH_MISMATCH",
+}
+EXPECTED_SAMPLE_SCHEMA = "st09.sample/1"
+EXPECTED_DATUM = "world"
+
 REQUIRED_SAMPLE_KEYS = {
     "offline": (
         "geometry_frame_64",
@@ -70,6 +80,9 @@ def required_samples_for_mode(acceptance, mode):
             "sample_id": key,
             "requirement": inventory.get(key, ""),
             "artifact_globs": ["samples/%s.json" % key, "%s.json" % key],
+            "expected_schema": EXPECTED_SAMPLE_SCHEMA,
+            "expected_datum": EXPECTED_DATUM,
+            "min_records": 1,
         })
     return required
 
@@ -90,18 +103,72 @@ def artifact_inventory(root):
     return out
 
 
+def _canonical_sha256(value):
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def validate_sample_document(path, sample):
+    """Validate an observed sample before it can satisfy coverage.
+
+    The runner accepts only a versioned envelope with a matching sample id,
+    stable identity, world datum, non-empty records, a records checksum, and
+    complete joins. Bad content is reported as missing coverage rather than
+    entering ``observed`` by filename alone.
+    """
+    try:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        return False, "UNKNOWN_SCHEMA:%s" % error
+    if not isinstance(document, dict) or document.get("schema") != sample["expected_schema"]:
+        return False, "UNKNOWN_SCHEMA"
+    if document.get("sample_id") != sample["sample_id"]:
+        return False, "IDENTITY_MISMATCH"
+    if document.get("datum") != sample["expected_datum"]:
+        return False, "DATUM_CONFLICT"
+    if document.get("source") == "mixed" or document.get("source_type") == "mixed":
+        return False, "MIXED_SOURCE_CONFLICT"
+    identity = document.get("identity")
+    if not isinstance(identity, dict):
+        return False, "IDENTITY_MISMATCH"
+    for key in ("request_id", "cycle_id", "map_revision"):
+        if key not in identity:
+            return False, "IDENTITY_MISMATCH"
+    records = document.get("records")
+    if not isinstance(records, list) or len(records) < sample.get("min_records", 1):
+        return False, "RECORD_COUNT_MISMATCH"
+    expected_hash = document.get("records_sha256") or document.get("sha256")
+    if expected_hash != _canonical_sha256(records):
+        return False, "OVERLAY_HASH_MISMATCH"
+    joins = document.get("joins")
+    if not isinstance(joins, list) or not joins or any(not row.get("complete") for row in joins if isinstance(row, dict)):
+        return False, "JOIN_INCOMPLETE"
+    return True, "pass"
+
+
 def compute_sample_manifest(acceptance, mode, out):
     required = required_samples_for_mode(acceptance, mode)
     artifacts = artifact_inventory(out)
     paths = {item["path"] for item in artifacts}
+    artifact_by_path = {item["path"]: item for item in artifacts}
     observed, missing = [], []
     for sample in required:
-        hits = []
+        hits, rejected = [], []
         for candidate in sample["artifact_globs"]:
             if candidate in paths:
-                hits.append(candidate)
+                ok, reason = validate_sample_document(Path(out) / candidate, sample)
+                if ok:
+                    artifact = artifact_by_path[candidate]
+                    hits.append({
+                        "path": candidate,
+                        "bytes": artifact["bytes"],
+                        "sha256": artifact["sha256"],
+                    })
+                else:
+                    rejected.append({"path": candidate, "reason": reason})
         record = dict(sample)
         record["observed_artifacts"] = hits
+        record["rejected_artifacts"] = rejected
         if hits:
             observed.append(record)
         else:
@@ -121,6 +188,53 @@ def write_sample_manifest(acceptance, mode, out):
     (Path(out) / "sample_manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return manifest
+
+
+def removal_sensitivity_matrix(acceptance, mode):
+    """Generate one removal case for every required stream/sample."""
+    cases = []
+    for sample in required_samples_for_mode(acceptance, mode):
+        for artifact in sample["artifact_globs"]:
+            cases.append({
+                "case_id": "remove:%s:%s" % (sample["sample_id"], artifact),
+                "sample_id": sample["sample_id"],
+                "removed_artifact": artifact,
+                "expected_status": "not_evaluated",
+                "expected_exit_code": 2,
+            })
+    return {
+        "schema": "st09.removal_sensitivity/1",
+        "mode": mode,
+        "case_count": len(cases),
+        "cases": cases,
+    }
+
+
+def fault_replay_report(faults):
+    """Replay frozen synthetic fault records by comparing reason/effect deltas."""
+    results = []
+    for fault in faults:
+        expected = fault.get("expected") or {}
+        observed = fault.get("observed") or {}
+        expected_effects = expected.get("effects") or {}
+        observed_effects = observed.get("effects") or {}
+        effect_deltas = {
+            key: observed_effects.get(key, 0) - expected_effects.get(key, 0)
+            for key in sorted(set(expected_effects) | set(observed_effects))
+        }
+        pass_case = expected.get("reason") == observed.get("reason") and all(value == 0 for value in effect_deltas.values())
+        results.append({
+            "fault_id": fault.get("fault_id"),
+            "expected_reason": expected.get("reason"),
+            "observed_reason": observed.get("reason"),
+            "effect_deltas": effect_deltas,
+            "status": "pass" if pass_case else "fail",
+        })
+    return {
+        "schema": "st09.fault_replay_report/1",
+        "status": "pass" if all(row["status"] == "pass" for row in results) else "fail",
+        "results": results,
+    }
 
 
 def main():

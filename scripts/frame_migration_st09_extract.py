@@ -29,6 +29,57 @@ def extract_box_events(evidence):
     return ordered, handoffs
 
 
+REQUIRED_EVENT_ORDER = ("pick", "place", "release", "integration", "map_publish")
+
+
+def _event_identity(event):
+    return (
+        event.get("request_id"),
+        event.get("cycle_id"),
+        event.get("map_revision"),
+    )
+
+
+def validate_box_chain(box):
+    events = box["events"]
+    failures = []
+    types = [event.get("type") for event in events]
+    for required in REQUIRED_EVENT_ORDER:
+        if types.count(required) != 1:
+            failures.append("%s expected exactly one %s event" % (box["box_id"], required))
+    positions = [types.index(required) for required in REQUIRED_EVENT_ORDER if required in types]
+    if positions != sorted(positions):
+        failures.append("%s event order must be pick->place->release->integration->map_publish" % box["box_id"])
+    identities = {_event_identity(event) for event in events if event.get("type") in REQUIRED_EVENT_ORDER}
+    if len(identities) != 1 or any(value is None for value in next(iter(identities), ())):
+        failures.append("%s request/cycle/map identity mismatch" % box["box_id"])
+    causal_ids = {event.get("causal_id") for event in events if event.get("type") in REQUIRED_EVENT_ORDER}
+    if len(causal_ids) != 1 or None in causal_ids:
+        failures.append("%s causal identity mismatch" % box["box_id"])
+    return failures
+
+
+def validate_handoffs(handoffs, expected_count):
+    failures = []
+    required = max(0, expected_count - 1)
+    if len(handoffs) != required:
+        failures.append("revision handoffs: observed %d expected exactly %d" % (len(handoffs), required))
+        return failures
+    expected_pairs = [(index, index + 1) for index in range(1, expected_count)]
+    observed_pairs = [(event.get("from"), event.get("to")) for event in handoffs]
+    if observed_pairs != expected_pairs:
+        failures.append("revision handoffs must be %s, observed %s" % (expected_pairs, observed_pairs))
+    seen = set()
+    for event in handoffs:
+        key = (event.get("box_id"), event.get("request_id"), event.get("from"), event.get("to"))
+        if key in seen:
+            failures.append("duplicate revision handoff %s" % (key,))
+        seen.add(key)
+        if event.get("box_id") and event.get("box_id") not in event.get("to_box_id", event.get("box_id")):
+            failures.append("cross-box handoff mismatch for %s" % event.get("box_id"))
+    return failures
+
+
 def extract_acceptance_variable(evidence, frozen):
     boxes, handoffs = extract_box_events(evidence)
     expected_count = int(frozen.get("box_count") or len(frozen.get("sequence_ids") or []) or len(boxes))
@@ -38,14 +89,11 @@ def extract_acceptance_variable(evidence, frozen):
         failures.append("expected box_count must be 2 or 3")
     if len(boxes) != expected_count:
         missing.append("box events: observed %d expected %d" % (len(boxes), expected_count))
-    required_handoffs = max(0, expected_count - 1)
-    if len(handoffs) < required_handoffs:
-        missing.append("revision handoffs: observed %d expected %d" % (len(handoffs), required_handoffs))
+    failures.extend(validate_handoffs(handoffs, expected_count))
     for box in boxes:
-        types = {event.get("type") for event in box["events"]}
-        for required in ("pick", "attach", "release", "map_publish"):
-            if required not in types:
-                missing.append("%s missing %s" % (box["box_id"], required))
+        chain_failures = validate_box_chain(box)
+        if chain_failures:
+            failures.extend(chain_failures)
     status = "pass" if not missing and not failures else ("not_evaluated" if missing else "fail")
     return {
         "status": status,

@@ -21,8 +21,20 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "luggage_gazebo"))
 
-from luggage_gazebo.rehearsal_evidence import (  # noqa: E402
-    median_degradation, throughput_degradation, topic_counts_match,
+try:
+    from luggage_gazebo.rehearsal_evidence import (  # noqa: E402
+        median_degradation, throughput_degradation, topic_counts_match,
+    )
+except Exception:  # pragma: no cover - bag replay requires the built package
+    median_degradation = throughput_degradation = topic_counts_match = None
+
+EXPECTED_JOINT_ORDER = (
+    "elfin_joint_1",
+    "elfin_joint_2",
+    "elfin_joint_3",
+    "elfin_joint_4",
+    "elfin_joint_5",
+    "elfin_joint_6",
 )
 
 
@@ -92,6 +104,8 @@ def main(argv=None):
         return 0 if result["pass"] else 1
     if not args.bag:
         raise SystemExit("--bag or --trajectory required")
+    if median_degradation is None:
+        raise SystemExit("bag replay requires luggage_gazebo rehearsal_evidence")
     if args.domain == 7:
         raise SystemExit("refusing to evaluate a replay on domain 7")
     if args.repeats < 3:
@@ -127,24 +141,21 @@ def replay_trajectory(path, snapshot, domain):
     if domain == 7:
         raise SystemExit("refusing to evaluate a replay on domain 7")
     document = json.loads(Path(path).read_text(encoding="utf-8"))
-    if document.get("schema") not in ("st09.trajectory/1", "frame_dump/2"):
-        return {"pass": False, "reason": "SCHEMA_MISMATCH"}
-    points = document.get("points") or document.get("trajectory", {}).get("points") or []
-    if len(points) < 2:
-        return {"pass": False, "reason": "truncated trajectory"}
+    valid, reason, points = validate_trajectory_schema(document)
+    if not valid:
+        return {"pass": False, "reason": reason}
     counters = {"samples": len(points), "violations": 0, "effects": 0}
-    for index, point in enumerate(points):
-        if "positions" not in point or "time_from_start_ns" not in point:
-            return {"pass": False, "reason": "truncated trajectory", "index": index}
-        if index and int(point["time_from_start_ns"]) <= int(points[index - 1]["time_from_start_ns"]):
-            return {"pass": False, "reason": "non_monotonic_time", "index": index}
     payload = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
     if snapshot:
         snap = json.loads(Path(snapshot).read_text(encoding="utf-8"))
         if snap.get("schema") != "frame_dump/2":
-            return {"pass": False, "reason": "snapshot schema mismatch"}
+            return {"pass": False, "reason": "UNKNOWN_SCHEMA"}
         if snap.get("source") == "mixed":
-            return {"pass": False, "reason": "mixed source conflict"}
+            return {"pass": False, "reason": "MIXED_SOURCE_CONFLICT"}
+        trajectory_identity = document.get("identity") or {}
+        snapshot_identity = snap.get("identity")
+        if isinstance(snapshot_identity, dict) and trajectory_identity and snapshot_identity != trajectory_identity:
+            return {"pass": False, "reason": "IDENTITY_MISMATCH"}
     return {
         "pass": True,
         "mode": document.get("mode", "fixed"),
@@ -152,6 +163,29 @@ def replay_trajectory(path, snapshot, domain):
         "sha256": hashlib.sha256(payload).hexdigest(),
         "counters": counters,
     }
+
+
+def validate_trajectory_schema(document, expected_joint_order=EXPECTED_JOINT_ORDER):
+    if document.get("schema") != "st09.trajectory/1":
+        return False, "UNKNOWN_SCHEMA", []
+    if tuple(document.get("joint_names") or ()) != tuple(expected_joint_order):
+        return False, "JOINT_ORDER_MISMATCH", []
+    points = document.get("points") or document.get("trajectory", {}).get("points") or []
+    if len(points) < 2:
+        return False, "TRUNCATED_TRAJECTORY", points
+    previous_time = None
+    for index, point in enumerate(points):
+        for key in ("positions", "velocities", "accelerations", "time_from_start_ns"):
+            if key not in point:
+                return False, "TRUNCATED_TRAJECTORY", points
+        for key in ("positions", "velocities", "accelerations"):
+            if len(point[key]) != len(expected_joint_order):
+                return False, "JOINT_ORDER_MISMATCH", points
+        current_time = int(point["time_from_start_ns"])
+        if previous_time is not None and current_time <= previous_time:
+            return False, "NON_MONOTONIC_TIME", points
+        previous_time = current_time
+    return True, "pass", points
 
 
 if __name__ == "__main__":
