@@ -84,8 +84,12 @@ class FakeEdgeBuilder(object):
         self.joint_travel_rad = joint_travel_rad
         self.calls = []
 
-    def __call__(self, from_node, to_node, edge_class, candidate=None):
+    def __call__(self, from_node, to_node, edge_class, candidate=None,
+                 scene=None):
         self.calls.append((from_node.node_id, to_node.node_id, edge_class))
+        self.scenes = getattr(self, "scenes", [])
+        if scene is not None:
+            self.scenes.append(scene.load_state)
         key = (from_node.region, to_node.region, edge_class)
         if key in self.fail or (to_node.node_id, edge_class) in self.fail_dest:
             raise RoutePlanningError(

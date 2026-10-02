@@ -415,11 +415,14 @@ def route_bearing_sort_key(candidate, exec_ns, joint_travel_rad, goal_id):
 class RouteSearch(object):
     """Staged search over the q-graph with per-hop alternatives.
 
-    ``edge_builder(from_node, to_node, edge_class, candidate=None)`` must
-    return a verified :class:`~st09_contracts.graph.GraphEdge` or raise
-    :class:`RoutePlanningError`. Verified cached edges are reused without
-    budget cost; store candidates are passed to the builder for a cheap
-    re-probe (the real gate is certification, not this search).
+    ``edge_builder(from_node, to_node, edge_class, candidate=None,
+    scene=None)`` must return a verified
+    :class:`~st09_contracts.graph.GraphEdge` or raise
+    :class:`RoutePlanningError`. The scene is threaded per chain (carrying
+    for entry hops, unloaded-with-obstacles for the retreat). Verified
+    cached edges are reused without budget cost; store candidates are
+    passed to the builder for a cheap re-probe (the real gate is
+    certification, not this search).
     """
 
     def __init__(self, graph, edge_builder, budget=None):
@@ -444,7 +447,7 @@ class RouteSearch(object):
                 return edge
         return None
 
-    def _edge_for(self, from_node, to_node, hop):
+    def _edge_for(self, from_node, to_node, hop, scene=None):
         edge_class = hop.edge_class
         cached = self._cached_edge(from_node.node_id, to_node.node_id, edge_class)
         if cached is not None:
@@ -454,7 +457,7 @@ class RouteSearch(object):
         key = (from_node.node_id, to_node.node_id, edge_class)
         if candidate is not None:
             replacement = self._build(from_node, to_node, hop, key,
-                                      candidate=candidate)
+                                      candidate=candidate, scene=scene)
             if replacement is not None:
                 self.graph.promote_candidate(candidate.edge_id, replacement)
             return replacement
@@ -463,16 +466,16 @@ class RouteSearch(object):
                 "edge": list(key), "kind": "budget",
                 "reason": "PLANNING_BUDGET_EXHAUSTED"})
             return None
-        edge = self._build(from_node, to_node, hop, key)
+        edge = self._build(from_node, to_node, hop, key, scene=scene)
         if edge is not None:
             self.graph.add_edge(edge)  # verified: later hops/goals reuse free
         return edge
 
-    def _build(self, from_node, to_node, hop, key, candidate=None):
+    def _build(self, from_node, to_node, hop, key, candidate=None, scene=None):
         started = self.budget.now()
         try:
             edge = self.edge_builder(from_node, to_node, hop.edge_class,
-                                     candidate=candidate)
+                                     candidate=candidate, scene=scene)
         except RoutePlanningError as err:
             self.budget.finish_edge(key, self.budget.now() - started)
             self.edge_failures.append({
@@ -498,7 +501,8 @@ class RouteSearch(object):
         return tuple(node for node in self.graph.nodes_by_region(hop.to_region)
                      if str(node.load_state) == hop.load_state)
 
-    def _chain_from(self, frontier, hops, goal_nodes, acc_edges, acc_nodes):
+    def _chain_from(self, frontier, hops, goal_nodes, acc_edges, acc_nodes,
+                     scene=None):
         if not hops:
             duration_ns = sum(
                 int(edge.attributes.get("duration_ns", 0))
@@ -516,12 +520,13 @@ class RouteSearch(object):
         for destination in self._destinations(hop, goal_nodes, final):
             if destination.node_id == frontier.node_id:
                 continue
-            edge = self._edge_for(frontier, destination, hop)
+            edge = self._edge_for(frontier, destination, hop, scene=scene)
             if edge is None:
                 continue
             result = self._chain_from(
                 destination, rest, goal_nodes,
-                acc_edges + [edge], acc_nodes + [destination.node_id])
+                acc_edges + [edge], acc_nodes + [destination.node_id],
+                scene=scene)
             if result is not None:
                 return result
         return None
@@ -540,7 +545,8 @@ class RouteSearch(object):
         if self.budget.entry_exhausted():
             raise RoutePlanningError("PLANNING_BUDGET_EXHAUSTED", {
                 "budget": self.budget.snapshot()})
-        chain = self._chain_from(start, hops, tuple(goal_nodes), [], [start.node_id])
+        chain = self._chain_from(start, hops, tuple(goal_nodes), [],
+                                 [start.node_id], scene=scene)
         if chain is None:
             raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
                 "prior_gaps": list(self.graph.prior_gaps),
@@ -555,7 +561,8 @@ class RouteSearch(object):
         hops = hops or hops_from_table(DEFAULT_RETREAT_HOPS, "unloaded")
         self.budget.start()
         release = self.graph.node(release_node_id)
-        chain = self._chain_from(release, hops, (), [], [release.node_id])
+        chain = self._chain_from(release, hops, (), [], [release.node_id],
+                                 scene=scene)
         if chain is None:
             raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
                 "prior_gaps": list(self.graph.prior_gaps),

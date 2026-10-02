@@ -586,6 +586,184 @@ class GraphStore(object):
         return graph
 
 
+class GraphRoutePlanner(object):
+    """ST09-B implementation of the frozen ``RoutePlanner`` protocol.
+
+    ``plan_route`` composes the full unauthorized route for one carried
+    placement: goal nodes from pure target synthesis (no tool-yaw
+    pruning), the bounded entry chain, the release twin, and the
+    post-release retreat chain with the placed box as a world obstacle.
+    Budget exhaustion raises ``PLANNING_BUDGET_EXHAUSTED`` (never
+    BIN_FULL). A certifier injected here is ADVISORY ONLY: the returned
+    PlannedRoute has no certification field, and the route content is
+    byte-identical with or without one (fake-certifier isolation is
+    asserted by tests). Production code never imports
+    st09_contracts.fixtures and never constructs a CertificationResult.
+    """
+
+    def __init__(self, graph, edge_builder, *, home_node_id,
+                 goal_seeds=None, budget_policy=None,
+                 entry_hops=None, retreat_hops=None,
+                 t_frame_container=(0.0, 0.0, 0.0),
+                 q_frame_container=(0.0, 0.0, 0.0, 1.0),
+                 certifier=None, refine=None, urdf=None, tcp_path=None):
+        from luggage_planning.grid_path_search import RouteBudgetPolicy
+        self.graph = graph
+        self.edge_builder = edge_builder
+        self.home_node_id = str(home_node_id)
+        self.goal_seeds = goal_seeds
+        self.budget_policy = budget_policy or RouteBudgetPolicy()
+        self.entry_hops = entry_hops
+        self.retreat_hops = retreat_hops
+        self.t_frame_container = tuple(float(v) for v in t_frame_container)
+        self.q_frame_container = tuple(float(v) for v in q_frame_container)
+        self.certifier = certifier  # advisory only; see class docstring
+        self.refine = refine  # production default: offline_ik refine
+        self.urdf = urdf
+        self.tcp_path = tcp_path
+        self.last_entry = None
+        self.last_retreat = None
+        self.last_goal = None
+        self.last_budget_snapshot = None
+        self.last_advisory_cert = None
+
+    # -- helpers ----------------------------------------------------------
+
+    def _payload_identity(self, attachment):
+        from st09_contracts.planning import PayloadIdentity, PayloadSymmetry
+        symmetry = (PayloadSymmetry.PI if attachment.symmetry == "pi"
+                    else PayloadSymmetry.NONE)
+        return PayloadIdentity(
+            cargo_id=attachment.cargo_id,
+            box_id=attachment.box_id,
+            request_id=attachment.request_id,
+            cycle_id=attachment.cycle_id,
+            dimensions_wdh=attachment.dimensions_wdh,
+            symmetry=symmetry,
+            t_tcp_box_translation=attachment.t_tcp_box_translation,
+            t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw,
+            attachment_incarnation=attachment.attachment_incarnation,
+            acquisition_stamp_ns=attachment.acquisition_stamp_ns)
+
+    def _goal_nodes(self, targets):
+        """Register goal q-nodes (plus release twins) for every target."""
+        from luggage_planning.place_targets import goal_joint_sets
+        if self.goal_seeds is None:
+            raise ValueError(
+                "GraphRoutePlanner needs goal_seeds(target) (atlas or "
+                "MoveIt supplementation supplies them)")
+        load_state = _contracts()[0].LoadState
+        goal_nodes = []
+        refine_kwargs = ({"refine": self.refine} if self.refine is not None
+                         else {"urdf": self.urdf, "tcp_path": self.tcp_path})
+        for goal_set in goal_joint_sets(
+                targets, seeds_for_target=self.goal_seeds, **refine_kwargs):
+            for goal in goal_set.goals:
+                node = self.graph.register_node(
+                    goal.q, goal_set.target.position,
+                    goal_set.target.quaternion_xyzw,
+                    "slot", load_state.CARRYING,
+                    ik_family=goal.ik_family)
+                # Release twin for the post-release retreat chain.
+                self.graph.register_node(
+                    goal.q, goal_set.target.position,
+                    goal_set.target.quaternion_xyzw,
+                    "slot", load_state.UNLOADED,
+                    ik_family=goal.ik_family)
+                goal_nodes.append(node)
+        return goal_nodes
+
+    def _released_box(self, attachment, candidate):
+        """World-frame box at the candidate's placed pose, composed
+        through the injected world<-container transform."""
+        from luggage_planning.moveit_edge_adapter import BoxSpec
+        from st09_contracts.attachment import compose_transform
+        position, quaternion = compose_transform(
+            self.t_frame_container, self.q_frame_container,
+            candidate.position_container, candidate.quaternion_xyzw_container)
+        return BoxSpec(
+            object_id="released-%s" % attachment.box_id,
+            center=position,
+            size_whd=attachment.dimensions_wdh,
+            quaternion_xyzw=quaternion)
+
+    def _scenes(self, attachment, candidate, snapshot):
+        from luggage_planning.moveit_edge_adapter import (
+            PayloadSpec,
+            SceneState,
+            scene_boxes_from_snapshot,
+        )
+        carrying = SceneState(
+            load_state="carrying",
+            payload=PayloadSpec(
+                dimensions_wdh=attachment.dimensions_wdh,
+                t_tcp_box_translation=attachment.t_tcp_box_translation,
+                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw))
+        unloaded = SceneState(
+            load_state="unloaded",
+            released_box=self._released_box(attachment, candidate),
+            placed_boxes=scene_boxes_from_snapshot(snapshot)
+            if snapshot is not None else ())
+        return carrying, unloaded
+
+    # -- protocol -----------------------------------------------------------
+
+    def plan_route(self, snapshot, attachment, candidate, targets, budget_ns):
+        from luggage_planning.grid_path_search import (
+            RouteBudget,
+            RouteBudgetPolicy,
+            RoutePlanningError,
+            RouteSearch,
+        )
+        contracts_graph, digest_of = _contracts()
+        total_wall_s = max(0.0, float(budget_ns) * 1e-9)
+        if total_wall_s <= 0.0:
+            raise RoutePlanningError("PLANNING_BUDGET_EXHAUSTED", {
+                "budget_ns": float(budget_ns)})
+        policy = RouteBudgetPolicy(
+            total_wall_s=total_wall_s,
+            single_edge_wall_s=self.budget_policy.single_edge_wall_s,
+            max_edge_repair_attempts=self.budget_policy.max_edge_repair_attempts,
+            retreat_min_share=self.budget_policy.retreat_min_share)
+        budget = RouteBudget(policy=policy)
+        goal_nodes = self._goal_nodes(targets)
+        if not goal_nodes:
+            raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
+                "prior_gaps": list(self.graph.prior_gaps),
+                "detail": "no IK goals refined for the given targets"})
+        carrying, unloaded = self._scenes(attachment, candidate, snapshot)
+        search = RouteSearch(self.graph, self.edge_builder, budget)
+        entry, retreat, goal = search.best_full_route(
+            self.home_node_id, goal_nodes,
+            entry_hops=self.entry_hops, retreat_hops=self.retreat_hops,
+            scene_carrying=carrying, scene_unloaded=unloaded)
+        self.last_entry, self.last_retreat = entry, retreat
+        self.last_goal = goal
+        self.last_budget_snapshot = budget.snapshot()
+        edges = tuple(entry.edges) + tuple(retreat.edges)
+        payload = self._payload_identity(attachment)
+        route = contracts_graph.PlannedRoute(
+            route_id="route-b-%s" % digest_of(
+                attachment.request_id, candidate.candidate_id,
+                goal.node_id, entry.node_ids, retreat.node_ids)[:12],
+            request_id=attachment.request_id,
+            snapshot_digest=snapshot.digest(),
+            payload_digest=payload.digest(),
+            attachment_digest=attachment.digest(),
+            candidate_id=candidate.candidate_id,
+            entry_edge_ids=tuple(edge.edge_id for edge in entry.edges),
+            retreat_edge_ids=tuple(edge.edge_id for edge in retreat.edges),
+            edge_digests=tuple(edge.digest() for edge in edges),
+            trajectory_digest=digest_of(
+                *(edge.trajectory.digest() for edge in edges)),
+            planning_revision="B:%s" % self.graph.digest()[:12],
+        )
+        if self.certifier is not None:
+            # Advisory only: the result is recorded and discarded; it can
+            # never enter the PlannedRoute (no certification field).
+            self.last_advisory_cert = self.certifier.certify(route)
+        return route
+
 def build_route_graph_from_atlas(atlas, anchors, *, fk, seed_set="both",
                                  max_seeds=3, graph=None):
     """Register q-nodes for anchors covered by the atlas prior.

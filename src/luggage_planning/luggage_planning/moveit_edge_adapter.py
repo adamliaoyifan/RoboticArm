@@ -398,9 +398,10 @@ class MoveItEdgeAdapter(object):
 
     # -- edge building ------------------------------------------------------
 
-    def __call__(self, from_node, to_node, edge_class, candidate=None):
+    def __call__(self, from_node, to_node, edge_class, candidate=None,
+                 scene=None):
         return self.build_edge(from_node, to_node, edge_class,
-                               candidate=candidate)
+                               candidate=candidate, scene=scene)
 
     def build_edge(self, from_node, to_node, edge_class, candidate=None,
                    scene=None):
