@@ -409,3 +409,209 @@ def untracked_xyz(cargo, obstacle, include_obstacle):
     if obs.shape[0] == 0:
         return cargo_pts
     return np.concatenate([cargo_pts, obs], axis=0)
+
+
+# --------------------------------------------------------------------------
+# ST09-D: frozen ViewIntegrator + PlanningSnapshot producer (additive; every
+# function above is unchanged — the mapper node, drivers and existing tests
+# keep their behavior).
+# --------------------------------------------------------------------------
+
+# Frozen join window (resolved_planning_contract.map_freshness):
+# buffered sensor data must be within this window of the request stamp to
+# join (STAMP_STALE / VIEW_TF_STALE otherwise).
+SNAPSHOT_JOIN_WINDOW_SEC = DEFAULT_FRESHNESS_WINDOW_SEC
+
+
+def _contract_violation(reason_value, message):
+    from st09_contracts._base import ContractViolation
+    return ContractViolation("%s: %s" % (reason_value, message))
+
+
+def planning_snapshot_from_surface(surface_map, scene_revision="",
+                                   request_id=""):
+    """Build the frozen ``PlanningSnapshot`` from a ``surface_map_2d`` dict.
+
+    Fills the producer gap: the contract snapshot is what route planning
+    and map revalidation consume. Cells are sparse (only free/occupied
+    listed, row-major sorted) exactly like the C0 fixtures; heights and
+    confidences stay in the surface domain — the contract grid is a
+    cell-state view.
+    """
+    from st09_contracts._base import digest_of
+    from st09_contracts.planning import PlanningSnapshot
+
+    resolution = float(surface_map["resolution"])
+    origin_x = float(surface_map["origin_local"][0])
+    origin_y = float(surface_map["origin_local"][1])
+    states = surface_map["state"]
+    cells_i = []
+    cells_j = []
+    cell_states = []
+    for ix in range(int(surface_map["nx"])):
+        for iy in range(int(surface_map["ny"])):
+            state = str(states[ix][iy])
+            if state == "unknown":
+                continue
+            cells_i.append(ix)
+            cells_j.append(iy)
+            cell_states.append(state)
+    return PlanningSnapshot(
+        geometry_id=str(surface_map.get("frame", "container_local")),
+        geometry_hash=str(surface_map.get("geometry_hash") or
+                          digest_of(surface_map["inner_size"])),
+        map_revision=int(surface_map.get("map_revision", 0)),
+        acquisition_stamp_ns=int(surface_map.get("acquisition_stamp_ns", 0)),
+        commit_revision=int(surface_map.get("commit_revision", 1)),
+        occupancy_digest=digest_of(tuple(cells_i), tuple(cells_j),
+                                   tuple(cell_states)),
+        resolution_m=resolution,
+        origin_xy=(origin_x, origin_y),
+        cells_i=tuple(cells_i),
+        cells_j=tuple(cells_j),
+        cell_states=tuple(cell_states),
+    )
+
+
+def _cell_of_point(point, origin, resolution):
+    return (int(math.floor((float(point[0]) - origin[0]) / resolution)),
+            int(math.floor((float(point[1]) - origin[1]) / resolution)))
+
+
+def integrate_view_with_report(snapshot, requirement, view_payload):
+    """Integrate one saved sensor view; pure and immutable.
+
+    Returns ``(new_snapshot_or_None, invalidation_or_None, report)`` where
+    ``report`` carries the named outcome (``integrated``, ``duplicate``,
+    ``partial_coverage``). Hard failures raise ``ContractViolation`` with
+    the frozen ``Reason`` prefix: ``MAP_GEOMETRY_HASH_MISMATCH``,
+    ``VIEW_TF_STALE``, ``VIEW_DEPTH_MISSING``, ``VIEW_EMPTY``.
+
+    ``view_payload`` keys:
+      - ``acquisition_stamp_ns``: the view's sensor stamp (int ns);
+      - ``tf_stamp_ns``: stamp of the TF that expressed the points in the
+        container frame (join window applies);
+      - ``geometry_hash``: hull identity the view was taken against;
+      - ``points_container``: sensor hits in container frame (Nx3);
+      - ``observed_cells``: cells the camera actually covered — miss
+        testimony; only these may turn UNKNOWN into FREE;
+      - ``depth_present``: False marks a view whose depth stream is missing.
+
+    Idempotency is stateless: a view whose acquisition stamp equals the
+    snapshot's own acquisition stamp is the same acquisition already
+    integrated — the snapshot returns unchanged and the report says
+    ``duplicate`` (revision must not advance twice for one observation).
+    Missing sensors never promote cells to free or support.
+    """
+    from st09_contracts.planning import PlanningSnapshot
+    from st09_contracts.reasons import Reason
+    from st09_contracts._base import digest_of
+
+    acquisition = int(view_payload.get("acquisition_stamp_ns", 0))
+    tf_stamp = int(view_payload.get("tf_stamp_ns", acquisition))
+    geometry_hash = str(view_payload.get("geometry_hash") or "")
+    if geometry_hash and geometry_hash != snapshot.geometry_hash:
+        raise _contract_violation(
+            Reason.MAP_GEOMETRY_HASH_MISMATCH.value,
+            "view geometry %s does not match snapshot %s"
+            % (geometry_hash, snapshot.geometry_hash))
+    skew_ns = abs(acquisition - tf_stamp)
+    if skew_ns > int(SNAPSHOT_JOIN_WINDOW_SEC * 1e9):
+        raise _contract_violation(
+            Reason.VIEW_TF_STALE.value,
+            "TF stamp %d is %.3f s from the view stamp %d"
+            % (tf_stamp, skew_ns * 1e-9, acquisition))
+    if view_payload.get("depth_present", True) is False:
+        raise _contract_violation(
+            Reason.VIEW_DEPTH_MISSING.value,
+            "the depth stream for this view is missing")
+    points = view_payload.get("points_container") or []
+    observed_cells = [tuple(cell) for cell in
+                      (view_payload.get("observed_cells") or [])]
+    if not len(points) and not observed_cells:
+        raise _contract_violation(
+            Reason.VIEW_EMPTY.value,
+            "view carries neither hits nor covered cells")
+
+    if acquisition == snapshot.acquisition_stamp_ns:
+        report = {"outcome": "duplicate",
+                  "reason": Reason.VIEW_DUPLICATE.value,
+                  "map_revision": snapshot.map_revision}
+        return snapshot, None, report
+
+    resolution = float(snapshot.resolution_m)
+    origin = (float(snapshot.origin_xy[0]), float(snapshot.origin_xy[1]))
+    known = {}
+    for i, j, state in zip(snapshot.cells_i, snapshot.cells_j,
+                           snapshot.cell_states):
+        known[(int(i), int(j))] = str(state)
+    changed = {}
+    for cell in observed_cells:
+        if known.get(cell, "unknown") == "unknown":
+            changed[cell] = "free"   # sensor miss testimony
+    hits = 0
+    for point in points:
+        cell = _cell_of_point(point, origin, resolution)
+        changed[cell] = "occupied"  # sensor hit
+        hits += 1
+
+    merged = dict(known)
+    merged.update(changed)
+    cells = sorted(merged)
+    cells_i = tuple(cell[0] for cell in cells)
+    cells_j = tuple(cell[1] for cell in cells)
+    cell_states = tuple(merged[cell] for cell in cells)
+    new_snapshot = PlanningSnapshot(
+        geometry_id=snapshot.geometry_id,
+        geometry_hash=snapshot.geometry_hash,
+        map_revision=snapshot.map_revision + 1,
+        acquisition_stamp_ns=acquisition,
+        commit_revision=snapshot.commit_revision + 1,
+        occupancy_digest=digest_of(cells_i, cells_j, cell_states),
+        resolution_m=resolution,
+        origin_xy=snapshot.origin_xy,
+        cells_i=cells_i,
+        cells_j=cells_j,
+        cell_states=cell_states,
+    )
+
+    required = set(requirement.missing_cells) if requirement is not None \
+        else set()
+    if requirement is not None:
+        required |= set(requirement.footprint_cells)
+        required |= set(requirement.corridor_cells)
+    still_unknown = [
+        cell for cell in sorted(required)
+        if new_snapshot.state_at(cell[0], cell[1]).value == "unknown"
+    ] if required else []
+    outcome = ("partial_coverage" if still_unknown else "integrated")
+    report = {
+        "outcome": outcome,
+        "reason": (Reason.VIEW_PARTIAL_COVERAGE.value if still_unknown
+                   else None),
+        "map_revision": new_snapshot.map_revision,
+        "n_hits": hits,
+        "n_cells_freed": sum(1 for v in changed.values() if v == "free"),
+        "n_cells_occupied": sum(1 for v in changed.values()
+                                if v == "occupied"),
+        "required_cells": len(required),
+        "still_unknown_after": still_unknown,
+    }
+    return new_snapshot, None, report
+
+
+class SnapshotViewIntegrator:
+    """Frozen ``ViewIntegrator`` protocol implementation.
+
+    Thin wrapper over :func:`integrate_view_with_report`: the protocol
+    signature returns ``(snapshot, invalidation)``; the report (named
+    outcome, coverage accounting) stays available through the function.
+    The integrator is a pure function of its inputs — asynchronous by
+    construction: callers (ST09-I adapter) queue ``(snapshot, view)``
+    pairs and never hold a mapper lock.
+    """
+
+    def integrate_view(self, snapshot, requirement, view_payload):
+        new_snapshot, invalidation, _report = integrate_view_with_report(
+            snapshot, requirement, view_payload)
+        return new_snapshot, invalidation
