@@ -1,0 +1,396 @@
+{
+  "artifacts": [
+    {
+      "bytes": 543,
+      "path": "samples/attachment_negatives_9.json",
+      "sha256": "f2e51df62f320c00a5cf93d8249985f799f8bda02aee6de4831d7a56fbe95f36"
+    },
+    {
+      "bytes": 527,
+      "path": "samples/capture_replay.json",
+      "sha256": "432eba2fe889c741d4c3112240df7b97bc75e535fe3614ba1b676d487f86c426"
+    },
+    {
+      "bytes": 555,
+      "path": "samples/common_negatives_per_profile.json",
+      "sha256": "f0f818febc252e6079069d5fc2ac5b8ef9f1540610a4125fe4bbdbbeb6f31f09"
+    },
+    {
+      "bytes": 525,
+      "path": "samples/deep_place_16.json",
+      "sha256": "5676bc5684d7f86aa9a7a636f664267be96885804b417e31c76d2ab108dc2db7"
+    },
+    {
+      "bytes": 533,
+      "path": "samples/geometry_frame_64.json",
+      "sha256": "60a3a96ed3abfee4ce759089fe8a7a1762dc0a3f464e93b85b0e9dfb6c41ca70"
+    },
+    {
+      "bytes": 527,
+      "path": "samples/map_cases_6_x2.json",
+      "sha256": "d4e34662e88e50e7b761a8368831b0723bb601d66dfa8542aaaad88b73fcf158"
+    },
+    {
+      "bytes": 517,
+      "path": "samples/mutations.json",
+      "sha256": "3745cfce66b28224a4c9c163766456379869e9ecdff5fe97dbd51951053a8f11"
+    },
+    {
+      "bytes": 521,
+      "path": "samples/performance.json",
+      "sha256": "6cd657ea8562292fa44e9e9bd057668adec5268850a61632cba7812cf002287e"
+    },
+    {
+      "bytes": 523,
+      "path": "samples/startup_3_x2.json",
+      "sha256": "0d482b902cd751a8c8fc760e983d7cb74d52bc2ed8c4c813aca493acdb871563"
+    },
+    {
+      "bytes": 529,
+      "path": "samples/target_matrix_8.json",
+      "sha256": "67b1ecba9c362276635cfff4bd33e06baea7e74bcaea077268bd59ce4e7fdfff"
+    },
+    {
+      "bytes": 531,
+      "path": "samples/yaw_ik_8_classes.json",
+      "sha256": "54dac9274e1f887a5fcd2f25766ee029c3a9a2f421ca11aee84f92dc2c48aa3e"
+    }
+  ],
+  "missing": [],
+  "mode": "all",
+  "observed": [
+    {
+      "artifact_globs": [
+        "samples/geometry_frame_64.json",
+        "geometry_frame_64.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 533,
+          "path": "samples/geometry_frame_64.json",
+          "sha256": "60a3a96ed3abfee4ce759089fe8a7a1762dc0a3f464e93b85b0e9dfb6c41ca70"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
+      "sample_id": "geometry_frame_64"
+    },
+    {
+      "artifact_globs": [
+        "samples/deep_place_16.json",
+        "deep_place_16.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 525,
+          "path": "samples/deep_place_16.json",
+          "sha256": "5676bc5684d7f86aa9a7a636f664267be96885804b417e31c76d2ab108dc2db7"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
+      "sample_id": "deep_place_16"
+    },
+    {
+      "artifact_globs": [
+        "samples/yaw_ik_8_classes.json",
+        "yaw_ik_8_classes.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 531,
+          "path": "samples/yaw_ik_8_classes.json",
+          "sha256": "54dac9274e1f887a5fcd2f25766ee029c3a9a2f421ca11aee84f92dc2c48aa3e"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "0->0, 0->90, 90->0, near-square, eccentric attachment, q/-q + pi/-pi equivalence, multi IK family, no-transition-region; positive+negative each",
+      "sample_id": "yaw_ik_8_classes"
+    },
+    {
+      "artifact_globs": [
+        "samples/target_matrix_8.json",
+        "target_matrix_8.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 529,
+          "path": "samples/target_matrix_8.json",
+          "sha256": "67b1ecba9c362276635cfff4bd33e06baea7e74bcaea077268bd59ce4e7fdfff"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "centered/eccentric/relative-yaw/tilt x sim/deploy; independent expectation error <=1e-9 (C0 fixtures in st09_contracts/fixtures.py)",
+      "sample_id": "target_matrix_8"
+    },
+    {
+      "artifact_globs": [
+        "samples/attachment_negatives_9.json",
+        "attachment_negatives_9.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 543,
+          "path": "samples/attachment_negatives_9.json",
+          "sha256": "f2e51df62f320c00a5cf93d8249985f799f8bda02aee6de4831d7a56fbe95f36"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "missing, NaN, non-positive dimensions, illegal quaternion, expired, wrong frame, wrong request, re-attach, GT-as-measured; named rejection, zero business effect",
+      "sample_id": "attachment_negatives_9"
+    },
+    {
+      "artifact_globs": [
+        "samples/map_cases_6_x2.json",
+        "map_cases_6_x2.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 527,
+          "path": "samples/map_cases_6_x2.json",
+          "sha256": "d4e34662e88e50e7b761a8368831b0723bb601d66dfa8542aaaad88b73fcf158"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "unrelated update / related update / fully blocked / in-flight conflict / stale / restart, sim+deploy",
+      "sample_id": "map_cases_6_x2"
+    },
+    {
+      "artifact_globs": [
+        "samples/common_negatives_per_profile.json",
+        "common_negatives_per_profile.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 555,
+          "path": "samples/common_negatives_per_profile.json",
+          "sha256": "f0f818febc252e6079069d5fc2ac5b8ef9f1540610a4125fe4bbdbbeb6f31f09"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "unknown schema, conflicting datum, mixed types, missing peer, stale atlas, missing URDF, duplicate provider, wrong overlay, restart",
+      "sample_id": "common_negatives_per_profile"
+    },
+    {
+      "artifact_globs": [
+        "samples/mutations.json",
+        "mutations.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 517,
+          "path": "samples/mutations.json",
+          "sha256": "3745cfce66b28224a4c9c163766456379869e9ecdff5fe97dbd51951053a8f11"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "wrong-frame, position-only rotation, dropped velocities/times, legacy bypass, QP activation",
+      "sample_id": "mutations"
+    },
+    {
+      "artifact_globs": [
+        "samples/performance.json",
+        "performance.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 521,
+          "path": "samples/performance.json",
+          "sha256": "6cd657ea8562292fa44e9e9bd057668adec5268850a61632cba7812cf002287e"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "healthy saved graph fixture x10 warm + 1 cold, each <=10 s or named budget failure; p50/max + MoveIt call counts recorded",
+      "sample_id": "performance"
+    },
+    {
+      "artifact_globs": [
+        "samples/startup_3_x2.json",
+        "startup_3_x2.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 523,
+          "path": "samples/startup_3_x2.json",
+          "sha256": "0d482b902cd751a8c8fc760e983d7cb74d52bc2ed8c4c813aca493acdb871563"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "sim+deploy x3 healthy, <=180 s READY, <=90 s teardown, mock hardware",
+      "sample_id": "startup_3_x2"
+    },
+    {
+      "artifact_globs": [
+        "samples/capture_replay.json",
+        "capture_replay.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "observed_artifacts": [
+        {
+          "bytes": 527,
+          "path": "samples/capture_replay.json",
+          "sha256": "432eba2fe889c741d4c3112240df7b97bc75e535fe3614ba1b676d487f86c426"
+        }
+      ],
+      "rejected_artifacts": [],
+      "requirement": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
+      "sample_id": "capture_replay"
+    }
+  ],
+  "required": [
+    {
+      "artifact_globs": [
+        "samples/geometry_frame_64.json",
+        "geometry_frame_64.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
+      "sample_id": "geometry_frame_64"
+    },
+    {
+      "artifact_globs": [
+        "samples/deep_place_16.json",
+        "deep_place_16.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
+      "sample_id": "deep_place_16"
+    },
+    {
+      "artifact_globs": [
+        "samples/yaw_ik_8_classes.json",
+        "yaw_ik_8_classes.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "0->0, 0->90, 90->0, near-square, eccentric attachment, q/-q + pi/-pi equivalence, multi IK family, no-transition-region; positive+negative each",
+      "sample_id": "yaw_ik_8_classes"
+    },
+    {
+      "artifact_globs": [
+        "samples/target_matrix_8.json",
+        "target_matrix_8.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "centered/eccentric/relative-yaw/tilt x sim/deploy; independent expectation error <=1e-9 (C0 fixtures in st09_contracts/fixtures.py)",
+      "sample_id": "target_matrix_8"
+    },
+    {
+      "artifact_globs": [
+        "samples/attachment_negatives_9.json",
+        "attachment_negatives_9.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "missing, NaN, non-positive dimensions, illegal quaternion, expired, wrong frame, wrong request, re-attach, GT-as-measured; named rejection, zero business effect",
+      "sample_id": "attachment_negatives_9"
+    },
+    {
+      "artifact_globs": [
+        "samples/map_cases_6_x2.json",
+        "map_cases_6_x2.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "unrelated update / related update / fully blocked / in-flight conflict / stale / restart, sim+deploy",
+      "sample_id": "map_cases_6_x2"
+    },
+    {
+      "artifact_globs": [
+        "samples/common_negatives_per_profile.json",
+        "common_negatives_per_profile.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "unknown schema, conflicting datum, mixed types, missing peer, stale atlas, missing URDF, duplicate provider, wrong overlay, restart",
+      "sample_id": "common_negatives_per_profile"
+    },
+    {
+      "artifact_globs": [
+        "samples/mutations.json",
+        "mutations.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "wrong-frame, position-only rotation, dropped velocities/times, legacy bypass, QP activation",
+      "sample_id": "mutations"
+    },
+    {
+      "artifact_globs": [
+        "samples/performance.json",
+        "performance.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "healthy saved graph fixture x10 warm + 1 cold, each <=10 s or named budget failure; p50/max + MoveIt call counts recorded",
+      "sample_id": "performance"
+    },
+    {
+      "artifact_globs": [
+        "samples/startup_3_x2.json",
+        "startup_3_x2.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "sim+deploy x3 healthy, <=180 s READY, <=90 s teardown, mock hardware",
+      "sample_id": "startup_3_x2"
+    },
+    {
+      "artifact_globs": [
+        "samples/capture_replay.json",
+        "capture_replay.json"
+      ],
+      "expected_datum": "world",
+      "expected_schema": "st09.sample/1",
+      "min_records": 1,
+      "requirement": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
+      "sample_id": "capture_replay"
+    }
+  ],
+  "schema": "st09.sample_manifest/1"
+}

@@ -1,0 +1,26 @@
+{
+  "datum": "world",
+  "identity": {
+    "cycle_id": "cycle-e2",
+    "map_revision": 1,
+    "request_id": "req-e2"
+  },
+  "joins": [
+    {
+      "complete": true,
+      "name": "fixture"
+    }
+  ],
+  "records": [
+    {
+      "cycle_id": "cycle-e2",
+      "event": "sample",
+      "request_id": "req-e2",
+      "sample_id": "capture_replay"
+    }
+  ],
+  "records_sha256": "ef0cc393fa07ae447bc36d44b28402f58dac6b6d0064db77d289e682cd253828",
+  "sample_id": "capture_replay",
+  "schema": "st09.sample/1",
+  "source": "measured"
+}

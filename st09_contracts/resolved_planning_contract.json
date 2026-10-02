@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "contract_id": "resolved-planning-contract-st09",
+  "frozen_at": "2026-10-02",
+  "frozen_by": "ST09-C0",
+  "plan_revision": "docs/plans/frame_migration_st09_parallel_execution.md (2026-10-02) + docs/plans/frame_migration_st09_planner_convergence.md (2026-10-02)",
+  "recovery_base": "2ea75165dd05de4ce042084e300a6b2f725447e3",
+  "value_status": {
+    "frozen": "value inherited from an existing production source cited in 'source'",
+    "defined_by_c0": "no production precedent existed; C0 defines it and validates it against the offline fixture (plan section 3 item 3). Live widening after a failure is not authorized."
+  },
+  "runtime_identity": {
+    "arm": "Elfin S20 (6 DOF)",
+    "tcp_frame": "suction_contact_frame",
+    "joint_names": ["elfin_joint1", "elfin_joint2", "elfin_joint3", "elfin_joint4", "elfin_joint5", "elfin_joint6"],
+    "urdf_source": "src/luggage_description/urdf/elfin_s20_with_camera.urdf.xacro (expands robot_assets/elfin_description/urdf/S20.urdf.xacro)",
+    "source": "src/luggage_planning/luggage_planning/offline_ik.py:113-124; robot_assets/elfin_description/urdf/S20.urdf.xacro",
+    "status": "frozen"
+  },
+  "frame_semantics": {
+    "transform_notation": "T_a_b maps b coordinates into a coordinates; T_tcp_box is box->TCP",
+    "world_tcp_from_target": "T_world_tcp = T_world_box * inverse(T_tcp_box); centre height never re-adds half the box height",
+    "container_opening": "container -X side; inward normal +X; generic code reads the inward normal, no world-axis hardcoding",
+    "quaternion_convention": "xyzw; q/-q and pi/-pi are representation equivalences and never reject alone; quaternion sign must not encode wrist family",
+    "angle_units": "rad; stamps in integer nanoseconds",
+    "pure_geometry_tolerance": 1e-09,
+    "ros_roundtrip_tolerance": 1e-06,
+    "source": "docs/plans/frame_migration_st09_planner_convergence.md section 5.1; attachment_frame_contracts.py reproduce-oracle (1e-9); motion_frame_contracts fk budget ulp rule",
+    "status": "frozen"
+  },
+  "joint_limits": {
+    "position_rad": {
+      "elfin_joint1": [-6.28, 6.28],
+      "elfin_joint2": [-3.3158, 0.1745],
+      "elfin_joint3": [-2.9319, 2.9319],
+      "elfin_joint4": [-6.28, 6.28],
+      "elfin_joint5": [-6.28, 6.28],
+      "elfin_joint6": [-6.28, 6.28]
+    },
+    "velocity_rad_per_s": 1.57,
+    "effort": {"elfin_joint1": 200, "elfin_joint2": 200, "elfin_joint3": 200, "elfin_joint4": 104, "elfin_joint5": 34, "elfin_joint6": 34},
+    "joint_wrap_rule": "wraps must respect the real limits; never blindly take the nearest 2pi solution",
+    "source": "robot_assets/elfin_description/urdf/S20.urdf.xacro joint limits",
+    "status": "frozen"
+  },
+  "start_and_fk_gates": {
+    "timed_trajectory_start_drift_rad": {
+      "value": 0.01,
+      "meaning": "max |current_q - trajectory_first_knot_q| before executing a timed joint trajectory; beyond it the executor refuses (wire code QP_START_STATE_MISMATCH, historical name) and the route must be replanned",
+      "source": "src/luggage_planning/luggage_planning/motion_executor.py:633-642",
+      "status": "frozen"
+    },
+    "fk_verify_position_m": {"value": 0.002, "source": "src/luggage_planning/luggage_planning/motion_frame_contracts.py:38 (FK_POSITION_M)"},
+    "fk_verify_rotation_rad": {"value": 0.02, "source": "src/luggage_planning/luggage_planning/motion_frame_contracts.py:39 (FK_ROTATION_RAD)"},
+    "fk_threshold_equality": "threshold equality passes (a few ulps over the decimal threshold are accepted)",
+    "status": "frozen"
+  },
+  "tool_orientation": {
+    "keep_tool_down_semantics": "scores suction tilt against world -Z and ignores yaw (IK may pick the yaw+pi branch)",
+    "wrist_singularity_margin_rad": {
+      "value": 0.5,
+      "enforcement": "diagnostic only; j5/j6 travel and family labels are not refuse gates; refusals come from real continuity, limits, singularity margin of the certified trajectory and collision",
+      "source": "src/luggage_planning/luggage_planning/motion_executor.py:91,86,257-262"
+    },
+    "j6_rotation_limit_rad": {"value": 2.5, "enforcement": "diagnostic only", "source": "src/luggage_planning/luggage_planning/motion_executor.py:93"},
+    "cartesian_excursion_rad_per_m": {"value": 3.0, "enforcement": "refuse gate for cartesian solutions", "source": "src/luggage_planning/luggage_planning/motion_executor.py:81"},
+    "transport_orientation": "fixed through narrow/portal segments; certified continuous transitions allowed in clearance zones with accompanying translation",
+    "source_overall": "docs/plans/frame_migration_st09_planner_convergence.md section 5.2",
+    "status": "frozen"
+  },
+  "collision_margins": {
+    "occupancy_inflate_m": {"value": 0.05, "meaning": "cargo-map occupancy inflation for route clearances", "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS inflate_m"},
+    "arm_margin_ref_m": {"value": 0.1, "meaning": "arm-ceiling reference margin (cost prefilter)", "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
+    "arm_min_margin_m": {"value": 0.0, "meaning": "hard floor for the measured wrist/elbow clearance on top-K rows", "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
+    "arm_radius_m": {"value": 0.08, "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
+    "placement_top_clearance_m": {"value": 0.03, "meaning": "required free space above the placed box", "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params clearance_margin"},
+    "placement_support_tol_m": {"value": 0.05, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params support_tol"},
+    "placement_min_support_ratio": {"value": 0.6, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params min_support_ratio"},
+    "margin_naming_rule": "S1 refines these into separately named static-wall / cargo / support-contact margins with unified sources; C0 freezes the current numbers",
+    "status": "frozen"
+  },
+  "time_parameterization": {
+    "profile": "site rest-to-rest trapezoid replaces MoveIt TOTG/linear times; geometric knots are kept",
+    "ramp_velocity_cap_rad_per_s": 1.0471975512,
+    "ramp_velocity_cap_label": "60 deg/s on both ramps",
+    "ramp_acceleration_cap_rad_per_s2": 0.34906585,
+    "ramp_acceleration_cap_label": "20 deg/s^2 on both ramps",
+    "moveit_velocity_scaling": 0.3,
+    "moveit_acceleration_scaling": 0.3,
+    "joint_continuity_max_step_rad": 1.2,
+    "cartesian_min_fraction": 0.95,
+    "source": "src/luggage_planning/luggage_planning/motion_executor.py:68-69,325-331,404 (apply_rest_to_rest_to_joint_trajectory caps 60 deg/s and 20 deg/s^2); trajectory_selector.py SELECTOR_DEFAULTS",
+    "status": "frozen"
+  },
+  "planning_budgets": {
+    "route_total_wall_s": {"value": 10.0, "meaning": "one route request budget; exhaustion returns PLANNING_BUDGET_EXHAUSTED, never BIN_FULL", "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
+    "single_new_moveit_edge_wall_s": {"value": 2.0, "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
+    "max_edge_repair_attempts": {"value": 4, "meaning": "including failures; cache hits do not count", "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
+    "certification_timeout_s": {"value": 2.0, "meaning": "certifier wall-clock budget; timeout fails closed", "source": "C0 definition consistent with the single-edge 2 s budget", "status": "defined_by_c0"},
+    "status": "frozen unless marked defined_by_c0"
+  },
+  "certification_sampling": {
+    "max_sample_dt_ns": 10000000,
+    "max_sample_dt_label": "10 ms between certified samples",
+    "motion_bound_rule": "geometric motion bound <= min(map_resolution/2, smallest_positive_clearance_margin/2), adaptively subdivided; unbounded gaps refuse certification",
+    "support_contact_exemption": "landing/support-contact exemption covers the target support contact only; never a whole column or neighbouring placed boxes",
+    "source": "docs/plans/frame_migration_st09_planner_convergence.md section 6 (S3)",
+    "status": "frozen"
+  },
+  "map_freshness": {
+    "cargo_view_join_window_s": {"value": 0.2, "meaning": "buffered cloud must be within this window of the request stamp to join (STAMP_STALE otherwise)", "source": "src/luggage_perception/scripts/cargo_volume_mapper_node.py:120 (freshness_window_sec); cargo_view_integration.py select_fresh_record"},
+    "planning_snapshot_age_max_s": {"value": 10.0, "meaning": "snapshot acquisition stamp age allowed at route admission; older snapshots re-observe (OBSERVATION_REQUIRED), never plan on stale maps", "status": "defined_by_c0"},
+    "revision_semantics": "revision unchanged does not mean fresh: acquisition time and receiver monotonic time are checked separately; before-send epoch recheck on every controller send",
+    "source_overall": "docs/plans/frame_migration_st09_planner_convergence.md section 6 items 6-7",
+    "status": "frozen unless marked defined_by_c0"
+  },
+  "attachment_policy": {
+    "schema_version": 2,
+    "tf_sync_max_skew_ns": {"value": 0, "meaning": "T_tcp_box is computed from the SAME-stamp measured box pose and TCP TF (exact ns equality inherited from require_measured_pose_agreement)", "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:53-68 (INVALID_STAMP on stamp mismatch)"},
+    "attachment_max_age_ns": {"value": 10000000000, "meaning": "acquisition -> use window for a frozen record at admission; older records are ATTACHMENT_EXPIRED and require re-measure", "status": "defined_by_c0"},
+    "measured_pose_agreement_m": {"value": 1e-06, "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:62"},
+    "measured_pose_agreement_rad": {"value": 1e-06, "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:65"},
+    "grasp_binding_tolerance_m": {"value": 0.01, "meaning": "planned grasp vs measured transform agreement at freeze; also the slip check bound", "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:25 (GRASP_TOLERANCE_M)"},
+    "grasp_binding_tolerance_rad": {"value": 0.1, "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:26 (GRASP_TOLERANCE_RAD)"},
+    "slip_check_policy": "a re-observed box pose composed through the frozen record must agree with the live TCP within grasp_binding_tolerance_m/rad; beyond it the record invalidates (ATTACHMENT_SLIP), the route fails and the chain enters carry-fault with vacuum retained",
+    "reattach_policy": "every confirmed re-attach allocates a new attachment_incarnation; old records and dependent routes invalidate (ATTACHMENT_REATTACH)",
+    "invalidation_triggers": ["slip", "re_attach", "frame_or_calibration_change", "expiry", "request_cycle_change"],
+    "release_verification": "release requires the measured final tool pose at/after the attach stamp with time_basis acquisition (admit_release); no unverified detach",
+    "dimension_axis_semantics": "dimensions are recorded along the fixed box axes (width/depth/height); never re-sorted by length",
+    "symmetry_declaration": {"allowed": ["none", "pi"], "default_rectangular_cargo": "pi", "rule": "theta+pi heading expansion only when the payload model declares pi symmetry; theta and theta+pi are distinct physical rotations, each resolved through the actual attachment"},
+    "symmetry_default_source": "src/luggage_packing/luggage_packing/placement_solver.py _snap_yaws (footprint symmetric under pi); 5.1 upgrades it to a declared payload property",
+    "source_grade_rules": "carried routes require measured_attach_confirmed; pre-attach estimates are initial-selection only; sim GT relative transforms are reference-only and must never register as measured",
+    "height_source_required": {"value": 1, "meaning": "HEIGHT_SOURCE_MEASURED_SUPPORT; DETECT_FULL_GEOMETRY_REQUIRED otherwise", "source": "src/luggage_planning/luggage_planning/pick_authorization.py:20; attachment_frame_contracts.py:_size"},
+    "status": "frozen unless marked defined_by_c0"
+  },
+  "stop_and_cancel_deadlines": {
+    "execute_timeout_s": {"value": 45.0, "meaning": "per-segment trajectory execution wait", "source": "src/luggage_planning/luggage_planning/motion_executor.py:698,769"},
+    "goal_accept_wait_s": {"value": 10.0, "meaning": "future/goal acceptance wait; also the cancel acknowledgement deadline", "source": "src/luggage_planning/luggage_planning/motion_executor.py:663 (_wait_future 10.0)"},
+    "action_server_wait_s": {"value": 5.0, "source": "src/luggage_planning/luggage_planning/motion_executor.py:494,496-498,658"},
+    "movegroup_ready_wait_s": {"value": 60.0, "source": "src/luggage_planning/luggage_planning/motion_executor.py:488"},
+    "stop_policy": "in-flight conflicts cancel/controlled-stop, confirm standstill and keep vacuum (carry-fault); recovery is a new admission from the measured settled q, never an automatic retreat target",
+    "stop_envelope": "measured evidence obligation (detection/cancel/stop latency + stop envelope) with fault injection beyond the controllable lead time - S3 item 5 and R; not a config number",
+    "source": "docs/plans/frame_migration_st09_planner_convergence.md section 6 items 4-5, section 7 (S4)",
+    "status": "frozen"
+  },
+  "eval_gates_per_box": {
+    "gt_xy_max_m": 0.04,
+    "gt_abs_z_max_m": 0.03,
+    "gt_drift_max_m": 0.02,
+    "gt_abs_roll_pitch_max_rad": 0.034906585,
+    "gt_abs_roll_pitch_max_label": "2 deg",
+    "center_inside_hull": true,
+    "footprint_coverage_min": {"value": 0.4, "denominator_required": true},
+    "source": "docs/plans/frame_migration_st09_parallel_execution.md section 6; src/luggage_gazebo/luggage_gazebo/place_metrics.py",
+    "status": "frozen"
+  }
+}
