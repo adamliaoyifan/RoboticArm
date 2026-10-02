@@ -9,6 +9,7 @@ selection is deleted — v1 keeps its frozen surface as a named refusal.
 from __future__ import division
 
 import json
+import os
 import math
 
 import rclpy
@@ -69,12 +70,19 @@ class TrajectorySelectorNode(Node):
             String, "/luggage/cargo_map/surface_2d", self._on_surface, qos)
         self.create_subscription(
             JointState, "/joint_states", self._on_joints, 10)
+        # Dedicated group: the route producer blocks inside these
+        # callbacks waiting on move_group/planning-scene responses whose
+        # clients live in the default group — sharing one mutually
+        # exclusive group would deadlock the responses out.
+        from rclpy.callback_groups import MutuallyExclusiveCallbackGroup
+
+        self._service_group = MutuallyExclusiveCallbackGroup()
         self.create_service(
             SelectPlacePath, "/trajectory_selector/select_place_path",
-            self._select)
+            self._select, callback_group=self._service_group)
         self.create_service(
             SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
-            self._select_v2)
+            self._select_v2, callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
@@ -196,11 +204,28 @@ class TrajectorySelectorNode(Node):
         )
         from luggage_planning.route_producer import RouteProducer
         from luggage_planning.trajectory_certifier import TrajectoryCertifier
+        from luggage_planning.route_producer import (
+            certification_policy_from_contract)
+        import json as _json
+
+        try:
+            from ament_index_python.packages import get_package_share_directory
+
+            contract_path = os.path.join(
+                get_package_share_directory("st09_contracts"),
+                "resolved_planning_contract.json")
+            with open(contract_path, encoding="utf-8") as handle:
+                cert_policy = certification_policy_from_contract(
+                    _json.load(handle))
+        except Exception:  # noqa: BLE001 - fail closed to C defaults
+            self.get_logger().error(
+                "route: resolved contract unavailable; refusing to plan")
+            return None
 
         urdf = load_urdf(scene_tf_config=self._scene_tf_path)
-        tcp_path = ("elfin_joint1", "elfin_joint2", "elfin_joint3",
-                    "elfin_joint4", "elfin_joint5", "elfin_joint6",
-                    "suction_contact_frame")
+        # path_to returns the JOINT sequence to the TCP link (tcp() FK
+        # walks joints; the link name itself is not a joint).
+        tcp_path = urdf.path_to("suction_contact_frame")
         fk = make_offline_fk(urdf, tcp_path)
         scene_client = PlanningSceneClient(self)
 
@@ -210,7 +235,8 @@ class TrajectorySelectorNode(Node):
 
         def validity_factory(*, scene_states, edges):
             adapter = MoveItStateValidityAdapter(
-                self, fk=fk, scene_client=scene_client)
+                self, fk=fk, scene_client=scene_client,
+                log=lambda message: self.get_logger().info(message))
             adapter.load_edges(edges, scene_states=scene_states)
             return adapter
 
@@ -219,6 +245,7 @@ class TrajectorySelectorNode(Node):
                              self._scene_tf_hash),
             edge_builder=MoveItEdgeAdapter(self, scene_client=scene_client),
             certifier=TrajectoryCertifier(),
+            cert_policy=cert_policy,
             validity_adapter_factory=validity_factory,
             attachment_provider=MeasuredAttachmentProvider(
                 str(self.get_parameter("frame_scene_revision").value
@@ -226,6 +253,8 @@ class TrajectorySelectorNode(Node):
                 tcp_frame="suction_contact_frame", box_frame="box"),
             revalidator=MapRevalidator(),
             fk=fk, refine=refine, urdf=urdf, tcp_path=tcp_path,
+            clock_ns=lambda: self.get_clock().now().nanoseconds,
+            log=lambda message: self.get_logger().info(message),
             opening_info={
                 "point": container_opening_target_point_in_world(self._scene),
                 "normal": container_opening_normal_in_world(self._scene),

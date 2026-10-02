@@ -49,15 +49,24 @@ START_Q = (0.05, -0.15, 0.90, -0.40, 1.20, 0.00)
 class FakeEdgeBuilder(object):
     """Deterministic offline edge builder through the B protocol."""
 
-    def __init__(self, fail_dest=None, fail_all=False):
+    def __init__(self, fail_dest=None, fail_all=False, fail_descend_x=None):
         self.fail_dest = set(fail_dest or ())
         self.fail_all = bool(fail_all)
+        #: fail every slot-region DESCEND whose target TCP x is above
+        #: this bound (candidate-discriminating across goal branches).
+        self.fail_descend_x = fail_descend_x
         self.calls = []
 
     def __call__(self, from_node, to_node, edge_class, candidate=None,
                  scene=None):
         self.calls.append((from_node.node_id, to_node.node_id, edge_class))
-        if self.fail_all or (to_node.node_id, edge_class) in self.fail_dest:
+        failed = self.fail_all or (to_node.node_id, edge_class) in \
+            self.fail_dest
+        if (not failed and self.fail_descend_x is not None
+                and to_node.region == "slot" and edge_class == "DESCEND"
+                and to_node.tcp_position[0] > self.fail_descend_x):
+            failed = True
+        if failed:
             raise RoutePlanningError(
                 "EDGE_BUILD_FAILED", {"pair": edge_class})
         return GraphEdge(
@@ -331,8 +340,11 @@ class TestPlanPlaceRoute:
         goal_nodes = [node.node_id for node in producer._graph.nodes.values()
                       if node.region == "slot"
                       and node.load_state is LoadState.CARRYING]
-        assert len(goal_nodes) == 2
-        producer._builder.fail_dest = {(goal_nodes[0], "DESCEND")}
+        assert len(goal_nodes) >= 2
+        # candidate 0 sits at container x 0.20, candidate 1 at 0.05: fail
+        # every goal-branch DESCEND of candidate 0 (the pure-synthesis
+        # target x composes through the identity container transform).
+        producer._builder.fail_descend_x = 0.10
         result = producer.plan_place_route(request)
         assert result["success"], [r["reason"] for r in result["rows"]]
         assert result["slot_index"] == 1

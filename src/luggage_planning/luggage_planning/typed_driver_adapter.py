@@ -468,7 +468,8 @@ class TypedDriverAdapter:
     def select_place_path(self, *, request_id, box_wdh, slots, slot_scores,
                           surface_message, inner_size, geometry_hash,
                           map_revision, start_tcp, start_joints, grasp,
-                          container_transform, excluded_ids=()):
+                          container_transform, excluded_ids=(),
+                          timeout_sec=30.0):
         """SelectPlacePathV2; the mapper's surface message rides verbatim."""
         from luggage_msgs.srv import SelectPlacePathV2
         source, target, translation, quaternion = container_transform
@@ -494,7 +495,7 @@ class TypedDriverAdapter:
         request.container_stamp_ns = 0
         request.container_stamp_is_null = True
         request.excluded_ids = [str(v) for v in excluded_ids]
-        return self._call(self._select, request, 30.0)
+        return self._call(self._select, request, timeout_sec)
 
     # -- probe ---------------------------------------------------------------
     def probe_segment(self, segment_message, timeout_sec=30.0):

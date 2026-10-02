@@ -85,6 +85,37 @@ CERTIFICATION_RESERVE_S = CERTIFICATION_TIMEOUT_S + 0.5
 #: real motion; declared here, not a frozen contract value).
 EXIT_EXTRA_LIFT_M = 0.10
 
+#: IK seed prior for the tool-down branch when the atlas is unavailable
+#: and the live start configuration is degenerate (mock zero state).
+#: A seed is never a verdict: the bounded MoveIt supplementation and the
+#: certifier decide reachability.
+TOOL_DOWN_SEED_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
+
+
+def certification_policy_from_contract(contract: Mapping):
+    """CertificationPolicy with the FROZEN joint bounds.
+
+    C's dataclass defaults are a narrower development stand-in; the
+    resolved contract's ``joint_limits.position_rad`` is the authority
+    (j2 [-3.3158, 0.1745] etc.), so production builds the policy from
+    the packaged contract document.
+    """
+    from luggage_planning.trajectory_certifier import CertificationPolicy
+
+    limits = (contract.get("joint_limits") or {}).get("position_rad") or {}
+    lower, upper = [], []
+    for index in range(1, 7):
+        bounds = limits.get("elfin_joint%d" % index)
+        if not bounds or len(bounds) != 2:
+            raise ValueError(
+                "resolved contract missing elfin_joint%d position_rad"
+                % index)
+        lower.append(float(bounds[0]))
+        upper.append(float(bounds[1]))
+    return CertificationPolicy(
+        joint_names=tuple("elfin_joint%d" % i for i in range(1, 7)),
+        joint_lower=tuple(lower), joint_upper=tuple(upper))
+
 
 def _named_reason(exc):
     """``ContractViolation`` messages are ``REASON: detail``; keep the name."""
@@ -103,12 +134,14 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
     as this select request.
     """
     state = surface["state"]
+    rows = len(state)
+    columns = len(state[0]) if rows else 0
     return {
         "frame": str(surface.get("frame_id") or "container_local"),
         "resolution": float(surface["resolution_m"]),
         "origin_local": [float(v) for v in surface["origin_xy_container"]],
-        "nx": int(surface["rows"]),
-        "ny": int(surface["columns"]),
+        "nx": rows,
+        "ny": columns,
         "state": [list(row) for row in state],
         "acquisition_stamp_ns": int(surface.get("stamp_ns") or 0),
         "commit_revision": int(surface.get("commit_revision")
@@ -225,7 +258,8 @@ class RouteProducer(object):
                            "suction_contact_frame"),
                  cert_policy=None, budget_ns=ROUTE_TOTAL_WALL_NS,
                  clock_ns=None, corridor_surface_max=None,
-                 opening_info=None):
+                 opening_info=None, base_position=(0.0, 0.0, 0.86),
+                 reach_prior_m=1.35, log=None):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
@@ -242,6 +276,15 @@ class RouteProducer(object):
         self.budget_ns = int(budget_ns)
         self.corridor_surface_max = corridor_surface_max
         self.opening_info = opening_info
+        #: Dev-declared reachability prior (NOT a frozen value, NOT a
+        #: verdict): candidates whose target TCP lies beyond this radius
+        #: from the arm base are skipped before any IK/MoveIt budget is
+        #: spent — the atlas prior supersedes it where one is loaded, and
+        #: the bounded supplementation plus certifier still decide the
+        #: candidates that pass.
+        self.base_position = tuple(float(v) for v in base_position)
+        self.reach_prior_m = float(reach_prior_m)
+        self._log = log or (lambda message: None)
         self._clock_ns = clock_ns or time.monotonic_ns
         self.last_route = None
         self.last_certification = None
@@ -262,17 +305,27 @@ class RouteProducer(object):
         except (ContractViolation, LookupError, ValueError) as exc:
             return None, _named_reason(exc)
 
-    def _refine_to(self, position, orientation, seed_q):
+    def _seed_candidates(self, start_q):
+        seeds = [tuple(float(v) for v in start_q), tuple(TOOL_DOWN_SEED_Q)]
+        return list(dict.fromkeys(seeds))
+
+    def _refine_to(self, position, orientation, seed_q,
+                   prefer_tool_down=False):
         if self.refine is None:
             return None, {"reason": "no_refine"}
-        try:
-            q, info = self.refine(tuple(position), tuple(orientation),
-                                  list(seed_q))
-            if q is None:
-                return None, dict(info or {})
-            return tuple(q), info
-        except Exception:  # noqa: BLE001 - anchor seeding is best effort
-            return None, {"reason": "ik_unavailable"}
+        seeds = self._seed_candidates(seed_q)
+        if prefer_tool_down and len(seeds) > 1:
+            seeds = [seeds[1], seeds[0]]
+        info = {}
+        for seed in seeds:
+            try:
+                q, info = self.refine(tuple(position), tuple(orientation),
+                                      list(seed))
+                if q is not None:
+                    return tuple(q), info
+            except Exception:  # noqa: BLE001 - anchor seeding is best effort
+                info = {"reason": "ik_unavailable"}
+        return None, info or {"reason": "ik_unavailable"}
 
     def _box_target(self, candidate, attachment, request):
         from luggage_planning.place_targets import box_target_from_candidate
@@ -285,20 +338,25 @@ class RouteProducer(object):
             q_frame_container=transform["quaternion_xyzw"])
 
     def _prepare_candidate(self, base_candidate, attachment, request,
-                           start_q):
+                           start_q, tcp_orientation, tcp_position):
         """Depth-annotate the candidate and seed the region ladder.
 
         Anchor nodes are graph NODES ONLY: their poses seed the portal /
         approach / insert / exit regions the bounded search routes
         through; the certified edges decide the actual motion. The
         anchor orientation is the candidate's synthesized TCP target
-        orientation so carry edges keep one transport orientation.
+        orientation (``T_world_box * inverse(T_tcp_box)`` — tool-down
+        for a suction grasp), so carry edges keep one transport
+        orientation.
         """
         box_target = self._box_target(base_candidate, attachment, request)
-        orientation = tuple(
-            float(v) for v in box_target.quaternion_xyzw)
+        orientation = tuple(float(v) for v in tcp_orientation)
+        # The ladder hangs off the synthesized TCP contact (the first
+        # expanded target), NOT the box centre: the box centre would sit
+        # every anchor a half-payload low and drive the carried box into
+        # the floor on the insert/descend edges.
         plan = anchor_plan(
-            tuple(float(v) for v in box_target.position),
+            tuple(float(v) for v in tcp_position),
             request["container_transform"]["quaternion_xyzw"],
             float(request["box_wdh"][2]),
             corridor_surface_max=self.corridor_surface_max,
@@ -326,11 +384,16 @@ class RouteProducer(object):
             anchor_rows = [row for row in anchor_rows
                            if row[0] != "portal"]
         for region, position, load_state in anchor_rows:
-            q, _info = self._refine_to(position, orientation, seed_q)
-            if q is not None:
-                graph.register_node(q, position, orientation, region,
-                                    load_state, "anchor")
-                seeded.append(region)
+            # Register BOTH refined branches (tool-down prior first, then
+            # the live-start branch): a single anchor q carries no
+            # collision awareness, and the per-hop search needs the
+            # alternative when one branch's interpolated edge collides.
+            for seed in self._seed_candidates(seed_q):
+                q, _info = self._refine_to(position, orientation, seed)
+                if q is not None:
+                    graph.register_node(q, position, orientation, region,
+                                        load_state, "anchor")
+            seeded.append(region)
         return candidate, box_target, plan, seeded
 
     def _inward_normal(self):
@@ -369,14 +432,43 @@ class RouteProducer(object):
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
-            candidate, _box_target, _plan, _seeded = self._prepare_candidate(
-                base_candidate, attachment, request, start_q)
             row = {
                 "slot_index": index,
-                "candidate_id": candidate.candidate_id,
-                "depth_m": candidate.depth_m,
+                "candidate_id": base_candidate.candidate_id,
+                "depth_m": 0.0,
                 "reason": "",
             }
+            # Cheap reachability prior before any IK/MoveIt budget.
+            try:
+                prior_targets = self._expand_targets(
+                    base_candidate, attachment, request)
+            except ContractViolation as exc:
+                row["reason"] = _named_reason(exc)
+                rows.append(row)
+                last_reason = row["reason"]
+                continue
+            import math as _math
+
+            base = self.base_position
+            reach_ok = [t for t in prior_targets
+                        if _math.dist(tuple(float(v) for v in t.position),
+                                      base) <= self.reach_prior_m]
+            if not reach_ok:
+                row["reason"] = "PRIOR_UNREACHABLE"
+                rows.append(row)
+                last_reason = "NO_FEASIBLE_ROUTE"
+                continue
+            candidate, _box_target, _plan, _seeded = self._prepare_candidate(
+                base_candidate, attachment, request, start_q,
+                tcp_orientation=reach_ok[0].quaternion_xyzw,
+                tcp_position=reach_ok[0].position)
+            self._log("route: anchors %s home %s" % (
+                [(n.region, [round(v, 3) for v in n.q])
+                 for n in self.graph.nodes.values()
+                 if n.region in ("portal", "slot_approach", "slot_upper")],
+                [round(v, 3) for v in start_q]))
+            row["candidate_id"] = candidate.candidate_id
+            row["depth_m"] = candidate.depth_m
             try:
                 # Without an opening datum the portal collapses onto the
                 # approach anchor, so the portal hop is dropped rather
@@ -399,14 +491,32 @@ class RouteProducer(object):
                                             request["container_transform"]
                                             ["quaternion_xyzw"]),
                     refine=self.refine, urdf=self.urdf,
-                    goal_seeds=self._goal_seed_fn(start_q),
+                    goal_seeds=self._goal_seed_fn(
+                        start_q,
+                        branch_q=next(
+                            (node.q for node in reversed(
+                                self.graph.nodes_by_region("slot_upper"))),
+                            None)),
                     tcp_path=self.tcp_path)
                 targets = self._expand_targets(
                     candidate, attachment, request)
+                if not targets:
+                    row["reason"] = "TARGET_SYNTHESIS_EMPTY"
+                    rows.append(row)
+                    last_reason = row["reason"]
+                    continue
+                self._log("route: planning candidate %d (%.2fs left)"
+                          % (index, remaining / 1e9))
                 route = planner.plan_route(
                     snapshot, attachment, candidate, targets,
                     budget_ns=int(remaining))
+                self._log("route: candidate %d planned %s"
+                          % (index, route.route_id))
             except RoutePlanningError as exc:
+                import json as _json
+                row["targets"] = _json.dumps(
+                    [[list(t.position), list(t.quaternion_xyzw)]
+                     for t in targets], default=float)[:2000]
                 row["reason"] = exc.code
                 row["detail"] = exc.detail
                 rows.append(row)
@@ -417,17 +527,56 @@ class RouteProducer(object):
                 rows.append(row)
                 last_reason = row["reason"]
                 continue
+            except RoutePlanningError as exc:
+                row["reason"] = exc.code
+                row["detail"] = exc.detail
+                dumps = getattr(self.edge_builder, "request_dumps", None)
+                if callable(dumps):
+                    row["moveit_dumps"] = list(dumps())[-6:]
+                failures = getattr(self.edge_builder, "edge_failure_log",
+                                   None)
+                if callable(failures):
+                    row["moveit_failures"] = list(failures())[-8:]
+                rows.append(row)
+                last_reason = exc.code
+                self._log("route: candidate %d failed %s" % (index, exc.code))
+                continue
+            except Exception as exc:  # noqa: BLE001 - service boundary
+                # Edge-builder scene/transport failures are named
+                # per-candidate failures, never a crashed service.
+                row["reason"] = "EDGE_BUILD_FAILED"
+                row["detail"] = {"error": repr(exc)[:300]}
+                rows.append(row)
+                last_reason = row["reason"]
+                self._log("route: candidate %d error %r" % (index, exc))
+                continue
             self.last_budget_snapshot = planner.last_budget_snapshot
 
             edges = tuple(
                 self.graph.edges[edge_id] for edge_id in
                 route.entry_edge_ids + route.retreat_edge_ids)
+            self._log("route: certifying %d edges" % len(edges))
             certification = self._certify(
                 route, snapshot, attachment, edges, candidate, request)
+            self._log("route: certification %s" % (
+                "pass" if certification is not None and certification.passed
+                else "fail"))
             row["route_id"] = route.route_id
             if certification is None or not certification.passed:
                 row["reason"] = "CERTIFICATION_TIMEOUT" \
                     if certification is None else certification.reason.value
+                if certification is not None:
+                    row["cert_detail"] = {
+                        "min_clearance_m": certification.min_clearance_m,
+                        "contacts": [
+                            dict(contact) if isinstance(contact, Mapping)
+                            else str(contact)
+                            for contact in (
+                                certification.contact_reports or ())][:6],
+                    }
+                    self._log("route: cert fail %s clearance=%s" % (
+                        certification.reason.value,
+                        certification.min_clearance_m))
                 rows.append(row)
                 last_reason = row["reason"]
                 continue
@@ -480,27 +629,31 @@ class RouteProducer(object):
         box_target = self._box_target(candidate, attachment, request)
         return expand_place_targets(box_target, attachment)
 
-    def _goal_seed_fn(self, start_q):
+    def _goal_seed_fn(self, start_q, branch_q=None):
         """Goal seeds from the offline refine (B requires injected seeds).
 
-        The node wires the atlas prior here when one is loaded; without
-        one the current-joint-family refine is the honest seed — the
-        bounded MoveIt supplementation in the search decides reachability,
-        a seed is never a verdict.
+        The first seed refines from the slot-upper anchor branch so the
+        descend edge stays on one IK branch (a branch-crossing descend
+        blows the frozen joint-excursion bound); the tool-down prior and
+        the live-start branch follow as alternatives. A seed is never a
+        verdict — the bounded supplementation and certifier decide.
         """
         from luggage_planning.place_targets import GoalSeed
 
+        seeds_to_try = ([("branch", branch_q)] if branch_q is not None else [])
+        seeds_to_try += [("tool_down", TOOL_DOWN_SEED_Q),
+                         ("start", start_q)]
+
         def goal_seeds(target):
-            q, info = self.refine(
-                tuple(float(v) for v in target.position),
-                tuple(float(v) for v in target.quaternion_xyzw),
-                list(start_q))
-            if q is None:
-                # No seed reachable by refinement: a prior gap for the
-                # bounded supplementation, never a verdict.
-                return []
-            return [GoalSeed(tuple(q), "refine",
-                             "route_producer:offline_refine")]
+            seeds = []
+            for label, seed in seeds_to_try:
+                q, _info = self._refine_to(
+                    target.position, target.quaternion_xyzw, seed)
+                if q is not None:
+                    seeds.append(GoalSeed(
+                        tuple(q), "refine-%s" % label,
+                        "route_producer:offline_refine"))
+            return seeds
         return goal_seeds
 
     def edge_scene_states(self, route, edges, snapshot, attachment,
@@ -569,9 +722,16 @@ class RouteProducer(object):
         started_ns = self._clock_ns()
         try:
             result = self.certifier.certify(context)
-        except Exception:  # noqa: BLE001 - certification is fail-closed
+        except Exception as exc:  # noqa: BLE001 - fail closed
+            import traceback
+
+            self._log("route: certify exception %r %s" % (
+                exc, traceback.format_exc(limit=4).replace("\n", " | ")))
             return None
-        if (self._clock_ns() - started_ns) / 1e9 > CERTIFICATION_TIMEOUT_S:
+        elapsed = (self._clock_ns() - started_ns) / 1e9
+        self._log("route: certify wall %.3fs edges=%d" % (
+            elapsed, len(edges)))
+        if elapsed > CERTIFICATION_TIMEOUT_S:
             return None
         return result
 

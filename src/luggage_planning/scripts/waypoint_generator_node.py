@@ -331,9 +331,9 @@ class WaypointGeneratorNode(Node):
         )
         urdf = load_urdf(scene_tf_config=str(
             self.get_parameter("scene_tf_config").value or ""))
-        tcp_path = ("elfin_joint1", "elfin_joint2", "elfin_joint3",
-                    "elfin_joint4", "elfin_joint5", "elfin_joint6",
-                    "suction_contact_frame")
+        # path_to returns the JOINT sequence to the TCP link (tcp() FK
+        # walks joints; the link name itself is not a joint).
+        tcp_path = urdf.path_to("suction_contact_frame")
         fk = make_offline_fk(urdf, tcp_path)
 
         def refine(position, quaternion, seed):
