@@ -1,0 +1,74 @@
+# Deploy site poses (ST09-PD). MEASUREMENT PLACEHOLDER -- NOT CALIBRATED.
+#
+# Every entry below is valid:false: the deploy cell has not been
+# tape-measured yet, so no value in this file may move the arm. The only
+# executable fallback is observe_pose "current" (stay at live
+# /joint_states), which named_robot_poses already defines.
+#
+# After measuring on the real cell:
+#   1. dump the joints (pendant or /joint_states while holding the pose),
+#   2. fill poses.<kind>.values with 6 finite radians,
+#   3. set valid: true, calibration_status: measured, provenance.source
+#      (tape_measure | pendant_dump | site_survey), and
+#      acquisition_stamp_ns to the real capture time,
+#   4. set scene_revision_at_capture to identity.scene_revision only if
+#      scene_tf_deploy.yaml is unchanged (a re-tuned container means the
+#      measurement is stale: re-measure, do not relabel),
+#   5. only then switch defaults.observe_pose to a measured kind.
+#
+# Validators (luggage_planning.site_pose_schema) reject simulation
+# provenance and any file whose scene revision is not the frozen deploy
+# scene. robot_poses.yaml.example pickup_observe is SIMULATION; never
+# copy those joints here.
+
+schema: luggage.site_poses/1
+
+identity:
+  scene_revision: 98313fb8b30e51521a4c45a829ff6d5d   # md5(scene_tf_deploy.yaml)
+  joint_names:
+    - elfin_joint1
+    - elfin_joint2
+    - elfin_joint3
+    - elfin_joint4
+    - elfin_joint5
+    - elfin_joint6
+
+poses:
+  pickup:
+    valid: false
+    calibration_status: unmeasured
+    values: []
+    acquisition_stamp_ns: 0
+    scene_revision_at_capture: ""
+    provenance:
+      source: unmeasured
+  return:
+    valid: false
+    calibration_status: unmeasured
+    values: []
+    acquisition_stamp_ns: 0
+    scene_revision_at_capture: ""
+    provenance:
+      source: unmeasured
+  portal_observation:
+    valid: false
+    calibration_status: unmeasured
+    values: []
+    acquisition_stamp_ns: 0
+    scene_revision_at_capture: ""
+    provenance:
+      source: unmeasured
+  second_region_observation:
+    valid: false
+    calibration_status: unmeasured
+    values: []
+    acquisition_stamp_ns: 0
+    scene_revision_at_capture: ""
+    provenance:
+      source: unmeasured
+
+# named_robot_poses compatibility: observe stays "current" until every
+# entry above is measured; requesting a named pose from this file fails
+# closed (the four kinds are not GoToRobotPose names).
+defaults:
+  observe_pose: current

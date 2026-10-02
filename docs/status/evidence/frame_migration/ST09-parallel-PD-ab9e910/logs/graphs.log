@@ -1,0 +1,11 @@
+==> graph s20_deploy_empty (s20_container_collision_aware)
+Traceback (most recent call last):
+  File "/tmp/elfin-st09-deploy-assets/scripts/build_deploy_route_graphs.py", line 529, in <module>
+    sys.exit(main())
+  File "/tmp/elfin-st09-deploy-assets/scripts/build_deploy_route_graphs.py", line 497, in main
+    summary = build_one_graph(
+  File "/tmp/elfin-st09-deploy-assets/scripts/build_deploy_route_graphs.py", line 392, in build_one_graph
+    targets, iz_target = select_targets(atlas, payload, targets_per_yaw)
+  File "/tmp/elfin-st09-deploy-assets/scripts/build_deploy_route_graphs.py", line 206, in select_targets
+    nx, ny, nz, nyaw = (int(v) for v in size)
+ValueError: not enough values to unpack (expected 4, got 3)
