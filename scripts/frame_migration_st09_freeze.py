@@ -26,15 +26,21 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src" / "luggage_gazebo"))
 sys.path.insert(0, str(ROOT / "src" / "luggage_description"))
 
-from luggage_description.container_geometry import (  # noqa: E402
-    _canonical_payload, descriptor_from_scene_config, geometry_hash,
-)
-from luggage_description.runtime_identity import scene_revision_from_path  # noqa: E402
-from luggage_gazebo.integration_acceptance import capture_window  # noqa: E402
-from luggage_gazebo.rehearsal_evidence import (  # noqa: E402
-    RELEASE_SAMPLE_INTERVAL_S, assert_live_identity, bind_evidence,
-    frozen_document, hash_inputs,
-)
+try:
+    from luggage_description.container_geometry import (  # noqa: E402
+        _canonical_payload, descriptor_from_scene_config, geometry_hash,
+    )
+    from luggage_description.runtime_identity import scene_revision_from_path  # noqa: E402
+    from luggage_gazebo.integration_acceptance import capture_window  # noqa: E402
+    from luggage_gazebo.rehearsal_evidence import (  # noqa: E402
+        RELEASE_SAMPLE_INTERVAL_S, assert_live_identity, bind_evidence,
+        frozen_document, hash_inputs,
+    )
+except Exception:  # pragma: no cover - full freeze CLI requires a built install
+    _canonical_payload = descriptor_from_scene_config = geometry_hash = None
+    scene_revision_from_path = capture_window = None
+    assert_live_identity = bind_evidence = frozen_document = hash_inputs = None
+    RELEASE_SAMPLE_INTERVAL_S = 0.25
 
 
 def make_frame_dump(source, identity, payload, *, datum="world", schema="frame_dump/2"):
@@ -53,22 +59,24 @@ def make_frame_dump(source, identity, payload, *, datum="world", schema="frame_d
 def validate_frame_dump(document, *, expected_source=None, expected_identity=None, expected_datum=None):
     """Reject schema, datum, identity, overlay and mixed-source conflicts."""
     if document.get("schema") != "frame_dump/2":
-        raise ValueError("SCHEMA_MISMATCH")
+        raise ValueError("UNKNOWN_SCHEMA")
     if document.get("source") == "mixed":
-        raise ValueError("mixed-source conflict")
+        raise ValueError("MIXED_SOURCE_CONFLICT")
     if expected_source and document.get("source") != expected_source:
-        raise ValueError("source conflict")
+        raise ValueError("MIXED_SOURCE_CONFLICT")
     if expected_identity and document.get("identity") != expected_identity:
         raise ValueError("IDENTITY_MISMATCH")
     if expected_datum and document.get("datum") != expected_datum:
         raise ValueError("DATUM_CONFLICT")
     if document.get("overlay") == "wrong":
-        raise ValueError("OVERLAY_WRONG")
+        raise ValueError("OVERLAY_HASH_MISMATCH")
     return True
 
 
 def hull_bytes(scene_yaml):
     """Canonical hull bytes whose sha256 equals ``geometry_hash``."""
+    if descriptor_from_scene_config is None:
+        raise SystemExit("freeze CLI requires luggage_description and luggage_gazebo modules")
     config = yaml.safe_load(Path(scene_yaml).read_text(encoding="utf-8")) or {}
     raw = descriptor_from_scene_config(config).descriptor(include_hash=False)
     encoded = json.dumps(

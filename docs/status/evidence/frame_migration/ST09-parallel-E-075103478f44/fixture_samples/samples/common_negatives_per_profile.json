@@ -1,0 +1,26 @@
+{
+  "datum": "world",
+  "identity": {
+    "cycle_id": "cycle-e2",
+    "map_revision": 1,
+    "request_id": "req-e2"
+  },
+  "joins": [
+    {
+      "complete": true,
+      "name": "fixture"
+    }
+  ],
+  "records": [
+    {
+      "cycle_id": "cycle-e2",
+      "event": "sample",
+      "request_id": "req-e2",
+      "sample_id": "common_negatives_per_profile"
+    }
+  ],
+  "records_sha256": "b5cb2d43f4ced38eb0c52cf2ce650e671ce08b56e30debb82d5ad92343535cec",
+  "sample_id": "common_negatives_per_profile",
+  "schema": "st09.sample/1",
+  "source": "measured"
+}
