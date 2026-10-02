@@ -95,3 +95,77 @@ def test_place_build_typed_output():
         assert typed.request_id == "svc"
         assert typed.scene_revision == request.slot.identity.scene_revision
         assert typed.stamp_ns == request.slot.identity.stamp_ns
+
+
+def test_apply_selected_path_to_v2_rewrites_pose_target():
+    from luggage_planning.typed_driver_adapter import (
+        apply_selected_path_to_v2, pose_segment_message)
+
+    built = pose_segment_message(
+        "transit", [2.505, -0.535, 0.827], [1.0, 0.0, 0.0, 0.0],
+        "place-1", "scene-a", segment_type="pose_target",
+        allow_ompl_fallback=False)
+    apply_selected_path_to_v2(
+        built, [[0.86, -0.38, 1.5], [1.005, -0.535, 0.827]])
+    assert built.segment_type == "cartesian"
+    assert built.allow_ompl_fallback
+    assert built.request_id == "place-1"
+    assert built.target_pose.pose.position.x == pytest.approx(1.005)
+    assert built.target_pose.pose.position.y == pytest.approx(-0.535)
+    assert len(built.waypoints) == 1
+    assert built.waypoints[0].pose.position.x == pytest.approx(0.86)
+    assert built.waypoints[0].identity.request_id == "place-1"
+
+
+def test_adopt_v2_identity_keeps_selected_path():
+    from luggage_planning.typed_driver_adapter import (
+        adopt_v2_identity, apply_selected_path_to_v2, pose_segment_message)
+
+    built = pose_segment_message(
+        "transit", [2.505, -0.535, 0.827], [1.0, 0.0, 0.0, 0.0],
+        "place-1", "scene-a", segment_type="pose_target",
+        allow_ompl_fallback=False)
+    built.stamp_ns = 42
+    built.stamp_valid = True
+    built.target_pose.identity.stamp_ns = 42
+    selected = pose_segment_message(
+        "transit", [0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0],
+        "select-id", "other-scene", segment_type="cartesian")
+    apply_selected_path_to_v2(
+        selected, [[0.86, -0.38, 1.5], [1.005, -0.535, 0.827]])
+    adopted = adopt_v2_identity(selected, built)
+    assert adopted.request_id == "place-1"
+    assert adopted.scene_revision == "scene-a"
+    assert adopted.stamp_ns == 42
+    assert adopted.target_pose.identity.request_id == "place-1"
+    assert adopted.target_pose.pose.position.x == pytest.approx(1.005)
+    assert adopted.waypoints[0].identity.request_id == "place-1"
+    assert adopted.waypoints[0].pose.position.x == pytest.approx(0.86)
+
+
+def test_handle_plan_v2_forwards_live_joints():
+    from types import SimpleNamespace
+    from luggage_msgs.action import PlanMotionV2
+    from luggage_planning.motion_v2_service import handle_plan_v2
+    from luggage_planning.typed_driver_adapter import pose_segment_message
+
+    captured = {}
+
+    class _Executor(object):
+        def execute_segment_v2(self, record, context, current_joints=None,
+                               feedback_cb=None, execute_timeout=45.0):
+            del record, context, feedback_cb, execute_timeout
+            captured["joints"] = list(current_joints or [])
+            return SimpleNamespace(
+                success=True, message="ok", fraction=1.0,
+                used_ompl_fallback=False, moveit_error_code=1)
+
+    segment = pose_segment_message(
+        "transit", [1.0, -0.5, 0.8], [1.0, 0.0, 0.0, 0.0],
+        "place-1", "scene-a", segment_type="cartesian")
+    response = PlanMotionV2.Result()
+    handle_plan_v2(
+        _Executor(), segment, "scene-a", response, None,
+        current_joints=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+    assert response.success
+    assert captured["joints"] == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]

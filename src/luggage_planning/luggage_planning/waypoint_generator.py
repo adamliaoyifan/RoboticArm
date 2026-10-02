@@ -13,6 +13,12 @@ from luggage_planning.reachability_wavefront import retreat_height
 # started. waypoint_generator_node reads its defaults from here.
 DEFAULT_PLACE_CLEARANCE_Z = 0.15
 
+# Descend TCP sits this far along container +Z above the true rest top
+# (slot center + half height). SlotSpec.place_pose stays the rest pose.
+# 50 mm keeps the physical mesh bottom above the cargo slab at detach
+# (hang + mesh-vs-measured); the box then drops onto OCC.
+PLACE_RELEASE_GAP_M = 0.05
+
 DEFAULT_PICK_CLEARANCES = {
     "pre_grasp": 0.30,
     "approach": 0.25,
@@ -321,8 +327,9 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
         ]
     if phase == "place":
         slot_pose = place_slot.place_pose
-        # SlotSpec.place_pose is the suitcase CENTER. Motion planning targets
-        # suction_contact_frame, which must finish on the suitcase top.
+        # SlotSpec.place_pose is the suitcase CENTER (rest pose). Motion
+        # planning targets suction_contact_frame on the suitcase top, plus
+        # PLACE_RELEASE_GAP_M so detach does not start in floor overlap.
         slot_yaw = _yaw_from_quaternion(slot_pose.orientation)
         pick_yaw = pick_tool_yaw(
             _yaw_from_quaternion(pick.pose.orientation),
@@ -335,7 +342,8 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             float(getattr(place_slot, "height", 0.0)
                   or getattr(pick, "height", 0.0)),
         )
-        contact_z = slot_pose.position.z + box_height * 0.5
+        contact_z = (
+            slot_pose.position.z + box_height * 0.5 + PLACE_RELEASE_GAP_M)
         if place_clearance_z is None:
             place_clearance_z = DEFAULT_PLACE_CLEARANCE_Z
         # G1: raise the carry height when neighbors along the corridor are

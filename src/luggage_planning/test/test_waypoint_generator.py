@@ -9,6 +9,7 @@ from luggage_planning.pose import Point, Pose, Quaternion
 from luggage_planning.waypoint_generator import (
     DEFAULT_PICK_CLEARANCES,
     DEFAULT_PLACE_CLEARANCE_Z,
+    PLACE_RELEASE_GAP_M,
     build_sequence,
     insertion_clearance,
     nearest_box_yaw,
@@ -120,27 +121,32 @@ class TestWaypointGenerator(unittest.TestCase):
         segs = build_sequence(
             Box(), Slot(), "place", retreat_safe_tool_z=1.55)
         retreat = [segment for segment in segs if segment.name == "retreat"][0]
-        # contact = 0.20 + 0.25, default place clearance 0.15.
-        self.assertAlmostEqual(retreat.target_pose.position.z, 0.60)
+        # rest top = 0.20 + 0.25; descend adds PLACE_RELEASE_GAP_M then +0.15.
+        self.assertAlmostEqual(
+            retreat.target_pose.position.z, 0.60 + PLACE_RELEASE_GAP_M)
         self.assertAlmostEqual(retreat.clearance_truncation_m, 0.0)
 
     def test_high_contact_retreat_stops_at_the_safe_tool_z(self):
         slot = Slot()
-        slot.place_pose.position.z = 1.25  # contact 1.50 with box height 0.50
+        slot.place_pose.position.z = 1.25  # rest top 1.50 with box height 0.50
         segs = build_sequence(
             Box(), slot, "place", place_clearance_z=0.30,
             retreat_safe_tool_z=1.55)
         by_name = {segment.name: segment for segment in segs}
-        self.assertAlmostEqual(by_name["transit"].target_pose.position.z, 1.80)
+        self.assertAlmostEqual(
+            by_name["transit"].target_pose.position.z, 1.80 + PLACE_RELEASE_GAP_M)
         self.assertAlmostEqual(by_name["retreat"].target_pose.position.z, 1.55)
-        self.assertAlmostEqual(by_name["retreat"].clearance_truncation_m, 0.25)
+        self.assertAlmostEqual(
+            by_name["retreat"].clearance_truncation_m, 0.25 + PLACE_RELEASE_GAP_M)
 
     def test_place_clearance_is_configurable(self):
         segs = build_sequence(Box(), Slot(), "place", place_clearance_z=0.42)
         self.assertEqual(segs[0].name, "transit")
-        # slot center 0.20 + half box height 0.25 + clearance 0.42
-        self.assertAlmostEqual(segs[0].target_pose.position.z, 0.87)
-        self.assertAlmostEqual(segs[3].target_pose.position.z, 0.45)
+        # slot center 0.20 + half box height 0.25 + gap + clearance 0.42
+        self.assertAlmostEqual(
+            segs[0].target_pose.position.z, 0.87 + PLACE_RELEASE_GAP_M)
+        self.assertAlmostEqual(
+            segs[3].target_pose.position.z, 0.45 + PLACE_RELEASE_GAP_M)
         self.assertEqual(
             [segment.type for segment in segs],
             ["pose_target", "cartesian", "cartesian", "cartesian", "cartesian"],
@@ -156,6 +162,25 @@ class TestWaypointGenerator(unittest.TestCase):
             "tool-down already fixes the rigid camera mount; duplicating the "
             "camera guard can disconnect the constrained transit sampler",
         )
+
+    def test_place_descend_tcp_includes_release_gap(self):
+        slot = Slot()
+        rest_z = slot.place_pose.position.z
+        box = Box()
+        rest_top = rest_z + box.height * 0.5
+        segs = build_sequence(box, slot, "place")
+        by_name = {segment.name: segment for segment in segs}
+        self.assertAlmostEqual(slot.place_pose.position.z, rest_z)
+        self.assertAlmostEqual(
+            by_name["descend"].target_pose.position.z,
+            rest_top + PLACE_RELEASE_GAP_M)
+        self.assertAlmostEqual(
+            by_name["insert"].target_pose.position.z,
+            rest_top + PLACE_RELEASE_GAP_M
+            + insertion_clearance(box.height, DEFAULT_PLACE_CLEARANCE_Z))
+        self.assertAlmostEqual(
+            by_name["retreat"].target_pose.position.z,
+            rest_top + PLACE_RELEASE_GAP_M + DEFAULT_PLACE_CLEARANCE_Z)
 
     def test_place_opening_portal_precedes_horizontal_traverse(self):
         info = {
@@ -491,7 +516,8 @@ class TestCorridorClearance(unittest.TestCase):
         segs = self._segments(corridor_surface_max=0.60)
         by_name = {s.name: s for s in segs}
         self.assertAlmostEqual(
-            by_name["traverse"].target_pose.position.z, 0.805 + 0.15,
+            by_name["traverse"].target_pose.position.z,
+            0.805 + PLACE_RELEASE_GAP_M + 0.15,
             places=6)
 
     def test_insert_descend_unchanged_by_corridor(self):

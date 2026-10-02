@@ -1,0 +1,145 @@
+"""Frozen ST09 reason taxonomy (C0/I are the only writers).
+
+Rules:
+
+- Every named failure in the parallel plan maps to exactly one :class:`Reason`.
+- Reasons are compared by value; legacy executor/wire codes that carry the
+  same meaning are listed in :data:`LegacyCode` so adapters translate
+  instead of inventing near-duplicates.
+- ``UNKNOWN`` never means ``free`` and no reason implies a GT read.
+"""
+
+from __future__ import annotations
+
+from enum import Enum
+
+
+class Reason(str, Enum):
+    """Named refusal / failure reasons across the ST09 chain."""
+
+    #: The single non-failure reason: verdicts carry it on success.
+    OK = "OK"
+
+    # -- placement (A) --------------------------------------------------
+    HULL_VIOLATION = "HULL_VIOLATION"
+    APERTURE_VIOLATION = "APERTURE_VIOLATION"
+    SUPPORT_MISSING = "SUPPORT_MISSING"
+    SUPPORT_TILT_UNSUPPORTED = "SUPPORT_TILT_UNSUPPORTED"
+    OVERLAP_WITH_PLACED = "OVERLAP_WITH_PLACED"
+    TOP_CLEARANCE = "TOP_CLEARANCE"
+    CAPACITY_EXHAUSTED = "CAPACITY_EXHAUSTED"
+    OBSERVATION_REQUIRED = "OBSERVATION_REQUIRED"
+    BIN_FULL = "BIN_FULL"
+
+    # -- route (B) ------------------------------------------------------
+    PLANNING_BUDGET_EXHAUSTED = "PLANNING_BUDGET_EXHAUSTED"
+    ATLAS_ORIENTATION_UNCOVERED = "ATLAS_ORIENTATION_UNCOVERED"
+    NO_FEASIBLE_ROUTE = "NO_FEASIBLE_ROUTE"
+    EDGE_BUILD_FAILED = "EDGE_BUILD_FAILED"
+    ROUTE_STALE = "ROUTE_STALE"
+
+    # -- certification (C) ----------------------------------------------
+    CERT_COLLISION = "CERT_COLLISION"
+    CERT_SELF_COLLISION = "CERT_SELF_COLLISION"
+    CERT_JOINT_LIMIT = "CERT_JOINT_LIMIT"
+    CERT_JOINT_DISCONTINUITY = "CERT_JOINT_DISCONTINUITY"
+    CERT_TIME_PARAMETERIZATION = "CERT_TIME_PARAMETERIZATION"
+    CERT_ORIENTATION = "CERT_ORIENTATION"
+    CERT_OCCUPANCY = "CERT_OCCUPANCY"
+    CERT_FK_BUDGET = "CERT_FK_BUDGET"
+    CERT_SAMPLING_UNBOUNDED = "CERT_SAMPLING_UNBOUNDED"
+    CERT_TIMEOUT = "CERT_TIMEOUT"
+    CERT_UNKNOWN_INPUT = "CERT_UNKNOWN_INPUT"
+    CERT_INVALID_EVIDENCE = "CERT_INVALID_EVIDENCE"
+
+    # -- attachment (D, per technical baseline 5.1) ---------------------
+    ATTACHMENT_MISSING = "ATTACHMENT_MISSING"
+    ATTACHMENT_SOURCE_UNQUALIFIED = "ATTACHMENT_SOURCE_UNQUALIFIED"
+    ATTACHMENT_EXPIRED = "ATTACHMENT_EXPIRED"
+    ATTACHMENT_FRAME_MISMATCH = "ATTACHMENT_FRAME_MISMATCH"
+    ATTACHMENT_REQUEST_MISMATCH = "ATTACHMENT_REQUEST_MISMATCH"
+    ATTACHMENT_REATTACH = "ATTACHMENT_REATTACH"
+    ATTACHMENT_SLIP = "ATTACHMENT_SLIP"
+    ATTACHMENT_GT_AS_MEASURED = "ATTACHMENT_GT_AS_MEASURED"
+    ATTACHMENT_INVALID_DIMENSIONS = "ATTACHMENT_INVALID_DIMENSIONS"
+    ATTACHMENT_INVALID_TRANSFORM = "ATTACHMENT_INVALID_TRANSFORM"
+    ATTACHMENT_UNCONFIRMED = "ATTACHMENT_UNCONFIRMED"
+
+    # -- map / observation (D) ------------------------------------------
+    MAP_REVISION_MISMATCH = "MAP_REVISION_MISMATCH"
+    MAP_GEOMETRY_HASH_MISMATCH = "MAP_GEOMETRY_HASH_MISMATCH"
+    MAP_STALE = "MAP_STALE"
+    MAP_HASH_CONFLICT = "MAP_HASH_CONFLICT"
+    MAP_RESTART = "MAP_RESTART"
+    MAP_FULLY_BLOCKED = "MAP_FULLY_BLOCKED"
+    VIEW_EMPTY = "VIEW_EMPTY"
+    VIEW_DEPTH_MISSING = "VIEW_DEPTH_MISSING"
+    VIEW_TF_STALE = "VIEW_TF_STALE"
+    VIEW_DUPLICATE = "VIEW_DUPLICATE"
+    VIEW_PARTIAL_COVERAGE = "VIEW_PARTIAL_COVERAGE"
+    CARRY_FAULT = "CARRY_FAULT"
+
+    # -- identity / schema ----------------------------------------------
+    SCHEMA_MISMATCH = "SCHEMA_MISMATCH"
+    IDENTITY_MISMATCH = "IDENTITY_MISMATCH"
+    STAMP_INVALID = "STAMP_INVALID"
+    DATUM_CONFLICT = "DATUM_CONFLICT"
+    OVERLAY_WRONG = "OVERLAY_WRONG"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.value
+
+
+class LegacyCode(str, Enum):
+    """Existing production wire codes with a frozen mapping into the taxonomy.
+
+    Adapters translate these into :class:`Reason` values; the executor
+    keeps emitting the legacy strings until I rewires it.
+    """
+
+    FK_VERIFY_UNAVAILABLE = "FK_VERIFY_UNAVAILABLE"
+    FK_VERIFY_BUDGET = "FK_VERIFY_BUDGET"
+    GRASP_BINDING_MISMATCH = "GRASP_BINDING_MISMATCH"
+    DETECT_FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
+    CALIBRATION_REVISION_MISMATCH = "CALIBRATION_REVISION_MISMATCH"
+    MAP_REVISION_MISMATCH = "MAP_REVISION_MISMATCH"
+    INVALID_STAMP = "INVALID_STAMP"
+    STAMP_STALE = "STAMP_STALE"
+    POSE_REFERENCE_MISMATCH = "POSE_REFERENCE_MISMATCH"
+    ORIENTATION_SEMANTICS_MISMATCH = "ORIENTATION_SEMANTICS_MISMATCH"
+    REQUEST_IDENTITY_MISMATCH = "REQUEST_IDENTITY_MISMATCH"
+    MISSING_IDENTITY = "MISSING_IDENTITY"
+    PLACE_PATH_INFEASIBLE = "PLACE_PATH_INFEASIBLE"
+    PLACE_PROBE_EMPTY_PATH = "PLACE_PROBE_EMPTY_PATH"
+    PLACE_PROBE_FRACTION_REJECT = "PLACE_PROBE_FRACTION_REJECT"
+    QP_START_STATE_MISMATCH = "QP_START_STATE_MISMATCH"
+    RELEASE_BACKEND_FAILED = "RELEASE_BACKEND_FAILED"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.value
+
+
+#: legacy wire code -> taxonomy reason (identity-preserving where equal).
+LEGACY_TO_REASON = {
+    LegacyCode.FK_VERIFY_UNAVAILABLE: Reason.CERT_INVALID_EVIDENCE,
+    LegacyCode.FK_VERIFY_BUDGET: Reason.CERT_FK_BUDGET,
+    LegacyCode.GRASP_BINDING_MISMATCH: Reason.ATTACHMENT_SLIP,
+    LegacyCode.DETECT_FULL_GEOMETRY_REQUIRED:
+        Reason.ATTACHMENT_SOURCE_UNQUALIFIED,
+    LegacyCode.CALIBRATION_REVISION_MISMATCH: Reason.ATTACHMENT_FRAME_MISMATCH,
+    LegacyCode.MAP_REVISION_MISMATCH: Reason.MAP_REVISION_MISMATCH,
+    LegacyCode.INVALID_STAMP: Reason.STAMP_INVALID,
+    LegacyCode.STAMP_STALE: Reason.MAP_STALE,
+    LegacyCode.POSE_REFERENCE_MISMATCH: Reason.ATTACHMENT_FRAME_MISMATCH,
+    LegacyCode.ORIENTATION_SEMANTICS_MISMATCH:
+        Reason.ATTACHMENT_FRAME_MISMATCH,
+    LegacyCode.REQUEST_IDENTITY_MISMATCH: Reason.IDENTITY_MISMATCH,
+    LegacyCode.MISSING_IDENTITY: Reason.IDENTITY_MISMATCH,
+    LegacyCode.PLACE_PATH_INFEASIBLE: Reason.NO_FEASIBLE_ROUTE,
+    LegacyCode.PLACE_PROBE_EMPTY_PATH: Reason.NO_FEASIBLE_ROUTE,
+    LegacyCode.PLACE_PROBE_FRACTION_REJECT: Reason.EDGE_BUILD_FAILED,
+    # The timed-trajectory start gate keeps its historical wire name in the
+    # executor; in the taxonomy it is a joint-state admission failure.
+    LegacyCode.QP_START_STATE_MISMATCH: Reason.CERT_JOINT_DISCONTINUITY,
+    LegacyCode.RELEASE_BACKEND_FAILED: Reason.CERT_INVALID_EVIDENCE,
+}

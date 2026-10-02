@@ -159,8 +159,21 @@ def framed_query_offset(offset, frame, container_quat, base_quat=None):
     return list(rotate_vector(_conjugate(container_quat), world))
 
 
-def fk_budget(verifier, joints, target_position, target_quaternion):
-    """Return ``(ok, message)``. Threshold equality passes. Missing FK does not pass."""
+def tool_down_tilt(quat):
+    """Angle between tool +Z and world -Z. Yaw about world Z is free."""
+    axis = rotate_vector(unit_quaternion(quat), (0.0, 0.0, 1.0))
+    dot = max(-1.0, min(1.0, -float(axis[2])))
+    return math.acos(dot)
+
+
+def fk_budget(verifier, joints, target_position, target_quaternion,
+              keep_tool_down=False):
+    """Return ``(ok, message)``. Threshold equality passes. Missing FK does not pass.
+
+    ``keep_tool_down`` scores suction tilt against world -Z and ignores
+    yaw: IK may pick the rectangular-payload yaw+pi branch
+    (rehearsal-27 ``FK_VERIFY_BUDGET ... rad=3.141593``).
+    """
     if verifier is None or not callable(verifier):
         return False, "FK_VERIFY_UNAVAILABLE"
     try:
@@ -175,7 +188,10 @@ def fk_budget(verifier, joints, target_position, target_quaternion):
     except Exception:
         return False, "FK_VERIFY_UNAVAILABLE"
     pos = position_error(xyz, target_position)
-    ang = rotation_angle(quat, target_quaternion)
+    if keep_tool_down:
+        ang = tool_down_tilt(quat)
+    else:
+        ang = rotation_angle(quat, target_quaternion)
     # Binary floats can sit a few ulps over a decimal threshold. Equality passes.
     if pos > FK_POSITION_M + 1e-12 or ang > FK_ROTATION_RAD + 1e-12:
         return False, "FK_VERIFY_BUDGET pos=%.6f rad=%.6f" % (pos, ang)

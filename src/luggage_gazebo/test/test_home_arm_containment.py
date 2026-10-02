@@ -52,18 +52,20 @@ class _Driver(object):
         return self._goto_ok, "ok" if self._goto_ok else "abort", None
 
     _home_arm = PlaceSmokeDriver._home_arm
+    _suction_clear_of_container = PlaceSmokeDriver._suction_clear_of_container
     home_arm_code = PlaceSmokeDriver.home_arm_code
 
 
 class TestHomeArmContainment(unittest.TestCase):
 
-    def test_failed_exit_settles_then_still_returns_to_observe(self):
-        driver = _Driver(exit_ok=False, goto_ok=True)
+    def test_failed_exit_inside_does_not_open_loop(self):
+        driver = _Driver(exit_ok=False, goto_ok=True, inside=True)
         ok, notes, _result = driver._home_arm()
-        self.assertEqual(driver.calls, ["exit", "settle", "goto"])
-        self.assertFalse(ok, "the exit failure must still be reported")
-        self.assertIn("settle=", notes)
-        self.assertEqual(driver.home_arm_code(), "EXIT_FAILED_RECOVERED")
+        self.assertEqual(driver.calls, ["exit", "settle"])
+        self.assertNotIn("goto", driver.calls)
+        self.assertFalse(ok)
+        self.assertIn("inside opening", notes)
+        self.assertEqual(driver.home_arm_code(), "EXIT_FAILED_STUCK")
 
     def test_failed_exit_that_cannot_recover_is_a_distinct_code(self):
         driver = _Driver(exit_ok=False, goto_ok=False)

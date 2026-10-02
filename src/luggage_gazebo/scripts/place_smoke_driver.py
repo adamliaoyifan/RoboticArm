@@ -33,6 +33,8 @@ from std_srvs.srv import SetBool
 
 from geometry_msgs.msg import Pose, Quaternion
 from moveit_msgs.msg import PlanningSceneComponents
+from ros_gz_interfaces.msg import Entity
+from ros_gz_interfaces.srv import DeleteEntity, SpawnEntity
 from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
@@ -59,6 +61,7 @@ from luggage_description.scene_tf_config_utils import (
     yaw_world_to_base_link,
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
+from luggage_description.suitcase_visual import pickup_visual_sdf
 from luggage_planning.motion_executor import MotionExecutor
 from luggage_planning.motion_boundary import (
     load_latest_boundary,
@@ -68,11 +71,16 @@ from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
 from luggage_gazebo.place_metrics import (
+    SETTLE_BUDGET_SEC,
+    SETTLE_MOVE_M,
+    SETTLE_WINDOW_SEC,
     PlaceTrial,
     parse_ign_model_pose,
     place_ok,
+    settle_verdict,
     summarize,
     trial_to_dict,
+    xyz_separation,
 )
 
 # Import the eval driver as a library (same package scripts dir).
@@ -113,6 +121,7 @@ CARRYING_ABORTS = {
 
 STAGING_NAMES = ("stage_mid", "stage_late", "stage")
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
+GZ_WORLD = "airport_loading"
 
 # Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
 # was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
@@ -267,6 +276,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             RemovePlacedBox, "/scene_manager/remove_placed_box",
             callback_group=self._group)
         self._box_model = ""
+        self._release_physics = None
+        self._gz_create = self.create_client(
+            SpawnEntity, "/world/%s/create" % GZ_WORLD,
+            callback_group=self._group)
+        self._gz_delete = self.create_client(
+            DeleteEntity, "/world/%s/remove" % GZ_WORLD,
+            callback_group=self._group)
         self._place_touch = self.create_client(
             SetBool, "/scene_manager/set_place_support_touch",
             callback_group=self._group)
@@ -362,26 +378,62 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     else "EXIT_FAILED_STUCK")
         return "GOTO_FAILED"
 
+    def _suction_clear_of_container(self):
+        """True when the cup is outside the opening, so a joint line is safe.
+
+        The same x>0.2 test that decides to run place_exit is the fallback
+        when no scene is loaded: a failed exit that is still on that side of
+        the opening has not cleared the lip.
+        """
+        suction, _err = self.suction_xyz()
+        if suction is None:
+            return True
+        scene = getattr(self, "_scene_config", None)
+        if scene is not None:
+            base = xyz_world_to_base_link(scene, suction)
+            return not point_inside_opening_aperture(base, scene, margin=0.0)
+        return float(suction[0]) <= 0.2
+
+    def _capture_gz_contacts(self):
+        """One physics-contact sample. Absent publishers stay an explicit gap."""
+        topic = "/world/%s/physics/contacts" % GZ_WORLD
+        try:
+            proc = subprocess.run(
+                [_ign_model_bin(), "topic", "-e", "-t", topic, "--num", "1"],
+                capture_output=True, text=True, timeout=2.0)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"available": False, "topic": topic, "reason": str(exc)}
+        text = (proc.stdout or "") + (proc.stderr or "")
+        if proc.returncode != 0 or "collision" not in text.lower():
+            return {
+                "available": False,
+                "topic": topic,
+                "reason": (text.strip() or "no contact sample")[:500],
+            }
+        return {"available": True, "topic": topic, "sample": text[:4000]}
+
     def _home_arm(self):
         suction, _err = self.suction_xyz()
         notes = []
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
         exit_ok = True
-        if suction is not None and float(suction[0]) > 0.2:
+        if (not getattr(self, "_portal_exited", False)
+                and suction is not None and float(suction[0]) > 0.2):
             exit_ok, exit_msg = self._exit_to_portal()
             notes.append("exit=%s" % exit_msg)
             if not exit_ok:
-                # An aborted exit leaves the arm mid-path, usually still
-                # inside the container. Returning here is what left trials 1
-                # and 2 of motion_occ/2026-09-21_1838 planning from that pose
-                # and failing before they picked anything. goto_observe is an
-                # FJT to a fixed joint vector and does not depend on the
-                # portal pose, so it is still worth attempting once the arm
-                # has stopped moving. The exit failure is still reported.
                 notes.append("settle=%s" % self.wait_arm_settle("place_exit"))
-        goto_ok, goto_msg, result = self.goto_observe()
-        notes.append("goto=%s" % goto_msg)
+        goto_ok = True
+        goto_msg = ""
+        result = None
+        if (not exit_ok) and (not self._suction_clear_of_container()):
+            goto_ok = False
+            goto_msg = "open-loop FJT refused inside opening"
+            notes.append("goto=%s" % goto_msg)
+        else:
+            goto_ok, goto_msg, result = self.goto_observe()
+            notes.append("goto=%s" % goto_msg)
         dt_wall = time.time() - t_wall0
         dt_ros = self.ros_now_sec() - t_ros0
         rtf = (dt_ros / dt_wall) if dt_wall > 1e-3 else 0.0
@@ -390,6 +442,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         ok = bool(exit_ok and goto_ok)
         self._home_arm_state = {
             "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok)}
+        if not ok:
+            capture = getattr(self, "_capture_gz_contacts", None)
+            if callable(capture):
+                self._home_arm_state["contacts"] = capture()
         return ok, "; ".join(notes), result
 
     def graph_error(self):
@@ -596,8 +652,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if cartesian_ok is False:
                 return False, "PLACE_FRACTION_%s" % segment.name, rec
             return False, "PLACE_PLAN_%s" % segment.name, rec
+        use_typed = False
         if self._typed is not None:
             # Typed chain: execute the v2 segment paired by build order.
+            # place_exit is built here, after release, and is not in that
+            # sequence. It still has to reach the cartesian replan.
             segments_v2 = getattr(self, "_frame_motion_segments", None) or []
             index = getattr(self, "_frame_motion_index", 0)
             motion_segment = None
@@ -606,12 +665,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 if str(candidate.name) == name:
                     motion_segment = candidate
                     self._frame_motion_index = index + 1
-            if motion_segment is None:
+            if motion_segment is not None:
+                use_typed = True
+                ok, message, result = self._typed.plan_motion(
+                    motion_segment, self._args.plan_timeout,
+                    name="PlanMotionV2:%s" % name)
+            elif name != "place_exit":
                 return False, "TYPED_SEGMENT_MISMATCH:%s" % name, None
-            ok, message, result = self._typed.plan_motion(
-                motion_segment, self._args.plan_timeout,
-                name="PlanMotionV2:%s" % name)
-        else:
+        if not use_typed:
             goal = PlanMotion.Goal()
             goal.segment = segment
             ok, message, result = self.send_action(
@@ -837,6 +898,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         dump_dir = getattr(self._args, "dump_dir", "") or ""
         if not dump_dir:
             return None
+        contacts = (getattr(self, "_home_arm_state", None) or {}).get("contacts")
+        if contacts and str(getattr(trial, "fail_code", "") or "").startswith(
+                "EXIT_FAILED"):
+            trial.extras["gz_contacts"] = contacts
         images = {}
         if debug:
             if debug.get("place_retreat_color") is not None:
@@ -1017,6 +1082,94 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["replay"]["stage"] = stage
         return manifest
 
+    def _release_as_dynamic(self):
+        """Replace the static carry body with the same mesh, dynamic, in place.
+
+        Carry stays static so ``set_pose`` follow does not fight the solver.
+        Called after vacuum-off and before retreat. Returns
+        ``(ok, message, release_pose)``.
+        """
+        physics = getattr(self, "_release_physics", None) or {}
+        size = list(physics.get("command_size") or [])
+        visual = str(physics.get("visual_id") or "")
+        mass = physics.get("mass_kg")
+        model = str(self._box_model or physics.get("model_name") or "")
+        release = self._gz_box_pose()
+        if len(size) != 3 or not visual or mass is None or not model:
+            return False, "missing physics identity", release
+        try:
+            mass_kg = float(mass)
+            sdf = pickup_visual_sdf(
+                model, size, mass_kg, visual, static=False)
+        except (TypeError, ValueError) as exc:
+            return False, str(exc), release
+        if release is None or len(release) < 6:
+            return False, "no release pose", release
+        delete = DeleteEntity.Request()
+        delete.entity.name = model
+        delete.entity.type = Entity.MODEL
+        removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
+        if removed is None or not getattr(removed, "success", False):
+            return False, "delete failed", release
+        spawn = SpawnEntity.Request()
+        spawn.entity_factory.name = model
+        spawn.entity_factory.sdf = sdf
+        qx, qy, qz, qw = rpy_to_quaternion(release[3:6])
+        spawn.entity_factory.pose.position.x = float(release[0])
+        spawn.entity_factory.pose.position.y = float(release[1])
+        spawn.entity_factory.pose.position.z = float(release[2])
+        spawn.entity_factory.pose.orientation.x = float(qx)
+        spawn.entity_factory.pose.orientation.y = float(qy)
+        spawn.entity_factory.pose.orientation.z = float(qz)
+        spawn.entity_factory.pose.orientation.w = float(qw)
+        created = self.call_srv(self._gz_create, spawn, timeout=15.0)
+        if created is None or not getattr(created, "success", False):
+            return False, "create failed", release
+        return True, "dynamic", release
+
+    def _poses_after_settle(self):
+        """Return ``(residual_start, residual_end, verdict)``.
+
+        After the body has stopped, residual drift is the motion during
+        ``drift_wait``. If it never settles, the pair spans the poll so the
+        fall still fails the drift gate. ``err_z`` uses the end pose against
+        the slot support rest, not the planned release height.
+        """
+        if self._args.plan_only:
+            pose = self._gz_box_pose()
+            return pose, pose, {
+                "settled": False, "pose": _xyz3(pose), "window_move_m": None}
+        samples = []
+        captured = []
+        t0 = time.monotonic()
+        verdict = {"settled": False, "pose": None, "window_move_m": None}
+        last = None
+        while True:
+            last = self._gz_box_pose()
+            xyz = _xyz3(last)
+            now = time.monotonic() - t0
+            if xyz is not None:
+                samples.append((now, xyz))
+                captured.append(last)
+                verdict = settle_verdict(
+                    samples, move_m=SETTLE_MOVE_M, window_sec=SETTLE_WINDOW_SEC)
+            # One ``ign model --pose`` call can outlast the budget. Keep
+            # sampling until the window can be judged, then stop.
+            if verdict.get("settled"):
+                break
+            if now >= SETTLE_BUDGET_SEC and len(samples) >= 2:
+                break
+            if now >= SETTLE_BUDGET_SEC + 5.0:
+                break
+            time.sleep(0.05)
+        if verdict.get("settled"):
+            start = last
+            time.sleep(float(self._args.drift_wait))
+            end = self._gz_box_pose()
+            return start, end, verdict
+        start = captured[0] if captured else last
+        return start, last, verdict
+
     def _abort(self, trial, code, carrying, extra=None):
         trial.fail_code = code
         if carrying:
@@ -1147,10 +1300,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["release_settle"] = descend_rec.get("settle_json") or "probe"
         self._set_state("RELEASED")
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
             trial.extras["vac_detach"] = off_msg
             if not off_ok:
                 return self._abort(trial, "VACUUM_DETACH", True, extra=extras)
+            dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
+            trial.extras["dynamic_body"] = dyn_msg
+            trial.extras["box_pose_at_release"] = release_pose
+            if not dyn_ok:
+                return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
 
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
@@ -1160,10 +1319,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             else:
                 return self._abort(trial, code, False, extra=extras)
 
-        pose_release = self._gz_box_pose()
-        if not self._args.plan_only:
-            time.sleep(float(self._args.drift_wait))
-        pose_drift = self._gz_box_pose()
+        pose_release, pose_drift, settle = self._poses_after_settle()
+        trial.extras["settle"] = {
+            "settled": bool(settle.get("settled")),
+            "window_move_m": settle.get("window_move_m"),
+            "budget_sec": SETTLE_BUDGET_SEC,
+        }
+        release_xyz = _xyz3(trial.extras.get("box_pose_at_release"))
+        landed_xyz = _xyz3(pose_drift or pose_release)
+        if release_xyz and landed_xyz:
+            trial.extras["fall_m"] = xyz_separation(release_xyz, landed_xyz)
         self._set_state("COMMITTED")
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
             add = AddPlacedBox.Request()
@@ -1212,10 +1377,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["verify"] = {
             "box_pose_after_release": pose_release,
             "box_pose_after_drift_wait": pose_drift,
+            "box_pose_at_release": trial.extras.get("box_pose_at_release"),
             "err_xy": trial.err_xy, "err_z": trial.err_z,
             "drift": trial.drift,
+            "fall_m": trial.extras.get("fall_m"),
+            "settled": bool(settle.get("settled")),
             "inside_inner_box": trial.inside_inner_box,
             "roll": trial.roll, "pitch": trial.pitch,
+            "support_rest": list(expected) if expected is not None else None,
         }
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
@@ -1262,6 +1431,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._place_state = "INIT"
         self._box_model = ""
+        self._release_physics = None
         self._keep_placed = bool(keep_placed)
         trial = PlaceTrial(index=index)
         trial.extras = {}
@@ -1341,6 +1511,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             spawn_stamp = self.ros_now_sec()
         size_eval = _parse_json(self._size_eval["payload"]) or {}
         trial.catalog_id = str(size_eval.get("catalog_id") or "")
+        command_size = size_eval.get("command_size") or []
+        self._release_physics = {
+            "model_name": str(size_eval.get("model_name") or ""),
+            "command_size": [float(v) for v in command_size],
+            "visual_id": str(size_eval.get("visual_id") or ""),
+            "mass_kg": size_eval.get("mass_kg"),
+        }
         box_id, generation = parse_current_box_payload(
             self._current_box_topic["payload"])
         if spawn.box.id and box_id != spawn.box.id:

@@ -7,6 +7,7 @@ fail-closed selection. No rclpy/tf2 imports.
 
 from __future__ import division
 
+import math
 import time
 
 from luggage_perception.luggage_box_estimator import voxel_downsample
@@ -164,6 +165,135 @@ def cell_xy_container(surface, ix, iy):
         float(origin[0]) + (int(ix) + 0.5) * res,
         float(origin[1]) + (int(iy) + 0.5) * res,
     )
+
+
+def _column_height_grid(surface):
+    """Floor-relative column tops. v2 ``height_above_floor`` wins over v1 ``height``."""
+    if "height_above_floor" in (surface or {}):
+        return surface.get("height_above_floor") or []
+    return (surface or {}).get("height") or []
+
+
+def footprint_sensor_height(surface, aabb_xy):
+    """Median floor-relative height of sensor-occupied cells inside ``aabb_xy``.
+
+    Returns ``None`` when the footprint has no sensor-occupied cell. The
+    value is metres above the inner floor (the same datum as a suitcase
+    resting on that floor).
+    """
+    xmin, ymin, xmax, ymax = (float(v) for v in aabb_xy)
+    nx = int(surface.get("nx") or 0)
+    ny = int(surface.get("ny") or 0)
+    state = surface.get("state") or []
+    confidence = surface.get("confidence") or []
+    heights = _column_height_grid(surface)
+    kept = []
+    for ix in range(nx):
+        if ix >= len(state) or ix >= len(heights):
+            continue
+        for iy in range(ny):
+            if iy >= len(state[ix]) or iy >= len(heights[ix]):
+                continue
+            x, y = cell_xy_container(surface, ix, iy)
+            if x < xmin or x > xmax or y < ymin or y > ymax:
+                continue
+            if (state[ix][iy] != "occupied"
+                    or confidence[ix][iy] != "sensor"):
+                continue
+            value = heights[ix][iy]
+            if value is None:
+                continue
+            try:
+                number = float(value)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(number):
+                kept.append(number)
+    if not kept:
+        return None
+    ordered = sorted(kept)
+    mid = len(ordered) // 2
+    if len(ordered) % 2:
+        return float(ordered[mid])
+    return 0.5 * (float(ordered[mid - 1]) + float(ordered[mid]))
+
+
+def optical_axis_angle_rad(cam_xyz, quat_xyzw, target_xyz):
+    """Angle between camera optical +Z and the vector from the camera to target.
+
+    Returns ``(angle_rad, distance_m)``. ``angle_rad`` is ``None`` when the
+    target sits on the camera. Identity quaternion looks along world +Z.
+    """
+    qx, qy, qz, qw = [float(v) for v in quat_xyzw]
+    axis = (
+        2.0 * (qx * qz + qy * qw),
+        2.0 * (qy * qz - qx * qw),
+        1.0 - 2.0 * (qx * qx + qy * qy),
+    )
+    delta = [float(target_xyz[i]) - float(cam_xyz[i]) for i in range(3)]
+    distance = math.sqrt(sum(v * v for v in delta))
+    if distance < 1e-9:
+        return None, 0.0
+    dot = sum(axis[i] * delta[i] for i in range(3)) / distance
+    dot = max(-1.0, min(1.0, dot))
+    return math.acos(dot), distance
+
+
+def box_point_mask(points, center, size, yaw=0.0, margin=0.0):
+    """Mask of ``points`` that lie inside an oriented box. Never invents points.
+
+    ``center`` and ``points`` share one frame. ``size`` is width, depth, height
+    along the box axes; ``yaw`` rotates that box about +Z. ``margin`` expands
+    every half-extent. A cloud that misses the box yields an all-false mask.
+    """
+    import numpy as np
+    raw = [] if points is None else points
+    pts = np.asarray(raw, dtype=np.float64)
+    if pts.size == 0:
+        return np.zeros((0,), dtype=bool)
+    pts = pts.reshape(-1, 3)
+    try:
+        origin = [float(v) for v in center]
+        extents = [float(v) for v in size]
+        turn = float(yaw)
+        pad = max(0.0, float(margin))
+    except (TypeError, ValueError):
+        return np.zeros((pts.shape[0],), dtype=bool)
+    if (len(origin) != 3 or len(extents) != 3
+            or not all(math.isfinite(v) for v in origin + extents + [turn, pad])
+            or any(v <= 0.0 for v in extents)):
+        return np.zeros((pts.shape[0],), dtype=bool)
+    delta_x = pts[:, 0] - origin[0]
+    delta_y = pts[:, 1] - origin[1]
+    delta_z = pts[:, 2] - origin[2]
+    cos_y = math.cos(turn)
+    sin_y = math.sin(turn)
+    local_x = cos_y * delta_x + sin_y * delta_y
+    local_y = -sin_y * delta_x + cos_y * delta_y
+    half_x = 0.5 * extents[0] + pad
+    half_y = 0.5 * extents[1] + pad
+    half_z = 0.5 * extents[2] + pad
+    finite = np.isfinite(pts).all(axis=1)
+    return (
+        finite
+        & (np.abs(local_x) <= half_x)
+        & (np.abs(local_y) <= half_y)
+        & (np.abs(delta_z) <= half_z)
+    )
+
+
+def occupancy_height_matches(measured, box_height, resolution):
+    """True when the occupied column is within one voxel of the suitcase height."""
+    if measured is None:
+        return False
+    try:
+        delta = abs(float(measured) - float(box_height))
+        limit = float(resolution)
+    except (TypeError, ValueError):
+        return False
+    if not math.isfinite(delta) or not math.isfinite(limit):
+        return False
+    return delta <= limit + 1e-9
 
 
 def footprint_sensor_coverage(surface, aabb_xy):

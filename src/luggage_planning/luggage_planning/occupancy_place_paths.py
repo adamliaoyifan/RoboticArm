@@ -18,6 +18,7 @@ from luggage_description.container_geometry import (
     contains_point,
     contains_point_through_aperture,
     normalize_descriptor,
+    oriented_box_corners,
 )
 
 PLACE_PATH_INFEASIBLE = "PLACE_PATH_INFEASIBLE"
@@ -778,6 +779,18 @@ def _sample_polyline(points, step):
     return samples
 
 
+def _payload_fully_before_door(hull, center, size, yaw=0.0):
+    """True when every payload corner is still west of the -X door plane.
+
+    Joint-space transit from pick interpolates through free space that is
+    not the door YZ shadow; those samples are not ``outside_hull``.
+    """
+    limit = -float(hull.half_x)
+    return all(
+        float(corner[0]) < limit - 1e-9
+        for corner in oriented_box_corners(center, size, yaw))
+
+
 def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
                    collision_pad=None, exempt=None):
     """Sweep the hanging payload AABB (+ arm radius) along ``points``.
@@ -789,7 +802,10 @@ def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
     inside the seven-face hull; leaving it is ``outside_hull``, not cargo
     occupancy. The -X door is exempt: an insertion path enters through it, so
     the payload straddles that face by construction and only the closed faces
-    can reject it.
+    can reject it. Samples whose payload still sits fully in front of the
+    door plane (every corner ``x < -half_x``) skip the hull: that is free
+    space west of the opening, including a joint-space transit arc from
+    pick that is not yet in the door YZ shadow (rehearsal-26).
 
     ``exempt`` is a list of grid-local landing-footprint AABBs
     (``exempt_footprint_locals``): cargo cells inside them do not collide —
@@ -809,11 +825,13 @@ def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
     for sample in samples:
         if hull is not None:
             center = [sample[0], sample[1], sample[2] - 0.5 * height]
-            if not contains_oriented_box_through_aperture(
-                    hull, center, [width, depth, height], yaw=yaw):
-                return SweepResult(
-                    True, 0.0, None, 0.0, len(samples),
-                    reason="outside_hull")
+            size = [width, depth, height]
+            if not _payload_fully_before_door(hull, center, size, yaw):
+                if not contains_oriented_box_through_aperture(
+                        hull, center, size, yaw=yaw):
+                    return SweepResult(
+                        True, 0.0, None, 0.0, len(samples),
+                        reason="outside_hull")
         payload_bottom = sample[2] - height
         payload_top = sample[2]
         for ix, iy, local_fp in _footprint_cells(

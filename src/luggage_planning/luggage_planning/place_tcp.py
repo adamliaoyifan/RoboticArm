@@ -31,6 +31,7 @@ from luggage_planning.trajectory_selector import TrajectorySelector
 from luggage_planning.waypoint_generator import (
     DEFAULT_CORRIDOR_MARGIN,
     DEFAULT_PLACE_CLEARANCE_Z,
+    PLACE_RELEASE_GAP_M,
     build_sequence,
     corridor_clearance,
     insertion_clearance,
@@ -159,16 +160,17 @@ def build_place_legs_v2(slot, grasp, transform, box_wdh,
                         corridor_surface_max=None,
                         corridor_margin=DEFAULT_CORRIDOR_MARGIN,
                         retreat_safe_tool_z=None):
-    """Place legs whose contact pose is the world TCP.
+    """Place legs whose contact pose is the world TCP plus release gap.
 
     Vertical offsets are ``rotate_vector(container_quaternion, (0, 0, lift))``
     applied to that TCP. Lengths come from the existing clearance helpers.
-    The v1 builder is not used.
+    The v1 builder is not used. Slot rest pose is not lifted.
     """
     world = world_tcp_record(slot, grasp, transform)
     contact = world["position"]
     quaternion = world["quaternion_xyzw"]
     container_q = transform["quaternion_xyzw"]
+    contact = lift_world_point(contact, container_q, PLACE_RELEASE_GAP_M)
     height = float(box_wdh[2])
     if place_clearance_z is None:
         place_clearance_z = DEFAULT_PLACE_CLEARANCE_Z
@@ -300,7 +302,8 @@ def _world_waypoints(tcp_record, container_points, transform):
 
 
 def select_place_v2(request, atlas=None, config=None, probe_fn=None,
-                    moveit_client=None, counters=None):
+                    moveit_client=None, counters=None,
+                    geometry_descriptor=None):
     """Select one place path. Invalid requests return before any side effect.
 
     ``probe_fn`` and ``moveit_client`` are accepted so callers can prove they
@@ -321,9 +324,11 @@ def select_place_v2(request, atlas=None, config=None, probe_fn=None,
         inner = [float(v) for v in request["inner_size"]]
         if isinstance(surface, dict) and surface.get("kind") == "surface":
             floor = float(surface["floor_z_container"])
-            hull = cuboid_from_inner_size(inner, floor_z=floor)
+            if not geometry_descriptor:
+                geometry_descriptor = cuboid_from_inner_size(
+                    inner, floor_z=floor).descriptor()
             surface = _legacy_view_of_surface_contract(
-                surface, inner, hull.descriptor())
+                surface, inner, geometry_descriptor)
         selector = TrajectorySelector(config or dict(FIXTURE_SELECTOR))
         slots = []
         scores = list(request.get("slot_scores") or [])

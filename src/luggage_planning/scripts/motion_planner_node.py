@@ -590,10 +590,15 @@ class MotionPlannerNode(Node):
                           float(pose.position.z)))
             current = [float(v) for v in live_joints]
             start_fk = urdf.tcp(current, path)[:3, 3]
+            from luggage_planning.joint_path import wrap_near
+            from luggage_planning.occupancy_place_paths import _sample_polyline
+            sampled = _sample_polyline(
+                [tuple(float(v) for v in start_fk)] + chain, 0.04)[1:]
             knots = [list(current)]
             fk_len = 0.0
             prev = tuple(float(v) for v in start_fk)
-            for point in chain:
+            info = {"pos_err_m": None, "rot_err_rad": None}
+            for point in sampled:
                 joints, info = refine_to_pose(urdf, path, point, quat,
                                               seed=current)
                 if joints is None:
@@ -601,6 +606,7 @@ class MotionPlannerNode(Node):
                         "cartesian joint fallback refine failed at %s (%s)"
                         % (tuple(round(v, 3) for v in point), info))
                     return None
+                joints = wrap_near(joints, current)
                 fk = urdf.tcp(joints, path)[:3, 3]
                 fk_len += float(
                     sum((float(fk[i]) - prev[i]) ** 2 for i in range(3))
@@ -650,9 +656,14 @@ class MotionPlannerNode(Node):
                 response.reason_code = error.code
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
+        start = None
+        joints = self._joint_positions()[0]
+        if joints:
+            start = list(joints)
         response = handle_probe_v2(
             self._executor_client, request.segment, self._scene_tf_hash,
-            response, link=self._executor_client._link)
+            response, link=self._executor_client._link,
+            start_joints=start)
         if getattr(self, "_frame_runtime", None) is not None and bool(
                 getattr(response, "success", False)):
             from luggage_description.frame_contracts import ContractError
@@ -686,10 +697,14 @@ class MotionPlannerNode(Node):
                 result.success = False
                 result.message = "%s: %s" % (error.code, error.field)
                 return result
+        start = None
+        joints = self._joint_positions()[0]
+        if joints:
+            start = list(joints)
         handle_plan_v2(
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
-            link=self._executor_client._link)
+            link=self._executor_client._link, current_joints=start)
         if result.success:
             goal_handle.succeed()
         else:

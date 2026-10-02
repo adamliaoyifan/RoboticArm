@@ -617,6 +617,8 @@ class PickRetreatEvalDriver(Node):
         grasp = getattr(self, "_frame_grasp", None)
         if slot_record is None or grasp is None:
             return None, "TYPED_PLACE_CONTEXT_MISSING"
+        grasp = dict(grasp)
+        grasp["request_id"] = str(slot_record.get("request_id") or "")
         try:
             built = self._typed.build_place(
                 slot=slot_record, grasp=grasp,
@@ -665,12 +667,18 @@ class PickRetreatEvalDriver(Node):
             request_id = self._frame_request_id("vacuum")
             box_pose = detection_record_from_box(
                 pick_msg, request_id, self._frame_scene_revision)
+            grasp = None
+            if enable:
+                # Lock at contact: live TCP versus the still-on-platform box.
+                self._frame_capture_grasp(pick_msg)
+                grasp = getattr(self, "_frame_grasp", None)
             try:
                 response = self._typed.vacuum_command(
                     enable=enable, request_id=request_id,
                     scene_revision=self._frame_scene_revision,
                     box_id=box_id, generation=generation,
-                    measured_box=pick_msg, box_pose=box_pose)
+                    measured_box=pick_msg, box_pose=box_pose,
+                    grasp=grasp)
             except ContractError as error:
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:

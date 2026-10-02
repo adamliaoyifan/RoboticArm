@@ -184,14 +184,39 @@ class TestSimBackend(unittest.TestCase):
         self.assertIn("VACUUM_BACKEND_ERROR", message)
         self.assertFalse(backend.is_attached())
 
-    def test_detach_failure_keeps_attached(self):
+    def test_detach_unlocks_follow_before_scene(self):
+        gz, scene = FakeGzClient(), FakeScene()
+        backend = SimVacuumBackend(gz, scene)
+        self.assertTrue(backend.attach(self._context())[0])
+        seen = []
+
+        def observing_detach(model):
+            seen.append(backend.is_attached())
+            n_before = len(gz.poses)
+            ok, _ = backend.follow_step(
+                (PANEL_XYZ[0] + 1.0, PANEL_XYZ[1], PANEL_XYZ[2]), PANEL_QUAT)
+            seen.append((ok, len(gz.poses) - n_before))
+            return FakeScene.detach_and_remove(scene, model)
+
+        scene.detach_and_remove = observing_detach
+        ok, _ = backend.detach({})
+        self.assertTrue(ok)
+        self.assertFalse(backend.is_attached())
+        self.assertEqual(seen[0], False)
+        self.assertEqual(seen[1], (True, 0))
+
+    def test_detach_scene_failure_still_unlocks_follow(self):
         gz, scene = FakeGzClient(), FakeScene(fail_detach=True)
         backend = SimVacuumBackend(gz, scene)
         self.assertTrue(backend.attach(self._context())[0])
+        n_before = len(gz.poses)
         ok, message = backend.detach({})
         self.assertFalse(ok)
         self.assertIn("VACUUM_BACKEND_ERROR", message)
-        self.assertTrue(backend.is_attached())
+        self.assertFalse(backend.is_attached())
+        backend.follow_step(
+            (PANEL_XYZ[0] + 1.0, PANEL_XYZ[1], PANEL_XYZ[2]), PANEL_QUAT)
+        self.assertEqual(len(gz.poses), n_before)
 
     def test_offset_roundtrip_identity(self):
         offset = relative_offset(PANEL_XYZ, PANEL_QUAT, BOX_XYZ, BOX_QUAT)

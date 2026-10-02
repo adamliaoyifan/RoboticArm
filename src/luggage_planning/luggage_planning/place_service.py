@@ -170,10 +170,13 @@ def request_dict(message):
             request_id, scene, "container_link", "suction_contact_frame",
             interface_id="F13"))
     grasp = _admit_grasp(message.grasp, request_id, scene)
+    # The latched map correlates as map-rev-<revision>, not as this
+    # select request. Scene, hull, and revision still have to match.
+    surface_request = str(message.surface.identity.request_id or "")
     surface = surface_from_message(
         message.surface,
         boundary_context(
-            request_id, scene, "container_link", "",
+            surface_request, scene, "container_link", "",
             geometry_hash=str(message.geometry_hash),
             map_revision=int(message.map_revision),
             interface_id="F13"))
@@ -218,7 +221,8 @@ def _carry_segments(world_poses):
 
 
 def _typed_motion_segments(world_poses, identity):
-    """MotionSegmentV2 cartesian legs. Existing MotionSegment fields stay too."""
+    """MotionSegmentV2 cartesian legs. Existing MotionSegment fields stay too.
+    """
     from luggage_description.frame_diagnostics import BoundaryContext
     from luggage_planning.motion_frame_adapters import message_from_admitted
     from luggage_planning.motion_frame_contracts import TARGET_LINK, ExecutionContext
@@ -298,12 +302,14 @@ def _reject(response, exc):
 
 
 def fill_select_response(message, response, atlas=None, config=None,
-                         probe_fn=None, moveit_client=None, counters=None):
+                         probe_fn=None, moveit_client=None, counters=None,
+                         geometry_descriptor=None):
     try:
         request = request_dict(message)
         result = select_place_v2(
             request, atlas=atlas, config=config, probe_fn=probe_fn,
-            moveit_client=moveit_client, counters=counters)
+            moveit_client=moveit_client, counters=counters,
+            geometry_descriptor=geometry_descriptor)
     except ContractError as exc:
         return _reject(response, exc)
     response.success = bool(result["success"])

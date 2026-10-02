@@ -81,6 +81,12 @@ def apply_carry_segment(segment, selection, frame_convert=None):
         waypoints = (selection or {}).get("waypoints")
         if waypoints and str(segment.name) in CARRY_NAMES:
             apply_variant_to_segment(segment, waypoints, frame_convert)
+            # v2 SelectPlacePath returns world waypoints without a
+            # per-leg spec. The built transit is pose_target; execute
+            # must send the selected cartesian polyline, not a fly-through.
+            segment.type = "cartesian"
+            if hasattr(segment, "allow_ompl_fallback"):
+                segment.allow_ompl_fallback = True
         return segment
     waypoints = spec.get("waypoints") or []
     if waypoints:

@@ -388,7 +388,8 @@ def _mesh_geometry_xml(uri, scale):
 
 
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
-                      models_root=None, scaled_dir=SCALED_MESH_DIR):
+                      models_root=None, scaled_dir=SCALED_MESH_DIR,
+                      static=True):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -396,6 +397,10 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     break). The untextured primitive-box visual was removed: YOLO-World
     cannot reliably detect a textureless box, and the semantic chain is
     the accepted perception path.
+
+    Pickup carry stays ``static=True`` so kinematic ``set_pose`` follow
+    does not fight the solver. Place detach respawns the same mesh with
+    ``static=False`` so the body can fall onto the container support.
     """
     del models_root, scaled_dir
     kind = str(visual_kind or "mesh").strip().lower()
@@ -414,7 +419,7 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         mesh_uri_override=sized_mesh_uri(visual_id, tier),
         mesh_already_scaled=True,
         visual_kind="mesh",
-        static=True,
+        static=bool(static),
     )
 
 

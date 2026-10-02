@@ -44,6 +44,7 @@ from luggage_planning.reachability_atlas import ReachabilityAtlas
 from luggage_planning.reachable_graph import build_reachable_graph
 from luggage_planning.trajectory_selector import _path_hash, _sort_key
 from luggage_planning.waypoint_generator import (
+    PLACE_RELEASE_GAP_M,
     build_sequence,
     insertion_clearance,
     slot_from_contract,
@@ -343,17 +344,26 @@ class TcpMatrix(unittest.TestCase):
             "quaternion_xyzw": [1.0, 0.0, 0.0, 0.0],
             "scene_revision": SCENE,
         }
+        transform = _transform(yaw=0.0)
+        rest_tcp = world_tcp_record(slot, grasp, transform)
         segments, contact = build_place_legs_v2(
-            slot, grasp, _transform(yaw=0.0), PAYLOAD)
+            slot, grasp, transform, PAYLOAD)
         names = [seg.name for seg in segments]
         self.assertEqual(names, ["transit", "traverse", "insert", "descend", "retreat"])
         descend = segments[3].target_pose.position
         self.assertAlmostEqual(descend.x, contact["position"][0])
         self.assertAlmostEqual(descend.y, contact["position"][1])
+        self.assertAlmostEqual(descend.z, contact["position"][2])
+        self.assertAlmostEqual(
+            descend.z, rest_tcp["position"][2] + PLACE_RELEASE_GAP_M)
+        self.assertAlmostEqual(slot["position"][2], 0.8)
         self.assertNotAlmostEqual(descend.x, 0.2, places=3)
         insert_z = segments[2].target_pose.position.z
         self.assertAlmostEqual(
             insert_z - descend.z, insertion_clearance(HEIGHT, 0.15), places=9)
+        retreat_z = segments[4].target_pose.position.z
+        self.assertAlmostEqual(
+            retreat_z - descend.z, 0.15, places=9)
         v1 = build_sequence(type("P", (), {"pose": Pose(position=Point(x=0, y=0, z=0), orientation=Quaternion(w=1)), "height": 0.32, "yaw_valid": True})(),
                             type("S", (), {"place_pose": Pose(position=Point(x=0.2, y=-0.1, z=0.8), orientation=Quaternion(w=1)), "height": 0.32})(),
                             "place")

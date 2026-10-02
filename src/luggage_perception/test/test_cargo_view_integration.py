@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """ROS-free tests for cargo-view integrate selection and occupancy scoring."""
 
+import math
 import time
 import unittest
 
@@ -16,7 +17,11 @@ from luggage_perception.cargo_view_integration import (
     REASON_VIEW_EMPTY,
     apply_integrate,
     floor_through_count,
+    box_point_mask,
     footprint_sensor_coverage,
+    footprint_sensor_height,
+    occupancy_height_matches,
+    optical_axis_angle_rad,
     occupied_sensor_aabb,
     prepare_points,
     select_fresh_record,
@@ -197,6 +202,90 @@ class TestPrepareAndIntegrate(unittest.TestCase):
             surface, [0.2, 0.2, 0.2], patch)
         self.assertEqual(count, 0, summary)
         self.assertTrue(summary["synthetic_plan_only"])
+
+
+class TestOccupancyHeight(unittest.TestCase):
+
+    def _surface(self, height_rows, confidence="sensor"):
+        return {
+            "resolution": 0.05,
+            "nx": 1,
+            "ny": 2,
+            "origin_local": [0.0, 0.0],
+            "state": [["occupied", "occupied"]],
+            "confidence": [[confidence, confidence]],
+            "height": [[0.0, 0.0]],
+            "height_above_floor": height_rows,
+        }
+
+    def test_median_within_one_voxel_matches_box_height(self):
+        surface = self._surface([[0.25, 0.30]])
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertAlmostEqual(height, 0.275)
+        self.assertTrue(occupancy_height_matches(height, 0.25, 0.05))
+
+    def test_hover_above_one_voxel_does_not_match(self):
+        surface = self._surface([[0.35, 0.35]])
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertFalse(occupancy_height_matches(height, 0.25, 0.05))
+
+    def test_v2_height_above_floor_beats_v1_height(self):
+        surface = self._surface([[0.25, 0.25]])
+        surface["height"] = [[0.90, 0.90]]
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertAlmostEqual(height, 0.25)
+
+    def test_optical_axis_straight_ahead_is_zero(self):
+        import math
+        angle, distance = optical_axis_angle_rad(
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 2.0))
+        self.assertAlmostEqual(angle, 0.0)
+        self.assertAlmostEqual(distance, 2.0)
+        side, _ = optical_axis_angle_rad(
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
+        self.assertAlmostEqual(side, math.pi / 2.0)
+
+    def test_geometry_cells_are_ignored(self):
+        surface = self._surface([[0.25, 0.25]], confidence="geometry")
+        self.assertIsNone(
+            footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2)))
+
+
+class TestBoxPointMask(unittest.TestCase):
+
+    def test_keeps_the_lid_and_drops_the_wall(self):
+        import numpy as np
+        center = (0.2, -0.1, 0.655)
+        size = (0.55, 0.40, 0.25)
+        lid = np.array([[0.2, -0.1, 0.78], [0.40, 0.0, 0.70]])
+        wall = np.array([[1.4, -0.1, 0.78]])
+        points = np.vstack((lid, wall))
+        mask = box_point_mask(points, center, size, yaw=0.0, margin=0.0)
+        self.assertEqual(mask.tolist(), [True, True, False])
+
+    def test_yaw_swaps_the_narrow_axis(self):
+        import numpy as np
+        center = (0.0, 0.0, 0.0)
+        size = (0.40, 0.20, 0.25)
+        point = np.array([[0.0, 0.15, 0.0]])
+        self.assertFalse(bool(box_point_mask(point, center, size, yaw=0.0)[0]))
+        self.assertTrue(bool(box_point_mask(
+            point, center, size, yaw=math.pi / 2.0)[0]))
+
+    def test_margin_admits_a_near_miss_only(self):
+        import numpy as np
+        center = (0.0, 0.0, 0.0)
+        size = (0.40, 0.40, 0.40)
+        point = np.array([[0.22, 0.0, 0.0]])
+        self.assertFalse(bool(box_point_mask(point, center, size)[0]))
+        self.assertTrue(bool(box_point_mask(
+            point, center, size, margin=0.05)[0]))
+
+    def test_empty_cloud_stays_empty(self):
+        import numpy as np
+        mask = box_point_mask([], (0.0, 0.0, 0.0), (0.5, 0.4, 0.25))
+        self.assertEqual(mask.shape, (0,))
+        self.assertEqual(mask.dtype, np.dtype(bool))
 
 
 class TestUntrackedConcat(unittest.TestCase):

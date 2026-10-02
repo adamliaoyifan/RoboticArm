@@ -321,6 +321,15 @@ class TestDualQuaternionIK(unittest.TestCase):
         self.assertAlmostEqual(_yaw_of(self.pose), 0.0, places=6)
         self.assertAlmostEqual(abs(_yaw_of(flipped)), math.pi, places=6)
 
+    def test_namespace_pose_still_flips(self):
+        from types import SimpleNamespace
+        pose = SimpleNamespace(
+            position=SimpleNamespace(x=0.4, y=0.1, z=1.2),
+            orientation=SimpleNamespace(x=1.0, y=0.0, z=0.0, w=0.0))
+        flipped = equivalent_tool_down_pose(pose)
+        self.assertAlmostEqual(flipped.position.x, 0.4)
+        self.assertAlmostEqual(abs(_yaw_of(flipped)), math.pi, places=6)
+
     def test_keep_tool_down_picks_the_near_seed_branch(self):
         chosen = self.executor._ik_joints(
             self.pose, self.seed, keep_tool_down=True)

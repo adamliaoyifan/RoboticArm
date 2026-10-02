@@ -184,6 +184,11 @@ class NodeRuntime:
             [peer for peer in self.peers if peer != self.peer],
             install_root, lease_seconds=lease_seconds)
         self._live_providers = live_providers
+        # Rehearsal fault injection. While set, peer heartbeats are counted
+        # and dropped so require_graph_ready fails closed without touching
+        # motion, attachment, or map commits. Clearing the flag lets the
+        # next heartbeats re-admit; it does not by itself authorize effects.
+        self.suppress_peer_observation = False
         import threading
         self._lock = threading.Lock()
         self._heartbeat = RuntimeHeartbeat(node, self.report, self.registry,
@@ -195,6 +200,9 @@ class NodeRuntime:
 
     # -- observation -----------------------------------------------------
     def _on_report(self, message):
+        if self.suppress_peer_observation:
+            self._count("PEER_OBSERVATION_SUPPRESSED")
+            return
         try:
             report = report_from_message(message, self.registry)
             if report["peer"] == self.peer:

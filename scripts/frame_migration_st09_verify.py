@@ -76,6 +76,7 @@ def main():
             "import json,os,sys,luggage_description,luggage_gazebo; print(json.dumps(dict(python=sys.version,environment={k:os.environ.get(k) for k in ('ROS_DOMAIN_ID','ROS_DISTRO','RMW_IMPLEMENTATION','AMENT_PREFIX_PATH','PYTHONPATH')},description=luggage_description.__file__,gazebo=luggage_gazebo.__file__),indent=2))"])
         if args.mode in ("offline", "all"):
             run("tools", ["python3", "-m", "unittest", "discover", "-s", "src/luggage_gazebo/test", "-p", "test_frame_migration_tools.py", "-v"])
+            run("rehearsal-evidence", ["python3", "-m", "unittest", "discover", "-s", "src/luggage_gazebo/test", "-p", "test_rehearsal_evidence.py", "-v"])
             run("execution", ["python3", "-m", "pytest", "src/luggage_planning/test/test_frame_migration_execution.py", "-q", "--tb=short"])
             run("contracts", ["python3", "-m", "unittest", "discover", "-s", "src/luggage_description/test", "-p", "test_frame_contracts.py", "-v"])
             for mode in ("baseline", "migration"):

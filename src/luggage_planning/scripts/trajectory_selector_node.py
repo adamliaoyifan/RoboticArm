@@ -42,6 +42,9 @@ class TrajectorySelectorNode(Node):
         super().__init__("trajectory_selector")
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("atlas_runtime_config", "")
+        # Launch sets this only when the caller overrides the yaml. The
+        # default True leaves atlas_runtime.yaml in charge.
+        self.declare_parameter("atlas_enabled", True)
         self._selector = TrajectorySelector.from_yaml()
         self._surface = None
         self._joints = None
@@ -56,6 +59,9 @@ class TrajectorySelectorNode(Node):
         self._scene = load_scene_tf_config(scene_path)
         cfg_path = str(self.get_parameter("atlas_runtime_config").value or "")
         self._atlas_cfg = load_atlas_runtime_for_scene(scene_path, cfg_path or None)
+        if not bool(self.get_parameter("atlas_enabled").value):
+            self._atlas_cfg = dict(self._atlas_cfg)
+            self._atlas_cfg["enabled"] = False
         if str(self._atlas_cfg.get("hash_policy") or "") == "strict":
             self._selector.config["hash_policy"] = "strict"
         self._urdf_identity = UrdfIdentity(self)
@@ -252,7 +258,13 @@ class TrajectorySelectorNode(Node):
             response.reason_code = block
             response.rows_json = json.dumps({"error": block, "atlas": diag})
             return response
-        response = handle_select_v2(request, response, atlas=atlas)
+        from luggage_description.scene_tf_config_utils import (
+            container_inner_geometry_descriptor)
+        response = handle_select_v2(
+            request, response, atlas=atlas,
+            config=self._selector.config,
+            geometry_descriptor=container_inner_geometry_descriptor(
+                self._scene))
         if getattr(self, "_frame_runtime", None) is not None and bool(
                 getattr(response, "success", False)):
             from luggage_description.frame_contracts import ContractError

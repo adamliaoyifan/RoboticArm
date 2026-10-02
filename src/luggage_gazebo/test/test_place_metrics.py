@@ -9,9 +9,11 @@ from luggage_gazebo.place_metrics import (
     PlaceTrial,
     parse_ign_model_pose,
     place_ok,
+    settle_verdict,
     summarize,
     trial_from_dict,
     trial_to_dict,
+    xyz_separation,
 )
 
 
@@ -71,6 +73,53 @@ class TestPlaceMetrics(unittest.TestCase):
         self.assertAlmostEqual(pose[2], 0.655)
         self.assertAlmostEqual(pose[3], 0.004573)
         self.assertAlmostEqual(pose[4], 0.027155)
+
+
+class TestReleaseSettle(unittest.TestCase):
+
+    def test_fall_is_not_the_residual_window(self):
+        samples = [
+            (0.0, [0.0, 0.0, 1.00]),
+            (0.2, [0.0, 0.0, 0.70]),
+            (0.5, [0.0, 0.0, 0.650]),
+            (0.9, [0.0, 0.0, 0.650]),
+            (1.3, [0.0, 0.0, 0.651]),
+        ]
+        verdict = settle_verdict(samples)
+        self.assertTrue(verdict["settled"])
+        self.assertLess(verdict["window_move_m"], 0.004)
+        fall = xyz_separation(samples[0][1], verdict["pose"])
+        self.assertGreater(fall, 0.02)
+        residual = xyz_separation(verdict["pose"], [0.0, 0.0, 0.653])
+        self.assertLess(residual, 0.02)
+
+    def test_sparse_still_samples_count_as_settled(self):
+        samples = [
+            (0.0, [0.0, 0.0, 0.650]),
+            (3.0, [0.0, 0.0, 0.651]),
+        ]
+        verdict = settle_verdict(samples)
+        self.assertTrue(verdict["settled"])
+        self.assertLess(verdict["window_move_m"], 0.004)
+
+    def test_sparse_fall_is_not_settled(self):
+        samples = [
+            (0.0, [0.0, 0.0, 1.00]),
+            (3.0, [0.0, 0.0, 0.65]),
+        ]
+        verdict = settle_verdict(samples)
+        self.assertFalse(verdict["settled"])
+        self.assertGreater(verdict["window_move_m"], 0.02)
+
+    def test_still_falling_is_not_settled(self):
+        samples = [
+            (0.0, [0.0, 0.0, 0.80]),
+            (0.2, [0.0, 0.0, 0.70]),
+            (0.4, [0.0, 0.0, 0.60]),
+        ]
+        verdict = settle_verdict(samples)
+        self.assertFalse(verdict["settled"])
+        self.assertGreater(verdict["window_move_m"], 0.004)
 
 
 if __name__ == "__main__":

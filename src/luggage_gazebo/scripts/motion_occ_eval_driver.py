@@ -43,10 +43,15 @@ from cargo_map_integrate_eval_driver import (  # noqa: E402
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
     _point_in_container_link,
     container_inner_ceiling_z,
+    container_usable_dimensions,
     container_opening_normal_in_world,
     container_opening_target_point_in_world,
     origin_in_world,
     xyz_world_to_base_link,
+)
+from luggage_gazebo.cargo_view_sequence import (  # noqa: E402
+    policy_hash,
+    view_policy_record,
 )
 from luggage_gazebo.place_metrics import (  # noqa: E402
     RETURN_FAIL_CODES,
@@ -78,7 +83,7 @@ DEFAULT_OUT = os.path.normpath(os.path.join(
 # One row probe = 1 IK + 1 plan-only cartesian call; generous ceiling for a
 # single row, not for the whole sweep (a circuit breaker stops the sweep
 # after PLACE_PROBE_MAX_UNAVAILABLE consecutive fail-opens).
-PLACE_PROBE_TIMEOUT_S = 10.0
+PLACE_PROBE_TIMEOUT_S = 30.0
 PLACE_PROBE_MAX_UNAVAILABLE = 3
 
 
@@ -92,6 +97,40 @@ def _map_to_world(scene, xyz):
         origin[1] + s * x + c * y,
         origin[2] + z,
     ]
+
+
+def carry_frame_convert(selected_path, scene):
+    """Map->world convert, or None when the selected path is already world.
+
+    SelectPlacePathV2 ``waypoint_poses`` / ``motion_segments`` are world
+    TCP. A second origin shift (rehearsal-20: 1.005 -> 2.505) is
+    ``outside_hull``. v1 in-process winners stay map-frame.
+    """
+    if not selected_path or selected_path.get("waypoint_frame") == "world":
+        return None
+    return lambda xyz: _map_to_world(scene, xyz)
+
+
+def split_carry_waypoints(name, waypoints):
+    """Split a selected world path into approach vs in-container carry.
+
+    A single cartesian from pick to the slot (2.8 m) unwinds elfin_joint3
+    (rehearsal-22/23) and the joint fallback still branch-jumps
+    (rehearsal-24/25). Transit still only goes to the first portal pose;
+    traverse follows the remaining polyline. The portal hop itself is
+    cartesian: pose_target joint interpolation with a centered payload
+    sweeps the box through closed hull faces (rehearsal-31). The TCP
+    line from pick retreat to that portal already passes occupancy.
+    """
+    points = [list(xyz) for xyz in (waypoints or [])]
+    if not points:
+        return None, None
+    if str(name) == "transit":
+        return "cartesian", [points[0]]
+    if str(name) == "traverse":
+        rest = points[1:] if len(points) > 1 else points
+        return "cartesian", rest
+    return None, None
 
 
 def _quat_yaw(orientation):
@@ -158,7 +197,10 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._urdf_identity = None
             self._scene_tf_hash = ""
             self._atlas_key = None
+        self._rehearsal_marks = None
+        self._rehearsal_fault_record = None
         self._selected_path = None
+        self._selected_carry_v2 = None
         self._selector_rows = []
         self._last_boundary = None
         self._probe_place = self.create_client(
@@ -185,9 +227,21 @@ class MotionOccDriver(CargoMapIntegrateDriver):
     def _on_surface_v2(self, msg):
         self._surface_v2_msg = msg
 
+    def _cartesian_min_fraction(self):
+        """Selector yaml owns the live gate; tests may stub PlacePathPlanner."""
+        selector = getattr(self, "_selector", None)
+        if selector is not None:
+            return float(selector.config.get("cartesian_min_fraction", 0.95))
+        planner = getattr(self, "_planner", None)
+        if planner is not None:
+            return float(planner.cartesian_min_fraction)
+        return 0.95
+
     def _frame_probe_winner(self, response, request_id, stats):
         """Fail-closed probe of the selected carry path (probe-on requires
         success; unavailable or failed probes reject the placement)."""
+        stats["path_source"] = str(getattr(response, "path_source", "") or "")
+        stats["path_hash"] = str(getattr(response, "path_hash", "") or "")
         waypoints = [
             [float(pose.pose.position.x), float(pose.pose.position.y),
              float(pose.pose.position.z)]
@@ -207,18 +261,23 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                  "type": "cartesian", "keep_tool_down": True,
                  "allow_ompl_fallback": True},
                 request_id, self._frame_scene_revision)
-            probe_response = self._typed.probe_segment(message)
+            probe_response = self._typed.probe_segment(
+                message, timeout_sec=PLACE_PROBE_TIMEOUT_S)
         except ContractError as error:
             return False, error.code
         stats["probed"] += 1
-        stats["sec"] += 0.0
+        stats["n_waypoints"] = len(waypoints)
         if probe_response is None:
             stats["unavailable"] += 1
             return False, "PLACE_PROBE_UNAVAILABLE"
+        stats["ik_ok"] = bool(probe_response.ik_ok)
+        stats["success"] = bool(probe_response.success)
+        stats["fraction"] = float(probe_response.fraction)
+        stats["message"] = str(probe_response.message or "")
         if not bool(probe_response.ik_ok):
             stats["ik_reject"] += 1
             return False, "PLACE_PROBE_IK_REJECT"
-        min_fraction = float(self._planner.cartesian_min_fraction)
+        min_fraction = self._cartesian_min_fraction()
         if float(probe_response.fraction) < min_fraction:
             stats["fraction_reject"] += 1
             return False, "PLACE_PROBE_FRACTION_REJECT"
@@ -278,6 +337,11 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         trial.extras["compute_placement"] = placement.message
         slot_messages = list(placement.candidates) or [placement.slot]
         scores = list(placement.candidate_scores) or [0.0]
+        # ComputePlacementV2 has no request id field; the planner stamps
+        # the slots. Select, grasp, and the start TCP join that id.
+        slot_request = str(slot_messages[0].identity.request_id or "")
+        if slot_request:
+            request_id = slot_request
 
         portal = self._portal_map()
         start_tcp = tcp_record(request_id, self._frame_scene_revision,
@@ -286,48 +350,75 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         if grasp is None:
             trial.fail_code = trial.fail_code or "TYPED_PLACE_CONTEXT_MISSING"
             return None, None
+        grasp = dict(grasp)
+        grasp["request_id"] = request_id
+        self._frame_grasp = grasp
         probe_stats = {"mode": "on", "probed": 0, "ik_reject": 0,
-                       "fraction_reject": 0, "unavailable": 0, "sec": 0.0}
-        try:
-            selection = self._typed.select_place_path(
-                request_id=request_id, box_wdh=box_wdh,
-                slots=slot_messages, slot_scores=scores,
-                surface_message=surface_msg,
-                inner_size=list(self._inner_size),
-                geometry_hash=geometry_hash,
-                map_revision=int(surface_msg.map_revision),
-                start_tcp=start_tcp,
-                start_joints=(_joint_positions(
-                    getattr(self, "_last_joint_state", None)) or []),
-                grasp=grasp,
-                container_transform=container_transform_fields(
-                    self._scene_config))
-        except ContractError as error:
-            trial.fail_code = trial.fail_code or error.code
-            trial.extras["selector_error"] = "%s: %s" % (
-                error.code, error.field)
-            return None, None
-        if selection is None or not selection.success:
-            trial.fail_code = trial.fail_code or (
-                getattr(selection, "reason_code", None)
-                or PLACE_PATH_INFEASIBLE)
-            trial.extras["selector_error"] = (
-                selection.reason_code if selection else "timeout")
-            return None, None
-        if getattr(self._args, "place_probe", "on") == "on":
+                       "fraction_reject": 0, "unavailable": 0, "sec": 0.0,
+                       "excluded": []}
+        excluded = []
+        selection = None
+        probe_ok = True
+        probe_reason = ""
+        attempts = max(1, min(5, len(slot_messages)))
+        start_joints = (_joint_positions(
+            getattr(self, "_last_joint_state", None)) or [])
+        container_transform = container_transform_fields(self._scene_config)
+        inner_size = list(container_usable_dimensions(self._scene_config))
+        for _attempt in range(attempts):
+            try:
+                selection = self._typed.select_place_path(
+                    request_id=request_id, box_wdh=box_wdh,
+                    slots=slot_messages, slot_scores=scores,
+                    surface_message=surface_msg,
+                    inner_size=inner_size,
+                    geometry_hash=geometry_hash,
+                    map_revision=int(surface_msg.map_revision),
+                    start_tcp=start_tcp,
+                    start_joints=start_joints,
+                    grasp=grasp,
+                    container_transform=container_transform,
+                    excluded_ids=excluded)
+            except ContractError as error:
+                trial.fail_code = trial.fail_code or error.code
+                trial.extras["selector_error"] = "%s: %s" % (
+                    error.code, error.field)
+                return None, None
+            if selection is None or not selection.success:
+                trial.fail_code = trial.fail_code or (
+                    getattr(selection, "reason_code", None)
+                    or PLACE_PATH_INFEASIBLE)
+                trial.extras["selector_error"] = (
+                    selection.reason_code if selection else "timeout")
+                trial.extras["probe"] = probe_stats
+                return None, None
+            if getattr(self._args, "place_probe", "on") != "on":
+                probe_ok = True
+                break
             t0 = _time.time()
             probe_ok, probe_reason = self._frame_probe_winner(
                 selection, request_id, probe_stats)
-            probe_stats["sec"] = round(_time.time() - t0, 3)
-            if not probe_ok:
-                trial.fail_code = trial.fail_code or probe_reason
-                trial.extras["selector"] = {
-                    "reason": probe_reason, "n_slots": len(slot_messages),
-                    "n_rows": 0, "winner_method": None,
-                    "winner_slot": None, "probe": probe_stats}
-                self._dump_selector(trial, [], [], None, probe_reason,
-                                    {}, probe=probe_stats)
-                return None, None
+            probe_stats["sec"] = round(
+                float(probe_stats.get("sec") or 0.0) + (_time.time() - t0), 3)
+            if probe_ok:
+                break
+            path_hash = str(getattr(selection, "path_hash", "") or "")
+            if not path_hash or path_hash in excluded:
+                break
+            excluded.append(path_hash)
+            probe_stats["excluded"] = list(excluded)
+        if getattr(self._args, "place_probe", "on") == "on" and not probe_ok:
+            trial.fail_code = trial.fail_code or (
+                probe_reason or PLACE_PATH_INFEASIBLE)
+            trial.extras["selector"] = {
+                "reason": probe_reason, "n_slots": len(slot_messages),
+                "n_rows": 0, "winner_method": None,
+                "winner_slot": None, "probe": probe_stats,
+                "excluded": excluded}
+            self._dump_selector(trial, [], self._rows_from_selection(
+                selection), None, probe_reason,
+                self._surface_from_selection(selection), probe=probe_stats)
+            return None, None
 
         winner_index = int(selection.slot_index)
         chosen = slot_messages[winner_index]
@@ -344,12 +435,15 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         self._selected_path = {
             "method": str(selection.path_source),
             "selection_id": str(selection.selection_id),
+            "path_hash": str(selection.path_hash),
             "slot_index": winner_index,
+            "waypoint_frame": "world",
             "waypoints": [
                 [float(pose.pose.position.x), float(pose.pose.position.y),
                  float(pose.pose.position.z)]
                 for pose in selection.waypoint_poses],
         }
+        self._selected_carry_v2 = list(selection.motion_segments)
         trial.extras["path_source"] = str(selection.path_source)
         trial.extras["selection_id"] = str(selection.selection_id)
         trial.extras["selector"] = {
@@ -372,9 +466,31 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         slot.place_pose.orientation.z = math.sin(0.5 * yaw_container)
         slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
         slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
-        self._dump_selector(trial, [], [], self._selected_path,
-                            "", {}, probe=probe_stats)
+        self._dump_selector(trial, [], self._rows_from_selection(selection),
+                            self._selected_path,
+                            "", self._surface_from_selection(selection),
+                            probe=probe_stats)
         return slot, self._slot_meta(slot)
+
+    @staticmethod
+    def _rows_from_selection(selection):
+        """Rows from the v2 response so probe rejects keep their evidence.
+
+        Rehearsal-52's trial_01 candidates.json had ``rows: []`` -- the
+        five polylines were lost and the replay had to regenerate them.
+        """
+        try:
+            rows = json.loads(str(getattr(selection, "rows_json", "") or "[]"))
+            return rows if isinstance(rows, list) else []
+        except ValueError:
+            return []
+
+    @staticmethod
+    def _surface_from_selection(selection):
+        surface = getattr(selection, "surface", None)
+        if isinstance(surface, dict) and surface:
+            return surface
+        return {}
 
     def _on_boundary(self, msg):
         try:
@@ -426,7 +542,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         """
         stats = {"mode": "on", "probed": 0, "ik_reject": 0,
                  "fraction_reject": 0, "unavailable": 0, "sec": 0.0}
-        min_fraction = float(self._planner.cartesian_min_fraction)
+        min_fraction = self._cartesian_min_fraction()
         def reject_probe(row, reason="PLACE_PROBE_UNAVAILABLE"):
             row.update(ik_ok=False, cartesian_fraction=-1.0,
                        feasible=False, reason=reason, probe_success=False)
@@ -542,6 +658,13 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         return self._atlas, self._atlas_diag
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
+        self._rehearsal_mark("placement_request")
+        try:
+            return self._place_slot_resolved(pick_msg, box_msg, trial)
+        finally:
+            self._rehearsal_mark("placement_response")
+
+    def _place_slot_resolved(self, pick_msg, box_msg, trial):
         del box_msg
         if getattr(self, "_typed", None) is not None:
             return self._frame_place_slot(pick_msg, trial)
@@ -688,17 +811,47 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             }
         return extra
 
-    def _execute_segment(self, segment, trial):
-        if (str(segment.name) in ("transit", "traverse")
-                and self._selected_path
-                and self._selected_path.get("waypoints")):
-            # Selected carry variant (map frame) onto the segment, in the
-            # world frame the planner runs in — same helper the production
-            # chain will use when the selector moves into the node layer.
+    def _apply_selected_carry(self, segment):
+        """Write the selected cartesian path onto the v1 and v2 carry legs.
+
+        Typed execute sends ``_frame_motion_segments``, not the v1
+        MotionSegment ``apply_carry_segment`` mutates. SelectPlacePathV2
+        already returns world cartesian ``motion_segments``; those replace
+        the built pose_target fly-through. World waypoints must not take
+        a second map->world shift.
+        """
+        selected = self._selected_path
+        if str(segment.name) not in ("transit", "traverse") or not selected:
+            return
+        convert = carry_frame_convert(selected, self._scene_config)
+        waypoints = selected.get("waypoints")
+        name = str(segment.name)
+        spec_type, split = split_carry_waypoints(name, waypoints)
+        if split:
             apply_carry_segment(
-                segment, self._selected_path,
-                frame_convert=lambda xyz: _map_to_world(
-                    self._scene_config, xyz))
+                segment, {"waypoints": split}, frame_convert=convert)
+            if spec_type:
+                segment.type = spec_type
+                if hasattr(segment, "allow_ompl_fallback"):
+                    segment.allow_ompl_fallback = True
+        if getattr(self, "_typed", None) is None:
+            return
+        segments_v2 = getattr(self, "_frame_motion_segments", None) or []
+        index = getattr(self, "_frame_motion_index", 0)
+        if (index >= len(segments_v2)
+                or str(segments_v2[index].name) != name):
+            return
+        built = segments_v2[index]
+        if not split:
+            return
+        from luggage_planning.typed_driver_adapter import apply_selected_path_to_v2
+        apply_selected_path_to_v2(built, split, frame_convert=convert)
+        if spec_type:
+            built.segment_type = spec_type
+            built.allow_ompl_fallback = True
+
+    def _execute_segment(self, segment, trial):
+        self._apply_selected_carry(segment)
         t0 = time.time()
         ok, code, rec = super()._execute_segment(segment, trial)
         if rec is not None:
@@ -719,6 +872,121 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 rec["payload_wdh"] = boundary.get("payload_wdh")
         return ok, code, rec
 
+    def _rehearsal_mark(self, name):
+        marks = self._rehearsal_marks
+        if marks is None:
+            return
+        marks.append({
+            "name": str(name),
+            "t_ros": float(self.ros_now_sec()),
+            "t_wall": time.time(),
+        })
+
+    def _effect_window(self):
+        state = dict(self._vacuum_state or {})
+        place_state = str(self._place_state or "")
+        return {
+            "segments": len(getattr(self, "_segments_log", None) or []),
+            "commits": 1 if place_state in ("COMMITTED", "VERIFIED", "HOME") else 0,
+            "attached": bool(state.get("attached")) and not state.get("fail_reason"),
+            "place_state": place_state,
+        }
+
+    def _rehearsal_refuse(self, trial, phase):
+        """Drop peer observation, require the gate to refuse, then recover.
+
+        The refusal itself performs no motion and no map commit. Recovery
+        only resumes heartbeats; it does not start a place.
+        """
+        from luggage_description.frame_contracts import ContractError
+        from luggage_gazebo.rehearsal_evidence import fault_window_ok
+
+        before = self._effect_window()
+        runtime = self._frame_runtime_handle
+        code = "REHEARSAL_FAULT_NO_RUNTIME"
+        if runtime is not None:
+            runtime.suppress_peer_observation = True
+            with runtime._lock:
+                runtime.gate.reports.clear()
+            try:
+                runtime.require_graph_ready()
+                code = "REHEARSAL_FAULT_NOT_REFUSED"
+            except ContractError as error:
+                code = str(error.code)
+        after = self._effect_window()
+        recovered = False
+        if runtime is not None:
+            runtime.suppress_peer_observation = False
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                if runtime.readiness() == "READY":
+                    recovered = True
+                    break
+                time.sleep(0.05)
+        after_recovery = self._effect_window()
+        record = {
+            "fault": phase,
+            "refusal_code": code,
+            "before": before,
+            "after": after,
+            "after_recovery": after_recovery,
+            "recovered_ready": recovered,
+            "counters": dict(runtime.counters) if runtime is not None else {},
+        }
+        record["ok"] = fault_window_ok(
+            phase, code, before, after, after_recovery, recovered)
+        trial.fail_code = code
+        trial.extras["rehearsal_fault"] = record
+        self._rehearsal_fault_record = record
+        return record
+
+    def _pick_carry(self, index, trial, already_spawned=False):
+        if getattr(self._args, "rehearsal_fault", "") == "pre_pick":
+            self._rehearsal_refuse(trial, "pre_pick")
+            return None
+        result = super()._pick_carry(
+            index, trial, already_spawned=already_spawned)
+        if result is not None:
+            self._rehearsal_mark("observation")
+        return result
+
+    def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
+        if getattr(self._args, "rehearsal_fault", "") == "pre_place":
+            self._rehearsal_refuse(trial, "pre_place")
+            return trial
+        return super().run_place_from_carry(pick_msg, trial, slot, slot_meta)
+
+    def _integrate_after_place(self, trial, slot, slot_meta, pick_msg,
+                               view="lift", record=True, expected_revision=None):
+        result = super()._integrate_after_place(
+            trial, slot, slot_meta, pick_msg, view=view, record=record,
+            expected_revision=expected_revision)
+        self._rehearsal_mark("integration")
+        return result
+
+    def run_trial(self, index, slot=None, slot_meta=None,
+                  already_spawned=False, keep_placed=False):
+        active = bool(getattr(self._args, "rehearsal_dir", ""))
+        self._rehearsal_marks = [] if active else None
+        trial = super().run_trial(
+            index, slot=slot, slot_meta=slot_meta,
+            already_spawned=already_spawned, keep_placed=keep_placed)
+        if self._rehearsal_marks is not None:
+            integrate = trial.extras.get("integrate") or {}
+            geometry = str(integrate.get("geometry_hash") or "")
+            if not geometry:
+                geometry = str((self._surface_2d or {}).get("geometry_hash") or "")
+            trial.extras["rehearsal_marks"] = list(self._rehearsal_marks)
+            trial.extras["state_timeline"] = [dict(row) for row in self._timeline]
+            trial.extras["vacuum_event"] = dict(self._vacuum_events or {})
+            trial.extras["live_scene_revision"] = str(
+                getattr(self, "_frame_scene_revision", "") or "")
+            trial.extras["live_geometry_hash"] = geometry
+            if not trial.extras.get("rehearsal_request_id"):
+                trial.extras["rehearsal_request_id"] = "%s-%s" % (
+                    trial.catalog_id or "box", trial.index)
+        return trial
+
 
 def parse_args(argv=None):
     argv = list(argv or [])
@@ -729,6 +997,11 @@ def parse_args(argv=None):
     local.add_argument("--frame-runtime", action="store_true",
                        help="Adopt the v2 runtime chain from the stack graph")
     local.add_argument("--frame-peer", default="motion_occ_driver")
+    local.add_argument("--rehearsal", default="",
+                       help="Write non-scoring rehearsal evidence to this directory")
+    local.add_argument("--rehearsal-fault", choices=("", "pre_pick", "pre_place"),
+                       default="",
+                       help="Inject one readiness refusal without scoring")
     local_ns, remaining = local.parse_known_args(argv)
     # MOTION-OCC is an n=2 eval; default it here once. (The old
     # n==3 post-normalization never fired: main() had already appended
@@ -739,6 +1012,8 @@ def parse_args(argv=None):
     args.place_probe = local_ns.place_probe
     args.frame_runtime = local_ns.frame_runtime
     args.frame_peer = local_ns.frame_peer
+    args.rehearsal_dir = str(local_ns.rehearsal or "")
+    args.rehearsal_fault = str(local_ns.rehearsal_fault or "")
     return args
 
 
@@ -852,6 +1127,14 @@ def _write_t0(out, extra, args, records, suite, started_at):
             "T1": "dumps/box_NN_paths/candidates.json",
             "T2": "replay/last_boundary.json + planning_scene.json on fail",
         },
+        "cargo_view_policy": dict(view_policy_record(), hash=policy_hash()),
+        "cargo_view_choices": [
+            {
+                "index": r.index,
+                "aim": (r.extras.get("cargo_view_aim") or {}).get("chosen"),
+                "lookback": (r.extras.get("cargo_view_lookback") or {}).get("chosen"),
+            }
+            for r in records],
     }
     path = os.path.join(out, "t0_manifest.json")
     with open(path, "w", encoding="utf-8") as handle:
@@ -860,12 +1143,39 @@ def _write_t0(out, extra, args, records, suite, started_at):
     return path
 
 
+def _atomic_json(path, payload):
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+    temporary = path + ".tmp"
+    with open(temporary, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True, default=str)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(temporary, path)
+    return path
+
+
+def _write_rehearsal(directory, records):
+    """Non-scoring evidence. The extractor binds hashes in a later step."""
+    from luggage_gazebo.rehearsal_evidence import (
+        build_evidence, case_from_artifacts,
+    )
+    cases = [case_from_artifacts(trial_to_dict(record)) for record in records]
+    evidence = build_evidence(cases)
+    path = _atomic_json(os.path.join(directory, "rehearsal-evidence.json"), evidence)
+    return path, evidence
+
+
 def main(argv=None):
     argv = list(argv or sys.argv[1:])
     if "--out" not in argv:
         argv.extend(["--out", DEFAULT_OUT])
     # --n defaults to 2 inside parse_args (single source of that default).
     args = parse_args(argv)
+    if args.rehearsal_dir and args.out == DEFAULT_OUT:
+        args.out = args.rehearsal_dir
     os.makedirs(args.out, exist_ok=True)
     args.dump_dir = args.dump_dir or os.path.join(args.out, "dumps")
     os.makedirs(args.dump_dir, exist_ok=True)
@@ -892,9 +1202,29 @@ def main(argv=None):
             err = driver.wait_graph(timeout=180.0)
             if err:
                 print("graph: %s" % err)
+                if args.rehearsal_dir or args.rehearsal_fault:
+                    _atomic_json(
+                        os.path.join(args.rehearsal_dir or args.out,
+                                     "startup_failure.json"),
+                        {"reason": err, "cases_attempted": 0,
+                         "scoring_writes": False})
                 return 2
         print("graph ok; MOTION-OCC n=%d" % args.n, flush=True)
         time.sleep(8.0)
+        if args.rehearsal_fault:
+            rec = driver.run_trial(0)
+            records.append(rec)
+            with open(jsonl, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(trial_to_dict(rec), sort_keys=True) + "\n")
+            fault = driver._rehearsal_fault_record or rec.extras.get(
+                "rehearsal_fault") or {}
+            path = _atomic_json(
+                os.path.join(args.rehearsal_dir or args.out,
+                             "rehearsal-fault.json"), fault)
+            print(json.dumps({"fault": path, "ok": fault.get("ok"),
+                              "refusal_code": fault.get("refusal_code")},
+                             sort_keys=True), flush=True)
+            return 0 if fault.get("ok") else 1
         for index in range(args.n):
             if stop["flag"] or not rclpy.ok():
                 break
@@ -915,6 +1245,15 @@ def main(argv=None):
             "dirty": subprocess.check_output(
                 ["git", "status", "--porcelain"], cwd=ws, text=True).count("\n"),
         })
+        if args.rehearsal_dir:
+            path, evidence = _write_rehearsal(args.rehearsal_dir, records)
+            note = {"scoring_writes": False, "namespace": "rehearsal",
+                    "evidence": path, "complete": evidence.get("complete")}
+            _write_t0(args.out, extra, args, records, note, started_at)
+            print(json.dumps(note, sort_keys=True), flush=True)
+            if not records:
+                return 2
+            return 0 if evidence.get("complete") else 1
         suite = _write_suite(args.out, records, driver)
         _write_t0(args.out, extra, args, records, suite, started_at)
         summary = summarize(records)

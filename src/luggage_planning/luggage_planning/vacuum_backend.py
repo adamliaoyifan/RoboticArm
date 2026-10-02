@@ -260,6 +260,13 @@ class SimVacuumBackend(VacuumBackend):
                 from luggage_planning.attachment_frame_contracts import compose_box_world
                 xyz, quat = compose_box_world(
                     self._physical_relation, panel_xyz, panel_quat)
+            elif self._planning_relation is not None:
+                # v2 attach stores the measured tool-to-box relation and does
+                # not keep a GT follow offset. Track that relation.
+                posed = self.planning_box_pose(panel_xyz, panel_quat)
+                if not posed:
+                    return False, "follow error: no planning relation"
+                xyz, quat = posed
             else:
                 xyz, quat = compose_pose(
                     panel_xyz, panel_quat, self._offset_xyz, self._offset_quat)
@@ -270,10 +277,22 @@ class SimVacuumBackend(VacuumBackend):
             return False, "follow error: %s" % exc
         return True, ""
 
+    def _unlock_follow(self):
+        """Stop kinematic follow immediately. Scene detach is separate."""
+        self._attached = False
+        self._planning_relation = None
+        self._physical_relation = None
+        self._offset_xyz = None
+        self._offset_quat = None
+
     def detach(self, context):
         if not self._attached:
             return True, "not attached"
         model = self._model_name
+        # Unlock at the release command so a later retreat TCP cannot keep
+        # composing the frozen grasp onto the payload.
+        self._unlock_follow()
+        self._model_name = None
         try:
             scene_ok, scene_msg = self._scene.detach_and_remove(model)
         except Exception as exc:  # noqa: BLE001
@@ -282,9 +301,5 @@ class SimVacuumBackend(VacuumBackend):
         if not scene_ok:
             self.last_error = scene_msg
             return False, "VACUUM_BACKEND_ERROR: detach %s" % scene_msg
-        self._attached = False
-        self._model_name = None
-        self._offset_xyz = None
-        self._offset_quat = None
         # Leave the box where it is; physics takes over.
         return True, "detached %s" % model

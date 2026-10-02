@@ -29,6 +29,7 @@ install(PROGRAMS
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
   ament_add_pytest_test(frame_migration_tools_pytest test/test_frame_migration_tools.py)
+  ament_add_pytest_test(rehearsal_evidence_pytest test/test_rehearsal_evidence.py)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)
   ament_add_pytest_test(wait_yolo_boxes_ring_pytest test/test_wait_yolo_boxes_ring.py)
   ament_add_pytest_test(yolo_not_ready_dump_identity_pytest test/test_yolo_not_ready_dump_identity.py)

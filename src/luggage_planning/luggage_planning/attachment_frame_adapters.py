@@ -91,10 +91,12 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
             return response
         box_pose = pose_from_message(request.box_pose, "detection", context)
         record = box_pose
-        tool = resolve_tool(int(box_pose["stamp_ns"]))
+        # F18: freeze T_box_tool from the live TCP at the attach command,
+        # not the detection-stamp TCP (pickup_observe is camera-centered).
+        tool = resolve_tool(None) if resolve_tool else None
         if not tool:
             raise ContractError(
-                "MISSING_IDENTITY", "tool_pose", "tool at acquisition stamp", None)
+                "MISSING_IDENTITY", "tool_pose", "tool at attach", None)
         grasp = None
         if request.has_grasp:
             grasp = {

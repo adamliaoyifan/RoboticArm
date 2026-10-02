@@ -1,0 +1,152 @@
+{
+  "schema_version": 1,
+  "manifest_id": "st09-parallel-acceptance-manifest",
+  "frozen_at": "2026-10-02",
+  "frozen_by": "ST09-C0",
+  "plan_revision": "docs/plans/frame_migration_st09_parallel_execution.md (2026-10-02)",
+  "technical_baseline": "docs/plans/frame_migration_st09_planner_convergence.md (2026-10-02)",
+  "c0_head_note": "The dispatching reviews row fills generation/base/owner per plan section 8; engineering content only here.",
+
+  "unified_test_entry": {
+    "command": "python3 -m pytest tests/st09_parallel/<TASK> -q",
+    "environment": "source /opt/ros/humble/setup.bash; source $CANDIDATE_WS/install-st09/setup.bash; export PYTHONPATH=$CANDIDATE_WS/src:$PYTHONPATH",
+    "rules": [
+      "collected=0 in a task directory fails that task",
+      "each directory carries at least one healthy positive behaviour case plus every negative listed for that task in plan section 8",
+      "B/C real-MoveIt cases additionally need the isolated mock graph on the domain assigned to that task (87 final graph, 42 replay, 7 Gazebo-only)"
+    ],
+    "agent_contract_checker": "bash scripts/check_agent_contract.sh"
+  },
+
+  "file_owners": {
+    "C0_then_I": [
+      "st09_contracts/**",
+      "st09_contracts/resolved_planning_contract.json",
+      "st09_contracts/st09_acceptance_manifest.json",
+      "st09_contracts/v2_field_audit.json",
+      "tests/st09_parallel/conftest.py"
+    ],
+    "ST09-A": [
+      "src/luggage_packing/luggage_packing/placement_solver.py",
+      "src/luggage_packing/luggage_packing/placement_reachability.py",
+      "src/luggage_packing/scripts/placement_planner_node.py",
+      "src/luggage_description/luggage_description/container_geometry.py (shared hull kernel; C/B consume via the frozen kernel protocol until A lands)",
+      "tests/st09_parallel/A/**"
+    ],
+    "ST09-B": [
+      "src/luggage_planning/luggage_planning/reachable_graph.py",
+      "src/luggage_planning/luggage_planning/grid_path_search.py",
+      "src/luggage_planning/luggage_planning/place_targets.py (new: pure target synthesis per baseline 5.1; consumes st09_contracts)",
+      "src/luggage_planning/luggage_planning/moveit_edge_adapter.py (new)",
+      "tests/st09_parallel/B/**"
+    ],
+    "ST09-C": [
+      "src/luggage_planning/luggage_planning/trajectory_certifier.py (new)",
+      "src/luggage_planning/luggage_planning/moveit_validity_adapter.py (new)",
+      "src/luggage_planning/luggage_planning/map_revalidation.py (new: revalidation + stop policy)",
+      "tests/st09_parallel/C/**"
+    ],
+    "ST09-D": [
+      "src/luggage_perception/luggage_perception/cargo_view_integration.py",
+      "src/luggage_perception/luggage_perception/observation_policy.py (new)",
+      "src/luggage_planning/luggage_planning/attachment_provider.py (new: measured provider + evidence/TF adapter; separate module from the cargo-map integrator)",
+      "tests/st09_parallel/D/**"
+    ],
+    "ST09-E": [
+      "scripts/frame_migration_st09_verify.py",
+      "scripts/frame_migration_st09_verify.sh",
+      "scripts/frame_migration_st09_extract.py (new)",
+      "scripts/frame_migration_st09_freeze.py",
+      "scripts/frame_migration_st09_rehearsal.py",
+      "scripts/frame_migration_st09_rehearsal.sh",
+      "scripts/frame_migration_st09_replay.sh",
+      "scripts/stage_perf_probe.py",
+      "scripts/render_probe_fraction_reject.py",
+      "tests/st09_parallel/E/**"
+    ],
+    "ST09-Q (experiment branch experiment/st09-qp-preserved only)": [
+      "src/luggage_planning/luggage_planning/qp_carry/**",
+      "src/luggage_planning/config/qp_carry.yaml",
+      "scripts/replay_qp_carry.py",
+      "src/luggage_planning/test/test_qp_*.py",
+      "scripts/qp_edge_benchmark.py (new)"
+    ],
+    "ST09-I (exclusive shared entries)": [
+      "src/luggage_planning/luggage_planning/trajectory_selector.py",
+      "src/luggage_planning/luggage_planning/motion_executor.py",
+      "src/luggage_planning/scripts/motion_planner_node.py",
+      "src/luggage_planning/luggage_planning/place_service.py",
+      "src/luggage_planning/luggage_planning/place_tcp.py",
+      "src/luggage_planning/luggage_planning/waypoint_generator.py",
+      "src/luggage_planning/scripts/trajectory_selector_node.py",
+      "src/luggage_planning/luggage_planning/typed_driver_adapter.py",
+      "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
+      "src/luggage_planning/luggage_planning/attachment_frame_contracts.py",
+      "all drivers under src/*/scripts/*_driver.py",
+      "src/luggage_gazebo/launch/**",
+      "src/luggage_description/luggage_description/ros_frame_bindings/** and runtime_* modules",
+      "src/luggage_msgs/** (interface schema)"
+    ]
+  },
+
+  "requirement_task_test_artifact": [
+    {"requirement": "C0-1 checkpoint verify + selective restore + QP preserved branch", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_restore_manifest.py", "artifact": "docs/status/evidence/frame_migration/ST09-parallel-C0-<rev>/restore_verification.json; experiment/st09-qp-preserved branch + qp_preserved_manifest.json"},
+    {"requirement": "C0-2 production cannot activate QP", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_production_qp_absence.py", "artifact": "evidence qp_absence scan output"},
+    {"requirement": "C0-3 resolved planning contract, no unresolved values", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_planning_contract.py", "artifact": "st09_contracts/resolved_planning_contract.json"},
+    {"requirement": "C0-4 shared ROS-free contracts + fixtures", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py, tests/st09_parallel/C0/test_attachment_fixture.py", "artifact": "st09_contracts/**"},
+    {"requirement": "C0-5 frozen call protocols", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py::protocol tests", "artifact": "st09_contracts/protocols.py"},
+    {"requirement": "C0-6 single reason taxonomy", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py::taxonomy tests", "artifact": "st09_contracts/reasons.py"},
+    {"requirement": "C0-7 case list, workload, commands, file owners", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_manifest.py", "artifact": "this manifest"},
+    {"requirement": "C0-8 requirement->task->test->artifact map complete with no placeholders", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_manifest.py", "artifact": "this manifest"},
+    {"requirement": "attachment contract per baseline 5.1 (records, provider, resolve_place_targets, fixtures)", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_attachment_fixture.py", "artifact": "st09_contracts/attachment.py, fixtures.py, v2_field_audit.json"},
+    {"requirement": "S1 exact hull / depth ordering / observation needs (24 saved slanted-wall candidates all rejected; 16 deep/shallow cases; unsupported tilt rejected)", "task": "ST09-A", "test": "tests/st09_parallel/A/**", "artifact": "docs/status/evidence/frame_migration/ST09-parallel-A-<rev>/candidate_replay.json"},
+    {"requirement": "S2 graph/route + pure target synthesis + 8-class +/- fixtures + target fixture matrix (error<=1e-9)", "task": "ST09-B", "test": "tests/st09_parallel/B/**", "artifact": "ST09-parallel-B-<rev>/ graph+trajectory hashes, MoveIt request/scene, benchmark"},
+    {"requirement": "S3 certification, 6 map cases x sim/deploy, mutations, stop measurements, 9 attachment negatives", "task": "ST09-C", "test": "tests/st09_parallel/C/**", "artifact": "ST09-parallel-C-<rev>/certification_results.json, mock traces, stop measurements"},
+    {"requirement": "observation coverage + async map + measured attachment provider acceptance", "task": "ST09-D", "test": "tests/st09_parallel/D/**", "artifact": "ST09-parallel-D-<rev>/coverage+revision traces, attachment provider traces"},
+    {"requirement": "S5/S6 runner, dump/replay, three-box extractor, coverage inventory", "task": "ST09-E", "test": "tests/st09_parallel/E/**", "artifact": "ST09-parallel-E-<rev>/sample_manifest, capture reports"},
+    {"requirement": "Q-core preserved branch, blocked-knot diagnostics, optimize_edge", "task": "ST09-Q", "test": "src/luggage_planning/test/test_qp_*.py on experiment/st09-qp-preserved", "artifact": "ST09-parallel-Q-<rev>/diagnostics"},
+    {"requirement": "merge order A/D/C/B/E, caller migration, bypass deletion, mock whole-chain, M3", "task": "ST09-I", "test": "integration suites + M3 unit gate", "artifact": "ST09-parallel-I-<rev>/merge log, M3 evidence"},
+    {"requirement": "S5-S7 full release gates, two-box rehearsal, paired replay, proofs, close", "task": "ST09-R", "test": "frame_migration_st09_verify.sh all", "artifact": "release evidence per technical baseline S6/S7"}
+  ],
+
+  "m3_workload": {
+    "sequence_ids": ["carryon", "standard", "carryon"],
+    "rules": [
+      "spawner input is test stimulus only; production reads measured dimensions",
+      "three actually detected boxes; no preset slots; selection per-round from map + measured geometry",
+      "box N+1 consumes box N's integrated revision; each box completes pick->attach->entry->release->measured verify/integrate->map publish->retreat/return",
+      "one exclusive domain-7 session, GUI/RViz off, non-scored, <=20 min; all three boxes pass or the unit fails",
+      "per-box GT gates from resolved_planning_contract.json eval_gates_per_box"
+    ]
+  },
+
+  "build_and_run_commands": {
+    "candidate_ws": "cd $CANDIDATE_WS && source /opt/ros/humble/setup.bash && colcon build --build-base build-st09 --install-base install-st09 && source install-st09/setup.bash",
+    "offline_gate": "bash scripts/frame_migration_st09_verify.sh offline --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/offline --ros-domain-id 87",
+    "graph_gate": "bash scripts/frame_migration_st09_verify.sh graph --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/graph --ros-domain-id 87",
+    "all_gate": "bash scripts/frame_migration_st09_verify.sh all --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/all --ros-domain-id 87",
+    "contract_checkers": ["python3 scripts/check_frame_contracts.py --mode migration", "bash scripts/check_agent_contract.sh"],
+    "regression_base": "1795a69 (ST08 head); only the pre-existing packing exact node+reason failures may be exempted"
+  },
+
+  "required_case_inventory": {
+    "geometry_frame_64": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
+    "deep_place_16": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
+    "yaw_ik_8_classes": "0->0, 0->90, 90->0, near-square, eccentric attachment, q/-q + pi/-pi equivalence, multi IK family, no-transition-region; positive+negative each",
+    "target_matrix_8": "centered/eccentric/relative-yaw/tilt x sim/deploy; independent expectation error <=1e-9 (C0 fixtures in st09_contracts/fixtures.py)",
+    "attachment_negatives_9": "missing, NaN, non-positive dimensions, illegal quaternion, expired, wrong frame, wrong request, re-attach, GT-as-measured; named rejection, zero business effect",
+    "map_cases_6_x2": "unrelated update / related update / fully blocked / in-flight conflict / stale / restart, sim+deploy",
+    "startup_3_x2": "sim+deploy x3 healthy, <=180 s READY, <=90 s teardown, mock hardware",
+    "common_negatives_per_profile": "unknown schema, conflicting datum, mixed types, missing peer, stale atlas, missing URDF, duplicate provider, wrong overlay, restart",
+    "mutations": "wrong-frame, position-only rotation, dropped velocities/times, legacy bypass, QP activation",
+    "performance": "healthy saved graph fixture x10 warm + 1 cold, each <=10 s or named budget failure; p50/max + MoveIt call counts recorded",
+    "capture_replay": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
+    "budgets": "lossless replay <=1 GiB/live run, <=4 GiB campaign total; shortfall blocks new runs, never deletes failure evidence"
+  },
+
+  "evidence_layout": {
+    "root": "docs/status/evidence/frame_migration/ST09-parallel-<task>-<revision>/",
+    "per_task_required": "required/observed samples, missing items, checksums, environment (T0/T1/T2 windows and matrix per technical baseline S6)",
+    "c0_checkpoint_evidence": "docs/status/evidence/frame_migration/ST09-g5-dirty-checkpoint-20261002/ (original failure evidence kept, never cleaned)"
+  }
+}

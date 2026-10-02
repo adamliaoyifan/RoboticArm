@@ -89,6 +89,16 @@ class TestCartesianExcursion(unittest.TestCase):
         self.assertFalse(measured["ok"])
         self.assertEqual(measured["joint"], "elfin_joint5")
 
+    def test_j6_unwind_is_ignored_when_scoring(self):
+        flip = {
+            "joint_names": self.segments["traverse"]["joint_names"],
+            "path_len_m": 2.785,
+            "positions": [[0.0] * 6, [0.0, 0.0, 0.0, 0.0, 0.0, 18.298]],
+        }
+        measured = _measure(flip, ignore_joints=("elfin_joint6",))
+        self.assertTrue(measured["ok"])
+        self.assertNotEqual(measured["joint"], "elfin_joint6")
+
     def test_nothing_to_judge_returns_none(self):
         self.assertIsNone(cartesian_excursion([], [], 1.0))
         self.assertIsNone(

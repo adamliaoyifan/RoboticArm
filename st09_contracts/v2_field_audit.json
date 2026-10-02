@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "audit_id": "st09-c0-v2-field-audit",
+  "audited_at": "2026-10-02",
+  "audited_by": "ST09-C0",
+  "tree": "implementation/st09-converge-c0 (recovery base 2ea75165dd05de4ce042084e300a6b2f725447e3 + selective restore)",
+  "purpose": "Plan section 3 item: audit the restored v2 fields and production measurement sources; output the reuse/gap list for the AttachmentRecord contract; sim GT locked transforms must not register as measured sources.",
+  "existing_v2_surface_reused": {
+    "VacuumCommandV2 (F18)": {
+      "file": "src/luggage_msgs/srv/VacuumCommandV2.srv",
+      "adapter": "src/luggage_planning/luggage_planning/attachment_frame_adapters.py",
+      "reusable_fields": ["request_id", "scene_revision", "box_id", "generation", "box_pose (PoseContractV2, detection)", "measured_box (DetectedLuggage)", "has_grasp", "grasp"],
+      "behavior": "attach freezes T_box_tool from the same-stamp measured box pose and the live TCP at the attach command (resolve_tool); release validates the measured final tool pose (admit_release); physics GT is never read into the record"
+    },
+    "frozen_record_today": {
+      "fields": ["t_box_tool", "t_tool_box_translation", "t_tool_box_quaternion", "size_wdh", "box_id", "generation", "scene_revision", "box_pose", "tool_stamp_ns"],
+      "file": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:116-126 (_freeze)"
+    },
+    "GetCurrentBox": {
+      "file": "src/luggage_msgs/srv/GetCurrentBox.srv; src/luggage_gazebo/scripts/pickup_box_spawner_node.py:686-699",
+      "verdict": "GT pull, reference only - 'measured rides the topic'. MUST NOT register as a measured attachment source. Eval/GT reference use stays allowed."
+    },
+    "SyncPickupBox": {
+      "file": "src/luggage_gazebo/scripts/pickup_box_spawner_node.py:701-726",
+      "behavior": "backfills perception-measured geometry with CAS on generation; rejects non-measured height (height_valid)",
+      "verdict": "reusable measured-geometry source"
+    },
+    "SelectPlacePathV2 / BuildMotionSequenceV2 / ProbeMotionSegmentV2 / IntegrateCargoView / AddPlacedBoxV2 / VerifyPlacedBox / PoseContractV2 / MotionSegmentV2 / JointTrajectoryContractV2": {
+      "verdict": "carried over unchanged by C0; route/admission field gaps (if any appear during I) go through one typed-v2 extension with affected-endpoint inventory and refreshed proofs, per technical baseline section 2"
+    }
+  },
+  "production_measurement_sources": {
+    "measured_box_pose": {
+      "source": "perception-measured DetectedLuggage riding the current-box topic; drivers convert via detection_record_from_box and pass it as F18 measured_box (src/luggage_gazebo/scripts/pick_retreat_eval_driver.py:663-681)",
+      "gt_free": true
+    },
+    "tcp_at_attach": {
+      "source": "live TCP resolved at the attach command (resolve_tool), not the detection-stamp TCP (attachment_frame_adapters.py:94-99)",
+      "gt_free": true
+    },
+    "grasp_binding": {
+      "source": "captured at contact: live TCP versus the still-on-platform measured box (_frame_capture_grasp); optional against GRASP_TOLERANCE 0.01 m / 0.10 rad",
+      "gt_free": true
+    },
+    "sim_physics_lock": {
+      "source": "gazebo attach backend receives physical_relation + model_name (vacuum_backend.attach)",
+      "verdict": "physics-side only; the frozen record never contains it; allowed as simulation backend, never as a measured source"
+    },
+    "conclusion": "A production measured path exists today (perception topic + live TCP + F18 freeze). The attachment provider (D) wraps this path; no hard dependency on a future perception task is introduced."
+  },
+  "attachment_record_gaps": [
+    {"field": "schema_version", "status": "gap", "owner": "C0 (defined) / D (fills at freeze)"},
+    {"field": "cargo_id / cycle_id / request_id triple", "status": "partial (box_id + generation + F18 context exist)", "owner": "D"},
+    {"field": "attachment_incarnation (re-attach counter)", "status": "gap (generation CAS is the box-measurement generation, not the attach event counter)", "owner": "D"},
+    {"field": "explicit tcp_frame / box_frame", "status": "implicit (suction_contact_frame / box)", "owner": "C0 (defined)"},
+    {"field": "dimension axis semantics (fixed box axes, no re-sort)", "status": "gap (size_wdh exists, axis declaration absent)", "owner": "C0 (defined)"},
+    {"field": "symmetry declaration (none/pi)", "status": "gap", "owner": "C0 (defined, default pi for rectangular cargo)"},
+    {"field": "source kind + source method (measured_attach_confirmed / pre_attach_estimate / reference_sim_gt)", "status": "gap", "owner": "C0 (defined) / D (publishes)"},
+    {"field": "evidence digest", "status": "gap", "owner": "D"},
+    {"field": "calibration identity separate from scene_revision", "status": "partial (CALIBRATION_REVISION_MISMATCH exists on scene_revision)", "owner": "D"},
+    {"field": "validity + invalidation reason", "status": "gap (records are implicitly valid today)", "owner": "C0 (defined)"},
+    {"field": "invalidation notification (slip / re-attach / frame change / expiry)", "status": "gap", "owner": "D (provider), C (consumes for route invalidation), I (wires)"},
+    {"field": "attachment max age policy", "status": "gap (only release-side stamp ordering exists)", "owner": "C0 (defined: 10 s)"},
+    {"field": "slip re-check during carry", "status": "gap (freeze-time grasp tolerance exists; no in-carry re-observation check)", "owner": "C (policy) / D (re-observation join)"},
+    {"field": "release-time measured transform verification", "status": "exists (admit_release)", "owner": "kept"}
+  ],
+  "message_extension_decision": "None required for C0: the ST09 contracts are ROS-free and carried in-repo; the provider and route/admission wiring stay inside existing v2 endpoints until I demonstrates a concrete field gap, at which point one typed-v2 extension with a rebuilt consumer set and refreshed proofs is mandatory (technical baseline section 2).",
+  "gt_registration_rule": "Any record whose source resolves to the GetCurrentBox GT pull, a planned slot, a PCA yaw estimate, or the gazebo physics lock is rejected as ATTACHMENT_GT_AS_MEASURED / ATTACHMENT_SOURCE_UNQUALIFIED. Sim GT relative transforms may only enter REFERENCE_SIM_GT records used for offline verification."
+}

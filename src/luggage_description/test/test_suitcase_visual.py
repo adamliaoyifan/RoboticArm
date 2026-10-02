@@ -250,6 +250,14 @@ class TestPickupVisualSdf(unittest.TestCase):
         self.assertEqual(os.listdir(dest_dir), [])
         self.assertEqual(root.find(".//model/static").text, "true")
 
+    def test_dynamic_detach_sdf_omits_static(self):
+        xml = pickup_visual_sdf(
+            "pickup_box_eval", [0.55, 0.40, 0.25], 8.0, VISUAL_LOAFBRR,
+            visual_kind="mesh", static=False)
+        root = ET.fromstring(xml)
+        self.assertIsNone(root.find(".//model/static"))
+        self.assertAlmostEqual(float(root.find(".//mass").text), 8.0)
+
     def test_mesh_kind_rejects_non_catalog_size(self):
         with self.assertRaises(ValueError):
             pickup_visual_sdf(

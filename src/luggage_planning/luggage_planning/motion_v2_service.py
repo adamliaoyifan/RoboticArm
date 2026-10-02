@@ -43,12 +43,14 @@ def _rejected(response, record, context, error):
     return response
 
 
-def handle_probe_v2(executor, message, scene_revision, response, link=TARGET_LINK):
+def handle_probe_v2(executor, message, scene_revision, response, link=TARGET_LINK,
+                    start_joints=None):
     record = {}
     context = execution_context(message, scene_revision, link)
     try:
         record = record_from_message(message)
-        result = executor.probe_segment_v2(record, context)
+        result = executor.probe_segment_v2(
+            record, context, start_joints=start_joints)
     except BoundaryContractError as exc:
         return _rejected(response, record, context, exc)
     except ContractError as exc:
@@ -67,7 +69,7 @@ def handle_probe_v2(executor, message, scene_revision, response, link=TARGET_LIN
 
 
 def handle_plan_v2(executor, message, scene_revision, response, prepare_occupancy,
-                   link=TARGET_LINK):
+                   link=TARGET_LINK, current_joints=None):
     """Admit first. Occupancy and execution run only after the record is valid."""
     record = {}
     context = execution_context(message, scene_revision, link)
@@ -93,7 +95,8 @@ def handle_plan_v2(executor, message, scene_revision, response, prepare_occupanc
             response.message = str(occ)
             apply_diagnostic(response, record, context, None)
             return response
-    result = executor.execute_segment_v2(record, context)
+    result = executor.execute_segment_v2(
+        record, context, current_joints=current_joints)
     response.success = bool(result.success)
     response.message = str(result.message)
     response.fraction = float(result.fraction)

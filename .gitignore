@@ -45,3 +45,9 @@ docs/plans/
 .env
 .env.*
 orin_perception_pack_*.tar.gz
+
+# ST09 parallel workspaces: per-worktree build/install trees and
+# test-built SDK sample binaries never enter commits.
+build-st09/
+install-st09/
+SDK_sample/CppLinux_SDK/bin/

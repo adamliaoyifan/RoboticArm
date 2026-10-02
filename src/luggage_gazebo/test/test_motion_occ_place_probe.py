@@ -205,5 +205,75 @@ class PlaceProbeSwitchTest(unittest.TestCase):
         self.assertEqual(explicit.place_probe, "on")
 
 
+class CarryFrameConvertTest(unittest.TestCase):
+    def test_world_frame_skips_origin_shift(self):
+        convert = mod.carry_frame_convert(
+            {"waypoint_frame": "world", "waypoints": [[1.005, -0.535, 0.827]]},
+            {"unused": True})
+        self.assertIsNone(convert)
+
+    def test_map_frame_keeps_origin_shift(self):
+        orig = mod._map_to_world
+        mod._map_to_world = lambda _scene, xyz: [xyz[0] + 1.5, xyz[1], xyz[2]]
+        self.addCleanup(setattr, mod, "_map_to_world", orig)
+        convert = mod.carry_frame_convert(
+            {"waypoints": [[1.005, -0.535, 0.827]]}, {"unused": True})
+        self.assertIsNotNone(convert)
+        shifted = convert([1.005, -0.535, 0.827])
+        self.assertAlmostEqual(shifted[0], 2.505)
+
+    def test_apply_selected_carry_splices_world_v2(self):
+        from types import SimpleNamespace
+        from luggage_planning.typed_driver_adapter import (
+            apply_selected_path_to_v2, pose_segment_message)
+        from geometry_msgs.msg import Pose
+
+        driver = mod.MotionOccDriver.__new__(mod.MotionOccDriver)
+        driver._scene_config = {"unused": True}
+        driver._typed = object()
+        built = pose_segment_message(
+            "transit", [2.505, -0.535, 0.827], [1.0, 0.0, 0.0, 0.0],
+            "place-1", "scene-a", segment_type="pose_target",
+            allow_ompl_fallback=False)
+        selected = pose_segment_message(
+            "transit", [0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0],
+            "select-id", "other", segment_type="cartesian")
+        apply_selected_path_to_v2(
+            selected, [[0.86, -0.38, 1.5], [1.005, -0.535, 0.827]])
+        driver._frame_motion_segments = [built]
+        driver._frame_motion_index = 0
+        driver._selected_carry_v2 = [selected]
+        driver._selected_path = {
+            "waypoint_frame": "world",
+            "waypoints": [
+                [0.86, -0.38, 1.5],
+                [1.005, -0.535, 1.5],
+                [1.005, -0.535, 0.827],
+            ],
+        }
+        v1 = SimpleNamespace(
+            name="transit", type="pose_target", allow_ompl_fallback=False,
+            target_pose=Pose(), waypoints=[])
+        driver._apply_selected_carry(v1)
+        executed = driver._frame_motion_segments[0]
+        self.assertEqual(executed.segment_type, "cartesian")
+        self.assertTrue(executed.allow_ompl_fallback)
+        self.assertEqual(executed.request_id, "place-1")
+        self.assertAlmostEqual(executed.target_pose.pose.position.x, 0.86)
+        self.assertEqual(list(executed.waypoints), [])
+        self.assertEqual(v1.type, "cartesian")
+        self.assertAlmostEqual(v1.target_pose.position.x, 0.86)
+
+    def test_split_carry_waypoints(self):
+        path = [[0.86, -0.38, 1.5], [1.005, -0.535, 1.5], [1.005, -0.535, 0.827]]
+        kind, points = mod.split_carry_waypoints("transit", path)
+        self.assertEqual(kind, "cartesian")
+        self.assertEqual(points, [[0.86, -0.38, 1.5]])
+        kind, points = mod.split_carry_waypoints("traverse", path)
+        self.assertEqual(kind, "cartesian")
+        self.assertEqual(len(points), 2)
+        self.assertAlmostEqual(points[-1][2], 0.827)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -250,6 +250,68 @@ def probe_segment_message(record, request_id, scene_revision, *,
     return message_from_admitted(segment, context)
 
 
+def apply_selected_path_to_v2(message, waypoints, frame_convert=None):
+    """Rewrite a built MotionSegmentV2 carry leg onto selected TCP points.
+
+    Identity, stamp, and orientation stay on ``message``. Positions become
+    the selected path. ``frame_convert`` is identity when the points are
+    already world (SelectPlacePathV2 ``waypoint_poses``).
+    """
+    from copy import deepcopy
+
+    points = [list(xyz) for xyz in (waypoints or [])]
+    if not points:
+        return message
+    convert = frame_convert or (lambda xyz: xyz)
+    world = [list(convert(xyz)) for xyz in points]
+    message.segment_type = "cartesian"
+    message.allow_ompl_fallback = True
+    dest = world[-1]
+    message.target_pose.pose.position.x = float(dest[0])
+    message.target_pose.pose.position.y = float(dest[1])
+    message.target_pose.pose.position.z = float(dest[2])
+    intermediates = []
+    for xyz in world[:-1]:
+        waypoint = deepcopy(message.target_pose)
+        waypoint.pose.position.x = float(xyz[0])
+        waypoint.pose.position.y = float(xyz[1])
+        waypoint.pose.position.z = float(xyz[2])
+        intermediates.append(waypoint)
+    message.waypoints = intermediates
+    return message
+
+
+def adopt_v2_identity(dst, src):
+    """Copy request/scene/stamp identity from a built leg onto a selected path.
+
+    SelectPlacePathV2 cartesian legs are executable, but PlanMotionV2
+    admits against the BuildMotionSequenceV2 request identity.
+    """
+    dst.request_id = src.request_id
+    dst.scene_revision = src.scene_revision
+    dst.stamp_valid = src.stamp_valid
+    dst.stamp_ns = src.stamp_ns
+    dst.time_basis = src.time_basis
+
+    def _copy_identity(left, right):
+        left.contract_version = right.contract_version
+        left.frame_id = right.frame_id
+        left.length_unit = right.length_unit
+        left.stamp_valid = right.stamp_valid
+        left.stamp_ns = right.stamp_ns
+        left.time_basis = right.time_basis
+        left.scene_revision = right.scene_revision
+        left.request_id = right.request_id
+
+    _copy_identity(dst.target_pose.identity, src.target_pose.identity)
+    template = src.target_pose.identity
+    if src.waypoints:
+        template = src.waypoints[0].identity
+    for waypoint in dst.waypoints:
+        _copy_identity(waypoint.identity, template)
+    return dst
+
+
 # --------------------------------------------------------------------------
 # Identity adoption from the live graph
 
@@ -413,8 +475,10 @@ class TypedDriverAdapter:
         request = SelectPlacePathV2.Request()
         request.request_id = str(request_id)
         request.box_wdh = [float(v) for v in box_wdh]
+        from luggage_msgs.msg import PoseContractV2
         for record in slots:
-            request.slots.append(pose_message(record))
+            request.slots.append(
+                record if isinstance(record, PoseContractV2) else pose_message(record))
         request.slot_scores = [float(v) for v in slot_scores]
         request.surface = surface_message
         request.inner_size = [float(v) for v in inner_size]
@@ -433,7 +497,7 @@ class TypedDriverAdapter:
         return self._call(self._select, request, 30.0)
 
     # -- probe ---------------------------------------------------------------
-    def probe_segment(self, segment_message, timeout_sec=10.0):
+    def probe_segment(self, segment_message, timeout_sec=30.0):
         from luggage_msgs.srv import ProbeMotionSegmentV2
         request = ProbeMotionSegmentV2.Request()
         request.segment = segment_message
@@ -525,7 +589,10 @@ class TypedDriverAdapter:
         from luggage_msgs.action import PlanMotionV2
         goal = PlanMotionV2.Goal()
         goal.segment = motion_segment
-        future = self._plan.send_goal(goal)
+        # send_goal() is the blocking helper and returns the result response.
+        # The executor is already spinning, so the async goal keeps the
+        # caller's deadline and does not deadlock the main thread.
+        future = self._plan.send_goal_async(goal)
         deadline = _time.monotonic() + float(timeout_sec)
         while not future.done() and _time.monotonic() < deadline:
             _time.sleep(0.02)

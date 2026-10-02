@@ -1,0 +1,1246 @@
+{
+  "baseline_runs": {
+    "agent_contract_checker": "exit 0 in the main workspace coordination tree; worktrees carry no mailbox by plan section 5, so the checker is a main-tree gate",
+    "failure_diff_vs_g5_dirty_tree": "empty for description+gazebo; planning/perception match the documented pre-existing set",
+    "luggage_description": "197 passed, 5 failed (pre-existing)",
+    "luggage_gazebo": "213 passed, 3 skipped, 0 failed (g5 dirty tree had 2; neither reproduces on C0)",
+    "luggage_perception": "1068 passed, 1 failed (pre-existing), 7 skipped",
+    "luggage_planning": "791 passed, 1 failed (pre-existing), 171 subtests; collection = g5 dirty tree minus the 34 qp tests",
+    "method": "colcon build --build-base build-st09 --install-base install-st09 (no symlink); pytest per package"
+  },
+  "checkpoint_base": "2ea75165dd05de4ce042084e300a6b2f725447e3",
+  "checkpoint_id": "ST09-g5-dirty-checkpoint-20261002",
+  "counts": {
+    "checkpoint_files_hashed": 237,
+    "not_restored": 137,
+    "qp_experiment_branch": 16,
+    "restored_production": 57,
+    "restored_reference_only": 27
+  },
+  "files": {
+    "SDK_sample/CppLinux_SDK/bin/CppSdkSample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a0296b40aa53d97dab522f3960cb5b1ef9e37ba45b956f13a1cc2767955bcae6"
+    },
+    "docs/architecture/placement.md": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "f68ea229e293813aaed604e629ab7ed50ff64ae24e13e2871d90777611d59716"
+    },
+    "docs/plans/active_view_detector_miss_recovery.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "c9d29ccb631494078535ec59edd3240a8625bfbf8de9bc331f5f115aedce86f1"
+    },
+    "docs/plans/d555_sim_depth_pipeline_execution.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "f63ddc22721d7c696c98b6faad82c0779e94324255eda636a0ce5358a6513b9f"
+    },
+    "docs/plans/dynamic_top_surface_and_suction_patch.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "a2883fec35cd96ca5c772cb73331fd9fa6b395dd48518e636f771c9cf76a7427"
+    },
+    "docs/plans/elfin_real_trajectory_hardware_acceptance.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "04821900ac9a58652504dcd3d6a40284c3dc8201c28b9192d8060ddce88932bf"
+    },
+    "docs/plans/frame_contract_baseline.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "62f849d0398b5ef2b62a5b3828de5edf6072acdf7288e6404bed1224cb65d6d3"
+    },
+    "docs/plans/frame_migration_st01_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "b6d4a6ea4d404e736d2daed89611c3ce4b7081df5a215c860f1af2d204714e4c"
+    },
+    "docs/plans/frame_migration_st01_sources.json": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "3afa110df09adfe0c08819abc26eb595ce0e1f632a593f154702a769658ce13f"
+    },
+    "docs/plans/frame_migration_st02_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "7d0c2fc6c3a5228919f7573b5fb61d886d2d915c77a2ed37d3b5dd5b0ce2f812"
+    },
+    "docs/plans/frame_migration_st03_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "84f4981d6bdd4db442f6a577723ff34d5b0de986c4329724fae4f86012c7de53"
+    },
+    "docs/plans/frame_migration_st04_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "430d782f1e524719a2dce8977e90623c15d3821a05181cee0fd9ebe8e7165734"
+    },
+    "docs/plans/frame_migration_st05_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "60b5ce4ac982f977a31c16c817d2fde149221b3e018c5d09cb81606c33396bc4"
+    },
+    "docs/plans/frame_migration_st06_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "f7bb55183b8cd0f5077df794c20539111258569c93837188233250207cd8e2e2"
+    },
+    "docs/plans/frame_migration_st07_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "d38017d0db664943657429177e64bae1eb95068398211c8d932fb6c372f3f757"
+    },
+    "docs/plans/frame_migration_st08_g2.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "9275610d3f3d2815b99b1a40d39cc11b7df194626bcedd11076ae93c078145cd"
+    },
+    "docs/plans/frame_migration_st09_continuation.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "e842a44bfaa4cd8668968c2f545a61b2ee5b8717f6bdaf46be77ca8f60fc3169"
+    },
+    "docs/plans/frame_migration_st09_g3.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "74f13c221bde2650ec145a61d2e5901ae75ccb6cae323a262b4da6c772ea2bb6"
+    },
+    "docs/plans/frame_migration_st09_g4.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "4d73b6512562e38c294a1f0c9e0dd28559282b612ba0bf3df6e8c9eb0b7c37e8"
+    },
+    "docs/plans/frame_migration_stages.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "c0e592af92822c0847b376fc7d8427abda9cdcd6d21a7829225ee0548d98ae0d"
+    },
+    "docs/plans/pf_r7_generation10_acceptance_redefinition.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "7773386580133c492a7eec7e7f54c339fc71269971d4070ea302799597532176"
+    },
+    "docs/plans/pf_r7_generation3_bounded_acceptance.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "f7bccb1250afa35c20bb5e7d815ca5f627f250fbbdab27139514e62935f2956e"
+    },
+    "docs/plans/pf_r7_generation5_standard_seed_scan.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "8330de5082ca6e4a7de9efe7693186a20c05aeefa995a773bb3ba3093d5b1370"
+    },
+    "docs/plans/pf_r7_generation6_offline_locked_lowconf.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "cc62a0e10b029b1c5a692f1c1ac19388b9f0f104333497f50f60417840a26f2f"
+    },
+    "docs/plans/pf_r7_generation7_deeper_standard_matrix.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "9db742c65d961f465a7cd0b2874425177677f1797c02dacc803d967803ea34b7"
+    },
+    "docs/plans/pf_r7_generation8_bounded_infra_restart.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "115232420da4408aa12685b4dee160a48bca815d9d0adb3903057719e61b1130"
+    },
+    "docs/plans/pf_r7_generation9_robot_spawn_wiring.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "36940050889accb9ff0ef428e6712e5f09fc37cb2a26c8c40f98c904da54d33f"
+    },
+    "docs/plans/post_place_confirmation_humble.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "d276210a4ecd64435a451782f1b100f59c6c896eff3773274acb7de08fa5c065"
+    },
+    "docs/plans/qp_carry_trajectory.md": {
+      "disposition": "restored_reference_only",
+      "reason": "plan texts are gitignored; they stay in the coordination tree and are not part of the C0 commit",
+      "sha256": "a60be85652e886bb12976cd3e6d2896f5c3cb23add3b9bfe3725f660a80be92a"
+    },
+    "scripts/frame_migration_st09_freeze.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "57f80c5b104540b22c8eb532a5c3259b484dc29650bdd735e763a71dccfb5fda"
+    },
+    "scripts/frame_migration_st09_rehearsal.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "476cd5f23709cf432d52f3c3bd906847eee6e7f1b850673be23e4fd37b9b506f"
+    },
+    "scripts/frame_migration_st09_rehearsal.sh": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "cb60d5319c555d5f1eb29d03d2c2d6d74deaa98d9159ce24cfc4974fc7b66c53"
+    },
+    "scripts/frame_migration_st09_replay.sh": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "e6d3bb7ac113fac203c136a499db591d281d901106468b87a6e82a628bd154e1"
+    },
+    "scripts/frame_migration_st09_verify.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "5202ec4c6ee59e4c482ca78b12c86e2945242c78b62b32a093cbfd205125f6cd"
+    },
+    "scripts/render_probe_fraction_reject.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "ede876f8e65b3526e986e5cd53cc2a0d9b28684e16b19386c1e18350eb9f9288"
+    },
+    "scripts/replay_qp_carry.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "caf3688c0de17fc5bd8cf5dd0ffa7f77b6305ccf6713132dbc18729a5d9610eb"
+    },
+    "scripts/stage_perf_probe.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "98fc94974f114d7c10b15fe732c3c5eecd147a42fc219d8e291f68995c5ab96c"
+    },
+    "src/luggage_description/luggage_description/ros_frame_bindings/runtime.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "ed5a4af9e4960eb9b8bb581c9aab5db3cba8840929b7126816c1daef2bf7fecc"
+    },
+    "src/luggage_description/luggage_description/suitcase_visual.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "301ee685c87681141c28fe49526c22dce8695c2c9b463f43ab94a32164991138"
+    },
+    "src/luggage_description/test/test_suitcase_visual.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "fe894ccbb9946655bb27e47a84a63b0fb6355e15ca81024a13cc8b0aeba3a4ea"
+    },
+    "src/luggage_gazebo/CMakeLists.txt": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "a690c0a0c63e0cee81318e52e7370079fe9a8c57f11917adb1bc378a7d5e7563"
+    },
+    "src/luggage_gazebo/launch/sim_world.launch.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "40e29bcef68b73ea687453d03dba072d97644bf6aa9b1ae1de6b913d954fcbc1"
+    },
+    "src/luggage_gazebo/luggage_gazebo/cargo_view_sequence.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "47ea285cc8bcb6b799bee29a80d80ca86944c721e4ecf8bd5fd25bf6bb6874b3"
+    },
+    "src/luggage_gazebo/luggage_gazebo/place_metrics.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "fbcf7a9d1b791b7e4ecf9eb0140acd1b319118b731562f84a339900344e76826"
+    },
+    "src/luggage_gazebo/luggage_gazebo/rehearsal_evidence.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "2fbc37924c56dcd714d7d9800658564a561c75c290bb6d464b4e7a58ca35efd4"
+    },
+    "src/luggage_gazebo/scripts/cargo_map_integrate_eval_driver.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "d6826051546984a379dd1f9ad91040323a610aa5b45ef69c77454db677aeb4bc"
+    },
+    "src/luggage_gazebo/scripts/motion_occ_eval_driver.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "9a921405c83798b723033fa7ec7244aa6e9afa4c96f6376e5237dde880aa9f54"
+    },
+    "src/luggage_gazebo/scripts/pick_retreat_eval_driver.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "5f055fe8699d440cc645352c3f5047cd8ae7e0e242e11c26f2f0d24d1a4c017b"
+    },
+    "src/luggage_gazebo/scripts/place_smoke_driver.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "443988854894e58c8ef00048c2a53d6c73c3d1e4762d1f7ef05ac10f6f5257fa"
+    },
+    "src/luggage_gazebo/test/test_cargo_view_sequence.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "3478bcd5caaa0bb78785e46eb7a59ca65a747de9d45fda3b8e3b40d360417c4f"
+    },
+    "src/luggage_gazebo/test/test_home_arm_containment.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "6776610071e00bb5335225099e7317f8e4c14f7d65b819001cdedb6c9efce388"
+    },
+    "src/luggage_gazebo/test/test_motion_occ_place_probe.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "9c9a4382b807de052684c2582e6381414e14ab0a4f1cff310c3fe3a91faad160"
+    },
+    "src/luggage_gazebo/test/test_place_metrics.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "b4968c29ca4787ed4736c3c750d53069edcc7738e3d7696b998f564178509b27"
+    },
+    "src/luggage_gazebo/test/test_rehearsal_evidence.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "b846b85f1596c21f8c9010ea80888e7f9116d2b40746ca79870b4228a9f4661a"
+    },
+    "src/luggage_perception/luggage_perception/cargo_view_diagnosis.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "8171de84902cee22a968c6070ad092fcd442950cf327fb4129b153d4698c7454"
+    },
+    "src/luggage_perception/luggage_perception/cargo_view_integration.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "53f99e7ece570e5e581125bbf2f46206a5507e783663a9018dc78fe75483f3f9"
+    },
+    "src/luggage_perception/test/test_cargo_view_diagnosis.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "e8357aaa96a56487b01cc23eafc8706c098b1069468a68310cd281608384720c"
+    },
+    "src/luggage_perception/test/test_cargo_view_integration.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "f0d93d8226f9180818945448869c1b1080599028a9d6cfdfcdd906357d111703"
+    },
+    "src/luggage_perception/vendor/clip_models/ViT-B-32.pt": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/HEAD": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "28d25bf82af4c0e2b72f50959b2beb859e3e60b9630a5e8c603dad4ddb2b6e80"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/config": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "3df660a6e55d6989355640328e51f8791303b86b9b56b29d3448de8bb57ee76d"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/description": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "85ab6c163d43a17ea9cf7788308bca1466f1b0a8d1cc92e26e9bf63da4062aee"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/applypatch-msg.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0223497a0b8b033aa58a3a521b8629869386cf7ab0e2f101963d328aa62193f7"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/commit-msg.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "1f74d5e9292979b573ebd59741d46cb93ff391acdd083d340b94370753d92437"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/fsmonitor-watchman.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "f3c0228d8e827f1c5260ac59fdd92c3d425c46e54711ef713c5a54ae0a4db2b4"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/post-update.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "81765af2daef323061dcbc5e61fc16481cb74b3bac9ad8a174b186523586f6c5"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-applypatch.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e15c5b469ea3e0a695bea6f2c82bcf8e62821074939ddd85b77e0007ff165475"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-commit.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "f9af7d95eb1231ecf2eba9770fedfa8d4797a12b02d7240e98d568201251244a"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-merge-commit.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d3825a70337940ebbd0a5c072984e13245920cdf8898bd225c8d27a6dfc9cb53"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-push.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ecce9c7e04d3f5dd9d8ada81753dd1d549a9634b26770042b58dda00217d086a"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-rebase.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "4febce867790052338076f4e66cc47efb14879d18097d1d61c8261859eaaa7b3"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/pre-receive.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a4c3d2b9c7bb3fd8d1441c31bd4ee71a595d66b44fcf49ddb310252320169989"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/prepare-commit-msg.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e9ddcaa4189fddd25ed97fc8c789eca7b6ca16390b2392ae3276f0c8e1aa4619"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/push-to-checkout.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a53d0741798b287c6dd7afa64aee473f305e65d3f49463bb9d7408ec3b12bf5f"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/hooks/update.sample": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8d5f2fa83e103cf08b57eaa67521df9194f45cbdbcb37da52ad586097a14d106"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/index": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "668f0d0def57922ca866c5f8df990f1b34a8c249ef3c7db10fc6e4f833ecd1fd"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/info/exclude": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6671fe83b7a07c8932ee89164d1f2793b2318058eb8b98dc5c06ee0a5a3b0ec1"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/objects/pack/pack-fe7838a3ce2f917fcd47d167b5ea6247e39db838.idx": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8dfb2f4033e6fed195ba787f1d8241f6b0b64d4de684d2c89f88fe649dfe2124"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/objects/pack/pack-fe7838a3ce2f917fcd47d167b5ea6247e39db838.pack": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c4bc72f05e074dda0eb950f00386ebe70b90a2886cefd671318d340c295f3464"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/packed-refs": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c1ffd0f5606e86c5b0ac36cd0299528e3fbde83b14591817144a9c757e2d8b39"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/refs/heads/main": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "533dde51a4793daab32b7e0c1c19d9fe6eba82aa9df3f5d98f648dbd3758d9c9"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/refs/remotes/origin/HEAD": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "2bb6a24aa0fc6c484100f5d51a29bbad841cd2c755f5d93faa204e5dbb4eb2b4"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.git/shallow": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "533dde51a4793daab32b7e0c1c19d9fe6eba82aa9df3f5d98f648dbd3758d9c9"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/ISSUE_TEMPLATE/bug-report.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c4a9718ff172fa072e34eb0713071493ba74bcb1b121ac820a6a343c53339c7b"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/ISSUE_TEMPLATE/config.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ad04ced722149393aa5218e26e51f9bb7fafc6d52d5a8b153dd519d77e32a29b"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/ISSUE_TEMPLATE/feature-request.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "de9364a811ef756910d04da12693008bf13b04d3bdb90fce59fd7e68349c5d73"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/ISSUE_TEMPLATE/question.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0cc33c351d949e6915186da42c0b1e9304a116e683e44dca747ea0fd10d135a7"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/dependabot.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "50c4de14d9125aa65c0d4121646c1c08c34b9874c0ca9f632cccdc2963775cdd"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/workflows/ci.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "64692624a9b621740362072d198ca631ff2cf30edb98da54c054fa34adf7e9d2"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/workflows/cla.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "f26420ffc6c381230c2ebf58620d03d4b3b3c238830ba23fb15fa1b435bf0f5d"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.github/workflows/format.yml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "49c5949c82218f3aaf8e80e4a88fdea18b4faf900bdba1affdabf19b0ead86ea"
+    },
+    "src/luggage_perception/vendor/clip_pkg/.gitignore": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ccf6f4a90fc5739cc36c80f98eabe0203fc2fd23a08e0e74770be829d9823801"
+    },
+    "src/luggage_perception/vendor/clip_pkg/AGENTS.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "787534f6a7c4f6a5edbe9d286f5907aaeec278ed73bcd154d0d08b5faa07d20a"
+    },
+    "src/luggage_perception/vendor/clip_pkg/CLAUDE.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "787534f6a7c4f6a5edbe9d286f5907aaeec278ed73bcd154d0d08b5faa07d20a"
+    },
+    "src/luggage_perception/vendor/clip_pkg/CLIP.png": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "308a3ca4503f1c7a07803916c369d78c4ef501e5ab7fc727da9b5e1d2f9ec85b"
+    },
+    "src/luggage_perception/vendor/clip_pkg/LICENSE": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0"
+    },
+    "src/luggage_perception/vendor/clip_pkg/MANIFEST.in": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8d0c7441ae5c66544ff18b2cc36b8d92593a5874a79d9f07725bfa9a30edec85"
+    },
+    "src/luggage_perception/vendor/clip_pkg/README.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "240dcab694d2c41af962271246ae8c9395e3c3d446d5a4708c0b1e4af5e6daff"
+    },
+    "src/luggage_perception/vendor/clip_pkg/clip/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d2cca6208f9414c645149c9372c7475f38cbb3e68d712b5e0a4fcd7ca8712575"
+    },
+    "src/luggage_perception/vendor/clip_pkg/clip/bpe_simple_vocab_16e6.txt.gz": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "924691ac288e54409236115652ad4aa250f48203de50a9e4722a6ecd48d6804a"
+    },
+    "src/luggage_perception/vendor/clip_pkg/clip/clip.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0bdc735dd0beb1525f5c10aca6a7b4ce42db2c5d97ee20dd37c84bdeeaade98c"
+    },
+    "src/luggage_perception/vendor/clip_pkg/clip/model.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "3cf2b52cbb546afac2fceee38a905ebff54a8bee996378f993475ca37b9ff538"
+    },
+    "src/luggage_perception/vendor/clip_pkg/clip/simple_tokenizer.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e6fb15f44623f0087bc9d0bc695b383c61966c7dda4d5cc09e5e9880c1406bab"
+    },
+    "src/luggage_perception/vendor/clip_pkg/data/country211.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ec65396b03ab77a2e70d664a2f9429582c0a8cd4a4fe668953ee9af3b7277957"
+    },
+    "src/luggage_perception/vendor/clip_pkg/data/prompts.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8ebe83ede4bc56e8e4372eb45d81e26fe09eec736c694fd3f3c0e7ec11a6c727"
+    },
+    "src/luggage_perception/vendor/clip_pkg/data/rendered-sst2.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "2274b8117d11dc6fd38ce1aac82b564c4f8f9d9827472fdb5be97b59c8931e1b"
+    },
+    "src/luggage_perception/vendor/clip_pkg/data/yfcc100m.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "53a30d42a8c846c746782c823a8cde952a549a32d7dbdfe954f1ccf6fd6cbfc8"
+    },
+    "src/luggage_perception/vendor/clip_pkg/hubconf.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ebe7192e474637c2598eac9d0823a2be2f5c7c90eb56dd9dcea88af26a0f3407"
+    },
+    "src/luggage_perception/vendor/clip_pkg/model-card.md": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "152297550ece7dfac5c1d4fe38a409ecfff0445eaf81c5027c729d3045d7e8c2"
+    },
+    "src/luggage_perception/vendor/clip_pkg/notebooks/Interacting_with_CLIP.ipynb": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b2cbbeaffb1d97c22960640130027c2472c1e75a7c87b0ee3f9a4c23ff5a7589"
+    },
+    "src/luggage_perception/vendor/clip_pkg/notebooks/Prompt_Engineering_for_ImageNet.ipynb": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "03719430879e9384152946c4b66bbfd04fdc456c9b1033647359b379f2467462"
+    },
+    "src/luggage_perception/vendor/clip_pkg/pyproject.toml": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "034c70367621e28fe027d6636520acdfa9a60f19cb92ba3b46c2924167868bfa"
+    },
+    "src/luggage_perception/vendor/deps/bin/ftfy": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "cc7b9c7b9bc38fddcfbc954481ad957d0c933b0df9c62c8440cb8febf2bf59f5"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/INSTALLER": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/METADATA": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "83f67c6280377637c560b5e8802a00ba6ee512b0a1ea1dae5dff1e745b19d1df"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/RECORD": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "1bab554e603434e3068c823016802fb949891146f720c07ac8485381aedbad01"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/REQUESTED": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/WHEEL": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d7215d7625cc9af60aed0613aad44db57eba589d0ccfc3d8122114a0e514c516"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/entry_points.txt": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b32e048b6f48a998504606050b5ec656b4f526413a975fa8a0985e2ae952a8ef"
+    },
+    "src/luggage_perception/vendor/deps/ftfy-6.3.1.dist-info/licenses/LICENSE.txt": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a0bfc5020bc2e1e820551a0625c70c95faa898c15e737100ff4880aa10197857"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "7a45fa65b2674775319a05b0a4cdbfd04a22ce7f36ba4098411bf9ec1b22cb3c"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/bad_codecs/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b0f29669ef7be2f8dcdc978eb06859f1914d5283d3212c7df3ccc16f127b4884"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/bad_codecs/sloppy.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6f3828640408af3454c5bfaa2660d55fafc4876975e3722ab2d7451456b24c82"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/bad_codecs/utf8_variants.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "5a5c8c6ceb5415fb5e3c48ff4a9c434d78ab3c08fc1dcbb1559d5a498029561d"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/badness.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8ce47eb9c01f5fa2d38e650fe047474bde5537beba5971b722ca6b4079df6fd3"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/chardata.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b405eaad7d98df306c9406688fab45072f989feffe530175baccef28dedc55c9"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/cli.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "abd0cd8b82ee84a1ab95ea07fd9dda07a274a124f7e1ad9659ab5aa7b39dafbb"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/fixes.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "1bc5d02b332572cc3868f851ad081cc0031cc6a6ad7fb10398d68eaec63e0ba5"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/formatting.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a5b981ba76327603ecddbc4c8425c5b5a4ccd3fdea4ffca9e9eb19be3bce2999"
+    },
+    "src/luggage_perception/vendor/deps/ftfy/py.typed": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/INSTALLER": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/METADATA": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "fd895ec7522cd0bbab71ee4826442162f3f408a5f8d92e759f4ddf1be60dcf73"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/RECORD": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "39b269396dd3e0642d1569cda2e066a092f6dac1903d1bc50b9f2519d3f1111a"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/REQUESTED": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/WHEEL": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6d740283a07f2674a088feec0341f0aed88c6bae246a065d7b4feb45be04d44f"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/licenses/LICENSE.txt": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "bff55ef4cdcc8c14ce259f8e8ab60e264418440d6335f4dc138273fbd506144d"
+    },
+    "src/luggage_perception/vendor/deps/regex-2026.7.19.dist-info/top_level.txt": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6909a20cc84d4c5dba7022b8ffb0fea9a56f85bc42946d30c824e7121933601b"
+    },
+    "src/luggage_perception/vendor/deps/regex/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "039934ae6f0b9fb1cab1f1bef2c11661e85e93ccc22847bab105b94065009925"
+    },
+    "src/luggage_perception/vendor/deps/regex/_main.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "2a0defce0cf3548fad4094eb34badb8f59987f2dac5b06a62a052121c1f266b8"
+    },
+    "src/luggage_perception/vendor/deps/regex/_regex.cpython-310-x86_64-linux-gnu.so": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "87470fe2bfe1182ff9a95c4fa017f8a5eed63298e42449cd874295da014c61ee"
+    },
+    "src/luggage_perception/vendor/deps/regex/_regex_core.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a8378b9e67b747e5490c898656a4ba23672afa3772d3ec3ce976a5f2348d0c7a"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth-0.8.2.dist-info/INSTALLER": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ceebae7b8927a3227e5303cf5e0f1f7b34bb542ad7250ac03fbcde36ec2f1508"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth-0.8.2.dist-info/METADATA": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "9a1f2d41c9dd637fc963f641c73978c7cb9a6f1ef85515f65b93b07d820187b3"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth-0.8.2.dist-info/RECORD": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d6cbe70cd61cdc88630a77eb3e45c221b5e179a726e8d7c58faddb085dd58d59"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth-0.8.2.dist-info/WHEEL": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "99f7cfcbcc019d9427d959c9514e6313df4ab316927e2c8c1d5f58b7468b571b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth-0.8.2.dist-info/licenses/LICENSE": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "70b98a95a2144eb70af8017fa8c6d95ce247e40867436e8bc649e137fe13d21a"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "60dff8745530cd3b59232af5f092ebee12705aad8b11730f3b816a9188e74e67"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/_clip.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0420bd5967d2424bd0fa0dda4520f8cfb2d1fec5e68e753bd8d34583101ee20b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/_constants.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d078dddab4806bc48d8c11397250ef63bb5f15694950e4d44d72ffc2375fff7d"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/_wcswidth.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "4c9685867d09477faceb73f87cbdc0fc1f0071a675b18be85a3f8e10b2ac220c"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/_wcwidth.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "40c583c378e87710299804d699eb0555b98df8b3fa7a38637b6cec05953a3784"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/_width.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "24c6e02ffc365809c8c7b7eef2fb2a3af8c6b40442d834054b565f0216e66702"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/align.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "0190c620da025fa96bfc30458506f974dbe3dad25572232a1f3daffc6b9e5917"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/bisearch.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "63f15dbd84f31570f6a5ae5ca6951e803e525dfcbe07c1c2e00f6bac939d6f8d"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/control_codes.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "34690fb17340fcc48d1ff1b5c508ef0e05f89928fe929d532df2cff86214cf4f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/escape_sequences.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "96d9258d0df7bbef6f67e3b5831844385383d1486ec13e6b3a5fea120ef6a74a"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/grapheme.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "7f635466825febb155bcf9d45842da640677fc6c739b6ab39cf97d45b032ac00"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/hyperlink.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "9a94064ac846ecae43336544c7dd5d23a919d8fb5d389ef6621bcea3a124d47f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/py.typed": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/sgr_state.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "70cffa358da3c8aa04dae1896748a3d90354fe21d135bca42feed291d2b9b67c"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_ambiguous.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "610ffb9d738073ffe0ee4b3161a7b0f26865dfe7356ed188b81bd17156fcef3b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "48099db93068cbc42aec3c044f2d16694133c36d28bcac80bfd10d4f825e899b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/__init__.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "adfd24b688826f6248c18954d8500c5d542166fca11d6666e182372cb3021849"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_27e0693f.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "8ae8acf827aaa74d85b5f4095ad2598d3315ea57b11790a66daddaa8ee3b9c2b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_3d4826b8.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c0178f2a3af2a7b3ac460d9334b1a63ed66a28ea908e0988d026560f36249c4b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_45d92e98.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b8f66c271e56e2147a72ea598d07c54c6bc8813701c2af314227bd98cf3c82f5"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_4cdf59ce.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6d6d98e36dcc881e8545e1e22848845f100c4f121089d19d828e3c28c18c88bc"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_50bf0759.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "dff1a8c235bffcc5d11fdac7318cd7e22635af9376c25ea64564bade70ca64bf"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_529fbb4a.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "b202a9e7da0dc8be471c66c24ae0154efbfc5f4300ec8da2c6585990f6cd277b"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_5bfac390.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "da3abec59a2672bde1f0edef6ac0ba81ad29b290463cd54966236ab564b4888d"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_813fee16.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "5e8e307c4add7e3236f7ffe5a2e5960ee2914f63c57541c6d7729267b37fde9f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_8589765c.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "2e80b8682abb7adfff64f4b491dcabc2f45f39cdfbcb8d9282e4e9081c225789"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_8f94b404.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "fa87d52e1e6f697fc281cae34c0f31f766eb1164fe0d75a55ff26e787e87e91c"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_970dbe10.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "94c872b8d65afeca93fc541bea5e1c9b25eda9706994ee69bd162eb648f109d6"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_c0a2cdbf.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6e2aa38786cd72177af678f8b2d9605a5544406385c7ce744685ce7c2122ac23"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_c2157f7e.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "5417aa2e681d64b4ec341eca70441f53223ad5df14b2a59baf8523901e12333f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_c3db41c0.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "bce3b5d4c9e95014e846bde263586da502327d9911d12dc949c4f7a2c9955405"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_da9ceb0a.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "f5bdf0978e34100f40d5fcfe4506442d453bcc34f1249018d0938a5e32c26cd2"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_e08bd75e.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "6c4ee54bfa29afa4e08ea81cd7754161f5e0351dfeafbd00d976ef6a874d196f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_e22030f3.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "d2255949685f88a048c9e13a73e62a74f15b88c952988a223d7438d0a972d15f"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_fcc05a0f.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "fe8f9ac026b0819b581812acf241175b1a324ff49899f5d8b2c7bd0eadedf82a"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_known_fd9d4c44.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c2ea29421d89606fa6601fef8b9883dba4ce3425aef31540a9de32d1bc157878"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_grapheme_overrides/_registry.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "65ecc87c0444f59b84a3d0c4fcf66db17b48dcf226b4a31f8563059099b50b85"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_mc.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "73abd73e374101ca696c221380eb3a679fb368247feb0fe929685ce21ca2b0d6"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_overrides.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "2f2ffbcf41c2bb5d13d7fa166de53c7a819792507135f702ad56f1f5ac709de0"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_term_programs.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "20729325e3798a53af52f5e6bbaf8a833f7fadd43f9565fd7d606d91818133e5"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_vs15.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "3b622a8468a33537e8370cc6599f2aeaf4e7dab7b1b34fd7e202a9d8245c9d46"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_vs16.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a4c4591e140546a2c6bd0593f3779c71bb7742f5d6d3307026cb66ba50780098"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_wide.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "c16a0abeec8200e7394d415d0382d86d65a7c67f6dc9b3345b2a5b5e962edfcd"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/table_zero.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "a498e35b8c1c0c12579145fcebb019388dd95deea32dcdb04d4d64ae63155099"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/text_sizing.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "cff11e07cae724c86a27d08633b8f54f7a24d0d6c173af8ac91479a7f2e78c76"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/textwrap.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "4761bb5de07666c65a55e434a0db19ba5c9ac4d7771b1d7a644fcf3d0cbc22e7"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/unicode_versions.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "ef6268200ac4d42e6b8c33a0f53f662dc6f7b5cb97d075678042381de2d7e236"
+    },
+    "src/luggage_perception/vendor/deps/wcwidth/wcwidth.py": {
+      "disposition": "not_restored",
+      "reason": "regenerable vendored artifacts / build binary; gitignored or not production code (checkpoint keeps the hash)",
+      "sha256": "597eba94e3ed8a01ff6b1a9cbd4d0931315df79d23c55e0c1ab644047a06904b"
+    },
+    "src/luggage_planning/config/qp_carry.yaml": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "08282184886ac3491f222a8b8a6a72c55967321bfb05ea13159760b19fe00072"
+    },
+    "src/luggage_planning/luggage_planning/attachment_frame_adapters.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "7d8b9d66e830fe407a53a13ae99deea7cf20574b8eac901d49773bade3bc8032"
+    },
+    "src/luggage_planning/luggage_planning/motion_executor.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "3a81bee26b8bdb22ddb345ef62694a43d198a0f15e8fecdbebccf3d58c9aa574"
+    },
+    "src/luggage_planning/luggage_planning/motion_frame_contracts.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "5ae553b9baef157366d36d526ba9c65540dd62db71e10c9f753f8fa08d4204e1"
+    },
+    "src/luggage_planning/luggage_planning/motion_v2_service.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "f34d354900da5c976cd588d12827ed587b8c3c256b2d8c77a0348bd6a2ec5f3f"
+    },
+    "src/luggage_planning/luggage_planning/occupancy_place_paths.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "6f1ce8cb8a5adb73d50b62163f1840c208de3c55968b5bb5009f5ec61385e20c"
+    },
+    "src/luggage_planning/luggage_planning/place_selection_client.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "b859ea6faf31097421c3849e5a36fa823556311e475d15bdf4f6f1e5dc285c52"
+    },
+    "src/luggage_planning/luggage_planning/place_service.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "e61124b775889054bc41aea095ca80adce0cf449c78ab1d2e81cb5fff0479dc2"
+    },
+    "src/luggage_planning/luggage_planning/place_tcp.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "9d4522073a414eafac451108a4ad6e447a3883b1ffb99e0de12b7523ea374b91"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/__init__.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "3bc01295f7fd4b75ee6b6be2af0117e8f404e3be2ff091f6a853b14c5c705733"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/certifier.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "2753c9f1723451f2f18057f42f2076c444cc9d05de37ea64d84b0f048d414ac5"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/corridor.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "56d47a789cd196e30d4daa0c18c6a71c9f16faf44f7658e5de50f82b6373d7c3"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/kinematics.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "1bde7ace1d97da129170483c5be824420a33c46cb3968e27181c4e4f02c8e433"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/piecewise_jerk_qp.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "b811263d840e22b58af93451f75c10a83d84f0aa109ccfb38e39af56b8021084"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/planner.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "eeed112489120c107eaea808aaf6418a384f56d6729b51bd7ad2c19a48fa5304"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/reference.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "1f19694a084a31d735cccc212269f594afd0fc56fc2dcb79fbb5e2d132b9c4f7"
+    },
+    "src/luggage_planning/luggage_planning/qp_carry/sqp.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "51802af61cf2bdbfdf06e4fb2575c8d7fc8bb4b160ddc19c999a7f3db01194b1"
+    },
+    "src/luggage_planning/luggage_planning/trajectory_selector.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "1fea2633dd74b14464e9235ce2f79ef0898e690d2b81a3972225a3d1bdfeccf5"
+    },
+    "src/luggage_planning/luggage_planning/typed_driver_adapter.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "bded36fd1fc0f4b238171b275a29f3f2e78c2fa4d24e685c3f511132cd1579c6"
+    },
+    "src/luggage_planning/luggage_planning/vacuum_backend.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "6d537b54b8e7e325ed2eaec3e15bd850ab90132202be08536bd598eda72d904a"
+    },
+    "src/luggage_planning/luggage_planning/waypoint_generator.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "c1859def79599a073758e34b2d7ca8488b7197130b2d58e7654042e7e70e2e8e"
+    },
+    "src/luggage_planning/package.xml": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "da48cf73f2857d411b2b27ab8dccf2cdf96b2aca36cebcf13d1d5c5d29c6aea0"
+    },
+    "src/luggage_planning/scripts/motion_planner_node.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "66dbdd225945d87df3e20c41cbe59b70cc6322c30a82f336928bc5a1b75caa5c"
+    },
+    "src/luggage_planning/scripts/trajectory_selector_node.py": {
+      "disposition": "restored_production",
+      "qp_wiring_stripped": true,
+      "reason": "tracked modification restored into the C0 production commit; QP activation wiring stripped (checkpoint-exact version preserved on the experiment branch)",
+      "sha256": "de214d022185e4cd0c0c6488acfba5b7bed8ef4dcd2116da97cc7955d21e5558"
+    },
+    "src/luggage_planning/scripts/vacuum_controller_node.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "ea2d9ca569ca3ebad9194f16a8ec67cf4a85aa390cbb94b4bb180344411fac19"
+    },
+    "src/luggage_planning/test/conftest.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "3644969c751bba1c48e502165e01ec4f865c7df1f368e34ea196d4996a8f586a"
+    },
+    "src/luggage_planning/test/test_cartesian_excursion.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "9dbb2f474d00d3054e5d85e1c30cf4422bfc4f7d0ad0403436511eb735c4348d"
+    },
+    "src/luggage_planning/test/test_frame_migration_execution.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "02fb94084a5b7d00a1671006d7ce2e5f586aca18537ff574dae301e14788a1d8"
+    },
+    "src/luggage_planning/test/test_frame_migration_selector.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "6f1c3e834bd03608e364d401362a34be5025c936c2bd9d18eaaf02988a6a43e4"
+    },
+    "src/luggage_planning/test/test_joint_path_execute.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "089cab7d0211fa45b986dfc6a655ba6e7d9a224f380f792826766f49ffa440a0"
+    },
+    "src/luggage_planning/test/test_occupancy_place_paths.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "7ba3b2afd2ea983101a077188f267cd4f5b41cc22cc5524eb4adf5310e887d98"
+    },
+    "src/luggage_planning/test/test_qp_carry_corridor.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "8d520aadad9b7005fca674ddc0935edea8745562c3de2d3797d3934378bb3737"
+    },
+    "src/luggage_planning/test/test_qp_carry_kinematics.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "3452b09a927c5b87fb01c16c3fce642d726e8392fbecc7cf1f5b5207e315e9db"
+    },
+    "src/luggage_planning/test/test_qp_carry_planner.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "75b051c0392735d5ff7cf3ed01a9a3c192c0ee22b1cea8173409b559c62a402e"
+    },
+    "src/luggage_planning/test/test_qp_carry_reference.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "e2579b07c8cf6824a40b53acb71a90d6474e23e1c563223907c992c91ec7f447"
+    },
+    "src/luggage_planning/test/test_qp_carry_wiring.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "1ffec77699e491a2aa94b095d068c16d607f2e69d3271f4d169331179b6a88a5"
+    },
+    "src/luggage_planning/test/test_qp_piecewise_jerk_qp.py": {
+      "disposition": "qp_experiment_branch",
+      "reason": "QP-only source/test/replay; lives only on experiment/st09-qp-preserved",
+      "sha256": "8a6bf5ebf969a85cc02d5eae479c8fbd0cc96e72687b434e28468afc6946293d"
+    },
+    "src/luggage_planning/test/test_st09_release.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "d2ba4e74e0ff21b4f8cea7043e278dbc68788ca6600bf67c4baa8f867767aa69"
+    },
+    "src/luggage_planning/test/test_st09_typed_build.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "3efa274d201518787af3cfbc3b8034fb19334a6096f376b9f80eb00fbc7f526a"
+    },
+    "src/luggage_planning/test/test_vacuum.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "d405530834190fe92b35a1a7e6713565330e1176953f739801196fd266a6d967"
+    },
+    "src/luggage_planning/test/test_waypoint_generator.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "4f9f05e9d20524704ad307fb505d8f5a8743d78f83baeea2a9fa55c177fb5650"
+    },
+    "src/luggage_planning/test/test_wrist_policy.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "da0b0894f8c9368b32d4aa69171ae2e190d9123f77391044b90ffe933a7c085f"
+    },
+    "src/luggage_planning/test/test_wrist_singularity.py": {
+      "disposition": "restored_production",
+      "reason": "tracked modification restored into the C0 production commit",
+      "sha256": "3848ffd6ade925260f70e4a68bad33ecbad6e6127049de854a19c50a9c8e3092"
+    }
+  },
+  "known_baseline_failures": [
+    {
+      "node": "test_wrist_policy.py::CartesianJointTravelTest::test_j6_carry_unwind_is_not_refused",
+      "package": "luggage_planning",
+      "present_in_g5_dirty_tree": true,
+      "reason": "pre-exists on the g5 dirty tree motion_executor.py (reproduces without any qp_carry change); recorded, not repaired by C0"
+    },
+    {
+      "node": "test_livox_d555_align.py (5 failures incl. test_xacro_mount_roundtrips_optical)",
+      "package": "luggage_description",
+      "present_in_g5_dirty_tree": true,
+      "reason": "pre-exists identically on the g5 dirty tree and C0 restore (failure diff vs g5 is empty)"
+    },
+    {
+      "node": "test_startup_probe.py::test_watchdog_can_be_disabled_with_zero",
+      "package": "luggage_gazebo",
+      "present_in_g5_dirty_tree": true,
+      "reason": "pre-exists on the g5 dirty tree (test_startup_probe watchdog); does not reproduce on the C0 restore/build - C0 stays at zero gazebo failures"
+    },
+    {
+      "node": "eval/test_pf_a1_static_audit.py::test_vacuum_geometry_is_classified_sim_backend",
+      "package": "luggage_perception",
+      "present_in_g5_dirty_tree": true,
+      "reason": "pre-exists identically on the g5 dirty tree"
+    }
+  ],
+  "schema_version": 1,
+  "verified": {
+    "archives_sha256": "tracked.diff/untracked.tar.gz/plans.tar.gz/evidence-reuse.tar.gz all match MANIFEST.json (re-verified 2026-10-02)",
+    "full_restore_hash_check": "restore.sh into a clean dir matched files.sha256 on 237/237 files"
+  }
+}

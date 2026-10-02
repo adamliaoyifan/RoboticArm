@@ -168,6 +168,22 @@ class CartesianJointTravelTest(unittest.TestCase):
         self.assertIs(plan, response)
         self.assertFalse(executor._j6_measurement["ok"])
 
+    def test_j6_carry_unwind_is_not_refused(self):
+        """Rehearsal-21: 18 rad of j6 over a 2.8 m portal carry is yaw, not unwind."""
+        executor = _policy_executor()
+        executor._fk_xyz = lambda *args, **kwargs: (0.0, 0.0, 0.0)
+        start = [0.0] * 6
+        end = [0.0, 0.0, 0.0, 0.0, 0.0, 18.298]
+        response = _cartesian_response([start, end])
+        segment = _segment("transit")
+        segment.target_pose = Pose(
+            position=Point(x=2.785, y=0.0, z=0.0),
+            orientation=Quaternion(x=1.0, y=0.0, z=0.0, w=0.0))
+        _fraction, plan = executor._judge_cartesian_response(
+            segment, [segment.target_pose], response, 1.0)
+        self.assertFalse(getattr(plan, "excursion_rejected", False))
+        self.assertIs(plan, response)
+
     def test_excursion_still_rejects(self):
         executor = _policy_executor()
         start = [0.0, 0.0, 0.0, 0.0, 1.57, 0.0]

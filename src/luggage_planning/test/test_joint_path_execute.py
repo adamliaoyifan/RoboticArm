@@ -4,7 +4,7 @@
 from types import SimpleNamespace
 import unittest
 
-from luggage_planning.motion_executor import MotionExecutor
+from luggage_planning.motion_executor import MotionExecutor, cartesian_hops
 from luggage_planning.place_selection_client import apply_carry_segment
 
 
@@ -82,6 +82,21 @@ class TestCarryHandoff(unittest.TestCase):
         self.assertEqual(segment.type, "joint_path")
         self.assertFalse(segment.allow_ompl_fallback)
         self.assertEqual(segment._joint_knots, [[0.0] * 6, [0.1] + [0.0] * 5])
+
+    def test_waypoints_without_spec_become_cartesian(self):
+        segment = _Segment()
+        segment.name = "transit"
+        segment.type = "pose_target"
+        segment.allow_ompl_fallback = False
+        apply_carry_segment(segment, {
+            "waypoint_frame": "world",
+            "waypoints": [(0.86, -0.38, 1.5), (1.005, -0.535, 0.827)],
+        })
+        self.assertEqual(segment.type, "cartesian")
+        self.assertTrue(segment.allow_ompl_fallback)
+        self.assertAlmostEqual(segment.target_pose.position.x, 1.005)
+        self.assertEqual(len(segment.waypoints), 1)
+        self.assertAlmostEqual(segment.waypoints[0].position.x, 0.86)
 
 
 class TestJointPathExecute(unittest.TestCase):
@@ -171,6 +186,9 @@ class TestWristAlignThenRetry(unittest.TestCase):
             return executor._result(True, "ok", frac)
 
         executor._execute_trajectory = _execute_traj
+        executor._piecewise_cartesian_retry = False
+        executor._execute_seeded_hop = (
+            lambda *args, **kwargs: executor._result(False, "hop skipped", 0.0))
         return executor
 
     def _segment(self, name="insert"):
@@ -198,7 +216,7 @@ class TestWristAlignThenRetry(unittest.TestCase):
             self._segment(), None, 5.0, [0.0] * 6)
         self.assertFalse(result.success)
         self.assertIn("PLACE_PATH_EXCURSION", result.message)
-        self.assertEqual(executor.calls, [])
+        self.assertFalse(any(str(call).startswith("align") for call in executor.calls))
         self.assertIsNone(executor._align_retry_record)
 
     def test_failed_align_keeps_original_code(self):
@@ -215,7 +233,7 @@ class TestWristAlignThenRetry(unittest.TestCase):
         result = executor._execute_segment_inner(
             self._segment(name="retreat"), None, 5.0, [0.0] * 6)
         self.assertFalse(result.success)  # no align hook for retreat
-        self.assertEqual(executor.calls, [])
+        self.assertFalse(any(str(call).startswith("align") for call in executor.calls))
 
 
 class TestCartesianRefineFallback(unittest.TestCase):
@@ -240,6 +258,8 @@ class TestCartesianRefineFallback(unittest.TestCase):
         executor._cartesian_fallback_record = None
         executor._align_retry_enabled = False  # these tests target the
         executor._cartesian_excursion = None   # joint fallback directly
+        executor._piecewise_cartesian_retry = False
+        executor._fk_xyz = lambda *_args, **_kwargs: None
         executor.executed = []
 
         def _execute(traj, name, _fraction, _feedback, _timeout):
@@ -271,6 +291,30 @@ class TestCartesianRefineFallback(unittest.TestCase):
         self.assertTrue(record["used"])
         self.assertEqual(record["rejected_for"],
                          "cartesian joint excursion 14.143 rad/m")
+
+    def test_occupancy_skips_ompl_on_carry_excursion(self):
+        """Occupancy-injected transit must not pose_target fly-through the hull."""
+        ompl = []
+        hops = []
+        executor = self._executor(lambda seg, live: None)
+        executor._occupancy = object()
+        executor._notify = lambda *args, **kwargs: None
+        executor._run_pose_target = (
+            lambda *args, **kwargs: ompl.append("ompl") or executor._result(
+                False, "PLACE_PATH_INFEASIBLE outside_hull", 1.0))
+        executor._piecewise_cartesian = (
+            lambda *args, **kwargs: hops.append("piecewise") or executor._result(
+                True, "piecewise portal hops", 1.0))
+        executor._plan_cartesian = lambda seg, fb: (1.0, _excursion_plan())
+        segment = _Segment()
+        segment.name = "transit"
+        segment.allow_ompl_fallback = True
+        result = executor._execute_segment_inner(
+            segment, None, 5.0, [0.0] * 6)
+        self.assertEqual(ompl, [])
+        self.assertEqual(hops, ["piecewise"])
+        self.assertTrue(result.success)
+        self.assertFalse(result.used_ompl_fallback)
 
     def test_refine_failure_keeps_original_code(self):
         executor = self._executor(lambda seg, live: None)
@@ -305,6 +349,233 @@ class TestCartesianRefineFallback(unittest.TestCase):
         self.assertEqual(
             executor._cartesian_fallback_record["reason"],
             "excursion_recheck_joint1")
+
+
+class CartesianOccupancyRetryTest(unittest.TestCase):
+    def test_transit_retries_cartesian_after_hull_sweep(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = object()
+        executor._occupancy_object_count = 0
+        executor._occupancy_cartesian_retry = False
+        executor._start_joints = [0.0] * 6
+        calls = []
+
+        def _inner(segment, _fb, _timeout, _joints):
+            calls.append(str(segment.type))
+            self.assertEqual(segment.name, "transit")
+            return executor._result(True, "cartesian ok", 1.0)
+
+        executor._execute_segment_inner = _inner
+        segment = _Segment()
+        segment.name = "transit"
+        segment.type = "pose_target"
+        result = executor._cartesian_after_occupancy(
+            segment, "outside_hull", None, 5.0)
+        self.assertTrue(result.success)
+        self.assertIn("cartesian after occupancy outside_hull", result.message)
+        self.assertEqual(calls, ["cartesian"])
+        self.assertEqual(segment.type, "pose_target")
+
+    def test_non_transit_does_not_retry(self):
+        executor = object.__new__(MotionExecutor)
+        segment = _Segment()
+        segment.name = "insert"
+        segment.type = "pose_target"
+        self.assertIsNone(executor._cartesian_after_occupancy(
+            segment, "outside_hull", None, 5.0))
+
+
+class PiecewiseCartesianTest(unittest.TestCase):
+    def test_hops_split_long_line(self):
+        hops = cartesian_hops((-1.0, 0.0, 1.46), (0.86, -0.38, 1.5), 0.30)
+        self.assertGreaterEqual(len(hops), 5)
+        self.assertAlmostEqual(hops[-1][0], 0.86)
+        self.assertAlmostEqual(hops[-1][1], -0.38)
+
+    def test_short_line_is_one_hop(self):
+        hops = cartesian_hops((0.0, 0.0, 1.0), (0.10, 0.0, 1.0), 0.30)
+        self.assertEqual(len(hops), 1)
+
+    def test_short_retreat_is_one_seeded_hop(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._piecewise_cartesian_retry = False
+        executor._planned_traj = None
+        executor._fk_xyz = lambda _names, _joints: (0.2, 0.0, 1.0)
+        targets = []
+
+        def _hop(segment, _joints, _fb, _timeout):
+            targets.append(float(segment.target_pose.position.z))
+            return executor._result(True, "hop ok", 1.0)
+
+        executor._execute_seeded_hop = _hop
+        segment = _Segment()
+        segment.name = "retreat"
+        segment.target_pose.position.x = 0.2
+        segment.target_pose.position.y = 0.0
+        segment.target_pose.position.z = 1.055
+        result = executor._piecewise_cartesian(
+            segment, None, 5.0, [0.0] * 6, "excursion", 1.0)
+        self.assertTrue(result.success)
+        self.assertEqual(targets, [1.055])
+
+    def test_wrist_singularity_splits_before_giving_up(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._piecewise_cartesian_retry = False
+        executor._planned_traj = None
+        executor._fk_xyz = lambda _names, _joints: (0.0, 0.0, 1.0)
+        calls = []
+
+        def _hop(segment, _joints, _fb, _timeout):
+            calls.append(float(segment.target_pose.position.z))
+            if len(calls) == 1:
+                return executor._result(
+                    False, "wrist_singularity margin=0.100 crosses=True", 0.0)
+            return executor._result(True, "hop ok", 1.0)
+
+        executor._execute_seeded_hop = _hop
+        segment = _Segment()
+        segment.name = "place_exit"
+        segment.target_pose.position.x = 0.0
+        segment.target_pose.position.y = 0.0
+        segment.target_pose.position.z = 1.40
+        result = executor._piecewise_cartesian(
+            segment, None, 5.0, [0.0] * 6, "wrist", 1.0)
+        self.assertTrue(result.success)
+        self.assertGreater(len(calls), 1)
+
+    def test_transit_piecewise_restores_target(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._piecewise_cartesian_retry = False
+        executor._planned_traj = None
+        executor._fk_xyz = lambda _names, _joints: (-1.0, 0.0, 1.46)
+        targets = []
+
+        def _hop(segment, _joints, _fb, _timeout):
+            targets.append((
+                float(segment.target_pose.position.x),
+                float(segment.target_pose.position.y),
+                float(segment.target_pose.position.z)))
+            return executor._result(True, "hop ok", 1.0)
+
+        executor._execute_seeded_hop = _hop
+        segment = _Segment()
+        segment.name = "transit"
+        segment.target_pose.position.x = 0.86
+        segment.target_pose.position.y = -0.38
+        segment.target_pose.position.z = 1.5
+        result = executor._piecewise_cartesian(
+            segment, None, 5.0, [0.0] * 6, "excursion", 1.0)
+        self.assertTrue(result.success)
+        self.assertIn("piecewise portal hops after excursion", result.message)
+        self.assertGreaterEqual(len(targets), 2)
+        self.assertAlmostEqual(targets[-1][0], 0.86)
+        self.assertAlmostEqual(segment.target_pose.position.x, 0.86)
+        self.assertAlmostEqual(segment.target_pose.position.y, -0.38)
+
+    def test_hops_retarget_admitted_fk_pose(self):
+        from luggage_planning.motion_executor import _V2_ADMITTED
+        from luggage_planning.motion_frame_contracts import AdmittedSegment
+
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._piecewise_cartesian_retry = False
+        executor._planned_traj = None
+        executor._fk_xyz = lambda _names, _joints: (-1.0, 0.0, 1.46)
+        seen = []
+
+        def _hop(segment, _joints, _fb, _timeout):
+            current = _V2_ADMITTED.get()
+            seen.append(list(current.target_pose["position"]))
+            return executor._result(True, "hop ok", 1.0)
+
+        executor._execute_seeded_hop = _hop
+        segment = _Segment()
+        segment.name = "transit"
+        segment.target_pose.position.x = 0.86
+        segment.target_pose.position.y = -0.38
+        segment.target_pose.position.z = 1.5
+        admitted = AdmittedSegment(
+            segment_type="cartesian", name="transit",
+            target_link="suction_contact_frame",
+            request_id="req", scene_revision="scene", stamp_ns=0,
+            time_basis="scene", keep_tool_down=True, keep_camera_down=False,
+            lock_wrist=False, allow_ompl_fallback=False,
+            required_cartesian_fraction=0.95,
+            target_pose={"position": [0.86, -0.38, 1.5],
+                         "quaternion_xyzw": [1.0, 0.0, 0.0, 0.0]},
+            waypoints=(), joint_names=None, joint_points=None)
+        token = _V2_ADMITTED.set(admitted)
+        try:
+            result = executor._piecewise_cartesian(
+                segment, None, 5.0, [0.0] * 6, "excursion", 1.0)
+        finally:
+            _V2_ADMITTED.reset(token)
+        self.assertTrue(result.success)
+        self.assertGreaterEqual(len(seen), 2)
+        self.assertNotAlmostEqual(seen[0][0], 0.86, places=2)
+        self.assertAlmostEqual(seen[-1][0], 0.86)
+        self.assertAlmostEqual(admitted.target_pose["position"][0], 0.86)
+        self.assertAlmostEqual(admitted.target_pose["position"][1], -0.38)
+
+    def test_seeded_hop_interpolates_without_movegroup(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._joint_path_continuity = 1.2
+        executor._planned_traj = None
+        executor.fk_submissions = []
+        executor._ik_joints = (
+            lambda pose, joints, keep_tool_down=False: (
+                [joints[0] + 0.1] + list(joints[1:])))
+        executor._v2_fk_gate = lambda _positions: None
+        executor._notify = lambda *args, **kwargs: None
+        executed = []
+
+        def _exec(traj, name, _frac, _fb, _timeout):
+            executed.append((name, len(traj.joint_trajectory.points)))
+            return executor._result(True, "ok", 1.0)
+
+        executor._execute_robot_trajectory = _exec
+        result = executor._execute_seeded_hop(
+            _Segment(), [0.0, 0.0, 0.0, 0.0, 1.2, 0.0], None, 5.0)
+        self.assertTrue(result.success, result.message)
+        self.assertEqual(executed[0][0], "portal hop")
+        self.assertGreater(executed[0][1], 2)
+
+    def test_seeded_hop_prefers_offline_knots(self):
+        executor = object.__new__(MotionExecutor)
+        executor._occupancy = None
+        executor._occupancy_object_count = 0
+        executor._joint_path_continuity = 1.2
+        executor._planned_traj = None
+        executor.fk_submissions = []
+        executor._v2_fk_gate = lambda _positions: None
+        executor._notify = lambda *args, **kwargs: None
+        executor._ik_joints = lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("KDL IK must not run when offline knots exist"))
+        safe = [0.0, 0.0, 0.0, 0.0, 1.2, 0.0]
+        executor._cartesian_joint_fallback = lambda _seg, _live: {
+            "knots": [list(safe), [0.04, 0.0, 0.0, 0.0, 1.2, 0.0],
+                      [0.08, 0.0, 0.0, 0.0, 1.2, 0.0]]}
+        executed = []
+
+        def _exec(traj, name, _frac, _fb, _timeout):
+            executed.append((name, len(traj.joint_trajectory.points)))
+            return executor._result(True, "ok", 1.0)
+
+        executor._execute_robot_trajectory = _exec
+        result = executor._execute_seeded_hop(
+            _Segment(), [0.0, 0.0, 0.0, 0.0, 1.2, 0.0], None, 5.0)
+        self.assertTrue(result.success, result.message)
+        self.assertEqual(executed[0][0], "portal hop")
+        self.assertGreater(executed[0][1], 3)
 
 
 if __name__ == "__main__":

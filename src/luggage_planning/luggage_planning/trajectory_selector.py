@@ -10,6 +10,8 @@ from __future__ import division
 import hashlib
 import json
 import math
+
+import numpy as np
 import os
 
 from luggage_planning.occupancy_place_paths import (

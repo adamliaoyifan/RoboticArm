@@ -397,6 +397,34 @@ class TestJointsAndFk(unittest.TestCase):
         self.assertFalse(good_result.success)
         self.assertIn([0.0] * 6, executor.fk_submissions)
 
+    def test_keep_tool_down_fk_ignores_yaw(self):
+        from luggage_description.frame_transforms import quaternion_product
+        from luggage_planning.motion_frame_contracts import tool_down_tilt
+        # 180 deg about X: tool +Z is world -Z.
+        down = (1.0, 0.0, 0.0, 0.0)
+        yaw_pi = quaternion_product(down, (0.0, 0.0, 1.0, 0.0))
+        target = _pose((1.0, 2.0, 3.0), down,
+                       "suction_contact_frame", "tool_quaternion", "world")
+        flipped = ([1.0, 2.0, 3.0], list(yaw_pi))
+        locked = fk_budget(
+            lambda _j: flipped, [0] * 6, target["position"],
+            target["quaternion_xyzw"], keep_tool_down=False)
+        self.assertFalse(locked[0])
+        free = fk_budget(
+            lambda _j: flipped, [0] * 6, target["position"],
+            target["quaternion_xyzw"], keep_tool_down=True)
+        self.assertTrue(free[0], free)
+        self.assertLess(tool_down_tilt(yaw_pi), 1e-9)
+        extra = (math.sin(0.03), 0.0, 0.0, math.cos(0.03))
+        tilted_q = quaternion_product(down, extra)
+        tilted = ([1.0, 2.0, 3.0], list(tilted_q))
+        bad = fk_budget(
+            lambda _j: tilted, [0] * 6, target["position"],
+            target["quaternion_xyzw"], keep_tool_down=True)
+        self.assertFalse(bad[0])
+        self.assertTrue(bad[1].startswith("FK_VERIFY_BUDGET"))
+        self.assertGreater(tool_down_tilt(tilted_q), 0.02)
+
 
 class TestNegatives(unittest.TestCase):
     def _reject(self, mutate, code):

@@ -385,8 +385,9 @@ class VacuumControllerNode(Node):
         generation = int(self._identity[1] or 0)
 
         def resolve_tool(stamp_ns):
-            # Enable uses the acquisition stamp. Disable may use the current
-            # measured tool pose. Neither path reads the physics ground truth.
+            # Enable and disable both use the live TCP (stamp_ns is None).
+            # Attach must freeze contact, not the detection-stamp observe
+            # pose. Neither path reads the physics ground truth.
             try:
                 stamp = rclpy.time.Time() if stamp_ns is None else rclpy.time.Time(nanoseconds=int(stamp_ns))
                 transform = self._tf_buffer.lookup_transform(
@@ -412,9 +413,18 @@ class VacuumControllerNode(Node):
                 "quaternion_xyzw": [rotation.x, rotation.y, rotation.z, rotation.w],
             }
 
-        return handle_vacuum_command_v2(
+        response = handle_vacuum_command_v2(
             request, response, scene_revision=revision, generation=generation,
             resolve_tool=resolve_tool, backend=self._backend)
+        # v1 publishes /vacuum/state before returning. The pick driver treats
+        # that latched state as the attach proof, so the v2 path must too.
+        self._vacuum_on = bool(request.enable and response.success)
+        self._last_fail_reason = "" if response.success else str(response.message or "")
+        self._publish_state()
+        self._publish_event(
+            "attach" if request.enable else "detach",
+            bool(response.success), str(response.message or ""))
+        return response
 
     def _handle_command(self, request, response):
         enable = bool(request.enable)

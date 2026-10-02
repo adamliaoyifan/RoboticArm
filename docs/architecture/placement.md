@@ -143,11 +143,30 @@ cargo map. See [real_scenario.md](real_scenario.md).
 Current Humble path (tracked defect `RS-2`, `RS-3`, `RS-6`; `RS-1` closed
 at the node/service):
 
-`/cargo_map/integrate_cargo_view` → stamp-matched untracked cargo cloud →
+`/cargo_map/integrate_cargo_view` → stamp-matched cloud →
 `CargoVolumeMapper.integrate_points` (`confidence=sensor`). Fail-closed on
 unsettled, hash/revision mismatch, stale/duplicate stamp, missing TF, or
-empty view. Input is `/luggage/semantic/cargo_points_untracked`, not the
-tracker-gated pickup track.
+empty view. The service still reads
+`/luggage/semantic/cargo_points_untracked`, not the tracker-gated pickup
+track.
+
+Post-place eval views do not wait for a YOLO mask. The driver unprojects
+the depth image, keeps points inside the planned resting box (slot center,
+suitcase size, yaw, 0.05 m margin), and publishes that crop on the
+untracked topic. The slot is a crop, not a painted occupancy: an empty crop
+does not call the service and does not change `map_revision`.
+
+View order after retreat is `aim` at the portal, then `lookback` (portal
+eye raised 0.20 m and backed off 0.15 m along the opening normal). The
+in-container lift is not a cargo view. Each view's
+`expected_map_revision` is the previous view's `resulting_map_revision`
+when that view was integrated, otherwise the stats revision. The sequence
+stops at the first view with `footprint_hits >= 1`, integrate success, and
+a revision increase. A view with no footprint hit keeps `empty_reason` in
+`TARGET_NOT_IN_FRAME`, `TF_TIME_MISMATCH`, `DEPTH_INVALID`,
+`BOX_CROP_EMPTY`, or `MAP_FILTERED`. An empty view is not a success.
+YOLO bbox, confidence, and mask counts are diagnostic only. The observe
+pose is not frozen (`cargo_view_policy.frozen` is false).
 
 `/cargo_map/add_placed_box` → `CargoVolumeMapper.mark_placed_box`:
 
