@@ -507,6 +507,50 @@ def contains_swept_box(
     return True
 
 
+def opening_inward_datum(
+    geometry: ContainerGeometry,
+    aperture_corners: Sequence[Sequence[float]] | None = None,
+) -> tuple[tuple[float, float, float], tuple[float, float, float]]:
+    """Opening-plane point and inward unit normal for placement depth.
+
+    The convergence baseline defines ``depth = dot(box_center -
+    opening_center, inward_normal)`` and forbids hardcoding the inward
+    direction from any particular scene drawing. The aperture plane is
+    derived here instead: given the scene aperture corners (e.g.
+    ``container_opening_aperture_corners_in_container``), the datum is
+    their centroid and the inward normal is the axis-aligned direction
+    from that centroid toward the hull centre. Without corners, the
+    kernel's own door-face convention applies: ``contains_*_through_aperture``
+    treats the -X face as the door, so the datum is the hull centre
+    projected onto that face and the inward normal is +X. Either way the
+    normal is verified axis-aligned; a non-axis-aligned aperture raises.
+    """
+    hull_center = (
+        0.0,
+        0.0,
+        0.5 * (geometry.floor_z + geometry.ceiling_z),
+    )
+    if aperture_corners:
+        pts = [[float(v) for v in corner] for corner in aperture_corners]
+        n = len(pts)
+        centroid = tuple(sum(p[i] for p in pts) / n for i in range(3))
+        raw = [hull_center[i] - centroid[i] for i in range(3)]
+        axis = max(range(3), key=lambda i: abs(raw[i]))
+        if abs(raw[axis]) < 1e-9:
+            raise ValueError("aperture centroid coincides with hull centre")
+        normal = [0.0, 0.0, 0.0]
+        normal[axis] = 1.0 if raw[axis] > 0.0 else -1.0
+        return centroid, tuple(normal)  # type: ignore[return-value]
+    # Kernel door-face convention: contains_*_through_aperture leaves the
+    # -X face open, so the default datum is that face with inward normal +X.
+    point = (
+        -geometry.half_x,
+        0.0,
+        0.5 * (geometry.floor_z + geometry.ceiling_z),
+    )
+    return point, (1.0, 0.0, 0.0)
+
+
 def aabb_intersection_volume(
     geometry: ContainerGeometry,
     lower: Sequence[float],
