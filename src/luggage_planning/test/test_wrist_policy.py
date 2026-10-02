@@ -150,86 +150,34 @@ def _policy_executor():
     return executor
 
 
-class CartesianJointTravelTest(unittest.TestCase):
-    def test_j5_flip_is_not_refused(self):
-        executor = _policy_executor()
-        response = _cartesian_response([_SEED, _J5_FLIP])
-        _fraction, plan = executor._judge_cartesian_response(
-            _segment("transit"), [_pose()], response, 1.0)
-        self.assertFalse(getattr(plan, "j6_spin", False))
-        self.assertFalse(executor._wrist_measurement["ok"])
-        self.assertTrue(executor._j6_measurement["ok"])
+class GenerationPolicyRemovedTest(unittest.TestCase):
+    """[ST09-I] The cartesian/pose-target generation policy is gone.
 
-    def test_j6_spin_is_not_refused(self):
-        executor = _policy_executor()
-        response = _cartesian_response([_SEED, _J6_SPIN])
-        _fraction, plan = executor._judge_cartesian_response(
-            _segment("place_exit"), [_pose()], response, 1.0)
-        self.assertIs(plan, response)
-        self.assertFalse(executor._j6_measurement["ok"])
+    The wrist/j6 bookkeeping stays (recorded, never refused) inside the
+    paths that remain: joint-path execution and the preserved
+    GoToRobotPose joint goals. Judging generated cartesian responses and
+    seeding IK from pose targets lived in the removed generation bypass.
+    """
 
-    def test_j6_carry_unwind_is_not_refused(self):
-        """Rehearsal-21: 18 rad of j6 over a 2.8 m portal carry is yaw, not unwind."""
+    def test_generation_policy_methods_are_gone(self):
+        for name in ("_judge_cartesian_response", "_reject_for_excursion",
+                     "_run_pose_target", "_ik_joints", "_tool_down_constraint",
+                     "_build_goal_constraints"):
+            self.assertFalse(hasattr(MotionExecutor, name), name)
+
+    def test_generation_segments_refuse_without_policy_runs(self):
         executor = _policy_executor()
-        executor._fk_xyz = lambda *args, **kwargs: (0.0, 0.0, 0.0)
-        start = [0.0] * 6
-        end = [0.0, 0.0, 0.0, 0.0, 0.0, 18.298]
-        response = _cartesian_response([start, end])
+        executor._occupancy_object_count = 0
+        from types import SimpleNamespace
         segment = _segment("transit")
-        segment.target_pose = Pose(
-            position=Point(x=2.785, y=0.0, z=0.0),
-            orientation=Quaternion(x=1.0, y=0.0, z=0.0, w=0.0))
-        _fraction, plan = executor._judge_cartesian_response(
-            segment, [segment.target_pose], response, 1.0)
-        self.assertFalse(getattr(plan, "excursion_rejected", False))
-        self.assertIs(plan, response)
-
-    def test_excursion_still_rejects(self):
-        executor = _policy_executor()
-        start = [0.0, 0.0, 0.0, 0.0, 1.57, 0.0]
-        end = [6.58, 0.0, 0.0, 0.0, 1.57, 0.0]
-        response = _cartesian_response([start, end])
-        executor._fk_xyz = lambda *args, **kwargs: (0.0, 0.0, 0.0)
-        segment = _segment("place_exit")
-        segment.target_pose = Pose(
-            position=Point(x=1.39, y=0.0, z=0.0),
-            orientation=Quaternion(x=0.0, y=1.0, z=0.0, w=0.0))
-        _fraction, plan = executor._judge_cartesian_response(
-            segment, [segment.target_pose], response, 1.0)
-        self.assertTrue(getattr(plan, "excursion_rejected", False))
-
-
-class PoseTargetJointTravelTest(unittest.TestCase):
-    def _run(self, ik_joints):
-        executor = _policy_executor()
-        executor._ik = _FakeIK(ik_joints)
-        captured = []
-
-        def _joint_goal(positions, feedback_cb, execute_timeout, note,
-                        seed_joints=None, segment_msg=None):
-            captured.append(list(positions))
-            return SegmentExecResult(True, "ok", 1.0)
-
-        executor._run_joint_goal = _joint_goal
-        result = executor._run_pose_target(
-            _segment("transit", typ="pose_target", keep_tool_down=True),
-            None, 45.0, current_joints=_SEED)
-        return captured, result
-
-    def test_j5_flip_ik_is_kept(self):
-        captured, result = self._run(_J5_FLIP)
-        self.assertTrue(result.success)
-        self.assertEqual(captured[0][4], _J5_FLIP[4])
-
-    def test_j6_spin_ik_is_kept(self):
-        captured, result = self._run(_J6_SPIN)
-        self.assertTrue(result.success)
-        self.assertEqual(len(captured), 1)
-        # _wrap_near folds the 3.5 rad hop onto the nearer 2π image.
-        delta = abs(captured[0][5] - _SEED[5])
-        self.assertLess(delta, math.pi)
-        self.assertAlmostEqual(
-            (captured[0][5] - _J6_SPIN[5]) % (2.0 * math.pi), 0.0, places=5)
+        result = executor._execute_segment_inner(
+            SimpleNamespace(type="cartesian", name="transit",
+                            allow_ompl_fallback=True,
+                            required_cartesian_fraction=0.9,
+                            target_pose=segment.target_pose, waypoints=[]),
+            None, 45.0, None)
+        self.assertFalse(result.success)
+        self.assertIn("SEGMENT_GENERATION_REMOVED", result.message)
 
 
 class FinishMoveGroupTest(unittest.TestCase):
@@ -242,41 +190,6 @@ class FinishMoveGroupTest(unittest.TestCase):
             _segment("transit"), None, 45.0, "")
         self.assertTrue(result.success)
         self.assertFalse(executor._j6_measurement["ok"])
-
-
-class ToolDownConstraintTest(unittest.TestCase):
-    def test_keep_tool_down_frees_yaw_and_bounds_tilt(self):
-        down = _policy_executor()._tool_down_constraint()
-        self.assertAlmostEqual(down.orientation.x, TOOL_DOWN_QUAT[0])
-        self.assertAlmostEqual(down.orientation.w, TOOL_DOWN_QUAT[3])
-        self.assertAlmostEqual(down.absolute_x_axis_tolerance, 0.05)
-        self.assertAlmostEqual(down.absolute_y_axis_tolerance, 0.05)
-        self.assertAlmostEqual(down.absolute_z_axis_tolerance, math.pi)
-
-    def test_keep_tool_down_goal_uses_only_that_constraint(self):
-        from geometry_msgs.msg import Pose as PoseMsg
-        executor = _policy_executor()
-        segment = _segment("transit", keep_tool_down=True)
-        segment.target_pose = PoseMsg()
-        segment.target_pose.position.x = 1.0
-        segment.target_pose.orientation.y = 1.0
-        constraints = executor._build_goal_constraints(segment)
-        self.assertEqual(len(constraints.orientation_constraints), 1)
-        down = constraints.orientation_constraints[0]
-        self.assertAlmostEqual(down.absolute_z_axis_tolerance, math.pi)
-        self.assertAlmostEqual(down.orientation.x, 1.0)
-
-    def test_without_keep_tool_down_locks_the_target_quaternion(self):
-        from geometry_msgs.msg import Pose as PoseMsg
-        executor = _policy_executor()
-        segment = _segment("pre_grasp", keep_tool_down=False)
-        segment.target_pose = PoseMsg()
-        segment.target_pose.orientation.y = 1.0
-        constraints = executor._build_goal_constraints(segment)
-        self.assertEqual(len(constraints.orientation_constraints), 1)
-        orient = constraints.orientation_constraints[0]
-        self.assertAlmostEqual(orient.absolute_z_axis_tolerance, 0.05)
-        self.assertAlmostEqual(orient.orientation.y, 1.0)
 
 
 class ToolDownWiringTest(unittest.TestCase):

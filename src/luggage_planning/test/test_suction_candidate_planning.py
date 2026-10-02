@@ -608,10 +608,14 @@ class TestWiring(unittest.TestCase):
         self.assertIn("DETECT_NO_SEALABLE_PATCH", source)
         self.assertIn("observation_identity_consistent", source)
 
-    def test_executor_honours_required_fraction(self):
+    def test_executor_refuses_generation_segments(self):
+        # [ST09-I] fraction enforcement moved upstream with generation:
+        # the route adapter owns cartesian verdicts; the executor refuses
+        # generation-type segments by name with zero submissions.
         source = self._source(os.path.join(
             "luggage_planning", "motion_executor.py"))
-        self.assertIn("required_cartesian_fraction", source)
+        self.assertIn("SEGMENT_GENERATION_REMOVED", source)
+        self.assertNotIn("def _plan_cartesian", source)
 
 
 class TestArchitectureIsolation(unittest.TestCase):

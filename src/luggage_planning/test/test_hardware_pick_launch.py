@@ -138,8 +138,9 @@ class MotionExecutorIkFallbackTest(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "luggage_planning" / "motion_executor.py"
         ).read_text(encoding="utf-8")
-        self.assertIn("no pose-constraint fallback", src)
-        self.assertNotIn('note = "pose constraint fallback"', src)
+        # [ST09-I] pose-target generation itself is the removed bypass.
+        self.assertIn("SEGMENT_GENERATION_REMOVED", src)
+        self.assertNotIn("def _run_pose_target", src)
 
     def test_cartesian_and_joint_goals_use_rest_to_rest_not_totg(self):
         src = (

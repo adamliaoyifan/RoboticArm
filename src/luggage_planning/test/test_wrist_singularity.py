@@ -278,27 +278,6 @@ class TestPoseTargetJointDelta(unittest.TestCase):
         self.assertIsNone(pose_target_joint_delta([], [0.0] * 6))
         self.assertIsNone(pose_target_joint_delta([0.0] * 6, [0.0] * 5))
 
-    def test_empty_ik_still_records_n_solutions(self):
-        executor = _bare_executor()
-
-        class _EmptyIK(object):
-            def wait_for_service(self, timeout_sec=2.0):
-                return True
-
-            def call_async(self, request):
-                response = GetPositionIK.Response()
-                response.error_code.val = MoveItErrorCodes.NO_IK_SOLUTION
-                return _FakeFuture(response)
-
-        executor._ik = _EmptyIK()
-        pose = Pose(
-            position=Point(x=0.4, y=0.1, z=1.2),
-            orientation=Quaternion(x=1.0, y=0.0, z=0.0, w=0.0))
-        chosen = executor._ik_joints(pose, [0.0] * 6, keep_tool_down=True)
-        self.assertIsNone(chosen)
-        self.assertEqual(executor._pose_target_joint_delta["n_solutions"], 0)
-        self.assertFalse(executor._pose_target_joint_delta["ok"])
-
 
 class TestDualQuaternionIK(unittest.TestCase):
 
@@ -329,27 +308,6 @@ class TestDualQuaternionIK(unittest.TestCase):
         flipped = equivalent_tool_down_pose(pose)
         self.assertAlmostEqual(flipped.position.x, 0.4)
         self.assertAlmostEqual(abs(_yaw_of(flipped)), math.pi, places=6)
-
-    def test_keep_tool_down_picks_the_near_seed_branch(self):
-        chosen = self.executor._ik_joints(
-            self.pose, self.seed, keep_tool_down=True)
-        self.assertEqual(chosen, self.near)
-        self.assertEqual(len(self.executor._ik.yaws), 2)
-        wrapped = [
-            abs(math.atan2(math.sin(yaw), math.cos(yaw)))
-            for yaw in self.executor._ik.yaws]
-        self.assertTrue(any(item < 0.5 for item in wrapped))
-        self.assertTrue(any(item > 2.5 for item in wrapped))
-        delta = self.executor._pose_target_joint_delta
-        self.assertTrue(delta["ok"])
-        self.assertEqual(delta["n_solutions"], 2)
-        self.assertLess(delta["max_rad"], 0.10)
-
-    def test_without_keep_tool_down_the_leaked_branch_is_kept(self):
-        chosen = self.executor._ik_joints(
-            self.pose, self.seed, keep_tool_down=False)
-        self.assertEqual(chosen, self.flipped)
-        self.assertEqual(len(self.executor._ik.yaws), 1)
 
     def test_boundary_record_emits_wrist_delta_and_j6(self):
         self.executor._wrist_measurement = {
