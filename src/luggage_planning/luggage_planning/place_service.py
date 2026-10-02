@@ -332,6 +332,92 @@ def handle_select_v2(request, response, **kwargs):
     return fill_select_response(request, response, **kwargs)
 
 
+def _route_boundary(request_id, scene_revision, time_basis):
+    from luggage_description.frame_diagnostics import BoundaryContext
+    return BoundaryContext(
+        interface_id="F15", producer="route_producer",
+        consumer="motion_executor",
+        request_id=str(request_id), scene_revision=str(scene_revision),
+        frame_id="world", reference="suction_contact_frame",
+        time_basis=str(time_basis))
+
+
+def _route_motion_messages(legs, request):
+    """Admit + encode each certified route leg as a typed joint-path."""
+    from luggage_planning.motion_frame_adapters import message_from_admitted
+    from luggage_planning.motion_frame_contracts import (
+        TARGET_LINK, ExecutionContext,
+    )
+    boundary = _route_boundary(
+        request["request_id"], request["scene_revision"], "robot_state")
+    context = ExecutionContext(boundary, TARGET_LINK, "world")
+    return [message_from_admitted(dict(leg), context) for leg in legs]
+
+
+def _route_carry_segments(legs, request):
+    """v1-compatible joint-path views of the same certified legs."""
+    from trajectory_msgs.msg import JointTrajectoryPoint
+
+    segments = []
+    for leg in legs:
+        segment = MotionSegment()
+        segment.name = str(leg.get("name") or "route_leg")
+        segment.type = "joint_path"
+        segment.allow_ompl_fallback = False
+        segment.keep_tool_down = True
+        joint = leg.get("joint_trajectory") or {}
+        for point in joint.get("points") or ():
+            knot = JointTrajectoryPoint()
+            knot.positions = [float(v) for v in point.get("positions") or ()]
+            knot.velocities = [
+                float(v) for v in point.get("velocities") or ()]
+            knot.accelerations = [
+                float(v) for v in point.get("accelerations") or ()]
+            time_ns = int(point.get("time_from_start_ns") or 0)
+            knot.time_from_start.sec, knot.time_from_start.nanosec = divmod(
+                time_ns, 10 ** 9)
+            segment.joint_waypoints.append(knot)
+        segments.append(segment)
+    return segments
+
+
+def fill_select_response_route(message, response, producer):
+    """Route-mode select: the producer's certified legs are the answer.
+
+    The request is admitted exactly as in the legacy path; the measured
+    grasp fields freeze a route-grade attachment record before planning.
+    The response keeps the frozen SelectPlacePathV2 surface — the typed
+    legs carry the complete certified trajectories.
+    """
+    from luggage_planning.route_producer import register_attach_from_request
+
+    try:
+        request = request_dict(message)
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+    except ContractError as exc:
+        return _reject(response, exc)
+    result = producer.plan_place_route(request)
+    if not result.get("success"):
+        response.success = False
+        response.reason_code = str(result.get("reason_code") or "NO_FEASIBLE_ROUTE")
+        response.slot_index = -1
+        response.rows_json = json.dumps(result.get("rows") or [])
+        return response
+    response.success = True
+    response.reason_code = "OK"
+    response.slot_index = int(result["slot_index"])
+    response.selection_id = str(result["selection_id"])
+    response.path_source = str(result["path_source"])
+    response.path_hash = str(result["path_hash"])
+    response.rows_json = json.dumps(result.get("rows") or [])
+    response.motion_segments = _route_motion_messages(
+        result["legs"], request)
+    response.carry_segments = _route_carry_segments(result["legs"], request)
+    return response
+
+
 def _copy_segments(segments):
     copied = []
     for seg in segments:

@@ -96,14 +96,32 @@ class TestContractsPackaging:
                 json.loads((REPO_ROOT / "st09_contracts" / name).read_text())
 
     def test_repo_root_import_still_wins_for_parallel_tests(self):
-        """The C0 conftest contract: repo root on sys.path -> root copy."""
-        sys.path.insert(0, str(REPO_ROOT))
+        """The C0 conftest contract: repo root on sys.path -> root copy.
+
+        Hermetic subprocess: purging ``st09_contracts`` from
+        ``sys.modules`` in-process would re-import a second class
+        identity mid-run and corrupt every later test's isinstance
+        checks.
+        """
+        probe = (
+            "import st09_contracts\n"
+            "loc = st09_contracts.__file__\n"
+            "assert 'install-st09' not in loc, loc\n"
+            "print(loc)\n"
+        )
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".py",
+                                         delete=False) as handle:
+            handle.write(probe)
+            path = handle.name
         try:
-            for cached in [m for m in list(sys.modules)
-                           if m == "st09_contracts"
-                           or m.startswith("st09_contracts.")]:
-                del sys.modules[cached]
-            import st09_contracts
-            assert "install-st09" not in st09_contracts.__file__
+            env = dict(os.environ)
+            env["PYTHONPATH"] = str(REPO_ROOT)
+            result = subprocess.run(
+                ["python3", path], env=env, capture_output=True,
+                text=True, timeout=60)
         finally:
-            sys.path.remove(str(REPO_ROOT))
+            os.unlink(path)
+        assert result.returncode == 0, result.stderr
+        assert REPO_ROOT.as_uri() not in result.stdout  # sanity: not a URI
+        assert str(REPO_ROOT) in result.stdout.strip()

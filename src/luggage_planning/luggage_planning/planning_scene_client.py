@@ -350,6 +350,10 @@ class PlanningSceneClient(object):
     def wait_ready(self, timeout_sec=30.0):
         return self._client.wait_for_service(timeout_sec=timeout_sec)
 
+    def apply_diff(self, scene, timeout=10.0):
+        """Public raw ApplyPlanningScene (ST09-I certification scenes)."""
+        return self._apply(scene, timeout=timeout)
+
     def _apply(self, scene, timeout=10.0):
         if not self._client.wait_for_service(timeout_sec=timeout):
             return False, "apply_planning_scene unavailable"

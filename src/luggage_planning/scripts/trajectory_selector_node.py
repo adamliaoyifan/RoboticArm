@@ -80,6 +80,12 @@ class TrajectorySelectorNode(Node):
         self.create_service(
             SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
             self._select_v2)
+        # ST09-I: the unified route producer (off = legacy selection).
+        self.declare_parameter("route_planning", False)
+        self.declare_parameter("frame_scene_revision", "")
+        self._route_producer = None
+        self._route_planning = bool(
+            self.get_parameter("route_planning").value)
         # ST09 F21: identity heartbeat + peer readiness (off = legacy).
         self.declare_parameter("frame_runtime", False)
         self.declare_parameter("frame_identity_json", "")
@@ -237,6 +243,71 @@ class TrajectorySelectorNode(Node):
         response.path_source = str(winner.get("path_source") or "")
         return response
 
+    def _route_producer_or_none(self):
+        """Build the unified route producer once, on first use.
+
+        All collaborators are the accepted components: B's graph/edge
+        builder, C's certifier/revalidator via the real MoveIt validity
+        adapter, D's measured provider, and the offline URDF/IK stack.
+        """
+        if self._route_producer is not None:
+            return self._route_producer
+        from luggage_description.scene_tf_config_utils import (
+            container_opening_normal_in_world,
+            container_opening_target_point_in_world,
+        )
+        from luggage_planning.attachment_provider import (
+            MeasuredAttachmentProvider,
+        )
+        from luggage_planning.map_revalidation import MapRevalidator
+        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
+        from luggage_planning.moveit_state_validity import (
+            MoveItStateValidityAdapter,
+        )
+        from luggage_planning.offline_ik import load_urdf, refine_to_pose
+        from luggage_planning.planning_scene_client import PlanningSceneClient
+        from luggage_planning.reachable_graph import (
+            RouteGraph,
+            make_offline_fk,
+        )
+        from luggage_planning.route_producer import RouteProducer
+        from luggage_planning.trajectory_certifier import TrajectoryCertifier
+
+        urdf = load_urdf(scene_tf_config=self._scene_tf_path)
+        tcp_path = ("elfin_joint1", "elfin_joint2", "elfin_joint3",
+                    "elfin_joint4", "elfin_joint5", "elfin_joint6",
+                    "suction_contact_frame")
+        fk = make_offline_fk(urdf, tcp_path)
+        scene_client = PlanningSceneClient(self)
+
+        def refine(position, quaternion, seed):
+            return refine_to_pose(urdf, tcp_path, position, quaternion,
+                                  seed, pos_tol=2e-3, rot_tol=2e-2)
+
+        def validity_factory(*, scene_states, edges):
+            adapter = MoveItStateValidityAdapter(
+                self, fk=fk, scene_client=scene_client)
+            adapter.load_edges(edges, scene_states=scene_states)
+            return adapter
+
+        self._route_producer = RouteProducer(
+            graph=RouteGraph(static_identity="st09-i-route:%s" %
+                             self._scene_tf_hash),
+            edge_builder=MoveItEdgeAdapter(self, scene_client=scene_client),
+            certifier=TrajectoryCertifier(),
+            validity_adapter_factory=validity_factory,
+            attachment_provider=MeasuredAttachmentProvider(
+                str(self.get_parameter("frame_scene_revision").value
+                    or "scene-runtime"), "route-selector",
+                tcp_frame="suction_contact_frame", box_frame="box"),
+            revalidator=MapRevalidator(),
+            fk=fk, refine=refine, urdf=urdf, tcp_path=tcp_path,
+            opening_info={
+                "point": container_opening_target_point_in_world(self._scene),
+                "normal": container_opening_normal_in_world(self._scene),
+            })
+        return self._route_producer
+
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
@@ -252,19 +323,33 @@ class TrajectorySelectorNode(Node):
                 response.rows_json = json.dumps({"error": error.code})
                 return response
         atlas, diag = self._runtime_atlas()
-        block = certification_block_reason(self._atlas_cfg, diag)
-        if block:
-            response.success = False
-            response.reason_code = block
-            response.rows_json = json.dumps({"error": block, "atlas": diag})
-            return response
-        from luggage_description.scene_tf_config_utils import (
-            container_inner_geometry_descriptor)
-        response = handle_select_v2(
-            request, response, atlas=atlas,
-            config=self._selector.config,
-            geometry_descriptor=container_inner_geometry_descriptor(
-                self._scene))
+        if self._route_planning:
+            # Route mode: the atlas is a prior (seeds/gaps), never a gate.
+            producer = self._route_producer_or_none()
+            if producer is None:
+                response.success = False
+                response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+                return response
+            from luggage_planning.place_service import (
+                fill_select_response_route,
+            )
+            response = fill_select_response_route(
+                request, response, producer=producer)
+        else:
+            block = certification_block_reason(self._atlas_cfg, diag)
+            if block:
+                response.success = False
+                response.reason_code = block
+                response.rows_json = json.dumps(
+                    {"error": block, "atlas": diag})
+                return response
+            from luggage_description.scene_tf_config_utils import (
+                container_inner_geometry_descriptor)
+            response = handle_select_v2(
+                request, response, atlas=atlas,
+                config=self._selector.config,
+                geometry_descriptor=container_inner_geometry_descriptor(
+                    self._scene))
         if getattr(self, "_frame_runtime", None) is not None and bool(
                 getattr(response, "success", False)):
             from luggage_description.frame_contracts import ContractError
@@ -326,9 +411,13 @@ def _segments(winner, map_to_world=None):
 
 def main():
     rclpy.init()
+    from rclpy.executors import MultiThreadedExecutor
+
     node = TrajectorySelectorNode()
+    executor = MultiThreadedExecutor()
+    executor.add_node(node)
     try:
-        rclpy.spin(node)
+        executor.spin()
     except KeyboardInterrupt:
         pass
     node.destroy_node()
