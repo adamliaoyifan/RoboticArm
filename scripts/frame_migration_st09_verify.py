@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""ST09 evidence runner. Unimplemented live obligations explicitly block release."""
+"""ST09 evidence runner.
+
+The runner owns evidence accounting, not planner decisions.  It creates output
+directories exclusively, returns 0/1/2 for pass/failure/incomplete, and writes a
+sample manifest computed from the acceptance manifest plus observed artifacts.
+"""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -9,6 +14,24 @@ from pathlib import Path
 import shlex
 import subprocess
 import time
+
+REQUIRED_SAMPLE_KEYS = {
+    "offline": (
+        "geometry_frame_64",
+        "deep_place_16",
+        "yaw_ik_8_classes",
+        "target_matrix_8",
+        "attachment_negatives_9",
+        "map_cases_6_x2",
+        "common_negatives_per_profile",
+        "mutations",
+    ),
+    "graph": (
+        "performance",
+        "startup_3_x2",
+        "capture_replay",
+    ),
+}
 
 
 def verification_outcome(commands, missing):
@@ -24,6 +47,80 @@ def verification_outcome(commands, missing):
     if failed:
         return "fail", failed
     return ("not_evaluated" if missing or incomplete else "pass"), failed
+
+
+def load_acceptance_manifest(ws):
+    path = Path(ws) / "st09_contracts" / "st09_acceptance_manifest.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return document
+
+
+def required_samples_for_mode(acceptance, mode):
+    inventory = acceptance.get("required_case_inventory") or {}
+    keys = []
+    if mode in ("offline", "all"):
+        keys.extend(REQUIRED_SAMPLE_KEYS["offline"])
+    if mode in ("graph", "all"):
+        keys.extend(REQUIRED_SAMPLE_KEYS["graph"])
+    if mode == "rehearsal":
+        keys.extend(("capture_replay", "startup_3_x2"))
+    required = []
+    for key in keys:
+        required.append({
+            "sample_id": key,
+            "requirement": inventory.get(key, ""),
+            "artifact_globs": ["samples/%s.json" % key, "%s.json" % key],
+        })
+    return required
+
+
+def artifact_inventory(root):
+    out = []
+    root = Path(root)
+    if not root.exists():
+        return out
+    for path in sorted(root.rglob("*")):
+        if path.is_file():
+            data = path.read_bytes()
+            out.append({
+                "path": str(path.relative_to(root)),
+                "bytes": len(data),
+                "sha256": hashlib.sha256(data).hexdigest(),
+            })
+    return out
+
+
+def compute_sample_manifest(acceptance, mode, out):
+    required = required_samples_for_mode(acceptance, mode)
+    artifacts = artifact_inventory(out)
+    paths = {item["path"] for item in artifacts}
+    observed, missing = [], []
+    for sample in required:
+        hits = []
+        for candidate in sample["artifact_globs"]:
+            if candidate in paths:
+                hits.append(candidate)
+        record = dict(sample)
+        record["observed_artifacts"] = hits
+        if hits:
+            observed.append(record)
+        else:
+            missing.append(record)
+    return {
+        "schema": "st09.sample_manifest/1",
+        "mode": mode,
+        "required": required,
+        "observed": observed,
+        "missing": missing,
+        "artifacts": artifacts,
+    }
+
+
+def write_sample_manifest(acceptance, mode, out):
+    manifest = compute_sample_manifest(acceptance, mode, out)
+    (Path(out) / "sample_manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return manifest
 
 
 def main():
@@ -47,6 +144,7 @@ def main():
                     install=str(install), revision=git("rev-parse", "HEAD"),
                     dirty=git("status", "--porcelain"), ros_domain_id=args.ros_domain_id,
                     commands=[], missing=[], teardown="no processes launched", status="running")
+    acceptance = load_acceptance_manifest(ws)
     clean_env = {key:value for key,value in os.environ.items()
                  if key not in ("AMENT_PREFIX_PATH", "CMAKE_PREFIX_PATH", "COLCON_PREFIX_PATH", "PYTHONPATH")}
     clean_env.update(ROS_DOMAIN_ID=str(args.ros_domain_id), ROS_LOG_DIR=str(out / "ros-logs"),
@@ -106,6 +204,11 @@ def main():
                 "--output", graph_out / "f24-isolation.json"], timeout=300)
         if args.mode in ("rehearsal", "all"):
             manifest["missing"].append("immutable wired candidate and executable frozen capture configuration required before Gazebo rehearsal")
+        samples = write_sample_manifest(acceptance, args.mode, out)
+        manifest["sample_manifest"] = "sample_manifest.json"
+        manifest["missing_samples"] = [item["sample_id"] for item in samples["missing"]]
+        manifest["missing"].extend("missing sample: %s" % item["sample_id"]
+                                   for item in samples["missing"])
         manifest["status"], manifest["failed_commands"] = verification_outcome(
             manifest["commands"], manifest["missing"])
     except Exception as error:
@@ -116,9 +219,7 @@ def main():
     finally:
         manifest["elapsed_seconds"] = time.monotonic() - started
         manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
-        manifest["artifacts"] = [{"path":str(path.relative_to(out)), "bytes":path.stat().st_size,
-                                  "sha256":hashlib.sha256(path.read_bytes()).hexdigest()}
-                                 for path in sorted(out.rglob("*")) if path.is_file() and path.name != "manifest.json"]
+        manifest["artifacts"] = artifact_inventory(out)
         save()
     print(json.dumps(dict(status=manifest["status"], missing=manifest["missing"], output=str(out))))
     return {"pass": 0, "fail": 1, "not_evaluated": 2}[manifest["status"]]
