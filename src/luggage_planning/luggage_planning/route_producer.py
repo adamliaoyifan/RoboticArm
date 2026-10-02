@@ -85,11 +85,38 @@ CERTIFICATION_RESERVE_S = CERTIFICATION_TIMEOUT_S + 0.5
 #: real motion; declared here, not a frozen contract value).
 EXIT_EXTRA_LIFT_M = 0.10
 
+#: Declared release gap ([ST09-I] release policy, 2026-10-02): the
+#: certified descend ends with the payload bottom this far ABOVE the
+#: support surface; release is vacuum-off rigid free fall (Gazebo
+#: physics; the mock chain records the analytic landed pose). The
+#: certified trajectory is therefore contact-free end to end, and the
+#: gap absorbs perception height error up to itself — the payload can
+#: never be pushed through the support. Landed quality is measured
+#: post-release (err_xy, perceived-vs-actual z), never excused in
+#: certification. Declared and recorded in evidence, not tuned silently.
+RELEASE_DROP_M = 0.05
+
 #: IK seed prior for the tool-down branch when the atlas is unavailable
 #: and the live start configuration is degenerate (mock zero state).
 #: A seed is never a verdict: the bounded MoveIt supplementation and the
 #: certifier decide reachability.
 TOOL_DOWN_SEED_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
+
+
+def revalidation_policy_from_contract(contract: Mapping):
+    """RevalidationPolicy with the FROZEN snapshot freshness window.
+
+    C's 2 s dataclass default is a development stand-in; the resolved
+    contract's ``map_freshness.planning_snapshot_age_max_s`` (10 s,
+    defined_by_c0) is the authority at route admission.
+    """
+    from luggage_planning.map_revalidation import RevalidationPolicy
+
+    freshness = (contract.get("map_freshness") or {}).get(
+        "planning_snapshot_age_max_s") or {}
+    age_s = float(freshness.get("value", 10.0)
+                  if isinstance(freshness, Mapping) else freshness)
+    return RevalidationPolicy(max_snapshot_age_ns=int(age_s * 1e9))
 
 
 def certification_policy_from_contract(contract: Mapping):
@@ -252,7 +279,8 @@ class RouteProducer(object):
 
     def __init__(self, *, graph, edge_builder, certifier,
                  validity_adapter_factory, attachment_provider,
-                 revalidator=None, fk, refine=None, urdf=None,
+                 revalidator=None, latest_snapshot_fn=None,
+                 fk, refine=None, urdf=None,
                  tcp_path=("elfin_joint1", "elfin_joint2", "elfin_joint3",
                            "elfin_joint4", "elfin_joint5", "elfin_joint6",
                            "suction_contact_frame"),
@@ -268,6 +296,12 @@ class RouteProducer(object):
         self.validity_adapter_factory = validity_adapter_factory
         self.attachment_provider = attachment_provider
         self.revalidator = revalidator
+        #: Fresh-map fetch at admission time (ST09-I release/map
+        #: discipline): callable -> latest PlanningSnapshot, or None to
+        #: fail the revalidation closed. When unset the planned snapshot
+        #: is reused (development wiring; admission then never sees a
+        #: map that changed after planning).
+        self.latest_snapshot_fn = latest_snapshot_fn
         self.fk = fk
         self.refine = refine
         self.urdf = urdf
@@ -426,7 +460,14 @@ class RouteProducer(object):
 
         start_q = tuple(float(v) for v in request["start_joints"])
         last_reason = "NO_FEASIBLE_ROUTE"
+        self._log("route: select %s slots=%d hash=%s" % (
+            request["request_id"], len(request["slots"]),
+            str(request.get("geometry_hash") or "")[:12]))
         for index, slot in enumerate(request["slots"]):
+            if index and index % 100 == 0:
+                self._log("route: slot %d/%d %.1fs last=%s" % (
+                    index, len(request["slots"]),
+                    (self._clock_ns() - started_ns) / 1e9, last_reason))
             base_candidate = candidate_from_slot(slot, index)
             elapsed = self._clock_ns() - started_ns
             remaining = self.budget_ns - elapsed
@@ -556,14 +597,14 @@ class RouteProducer(object):
                 self.graph.edges[edge_id] for edge_id in
                 route.entry_edge_ids + route.retreat_edge_ids)
             self._log("route: certifying %d edges" % len(edges))
-            certification = self._certify(
+            certification, certify_failure = self._certify(
                 route, snapshot, attachment, edges, candidate, request)
             self._log("route: certification %s" % (
                 "pass" if certification is not None and certification.passed
                 else "fail"))
             row["route_id"] = route.route_id
             if certification is None or not certification.passed:
-                row["reason"] = "CERTIFICATION_TIMEOUT" \
+                row["reason"] = certify_failure \
                     if certification is None else certification.reason.value
                 if certification is not None:
                     row["cert_detail"] = {
@@ -623,10 +664,31 @@ class RouteProducer(object):
             }
         return self._fail(last_reason, rows)
 
+    def _release_box_target(self, box_target, request):
+        """Lift the box target to the release-gap pose along container up.
+
+        The frozen target synthesis is untouched; this declared producer
+        lift is what the descend edge actually tracks — payload bottom
+        RELEASE_DROP_M above support at descend end, then vacuum-off
+        free fall. Both the reach prior and the planner goals consume
+        the lifted pose (the arm goes where the release happens).
+        """
+        import dataclasses
+
+        delta = rotate_vector(
+            tuple(float(v) for v in
+                  request["container_transform"]["quaternion_xyzw"]),
+            (0.0, 0.0, RELEASE_DROP_M))
+        return dataclasses.replace(
+            box_target,
+            position=tuple(box_target.position[i] + delta[i]
+                           for i in range(3)))
+
     def _expand_targets(self, candidate, attachment, request):
         from luggage_planning.place_targets import expand_place_targets
 
-        box_target = self._box_target(candidate, attachment, request)
+        box_target = self._release_box_target(
+            self._box_target(candidate, attachment, request), request)
         return expand_place_targets(box_target, attachment)
 
     def _goal_seed_fn(self, start_q, branch_q=None):
@@ -708,40 +770,67 @@ class RouteProducer(object):
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
                  request):
-        """Authoritative certification under the frozen fail-closed budget."""
-        from luggage_planning.trajectory_certifier import CertificationContext
+        """Authoritative certification under the frozen fail-closed budget.
+
+        Reasons stay DISTINCT: a named ContractViolation (service
+        unavailable/timeout/scene/echo mismatch) surfaces its own code,
+        an unexpected exception is CERT_SERVICE_EXCEPTION, and only a
+        genuine wall-clock overrun is CERTIFICATION_TIMEOUT — never one
+        blanket code for every failure ([ST09-I] reason-loss fix).
+        Returns ``(result, failure_reason)``.
+        """
+        import dataclasses
+
+        from st09_contracts._base import ContractViolation
+        from luggage_planning.trajectory_certifier import (
+            CertificationContext,
+        )
 
         scene_states = self.edge_scene_states(
             route, edges, snapshot, attachment, candidate, request)
         adapter = self.validity_adapter_factory(
             scene_states=scene_states, edges=edges)
+        policy = self.cert_policy
         context = CertificationContext(
             route=route, snapshot=snapshot, attachment=attachment,
             edges=edges, validity_adapter=adapter,
-            now_ns=self._clock_ns(), policy=self.cert_policy)
+            now_ns=self._clock_ns(), policy=policy)
         started_ns = self._clock_ns()
         try:
             result = self.certifier.certify(context)
-        except Exception as exc:  # noqa: BLE001 - fail closed
+        except ContractViolation as exc:
+            reason = str(exc).split(":", 1)[0].strip() or \
+                "CERT_INVALID_EVIDENCE"
+            self._log("route: certify refused %s (%s)" % (
+                reason, str(exc)[:300]))
+            return None, reason
+        except Exception as exc:  # noqa: BLE001 - fail closed, but NAMED
             import traceback
 
             self._log("route: certify exception %r %s" % (
                 exc, traceback.format_exc(limit=4).replace("\n", " | ")))
-            return None
+            return None, "CERT_SERVICE_EXCEPTION"
         elapsed = (self._clock_ns() - started_ns) / 1e9
         self._log("route: certify wall %.3fs edges=%d" % (
             elapsed, len(edges)))
         if elapsed > CERTIFICATION_TIMEOUT_S:
-            return None
-        return result
+            return None, "CERTIFICATION_TIMEOUT"
+        return result, None
 
     def _revalidate(self, route, snapshot, edges):
         if self.revalidator is None:
             return None
         from luggage_planning.map_revalidation import RevalidationInput
 
+        latest = snapshot
+        fetch = self.latest_snapshot_fn
+        if callable(fetch):
+            fetched = fetch()
+            if fetched is None:
+                return None  # named MAP_REVALIDATION_UNAVAILABLE upstream
+            latest = fetched
         return self.revalidator.revalidate(RevalidationInput(
-            route=route, planned_snapshot=snapshot, latest_snapshot=snapshot,
+            route=route, planned_snapshot=snapshot, latest_snapshot=latest,
             edges=edges, now_ns=self._clock_ns(), in_flight=False))
 
     def _fail(self, reason, rows):

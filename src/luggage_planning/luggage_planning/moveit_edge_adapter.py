@@ -348,13 +348,17 @@ class MoveItEdgeAdapter(object):
         if scene.load_state == "carrying":
             if scene.payload is None:
                 raise RuntimeError("carrying scene without a payload spec")
-            if not self._scene.attach_pickup_box(
-                    payload_id,
-                    list(scene.payload.t_tcp_box_translation),
-                    list(scene.payload.t_tcp_box_quaternion_xyzw),
-                    list(scene.payload.dimensions_wdh),
-                    link_name=self._link, frame_id=self._link,
-                    box_id=payload_id):
+            from luggage_planning.planning_scene_client import (
+                build_attach_scene,
+            )
+
+            attach_diff = build_attach_scene(
+                payload_id,
+                list(scene.payload.t_tcp_box_translation),
+                list(scene.payload.t_tcp_box_quaternion_xyzw),
+                list(scene.payload.dimensions_wdh),
+                self._link)
+            if not self._scene.apply_diff(attach_diff, timeout=5.0):
                 raise RuntimeError("scene attach failed")
             self._call_counts["scene_apply"] += 1
         elif self._scene_state_applied is not None:

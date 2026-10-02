@@ -237,6 +237,16 @@ def whole_chain(tmp_path_factory):
                     arm_controllers_yaml))
     assert old_args in launch_text, "template spawner args drifted"
     launch_text = launch_text.replace(old_args, new_args)
+    # [ST09-I] the batched route validation service, on the same robot
+    # description/semantic move_group plans with.
+    old_anchor = "    # Controllers chain after the controller manager is up."
+    new_anchor = """    nodes.append(Node(
+        package="luggage_planning", executable="validate_route_node",
+        name="validate_route_v2", output="screen",
+        parameters=[description, semantic]))
+    # Controllers chain after the controller manager is up."""
+    assert old_anchor in launch_text, "template controllers anchor drifted"
+    launch_text = launch_text.replace(old_anchor, new_anchor)
     launch_path = out_dir / "graph_launch.py"
     launch_path.write_text(launch_text)
     command = ["ros2", "launch", str(launch_path)]

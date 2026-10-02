@@ -248,8 +248,44 @@ def build_mesh_collision_object(obj_id, xyz, quat, mesh_msg,
 
 
 def build_attach_scene(box_id, xyz, quat, box_size, link_name,
-                       touch_links=DEFAULT_TOUCH_LINKS, frame_id="world"):
-    """Attach the (already added) box to ``link_name`` with an ACM entry."""
+                       touch_links=DEFAULT_TOUCH_LINKS, frame_id=None,
+                       pose_semantics="link_relative"):
+    """Attach the box to ``link_name`` — ONE shared construction.
+
+    Two semantics, both explicit:
+
+    * ``link_relative`` (default): the attach pose is the placement of
+      the box ON the tool (a measured grasp is exactly ``T_tcp_box``),
+      so the object frame defaults to ``link_name`` and a nonzero pose
+      in any other frame is REFUSED. A link-relative pose expressed in
+      the planning frame silently parks the box near the world origin —
+      the [ST09-I] frame bug that turned every carrying certification
+      sample into a collision; the guard keeps it from coming back.
+    * ``move_world_object``: attach by id — MoveIt moves the box from
+      the world scene onto the link and the pose fields are inert, so
+      canonical zeros in the world frame are transmitted and the pose
+      arguments are ignored.
+
+    Every attach in the stack (pick, edge builder, certifier, hardware
+    payload) goes through this one construction.
+    """
+    if pose_semantics == "move_world_object":
+        frame_id = "world"
+        xyz = (0.0, 0.0, 0.0)
+        quat = (0.0, 0.0, 0.0, 1.0)
+    else:
+        if frame_id is None:
+            frame_id = link_name
+        pose_is_meaningful = (
+            sum(abs(float(v)) for v in xyz) > 1e-9
+            or abs(float(quat[3]) - 1.0) > 1e-9
+            or abs(float(quat[0]) + 1.0) > 1e-9
+            or abs(float(quat[1])) > 1e-9 or abs(float(quat[2])) > 1e-9)
+        if pose_is_meaningful and frame_id != link_name:
+            raise ValueError(
+                "ATTACH_FRAME_MISMATCH: a nonzero attach pose must be "
+                "expressed in the link frame (frame_id=%r, link=%r)"
+                % (frame_id, link_name))
     scene = PlanningScene()
     scene.is_diff = True
     attached = AttachedCollisionObject()
@@ -402,10 +438,15 @@ class PlanningSceneClient(object):
     def attach_pickup_box(self, model_name, xyz, quat, box_size,
                           link_name=DEFAULT_ATTACH_LINK, frame_id="world",
                           box_id=BOX_OBJECT_ID):
-        del model_name  # object id is fixed; model name kept for logs
+        """Attach by id: MoveIt moves the pre-added world box onto the
+        link; the pose arguments are inert (canonical zeros go on the
+        wire). Callers wanting a created-object attach use
+        ``build_attach_scene`` with link-relative semantics."""
+        del model_name, xyz, quat, frame_id  # inert under move semantics
         return self._apply(
-            build_attach_scene(box_id, xyz, quat, box_size, link_name,
-                               frame_id=frame_id))
+            build_attach_scene(box_id, (0.0, 0.0, 0.0),
+                               (0.0, 0.0, 0.0, 1.0), box_size, link_name,
+                               pose_semantics="move_world_object"))
 
     def detach_and_remove(self, model_name=None, box_id=BOX_OBJECT_ID):
         del model_name

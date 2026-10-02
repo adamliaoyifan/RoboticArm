@@ -162,6 +162,9 @@ class CargoVolumeMapperNode(Node):
         self._lock = threading.Lock()
         self._clouds = OrderedDict()
         self._integrated = set()
+        #: Sensor stamp of the last integrated settled view (0 = never
+        #: observed) — the freshness datum surfaced through get_stats.
+        self._last_acquisition_ns = 0
 
         self._tf_buffer = Buffer()
         self._tf_node = Node(
@@ -396,6 +399,9 @@ class CargoVolumeMapperNode(Node):
 
         with self._lock:
             self._integrated.add(tuple(record["stamp_key"]))
+            self._last_acquisition_ns = (
+                int(record["stamp"].sec) * 1_000_000_000
+                + int(record["stamp"].nanosec))
         self._publish_all()
         stats = self._mapper.stats()
         response.schema_version = SCHEMA_VERSION
@@ -499,6 +505,7 @@ class CargoVolumeMapperNode(Node):
         response.total_voxels = int(stats["total_voxels"])
         response.map_revision = int(stats["map_revision"])
         response.geometry_hash = self._geometry_hash
+        response.last_acquisition_stamp_ns = int(self._last_acquisition_ns)
         response.message = "committed=%d" % stats["committed_box_count"]
         return response
 

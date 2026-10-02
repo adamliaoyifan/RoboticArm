@@ -7,6 +7,7 @@ find_package(builtin_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(trajectory_msgs REQUIRED)
+find_package(moveit_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/FrameIdentityV2.msg"
@@ -20,6 +21,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/JointTrajectoryContractV2.msg"
   "msg/BoundaryDiagnosticV2.msg"
   "msg/MotionSegmentV2.msg"
+  "msg/RouteContact.msg"
+  "msg/RouteLegV2.msg"
+  "msg/RouteLegResultV2.msg"
+  "srv/ValidateRouteV2.srv"
   "srv/ValidatePoseV2.srv"
   "srv/AddPlacedBoxV2.srv"
   "srv/RemovePlacedBoxV2.srv"
@@ -71,7 +76,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "action/AimCameraAtContainer.action"
   "action/ValidateMotionSequence.action"
   "action/PlanNextCargoView.action"
-  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs trajectory_msgs
+  DEPENDENCIES builtin_interfaces geometry_msgs std_msgs trajectory_msgs moveit_msgs
 )
 
 ament_export_dependencies(rosidl_default_runtime)

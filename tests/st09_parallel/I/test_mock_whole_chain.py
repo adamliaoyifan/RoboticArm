@@ -112,6 +112,102 @@ def _compute_placement(chain, request_id):
         max_candidates=400)
 
 
+def _observe_fresh_map(chain, request_id):
+    """One REAL settled observation: publish a small settled cloud on
+    the untracked topic and integrate it through IntegrateCargoView.
+
+    Route admission refuses stale maps (the frozen 10 s snapshot age);
+    the mock stack's latched surface otherwise carries the boot stamp.
+    The integration is an observation (no arm/cargo business effect)
+    and republishes surface_v2 with a fresh acquisition stamp."""
+    import struct
+    import time as _time
+
+    from luggage_msgs.srv import IntegrateCargoView
+    from rclpy.qos import QoSProfile, ReliabilityPolicy
+    from sensor_msgs.msg import PointCloud2
+    from sensor_msgs.msg import PointField
+
+    from luggage_description.scene_tf_config_utils import (
+        container_inner_floor_z,
+        load_scene_tf_config,
+        resolve_scene_tf_config_path,
+    )
+    import os
+    from ament_index_python.packages import get_package_share_directory
+
+    node = chain.node
+    surface = chain.latched_surface()
+    assert surface is not None, "no surface before observation"
+    publisher = node.create_publisher(
+        PointCloud2, "/luggage/semantic/cargo_points_untracked",
+        QoSProfile(depth=10,
+                   reliability=ReliabilityPolicy.BEST_EFFORT))
+    cloud = PointCloud2()
+    cloud.header.frame_id = "container_link"
+    # Points on the settled surface of the observed cargo: the box top
+    # height derives from the floor slab elevation plus THIS box's
+    # depth (not a constant) — the mapper filters points below
+    # floor_z + 0.05, so the surface must sit above it. This is the
+    # post-release observation semantics: floor + box height.
+    scene = load_scene_tf_config(resolve_scene_tf_config_path(os.path.join(
+        get_package_share_directory("luggage_description"), "config",
+        "scene_tf.yaml.example")))
+    top_z = container_inner_floor_z(scene) + BOX_WDH[2]
+    points = [
+        (x, y, top_z)
+        for x in (-0.20, -0.10, 0.0, 0.10, 0.20)
+        for y in (-0.12, 0.0, 0.12)
+    ]
+    cloud.height = 1
+    cloud.width = len(points)
+    cloud.is_bigendian = False
+    cloud.point_step = 12
+    for index, name in enumerate(("x", "y", "z")):
+        field = PointField()
+        field.name = name
+        field.offset = index * 4
+        field.datatype = PointField.FLOAT32
+        field.count = 1
+        cloud.fields.append(field)
+    cloud.row_step = cloud.point_step * cloud.width
+    cloud.data = b"".join(struct.pack("<3f", *point) for point in points)
+    # publish for long enough that BEST_EFFORT discovery settles and
+    # the mapper buffers a cloud stamped within the join window
+    for _ in range(15):
+        cloud.header.stamp = node.get_clock().now().to_msg()
+        publisher.publish(cloud)
+        _time.sleep(0.1)
+    client = node.create_client(IntegrateCargoView,
+                                "/cargo_map/integrate_cargo_view")
+    assert client.wait_for_service(timeout_sec=10.0)
+    request = IntegrateCargoView.Request()
+    request.schema_version = 1
+    request.view_request_id = "%s-view" % request_id
+    request.candidate_id = "observe-0"
+    # the freshness window is 0.20 s: stamp the request at call time so
+    # the nearest buffered cloud is always inside it
+    request.source_acquisition_stamp = node.get_clock().now().to_msg()
+    request.expected_map_revision = int(surface.map_revision)
+    request.geometry_hash = str(surface.geometry_hash or "")
+    request.settled = True
+    request.frame_count = 1
+    future = client.call_async(request)
+    deadline = _time.monotonic() + 15.0
+    while not future.done() and _time.monotonic() < deadline:
+        _time.sleep(0.1)
+    assert future.done(), "IntegrateCargoView timeout"
+    response = future.result()
+    assert response.success, ("observation refused: %s %s" % (
+        response.reason_code, response.message))
+    node.destroy_publisher(publisher)
+    node.destroy_client(client)
+    fresh = chain.latched_surface()
+    assert fresh is not None
+    assert int(fresh.map_revision) >= int(surface.map_revision)
+    return fresh
+
+
 CARRY_POSE_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
 
 
@@ -184,12 +280,6 @@ class TestMockWholeChain:
         exercise = whole_chain.probe.exercise_compute()
         assert exercise.get("ok"), exercise
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="open: the certifier's batched GetCartesianPath reports "
-               "fraction 0.000 on the first portal sample in-node while "
-               "equivalent isolated probes and B's own RRTConnect edge "
-               "at the same state pass; tracked in the ST09-I role note")
     def test_placement_route_and_execution(self, whole_chain):
         from luggage_description.frame_contracts import ContractError
 
@@ -203,6 +293,9 @@ class TestMockWholeChain:
             _timed_joint_leg(chain, "i-carry-pose-1", CARRY_POSE_Q),
             30.0, name="PlanMotionV2:carry_pose")
         assert ok, message
+        # A fresh observation: admission refuses stale maps, and the
+        # latched surface otherwise carries the boot stamp.
+        _observe_fresh_map(chain, "i-route-1")
         placement = _compute_placement(chain, "i-route-1")
         assert placement is not None and placement.success, (
             getattr(placement, "message", None) or "placement timeout")
@@ -239,33 +332,45 @@ class TestMockWholeChain:
         }))
         whole_chain.record["route_executed"] = True
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="open: same in-node batched-probe discrepancy as the route test (see role note); these chain from a successful route select")
     def test_geometry_mismatch_refuses_named(self, whole_chain):
         from luggage_planning.typed_driver_adapter import TypedDriverAdapter
 
         chain = whole_chain
+        # Same setup as the positive route test (the degenerate mock
+        # home is a pathological planning start): reposition to the
+        # carry pose and take one real observation, then vary EXACTLY
+        # ONE input — the geometry hash.
+        adapter = chain.adapter()
+        ok, message, _result = adapter.plan_motion(
+            _timed_joint_leg(chain, "i-carry-pose-2", CARRY_POSE_Q),
+            30.0, name="PlanMotionV2:carry_pose")
+        assert ok, message
+        _observe_fresh_map(chain, "i-route-2")
         placement = _compute_placement(chain, "i-route-2")
         assert placement is not None and placement.success
         request = _select_request(chain, "i-route-2", placement)
         request["geometry_hash"] = "not-the-hash"
-        adapter = TypedDriverAdapter(chain.node, chain.probe.runtime)
         selection = adapter.select_place_path(
             timeout_sec=150.0, **request)
         assert selection is not None
         assert not selection.success
         assert str(selection.reason_code)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="open: same in-node batched-probe discrepancy as the route test (see role note); these chain from a successful route select")
     def test_in_flight_cancel_is_bounded(self, whole_chain):
         """Cancel a running route leg; acknowledgement within the frozen
         10 s goal-accept deadline, business effects limited to cancel."""
         from luggage_msgs.action import PlanMotionV2
 
         chain = whole_chain
+        # Same setup as the positive route test: carry pose + one real
+        # observation — the cancel probe varies only the mid-flight
+        # cancellation of an executing leg.
+        adapter = chain.adapter()
+        ok, message, _result = adapter.plan_motion(
+            _timed_joint_leg(chain, "i-carry-pose-3", CARRY_POSE_Q),
+            30.0, name="PlanMotionV2:carry_pose")
+        assert ok, message
+        _observe_fresh_map(chain, "i-route-3")
         placement = _compute_placement(chain, "i-route-3")
         if placement is None or not placement.success:
             pytest.skip("placement unavailable for cancel probe")

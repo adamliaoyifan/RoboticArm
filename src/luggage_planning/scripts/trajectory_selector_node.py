@@ -203,9 +203,11 @@ class TrajectorySelectorNode(Node):
             make_offline_fk,
         )
         from luggage_planning.route_producer import RouteProducer
-        from luggage_planning.trajectory_certifier import TrajectoryCertifier
         from luggage_planning.route_producer import (
-            certification_policy_from_contract)
+            certification_policy_from_contract,
+            revalidation_policy_from_contract,
+        )
+        from luggage_planning.trajectory_certifier import TrajectoryCertifier
         import json as _json
 
         try:
@@ -215,8 +217,11 @@ class TrajectorySelectorNode(Node):
                 get_package_share_directory("st09_contracts"),
                 "resolved_planning_contract.json")
             with open(contract_path, encoding="utf-8") as handle:
-                cert_policy = certification_policy_from_contract(
-                    _json.load(handle))
+                contract_document = _json.load(handle)
+            cert_policy = certification_policy_from_contract(
+                contract_document)
+            revalidation_policy = revalidation_policy_from_contract(
+                contract_document)
         except Exception:  # noqa: BLE001 - fail closed to C defaults
             self.get_logger().error(
                 "route: resolved contract unavailable; refusing to plan")
@@ -228,6 +233,52 @@ class TrajectorySelectorNode(Node):
         tcp_path = urdf.path_to("suction_contact_frame")
         fk = make_offline_fk(urdf, tcp_path)
         scene_client = PlanningSceneClient(self)
+
+        def latest_snapshot():
+            """Fresh mapper state at admission time — never the planned
+            snapshot. The stats service supplies the live map revision
+            and the last REAL observation stamp (the surface records
+            are scene-basis stamp-0 by contract); the grid is the
+            node's current latched v1 surface. Any unavailable piece
+            fails the revalidation closed."""
+            import threading
+
+            from luggage_msgs.srv import GetCargoMapStats
+            from luggage_perception.cargo_view_integration import (
+                planning_snapshot_from_surface,
+            )
+
+            surface = dict(self._surface or {})
+            if not surface:
+                return None
+            if not hasattr(self, "_stats_client"):
+                self._stats_client = self.create_client(
+                    GetCargoMapStats, "/cargo_map/get_stats")
+            if not self._stats_client.wait_for_service(timeout_sec=1.0):
+                return None
+            event = threading.Event()
+            future = self._stats_client.call_async(
+                GetCargoMapStats.Request())
+            future.add_done_callback(lambda _f: event.set())
+            if not event.wait(timeout=2.0) or not future.done():
+                return None
+            stats = future.result()
+            if not stats.success:
+                return None
+            surface.update({
+                "acquisition_stamp_ns": int(
+                    stats.last_acquisition_stamp_ns),
+                "map_revision": int(stats.map_revision),
+                # same fallback the planned snapshot uses (the v1 dict
+                # carries no separate commit ledger revision)
+                "commit_revision": int(stats.map_revision),
+                "geometry_hash": str(stats.geometry_hash),
+            })
+            return planning_snapshot_from_surface(
+                surface,
+                scene_revision=str(
+                    self.get_parameter("frame_scene_revision").value or ""),
+                request_id="latest-snapshot")
 
         def refine(position, quaternion, seed):
             return refine_to_pose(urdf, tcp_path, position, quaternion,
@@ -251,7 +302,8 @@ class TrajectorySelectorNode(Node):
                 str(self.get_parameter("frame_scene_revision").value
                     or "scene-runtime"), "route-selector",
                 tcp_frame="suction_contact_frame", box_frame="box"),
-            revalidator=MapRevalidator(),
+            revalidator=MapRevalidator(revalidation_policy),
+            latest_snapshot_fn=latest_snapshot,
             fk=fk, refine=refine, urdf=urdf, tcp_path=tcp_path,
             clock_ns=lambda: self.get_clock().now().nanoseconds,
             log=lambda message: self.get_logger().info(message),
@@ -288,8 +340,26 @@ class TrajectorySelectorNode(Node):
             response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
             return response
         from luggage_planning.place_service import fill_select_response_route
-        response = fill_select_response_route(
-            request, response, producer=producer)
+        try:
+            response = fill_select_response_route(
+                request, response, producer=producer)
+        except Exception as error:  # noqa: BLE001 - service boundary
+            # A refused request carries its own named reason; an
+            # UNEXPECTED exception must still never kill the node (an
+            # exception escaping a service callback terminates the
+            # executor — the [ST09-I] reason-loss lesson).
+            import traceback
+
+            self.get_logger().error(
+                "route: select boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.success = False
+            response.reason_code = "SELECT_SERVICE_EXCEPTION"
+            response.rows_json = json.dumps(
+                {"error": "SELECT_SERVICE_EXCEPTION",
+                 "detail": repr(error)[:300]})
+            return response
         if getattr(self, "_frame_runtime", None) is not None and bool(
                 getattr(response, "success", False)):
             from luggage_description.frame_contracts import ContractError

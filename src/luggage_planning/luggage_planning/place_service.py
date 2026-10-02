@@ -250,6 +250,21 @@ def _route_carry_segments(legs, request):
     return segments
 
 
+def _reject(response, error):
+    """Named refusal for the select surface — never an exception out of
+    the service callback ([ST09-I] reason-loss fix: a bad request must
+    surface its own code, not kill the node as a 150 s client timeout).
+    """
+    response.success = False
+    response.reason_code = str(getattr(error, "code", None)
+                               or "SELECT_REFUSED")
+    response.slot_index = -1
+    response.rows_json = json.dumps(
+        {"error": str(getattr(error, "code", None) or "SELECT_REFUSED"),
+         "detail": str(error)[:300]})
+    return response
+
+
 def fill_select_response_route(message, response, producer):
     """Route-mode select: the producer's certified legs are the answer.
 
