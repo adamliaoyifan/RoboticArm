@@ -653,13 +653,17 @@ class TestMockWholeChain:
         assert legs, "route returned no typed legs"
         names = [leg.name for leg in legs]
         assert names[-1] in ("retreat", "return")
-        # Map revision is unchanged by planning: no commits, no scene edits.
-        before = chain.latched_surface().map_revision
+        # Map revision is unchanged by planning: no commits, no scene
+        # edits. Sample the CAUGHT-UP latch (the loop test's discipline,
+        # line ~1092): the raw latch can lag this test's own integrate
+        # republish, which the G0-2 goto reordering once exposed as a
+        # phantom 6->7 "commit" mid-legs.
+        before = _fresh_surface(chain).map_revision
         for leg in legs:
             ok, message, _result = adapter.plan_motion(
                 leg, 45.0, name="PlanMotionV2:%s" % leg.name)
             assert ok, message
-        after = chain.latched_surface().map_revision
+        after = _fresh_surface(chain).map_revision
         assert int(after) == int(before), (before, after)
         chain.out_dir.joinpath("route_legs.json").write_text(json.dumps({
             "selection_id": str(selection.selection_id),
