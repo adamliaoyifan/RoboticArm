@@ -1,0 +1,25 @@
+# [ST09-I S5.7] Pre-execution re-verification of an ALREADY-CERTIFIED route.
+# The probe never generates a second path: it re-validates the exact
+# selected one (certify A, execute A).
+string request_id
+string scene_revision
+# The SelectPlacePathV2 path_hash identifying the selected route.
+string route_digest
+# Live joint state at verification time (start-state match gate).
+float64[] current_joint_state
+# The caller's latest authoritative map revision (GetCargoMapStats).
+uint64 latest_map_revision
+---
+bool valid
+string reason_code
+string detail
+# max |current - certified start| over the joints (rad).
+float64 start_state_delta_rad
+# Map revision the re-validation ran against.
+uint64 validated_map_revision
+# Echo of the original certification digest for the evidence chain.
+string certification_id
+# Per-leg trajectory digests of the certified route, in execution
+# order — the caller compares them against the legs it holds so what
+# is executed is bit-for-bit what was certified.
+string[] leg_digests

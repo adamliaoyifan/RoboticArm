@@ -399,6 +399,9 @@ class RouteProducer(object):
         self.last_revalidation = None
         self.last_budget_snapshot = None
         self.last_rows = None
+        #: [ST09-I S5.7] The last admitted selection, for pre-execution
+        #: re-verification (certify A, execute A — never a second path).
+        self.last_selection = None
 
     # -- helpers ---------------------------------------------------------
 
@@ -899,6 +902,16 @@ class RouteProducer(object):
             self.last_certification = certification
             self.last_revalidation = revalidation
             self.last_rows = rows
+            self.last_selection = {
+                "path_hash": route.digest(),
+                "route": route,
+                "edges": edges,
+                "snapshot": snapshot,
+                "attachment": attachment,
+                "candidate": candidate,
+                "request": request,
+                "certification_id": certification.digest(),
+            }
             return {
                 "success": True,
                 "reason_code": "OK",
@@ -917,6 +930,70 @@ class RouteProducer(object):
                 "elapsed_s": (self._clock_ns() - started_ns) / 1e9,
             }
         return self._fail(last_reason, rows)
+
+    def verify_selected(self, *, route_digest, current_joints,
+                        latest_map_revision, scene_revision):
+        """[ST09-I S5.7] Pre-execution re-verification of the selected route.
+
+        The probe never generates a second path. Identity gates first
+        (digest known, scene revision match, 2*pi-wrapped start-state
+        match at the executor's own 0.01 rad gate), map admission via
+        the revalidator, then a FRESH full re-certification of the exact
+        certified edges against a live scene read. Returns
+        ``(ok, reason, detail)``; ``detail["leg_digests"]`` lets the
+        caller prove what it holds is bit-for-bit what was certified.
+        """
+        selection = getattr(self, "last_selection", None)
+        if not selection or selection.get("path_hash") != str(route_digest):
+            return False, "DIGEST_UNKNOWN", {
+                "known": (selection or {}).get("path_hash", "")}
+        route = selection["route"]
+        edges = selection["edges"]
+        snapshot = selection["snapshot"]
+        if str(scene_revision) != str(
+                getattr(snapshot, "scene_revision", "")):
+            return False, "IDENTITY_CHANGED", {
+                "scene": str(getattr(snapshot, "scene_revision", ""))}
+        current = tuple(float(v) for v in (current_joints or ()))
+        first = tuple(edges[0].trajectory.positions[0]) if edges else ()
+        if not first or len(current) != len(first):
+            return False, "START_STATE_MISMATCH", {
+                "certified_start": list(first), "current": list(current)}
+
+        def _wrap(delta):
+            return (delta + math.pi) % (2.0 * math.pi) - math.pi
+
+        delta = max(abs(_wrap(c - f)) for c, f in zip(current, first))
+        if delta > 0.01:
+            return False, "START_STATE_MISMATCH", {
+                "delta_rad": round(delta, 6)}
+        if type(latest_map_revision) is int \
+                and latest_map_revision < int(snapshot.map_revision):
+            return False, "MAP_RESTART", {
+                "planned": int(snapshot.map_revision),
+                "caller_latest": latest_map_revision}
+        revalidation = self._revalidate(route, snapshot, edges)
+        if revalidation is None:
+            return False, "MAP_REVALIDATION_UNAVAILABLE", {}
+        from st09_contracts.certification import MapDecision
+
+        if revalidation.decision is not MapDecision.CONTINUE:
+            return False, getattr(
+                revalidation.reason, "value", "MAP_REVISION_MISMATCH"), {
+                "map_revision": getattr(revalidation, "map_revision", 0)}
+        certification, failure = self._certify(
+            route, snapshot, selection["attachment"], edges,
+            selection["candidate"], selection["request"])
+        if certification is None or not certification.passed:
+            reason = failure if certification is None \
+                else certification.reason.value
+            return False, reason, {"recertified": False}
+        return True, "OK", {
+            "start_state_delta_rad": round(delta, 6),
+            "certification_id": certification.digest(),
+            "validated_map_revision": int(snapshot.map_revision),
+            "leg_digests": [edge.trajectory.digest() for edge in edges],
+        }
 
     def _release_box_target(self, box_target, request):
         """Lift the box target to the release-gap pose along container up.

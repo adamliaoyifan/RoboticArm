@@ -219,50 +219,96 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             return float(planner.cartesian_min_fraction)
         return 0.95
 
-    def _frame_probe_winner(self, response, request_id, stats):
-        """Fail-closed probe of the selected carry path (probe-on requires
-        success; unavailable or failed probes reject the placement)."""
-        stats["path_source"] = str(getattr(response, "path_source", "") or "")
-        stats["path_hash"] = str(getattr(response, "path_hash", "") or "")
-        waypoints = [
-            [float(pose.pose.position.x), float(pose.pose.position.y),
-             float(pose.pose.position.z)]
-            for pose in response.waypoint_poses]
-        if not waypoints:
-            return False, "PLACE_PROBE_EMPTY_PATH"
-        quaternion = [
-            float(response.waypoint_poses[-1].pose.orientation.x),
-            float(response.waypoint_poses[-1].pose.orientation.y),
-            float(response.waypoint_poses[-1].pose.orientation.z),
-            float(response.waypoint_poses[-1].pose.orientation.w)]
-        from luggage_description.frame_contracts import ContractError
-        from luggage_planning.typed_driver_adapter import probe_segment_message
+    def _leg_trajectory_digest(self, segment):
+        """Rebuild the certified trajectory digest from a v2 leg message."""
+        from st09_contracts.graph import TimedTrajectory
+        trajectory = None
+        if getattr(segment, "joint_trajectory", None) is not None:
+            trajectory = getattr(segment.joint_trajectory, "trajectory",
+                                 None)
+        if trajectory is None or not trajectory.points:
+            return ""
+        points = list(trajectory.points)
+
+        def _times():
+            return tuple(
+                int(p.time_from_start.sec) * 1_000_000_000
+                + int(p.time_from_start.nanosec) for p in points)
+
         try:
-            message = probe_segment_message(
-                {"waypoints": waypoints, "target_quaternion_xyzw": quaternion,
-                 "type": "cartesian", "keep_tool_down": True,
-                 "allow_ompl_fallback": True},
-                request_id, self._frame_scene_revision)
-            probe_response = self._typed.probe_segment(
-                message, timeout_sec=PLACE_PROBE_TIMEOUT_S)
-        except ContractError as error:
-            return False, error.code
-        stats["probed"] += 1
-        stats["n_waypoints"] = len(waypoints)
-        if probe_response is None:
-            stats["unavailable"] += 1
-            return False, "PLACE_PROBE_UNAVAILABLE"
-        stats["ik_ok"] = bool(probe_response.ik_ok)
-        stats["success"] = bool(probe_response.success)
-        stats["fraction"] = float(probe_response.fraction)
-        stats["message"] = str(probe_response.message or "")
-        if not bool(probe_response.ik_ok):
-            stats["ik_reject"] += 1
-            return False, "PLACE_PROBE_IK_REJECT"
-        min_fraction = self._cartesian_min_fraction()
-        if float(probe_response.fraction) < min_fraction:
-            stats["fraction_reject"] += 1
-            return False, "PLACE_PROBE_FRACTION_REJECT"
+            return TimedTrajectory(
+                joint_names=tuple(trajectory.joint_names),
+                positions=tuple(
+                    tuple(float(v) for v in p.positions) for p in points),
+                velocities=tuple(
+                    tuple(float(v) for v in p.velocities) for p in points),
+                accelerations=tuple(
+                    tuple(float(v) for v in p.accelerations)
+                    for p in points),
+                time_from_start_ns=_times()).digest()
+        except Exception:  # noqa: BLE001 - malformed leg = no digest match
+            return ""
+
+    def _verify_selected_route(self, response, request_id, stats):
+        """[ST09-I S5.7] Re-verify the selected certified route.
+
+        The probe NEVER generates a second path (certify A, execute A):
+        the selector re-checks identity, start state, and map admission
+        and re-certifies the exact edges against a live scene; the
+        per-leg trajectory digests must then match what this driver
+        holds, proving the legs about to execute are bit-for-bit the
+        certified ones. A failure refuses THIS placement.
+        """
+        stats["mode"] = "verify"
+        stats["verified"] = stats.get("verified", 0) + 1
+        client = getattr(self, "_verify_route_client", None)
+        if client is None:
+            from luggage_msgs.srv import ValidateSelectedRoute
+            client = self.create_client(
+                ValidateSelectedRoute,
+                "/trajectory_selector/validate_selected_route",
+                callback_group=self._group)
+            self._verify_route_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            stats["unavailable"] = stats.get("unavailable", 0) + 1
+            return False, "VERIFY_UNAVAILABLE"
+        from luggage_msgs.srv import ValidateSelectedRoute
+        request = ValidateSelectedRoute.Request()
+        request.request_id = str(request_id)
+        request.scene_revision = str(self._frame_scene_revision or "")
+        request.route_digest = str(getattr(response, "path_hash", "") or "")
+        request.current_joint_state = [
+            float(v) for v in
+            (_joint_positions(getattr(self, "_last_joint_state", None))
+             or [])]
+        revision = 0
+        stats_client = getattr(self, "_stats", None)
+        if stats_client is not None:
+            from luggage_msgs.srv import GetCargoMapStats
+            stats_response = self.call_srv(
+                stats_client, GetCargoMapStats.Request(), timeout=5.0)
+            if stats_response is not None and stats_response.success:
+                revision = int(stats_response.map_revision)
+        request.latest_map_revision = int(revision)
+        result = self.call_srv(client, request, timeout=PLACE_PROBE_TIMEOUT_S)
+        if result is None:
+            stats["unavailable"] = stats.get("unavailable", 0) + 1
+            return False, "VERIFY_UNAVAILABLE"
+        stats["reason"] = str(result.reason_code or "")
+        if not result.valid:
+            stats["rejected"] = stats.get("rejected", 0) + 1
+            return False, str(result.reason_code or "VERIFY_REJECTED")
+        local = [self._leg_trajectory_digest(segment)
+                 for segment in (response.motion_segments or [])]
+        certified = [str(digest) for digest in (result.leg_digests or [])]
+        if local != certified or any(not digest for digest in local):
+            stats["digest_mismatch"] = stats.get("digest_mismatch", 0) + 1
+            return False, "LEG_DIGEST_MISMATCH"
+        stats["start_state_delta_rad"] = float(
+            result.start_state_delta_rad or 0.0)
+        stats["certification_id"] = str(result.certification_id or "")
+        stats["validated_map_revision"] = int(
+            result.validated_map_revision or 0)
         return True, ""
 
     def _frame_place_slot(self, pick_msg, trial):
@@ -378,17 +424,15 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 probe_ok = True
                 break
             t0 = _time.time()
-            probe_ok, probe_reason = self._frame_probe_winner(
+            # [ST09-I S5.7] single re-verification: a failure REFUSES this
+            # placement with its named reason — re-selecting another slot
+            # is not the answer (the route was certified; what changed is
+            # identity/state, which another slot shares).
+            probe_ok, probe_reason = self._verify_selected_route(
                 selection, request_id, probe_stats)
             probe_stats["sec"] = round(
                 float(probe_stats.get("sec") or 0.0) + (_time.time() - t0), 3)
-            if probe_ok:
-                break
-            path_hash = str(getattr(selection, "path_hash", "") or "")
-            if not path_hash or path_hash in excluded:
-                break
-            excluded.append(path_hash)
-            probe_stats["excluded"] = list(excluded)
+            break
         if getattr(self._args, "place_probe", "on") == "on" and not probe_ok:
             trial.fail_code = trial.fail_code or (
                 probe_reason or PLACE_PATH_INFEASIBLE)

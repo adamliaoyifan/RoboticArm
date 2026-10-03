@@ -83,6 +83,13 @@ class TrajectorySelectorNode(Node):
         self.create_service(
             SelectPlacePathV2, "/trajectory_selector/select_place_path_v2",
             self._select_v2, callback_group=self._service_group)
+        # [ST09-I S5.7] pre-execution re-verification of the selected
+        # certified route (certify A, execute A — never a second path).
+        from luggage_msgs.srv import ValidateSelectedRoute
+        self.create_service(
+            ValidateSelectedRoute,
+            "/trajectory_selector/validate_selected_route",
+            self._verify_selected, callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
@@ -393,6 +400,44 @@ class TrajectorySelectorNode(Node):
                 if pedestal_enabled(self._scene) else None),
             atlas_prior=atlas_prior)
         return self._route_producer
+
+    def _verify_selected(self, request, response):
+        """Re-verify the last admitted selection by digest."""
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.valid = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        try:
+            ok, reason, detail = producer.verify_selected(
+                route_digest=request.route_digest,
+                current_joints=list(request.current_joint_state),
+                latest_map_revision=int(request.latest_map_revision),
+                scene_revision=str(request.scene_revision))
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: verify boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.valid = False
+            response.reason_code = "VERIFY_SERVICE_EXCEPTION"
+            response.detail = repr(error)[:300]
+            return response
+        response.valid = bool(ok)
+        response.reason_code = str(reason)
+        response.detail = json.dumps(detail, default=str)[:2000]
+        response.start_state_delta_rad = float(
+            detail.get("start_state_delta_rad", 0.0) or 0.0)
+        response.validated_map_revision = int(
+            detail.get("validated_map_revision") or 0)
+        response.certification_id = str(
+            detail.get("certification_id")
+            or (producer.last_selection or {}).get("certification_id", ""))
+        response.leg_digests = [
+            str(digest) for digest in detail.get("leg_digests") or []]
+        return response
 
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.

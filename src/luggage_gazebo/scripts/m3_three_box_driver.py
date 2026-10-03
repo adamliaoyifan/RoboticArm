@@ -440,9 +440,9 @@ class M3ThreeBoxDriver(MotionOccDriver):
             self._m3_note("selected_path")
         return result
 
-    def _frame_probe_winner(self, response, request_id, stats):
+    def _verify_selected_route(self, response, request_id, stats):
         self._m3_note("probe")
-        return super()._frame_probe_winner(response, request_id, stats)
+        return super()._verify_selected_route(response, request_id, stats)
 
     def _execute_segment(self, segment, trial):
         if any(note["stage"] == "selected_path"
