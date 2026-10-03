@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""GoToRobotPoseV2 live service coverage (ST09-I S5.7-6).
+"""GoToRobotPoseV2 live service coverage (ST09-I S5.7-6 / G0-2).
 
 Direct-service tests against the whole-chain mock stack (the I-suite
 two-box loop drives the v1 action, not this service): a named pose
@@ -9,13 +9,15 @@ pose is already_there (zero legs, nothing promoted), a pose the
 fixture file does not carry is a named refusal, and the
 EnsureCycleStartV2 adjudication answers from the selector's OWN
 latched state.
+
+[G0-2] Every test self-preps through the V2 surface only: the stack is
+session-scoped so the arm carries across files, no test may assume
+where a previous one left it, and the v1 bootstrap is gone.
 """
 import json
 import os
 import sys
 import time
-
-import rclpy.action  # noqa: F401  (the v1 helper below needs it)
 
 _ROOT = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
@@ -124,14 +126,32 @@ def _execute_goto_legs(chain, response):
         assert ok, message
 
 
-def test_goto_service_returns_certified_legs(whole_chain):
+def _prep_at_pickup_observe(chain):
+    """[ST09-I G0-2] Stand-alone preparation through the V2 surface
+    ONLY: drive (or confirm) the arm at the fixture's pickup_observe_sim
+    before planning from it. The stack is session-scoped so the arm
+    carries across files — no test may assume where a previous one left
+    it, and the v1 bootstrap is gone (never a v1 move)."""
+    _chain._observe_fresh_map(chain, "goto-prep")
+    _settle_map(chain)
+    response, _request = _goto(chain, "pickup_observe_sim")
+    assert response is not None, "goto service timeout"
+    assert response.success, "%s %s" % (
+        response.reason_code, response.detail)
+    if not bool(response.already_there):
+        assert response.motion_segments, "no typed legs to reach the pose"
+        _execute_goto_legs(chain, response)
+    return response
+
+
+def test_goto_move_arrive_already_there_causal_chain(whole_chain):
+    """[ST09-I G0-2] ONE case carries the full causal chain: a real
+    certified move (not already_there) -> arrival -> the SAME goto is
+    now already_there (zero legs, nothing promoted) -> a certified
+    route in the other direction. Standalone: self-prepped, order-free."""
     chain = whole_chain
-    _chain._goto_named_pose(chain, "pickup_observe")
-    # The goto producer's map gate is fail-closed on the LATEST map —
-    # ensure the latched surface + a settled revision exist even when
-    # this file runs before the whole-chain loop. The goto target is
-    # the PORTAL pose (the fixture's pickup_observe_sim equals the
-    # home pose — that combination is the already_there case below).
+    _prep_at_pickup_observe(chain)
+    # fresh snapshot after the prep motion, exactly like the loop
     _chain._observe_fresh_map(chain, "goto-pre")
     _settle_map(chain)
     response, _request = _goto(chain, "portal_observe_sim")
@@ -153,13 +173,9 @@ def test_goto_service_returns_certified_legs(whole_chain):
         "certification_id": str(response.certification_id),
         "legs": [str(s.name) for s in response.motion_segments],
         "certify_ms": float(response.certify_ms)}, indent=2))
-
-
-def test_goto_service_already_there_after_arrival(whole_chain):
-    """At the portal from the previous test: zero legs, nothing
-    promoted, nothing to submit; then a second certified motion back
-    to the pickup pose exercises the other direction."""
-    chain = whole_chain
+    # arrival: the identical goto is already_there — zero legs,
+    # nothing promoted (adjudicated BEFORE the map gates; pure
+    # joints-vs-file), so no fresh observation is needed here.
     response, _request = _goto(chain, "portal_observe_sim")
     assert response is not None, "goto service timeout"
     assert response.success, "%s %s" % (
@@ -168,9 +184,10 @@ def test_goto_service_already_there_after_arrival(whole_chain):
     assert not response.motion_segments
     assert response.route_digest == ""
     chain.record["goto_already_there"] = True
-    # a second certified route (portal -> pickup observe). The frozen
-    # 10 s snapshot-age window applies: a fresh observation (and a
-    # settled revision) before planning, exactly like the loop.
+    # the other direction: a second certified route (portal -> pickup
+    # observe). The frozen 10 s snapshot-age window applies: a fresh
+    # observation (and a settled revision) before planning, exactly
+    # like the loop.
     _chain._observe_fresh_map(chain, "goto-return")
     _settle_map(chain)
     response, _request = _goto(chain, "pickup_observe_sim")
@@ -192,12 +209,13 @@ def test_goto_refuses_pose_the_file_does_not_carry(whole_chain):
 
 
 def test_ensure_cycle_start_live_verdict(whole_chain):
-    """[ST09-I S5.7-6 §2] the adjudication service answers from the
-    selector's OWN latched state (arm at the named pickup pose from the
-    goto test above: outside; vacuum off: unloaded) -> ALREADY_READY."""
+    """[ST09-I S5.7-6 §2 / G0-2] the adjudication service answers from
+    the selector's OWN latched state — self-prepped to the named pickup
+    pose through V2 (outside; vacuum off: unloaded) -> ALREADY_READY."""
     from luggage_msgs.srv import EnsureCycleStartV2
 
     chain = whole_chain
+    _prep_at_pickup_observe(chain)
     client = chain.node.create_client(
         EnsureCycleStartV2,
         "/trajectory_selector/ensure_cycle_start_v2")
