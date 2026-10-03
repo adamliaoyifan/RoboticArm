@@ -59,7 +59,7 @@ class _Producer(object):
         return self._stub_revalidation
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
-                 request):
+                 request, load_state=None):
         return self._stub_certification
 
     verify_selected = RouteProducer.verify_selected

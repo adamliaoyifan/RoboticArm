@@ -42,6 +42,13 @@ from st09_contracts.reasons import Reason
 
 ATTACHMENT_SCHEMA_VERSION = 2
 
+#: Canonical attachment digest bound by explicitly-UNLOADED routes
+#: (ST09-I S5.7-4): admission for observation/pick/exit legs is the
+#: EXPLICIT LoadState.UNLOADED plus this digest — never an absent
+#: AttachmentRecord silently read as "unloaded" (that stays
+#: ATTACHMENT_MISSING).
+UNLOADED_ATTACHMENT_DIGEST = digest_of("st09-attachment", "unloaded", 2)
+
 #: Frozen attachment policy values (mirrored in resolved_planning_contract.json;
 #: a C0 test asserts the two stay identical).
 TF_SYNC_MAX_SKEW_NS = 0

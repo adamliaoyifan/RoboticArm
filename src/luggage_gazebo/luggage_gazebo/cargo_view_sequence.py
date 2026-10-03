@@ -8,6 +8,7 @@ import json
 import math
 
 from luggage_perception.cargo_instance_tracker import rotation_from_xyzw
+from luggage_perception.cargo_view_diagnosis import project_box_corners
 from luggage_perception.cargo_view_integration import (
     box_point_mask,
     cell_xy_container,
@@ -24,6 +25,11 @@ TF_FRESHNESS_SEC = 0.20
 LOOKBACK_RAISE_M = 0.20
 LOOKBACK_BACKOFF_M = 0.15
 RIM_MARGIN_M = 0.15
+#: [ST09-I S5.7-4] ObservationPolicy cap: at most TWO camera targets
+#: per observation request; whether a second VIEW is requested at all
+#: is decided AFTER the first integration from the real
+#: integration/revision/occupancy result (``view_stop``).
+MAX_OBSERVATION_VIEWS = 2
 
 
 def _normalize_quat(quat):
@@ -158,6 +164,81 @@ def lookback_eye(portal_cam_xyz, opening_normal, raise_m=LOOKBACK_RAISE_M,
     ]
 
 
+def observation_target(slot_pose_position, box_height_m):
+    """[ST09-I S5.7-4] The POLICY owns the observation target.
+
+    The driver used to assemble the box-top aim point from slot meta
+    itself; that decision moves here: the placed box's world center
+    (slot support point lifted by half the box height).
+    """
+    target = [float(v) for v in slot_pose_position[:3]]
+    target[2] += 0.5 * float(box_height_m)
+    return target
+
+
+def corners_in_camera(corners_world, eye, cam_q):
+    """World box corners in the camera frame of an aim pose."""
+    rot = rotation_from_xyzw(*[float(v) for v in cam_q])
+    out = []
+    for point in corners_world:
+        delta = [float(point[i]) - float(eye[i]) for i in range(3)]
+        out.append(tuple(float(v) for v in rot.T.dot(delta)))
+    return out
+
+
+def predict_in_frame(corners_world, eye, cam_q, camera_k=None,
+                     width=0, height=0):
+    """[ST09-I S5.7-4] In-frame VISIBILITY PREDICTION (pure gate).
+
+    Projects the placed box corners through the aim's camera pose; a
+    target with no projection on the image is not a candidate. Without
+    camera intrinsics the gate admits (recorded ``no_camera_info``) —
+    the same fail-open the driver applied, now owned by the policy.
+    """
+    if not camera_k or len(camera_k) < 6 or not width or not height:
+        return True, {"reason": "no_camera_info"}
+    corners = corners_in_camera(corners_world, eye, cam_q)
+    projected = project_box_corners(
+        corners, float(camera_k[0]), float(camera_k[4]),
+        float(camera_k[2]), float(camera_k[5]),
+        int(width), int(height))
+    in_frame = (projected["in_frame"] > 0
+                and not projected["behind_camera"])
+    return bool(in_frame), projected
+
+
+def rank_observation_aims(cam_xyz, cam_q, target, t_cam_suction,
+                          r_cam_suction, corners_world,
+                          camera_k=None, image_wh=(0, 0),
+                          eye_raises=EYE_RAISES_M, blends=BLENDS,
+                          max_views=MAX_OBSERVATION_VIEWS):
+    """[ST09-I S5.7-4] ObservationPolicy target selection.
+
+    Orders the frozen aim grid by PREDICTED visibility (in-frame first,
+    original frozen order within each class) and caps the request at
+    ``max_views`` camera targets. TCP conversion, MoveIt edges, and
+    certification are NOT policy work — the caller routes each target
+    through PlanObservationRouteV2.
+    """
+    rows = aim_candidates(
+        cam_xyz, cam_q, target, t_cam_suction, r_cam_suction,
+        eye_raises=eye_raises, blends=blends)
+    ranked = []
+    for row in rows:
+        visible, projected = predict_in_frame(
+            corners_world, row["camera_xyz"], row["camera_q_xyzw"],
+            camera_k, image_wh[0] if image_wh else 0,
+            image_wh[1] if image_wh else 0)
+        ranked.append(dict(row, in_frame=bool(visible),
+                           projection=projected))
+    in_frame = [row for row in ranked if row["in_frame"]]
+    rest = [row for row in ranked if not row["in_frame"]]
+    ordered = in_frame + rest
+    if max_views and max_views > 0:
+        ordered = ordered[:int(max_views)]
+    return ordered
+
+
 def next_expected_revision(prev_response, stats_revision):
     """Chain revisions. A view that was not integrated keeps the stats revision."""
     if prev_response and prev_response.get("integrated"):
@@ -213,6 +294,9 @@ def view_policy_record():
     return {
         "view_order": list(VIEW_ORDER),
         "stop": "footprint_hits>=1 and integrate success and revision increased",
+        "target": "slot_world + 0.5*box_height (policy-owned)",
+        "in_frame_prediction": True,
+        "max_observation_views": int(MAX_OBSERVATION_VIEWS),
         "eye_raises_m": list(EYE_RAISES_M),
         "blends": list(BLENDS),
         "box_margin_m": BOX_MARGIN_M,

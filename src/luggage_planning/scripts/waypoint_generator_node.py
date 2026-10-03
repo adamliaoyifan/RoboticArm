@@ -156,6 +156,12 @@ class WaypointGeneratorNode(Node):
         self.create_subscription(
             String, "/luggage/cargo_map/committed",
             self._on_committed, latch, callback_group=group)
+        # [ST09-I S5.7-4] pick-ladder certification needs the latched
+        # cargo-map surface (the same source the route selector uses).
+        self._cargo_surface = None
+        self.create_subscription(
+            String, "/luggage/cargo_map/surface_2d",
+            self._on_cargo_surface, latch, callback_group=group)
 
         self._tf_buffer = tf2_ros.Buffer()
         # use_global_arguments=False: launch -r __node:=... must not rename
@@ -215,6 +221,14 @@ class WaypointGeneratorNode(Node):
                 continue
             ledger.append((list(center), list(size)))
         self._committed_boxes = ledger
+
+    def _on_cargo_surface(self, msg):
+        try:
+            surface = json.loads(msg.data)
+        except ValueError:
+            return
+        if isinstance(surface, dict):
+            self._cargo_surface = surface
 
     def _corridor_surface_max_world(self, slot):
         """Highest committed top along the opening corridor, world Z.
@@ -345,7 +359,133 @@ class WaypointGeneratorNode(Node):
             "edge_builder": MoveItEdgeAdapter(self),
             "fk": fk, "refine": refine,
         }
+        # [ST09-I S5.7-4] pick-ladder certification stack: the same
+        # frozen policy + ValidateRouteV2-backed validity adapter the
+        # route selector certifies place routes with.
+        import json as _json
+        import os as _os
+
+        from luggage_planning.moveit_state_validity import (
+            MoveItStateValidityAdapter,
+        )
+        from luggage_planning.planning_scene_client import (
+            PlanningSceneClient,
+        )
+        from luggage_planning.route_producer import (
+            certification_policy_from_contract,
+        )
+        from luggage_planning.trajectory_certifier import TrajectoryCertifier
+
+        try:
+            from ament_index_python.packages import (
+                get_package_share_directory,
+            )
+
+            contract_path = _os.path.join(
+                get_package_share_directory("st09_contracts"),
+                "resolved_planning_contract.json")
+            with open(contract_path, encoding="utf-8") as handle:
+                contract_document = _json.load(handle)
+            cert_policy = certification_policy_from_contract(
+                contract_document)
+        except Exception:  # noqa: BLE001 - fail closed, same as selector
+            self.get_logger().error(
+                "pick: resolved contract unavailable; refusing to build")
+            self._pick_stack = None
+            return None
+        self._pick_stack.update({
+            "scene_client": PlanningSceneClient(self),
+            "certifier": TrajectoryCertifier(),
+            "cert_policy": cert_policy,
+        })
         return self._pick_stack
+
+    def _pick_cert_snapshot(self, scene_revision):
+        """Fresh mapper state for pick certification — fail-closed.
+
+        No stale fallback: an unavailable surface or stats service
+        refuses the pick ([ST09-I S5.7] map admission lock).
+        """
+        import threading
+
+        from luggage_msgs.srv import GetCargoMapStats
+        from luggage_perception.cargo_view_integration import (
+            planning_snapshot_from_surface,
+        )
+
+        surface = dict(self._cargo_surface or {})
+        if not surface:
+            return None
+        if not hasattr(self, "_map_stats_client"):
+            self._map_stats_client = self.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats")
+        if not self._map_stats_client.wait_for_service(timeout_sec=1.0):
+            return None
+        event = threading.Event()
+        future = self._map_stats_client.call_async(
+            GetCargoMapStats.Request())
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout=2.0) or not future.done():
+            return None
+        stats = future.result()
+        if not stats.success:
+            return None
+        surface.update({
+            "acquisition_stamp_ns": int(
+                stats.last_acquisition_stamp_ns),
+            "map_revision": int(stats.map_revision),
+            "commit_revision": int(stats.map_revision),
+            "geometry_hash": str(stats.geometry_hash),
+        })
+        return planning_snapshot_from_surface(
+            surface, scene_revision=str(scene_revision or ""),
+            request_id="pick-cert-snapshot")
+
+    def _certify_pick_legs(self, stack, edges, *, request_id,
+                           scene_revision, stamp_ns):
+        """Certify the unloaded pick ladder ([ST09-I S5.7-4], §4').
+
+        A failed certification is a NAMED refusal — never a degraded
+        execution of uncertified legs.
+        """
+        from luggage_planning.grid_path_search import RoutePlanningError
+        from luggage_planning.moveit_edge_adapter import (
+            SceneState,
+            scene_boxes_from_snapshot,
+        )
+        from luggage_planning.moveit_state_validity import (
+            MoveItStateValidityAdapter,
+        )
+        from luggage_planning.route_producer import certify_unloaded_legs
+
+        snapshot = self._pick_cert_snapshot(scene_revision)
+        if snapshot is None:
+            raise RoutePlanningError(
+                "PICK_CERT_SNAPSHOT_UNAVAILABLE",
+                {"leg": "pick", "reason": "latest map unavailable"})
+        adapter = MoveItStateValidityAdapter(
+            self, fk=stack["fk"], scene_client=stack["scene_client"],
+            log=lambda message: self.get_logger().info(message))
+        scene_states = {
+            str(edge.edge_id): SceneState(
+                load_state="unloaded", payload=None, released_box=None,
+                placed_boxes=scene_boxes_from_snapshot(snapshot))
+            for edge in edges
+        }
+        adapter.load_edges(edges, scene_states=scene_states)
+        result, _route = certify_unloaded_legs(
+            edges=edges, snapshot=snapshot,
+            request_id=str(request_id),
+            route_id="pick-%s" % str(request_id)[:24], purpose="pick",
+            certifier=stack["certifier"],
+            validity_adapter=adapter, policy=stack["cert_policy"],
+            now_ns=int(stamp_ns) or self.get_clock().now().nanoseconds)
+        if not result.passed:
+            raise RoutePlanningError(
+                result.reason.value,
+                {"certification_id": result.certification_id,
+                 "purpose": "pick"})
+        return result
 
     def _pick_leg_encoder(self):
         """Encode the frozen pick waypoint ladder as timed joint legs."""
@@ -396,6 +536,9 @@ class WaypointGeneratorNode(Node):
                             zip(point["positions"], shifts)]
                 return legs
             stack = self._pick_builder()
+            if stack is None:
+                raise RoutePlanningError(
+                    "PICK_CONTRACT_UNAVAILABLE", {"leg": "pick"})
             waypoints = []
             for segment in build_sequence(
                     pick, None, "pick",
@@ -407,12 +550,16 @@ class WaypointGeneratorNode(Node):
                      float(pose.position.z)),
                     (float(pose.orientation.x), float(pose.orientation.y),
                      float(pose.orientation.z), float(pose.orientation.w))))
-            return _rewrap_legs(pick_leg_records(
+            legs, edges = pick_leg_records(
                 waypoints,
                 graph=stack["graph"], edge_builder=stack["edge_builder"],
                 refine=stack["refine"], fk=stack["fk"], start_q=start_q,
                 request_id=request_id, scene_revision=scene_revision,
-                stamp_ns=stamp_ns))
+                stamp_ns=stamp_ns)
+            self._certify_pick_legs(
+                stack, edges, request_id=request_id,
+                scene_revision=scene_revision, stamp_ns=stamp_ns)
+            return _rewrap_legs(legs)
         return encode
 
     def _handle(self, request, response):

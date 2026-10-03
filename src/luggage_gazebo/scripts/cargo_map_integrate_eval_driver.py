@@ -48,11 +48,12 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_gazebo.cargo_view_sequence import (
     BLENDS,
     RIM_MARGIN_M,
-    aim_candidates,
     box_corners,
     footprint_sensor_hits,
     lookback_eye,
     next_expected_revision,
+    observation_target,
+    rank_observation_aims,
     view_policy_record,
     view_stop,
 )
@@ -278,11 +279,13 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             trial.fail_code = trial.fail_code or "VIEW_TF_MISSING"
             trial.extras["cargo_view_aim"] = {"ok": False, "message": str(exc)}
             return
-        target = list((slot_meta or {}).get("pose_world", {}).get("position") or [])
-        if len(target) < 3:
+        slot_position = list(
+            (slot_meta or {}).get("pose_world", {}).get("position") or [])
+        if len(slot_position) < 3:
             trial.fail_code = trial.fail_code or "VIEW_EMPTY"
             return
-        target[2] = float(target[2]) + 0.5 * float(pick_msg.height)
+        # [S5.7-4] the observation TARGET is policy-owned.
+        target = observation_target(slot_position, pick_msg.height)
         center, size, yaw = self._placed_box_container(slot, pick_msg)
         stats = self.call_srv(self._stats, GetCargoMapStats.Request(), timeout=5.0)
         stats_rev = int(stats.map_revision) if stats else 0
@@ -331,68 +334,107 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             corners.append(xyz_base_link_to_world(self._scene_config, base))
         return corners
 
-    def _corners_in_camera(self, corners_world, eye, cam_q):
-        rot = rotation_from_xyzw(*cam_q)
-        out = []
-        for point in corners_world:
-            delta = [float(point[i]) - float(eye[i]) for i in range(3)]
-            out.append(tuple(float(v) for v in rot.T.dot(delta)))
-        return out
+    def _latest_map_revision_or_refuse(self):
+        """[S5.7 lock] Latest map revision, fail-closed (never 0)."""
+        stats = self.call_srv(
+            self._stats, GetCargoMapStats.Request(), timeout=5.0)
+        if stats is None or not stats.success:
+            return None, "MAP_STATUS_UNAVAILABLE"
+        return int(stats.map_revision), ""
 
-    def _candidate_in_frame(self, row, corners_world):
-        info = getattr(self, "_camera_info", None)
-        k = None if info is None else getattr(info, "k", None)
-        if k is None or len(k) < 6 or not getattr(info, "width", 0):
-            return True, {"reason": "no_camera_info"}
-        corners = self._corners_in_camera(
-            corners_world, row["camera_xyz"], row["camera_q_xyzw"])
-        projected = project_box_corners(
-            corners, float(k[0]), float(k[4]), float(k[2]), float(k[5]),
-            int(info.width), int(info.height))
-        return projected["in_frame"] > 0 and not projected["behind_camera"], projected
+    def _execute_observation_route(self, name, camera_xyz, camera_q):
+        """[ST09-I S5.7-4] Certified motion to an observation camera pose.
 
-    def _plan_suction_pose(self, name, xyz, quat):
-        segment = MotionSegment()
-        segment.name = name
-        segment.type = "pose_target"
-        segment.keep_tool_down = False
-        segment.keep_camera_down = False
-        segment.allow_ompl_fallback = True
-        segment.target_pose = Pose(
-            position=Point(x=float(xyz[0]), y=float(xyz[1]), z=float(xyz[2])),
-            orientation=Quaternion(
-                x=float(quat[0]), y=float(quat[1]),
-                z=float(quat[2]), w=float(quat[3])),
-        )
-        if getattr(self, "_typed", None) is not None:
-            from luggage_description.frame_contracts import ContractError
-            from luggage_planning.typed_driver_adapter import pose_segment_message
-            try:
-                motion_segment = pose_segment_message(
-                    name, xyz, quat,
-                    self._frame_request_id(name), self._frame_scene_revision,
-                    segment_type="pose_target", keep_tool_down=False,
-                    keep_camera_down=False, allow_ompl_fallback=True)
-                return self._typed.plan_motion(
-                    motion_segment, self._args.plan_timeout,
-                    name="PlanMotionV2:%s" % name)
-            except ContractError as error:
-                return False, "%s: %s" % (error.code, error.field), None
-        return self.send_action(
-            self._plan, PlanMotion.Goal(segment=segment),
-            timeout=self._args.plan_timeout,
-            name="PlanMotion:%s" % name)
+        The camera pose is the policy's declared intent; the producer
+        owns the camera->TCP conversion, the MoveIt edge, and the
+        certification. What executes is the returned COMPLETE certified
+        joint_path (typed legs, executed in order) — never a pose spec.
+        """
+        if getattr(self, "_typed", None) is None:
+            return False, "TYPED_UNAVAILABLE"
+        from luggage_msgs.srv import PlanObservationRouteV2
+        client = getattr(self, "_observation_route_client", None)
+        if client is None:
+            client = self.create_client(
+                PlanObservationRouteV2,
+                "/trajectory_selector/plan_observation_route",
+                callback_group=self._group)
+            self._observation_route_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "OBSERVATION_ROUTE_UNAVAILABLE"
+        revision, refuse = self._latest_map_revision_or_refuse()
+        if revision is None:
+            return False, refuse
+        request = PlanObservationRouteV2.Request()
+        request.request_id = self._frame_request_id(name)
+        request.scene_revision = str(self._frame_scene_revision or "")
+        joints = (self._last_joint_state or {}).get("position") or []
+        request.current_joint_state = [float(v) for v in list(joints)[:6]]
+        from geometry_msgs.msg import Pose
+        pose = Pose()
+        pose.position.x = float(camera_xyz[0])
+        pose.position.y = float(camera_xyz[1])
+        pose.position.z = float(camera_xyz[2])
+        pose.orientation.x = float(camera_q[0])
+        pose.orientation.y = float(camera_q[1])
+        pose.orientation.z = float(camera_q[2])
+        pose.orientation.w = float(camera_q[3])
+        request.observation_targets = [pose]
+        request.latest_map_revision = int(revision)
+        request.purpose = str(name)
+        result = self.call_srv(client, request, timeout=30.0)
+        if result is None:
+            return False, "OBSERVATION_ROUTE_UNAVAILABLE"
+        if not result.success:
+            return False, str(result.reason_code
+                              or "OBSERVATION_ROUTE_REJECTED")
+        executed = 0
+        for segment in (result.motion_segments or []):
+            ok, message, _rec = self._typed.plan_motion(
+                segment, self._args.plan_timeout,
+                name="PlanMotionV2:%s" % segment.name)
+            executed += 1
+            if not ok:
+                return False, "OBSERVATION_LEG_FAILED:%s" % (
+                    str(message or segment.name)[:120])
+        if executed == 0:
+            return False, "OBSERVATION_ROUTE_EMPTY"
+        self._last_observation_certification = {
+            "route_digest": str(result.route_digest or ""),
+            "certification_id": str(result.certification_id or ""),
+            "validated_map_revision": int(result.validated_map_revision or 0),
+            "leg_digests": [str(d) for d in (result.leg_digests or [])],
+        }
+        return True, ""
 
     def _execute_view_candidates(
             self, dump, view, segment_name, cam_xyz, cam_q, target,
             suc_t, suc_q, center, size, yaw, eye_raises=None):
-        """Try aim candidates in order. The first executed pose wins."""
+        """[ST09-I S5.7-4] ObservationPolicy ranks; certified routes move.
+
+        The aim grid, target, and in-frame prediction live in the
+        ObservationPolicy (``rank_observation_aims`` — at most two
+        camera targets per request); each candidate's motion is a
+        COMPLETE certified joint_path from PlanObservationRouteV2. The
+        driver-side pose_target construction is deleted (the executor
+        answers those with SEGMENT_GENERATION_REMOVED).
+        """
         corners = self._world_box_corners(center, size, yaw)
+        info = getattr(self, "_camera_info", None)
+        camera_k = None
+        image_wh = (0, 0)
+        if info is not None:
+            k = getattr(info, "k", None)
+            if k is not None and len(k) >= 6:
+                camera_k = [float(v) for v in list(k)[:9]]
+            image_wh = (int(getattr(info, "width", 0) or 0),
+                        int(getattr(info, "height", 0) or 0))
         kwargs = {}
         if eye_raises is not None:
             kwargs["eye_raises"] = eye_raises
-        rows = aim_candidates(
-            cam_xyz, cam_q, target, suc_t, suc_q, **kwargs)
+        rows = rank_observation_aims(
+            cam_xyz, cam_q, target, suc_t, suc_q, corners,
+            camera_k=camera_k, image_wh=image_wh, **kwargs)
         attempts = []
         chosen = None
         for row in rows:
@@ -409,33 +451,26 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 "t_cam_suction": row["t_cam_suction"],
                 "r_cam_suction_xyzw": row["r_cam_suction_xyzw"],
             }
-            visible, projected = self._candidate_in_frame(row, corners)
+            projected = row.get("projection")
             record["projection"] = {
                 key: projected.get(key)
-                for key in ("in_frame", "in_frame_fraction", "behind_camera", "reason")
+                for key in ("in_frame", "in_frame_fraction",
+                            "behind_camera", "reason")
                 if isinstance(projected, dict) and key in projected}
-            if not visible:
+            if not row.get("in_frame"):
                 record["skipped"] = True
                 record["reason"] = "TARGET_NOT_IN_FRAME"
                 attempts.append(record)
                 continue
-            ok, message, _result = self._plan_suction_pose(
-                segment_name, row["suction_xyz"], row["suction_q_xyzw"])
-            match = re.search(r"error_code=(-?\d+)", str(message or ""))
-            boundary = getattr(self, "_last_boundary", None)
+            ok, message = self._execute_observation_route(
+                segment_name, row["camera_xyz"], row["camera_q_xyzw"])
             record.update({
                 "ok": bool(ok),
                 "message": str(message or ""),
-                "error_code": int(match.group(1)) if match else None,
-                "boundary": boundary if isinstance(boundary, dict) else None,
+                "certified_route": dict(
+                    getattr(self, "_last_observation_certification", {})
+                    or {}) if ok else None,
             })
-            if isinstance(boundary, dict):
-                record["pose_target_joint_delta"] = boundary.get(
-                    "pose_target_joint_delta")
-                record["wrist_margin"] = boundary.get("wrist_margin")
-                self._dump_json(
-                    dump, "%s_attempt_%02d_boundary.json" % (view, row["index"]),
-                    boundary)
             attempts.append(record)
             if ok:
                 chosen = {
@@ -750,7 +785,10 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         try:
             cam_xyz, cam_q = self._lookup_xyz_quat(
                 "world", "camera_depth_optical_frame")
-            corners = self._corners_in_camera(
+            from luggage_gazebo.cargo_view_sequence import (
+                corners_in_camera,
+            )
+            corners = corners_in_camera(
                 self._world_box_corners(center, size, yaw), cam_xyz, cam_q)
             if k is not None and len(k) >= 6 and getattr(info, "width", 0):
                 projected = project_box_corners(
@@ -879,9 +917,11 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 diag["errors"].append("no depth frame")
         except (OSError, ValueError) as exc:
             diag["errors"].append(str(exc))
-        target = list((slot_meta or {}).get("pose_world", {}).get("position") or [])
-        if len(target) >= 3:
-            target[2] = float(target[2]) + 0.5 * float(pick_msg.height)
+        slot_position = list(
+            (slot_meta or {}).get("pose_world", {}).get("position") or [])
+        target = (observation_target(slot_position, pick_msg.height)
+                  if len(slot_position) >= 3 else [])
+        if target:
             try:
                 cam_xyz, cam_q = self._lookup_xyz_quat(
                     "world", "camera_depth_optical_frame")

@@ -11,9 +11,13 @@ sys.path.insert(0, str(ROOT / "src" / "luggage_planning"))
 
 from luggage_planning.moveit_validity_adapter import StaticMoveItValidityAdapter, ValiditySample
 from luggage_planning.trajectory_certifier import CertificationContext, TrajectoryCertifier
-from st09_contracts.attachment import AttachmentSourceKind, AttachmentValidity
+from st09_contracts.attachment import (
+    UNLOADED_ATTACHMENT_DIGEST,
+    AttachmentSourceKind,
+    AttachmentValidity,
+)
 from st09_contracts.fixtures import make_attachment, make_graph_fixture, make_route, make_snapshot
-from st09_contracts.graph import TimedTrajectory
+from st09_contracts.graph import LoadState, TimedTrajectory
 from st09_contracts.reasons import Reason
 
 
@@ -140,3 +144,84 @@ def test_invalid_attachment_dimensions_and_quaternion_are_rejected_by_contract()
     base = make_attachment("centered")
     with pytest.raises(Exception):
         dataclasses.replace(base, t_tcp_box_quaternion_xyzw=(0.0, 0.0, 0.0, 2.0))
+
+
+# ---------------------------------------------------------------------------
+# [ST09-I S5.7-4] explicit no-attachment admission (LoadState.UNLOADED):
+# an absent AttachmentRecord is NEVER silently read as "unloaded" — the
+# admission is the explicit load state plus the canonical unloaded
+# digest bound by the route.
+# ---------------------------------------------------------------------------
+
+def _unloaded_context(load_state, *, route_digest=None, attachment="unset"):
+    ctx = _context()
+    snapshot = ctx.snapshot
+    digest = route_digest or UNLOADED_ATTACHMENT_DIGEST
+    route = dataclasses.replace(
+        make_route(make_attachment("centered"), snapshot),
+        attachment_digest=digest)
+    if attachment == "unset":
+        attachment = None if load_state is LoadState.UNLOADED \
+            else make_attachment("centered")
+    return dataclasses.replace(
+        ctx, route=route, attachment=attachment, load_state=load_state)
+
+
+def test_unloaded_admission_certifies_without_attachment():
+    result = TrajectoryCertifier().certify(
+        _unloaded_context(LoadState.UNLOADED))
+    assert result.passed
+
+
+def test_attachment_none_with_carrying_load_state_refuses():
+    # Route bound to a real record's digest + attachment=None: the
+    # missing record is named BEFORE any digest comparison — carrying
+    # is never silently read as unloaded.
+    result = TrajectoryCertifier().certify(
+        _unloaded_context(
+            LoadState.CARRYING,
+            route_digest=make_attachment("centered").digest(),
+            attachment=None))
+    assert not result.passed
+    assert result.reason is Reason.ATTACHMENT_MISSING
+
+
+def test_unloaded_state_with_foreign_route_digest_refuses():
+    result = TrajectoryCertifier().certify(
+        _unloaded_context(
+            LoadState.UNLOADED,
+            route_digest=make_attachment("centered").digest()))
+    assert not result.passed
+    assert result.reason is Reason.ATTACHMENT_REQUEST_MISMATCH
+
+
+def test_attachment_record_on_unloaded_route_refuses():
+    result = TrajectoryCertifier().certify(
+        _unloaded_context(
+            LoadState.UNLOADED, attachment=make_attachment("centered")))
+    assert not result.passed
+    assert result.reason is Reason.ATTACHMENT_REQUEST_MISMATCH
+
+
+def test_classify_unloaded_admission_and_missing_stay_distinct():
+    certifier = TrajectoryCertifier()
+    carrying_route = make_route(
+        make_attachment("centered"), make_snapshot(map_revision=2))
+    unloaded_route = dataclasses.replace(
+        carrying_route, attachment_digest=UNLOADED_ATTACHMENT_DIGEST)
+    # Explicit unloaded admission with the canonical binding: OK.
+    assert certifier.classify_attachment_rejection(
+        None, unloaded_route, 0, load_state=LoadState.UNLOADED) \
+        is Reason.OK
+    # Same absent record WITHOUT the explicit state: still missing.
+    assert certifier.classify_attachment_rejection(
+        None, unloaded_route, 0) is Reason.ATTACHMENT_MISSING
+    # Unloaded state but a route bound to a real record: tamper-named.
+    assert certifier.classify_attachment_rejection(
+        None, carrying_route, 0, load_state=LoadState.UNLOADED) \
+        is Reason.ATTACHMENT_REQUEST_MISMATCH
+    # A record riding an unloaded route: refused.
+    assert certifier.classify_attachment_rejection(
+        make_attachment("centered"), unloaded_route, 0,
+        load_state=LoadState.UNLOADED) \
+        is Reason.ATTACHMENT_REQUEST_MISMATCH

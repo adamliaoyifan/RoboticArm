@@ -38,6 +38,7 @@ import time
 from typing import List, Mapping, Optional, Sequence, Tuple
 
 from st09_contracts._base import ContractViolation
+from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST
 from st09_contracts.graph import LoadState, PlannedRoute
 from st09_contracts.planning import GeometryVerdict, PlacementCandidate
 
@@ -48,6 +49,53 @@ from luggage_planning.grid_path_search import (
     RoutePlanningError,
     hops_from_table,
 )
+#: [ST09-I S5.7-4] ObservationRouteV2 guards.
+OBSERVATION_TARGET_LIMIT = 2
+CAMERA_LINK = "camera_depth_optical_frame"
+
+_CAMERA_TCP_CACHE = {}
+
+
+def camera_to_tcp_transform(urdf):
+    """Rigid camera->TCP transform from the (world-patched) offline URDF.
+
+    [ST09-I S5.7-4] The camera->TCP conversion is RouteProducer work.
+    Computed at two distinct configurations and compared -- a camera
+    bracket that moved independently of the arm fails closed (None).
+    """
+    if urdf is None:
+        return None
+    cached = _CAMERA_TCP_CACHE.get(id(urdf))
+    if cached is not None:
+        return cached
+    import numpy as np
+
+    camera_path = urdf.path_to(CAMERA_LINK)
+    tcp_path = list(getattr(urdf, "tcp_path", None)
+                    or ("elfin_joint1", "elfin_joint2", "elfin_joint3",
+                        "elfin_joint4", "elfin_joint5", "elfin_joint6",
+                        "suction_contact_frame"))
+    if not camera_path or not tcp_path:
+        return None
+
+    def _at(joints):
+        t_base_camera = urdf.tcp(joints, camera_path)
+        t_base_tcp = urdf.tcp(joints, tcp_path)
+        return np.linalg.inv(t_base_camera) @ t_base_tcp
+
+    first = _at([0.0] * 6)
+    second = _at([0.4, -0.3, 0.2, -0.1, 0.5, 0.25])
+    if not np.allclose(first, second, atol=1e-9):
+        return None
+    from scipy.spatial.transform import Rotation as _Rot
+
+    transform = (
+        tuple(float(v) for v in first[:3, 3]),
+        tuple(float(v) for v in _Rot.from_matrix(first[:3, :3]).as_quat()))
+    _CAMERA_TCP_CACHE[id(urdf)] = transform
+    return transform
+
+
 from luggage_planning.waypoint_generator import (
     DEFAULT_CORRIDOR_MARGIN,
     DEFAULT_PLACE_CLEARANCE_Z,
@@ -983,7 +1031,8 @@ class RouteProducer(object):
                 "map_revision": getattr(revalidation, "map_revision", 0)}
         certification, failure = self._certify(
             route, snapshot, selection["attachment"], edges,
-            selection["candidate"], selection["request"])
+            selection["candidate"], selection["request"],
+            load_state=selection.get("load_state"))
         if certification is None or not certification.passed:
             reason = failure if certification is None \
                 else certification.reason.value
@@ -994,6 +1043,175 @@ class RouteProducer(object):
             "validated_map_revision": int(snapshot.map_revision),
             "leg_digests": [edge.trajectory.digest() for edge in edges],
         }
+
+    def plan_observation_route(self, *, request_id, scene_revision,
+                               current_joints, camera_targets,
+                               latest_map_revision,
+                               purpose="observation"):
+        """[ST09-I S5.7-4 §4] Certified motion to observation poses.
+
+        The driver + ObservationPolicy decide WHERE to look (world
+        camera poses, at most two per request); this producer owns the
+        camera->TCP conversion, the MoveIt edge, map admission, and the
+        FULL certification under the explicit LoadState.UNLOADED
+        admission (an absent attachment is never silently read as
+        unloaded). Targets are tried in the policy's frozen order; the
+        first one that builds AND certifies is the answer. Returns a
+        dict mirroring plan_place_route's success/refusal shape.
+        """
+        from st09_contracts.attachment import compose_transform
+        from st09_contracts.graph import LoadState, PlannedRoute
+
+        targets = list(camera_targets or [])
+        if not targets:
+            return self._fail("OBSERVATION_TARGET_MISSING", [])
+        if len(targets) > OBSERVATION_TARGET_LIMIT:
+            return self._fail("OBSERVATION_TARGET_LIMIT",
+                              [{"targets": len(targets)}])
+        transform = camera_to_tcp_transform(self.urdf)
+        if transform is None:
+            return self._fail("OBSERVATION_CAMERA_FRAME_MISSING", [])
+        current = tuple(float(v) for v in (current_joints or ()))
+        if len(current) != 6:
+            return self._fail("START_STATE_MISMATCH",
+                              [{"joints": len(current)}])
+        # [S5.7 lock] map admission is fail-closed on the LATEST map —
+        # never the selection-time snapshot.
+        fetch = getattr(self, "latest_snapshot_fn", None)
+        snapshot = fetch() if callable(fetch) else None
+        if snapshot is None:
+            return self._fail("MAP_REVALIDATION_UNAVAILABLE", [])
+        if str(scene_revision) != str(
+                getattr(snapshot, "scene_revision", "")):
+            return self._fail("IDENTITY_CHANGED",
+                              [{"scene": str(getattr(
+                                  snapshot, "scene_revision", ""))}])
+        if type(latest_map_revision) is int:
+            if latest_map_revision < int(snapshot.map_revision):
+                return self._fail("MAP_RESTART",
+                                  [{"planned": int(snapshot.map_revision),
+                                    "caller_latest": latest_map_revision}])
+            if latest_map_revision > int(snapshot.map_revision):
+                return self._fail("MAP_STALE",
+                                  [{"snapshot": int(snapshot.map_revision),
+                                    "caller_latest": latest_map_revision}])
+        request = {"request_id": str(request_id),
+                   "scene_revision": str(scene_revision),
+                   "start_tcp": {}}
+        rows = []
+        last_reason = "NO_FEASIBLE_ROUTE"
+        reset_scene = getattr(self.edge_builder, "reset_scene", None)
+        try:
+            for index, camera_pose in enumerate(targets):
+                row = {"target_index": index}
+                tcp_position, tcp_quaternion = compose_transform(
+                    tuple(float(v) for v in camera_pose[0]),
+                    tuple(float(v) for v in camera_pose[1]),
+                    tuple(float(v) for v in transform[0]),
+                    tuple(float(v) for v in transform[1]))
+                start_fk = self.fk(list(current))
+                start_node = self.graph.register_node(
+                    current, tuple(start_fk[0]), tuple(start_fk[1]),
+                    "observation_home", LoadState.UNLOADED, "observation")
+                q, _info = self._refine_to(
+                    tcp_position, tcp_quaternion, list(current))
+                if q is None:
+                    row["reason"] = "IK_UNAVAILABLE"
+                    rows.append(row)
+                    last_reason = row["reason"]
+                    continue
+                goal_node = self.graph.register_node(
+                    tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
+                    "observation_goal_%d" % index, LoadState.UNLOADED,
+                    "observation")
+                try:
+                    edge = self.edge_builder(
+                        start_node, goal_node, "PORTAL_TRANSIT")
+                except Exception as error:  # noqa: BLE001 - named row
+                    code = getattr(
+                        getattr(error, "reason", None), "value", None) \
+                        or "EDGE_BUILD_FAILED"
+                    row["reason"] = code
+                    row["detail"] = repr(error)[:200]
+                    rows.append(row)
+                    last_reason = code
+                    continue
+                edges = (edge,)
+                route = PlannedRoute(
+                    route_id="route-obs-%s-%d" % (str(request_id)[:12],
+                                                  index),
+                    request_id=str(request_id),
+                    snapshot_digest=snapshot.digest(),
+                    payload_digest=UNLOADED_ATTACHMENT_DIGEST,
+                    attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
+                    candidate_id="observation-%s" % str(purpose),
+                    entry_edge_ids=(edge.edge_id,),
+                    retreat_edge_ids=(),
+                    edge_digests=(edge.digest(),),
+                    trajectory_digest=edge.trajectory.digest(),
+                    planning_revision="observation")
+                revalidation = self._revalidate(route, snapshot, edges)
+                if revalidation is None:
+                    row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
+                    rows.append(row)
+                    last_reason = row["reason"]
+                    continue
+                from st09_contracts.certification import MapDecision
+
+                if revalidation.decision is not MapDecision.CONTINUE:
+                    row["reason"] = getattr(
+                        revalidation.reason, "value",
+                        "MAP_REVISION_MISMATCH")
+                    rows.append(row)
+                    last_reason = row["reason"]
+                    continue
+                certification, failure = self._certify(
+                    route, snapshot, None, edges, None, None,
+                    load_state=LoadState.UNLOADED)
+                if certification is None or not certification.passed:
+                    row["reason"] = failure if certification is None \
+                        else certification.reason.value
+                    row["recertified"] = False
+                    rows.append(row)
+                    last_reason = row["reason"]
+                    continue
+                legs = leg_records(route, edges, request)
+                row["reason"] = "OK"
+                row["certified"] = True
+                rows.append(row)
+                self.last_route = route
+                self.last_certification = certification
+                self.last_revalidation = revalidation
+                self.last_rows = rows
+                self.last_selection = {
+                    "path_hash": route.digest(),
+                    "route": route,
+                    "edges": edges,
+                    "snapshot": snapshot,
+                    "attachment": None,
+                    "candidate": None,
+                    "request": request,
+                    "certification_id": certification.digest(),
+                    "load_state": LoadState.UNLOADED,
+                    "purpose": str(purpose),
+                }
+                return {
+                    "success": True,
+                    "reason_code": "OK",
+                    "selection_id": route.route_id,
+                    "path_source": "route-graph",
+                    "path_hash": route.digest(),
+                    "rows": rows,
+                    "route": route,
+                    "edges": edges,
+                    "legs": legs,
+                    "certification": certification,
+                    "revalidation": revalidation,
+                }
+        finally:
+            if callable(reset_scene):
+                reset_scene()
+        return self._fail(last_reason, rows)
 
     def _release_box_target(self, box_target, request):
         """Lift the box target to the release-gap pose along container up.
@@ -1070,26 +1288,38 @@ class RouteProducer(object):
         )
         from st09_contracts.attachment import compose_transform
 
-        payload = PayloadSpec(
-            dimensions_wdh=tuple(
-                float(v) for v in attachment.dimensions_wdh),
-            t_tcp_box_translation=tuple(
-                float(v) for v in attachment.t_tcp_box_translation),
-            t_tcp_box_quaternion_xyzw=tuple(
-                float(v) for v in attachment.t_tcp_box_quaternion_xyzw))
-        released_center, released_quaternion = compose_transform(
-            tuple(float(v) for v in
-                  request["container_transform"]["translation"]),
-            tuple(float(v) for v in
-                  request["container_transform"]["quaternion_xyzw"]),
-            tuple(float(v) for v in candidate.position_container),
-            tuple(float(v) for v in candidate.quaternion_xyzw_container))
-        released = BoxSpec(
-            object_id="route-released-box",
-            center=tuple(float(v) for v in released_center),
-            size_whd=tuple(float(v) for v in attachment.dimensions_wdh),
-            quaternion_xyzw=tuple(
-                float(v) for v in released_quaternion))
+        # [ST09-I S5.7-4] Unloaded-only routes (observation/pick/exit)
+        # carry no AttachmentRecord and no placement candidate: no
+        # carried payload, no just-released box — the snapshot's placed
+        # boxes remain the obstacle set.
+        payload = None
+        if attachment is not None:
+            payload = PayloadSpec(
+                dimensions_wdh=tuple(
+                    float(v) for v in attachment.dimensions_wdh),
+                t_tcp_box_translation=tuple(
+                    float(v) for v in attachment.t_tcp_box_translation),
+                t_tcp_box_quaternion_xyzw=tuple(
+                    float(v) for v in attachment.t_tcp_box_quaternion_xyzw))
+        released = None
+        container_transform = (request or {}).get("container_transform") \
+            if candidate is not None else None
+        if container_transform:
+            released_center, released_quaternion = compose_transform(
+                tuple(float(v) for v in
+                      container_transform["translation"]),
+                tuple(float(v) for v in
+                      container_transform["quaternion_xyzw"]),
+                tuple(float(v) for v in candidate.position_container),
+                tuple(float(v) for v in
+                      candidate.quaternion_xyzw_container))
+            released = BoxSpec(
+                object_id="route-released-box",
+                center=tuple(float(v) for v in released_center),
+                size_whd=tuple(
+                    float(v) for v in attachment.dimensions_wdh),
+                quaternion_xyzw=tuple(
+                    float(v) for v in released_quaternion))
         states = {}
         for edge in edges:
             carrying = str(getattr(edge, "load_state", "")
@@ -1103,7 +1333,7 @@ class RouteProducer(object):
         return states
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
-                 request):
+                 request, load_state=None):
         """Authoritative certification under the frozen fail-closed budget.
 
         Reasons stay DISTINCT: a named ContractViolation (service
@@ -1125,10 +1355,13 @@ class RouteProducer(object):
         adapter = self.validity_adapter_factory(
             scene_states=scene_states, edges=edges)
         policy = self.cert_policy
+        from st09_contracts.graph import LoadState as _LoadState
+
         context = CertificationContext(
             route=route, snapshot=snapshot, attachment=attachment,
             edges=edges, validity_adapter=adapter,
-            now_ns=self._clock_ns(), policy=policy)
+            now_ns=self._clock_ns(), policy=policy,
+            load_state=load_state or _LoadState.CARRYING)
         started_ns = self._clock_ns()
         try:
             result = self.certifier.certify(context)
@@ -1253,14 +1486,15 @@ PICK_LEG_CLASSES = {
 
 def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
                      start_q, request_id, scene_revision, stamp_ns):
-    """Certified-shaped timed joint legs for the pick waypoint ladder.
+    """Timed joint legs + their MoveIt edges for the pick ladder.
 
     The waypoint geometry stays the frozen ``build_sequence`` pick
     phases (a candidate generator, never an execution spec); each hop
     becomes a MoveIt-built timed edge. Pre-attach motion has no
-    attachment record by definition — the carrying route's
-    certification starts at the measured attach — so these legs carry
-    the same admission contract without an attachment digest.
+    attachment record by definition — its certification is the EXPLICIT
+    ``LoadState.UNLOADED`` admission (``certify_unloaded_legs``), so
+    the edges are returned alongside the legs for that step
+    ([ST09-I S5.7-4] pick-ladder certification).
     """
     from luggage_planning.grid_path_search import RoutePlanningError
     from luggage_planning.reachable_graph import _contracts as _graph_contracts
@@ -1271,6 +1505,7 @@ def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
     current = graph.register_node(current_q, position, quaternion,
                                   "pick_home", _Load.UNLOADED, "pick")
     legs = []
+    edges = []
     for name, target_position, target_quaternion in pick_waypoints:
         q, _info = refine(tuple(target_position),
                           tuple(target_quaternion), list(current_q))
@@ -1292,8 +1527,49 @@ def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
                 detail)
         legs.append(_leg_record(name, edge.trajectory, request_id,
                                 scene_revision, stamp_ns))
+        edges.append(edge)
         current, current_q = node, tuple(q)
-    return legs
+    return legs, tuple(edges)
+
+
+def certify_unloaded_legs(*, edges, snapshot, request_id, route_id, purpose,
+                          certifier, validity_adapter, policy, now_ns):
+    """Certify an explicitly-unloaded leg set (pick/observation/exit).
+
+    [ST09-I S5.7-4] The admission is the EXPLICIT ``LoadState.UNLOADED``
+    bound to ``UNLOADED_ATTACHMENT_DIGEST`` — never an absent
+    AttachmentRecord silently read as unloaded. The route synthesizes
+    the unloaded binding; the certifier runs its full check set
+    (limits/timing/sampling/collision/occupancy/clearance) against the
+    supplied snapshot and adapter. Returns
+    ``(CertificationResult, PlannedRoute)``.
+    """
+    from st09_contracts._base import digest_of
+    from st09_contracts.attachment import UNLOADED_ATTACHMENT_DIGEST
+    from st09_contracts.graph import LoadState, PlannedRoute
+    from luggage_planning.trajectory_certifier import CertificationContext
+
+    edges = tuple(edges)
+    if not edges:
+        raise ValueError("certify_unloaded_legs: empty edge set")
+    route = PlannedRoute(
+        route_id=str(route_id),
+        request_id=str(request_id),
+        snapshot_digest=snapshot.digest(),
+        payload_digest=UNLOADED_ATTACHMENT_DIGEST,
+        attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
+        candidate_id="unloaded-%s" % str(purpose),
+        entry_edge_ids=tuple(edge.edge_id for edge in edges),
+        retreat_edge_ids=(),
+        edge_digests=tuple(edge.digest() for edge in edges),
+        trajectory_digest=digest_of(
+            *(edge.trajectory.digest() for edge in edges)),
+        planning_revision="unloaded:%s" % str(purpose))
+    result = certifier.certify(CertificationContext(
+        route=route, snapshot=snapshot, attachment=None, edges=edges,
+        validity_adapter=validity_adapter, now_ns=int(now_ns),
+        policy=policy, load_state=LoadState.UNLOADED))
+    return result, route
 
 
 def register_attach_from_request(provider, request: Mapping,

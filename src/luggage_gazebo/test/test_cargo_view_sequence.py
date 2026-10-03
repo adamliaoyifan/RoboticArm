@@ -123,3 +123,55 @@ class TestRevisionAndFootprint(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestObservationPolicy(unittest.TestCase):
+    """[ST09-I S5.7-4] policy-owned target + visibility prediction."""
+
+    def test_observation_target_lifts_slot_to_box_center(self):
+        from luggage_gazebo.cargo_view_sequence import observation_target
+        target = observation_target((0.4, -0.2, 0.30), 0.32)
+        self.assertEqual(
+            target, [0.4, -0.2, 0.30 + 0.16])
+
+    def test_predict_in_frame_without_intrinsics_admits_with_reason(self):
+        from luggage_gazebo.cargo_view_sequence import predict_in_frame
+        visible, info = predict_in_frame(
+            [(1.0, 0.0, 0.0)], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0))
+        self.assertTrue(visible)
+        self.assertEqual(info.get("reason"), "no_camera_info")
+
+    def test_predict_in_frame_rejects_behind_camera(self):
+        from luggage_gazebo.cargo_view_sequence import predict_in_frame
+        # Camera looks along +Z (identity); a target BEHIND it cannot
+        # be a candidate.
+        visible, _info = predict_in_frame(
+            [(-1.0, 0.0, 0.0)], (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0),
+            camera_k=[320.0, 0.0, 320.0, 0.0, 320.0, 240.0],
+            width=640, height=480)
+        self.assertFalse(visible)
+
+    def test_rank_caps_at_two_and_orders_in_frame_first(self):
+        from luggage_gazebo.cargo_view_sequence import (
+            rank_observation_aims,
+        )
+        # A camera looking straight down +Z at a target 1 m below the
+        # box: full-blend aims are in frame, tiny-blend aims are not.
+        rows = rank_observation_aims(
+            (0.0, 0.0, 1.0), (0.0, 0.0, 0.0, 1.0),
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0),
+            [(0.0, 0.0, 0.0), (0.05, 0.0, 0.0)],
+            camera_k=[320.0, 0.0, 320.0, 0.0, 320.0, 240.0],
+            image_wh=(640, 480))
+        self.assertLessEqual(len(rows), 2)
+        self.assertTrue(all(row["in_frame"] for row in rows))
+        # Frozen order is preserved among the selected rows.
+        self.assertEqual(
+            [row["index"] for row in rows],
+            sorted(row["index"] for row in rows))
+
+    def test_policy_record_names_the_promoted_decisions(self):
+        record = view_policy_record()
+        self.assertEqual(record["max_observation_views"], 2)
+        self.assertTrue(record["in_frame_prediction"])
+        self.assertIn("slot_world", record["target"])

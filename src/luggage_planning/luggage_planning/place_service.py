@@ -392,12 +392,27 @@ def handle_build_v2(request, response, pick=None, pick_encoder=None):
                     "PLANNING_ROUTE_REQUIRED", "pick",
                     "timed pick legs require the edge builder", None)
             legs = None
+            from luggage_planning.grid_path_search import RoutePlanningError
+
             try:
                 legs = pick_encoder(
                     pick,
                     request_id=str(request.request_id),
                     scene_revision=str(request.scene_revision),
                     stamp_ns=int(pick_record.get("stamp_ns") or 0))
+            except RoutePlanningError as error:
+                # [ST09-I S5.7-4] a refused pick keeps its own named
+                # reason (IK/edge/certification) — the CERT_* codes must
+                # reach the caller, not collapse into a generic
+                # encoder-exception label.
+                response.motion_segments = []
+                response.segments = []
+                response.success = False
+                response.reason_code = str(error.reason.value)
+                response.message = "%s %s" % (
+                    error.reason.value,
+                    json.dumps(error.detail, default=str)[:400])
+                return response
             except Exception as error:  # noqa: BLE001 - service boundary
                 # [ST09-I] reason-loss fix: an encoder failure (IK, edge
                 # build, an import error) must surface as its own named

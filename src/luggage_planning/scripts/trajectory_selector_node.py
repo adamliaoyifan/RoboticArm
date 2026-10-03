@@ -90,6 +90,13 @@ class TrajectorySelectorNode(Node):
             ValidateSelectedRoute,
             "/trajectory_selector/validate_selected_route",
             self._verify_selected, callback_group=self._service_group)
+        # [ST09-I S5.7-4] certified observation motion (the driver +
+        # ObservationPolicy declare WHERE; this node builds + certifies).
+        from luggage_msgs.srv import PlanObservationRouteV2
+        self.create_service(
+            PlanObservationRouteV2,
+            "/trajectory_selector/plan_observation_route",
+            self._plan_observation, callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
@@ -437,6 +444,91 @@ class TrajectorySelectorNode(Node):
             or (producer.last_selection or {}).get("certification_id", ""))
         response.leg_digests = [
             str(digest) for digest in detail.get("leg_digests") or []]
+        return response
+
+    def _plan_observation(self, request, response):
+        """[ST09-I S5.7-4] PlanObservationRouteV2 service boundary.
+
+        The caller declares observation intent (world camera poses);
+        the producer converts camera->TCP, builds the MoveIt edge, and
+        returns a COMPLETE certified joint_path under the explicit
+        LoadState.UNLOADED admission.
+        """
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/trajectory_selector/plan_observation_route")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.detail = "%s: %s" % (error.code, error.field)
+                return response
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.success = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        targets = [((float(pose.position.x), float(pose.position.y),
+                     float(pose.position.z)),
+                    (float(pose.orientation.x), float(pose.orientation.y),
+                     float(pose.orientation.z), float(pose.orientation.w)))
+                   for pose in (request.observation_targets or [])]
+        try:
+            result = producer.plan_observation_route(
+                request_id=str(getattr(request, "request_id", "") or ""),
+                scene_revision=str(getattr(request, "scene_revision", "")
+                                   or ""),
+                current_joints=list(
+                    request.current_joint_state or []),
+                camera_targets=targets,
+                latest_map_revision=int(request.latest_map_revision),
+                purpose=str(getattr(request, "purpose", "") or "observation"))
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: observation boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.success = False
+            response.reason_code = "OBSERVATION_SERVICE_EXCEPTION"
+            response.detail = repr(error)[:300]
+            return response
+        if not result.get("success"):
+            response.success = False
+            response.reason_code = str(
+                result.get("reason_code") or "NO_FEASIBLE_ROUTE")
+            response.detail = json.dumps(
+                result.get("rows") or [], default=str)[:2000]
+            return response
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.detail = "%s: %s" % (error.code, error.field)
+                return response
+        from luggage_planning.place_service import _route_motion_messages
+
+        response.success = True
+        response.reason_code = "OK"
+        response.route_digest = str(result["path_hash"])
+        response.certification_id = str(
+            result["certification"].digest())
+        response.validated_map_revision = int(
+            result["revalidation"].map_revision)
+        response.motion_segments = _route_motion_messages(
+            result["legs"], result["request"]
+            if isinstance(result.get("request"), dict)
+            else {"request_id": str(request.request_id),
+                  "scene_revision": str(request.scene_revision)})
+        response.leg_digests = [
+            str(edge.trajectory.digest()) for edge in result["edges"]]
         return response
 
     def _select_v2(self, request, response):
