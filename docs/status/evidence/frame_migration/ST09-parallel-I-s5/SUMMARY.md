@@ -1,10 +1,13 @@
-# ST09-I S5 evidence summary (2026-10-03, through S5.7-3 @ 5ef7b9a)
+# ST09-I S5 evidence summary (2026-10-03, through S5.7-5 @ 7ed74c3)
 
 S5 = three-box M3 on the deployment scene (scene_tf_deploy, Gazebo
 Fortress sim controllers, exclusive domain 7). S5.7 = motion-generation
 convergence (approved design
 `docs/architecture/motion_generation_convergence.md`; two user rulings:
-carry-exit named-refusal first, pick-ladder certification in scope).
+carry-exit named-refusal first, pick-ladder certification in scope;
+2026-10-03 lock-ins: OUTSIDE_CONTAINER rename + classification-is-not-
+authorization, fail-closed latest-map admission with no stale fallback,
+execution-window admission closure before S6).
 
 ## Deliverables and commits
 
@@ -38,22 +41,37 @@ mirrored pickup observe (~1.7 m outside the face) as inside the opening
 -> replaced by the zone classification (S5.7-2); `portal_observe_sim`
 synthesized for the post-place observation goto.
 
-## Verification standing (through 5ef7b9a)
+## Verification standing (through 7ed74c3)
 
-- I 40 passed / 0 skipped (live mock-stack whole chain runs through the
-  NEW re-verification path end to end; +6 unit tests for the named
-  refusal/pass branches).
-- luggage_gazebo test + E: 217 passed, 3 skipped, 152 subtests.
-- luggage_planning: 648 passed.
+- I 57 passed / 0 skipped (live mock-stack whole chain runs pick
+  CERTIFICATION, certified observation positioning, and the admission
+  gate end to end; one PLANNING_BUDGET_EXHAUSTED timing flake observed
+  once in four runs — the recorded frozen-10s-budget OMPL risk, not an
+  admission regression; single-test rerun green).
+- luggage_gazebo test + E + C: 254 passed, 3 skipped, 152 subtests.
+- luggage_planning: 648 passed. perception segmenter+filter: 83 passed,
+  1 skipped (50/50 with the shared-vendor env set).
+- Offline semantic proof: backend bbox_fill:<weights> constructs in
+  ~2.2 s with `import clip` resolving from the shared vendor, clip.load
+  download_root-patched, and ~/.cache/clip ABSENT (deleted before the
+  run; nothing recreated it).
 
-## Remaining (S5.7-4..6 + S5.6 close)
+## S5.7 continuation (d006507..7ed74c3)
 
-- S5.7-4: no-attachment certifier admission; ObservationPolicy promotion
-  (cargo_view_sequence kernel + target selection + in-frame prediction);
-  PlanObservationRouteV2; pick-ladder certification; cargo_map aim
-  construction moves to the new surface.
-- S5.7-5: _fixed_slot / world-X legacy locks with tests; semantic ops
-  (vendored CLIP into the overlay, require_backend).
-- S5.7-6: EnsureCycleStartV2 unloaded-exit service + GoToRobotPoseV2
-  binding; single-box full chain pick->attach->placement->route->
+| item | commit | content |
+|---|---|---|
+| locks | d006507 | zone renamed outside_container (classification is NOT authorization; the v1 portal goto is S5-debug wiring to be replaced by GoToRobotPoseV2 before formal single-box acceptance); verify map admission fail-closed on the LATEST map (MAP_STATUS_UNAVAILABLE for a failed/absent stats fetch — never a fabricated 0 nor the selection-time snapshot; four-case producer semantics pinned by tests named no-stale-fallback / revision-advanced-allows / corridor-affected-refuses); design §5b execution-window closure + task S5.7-3b. |
+| S5.7-4 | 13cf971 | explicit LoadState.UNLOADED admission (UNLOADED_ATTACHMENT_DIGEST canonical binding; a missing record under CARRYING stays ATTACHMENT_MISSING); pick ladder CERTIFIED (pick_leg_records returns edges; waypoint_generator builds the fresh-snapshot unloaded scene + full certifier; CERT_* refusals named at the service boundary — never degraded execution); ObservationPolicy promoted (policy-owned target, in-frame prediction, MAX_OBSERVATION_VIEWS=2, second view still post-integration); PlanObservationRouteV2 on /trajectory_selector (producer converts camera->TCP offline, gates identity + fail-closed map admission, returns a COMPLETE certified joint_path; selection bookkept with load_state for verify_selected); cargo_map aim pose_target construction deleted — candidates move through the certified route. |
+| S5.7-3b | 2cfc4c5 | admission generation closure: PlanMotionV2 goal carries (route_digest, certification_id, admission_map_revision); the pure executor checks /trajectory_selector/check_execution_admission before the first controller submission and per leg (mechanical liveness; the certifier side owns the verdict; service missing fails closed); producer.execution_admission_is_live (ADMISSION_UNKNOWN covers peer restart; superseded certificate; identity change; map regression; corridor-affecting advance or unavailable latest map revoke; an advance touching no route edge stays LIVE with the new revision recorded); verify_selected promotes the FRESH certificate to the live admission id; drivers stamp every executed route leg (place route + observation legs). |
+| S5.7-5 | 7ed74c3 | offline semantic chain via ONE shared CLIP vendor (main-workspace src/luggage_perception/vendor; launch semantic_clip_vendor_dir + semantic_model_name absolute path; YOLO_AUTOUPDATE=false; clip.load download_root-patched — no ~/.cache/clip read or write, verified live with the cache deleted; runner fails closed on missing vendor/weights + semantic_require_backend:=bbox_fill; illegal require names and stub fallbacks pinned to never match); legacy locks: _fixed_slot = test fixture (typed chain refuses FIXED_SLOT_TEST_ONLY, evidence slot_source=test_fixture), world-X guess only for non-frame-runtime callers, place_only_eval_driver no-import-edge pinned. |
+
+## Remaining (S5.7-6 + S5.6 close)
+
+- S5.7-6: EnsureCycleStartV2 unloaded-exit service (inside+released ->
+  certified exit; carrying -> CARRY_EXIT_UNSUPPORTED named refusal; full
+  recovery search does NOT block M3 — ROUTE_INCOMPLETE named stop is
+  acceptable, general recovery is a follow-up task); GoToRobotPoseV2
+  (scene_revision_at_capture binding + certified motion wiring; replaces
+  the v1 portal_observe_sim debug wiring before formal single-box
+  acceptance); single-box full chain pick->attach->placement->route->
   release->exit->observe->integrate->return; then three-box M3.
