@@ -19,10 +19,20 @@
       "version": "8.4.6"
     }
   },
+  "inference_probe": {
+    "backend": "bbox_fill:/tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/models/yolov8s-world.pt",
+    "detections": 0,
+    "label_map_shape": [
+      96,
+      96
+    ]
+  },
   "manifest_match": true,
   "model_path": "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/models/yolov8s-world.pt",
   "module_path": "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/local/lib/python3.10/dist-packages/luggage_perception/semantic_segmenter.py",
   "pythonnousersite": true,
+  "root_digest_files": 18891,
+  "root_digest_verified": true,
   "source_vendor_hidden": true,
   "torch_cuda_available": true,
   "user_site_disabled": true,
