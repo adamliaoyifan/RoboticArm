@@ -622,6 +622,32 @@ class MotionExecutor:
 
         names, points = timed_trajectory(admitted)
         knots = [[float(v) for v in point.positions] for point in points]
+        # Revolute wrap: a full cycle can leave the live arm at a 2*pi
+        # equivalent (live j6 = -7.7 rad) while the certified knots carry
+        # the principal value — the same physical trajectory. Shift each
+        # joint by a constant whole turn so the submitted knots sit next
+        # to the LIVE joints (never command a full-turn spin, never let
+        # bookkeeping drift past the joint limits).
+        if current_joints and len(current_joints) == len(knots[0]):
+            import math as _math
+
+            shifts = []
+            for live, first in zip(current_joints, knots[0]):
+                turns = round((float(first) - float(live))
+                              / (2.0 * _math.pi))
+                shifts.append(turns * 2.0 * _math.pi)
+            if any(shifts):
+                knots = [[float(v) - s for v, s in zip(row, shifts)]
+                         for row in knots]
+                points = [type(point)(
+                    positions=[float(v) - s for v, s in
+                               zip(point.positions, shifts)],
+                    velocities=list(point.velocities),
+                    accelerations=list(getattr(point, "accelerations", [])
+                                       or []),
+                    effort=list(getattr(point, "effort", []) or []),
+                    time_from_start=point.time_from_start)
+                    for point in points]
         continuity = float(getattr(self, "_joint_path_continuity", 1.2))
         try:
             validate_joint_path(knots, continuity)
@@ -629,9 +655,15 @@ class MotionExecutor:
             return self._result(False, "PLACE_PATH_INFEASIBLE %s" % exc.reason, 0.0)
         # QP start-state gate: the timed trajectory was certified from the
         # planned start joints; a robot that moved since must replan.
+        # (Angular distance: 2*pi equivalents of one revolute joint are
+        # the same physical state.)
         if current_joints and len(current_joints) == len(knots[0]):
-            drift = max(abs(float(a) - float(b)) for a, b in
-                        zip(current_joints, knots[0]))
+            import math as _math
+
+            drift = max(
+                min(abs(float(a) - float(b)),
+                    2.0 * _math.pi - abs(float(a) - float(b)))
+                for a, b in zip(current_joints, knots[0]))
             if drift > 0.01:
                 if isinstance(self._last_boundary, dict):
                     self._last_boundary["qp_start_state_mismatch"] = {

@@ -423,10 +423,32 @@ class TestPlanningSceneMessages(unittest.TestCase):
         )
 
         class _Future(object):
+            def __init__(self, request):
+                self._request = request
+
             def add_done_callback(self, cb):
                 cb(self)
 
             def result(self):
+                from moveit_msgs.srv import GetPlanningScene
+
+                if isinstance(self._request, GetPlanningScene.Request):
+                    from moveit_msgs.msg import (
+                        AllowedCollisionMatrix, PlanningScene)
+                    from luggage_planning.planning_scene_client import (
+                        set_acm_pair,
+                    )
+
+                    response = GetPlanningScene.Response()
+                    response.scene = PlanningScene()
+                    # every GET reports the panel<->box pairs allowed so
+                    # the ACM verify passes immediately
+                    acm = AllowedCollisionMatrix()
+                    for link in ("suction_panel", "suction_contact_frame",
+                                 "elfin_link5", "elfin_link6"):
+                        set_acm_pair(acm, link, "pickup_box", True)
+                    response.scene.allowed_collision_matrix = acm
+                    return response
                 response = ApplyPlanningScene.Response()
                 response.success = True
                 return response
@@ -439,9 +461,12 @@ class TestPlanningSceneMessages(unittest.TestCase):
                 del timeout_sec
                 return True
 
+            def service_is_ready(self):
+                return True
+
             def call_async(self, request):
                 self.requests.append(request)
-                return _Future()
+                return _Future(request)
 
         class _FakeNode(object):
             def create_client(self, srv, name, **kwargs):
@@ -451,15 +476,27 @@ class TestPlanningSceneMessages(unittest.TestCase):
         client = _FakeClient()
         scene_client = PlanningSceneClient(_FakeNode())
         scene_client._client = client
+        scene_client._get = client
         ok, _ = scene_client.add_pickup_box(BOX_XYZ, BOX_QUAT, BOX_SIZE)
         self.assertTrue(ok)
-        self.assertEqual(len(client.requests), 1)
-        self.assertIsInstance(client.requests[0], ApplyPlanningScene.Request)
-        self.assertTrue(client.requests[0].scene.is_diff)
+        # [ST09-I] adding the pickup box also allows the panel assembly
+        # to touch it while it is still a world object (the ROS 1
+        # scene_manager seeded the same pairs): apply #1 is the box add,
+        # the later apply is the ACM diff.
+        applies = [request for request in client.requests
+                   if isinstance(request, ApplyPlanningScene.Request)]
+        self.assertGreaterEqual(len(applies), 2)
+        self.assertIsInstance(applies[0], ApplyPlanningScene.Request)
+        self.assertTrue(applies[0].scene.is_diff)
         add = build_add_scene("pickup_box", BOX_XYZ, BOX_QUAT, BOX_SIZE)
         self.assertEqual(
-            client.requests[0].scene.world.collision_objects[0].id,
+            applies[0].scene.world.collision_objects[0].id,
             add.world.collision_objects[0].id)
+        acm_applies = [request for request in applies[1:]
+                       if "pickup_box" in
+                       list(request.scene.allowed_collision_matrix
+                            .entry_names)]
+        self.assertTrue(acm_applies)
 
 
 if __name__ == "__main__":

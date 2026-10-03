@@ -98,9 +98,12 @@ class TestFullRoute:
                     if n.load_state is LoadState.CARRYING]
         twins = [n for n in graph.nodes_by_region("slot")
                  if n.load_state is LoadState.UNLOADED]
-        assert len(carrying) == 1 and len(twins) == 1
-        assert carrying[0].q == twins[0].q
-        assert carrying[0].node_id != twins[0].node_id
+        assert len(carrying) == 1 and 1 <= len(twins) <= 2
+        # [ST09-I] the pre-seeded twin plus, when the entry's cartesian
+        # descend lands a different IK branch than the bookkept goal, the
+        # continuity anchor at the ACTUAL endpoint.
+        assert any(carrying[0].q == twin.q for twin in twins)
+        assert all(carrying[0].node_id != twin.node_id for twin in twins)
         # Same TCP XYZ with a different q registers a distinct node.
         other = graph.register_node(
             tuple(v + 0.2 for v in chain["q_goal"]), chain["goal_position"],

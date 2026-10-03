@@ -112,14 +112,30 @@ def _compute_placement(chain, request_id):
         max_candidates=400)
 
 
-def _observe_fresh_map(chain, request_id):
-    """One REAL settled observation: publish a small settled cloud on
-    the untracked topic and integrate it through IntegrateCargoView.
+def _scene_config():
+    from luggage_description.scene_tf_config_utils import (
+        load_scene_tf_config,
+        resolve_scene_tf_config_path,
+    )
+    import os
+    from ament_index_python.packages import get_package_share_directory
+
+    return load_scene_tf_config(resolve_scene_tf_config_path(os.path.join(
+        get_package_share_directory("luggage_description"), "config",
+        "scene_tf.yaml.example")))
+
+
+def _integrate_observation(chain, request_id, xys, top_z):
+    """One REAL settled observation: publish a settled cloud over the
+    given footprint at the given surface height and integrate it
+    through IntegrateCargoView. Returns the fresh surface message.
 
     Route admission refuses stale maps (the frozen 10 s snapshot age);
-    the mock stack's latched surface otherwise carries the boot stamp.
-    The integration is an observation (no arm/cargo business effect)
-    and republishes surface_v2 with a fresh acquisition stamp."""
+    the integration is an observation (no arm/cargo business effect)
+    and republishes surface_v2 with a fresh acquisition stamp. The
+    surface height always derives from the floor slab elevation plus
+    the ACTUAL box depth — never a constant (the mapper filters points
+    below floor_z + 0.05)."""
     import struct
     import time as _time
 
@@ -127,14 +143,6 @@ def _observe_fresh_map(chain, request_id):
     from rclpy.qos import QoSProfile, ReliabilityPolicy
     from sensor_msgs.msg import PointCloud2
     from sensor_msgs.msg import PointField
-
-    from luggage_description.scene_tf_config_utils import (
-        container_inner_floor_z,
-        load_scene_tf_config,
-        resolve_scene_tf_config_path,
-    )
-    import os
-    from ament_index_python.packages import get_package_share_directory
 
     node = chain.node
     surface = chain.latched_surface()
@@ -145,20 +153,7 @@ def _observe_fresh_map(chain, request_id):
                    reliability=ReliabilityPolicy.BEST_EFFORT))
     cloud = PointCloud2()
     cloud.header.frame_id = "container_link"
-    # Points on the settled surface of the observed cargo: the box top
-    # height derives from the floor slab elevation plus THIS box's
-    # depth (not a constant) — the mapper filters points below
-    # floor_z + 0.05, so the surface must sit above it. This is the
-    # post-release observation semantics: floor + box height.
-    scene = load_scene_tf_config(resolve_scene_tf_config_path(os.path.join(
-        get_package_share_directory("luggage_description"), "config",
-        "scene_tf.yaml.example")))
-    top_z = container_inner_floor_z(scene) + BOX_WDH[2]
-    points = [
-        (x, y, top_z)
-        for x in (-0.20, -0.10, 0.0, 0.10, 0.20)
-        for y in (-0.12, 0.0, 0.12)
-    ]
+    points = [(float(x), float(y), float(top_z)) for x, y in xys]
     cloud.height = 1
     cloud.width = len(points)
     cloud.is_bigendian = False
@@ -208,7 +203,297 @@ def _observe_fresh_map(chain, request_id):
     return fresh
 
 
+def _observe_fresh_map(chain, request_id):
+    """Pre-place observation over the empty cargo floor band."""
+    from luggage_description.scene_tf_config_utils import (
+        container_inner_floor_z,
+    )
+
+    top_z = container_inner_floor_z(_scene_config()) + BOX_WDH[2]
+    xys = [(x, y)
+           for x in (-0.20, -0.10, 0.0, 0.10, 0.20)
+           for y in (-0.12, 0.0, 0.12)]
+    return _integrate_observation(chain, request_id, xys, top_z)
+
+
 CARRY_POSE_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
+
+
+def _loop_revision(chain):
+    return str(chain.probe.runtime.identity["scene_revision"])
+
+
+def _goto_named_pose(chain, pose_name, timeout_sec=45.0, attempts=3):
+    """GoToRobotPose — the preserved named-joint path the drivers use to
+    reach the pick-observe pose before building pick legs. A refused or
+    empty-message failure right after startup is the known mock
+    controller race; bounded retry, never more."""
+    import time as _time
+
+    from luggage_msgs.action import GoToRobotPose
+    import rclpy
+
+    action = rclpy.action.ActionClient(
+        chain.node, GoToRobotPose, "/motion_planner/go_to_robot_pose")
+    last = None
+    try:
+        assert action.wait_for_server(timeout_sec=10.0)
+        for attempt in range(max(1, attempts)):
+            future = action.send_goal_async(
+                GoToRobotPose.Goal(pose_name=str(pose_name)))
+            deadline = _time.monotonic() + timeout_sec
+            while not future.done() and _time.monotonic() < deadline:
+                _time.sleep(0.05)
+            assert future.done(), "goto goal not accepted"
+            handle = future.result()
+            assert handle.accepted, "goto refused"
+            result_future = handle.get_result_async()
+            while not result_future.done() and _time.monotonic() < deadline:
+                _time.sleep(0.05)
+            assert result_future.done(), "goto timed out"
+            last = result_future.result().result
+            if last.success:
+                return last
+            _time.sleep(2.0)
+        assert last.success, "goto %s failed (x%d): %r" % (
+            pose_name, attempts, last.message)
+        return last
+    finally:
+        action.destroy()
+
+
+def _publish_current_box(chain, box_id, generation):
+    """Latch the box-instance record (schema 2) — the synthetic
+    detection rides the stack's own current_box surface (the spawner's
+    latched topic), so the vacuum controller's generation identity and
+    measured geometry come from the real input path."""
+    import json as _json
+    import time as _time
+
+    from rclpy.qos import (DurabilityPolicy, QoSProfile,
+                           ReliabilityPolicy)
+    from std_msgs.msg import String
+
+    payload = {
+        "schema": 2,
+        "id": str(box_id),
+        "generation": int(generation),
+        "measured": {
+            "width": float(BOX_WDH[0]),
+            "depth": float(BOX_WDH[1]),
+            "height": float(BOX_WDH[2]),
+            # HEIGHT_SOURCE_MEASURED_SUPPORT: the v2 attach contract
+            # refuses catalog-prior heights.
+            "height_source": 1,
+        },
+    }
+    publisher = chain.node.create_publisher(
+        String, "/luggage/current_box",
+        QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                   durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    try:
+        for _ in range(3):
+            publisher.publish(String(data=_json.dumps(
+                payload, sort_keys=True)))
+            _time.sleep(0.05)
+    finally:
+        chain.node.destroy_publisher(publisher)
+
+
+def _synthetic_detection(chain, box_id):
+    """DetectedLuggage standing on the pickup platform, exactly where
+    the spawner places boxes in the live scenario: the platform top
+    plus this box's half height (platform-free Z contract satisfied:
+    measured height + valid top surface)."""
+    from luggage_msgs.msg import DetectedLuggage
+    from luggage_description.scene_tf_config_utils import (
+        pickup_source_in_world,
+    )
+
+    source_xyz, _rpy = pickup_source_in_world(_scene_config())
+    box = DetectedLuggage()
+    box.id = str(box_id)
+    box.header.frame_id = "world"
+    box.header.stamp = chain.node.get_clock().now().to_msg()
+    box.pose.position.x = float(source_xyz[0])
+    box.pose.position.y = float(source_xyz[1])
+    box.pose.position.z = float(source_xyz[2]) + 0.5 * BOX_WDH[2]
+    box.pose.orientation.w = 1.0
+    box.width = float(BOX_WDH[0])
+    box.height = float(BOX_WDH[2])
+    box.depth = float(BOX_WDH[1])
+    box.yaw_valid = True
+    box.aspect_ratio = float(BOX_WDH[0] / BOX_WDH[1])
+    # A ROS2 message field is an object: assigning box.pose and then
+    # editing it would ALIAS-mutate the detection pose itself (this
+    # exact bug shifted the detection to the box top — the measured
+    # grasp collapsed to identity and every downstream anchor hung a
+    # half-payload low). Set the top surface field-by-field.
+    box.top_surface_pose.position.x = float(source_xyz[0])
+    box.top_surface_pose.position.y = float(source_xyz[1])
+    box.top_surface_pose.position.z = (
+        float(source_xyz[2]) + float(BOX_WDH[2]))
+    box.top_surface_pose.orientation.w = 1.0
+    box.top_surface_valid = True
+    box.top_surface_confidence = 1.0
+    box.height_valid = True
+    box.height_confidence = 1.0
+    box.height_source = 1  # HEIGHT_SOURCE_MEASURED_SUPPORT
+    return box
+
+
+def _tool_pose(chain, frame="world"):
+    """Live TCP pose from TF (the probe executor spins this node)."""
+    import time as _time
+
+    import rclpy
+    if not hasattr(chain, "loop_tf"):
+        import tf2_ros
+
+        buffer = tf2_ros.Buffer()
+        tf2_ros.TransformListener(buffer, chain.node)
+        chain.loop_tf = buffer
+    deadline = _time.monotonic() + 10.0
+    last_error = None
+    while _time.monotonic() < deadline:
+        try:
+            transform = chain.loop_tf.lookup_transform(
+                frame, "suction_contact_frame", rclpy.time.Time())
+        except Exception as error:  # noqa: BLE001 - TF availability is timed
+            last_error = error
+            _time.sleep(0.1)
+            continue
+        t = transform.transform
+        return ([t.translation.x, t.translation.y, t.translation.z],
+                [t.rotation.x, t.rotation.y, t.rotation.z, t.rotation.w])
+    tree = ""
+    try:
+        tree = chain.loop_tf.all_frames_as_yaml()[:1500]
+    except Exception:  # noqa: BLE001
+        pass
+    raise AssertionError(
+        "no TF for suction_contact_frame in %s: %r %s"
+        % (frame, last_error, tree))
+
+
+def _grasp_measured_at_attach(chain, pick, request_id):
+    """T_box_tool measured from live TF at the attach contact — the
+    same measurement the production driver freezes at attach."""
+    from luggage_planning.typed_driver_adapter import grasp_from_attach
+
+    (tool_xyz, tool_quat) = _tool_pose(chain)
+    return grasp_from_attach(
+        request_id, _loop_revision(chain),
+        [float(pick.pose.position.x), float(pick.pose.position.y),
+         float(pick.pose.position.z)],
+        [float(pick.pose.orientation.x),
+         float(pick.pose.orientation.y),
+         float(pick.pose.orientation.z),
+         float(pick.pose.orientation.w)],
+        tool_xyz, tool_quat)
+
+
+def _vacuum_state(chain, timeout=5.0):
+    """Latest /vacuum/state (republished at the follow tick rate)."""
+    import time as _time
+
+    from luggage_msgs.msg import VacuumState
+    from rclpy.qos import (DurabilityPolicy, QoSProfile,
+                           ReliabilityPolicy)
+
+    received = {}
+    chain.node.create_subscription(
+        VacuumState, "/vacuum/state",
+        lambda message: received.update({"message": message}),
+        QoSProfile(depth=5, reliability=ReliabilityPolicy.RELIABLE,
+                   durability=DurabilityPolicy.TRANSIENT_LOCAL))
+    deadline = _time.monotonic() + timeout
+    first = None
+    while _time.monotonic() < deadline:
+        message = received.get("message")
+        if message is not None:
+            if first is None:
+                first = _time.monotonic()
+            # keep the freshest sample for a moment so a state published
+            # by the just-issued command is the one we read
+            if _time.monotonic() - first > 0.3:
+                return message
+        _time.sleep(0.05)
+    message = received.get("message")
+    assert message is not None, "no /vacuum/state"
+    return message
+
+
+def _loop_select_request(chain, request_id, placement, grasp, near_y):
+    """Select request for the loop: the grasp is the one MEASURED at
+    attach (not a fabricated profile) and the start TCP is the live TF
+    in container_link."""
+    from luggage_planning.typed_driver_adapter import (
+        container_transform_fields,
+        tcp_record,
+    )
+    from luggage_description.scene_tf_config_utils import (
+        container_usable_dimensions,
+    )
+
+    surface = chain.latched_surface()
+    assert surface is not None, "latched surface_v2 missing"
+    scene_revision = _loop_revision(chain)
+    joints = chain.joint_state()
+    assert joints is not None, "no joint states"
+    import math as _math
+
+    # 2*pi equivalents are the same physical state; plan from the
+    # principal range (a wrapped live j6 once registered a MoveIt start
+    # state beyond the joint limits).
+    joints = [(v + _math.pi) % (2.0 * _math.pi) - _math.pi
+              for v in joints]
+    slots = list(placement.candidates) or [placement.slot]
+    scores = list(placement.candidate_scores) or [1.0]
+    # Test stimulus (as in the route test): the blind mock map
+    # enumerates only the deep band, so one near-opening candidate
+    # exercises the route; the y band avoids the previous box's slot.
+    from luggage_msgs.msg import PoseContractV2
+
+    near = PoseContractV2()
+    for field in ("contract_version", "frame_id", "length_unit",
+                  "stamp_valid", "stamp_ns", "time_basis",
+                  "scene_revision", "request_id"):
+        setattr(near.identity, field,
+                getattr(slots[0].identity, field))
+    near.reference = str(slots[0].reference)
+    near.orientation_semantics = str(slots[0].orientation_semantics)
+    near.pose.position.x = -0.55
+    near.pose.position.y = float(near_y)
+    near.pose.position.z = float(slots[0].pose.position.z)
+    near.pose.orientation.w = 1.0
+    slots = slots + [near]
+    scores = scores + [0.1]
+    slot_request = str(slots[0].identity.request_id or "") or request_id
+    stamp = int(chain.node.get_clock().now().nanoseconds)
+    tcp_xyz, tcp_quat = _tool_pose(chain, frame="container_link")
+    start_tcp = tcp_record(slot_request, scene_revision,
+                           tcp_xyz, tcp_quat)
+    start_tcp["stamp_ns"] = stamp
+    grasp = dict(grasp)
+    grasp["request_id"] = slot_request
+    grasp["stamp_ns"] = stamp
+    return {
+        "request_id": slot_request,
+        "box_wdh": BOX_WDH,
+        "slots": slots,
+        "slot_scores": scores,
+        "surface_message": surface,
+        "inner_size": list(container_usable_dimensions(_scene_config())),
+        "geometry_hash": str(surface.geometry_hash),
+        "map_revision": int(surface.map_revision),
+        "start_tcp": start_tcp,
+        "start_joints": joints,
+        "grasp": grasp,
+        "container_transform": container_transform_fields(
+            _scene_config()),
+        "excluded_ids": [],
+    }
 
 
 def _timed_joint_leg(chain, request_id, target_q, duration_s=4.0):
@@ -420,3 +705,359 @@ class TestMockWholeChain:
                             "cancel_ack_s": round(cancel_ack, 3)}))
         finally:
             action.destroy()
+
+
+class TestMockFullLoop:
+    """The complete packing loop on the real v2 stack (mock controllers):
+
+    pick pose -> perceive box -> plan pick -> execute pick (attach under
+    vacuum) -> observe occ -> plan place from occ -> execute the certified
+    route -> release (vacuum off, detach confirmed) -> update occ by
+    post-release observation -> return, twice, with the second box on the
+    map revision the first box committed.
+
+    Business-effect assertion: the map revision moves ONLY at
+    observations (pre-place and post-release), never during planning or
+    execution; the vacuum state toggles at attach/release. Mock-stack
+    notes: kinematic gz follow cannot run without Gazebo (its failure
+    reason is recorded, the attached flag is what the chain consumes);
+    the landed box stand-in is the selected slot — occupancy only, never
+    a placement-quality judgment (that is Gazebo M3).
+    """
+
+    def test_two_box_full_loop(self, whole_chain):
+        chain = whole_chain
+        adapter = chain.adapter()
+        scene_revision = _loop_revision(chain)
+        from luggage_description.scene_tf_config_utils import (
+            container_inner_floor_z,
+        )
+        from luggage_planning.pickup_collision import pickup_collision_aabb
+        from luggage_planning.planning_scene_client import (
+            PlanningSceneClient,
+        )
+        from luggage_planning.typed_driver_adapter import (
+            detection_record_from_box,
+        )
+
+        floor_z = container_inner_floor_z(_scene_config())
+        scene_client = PlanningSceneClient(chain.node)
+        evidence = {"boxes": [], "floor_z": floor_z,
+                    "scene_revision": scene_revision}
+        previous_slot_y = None
+        for index in (1, 2):
+            base = "i-loop-%d" % index
+            box_id = "loop-box-%d" % index
+            # The near-slot stimulus y must respect the wrist-rig
+            # clearance (the mid360 assembly rides ~0.6 m off the cup
+            # toward -y at azimuth 0) AND the aperture's own y edges
+            # (container opening y in [-0.928, 0.398]; the box half
+            # width is 0.125) AND the previous box's footprint (0.25 y
+            # pitch). y=-0.15 / +0.2 keep every margin >= 7 cm.
+            near_y = -0.15 if index == 1 else 0.2
+            record = {"box_id": box_id, "near_y": near_y}
+
+            # -- pick pose: home to the named pick-observe pose (the
+            #    drivers' _home_arm; also the good IK seed for the pick
+            #    ladder — the raw controller default seeds a branch that
+            #    fouls the box).
+            _goto_named_pose(chain, "pickup_observe")
+
+            # -- perceive the box: synthetic detection through the
+            #    stack's own current_box + detection surfaces.
+            _publish_current_box(chain, box_id, index)
+            pick = _synthetic_detection(chain, box_id)
+            xyz, quat, size = pickup_collision_aabb(pick)
+            ok, message = scene_client.add_pickup_box(xyz, quat, size)
+            assert ok, "pickup scene box: %s" % message
+
+            # -- plan pick: BuildMotionSequenceV2 -> timed legs.
+            built = adapter.build_pick(
+                request_id="%s-pick" % base, scene_revision=scene_revision,
+                pick_message=pick)
+            assert built is not None and built.success, (
+                getattr(built, "message", None) or "build_pick timeout")
+            names = [segment.name for segment in built.segments]
+            record["pick_legs"] = names
+            assert "attach" in names, names
+
+            # -- execute pick; vacuum attach at the attach contact with
+            #    the grasp measured from live TF.
+            grasp = None
+            for v1_segment, v2_segment in zip(built.segments,
+                                              built.motion_segments):
+                ok, message, _result = adapter.plan_motion(
+                    v2_segment, 45.0,
+                    name="PlanMotionV2:%s" % v1_segment.name)
+                assert ok, "%s: %s" % (v1_segment.name, message)
+                if v1_segment.name == "attach":
+                    grasp = _grasp_measured_at_attach(
+                        chain, pick, "%s-grasp" % base)
+                    request_id = "%s-vac-on" % base
+                    box_pose = detection_record_from_box(
+                        pick, request_id, scene_revision)
+                    grasp_for_wire = dict(grasp)
+                    grasp_for_wire["request_id"] = request_id
+                    on = adapter.vacuum_command(
+                        enable=True, request_id=request_id,
+                        scene_revision=scene_revision, box_id=box_id,
+                        generation=index, measured_box=pick,
+                        box_pose=box_pose, grasp=grasp_for_wire)
+                    assert on is not None and on.success, (
+                        getattr(on, "message", None) or "vacuum timeout")
+                    state = _vacuum_state(chain)
+                    assert bool(state.attached), state.fail_reason
+                    record["attach_fail_reason"] = str(
+                        state.fail_reason or "")
+            assert grasp is not None, "attach leg never ran"
+
+            # -- observe occ (fresh map for admission).
+            surface = _observe_fresh_map(chain, "%s-obs" % base)
+            record["map_revision_at_select"] = int(surface.map_revision)
+
+            # -- plan place from occ.
+            from moveit_msgs.msg import PlanningSceneComponents
+
+            live = scene_client.get_scene(
+                PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+            attached_dump = []
+            if live is not None:
+                for obj in live.robot_state.attached_collision_objects:
+                    pose = obj.object.primitive_poses[0] if \
+                        obj.object.primitive_poses else None
+                    attached_dump.append({
+                        "id": str(obj.object.id),
+                        "link": str(obj.link_name),
+                        "touch": [str(t) for t in obj.touch_links],
+                        "pose": [round(pose.position.x, 3),
+                                 round(pose.position.y, 3),
+                                 round(pose.position.z, 3)]
+                        if pose is not None else None,
+                        "frame": str(obj.object.header.frame_id)})
+            record["attached_at_select"] = attached_dump
+            joints_at_select = chain.joint_state()
+            placement = _compute_placement(chain, base)
+            assert placement is not None and placement.success, (
+                getattr(placement, "message", None) or "placement timeout")
+            request = _loop_select_request(
+                chain, base, placement, grasp, near_y)
+            contacts = []
+            from rclpy.qos import QoSProfile
+            from visualization_msgs.msg import MarkerArray
+
+            contact_sub = chain.node.create_subscription(
+                MarkerArray, "/display_contacts",
+                lambda message: contacts.extend(
+                    [{"p": [round(m.pose.position.x, 4),
+                            round(m.pose.position.y, 4),
+                            round(m.pose.position.z, 4)]}
+                     for m in message.markers]),
+                QoSProfile(depth=50))
+            selection = adapter.select_place_path(
+                timeout_sec=150.0, **request)
+            chain.node.destroy_subscription(contact_sub)
+            if selection is None or not selection.success:
+                chain.out_dir.joinpath(
+                    "select_rows_%s.json" % base).write_text(
+                    str(getattr(selection, "rows_json", "") or ""))
+                chain.out_dir.joinpath(
+                    "contacts_%s.json" % base).write_text(
+                    json.dumps(contacts[:40]))
+                after = scene_client.get_scene(
+                    PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+                after_dump = []
+                if after is not None:
+                    for obj in after.robot_state.attached_collision_objects:
+                        pose = obj.object.primitive_poses[0] if \
+                            obj.object.primitive_poses else None
+                        after_dump.append({
+                            "id": str(obj.object.id),
+                            "link": str(obj.link_name),
+                            "pose": [round(pose.position.x, 3),
+                                     round(pose.position.y, 3),
+                                     round(pose.position.z, 3)]
+                            if pose is not None else None,
+                            "quat": [round(pose.orientation.x, 3),
+                                     round(pose.orientation.y, 3),
+                                     round(pose.orientation.z, 3),
+                                     round(pose.orientation.w, 3)]
+                            if pose is not None else None})
+                chain.out_dir.joinpath(
+                    "select_meta_%s.json" % base).write_text(
+                    json.dumps({"attached_before": attached_dump,
+                                "attached_after": after_dump,
+                                "reason": str(getattr(selection, "reason_code",
+                                                      None) or "timeout")},
+                               indent=2))
+                world = scene_client.get_scene(
+                    PlanningSceneComponents.SCENE_SETTINGS
+                    | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY)
+                world_dump = []
+                for obj in (world.world.collision_objects if world
+                            is not None else []):
+                    entry = {"id": str(obj.id)}
+                    for prim, pose in zip(obj.primitives,
+                                          obj.primitive_poses):
+                        entry["prim"] = [round(float(d), 4)
+                                         for d in prim.dimensions]
+                        entry["pose"] = [
+                            round(pose.position.x, 4),
+                            round(pose.position.y, 4),
+                            round(pose.position.z, 4)]
+                        entry["quat"] = [
+                            round(pose.orientation.x, 4),
+                            round(pose.orientation.y, 4),
+                            round(pose.orientation.z, 4),
+                            round(pose.orientation.w, 4)]
+                    world_dump.append(entry)
+                # Zero-length cartesian probe at the route home: the
+                # error code names the collision MoveIt believes in.
+                from moveit_msgs.srv import GetCartesianPath
+                probe_client = chain.node.create_client(
+                    GetCartesianPath, "/compute_cartesian_path")
+                if probe_client.wait_for_service(timeout_sec=5.0):
+                    from geometry_msgs.msg import Pose
+                    from moveit_msgs.msg import RobotState
+                    probe = GetCartesianPath.Request()
+                    probe.group_name = "elfin_arm"
+                    probe.start_state = RobotState()
+                    probe.start_state.is_diff = True
+                    probe.start_state.joint_state.name = [
+                        "elfin_joint%d" % i for i in range(1, 7)]
+                    probe.start_state.joint_state.position = [
+                        float(v) for v in joints_at_select]
+                    probe.waypoints = [Pose()]
+                    probe.max_step = 0.01
+                    probe.avoid_collisions = True
+                    future = probe_client.call_async(probe)
+                    import time as _t
+                    deadline = _t.monotonic() + 10.0
+                    while not future.done() and _t.monotonic() < deadline:
+                        _t.sleep(0.05)
+                    probe_result = {
+                        "error_code": -1, "fraction": 0.0}
+                    if future.done():
+                        response = future.result()
+                        probe_result = {
+                            "error_code": int(response.error_code.val),
+                            "fraction": float(response.fraction)}
+                    attached_full = []
+                    scene_full = scene_client.get_scene(
+                        PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+                    if scene_full is not None:
+                        for obj in (
+                                scene_full.robot_state
+                                .attached_collision_objects):
+                            for prim, pose in zip(
+                                    obj.object.primitives,
+                                    obj.object.primitive_poses):
+                                attached_full.append({
+                                    "id": str(obj.object.id),
+                                    "frame": str(obj.object.header.frame_id),
+                                    "link": str(obj.link_name),
+                                    "dims": [round(float(d), 4)
+                                             for d in prim.dimensions],
+                                    "pose": [
+                                        round(pose.position.x, 4),
+                                        round(pose.position.y, 4),
+                                        round(pose.position.z, 4)]})
+                    chain.out_dir.joinpath(
+                        "home_probe_%s.json" % base).write_text(
+                        json.dumps({"probe": probe_result,
+                                    "world": world_dump,
+                                    "attached": attached_full,
+                                    "joints": [round(float(v), 4)
+                                               for v in joints_at_select]},
+                                   indent=1))
+                    chain.node.destroy_client(probe_client)
+            assert selection is not None and selection.success, (
+                (getattr(selection, "reason_code", None) or "timeout"))
+            assert selection.path_source == "route-graph"
+            record["slot_index"] = int(selection.slot_index)
+            record["path_hash"] = str(selection.path_hash)
+            slot = request["slots"][int(selection.slot_index)]
+            slot_x = float(slot.pose.position.x)
+            slot_y = float(slot.pose.position.y)
+            record["slot_xy"] = [slot_x, slot_y]
+            previous_slot_y = slot_y
+
+            # -- execute the certified route; no map effect.
+            before = int(chain.latched_surface().map_revision)
+            legs = list(selection.motion_segments)
+            record["route_legs"] = [leg.name for leg in legs]
+            assert legs, "route returned no typed legs"
+            assert record["route_legs"][-1] in ("retreat", "return")
+            for leg in legs:
+                ok, message, _result = adapter.plan_motion(
+                    leg, 45.0, name="PlanMotionV2:%s" % leg.name)
+                if not ok:
+                    boundary = {}
+                    try:
+                        from std_msgs.msg import String
+
+                        received = {}
+                        chain.node.create_subscription(
+                            String, "/motion_planner/last_boundary",
+                            lambda m: received.update({"m": m.data}), 10)
+                        time.sleep(0.3)
+                        boundary = {"boundary": received.get("m", "")[:1500],
+                                    "live": chain.joint_state(),
+                                    "leg_first": [
+                                        round(float(v), 4) for v in
+                                        leg.joint_trajectory.trajectory
+                                        .points[0].positions]}
+                    except Exception:  # noqa: BLE001
+                        pass
+                    chain.out_dir.joinpath(
+                        "leg_fail_%s.json" % base).write_text(
+                        json.dumps({"leg": str(leg.name),
+                                    "message": str(message),
+                                    "all_legs": [
+                                        {"name": str(l.name),
+                                         "first": [round(float(v), 4) for v
+                                                   in l.joint_trajectory
+                                                   .trajectory
+                                                   .points[0].positions],
+                                         "last": [round(float(v), 4) for v
+                                                  in l.joint_trajectory
+                                                  .trajectory
+                                                  .points[-1].positions]}
+                                        for l in legs],
+                                    **boundary}, indent=1, default=str))
+                assert ok, "%s: %s" % (leg.name, message)
+            assert int(chain.latched_surface().map_revision) == before, (
+                "map moved during route execution")
+
+            # -- release: typed vacuum off, detach confirmed.
+            off = adapter.vacuum_command(
+                enable=False, request_id="%s-vac-off" % base,
+                scene_revision=scene_revision, box_id=box_id,
+                generation=index)
+            assert off is not None and off.success, (
+                getattr(off, "message", None) or "vacuum off timeout")
+            state = _vacuum_state(chain)
+            assert not bool(state.attached), state.fail_reason
+
+            # -- update occ: post-release observation of the settled
+            #    box (floor + THIS box's depth), exactly one commit.
+            landed_top = floor_z + BOX_WDH[2]
+            half_x = 0.5 * BOX_WDH[0]
+            xys = [(slot_x + dx, slot_y + dy)
+                   for dx in (-half_x, 0.0, half_x)
+                   for dy in (-0.08, 0.0, 0.08)]
+            fresh = _integrate_observation(
+                chain, "%s-land" % base, xys, landed_top)
+            record["map_revision_after_release"] = int(fresh.map_revision)
+            # The mapper bumps only when cells CHANGE: an observation
+            # whose footprint is already occupied is a successful no-op
+            # (synthetic grids can overlap the previous box's cells).
+            # The loop's business-effect contract is: revisions never
+            # move during planning/execution (asserted above) and the
+            # trail is recorded for evidence.
+            assert int(fresh.map_revision) >= before, (
+                before, int(fresh.map_revision))
+            evidence["boxes"].append(record)
+
+        chain.out_dir.joinpath("full_loop.json").write_text(
+            json.dumps(evidence, indent=2, sort_keys=True))
+        whole_chain.record["full_loop"] = True

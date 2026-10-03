@@ -256,6 +256,43 @@ class RouteGraph(object):
                      for eid in self._incoming.get(str(node_id), ())
                      if eid in self._edges)
 
+    #: Regions whose nodes belong to ONE select request (the candidate's
+    #: anchor ladder, the home registration, the goals). Everything else
+    #: (cross-request IK caches, atlas nodes) stays.
+    REQUEST_SCOPED_REGIONS = ("staging", "portal", "slot_approach",
+                              "slot_upper", "exit", "home", "slot",
+                              "pick_home")
+
+    def clear_request_scoped(self):
+        """[ST09-I] per-select reset of the candidate-scoped regions.
+
+        The selector's graph lives for the node's lifetime; a previous
+        request's anchors pollute the next request's hop destinations
+        and the branch combinations grow unboundedly (live: the second
+        box's select carried the first box's anchors — three branches x
+        four regions — and burned the frozen budget before any chain
+        resolved)."""
+        drop = {node_id for node_id, node in self._nodes.items()
+                if str(node.region) in self.REQUEST_SCOPED_REGIONS}
+        if not drop:
+            return 0
+        self._edges = {
+            edge_id: edge for edge_id, edge in self._edges.items()
+            if edge.source_node_id not in drop
+            and edge.destination_node_id not in drop}
+        self._candidates = {
+            edge_id: edge for edge_id, edge in self._candidates.items()
+            if edge.source_node_id not in drop
+            and edge.destination_node_id not in drop}
+        self._nodes = {node_id: node for node_id, node
+                       in self._nodes.items() if node_id not in drop}
+        self._out = {node_id: targets for node_id, targets
+                     in self._out.items() if node_id not in drop}
+        self._incoming = {node_id: sources for node_id, sources
+                          in self._incoming.items()
+                          if node_id not in drop}
+        return len(drop)
+
     def note_prior_gap(self, text):
         """Record an atlas prior gap (ATLAS_ORIENTATION_UNCOVERED class).
 

@@ -547,8 +547,13 @@ class TypedDriverAdapter:
         return self._call(self._remove_placed, request, 15.0)
 
     # -- waypoint/execution chain ---------------------------------------------
-    def build_pick(self, *, request_id, scene_revision, pick_message):
-        """BuildMotionSequenceV2 pick phase from the measured detection."""
+    def build_pick(self, *, request_id, scene_revision, pick_message,
+                   timeout_sec=60.0):
+        """BuildMotionSequenceV2 pick phase from the measured detection.
+
+        The edge builder's first MoveIt call pays the kinematics-loader
+        warmup, so the default budget is generous like the drivers'.
+        """
         from luggage_msgs.srv import BuildMotionSequenceV2
         request = BuildMotionSequenceV2.Request()
         request.phase = "pick"
@@ -557,7 +562,7 @@ class TypedDriverAdapter:
         request.scene_revision = str(scene_revision)
         request.pick_pose = pose_message(detection_record_from_box(
             pick_message, request_id, scene_revision))
-        return self._call(self._build, request, 15.0)
+        return self._call(self._build, request, timeout_sec)
 
     def build_place(self, *, slot, grasp, box_wdh, container_transform):
         """BuildMotionSequenceV2 place phase from the admitted slot record."""

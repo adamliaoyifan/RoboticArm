@@ -94,13 +94,26 @@ class FakeEdgeBuilder(object):
         if key in self.fail or (to_node.node_id, edge_class) in self.fail_dest:
             raise RoutePlanningError(
                 "EDGE_BUILD_FAILED", {"pair": key, "dest": to_node.node_id})
+        # The canned trajectory must END at the destination node's q:
+        # the search re-anchors chains on each edge's actual endpoint
+        # ([ST09-I] continuity), so a mock whose endpoints never match
+        # collapses every node into one and routes through region pairs
+        # the fail map never anticipated.
+        base = make_timed_trajectory()
+        trajectory = type(base)(
+            joint_names=base.joint_names,
+            positions=(base.positions[0],
+                       tuple(float(v) for v in to_node.q)),
+            velocities=tuple(base.velocities[:2]),
+            accelerations=tuple(base.accelerations[:2]),
+            time_from_start_ns=tuple(base.time_from_start_ns[:2]))
         edge = GraphEdge(
             edge_id="e-fake-%03d" % len(self.calls),
             source_node_id=from_node.node_id,
             destination_node_id=to_node.node_id,
             load_state=from_node.load_state,
             static_identity="static-test",
-            trajectory=make_timed_trajectory(),
+            trajectory=trajectory,
             validation_revision=None,
             attributes={
                 "edge_class": edge_class,
@@ -309,9 +322,12 @@ class TestRouteSearchChains:
         assert err.value.code != "BIN_FULL"
         assert err.value.detail["edge_failures"]
 
-    def test_missing_release_twin_is_edge_build_failed(self):
-        # No unloaded twins: the retreat cannot even start from a release
-        # node, which is a named EDGE_BUILD_FAILED, not a silent success.
+    def test_missing_release_twin_is_registered_at_entry_end(self):
+        # [ST09-I] chain continuity: when no unloaded twin is pre-seeded,
+        # the search registers one at the entry chain's ACTUAL endpoint
+        # (a cartesian edge may land a different IK branch than the
+        # bookkept goal) and the retreat starts there — the route
+        # succeeds with the retreat anchored on the real release state.
         graph = _scaffold(RouteGraph(static_identity="static-test"),
                           twins=False)
         search, _builder, _budget = _search(graph)
@@ -319,10 +335,12 @@ class TestRouteSearchChains:
                  if n.load_state is LoadState.CARRYING]
         start = [n for n in graph.nodes.values()
                  if n.region == "home" and n.load_state is LoadState.CARRYING][0]
-        with pytest.raises(RoutePlanningError) as err:
-            search.best_full_route(start.node_id, goals)
-        assert err.value.code == "EDGE_BUILD_FAILED"
-        assert err.value.detail["missing_release_twin"]
+        entry, retreat, _goal = search.best_full_route(start.node_id, goals)
+        assert retreat.node_ids
+        endpoint = search.graph.node(retreat.node_ids[0])
+        last_knot = entry.edges[-1].trajectory.positions[-1]
+        assert all(abs(a - b) <= 1e-6 for a, b in zip(endpoint.q,
+                                                      last_knot))
 
 
 class TestYawIkEightClasses:

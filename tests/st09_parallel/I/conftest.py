@@ -197,6 +197,25 @@ def whole_chain(tmp_path_factory):
     launch_text = launch_text.replace(old_move_group, new_move_group)
     launch_text = launch_text.replace('"auto_sync": False',
                                       '"auto_sync": True')
+    # [ST09-I loop] the driver homes to the named pick-observe pose
+    # before building pick legs (a good IK seed branch); the default
+    # poses config is the SITE file with no poses, so pin the SIM
+    # example the eval drivers use.
+    old_planner = """    nodes.append(Node(
+        package="luggage_planning", executable="motion_planner_node.py",
+        name="motion_planner", output="screen",
+        parameters=[{"scene_tf_config": scene_tf, "use_sim_time": False,
+                     **frame}]))"""
+    new_planner = """    nodes.append(Node(
+        package="luggage_planning", executable="motion_planner_node.py",
+        name="motion_planner", output="screen",
+        parameters=[{"scene_tf_config": scene_tf, "use_sim_time": False,
+                     "robot_poses_config": %r,
+                     **frame}]))""" % os.path.join(
+        get_package_share_directory("luggage_description"),
+        "config", "robot_poses.yaml.example")
+    assert old_planner in launch_text, "template motion_planner drifted"
+    launch_text = launch_text.replace(old_planner, new_planner)
     # The mock stack never configured the arm controller (the g4 campaign
     # was plan-only): the controller_manager sees the type map but not
     # the controller's own parameters — load them via the spawner.

@@ -187,6 +187,8 @@ class TrajectorySelectorNode(Node):
         from luggage_description.scene_tf_config_utils import (
             container_opening_normal_in_world,
             container_opening_target_point_in_world,
+            pedestal_dimensions,
+            pedestal_enabled,
         )
         from luggage_planning.attachment_provider import (
             MeasuredAttachmentProvider,
@@ -310,7 +312,13 @@ class TrajectorySelectorNode(Node):
             opening_info={
                 "point": container_opening_target_point_in_world(self._scene),
                 "normal": container_opening_normal_in_world(self._scene),
-            })
+            },
+            # [ST09-I loop] the pedestal top is the open-air transit
+            # floor: with it the route seeds a high staging anchor so
+            # the carried payload never drags across the pedestal.
+            transit_clearance_z=(
+                pedestal_dimensions(self._scene)[2]
+                if pedestal_enabled(self._scene) else None))
         return self._route_producer
 
     def _select_v2(self, request, response):

@@ -432,8 +432,21 @@ class PlanningSceneClient(object):
 
     def add_pickup_box(self, xyz, quat, box_size, frame_id="world",
                        box_id=BOX_OBJECT_ID):
-        return self._apply(
+        ok, message = self._apply(
             build_add_scene(box_id, xyz, quat, box_size, frame_id))
+        if not ok:
+            return ok, message
+        # The pickup box exists to be grasped by the cup: while it is
+        # still a WORLD object the panel assembly must be allowed to
+        # touch it, or the pick descent's collision-aware generation
+        # stops at first cup-box contact (observed live: attach leg
+        # fraction 0.59). The ROS 1 scene_manager seeded exactly these
+        # pairs; attach later re-expresses them as touch_links.
+        acm_ok, acm_message = self.set_acm_pairs(
+            [(link, box_id) for link in DEFAULT_TOUCH_LINKS], True)
+        if not acm_ok:
+            return False, "pickup box acm: %s" % acm_message
+        return ok, message
 
     def attach_pickup_box(self, model_name, xyz, quat, box_size,
                           link_name=DEFAULT_ATTACH_LINK, frame_id="world",
@@ -450,7 +463,31 @@ class PlanningSceneClient(object):
 
     def detach_and_remove(self, model_name=None, box_id=BOX_OBJECT_ID):
         del model_name
-        return self._apply(build_detach_scene(box_id))
+        ok, message = self._apply(build_detach_scene(box_id))
+        if ok:
+            return ok, message
+        # Idempotent release: an object POSITIVELY observed as neither
+        # attached nor in the world is already released — move_group
+        # rejects the diff otherwise (live: the route planner removed
+        # the live payload before the vacuum's own detach applied). The
+        # check fails closed: an unreadable scene surfaces the original
+        # apply failure instead of masking it.
+        try:
+            from moveit_msgs.msg import PlanningSceneComponents
+
+            scene = self.get_scene(
+                PlanningSceneComponents.WORLD_OBJECT_NAMES
+                | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+        except Exception:  # noqa: BLE001 - unreadable check fails closed
+            scene = None
+        if scene is not None:
+            ids = {str(obj.id) for obj in
+                   scene.world.collision_objects}
+            ids.update(str(obj.object.id) for obj in
+                       scene.robot_state.attached_collision_objects)
+            if str(box_id) not in ids:
+                return True, "already released"
+        return ok, message
 
     def add_collision_object(self, collision_object, timeout=10.0):
         scene = PlanningScene()

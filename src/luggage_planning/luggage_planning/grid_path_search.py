@@ -328,9 +328,37 @@ class RouteSearch(object):
             edge = self._edge_for(frontier, destination, hop, scene=scene)
             if edge is None:
                 continue
+            # [ST09-I] chain continuity: a cartesian edge reaches the
+            # requested POSE, not the destination node's IK branch — the
+            # solver seeds from the start state, so the trajectory can
+            # end on a different branch than the bookkept to-node.
+            # Continue the chain from the ACTUAL endpoint q (live
+            # symptom: entry ended on one branch, the retreat twin was
+            # registered on the other, and the executor refused the
+            # retreat with QP_START_STATE_MISMATCH).
+            next_node = destination
+            try:
+                actual = tuple(
+                    float(v) for v in edge.trajectory.positions[-1])
+            except (AttributeError, IndexError, TypeError):
+                actual = None
+            if actual is not None and len(actual) == len(destination.q) \
+                    and max(abs(a - b) for a, b in
+                            zip(actual, destination.q)) > 1e-6:
+                anchored = self.graph.node_for_q(hop.load_state, actual)
+                if anchored is None:
+                    from st09_contracts import LoadState
+
+                    anchored = self.graph.register_node(
+                        actual, destination.tcp_position,
+                        destination.tcp_quaternion_xyzw,
+                        destination.region,
+                        LoadState(hop.load_state),
+                        destination.ik_family)
+                next_node = anchored
             result = self._chain_from(
-                destination, rest, goal_nodes,
-                acc_edges + [edge], acc_nodes + [destination.node_id],
+                next_node, rest, goal_nodes,
+                acc_edges + [edge], acc_nodes + [next_node.node_id],
                 scene=scene)
             if result is not None:
                 return result
@@ -395,17 +423,39 @@ class RouteSearch(object):
                 raise RoutePlanningError("PLANNING_BUDGET_EXHAUSTED", {
                     "budget": self.budget.snapshot(),
                     "edge_failures": list(self.edge_failures)})
-            twin = self.graph.node_for_q("unloaded", goal.q)
+            # [ST09-I] the release twin must sit where the entry chain
+            # ACTUALLY ends (the descend edge's last knot — the cartesian
+            # solver may land a different IK branch than the bookkept
+            # goal node), or the retreat starts off-branch.
+            final_q = goal.q
+            try:
+                final_q = tuple(
+                    float(v) for v in entry.edges[-1].trajectory
+                    .positions[-1])
+            except (AttributeError, IndexError, TypeError):
+                pass
+            twin = self.graph.node_for_q("unloaded", final_q)
             if twin is None:
-                last_error = RoutePlanningError("EDGE_BUILD_FAILED", {
-                    "missing_release_twin": goal.node_id})
-                continue
+                from st09_contracts import LoadState
+
+                twin = self.graph.register_node(
+                    final_q, goal.tcp_position,
+                    goal.tcp_quaternion_xyzw, goal.region,
+                    LoadState.UNLOADED, goal.ik_family)
             try:
                 retreat = self.retreat_chain(
                     twin.node_id, hops=retreat_hops, scene=scene_unloaded)
             except RoutePlanningError as err:
                 last_error = err
                 continue
+            # [ST09-I] chain-continuity diagnostics: the executed legs must
+            # chain node-to-node; a branch jump here surfaces live as a
+            # QP_START_STATE_MISMATCH on the retreat leg.
+            print("route chain goal=%s entry=%s twin=%s retreat=%s" % (
+                [round(v, 3) for v in goal.q[:2]],
+                [n[:22] for n in entry.node_ids],
+                [round(v, 3) for v in twin.q[:2]],
+                [n[:22] for n in retreat.node_ids]), flush=True)
             return entry, retreat, goal
         if last_error is not None:
             raise last_error

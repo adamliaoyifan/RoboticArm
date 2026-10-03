@@ -358,6 +358,43 @@ class WaypointGeneratorNode(Node):
                 raise RoutePlanningError(
                     "EDGE_BUILD_FAILED",
                     {"leg": "pick", "reason": "start joints unknown"})
+            # A wrapped equivalent (live j6 = -4.44 after a full cycle)
+            # is the same pose, but the offline refine explores from the
+            # seed's branch and landed on an elbow family whose goal
+            # fouled the box (live: pre_grasp GOAL_STATE_INVALID on the
+            # second pick). Seed from the canonical [-pi, pi] range...
+            import math as _math
+
+            raw_q = [float(v) for v in start_q]
+            start_q = [
+                (value + _math.pi) % (2.0 * _math.pi) - _math.pi
+                for value in raw_q]
+
+            def _rewrap_legs(legs):
+                # ...then shift the built legs back next to the LIVE
+                # (possibly wrapped) joints: a constant 2*pi turn per
+                # joint changes nothing geometrically, keeps the
+                # executor's start-state gate happy, and stops the
+                # controller from spinning a full turn to bookkeeping.
+                if not legs:
+                    return legs
+                points = legs[0]["joint_trajectory"]["points"]
+                if not points:
+                    return legs
+                shifts = []
+                for ref, value in zip(
+                        raw_q, points[0]["positions"]):
+                    turns = round((float(value) - ref)
+                                  / (2.0 * _math.pi))
+                    shifts.append(turns * 2.0 * _math.pi)
+                if not any(shifts):
+                    return legs
+                for leg in legs:
+                    for point in leg["joint_trajectory"]["points"]:
+                        point["positions"] = [
+                            float(v) - s for v, s in
+                            zip(point["positions"], shifts)]
+                return legs
             stack = self._pick_builder()
             waypoints = []
             for segment in build_sequence(
@@ -370,12 +407,12 @@ class WaypointGeneratorNode(Node):
                      float(pose.position.z)),
                     (float(pose.orientation.x), float(pose.orientation.y),
                      float(pose.orientation.z), float(pose.orientation.w))))
-            return pick_leg_records(
+            return _rewrap_legs(pick_leg_records(
                 waypoints,
                 graph=stack["graph"], edge_builder=stack["edge_builder"],
                 refine=stack["refine"], fk=stack["fk"], start_q=start_q,
                 request_id=request_id, scene_revision=scene_revision,
-                stamp_ns=stamp_ns)
+                stamp_ns=stamp_ns))
         return encode
 
     def _handle(self, request, response):

@@ -349,9 +349,19 @@ class MoveItEdgeAdapter(object):
             if scene.payload is None:
                 raise RuntimeError("carrying scene without a payload spec")
             from luggage_planning.planning_scene_client import (
+                BOX_OBJECT_ID,
                 build_attach_scene,
             )
 
+            # ONE payload representation while planning: the frozen
+            # measured record (b-payload). The live vacuum attach is
+            # execution state — leaving it in produced a second,
+            # misplaced payload copy in the planning scene and every
+            # carrying edge refused on phantom collisions (live:
+            # pedestal x pickup_box contacts at the world origin while
+            # the arm stood over the platform).
+            if not self._scene.detach_and_remove(box_id=BOX_OBJECT_ID):
+                raise RuntimeError("live payload detach failed")
             attach_diff = build_attach_scene(
                 payload_id,
                 list(scene.payload.t_tcp_box_translation),
@@ -515,6 +525,17 @@ class MoveItEdgeAdapter(object):
             if trajectory is not None else None
         if result is None or int(result.error_code.val) != 1 or \
                 joint_trajectory is None or not joint_trajectory.points:
+            # [ST09-I] request-level diagnostics: the refused edge's exact
+            # endpoints, so a live "start in collision" names its state.
+            try:
+                self._node.get_logger().error(
+                    "edge joint failed %s from=%s to=%s code=%s" % (
+                        klass.value,
+                        [round(float(v), 3) for v in from_node.q],
+                        [round(float(v), 3) for v in to_node.q],
+                        int(result.error_code.val) if result else -1))
+            except Exception:  # noqa: BLE001 - diagnostics only
+                pass
             self._record_failure(klass.value, "moveit_error",
                                  error_code=int(result.error_code.val)
                                  if result else -1)

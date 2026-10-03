@@ -382,11 +382,30 @@ def handle_build_v2(request, response, pick=None, pick_encoder=None):
                 raise ContractError(
                     "PLANNING_ROUTE_REQUIRED", "pick",
                     "timed pick legs require the edge builder", None)
-            legs = pick_encoder(
-                pick,
-                request_id=str(request.request_id),
-                scene_revision=str(request.scene_revision),
-                stamp_ns=int(pick_record.get("stamp_ns") or 0))
+            legs = None
+            try:
+                legs = pick_encoder(
+                    pick,
+                    request_id=str(request.request_id),
+                    scene_revision=str(request.scene_revision),
+                    stamp_ns=int(pick_record.get("stamp_ns") or 0))
+            except Exception as error:  # noqa: BLE001 - service boundary
+                # [ST09-I] reason-loss fix: an encoder failure (IK, edge
+                # build, an import error) must surface as its own named
+                # refusal — an exception escaping the service callback
+                # kills the whole node (observed live: an ImportError in
+                # pick_leg_records took waypoint_generator down and the
+                # client saw a bare 15 s timeout).
+                import traceback
+
+                detail = repr(error)[:300]
+                trace = traceback.format_exc(limit=4).replace("\n", " | ")
+                response.motion_segments = []
+                response.segments = []
+                response.success = False
+                response.reason_code = "BUILD_ENCODER_EXCEPTION"
+                response.message = "%s %s" % (detail, trace)
+                return response
             response.motion_segments = _route_motion_messages(
                 legs, {"request_id": str(request.request_id),
                        "scene_revision": str(request.scene_revision)})

@@ -218,13 +218,34 @@ class RegionAnchorPlan(object):
     slot: Tuple[float, float, float]
     exit: Tuple[float, float, float]
     depth_m: float
+    #: Open-air carrying anchor above the pedestal line (None when the
+    #: scene declares no transit clearance and the single-hop transit
+    #: stays). Seeded above the portal so the payload clears the
+    #: pedestal on the approach and only descends past its footprint.
+    staging: "Tuple[float, float, float] | None" = None
+
+
+#: Payload-bottom margin kept above the transit clearance (pedestal top)
+#: when seeding the staging anchor.
+STAGING_MARGIN_M = 0.10
+
+#: Staging pullback along the opening's outward normal: the anchor sits
+#: in FREE space off the container face, so the open-air sweep never
+#: threads the aperture and only the final portal descent enters it.
+STAGING_PULLBACK_M = 0.35
+
+#: Bounded route rebuilds after a CERT_COLLISION verdict (fresh OMPL
+#: sampling inside the frozen budget; the certifier is still the only
+#: authority — a rebuild that still collides is still a refusal).
+CERT_COLLISION_REBUILDS = 2
 
 
 def anchor_plan(contact_world: Sequence[float], container_quaternion,
                 box_height_m: float, *, corridor_surface_max=None,
                 place_clearance_z=DEFAULT_PLACE_CLEARANCE_Z,
                 opening=None, inward_normal=None,
-                corridor_margin=DEFAULT_CORRIDOR_MARGIN) -> RegionAnchorPlan:
+                corridor_margin=DEFAULT_CORRIDOR_MARGIN,
+                transit_clearance_z=None) -> RegionAnchorPlan:
     """Anchor geometry for one candidate, world frame.
 
     ``contact_world`` is the candidate's world TCP contact pose
@@ -263,9 +284,31 @@ def anchor_plan(contact_world: Sequence[float], container_quaternion,
         portal = tuple(
             slot_approach[i] + normal[i] * (0.15 - offset)
             for i in range(3))
+    staging = None
+    if transit_clearance_z is not None and opening is not None \
+            and inward_normal is not None:
+        # The staging anchor sits on the OPENING CENTERLINE, pulled back
+        # along the outward normal into free space and lifted so the
+        # payload bottom clears the transit floor (pedestal top). Aiming
+        # the open-air sweep at the aperture center keeps the wrist rig
+        # and the carried payload inside the aperture's clearance on the
+        # final descent (a staging on the slot's own y line let OMPL
+        # wander off-axis and the certified payload grazed the container
+        # face corner); it also never drags the payload across the
+        # pedestal — a one-shot home->portal joint plan had to rediscover
+        # all of that in 6-DOF and kept failing validation live.
+        staging_z = max(
+            float(portal[2]),
+            float(transit_clearance_z) + float(height) + STAGING_MARGIN_M)
+        if staging_z > float(portal[2]) + 0.05:
+            outward = [-float(v) for v in inward_normal]
+            staging = tuple(
+                float(opening[i]) + outward[i] * STAGING_PULLBACK_M
+                for i in range(3))
+            staging = (staging[0], staging[1], staging_z)
     return RegionAnchorPlan(
         portal=portal, slot_approach=slot_approach, slot_upper=slot_upper,
-        slot=slot, exit=exit_pose, depth_m=float(depth))
+        slot=slot, exit=exit_pose, depth_m=float(depth), staging=staging)
 
 
 class RouteProducer(object):
@@ -287,7 +330,7 @@ class RouteProducer(object):
                  cert_policy=None, budget_ns=ROUTE_TOTAL_WALL_NS,
                  clock_ns=None, corridor_surface_max=None,
                  opening_info=None, base_position=(0.0, 0.0, 0.86),
-                 reach_prior_m=1.35, log=None):
+                 reach_prior_m=1.35, transit_clearance_z=None, log=None):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
@@ -318,6 +361,11 @@ class RouteProducer(object):
         #: candidates that pass.
         self.base_position = tuple(float(v) for v in base_position)
         self.reach_prior_m = float(reach_prior_m)
+        #: World Z the carried payload bottom must stay above during
+        #: open-air transit (the pedestal top). None disables the staging
+        #: anchor — the entry table then keeps its single-hop transit.
+        self.transit_clearance_z = (None if transit_clearance_z is None
+                                    else float(transit_clearance_z))
         self._log = log or (lambda message: None)
         self._clock_ns = clock_ns or time.monotonic_ns
         self.last_route = None
@@ -395,7 +443,8 @@ class RouteProducer(object):
             float(request["box_wdh"][2]),
             corridor_surface_max=self.corridor_surface_max,
             opening=(self.opening_info or {}).get("point"),
-            inward_normal=self._inward_normal())
+            inward_normal=self._inward_normal(),
+            transit_clearance_z=self.transit_clearance_z)
         candidate = dataclasses.replace(base_candidate, depth_m=plan.depth_m)
 
         graph = self.graph
@@ -412,6 +461,9 @@ class RouteProducer(object):
             ("slot_upper", plan.slot_upper, LoadState.CARRYING),
             ("exit", plan.exit, LoadState.UNLOADED),
         ]
+        if plan.staging is not None:
+            anchor_rows.insert(0, ("staging", plan.staging,
+                                   LoadState.CARRYING))
         if not has_opening:
             # The collapsed portal shares the approach pose; registering
             # it would steal the approach node's (load, q) key.
@@ -460,6 +512,9 @@ class RouteProducer(object):
 
         start_q = tuple(float(v) for v in request["start_joints"])
         last_reason = "NO_FEASIBLE_ROUTE"
+        purge = getattr(self.graph, "clear_request_scoped", None)
+        if callable(purge):
+            purge()
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
@@ -519,6 +574,19 @@ class RouteProducer(object):
                 entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
                     hop for hop in DEFAULT_ENTRY_HOPS
                     if hop[0] != "portal")
+                has_staging = bool(
+                    self.graph.nodes_by_region("staging"))
+                if has_staging:
+                    # Staging transit: an OMPL joint sweep to the high
+                    # free-space anchor (a single cartesian hop across
+                    # the workspace sits in the wrist-singularity family
+                    # and stops at fraction 0), then the deterministic
+                    # cartesian descent that enters the aperture.
+                    entry_table = (
+                        ("staging", "PORTAL_TRANSIT"),
+                        ("portal", "TRAVERSE"),
+                    ) + tuple(hop for hop in entry_table
+                              if hop[0] != "portal")
                 entry_hops = hops_from_table(entry_table, "carrying")
                 planner = GraphRoutePlanner(
                     self.graph, self.edge_builder,
@@ -593,19 +661,22 @@ class RouteProducer(object):
                 continue
             self.last_budget_snapshot = planner.last_budget_snapshot
 
-            edges = tuple(
-                self.graph.edges[edge_id] for edge_id in
-                route.entry_edge_ids + route.retreat_edge_ids)
-            self._log("route: certifying %d edges" % len(edges))
-            certification, certify_failure = self._certify(
-                route, snapshot, attachment, edges, candidate, request)
-            self._log("route: certification %s" % (
-                "pass" if certification is not None and certification.passed
-                else "fail"))
             row["route_id"] = route.route_id
-            if certification is None or not certification.passed:
-                row["reason"] = certify_failure \
-                    if certification is None else certification.reason.value
+            cert_rebuilds_left = CERT_COLLISION_REBUILDS
+            while True:
+                edges = tuple(
+                    self.graph.edges[edge_id] for edge_id in
+                    route.entry_edge_ids + route.retreat_edge_ids)
+                self._log("route: certifying %d edges" % len(edges))
+                certification, certify_failure = self._certify(
+                    route, snapshot, attachment, edges, candidate, request)
+                self._log("route: certification %s" % (
+                    "pass" if certification is not None
+                    and certification.passed else "fail"))
+                if certification is not None and certification.passed:
+                    break
+                reason = certify_failure if certification is None \
+                    else certification.reason.value
                 if certification is not None:
                     row["cert_detail"] = {
                         "min_clearance_m": certification.min_clearance_m,
@@ -618,8 +689,32 @@ class RouteProducer(object):
                     self._log("route: cert fail %s clearance=%s" % (
                         certification.reason.value,
                         certification.min_clearance_m))
+                # A certified collision after a clean OMPL build is a
+                # between-waypoint graze the sampler's own resolution
+                # missed (live: the mid360 mount grazing the container
+                # corner by 0.45 mm). OMPL is a sampler — re-plan the
+                # route with fresh sampling, bounded, inside the frozen
+                # budget. The certifier stays the only authority: a
+                # rebuild that still collides is still a refusal.
+                remaining = self.budget_ns - (self._clock_ns() - started_ns)
+                if reason == "CERT_COLLISION" and cert_rebuilds_left > 0 \
+                        and remaining > 0:
+                    cert_rebuilds_left -= 1
+                    self._log("route: cert collision — re-planning "
+                              "candidate %d" % index)
+                    try:
+                        route = planner.plan_route(
+                            snapshot, attachment, candidate, targets,
+                            budget_ns=int(remaining))
+                        row["route_id"] = route.route_id
+                        continue
+                    except RoutePlanningError:
+                        pass
+                row["reason"] = reason
                 rows.append(row)
                 last_reason = row["reason"]
+                break
+            if row.get("reason"):
                 continue
             revalidation = self._revalidate(route, snapshot, edges)
             if revalidation is None:
@@ -929,8 +1024,9 @@ def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
     the same admission contract without an attachment digest.
     """
     from luggage_planning.grid_path_search import RoutePlanningError
-    from luggage_planning.reachable_graph import LoadState as _Load
+    from luggage_planning.reachable_graph import _contracts as _graph_contracts
 
+    _Load = _graph_contracts()[0].LoadState
     current_q = tuple(float(v) for v in start_q)
     position, quaternion = fk(current_q)
     current = graph.register_node(current_q, position, quaternion,
@@ -946,7 +1042,15 @@ def pick_leg_records(pick_waypoints, *, graph, edge_builder, refine, fk,
         node = graph.register_node(tuple(q), tuple(target_position),
                                    tuple(target_quaternion),
                                    "pick_%s" % name, _Load.UNLOADED, "pick")
-        edge = edge_builder(current, node, PICK_LEG_CLASSES[name])
+        try:
+            edge = edge_builder(current, node, PICK_LEG_CLASSES[name])
+        except RoutePlanningError as error:
+            detail = getattr(error, "detail", None) or {}
+            if isinstance(detail, dict):
+                detail = dict(detail, leg=name)
+            raise RoutePlanningError(
+                getattr(error, "code", None) or "EDGE_BUILD_FAILED",
+                detail)
         legs.append(_leg_record(name, edge.trajectory, request_id,
                                 scene_revision, stamp_ns))
         current, current_q = node, tuple(q)
