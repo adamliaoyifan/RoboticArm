@@ -19,7 +19,19 @@ for pat in \
     "placement_planner_node" \
     "waypoint_generator" \
     "vacuum_controller" \
-    "scene_manager_node"; do
+    "scene_manager_node" \
+    "ign gazebo" \
+    "gz sim" \
+    "parameter_bridge" \
+    "ros_gz_sim" \
+    "pickup_box_spawner_node" \
+    "sensor_preprocessor_node" \
+    "luggage_detector_node" \
+    "semantic_segmenter_node" \
+    "depth_image_republisher" \
+    "camera_info_alias" \
+    "static_joint_state_publisher" \
+    "m3_three_box_driver"; do
     pkill -9 -f "$pat" 2>/dev/null
 done
 sleep 2

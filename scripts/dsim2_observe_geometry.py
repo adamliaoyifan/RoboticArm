@@ -289,7 +289,15 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
     ap.add_argument("--ids", default="carryon,standard,large")
+    ap.add_argument(
+        "--pose-values", default="",
+        help="Joint values the arm is expected to be HOLDING (settle "
+             "check). Empty keeps the stock SIM pickup-observe pose. "
+             "ST09-I S5 passes the synthesized deploy-scene pose.")
     args = ap.parse_args()
+    if args.pose_values:
+        POSE_VALUES[:] = [
+            float(part) for part in args.pose_values.split(",") if part]
     rclpy.init()
     probe = Probe()
     warmup = time.monotonic() + 8.0
