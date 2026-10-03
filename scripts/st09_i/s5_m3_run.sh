@@ -52,6 +52,20 @@ set -u
 # src-tree provenance and every peer's readiness gate rejects it
 # (WRONG_OVERLAY, live in smoke03/smoke04).
 export ROS_DOMAIN_ID=7 ROS_LOCALHOST_ONLY=1
+# [ST09-I S5.7-5] one shared offline CLIP vendor serves every worktree
+# (no per-worktree 338 MB copy). Override for another host/layout.
+M3_CLIP_VENDOR="${M3_CLIP_VENDOR:-/home/adamliao/work/elfin_humble_ws/src/luggage_perception/vendor}"
+if [[ ! -d "$M3_CLIP_VENDOR/clip_pkg" ]]; then
+  echo "CLIP vendor incomplete at $M3_CLIP_VENDOR (need clip_pkg/); set M3_CLIP_VENDOR" >&2
+  exit 1
+fi
+# Same sharing rule for the YOLO-World checkpoint (bare filename would
+# resolve against this worktree's CWD and fall back to a download).
+M3_YOLO_WEIGHTS="${M3_YOLO_WEIGHTS:-/home/adamliao/work/elfin_humble_ws/yolov8s-world.pt}"
+if [[ ! -f "$M3_YOLO_WEIGHTS" ]]; then
+  echo "YOLO-World weights missing at $M3_YOLO_WEIGHTS; set M3_YOLO_WEIGHTS" >&2
+  exit 1
+fi
 export M3_REPO="$WS"
 export M3_SCENE_TF="$WS/install-st09/luggage_description/share/luggage_description/config/scene_tf_deploy.yaml"
 export M3_ATLAS_DIR="$WS/src/luggage_planning/data/reachability_atlas_deploy_sim"
@@ -78,6 +92,9 @@ ros2 launch luggage_gazebo sim_world.launch.py \
   use_vacuum:=true use_motion:=true use_semantic:=true \
   use_cargo_map:=true use_packing:=true \
   frame_runtime:=true \
+  semantic_require_backend:=bbox_fill \
+  semantic_clip_vendor_dir:="${M3_CLIP_VENDOR}" \
+  semantic_model_name:="${M3_YOLO_WEIGHTS}" \
   atlas_runtime_config:="$ATLAS_RUNTIME_CONFIG" \
   sequence_ids:="$SEQUENCE" \
   > "$LAUNCH_LOG" 2>&1 &

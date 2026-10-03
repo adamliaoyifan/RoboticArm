@@ -93,6 +93,8 @@ def _default_launch_values():
         "acceleration_scaling": "0.3",
         "use_semantic": "false",
         "semantic_require_backend": "",
+        "semantic_clip_vendor_dir": "",
+        "semantic_model_name": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
         "yaw_mode": "",
@@ -735,16 +737,31 @@ def _launch_setup(context):
         get_package_share_directory("luggage_perception"),
         "config", "semantic_segmenter.yaml")
     require_backend = cfg["semantic_require_backend"]
+    # [ST09-I S5.7-5] offline semantic chain: one shared vendor dir
+    # (no per-worktree copy) + no ultralytics network behaviour at all
+    # (the vendored import already removes the pip auto-install path;
+    # the update check is disabled on top).
+    segmenter_env = dict(_arena_env)
+    segmenter_env["YOLO_AUTOUPDATE"] = "false"
+    clip_vendor_dir = str(cfg.get("semantic_clip_vendor_dir") or "")
+    if clip_vendor_dir:
+        segmenter_env["LUGGAGE_CLIP_VENDOR_DIR"] = clip_vendor_dir
     segmenter = Node(
         package="luggage_perception",
         executable="semantic_segmenter_node.py",
         name="semantic_segmenter",
         output="screen",
-        additional_env=_arena_env,
+        additional_env=segmenter_env,
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {
             "use_sim_time": True,
             "require_backend": require_backend,
+            # [ST09-I S5.7-5] absolute checkpoint path when set: a bare
+            # filename resolves against the launch CWD (the worktree),
+            # and ultralytics' not-found fallback is a network download
+            # that must never run here.
+            "model_name": str(cfg.get("semantic_model_name")
+                              or "yolov8s-world.pt"),
         }],
     )
     point_filter = Node(
@@ -1062,6 +1079,19 @@ def generate_launch_description():
                 "If set, segmenter startup fails unless "
                 "stats['backend'] starts with this prefix "
                 "(e.g. bbox_fill). Empty disables the guard."),
+            profile_arg(
+                "semantic_model_name",
+                "Absolute YOLO-World checkpoint path for the segmenter "
+                "(a bare filename resolves against the launch CWD and "
+                "falls back to a network download; share one weights "
+                "file instead of copying per worktree)."),
+            profile_arg(
+                "semantic_clip_vendor_dir",
+                "Shared offline CLIP vendor dir (clip_pkg/ + deps/ + "
+                "clip_models/) exported to the segmenter as "
+                "LUGGAGE_CLIP_VENDOR_DIR. One populated vendor can "
+                "serve every worktree; empty keeps the built-in "
+                "src/install probe."),
             profile_arg(
                 "visual_kind",
                 "Pickup visual: box (primitive AABB) or mesh "

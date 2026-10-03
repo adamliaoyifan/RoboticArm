@@ -421,22 +421,32 @@ def _setup_clip_vendor():
             sys.modules.pop("regex", None)
             sys.modules.pop("_regex", None)
             sys.modules.pop("ftfy", None)
-    # clip.load("ViT-B/32") reads ~/.cache/clip/ViT-B-32.pt and skips the
-    # download when the sha matches. Symlink the vendored checkpoint there.
-    weights = os.path.join(base, "clip_models", "ViT-B-32.pt")
-    if os.path.isfile(weights):
-        cache_dir = os.path.expanduser(os.path.join("~", ".cache", "clip"))
-        target = os.path.join(cache_dir, "ViT-B-32.pt")
+    # [ST09-I S5.7-5] No user-cache dependency: clip.load gets the
+    # vendored weights DIR as its download_root (the ultralytics fork
+    # supports the argument), so nothing reads or writes ~/.cache/clip
+    # and no host-side symlink exists to drift. The wrap must land
+    # before ultralytics' text_model calls clip.load (the module
+    # attribute is resolved at call time, so patching the package
+    # works); ultralytics calls clip.load(size, device=...) and gets
+    # the vendored checkpoint after its sha check, offline.
+    weights_dir = os.path.join(base, "clip_models")
+    if os.path.isdir(weights_dir):
         try:
-            os.makedirs(cache_dir, exist_ok=True)
-            if os.path.islink(target) and not os.path.exists(target):
-                os.remove(target)
-            if not os.path.exists(target):
-                os.symlink(weights, target)
-        except OSError:
-            # Read-only home or cross-device symlink refused - leave it; clip
-            # will fall back to downloading (still works online).
-            pass
+            import clip as _clip_pkg
+        except ImportError:
+            _clip_pkg = None
+        if _clip_pkg is not None and not getattr(
+                _clip_pkg, "_luggage_clip_vendor_load", False):
+            _original_clip_load = _clip_pkg.load
+
+            def _vendor_clip_load(name, device=None, jit=False,
+                                  download_root=None):
+                return _original_clip_load(
+                    name, device=device, jit=jit,
+                    download_root=download_root or weights_dir)
+
+            _vendor_clip_load._luggage_clip_vendor_load = True
+            _clip_pkg.load = _vendor_clip_load
     return base
 
 

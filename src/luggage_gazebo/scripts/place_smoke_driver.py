@@ -549,7 +549,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
-        return self._fixed_slot(pick_msg)
+        # [ST09-I S5.7-5 legacy lock] the fixed floor-center slot is a
+        # TEST FIXTURE of the pack-eval lineage. On the typed production
+        # chain it is a named refusal — placement slots come from
+        # ComputePlacementV2, and a fixture fallback must never mask a
+        # placement failure.
+        if getattr(self, "_typed", None) is not None:
+            trial.fail_code = trial.fail_code or "FIXED_SLOT_TEST_ONLY"
+            trial.extras["slot_source"] = "test_fixture_refused"
+            return None, None
+        slot, meta = self._fixed_slot(pick_msg)
+        meta["slot_source"] = "test_fixture"
+        return slot, meta
 
     def _fixed_slot(self, box):
         height = float(box.height)
@@ -705,7 +716,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 use_typed = True
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
-                    name="PlanMotionV2:%s" % name)
+                    name="PlanMotionV2:%s" % name,
+                    admission=getattr(self, "_execution_admission", None))
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to

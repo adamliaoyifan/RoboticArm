@@ -389,10 +389,17 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             return False, str(result.reason_code
                               or "OBSERVATION_ROUTE_REJECTED")
         executed = 0
+        admission = {
+            "route_digest": str(result.route_digest or ""),
+            "certification_id": str(result.certification_id or ""),
+            "admission_map_revision": int(
+                result.validated_map_revision or 0),
+        }
         for segment in (result.motion_segments or []):
             ok, message, _rec = self._typed.plan_motion(
                 segment, self._args.plan_timeout,
-                name="PlanMotionV2:%s" % segment.name)
+                name="PlanMotionV2:%s" % segment.name,
+                admission=admission)
             executed += 1
             if not ok:
                 return False, "OBSERVATION_LEG_FAILED:%s" % (

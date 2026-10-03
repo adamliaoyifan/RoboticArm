@@ -183,6 +183,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         self._rehearsal_fault_record = None
         self._selected_path = None
         self._selected_carry_v2 = None
+        self._execution_admission = None
         self._selector_rows = []
         self._last_boundary = None
         self._probe_place = self.create_client(
@@ -318,6 +319,17 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         stats["certification_id"] = str(result.certification_id or "")
         stats["validated_map_revision"] = int(
             result.validated_map_revision or 0)
+        # [ST09-I S5.7-3b] every leg execution now carries the certified
+        # admission; the executor checks the generation is STILL live
+        # before each controller submission (certify A, execute A, and
+        # the certification holds when A executes).
+        self._execution_admission = {
+            "route_digest": str(
+                getattr(response, "path_hash", "") or ""),
+            "certification_id": str(result.certification_id or ""),
+            "admission_map_revision": int(
+                result.validated_map_revision or 0),
+        }
         return True, ""
 
     def _frame_place_slot(self, pick_msg, trial):

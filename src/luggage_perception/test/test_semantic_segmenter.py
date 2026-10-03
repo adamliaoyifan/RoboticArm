@@ -817,3 +817,38 @@ class TestLiveConfidenceParams(unittest.TestCase):
         self.assertAlmostEqual(seg.cargo_min_confidence, 0.2)
         self.assertAlmostEqual(seg.robot_arm_confidence_threshold, 0.5)
 
+
+
+class TestOfflineClipVendor(unittest.TestCase):
+    """[ST09-I S5.7-5] offline semantic chain requirements."""
+
+    def test_require_with_illegal_backend_name_never_matches(self):
+        # A typo'd require_backend fails the node at startup rather
+        # than silently passing on some other live backend.
+        live = "bbox_fill:yolov8s-world.pt"
+        for illegal in ("clip_gpt", "BBox_Fill", "yolo", "bbox"):
+            self.assertFalse(
+                backend_matches_require(live, illegal), illegal)
+
+    def test_vendored_clip_load_gets_download_root_and_no_user_cache(self):
+        import os
+
+        env = os.environ.get("LUGGAGE_CLIP_VENDOR_DIR", "").strip()
+        vendor = env if env and os.path.isdir(
+            os.path.join(env, "clip_pkg")) else None
+        if vendor is None:
+            self.skipTest(
+                "vendored CLIP not found; set LUGGAGE_CLIP_VENDOR_DIR")
+        from luggage_perception.semantic_segmenter import (
+            _setup_clip_vendor,
+        )
+        base = _setup_clip_vendor()
+        self.assertEqual(os.path.normpath(base), os.path.normpath(vendor))
+        import clip
+
+        self.assertIn(
+            os.sep + "vendor" + os.sep, clip.__file__, clip.__file__)
+        # clip.load is wrapped so weights resolve from the vendor
+        # (download_root), never a ~/.cache/clip symlink.
+        self.assertTrue(getattr(
+            clip.load, "_luggage_clip_vendor_load", False))
