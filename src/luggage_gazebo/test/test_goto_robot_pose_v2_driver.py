@@ -23,6 +23,7 @@ from cargo_map_integrate_eval_driver import (  # noqa: E402
     CargoMapIntegrateDriver,
 )
 from pick_retreat_eval_driver import PickRetreatEvalDriver  # noqa: E402
+from place_smoke_driver import PlaceSmokeDriver  # noqa: E402
 
 
 class _Clock(object):
@@ -283,6 +284,74 @@ class TestGotoMapStaleRetry(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(message, "POSE_NOT_VALID")
         self.assertEqual(len(driver.goto_request_ids), 1)
+
+
+class _JointStateShell(object):
+    """Only what _on_joint_state touches (ring kept as a plain list)."""
+
+    def __init__(self):
+        self._last_joint_state = None
+        self._segment_exec_t0 = None
+        self._joint_ring = []
+        self._joint_ring_horizon_sec = 0.0
+
+    _on_joint_state = PlaceSmokeDriver._on_joint_state
+
+
+class TestJointStateIngestionNormalizesOrder(unittest.TestCase):
+    """[ST09-I G2] the Gazebo broadcaster publishes /joint_states in
+    controller-registration order (observed live: j1,j2,j5,j3,j4,j6);
+    every driver consumer assumes canonical elfin_joint1..6. Without
+    name-alignment at ingestion the boot pose (physically AT
+    pickup_observe_sim) compares 2.77 rad off, already-there never
+    fires, and the first goto hits the empty boot map's MAP_STALE."""
+
+    def _message(self, names, positions):
+        from sensor_msgs.msg import JointState
+        from builtin_interfaces.msg import Time as TimeMsg
+
+        msg = JointState()
+        msg.header.stamp.sec = 100
+        msg.name = list(names)
+        msg.position = list(positions)
+        msg.velocity = []
+        msg.effort = []
+        return msg
+
+    def test_permuted_publisher_order_is_normalized_by_name(self):
+        # verbatim shape observed in the g2 run2 bag
+        msg = self._message(
+            ["elfin_joint1", "elfin_joint2", "elfin_joint5",
+             "elfin_joint3", "elfin_joint4", "elfin_joint6"],
+            [-1.25, -1.7466, 1.7714, -0.9974, -1.9153, 1.861])
+        driver = _JointStateShell()
+        driver._on_joint_state(msg)
+        record = driver._last_joint_state
+        self.assertEqual(
+            record["position"],
+            [-1.25, -1.7466, -0.9974, -1.9153, 1.7714, 1.861])
+        self.assertEqual(
+            record["name"],
+            ["elfin_joint%d" % i for i in range(1, 7)])
+
+    def test_canonical_order_passes_through_unchanged(self):
+        msg = self._message(
+            ["elfin_joint%d" % i for i in range(1, 7)],
+            [0.1, -0.2, 0.3, -0.4, 0.5, -0.6])
+        driver = _JointStateShell()
+        driver._on_joint_state(msg)
+        self.assertEqual(
+            driver._last_joint_state["position"],
+            [0.1, -0.2, 0.3, -0.4, 0.5, -0.6])
+
+    def test_nameless_message_keeps_raw_order(self):
+        msg = self._message([], [0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+        driver = _JointStateShell()
+        driver._on_joint_state(msg)
+        self.assertEqual(
+            driver._last_joint_state["position"],
+            [0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+        self.assertEqual(driver._last_joint_state["name"], [])
 
 
 if __name__ == "__main__":

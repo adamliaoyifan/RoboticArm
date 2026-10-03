@@ -1116,10 +1116,25 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         }
 
     def _on_joint_state(self, msg):
+        names = list(msg.name)
+        positions = [float(v) for v in msg.position]
+        # [ST09-I G2] The Gazebo joint_state_broadcaster publishes in
+        # controller-registration order (observed j1,j2,j5,j3,j4,j6) —
+        # NOT the canonical elfin_joint1..6 every consumer of this
+        # record assumes (pose files, already-there wrap compare, exit
+        # proofs, V2 requests). Normalize AT INGESTION by name, the
+        # same discipline the selector's own _on_joints uses; a
+        # message without the full name set keeps raw order (and its
+        # evidence trail) exactly as before.
+        wanted = ["elfin_joint%d" % i for i in range(1, 7)]
+        if names and positions and all(name in names for name in wanted):
+            index = {name: pos for name, pos in zip(names, positions)}
+            positions = [index[name] for name in wanted]
+            names = list(wanted)
         record = {
             "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
-            "name": list(msg.name),
-            "position": [float(v) for v in msg.position],
+            "name": names,
+            "position": positions,
         }
         self._last_joint_state = record
         self._joint_ring.append(record)
