@@ -67,11 +67,9 @@ DEFAULT_OUT = os.path.normpath(os.path.join(
     _SCRIPTS, "..", "..", "..", "docs", "status", "evidence",
     "motion_occ", "latest"))
 
-# One row probe = 1 IK + 1 plan-only cartesian call; generous ceiling for a
-# single row, not for the whole sweep (a circuit breaker stops the sweep
-# after PLACE_PROBE_MAX_UNAVAILABLE consecutive fail-opens).
+# Selected-route re-verification ceiling (ST09-I S5.7: the probe never
+# generates a second path; it re-validates the certified one).
 PLACE_PROBE_TIMEOUT_S = 30.0
-PLACE_PROBE_MAX_UNAVAILABLE = 3
 
 
 def _map_to_world(scene, xyz):
@@ -514,81 +512,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
     def _opening_tangent_map(self):
         normal = container_opening_normal_in_world(self._scene_config)
         return (-float(normal[1]), float(normal[0]))
-
-    def _place_probe_fn(self, slots):
-        """Row probe for ``PlacePathPlanner.plan``: one cartesian carry
-        segment per occupancy-feasible row, mirroring the traverse segment
-        the winner will execute (tool-down at the slot's place yaw,
-        OMPL fallback allowed). A requested probe is mandatory: unavailable
-        or timed-out probes reject the row without execution.
-
-        Returns ``(probe_fn, stats)``. An unavailable service returns a
-        rejecting callback so the selector cannot silently omit the gate.
-        """
-        stats = {"mode": "on", "probed": 0, "ik_reject": 0,
-                 "fraction_reject": 0, "unavailable": 0, "sec": 0.0}
-        min_fraction = self._cartesian_min_fraction()
-        def reject_probe(row, reason="PLACE_PROBE_UNAVAILABLE"):
-            row.update(ik_ok=False, cartesian_fraction=-1.0,
-                       feasible=False, reason=reason, probe_success=False)
-
-        if not self._probe_place.wait_for_service(timeout_sec=5.0):
-            stats["mode"] = "service_unavailable"
-            return reject_probe, stats
-        unavailable = [0]
-
-        def probe(row):
-            if unavailable[0] >= PLACE_PROBE_MAX_UNAVAILABLE:
-                reject_probe(row)
-                return
-            slot = slots[int(row["slot_index"])]
-            segment = MotionSegment()
-            segment.name = "place_probe"
-            segment.type = "cartesian"
-            segment.keep_tool_down = True
-            segment.allow_ompl_fallback = True
-            orientation = slot.place_pose.orientation
-            world = [_map_to_world(self._scene_config, xyz)
-                     for xyz in (row.get("waypoints") or [])]
-            if not world:
-                reject_probe(row, "PLACE_PROBE_EMPTY_PATH")
-                return
-            dest = world[-1]
-            segment.target_pose.position.x = float(dest[0])
-            segment.target_pose.position.y = float(dest[1])
-            segment.target_pose.position.z = float(dest[2])
-            segment.target_pose.orientation = orientation
-            for xyz in world[:-1]:
-                pose = Pose()
-                pose.position.x, pose.position.y, pose.position.z = (
-                    float(xyz[0]), float(xyz[1]), float(xyz[2]))
-                pose.orientation = orientation
-                segment.waypoints.append(pose)
-            request = ProbeMotionSegment.Request()
-            request.segment = segment
-            t0 = time.time()
-            response = self.call_srv(
-                self._probe_place, request, PLACE_PROBE_TIMEOUT_S)
-            stats["sec"] += time.time() - t0
-            if response is None:
-                stats["unavailable"] += 1
-                unavailable[0] += 1
-                reject_probe(row)
-                return
-            unavailable[0] = 0
-            stats["probed"] += 1
-            row["probe_s"] = round(time.time() - t0, 3)
-            row["ik_ok"] = bool(response.ik_ok)
-            # fraction stays -1.0 (no cartesian solution) on purpose: the
-            # plan() gate rejects it as a sub-threshold fraction.
-            row["cartesian_fraction"] = float(response.fraction)
-            row["probe_success"] = row["ik_ok"] and float(response.fraction) >= min_fraction
-            if not row["ik_ok"]:
-                stats["ik_reject"] += 1
-            elif float(response.fraction) < min_fraction:
-                stats["fraction_reject"] += 1
-
-        return probe, stats
 
     def _dump_selector(self, trial, candidates, rows, winner, reason, surface,
                        probe=None):

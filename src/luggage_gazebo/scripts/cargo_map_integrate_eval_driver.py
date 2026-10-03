@@ -28,7 +28,7 @@ import time
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion
-from luggage_msgs.action import PlanMotion
+from luggage_msgs.action import GoToRobotPose, PlanMotion
 from luggage_msgs.msg import MotionSegment, SlotSpec
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -449,78 +449,25 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         self._dump_json(dump, "%s_attempts.json" % view, attempts)
         return attempts, chosen
 
-    def _lift_for_cargo_view(self):
-        """Raise the wrist in place, keeping the retreat orientation.
+    def _exit_to_portal(self):
+        """Post-place-view positioning through the sanctioned goto surface.
 
-        Cartesian-only: OMPL fallback can spin the camera off the box top.
-        One 0.50 m hop was fraction 0.940 (2026-09-20_1320); two 0.25 m hops
-        stay above cartesian_min_fraction. A partial lift still integrates.
+        [ST09-I S5.7] The shared ad-hoc cartesian portal escape is deleted
+        (the executor answers driver-built cartesian with
+        SEGMENT_GENERATION_REMOVED); the observation camera rides the
+        named portal pose through GoToRobotPose — the same FJT surface
+        that homes the arm. The pose is a calibrated configuration asset
+        (robot_poses yaml); a general exit from inside the container is
+        the certified route's own retreat/return legs (EnsureCycleStart
+        recovery), never this call.
         """
-        try:
-            tf_msg = self._tf_buffer.lookup_transform(
-                "world", "suction_contact_frame",
-                rclpy.time.Time(),
-                rclpy.duration.Duration(seconds=1.0))
-        except Exception as exc:  # noqa: BLE001 - T1 evidence
-            return False, str(exc), None
-        t = tf_msg.transform.translation
-        r = tf_msg.transform.rotation
-        before = (float(t.x), float(t.y), float(t.z))
-        hops = []
-        remaining = float(VIEW_LIFT_Z)
-        hop_z = 0.25
-        while remaining > 1e-6:
-            step = min(hop_z, remaining)
-            hops.append(step)
-            remaining -= step
-        last_msg = ""
-        achieved = 0.0
-        z = float(t.z)
-        for i, step in enumerate(hops):
-            segment = MotionSegment()
-            segment.name = "cargo_view_lift_%d" % i
-            segment.type = "cartesian"
-            segment.keep_tool_down = True
-            segment.keep_camera_down = True
-            segment.allow_ompl_fallback = False
-            z = z + step
-            segment.target_pose = Pose(
-                position=Point(x=t.x, y=t.y, z=z),
-                orientation=Quaternion(x=r.x, y=r.y, z=r.z, w=r.w),
-            )
-            if getattr(self, "_typed", None) is not None:
-                from luggage_description.frame_contracts import ContractError
-                from luggage_planning.typed_driver_adapter import (
-                    pose_segment_message)
-                try:
-                    motion_segment = pose_segment_message(
-                        "cargo_view_lift_%d" % i, (t.x, t.y, z),
-                        (r.x, r.y, r.z, r.w),
-                        self._frame_request_id("lift"), self._frame_scene_revision,
-                        segment_type="cartesian", keep_tool_down=True,
-                        keep_camera_down=True, allow_ompl_fallback=False)
-                    ok, last_msg, _result = self._typed.plan_motion(
-                        motion_segment, self._args.plan_timeout,
-                        name="PlanMotionV2:cargo_view_lift_%d" % i)
-                except ContractError as error:
-                    ok, last_msg = False, "%s: %s" % (error.code, error.field)
-            else:
-                ok, last_msg, _result = self.send_action(
-                    self._plan, PlanMotion.Goal(segment=segment),
-                    timeout=self._args.plan_timeout,
-                    name="PlanMotion:cargo_view_lift_%d" % i)
-            if not ok:
-                after, _err = self.suction_xyz()
-                return (
-                    achieved > 0.0,
-                    "hop %d/%d failed after +%.2f: %s" % (
-                        i + 1, len(hops), achieved, last_msg),
-                    {"before": before, "after": after, "achieved_z": achieved},
-                )
-            achieved += step
-        after, _err = self.suction_xyz()
-        return True, last_msg, {
-            "before": before, "after": after, "achieved_z": achieved}
+        ok, message, _result = self.send_action(
+            self._goto, GoToRobotPose.Goal(pose_name="portal_observe_sim"),
+            timeout=self._args.goto_timeout, name="GoToRobotPose:portal")
+        self._portal_exited = bool(ok)
+        self._exit_yaw = {"source": "named_portal_pose"}
+        return bool(ok), str(
+            message or ("portal goto %s" % ("ok" if ok else "failed")))
 
     def _execute_segment(self, segment, trial):
         ok, code, rec = super()._execute_segment(segment, trial)
@@ -529,7 +476,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             and int(rec.get("moveit_error_code") or 0) in (-2, -4))
         if (not ok and invalidated
                 and str(getattr(segment, "name", "")) in (
-                    "traverse", "transit", "cargo_view_lift")):
+                    "traverse", "transit")):
             self.get_logger().warn(
                 "retry %s after MOTION_PLAN_INVALIDATED_BY_ENVIRONMENT_CHANGE"
                 % segment.name)
@@ -1135,7 +1082,6 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 int(expected_revision) if expected_revision is not None
                 else (int(stats.map_revision) if stats else -1)),
             "geometry_hash": str(stats.geometry_hash) if stats else "",
-            "cargo_view_lift": trial.extras.get("cargo_view_lift"),
             "cargo_view_aim": trial.extras.get("cargo_view_aim"),
             "view_diag": view_diag,
             "cloud_source": (

@@ -124,7 +124,6 @@ CARRYING_ABORTS = {
     "PLACE_FRACTION_descend", "RELEASE_SETTLE_FAILED", "VACUUM_DETACH",
 }
 
-STAGING_NAMES = ("stage_mid", "stage_late", "stage")
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
 GZ_WORLD = "airport_loading"
 
@@ -305,49 +304,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe = MotionExecutor(self)
         self._keep_placed = False
         self._last_authorized_pick = None
-
-    def exit_tool_yaw(self):
-        """Portal yaw that keeps the wrist the place left the arm in.
-
-        The portal only needs the tool pointing down; `keep_tool_down` leaves
-        yaw free (``absolute_z_axis_tolerance = 3.14``). Asking for yaw 0 while
-        the arm carries yaw ±π is the same heading but a 180° wrist change, and
-        cartesian interpolation answers it by unwinding the arm: 1838 planned
-        `j1` -5.96 rad / `j5` -3.14 rad over 19.3 s and the controller missed
-        the goal. Pick the equivalent portal yaw nearest the current wrist.
-        """
-        try:
-            _xyz, quat = self._lookup_xyz_quat(
-                "world", "suction_contact_frame")
-        except Exception as exc:  # noqa: BLE001 - TF boundary
-            return 0.0, str(exc)
-        return nearest_box_yaw(tool_down_yaw(quat[0], quat[1]), 0.0), ""
-
-    def _exit_to_portal(self):
-        """Cartesian/OMPL out to the opening portal, not back onto the slot."""
-        opening = container_opening_target_point_in_world(self._scene_config)
-        normal = container_opening_normal_in_world(self._scene_config)
-        suction, _err = self.suction_xyz()
-        z = float(opening[2]) + 0.35
-        if suction is not None:
-            z = max(z, float(suction[2]))
-        yaw, yaw_err = self.exit_tool_yaw()
-        pose = Pose()
-        pose.position.x = float(opening[0] + 0.20 * normal[0])
-        pose.position.y = float(opening[1] + 0.20 * normal[1])
-        pose.position.z = float(max(z, 0.95))
-        pose.orientation.x = math.cos(0.5 * yaw)
-        pose.orientation.y = math.sin(0.5 * yaw)
-        pose.orientation.z, pose.orientation.w = 0.0, 0.0
-        self._exit_yaw = {"yaw": yaw, "tf_error": yaw_err}
-        segment = MotionSegment()
-        segment.name = "place_exit"
-        segment.type = "cartesian"
-        segment.allow_ompl_fallback = True
-        segment.keep_tool_down = True
-        segment.target_pose = pose
-        ok, _code, rec = self._execute_segment(segment, PlaceTrial(index=-1))
-        return ok, rec.get("message") if rec else "place_exit failed"
 
     def wait_arm_settle(self, reason="", timeout=6.0, still_eps=0.005,
                         quiet_sec=0.4):
@@ -674,7 +630,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._joint_ring_horizon_sec = joint_ring_horizon_sec()
         before = self._sample_tf_box("before_%s" % segment.name)
         ok_i1, code = self._check_i1()
-        if not ok_i1 and segment.name not in ("retreat", "place_exit"):
+        if not ok_i1 and str(segment.name) != "retreat":
             return False, code, None
         if self._args.plan_only:
             probe = self._probe.probe_segment(
@@ -721,7 +677,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
                     name="PlanMotionV2:%s" % name)
-            elif name != "place_exit":
+            else:
+                # [ST09-I S5.7] every executed leg pairs with a certified
+                # route leg; the driver-side place_exit fall-through to
+                # raw v1 PlanMotion is deleted with the ad-hoc builder.
                 return False, "TYPED_SEGMENT_MISMATCH:%s" % name, None
         if not use_typed:
             goal = PlanMotion.Goal()
@@ -1110,13 +1069,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         stage = "motion"
         if fail.startswith("PLACE_PLAN_"):
             stage = fail[len("PLACE_PLAN_"):]
-        elif fail.startswith("EXIT_FAILED_"):
-            stage = "place_exit"
         elif fail == "GOTO_FAILED":
-            if any(row.get("name") == "place_exit" for row in self._segments_log):
-                stage = "place_exit"
-            else:
-                stage = "goto_observe"
+            stage = "goto_observe"
         elif self._segments_log:
             stage = str(self._segments_log[-1].get("name") or "motion")
         manifest = replay_manifest(
@@ -1289,8 +1243,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             else:
                 remaining.append(segment)
         retreat_seg = post_release[0] if post_release else None
-        if any(n in names for n in STAGING_NAMES):
-            self._set_state("STAGING")
         state_by_name = {
             "transit": "TRANSIT", "traverse": "TRAVERSE",
             "insert": "INSERT", "descend": "DESCEND",
