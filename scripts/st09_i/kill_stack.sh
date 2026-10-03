@@ -18,7 +18,8 @@ for pat in \
     "validate_route_node" \
     "placement_planner_node" \
     "waypoint_generator" \
-    "vacuum_controller"; do
+    "vacuum_controller" \
+    "scene_manager_node"; do
     pkill -9 -f "$pat" 2>/dev/null
 done
 sleep 2

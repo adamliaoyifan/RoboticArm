@@ -514,27 +514,13 @@ def _loop_select_request(chain, request_id, placement, grasp, near_y):
     # state beyond the joint limits).
     joints = [(v + _math.pi) % (2.0 * _math.pi) - _math.pi
               for v in joints]
+    # [ST09-I P3] NO slot stimulus: the placement's own candidate list
+    # carries the route. The atlas-informed producer ordering (seeded
+    # shallow-first) surfaces a reachable slot from the placement list
+    # under the frozen budget; the near-opening hand-injection that
+    # pre-dated the atlas wiring is deleted.
     slots = list(placement.candidates) or [placement.slot]
     scores = list(placement.candidate_scores) or [1.0]
-    # Test stimulus (as in the route test): the blind mock map
-    # enumerates only the deep band, so one near-opening candidate
-    # exercises the route; the y band avoids the previous box's slot.
-    from luggage_msgs.msg import PoseContractV2
-
-    near = PoseContractV2()
-    for field in ("contract_version", "frame_id", "length_unit",
-                  "stamp_valid", "stamp_ns", "time_basis",
-                  "scene_revision", "request_id"):
-        setattr(near.identity, field,
-                getattr(slots[0].identity, field))
-    near.reference = str(slots[0].reference)
-    near.orientation_semantics = str(slots[0].orientation_semantics)
-    near.pose.position.x = -0.55
-    near.pose.position.y = float(near_y)
-    near.pose.position.z = float(slots[0].pose.position.z)
-    near.pose.orientation.w = 1.0
-    slots = slots + [near]
-    scores = scores + [0.1]
     slot_request = str(slots[0].identity.request_id or "") or request_id
     stamp = int(chain.node.get_clock().now().nanoseconds)
     tcp_xyz, tcp_quat = _tool_pose(chain, frame="container_link")

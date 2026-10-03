@@ -261,47 +261,47 @@
   </joint>
   <ros2_control name="ElfinSystem" type="system">
     <hardware>
-      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+      <plugin>mock_components/GenericSystem</plugin>
     </hardware>
     <joint name="elfin_joint1">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">3.5702</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint2">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">-1.3263</param>
+        <param name="initial_value">-0.5</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint3">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">-1.0965</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint4">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">3.9564</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint5">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">1.6234</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
     <joint name="elfin_joint6">
       <command_interface name="position" />
       <state_interface name="position">
-        <param name="initial_value">0.4522</param>
+        <param name="initial_value">0.0</param>
       </state_interface>
       <state_interface name="velocity" />
     </joint>
@@ -623,33 +623,5 @@
   <gazebo reference="camera_link">
     <gravity>false</gravity>
     <selfCollide>false</selfCollide>
-  </gazebo>
-  <gazebo reference="elfin_link1">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link2">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link3">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link4">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link5">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_link6">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo reference="elfin_end_link">
-    <gravity>false</gravity>
-  </gazebo>
-  <gazebo>
-    <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
-      <robot_param>robot_description</robot_param>
-      <robot_param_node>robot_state_publisher</robot_param_node>
-      <parameters>/tmp/elfin-frame-migration-st06/install/elfin_control/share/elfin_control/config/elfin_controllers_sim.yaml</parameters>
-    </plugin>
   </gazebo>
 </robot>

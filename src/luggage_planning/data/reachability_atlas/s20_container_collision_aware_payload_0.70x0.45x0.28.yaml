@@ -18,10 +18,10 @@ contract:
   - 4.71238898038469
   scene_revision: b40c85ae6eb2eabc47d7da2ffb23b72c
   geometry_hash: 3460c2f23aa597efe71ad8e66b6b5faf
-  urdf_hash: e9577fe58d01f0646dfb10f73a65b7be
+  urdf_hash: 22ed00b5577d4b57421d9f02cf3fb2bf
   payload_hash: d5659d4650df6f337c9c843ea72ec5b1
-generated_at: '2026-09-30T02:58:28'
-computation_time_sec: 169.01
+generated_at: '2026-10-03T07:29:13'
+computation_time_sec: 165.7
 mode: collision_aware
 marginal_joint_margin: 0.1
 query:
@@ -43,7 +43,7 @@ builder:
 dependencies:
   robot_model: elfin_s20_with_camera
   scene_tf_hash: b40c85ae6eb2eabc47d7da2ffb23b72c
-  urdf_hash: e9577fe58d01f0646dfb10f73a65b7be
+  urdf_hash: 22ed00b5577d4b57421d9f02cf3fb2bf
   ik_link: suction_contact_frame
   ik_group: elfin_arm
 payload:

@@ -329,8 +329,9 @@ class RouteProducer(object):
                            "suction_contact_frame"),
                  cert_policy=None, budget_ns=ROUTE_TOTAL_WALL_NS,
                  clock_ns=None, corridor_surface_max=None,
-                 opening_info=None, base_position=(0.0, 0.0, 0.86),
-                 reach_prior_m=1.35, transit_clearance_z=None, log=None):
+                 opening_info=None,
+                 transit_clearance_z=None, log=None,
+                 atlas_prior=None):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
@@ -353,14 +354,21 @@ class RouteProducer(object):
         self.budget_ns = int(budget_ns)
         self.corridor_surface_max = corridor_surface_max
         self.opening_info = opening_info
-        #: Dev-declared reachability prior (NOT a frozen value, NOT a
-        #: verdict): candidates whose target TCP lies beyond this radius
-        #: from the arm base are skipped before any IK/MoveIt budget is
-        #: spent — the atlas prior supersedes it where one is loaded, and
-        #: the bounded supplementation plus certifier still decide the
-        #: candidates that pass.
-        self.base_position = tuple(float(v) for v in base_position)
-        self.reach_prior_m = float(reach_prior_m)
+        #: Data-driven reachability prior replacing the removed dev
+        #: 1.35 m ball: callable(position_container,
+        #: quaternion_xyzw_container) -> {"verdict":
+        #: "unreachable"|"reachable"|"unknown", "seeds": [q, ...]} or
+        #: None (no atlas loaded). The producer's OWN iteration order
+        #: becomes reachable-first, unknown next; "unreachable" (the
+        #: atlas SAMPLED the cell and both pi-equivalent branches have
+        #: no solution) is dropped with a named row before any
+        #: IK/MoveIt budget. Unknown/miss still proceeds — atlas miss
+        #: is unknown, never unreachable — and the returned contact
+        #: seeds seed the goal IK (the atlas' own sampled solutions).
+        #: The placement list's frozen deep-first order is untouched;
+        #: MoveIt and certification remain the authority for everything
+        #: that runs.
+        self.atlas_prior = atlas_prior
         #: World Z the carried payload bottom must stay above during
         #: open-air transit (the pedestal top). None disables the staging
         #: anchor — the entry table then keeps its single-hop transit.
@@ -515,10 +523,62 @@ class RouteProducer(object):
         purge = getattr(self.graph, "clear_request_scoped", None)
         if callable(purge):
             purge()
+        # [ST09-I P3] atlas-informed iteration order: the producer tries
+        # atlas-reachable candidates first, unknown next, and drops only
+        # SAMPLED-unreachable cells with a named row (placement's frozen
+        # deep-first response order is a packing policy, not a planning
+        # one — without this, unreachable-deep rows burn the whole
+        # route budget before a reachable slot is ever examined).
+        ordered_slots = []
+        if self.atlas_prior is not None:
+            seeded_order, reachable_order, unknown_order = [], [], []
+            for index, slot in enumerate(request["slots"]):
+                prior_candidate = candidate_from_slot(slot, index)
+                prior = self.atlas_prior(
+                    prior_candidate.position_container,
+                    prior_candidate.quaternion_xyzw_container,
+                    request) or {}
+                if prior.get("verdict") == "unreachable":
+                    rows.append({
+                        "slot_index": index,
+                        "candidate_id": prior_candidate.candidate_id,
+                        "depth_m": 0.0,
+                        "reason": "ATLAS_UNREACHABLE",
+                    })
+                    continue
+                entry = (index, slot,
+                         list(prior.get("seeds") or []))
+                if entry[2]:
+                    seeded_order.append(entry)
+                elif prior.get("verdict") == "reachable":
+                    reachable_order.append(entry)
+                else:
+                    unknown_order.append(entry)
+            # Seeded cells (the atlas STORES solutions there — genuinely
+            # reachable, cheap goal IK) come first, SHALLOW-first: a
+            # deep attempt alone costs ~the whole frozen 10 s budget in
+            # edge building, so deep-first enumeration can never reach a
+            # certifiable slot under this contract. Packing's deep-first
+            # preference governs the candidate SET (and any future
+            # budget increase restores deep-first here); the producer's
+            # job under the frozen budget is one certified route.
+            seeded_order.reverse()
+            ordered_slots = (seeded_order + reachable_order
+                             + unknown_order)
+            self._log("route: atlas order seeded=%d reachable=%d "
+                      "unknown=%d dropped=%d" % (
+                          len(seeded_order), len(reachable_order),
+                          len(unknown_order), len(rows)))
+            if not ordered_slots:
+                return self._fail("NO_FEASIBLE_ROUTE", rows)
+        else:
+            ordered_slots = [
+                (index, slot, []) for index, slot
+                in enumerate(request["slots"])]
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
-        for index, slot in enumerate(request["slots"]):
+        for index, slot, atlas_seeds in ordered_slots:
             if index and index % 100 == 0:
                 self._log("route: slot %d/%d %.1fs last=%s" % (
                     index, len(request["slots"]),
@@ -535,7 +595,12 @@ class RouteProducer(object):
                 "depth_m": 0.0,
                 "reason": "",
             }
-            # Cheap reachability prior before any IK/MoveIt budget.
+            # [ST09-I P3] the dev 1.35 m base-radius prior is REMOVED:
+            # reachability filtering belongs to the placement atlas
+            # (rank + confident hard-reject) upstream and to IK/MoveIt/
+            # certification here — a distance ball around the base both
+            # rejected legal deep slots the arm can genuinely reach and
+            # passed unreachable ones it cannot.
             try:
                 prior_targets = self._expand_targets(
                     base_candidate, attachment, request)
@@ -544,21 +609,10 @@ class RouteProducer(object):
                 rows.append(row)
                 last_reason = row["reason"]
                 continue
-            import math as _math
-
-            base = self.base_position
-            reach_ok = [t for t in prior_targets
-                        if _math.dist(tuple(float(v) for v in t.position),
-                                      base) <= self.reach_prior_m]
-            if not reach_ok:
-                row["reason"] = "PRIOR_UNREACHABLE"
-                rows.append(row)
-                last_reason = "NO_FEASIBLE_ROUTE"
-                continue
             candidate, _box_target, _plan, _seeded = self._prepare_candidate(
                 base_candidate, attachment, request, start_q,
-                tcp_orientation=reach_ok[0].quaternion_xyzw,
-                tcp_position=reach_ok[0].position)
+                tcp_orientation=prior_targets[0].quaternion_xyzw,
+                tcp_position=prior_targets[0].position)
             self._log("route: anchors %s home %s" % (
                 [(n.region, [round(v, 3) for v in n.q])
                  for n in self.graph.nodes.values()
@@ -606,7 +660,8 @@ class RouteProducer(object):
                         branch_q=next(
                             (node.q for node in reversed(
                                 self.graph.nodes_by_region("slot_upper"))),
-                            None)),
+                            None),
+                        atlas_seeds=atlas_seeds),
                     tcp_path=self.tcp_path)
                 targets = self._expand_targets(
                     candidate, attachment, request)
@@ -813,18 +868,21 @@ class RouteProducer(object):
             self._box_target(candidate, attachment, request), request)
         return expand_place_targets(box_target, attachment)
 
-    def _goal_seed_fn(self, start_q, branch_q=None):
+    def _goal_seed_fn(self, start_q, branch_q=None, atlas_seeds=None):
         """Goal seeds from the offline refine (B requires injected seeds).
 
-        The first seed refines from the slot-upper anchor branch so the
-        descend edge stays on one IK branch (a branch-crossing descend
-        blows the frozen joint-excursion bound); the tool-down prior and
-        the live-start branch follow as alternatives. A seed is never a
-        verdict — the bounded supplementation and certifier decide.
+        Atlas contact seeds come first (the atlas' own sampled
+        solutions for this cell — the best-informed branch), then the
+        slot-upper anchor branch so the descend edge stays on one IK
+        branch (a branch-crossing descend blows the frozen
+        joint-excursion bound); the tool-down prior and the live-start
+        branch follow as alternatives. A seed is never a verdict — the
+        bounded supplementation and certifier decide.
         """
         from luggage_planning.place_targets import GoalSeed
 
-        seeds_to_try = ([("branch", branch_q)] if branch_q is not None else [])
+        seeds_to_try = [("atlas", tuple(q)) for q in (atlas_seeds or [])]
+        seeds_to_try += ([("branch", branch_q)] if branch_q is not None else [])
         seeds_to_try += [("tool_down", TOOL_DOWN_SEED_Q),
                          ("start", start_q)]
 

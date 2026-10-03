@@ -286,6 +286,61 @@ class TrajectorySelectorNode(Node):
             return refine_to_pose(urdf, tcp_path, position, quaternion,
                                   seed, pos_tol=2e-3, rot_tol=2e-2)
 
+        def atlas_prior(position_container, quaternion_container,
+                        request):
+            """[ST09-I P3] data-driven reachability prior (empty-load
+            atlas: arm truth without payload-envelope conservatism).
+
+            Replaces the removed dev 1.35 m base-radius prior. The
+            query height is the candidate's TCP TARGET (slot centre +
+            half the box + the release gap), not the box centre. Status
+            codes: 3 REACHABLE / 2 MARGINAL / 1 UNREACHABLE / 0
+            UNKNOWN. Only a cell the atlas SAMPLED and found
+            UNREACHABLE on BOTH pi-equivalent yaw branches is reported
+            unreachable — UNKNOWN stays unknown: atlas miss is unknown,
+            never unreachable. Reachable cells return their contact
+            seeds (the atlas' own sampled solutions) for the goal IK.
+            MoveIt and certification stay the authority for every leg
+            that actually runs.
+            """
+            atlas, _diag = self._runtime_atlas()
+            if atlas is None:
+                return None
+            import math as _math
+
+            from luggage_planning.route_producer import RELEASE_DROP_M
+
+            quat = [float(v) for v in quaternion_container]
+            yaw = _math.atan2(
+                2.0 * (quat[3] * quat[2] + quat[0] * quat[1]),
+                1.0 - 2.0 * (quat[1] ** 2 + quat[2] ** 2))
+            x = float(position_container[0])
+            y = float(position_container[1])
+            # slot pose z is the box CENTRE; the atlas grid holds TCP
+            # contact heights: centre + half the box + the release gap
+            box_height = float((request.get("box_wdh") or [0, 0, 0])[2])
+            z = float(position_container[2]) + 0.5 * box_height \
+                + RELEASE_DROP_M
+            statuses = []
+            seeds = []
+            try:
+                for yaw_query in (yaw, yaw + _math.pi):
+                    result = atlas.query(x, y, z, yaw_query)
+                    status = int(result.status)
+                    statuses.append(status)
+                    if status in (2, 3):
+                        for seed in (getattr(result, "contact_seeds",
+                                             None) or ()):
+                            seeds.append(tuple(float(v) for v in seed))
+            except Exception:  # noqa: BLE001 - prior fails open
+                return {"verdict": "unknown", "seeds": []}
+            if statuses and all(status == 1 for status in statuses):
+                return {"verdict": "unreachable", "seeds": []}
+            verdict = ("reachable"
+                       if any(status in (2, 3) for status in statuses)
+                       else "unknown")
+            return {"verdict": verdict, "seeds": seeds}
+
         def validity_factory(*, scene_states, edges):
             adapter = MoveItStateValidityAdapter(
                 self, fk=fk, scene_client=scene_client,
@@ -318,7 +373,8 @@ class TrajectorySelectorNode(Node):
             # the carried payload never drags across the pedestal.
             transit_clearance_z=(
                 pedestal_dimensions(self._scene)[2]
-                if pedestal_enabled(self._scene) else None))
+                if pedestal_enabled(self._scene) else None),
+            atlas_prior=atlas_prior)
         return self._route_producer
 
     def _select_v2(self, request, response):
