@@ -395,11 +395,20 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             "admission_map_revision": int(
                 result.validated_map_revision or 0),
         }
-        for segment in (result.motion_segments or []):
+        digests = [str(d) for d in (result.leg_digests or [])]
+        states = [str(v) for v in (result.leg_load_states or [])]
+        for index, segment in enumerate(result.motion_segments or []):
+            # [ST09-I S5.7-6] each leg claims ITS OWN certified scope
+            # (observation routes certify under the unloaded index).
+            leg_admission = dict(admission)
+            if index < len(digests):
+                leg_admission["leg_digest"] = digests[index]
+                leg_admission["load_state"] = (
+                    states[index] if index < len(states) else "unloaded")
             ok, message, _rec = self._typed.plan_motion(
                 segment, self._args.plan_timeout,
                 name="PlanMotionV2:%s" % segment.name,
-                admission=admission)
+                admission=leg_admission)
             executed += 1
             if not ok:
                 return False, "OBSERVATION_LEG_FAILED:%s" % (

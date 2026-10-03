@@ -97,6 +97,11 @@ class _Producer(object):
         return _Builder()
 
     _fail = RouteProducer._fail
+    _promote_selection = RouteProducer._promote_selection
+    _stage_timings = RouteProducer._stage_timings
+
+    def _clock_ns(self):
+        return 0
     plan_observation_route = RouteProducer.plan_observation_route
 
 

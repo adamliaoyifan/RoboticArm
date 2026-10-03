@@ -657,6 +657,32 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return False, "PLACE_LOST_PAYLOAD"
         return True, ""
 
+    def _leg_execution_admission(self, motion_segment):
+        """[ST09-I S5.7-6] Per-leg admission scope for one typed leg.
+
+        The stored admission carries the certified per-leg digests and
+        load-state indices from ValidateSelectedRoute; the leg about to
+        execute claims ITS OWN scope (carrying legs before the release
+        boundary, unloaded legs after it) instead of a route-level
+        blanket claim — the executor's liveness check then refuses a
+        carrying scope authorizing a post-release leg by name.
+        """
+        base = getattr(self, "_execution_admission", None)
+        if not base:
+            return None
+        admission = dict(base)
+        digests = list(admission.pop("leg_digests", None) or [])
+        states = list(admission.pop("leg_load_states", None) or [])
+        digest_fn = getattr(self, "_leg_trajectory_digest", None)
+        digest = (digest_fn(motion_segment)
+                  if callable(digest_fn) else None)
+        if digest and str(digest) in [str(d) for d in digests]:
+            index = [str(d) for d in digests].index(str(digest))
+            admission["leg_digest"] = str(digest)
+            if index < len(states):
+                admission["load_state"] = str(states[index])
+        return admission
+
     def _execute_segment(self, segment, trial):
         t0 = time.time()
         if self._last_joint_state:
@@ -717,7 +743,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
                     name="PlanMotionV2:%s" % name,
-                    admission=getattr(self, "_execution_admission", None))
+                    admission=self._leg_execution_admission(
+                        motion_segment))
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to

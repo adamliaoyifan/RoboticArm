@@ -23,3 +23,11 @@ string certification_id
 # order — the caller compares them against the legs it holds so what
 # is executed is bit-for-bit what was certified.
 string[] leg_digests
+# [ST09-I S5.7-6] duration of the fresh full re-certification (ms).
+float64 certify_ms
+# Certified load-state index per leg, aligned with leg_digests
+# ("carrying" / "unloaded"): executors stamp each leg's admission with
+# the leg's own scope, so the release boundary is explicit.
+string[] leg_load_states
+# [ST09-I S5.7-6] total verify wall time (ms).
+float64 verify_ms

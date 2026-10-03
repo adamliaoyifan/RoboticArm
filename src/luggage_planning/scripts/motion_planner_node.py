@@ -700,16 +700,27 @@ class MotionPlannerNode(Node):
             getattr(goal_request, "admission_map_revision", 0) or 0)
         request.scene_revision = str(
             getattr(goal_request.segment, "scene_revision", "") or "")
+        request.leg_digest = str(
+            getattr(goal_request, "admission_leg_digest", "") or "")
+        request.leg_load_state = str(
+            getattr(goal_request, "admission_load_state", "") or "")
+        import time as _timing
+
+        _t0 = _timing.monotonic_ns()
         event = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _f: event.set())
         if not event.wait(timeout=5.0) or not future.done():
-            return False, "ADMISSION_CHECK_UNAVAILABLE"
+            return False, "ADMISSION_CHECK_UNAVAILABLE", round(
+                (_timing.monotonic_ns() - _t0) / 1e6, 1)
         response = future.result()
+        self._last_admission_check_ms = round(
+            (_timing.monotonic_ns() - _t0) / 1e6, 1)
         if not bool(response.live):
             return False, str(response.reason_code
-                              or "ADMISSION_REVOKED")
-        return True, ""
+                              or "ADMISSION_REVOKED"), \
+                self._last_admission_check_ms
+        return True, "", self._last_admission_check_ms
 
     def _execute_plan_motion_v2(self, goal_handle):
         from luggage_planning.motion_v2_service import handle_plan_v2
@@ -743,7 +754,10 @@ class MotionPlannerNode(Node):
         if (str(getattr(goal_handle.request, "route_digest", "") or "")
                 or str(getattr(
                     goal_handle.request, "certification_id", "") or "")):
-            live, reason = self._admission_still_live(goal_handle.request)
+            live, reason, _ms = self._admission_still_live(
+                goal_handle.request)
+            result.admission_check_ms = float(
+                getattr(self, "_last_admission_check_ms", 0.0) or 0.0)
             if not live:
                 goal_handle.abort()
                 result.success = False

@@ -606,6 +606,12 @@ class TypedDriverAdapter:
                 admission.get("certification_id", "") or "")
             goal.admission_map_revision = int(
                 admission.get("admission_map_revision", 0) or 0)
+            # [ST09-I S5.7-6] per-leg scope: the leg executes under its
+            # certified load-state index (carrying -> release -> unloaded).
+            goal.admission_leg_digest = str(
+                admission.get("leg_digest", "") or "")
+            goal.admission_load_state = str(
+                admission.get("load_state", "") or "")
         # send_goal() is the blocking helper and returns the result response.
         # The executor is already spinning, so the async goal keeps the
         # caller's deadline and does not deadlock the main thread.

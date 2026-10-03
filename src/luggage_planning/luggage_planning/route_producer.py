@@ -450,6 +450,18 @@ class RouteProducer(object):
         #: [ST09-I S5.7] The last admitted selection, for pre-execution
         #: re-verification (certify A, execute A — never a second path).
         self.last_selection = None
+        #: [ST09-I S5.7-6] Frozen-budget attribution: nanoseconds spent
+        #: in certification / map revalidation inside the CURRENT public
+        #: call (reset at each entry point; search time is the residue).
+        self._stage_ns = {"certify": 0, "revalidate": 0}
+        #: [ST09-I S5.7-6] Admissions displaced by a newer selection,
+        #: route_digest -> certification_id at demotion time. The LIVE
+        #: admission is single-slot on purpose: selecting/verifying
+        #: route B makes B the only live admission and IMMEDIATELY
+        #: demotes A — A's next leg check then returns the named
+        #: CERTIFICATE_SUPERSEDED (the certifier side KNEW A, then
+        #: replaced it), never a generic ADMISSION_UNKNOWN. Bounded FIFO.
+        self.superseded_admissions = {}
 
     # -- helpers ---------------------------------------------------------
 
@@ -577,6 +589,7 @@ class RouteProducer(object):
         from luggage_planning.reachable_graph import GraphRoutePlanner
 
         started_ns = self._clock_ns()
+        self._stage_ns = {"certify": 0, "revalidate": 0}
         rows: List[dict] = []
         snapshot = planning_snapshot_from_surface(
             surface_map_from_contract(request["surface"], request),
@@ -950,7 +963,7 @@ class RouteProducer(object):
             self.last_certification = certification
             self.last_revalidation = revalidation
             self.last_rows = rows
-            self.last_selection = {
+            self._promote_selection({
                 "path_hash": route.digest(),
                 "route": route,
                 "edges": edges,
@@ -959,7 +972,7 @@ class RouteProducer(object):
                 "candidate": candidate,
                 "request": request,
                 "certification_id": certification.digest(),
-            }
+            })
             return {
                 "success": True,
                 "reason_code": "OK",
@@ -976,8 +989,48 @@ class RouteProducer(object):
                 "graph_digest": self.graph.digest(),
                 "budget_snapshot": self.last_budget_snapshot,
                 "elapsed_s": (self._clock_ns() - started_ns) / 1e9,
+                "stage_timings": self._stage_timings(started_ns),
             }
         return self._fail(last_reason, rows)
+
+    def _stage_timings(self, started_ns):
+        """[ST09-I S5.7-6] Frozen-budget attribution (ms, rounded).
+
+        Certification and map revalidation are measured directly; the
+        graph/edge search share is the residue of the total wall time.
+        Recorded for evidence — the frozen budgets themselves never
+        move because of these numbers.
+        """
+        total_ns = self._clock_ns() - started_ns
+        stages = getattr(self, "_stage_ns", None) \
+            or {"certify": 0, "revalidate": 0}
+        return {
+            "total_ms": round(total_ns / 1e6, 1),
+            "search_ms": round(max(
+                0, total_ns - stages["certify"]
+                - stages["revalidate"]) / 1e6, 1),
+            "certify_ms": round(stages["certify"] / 1e6, 1),
+            "revalidate_ms": round(stages["revalidate"] / 1e6, 1),
+        }
+
+    def _promote_selection(self, selection):
+        """[ST09-I S5.7-6] Promote `selection` to THE live admission.
+
+        The live admission is single-slot: whatever it displaces is
+        demoted into ``superseded_admissions`` so its next per-leg
+        check gets the NAMED CERTIFICATE_SUPERSEDED (the certifier side
+        knew that route, then replaced it) instead of the peer-restart
+        ADMISSION_UNKNOWN. Bounded FIFO keeps long sessions flat.
+        """
+        previous = getattr(self, "last_selection", None)
+        if previous and previous.get("path_hash"):
+            superseded = getattr(self, "superseded_admissions", None)
+            if superseded is not None:
+                superseded[str(previous["path_hash"])] = str(
+                    previous.get("certification_id", ""))
+                while len(superseded) > 16:
+                    superseded.pop(next(iter(superseded)))
+        self.last_selection = selection
 
     def verify_selected(self, *, route_digest, current_joints,
                         latest_map_revision, scene_revision):
@@ -991,6 +1044,8 @@ class RouteProducer(object):
         ``(ok, reason, detail)``; ``detail["leg_digests"]`` lets the
         caller prove what it holds is bit-for-bit what was certified.
         """
+        started_ns = self._clock_ns()
+        self._stage_ns = {"certify": 0, "revalidate": 0}
         selection = getattr(self, "last_selection", None)
         if not selection or selection.get("path_hash") != str(route_digest):
             return False, "DIGEST_UNKNOWN", {
@@ -1045,12 +1100,21 @@ class RouteProducer(object):
             "certification_id": certification.digest(),
             "validated_map_revision": int(snapshot.map_revision),
             "leg_digests": [edge.trajectory.digest() for edge in edges],
+            "leg_load_states": [
+                str(getattr(edge, "load_state", "") or "").lower()
+                for edge in edges],
+            "certify_ms": round(
+                (self._stage_ns or {}).get("certify", 0) / 1e6, 1),
+            "verify_ms": round(
+                (self._clock_ns() - started_ns) / 1e6, 1),
         }
 
     def execution_admission_is_live(self, *, route_digest,
                                     certification_id,
                                     admission_map_revision,
-                                    scene_revision):
+                                    scene_revision,
+                                    leg_digest=None,
+                                    leg_load_state=None):
         """[ST09-I S5.7-3b] Is a certified execution admission STILL live?
 
         Certify A, execute A — AND the certification still holds when A
@@ -1060,15 +1124,48 @@ class RouteProducer(object):
         identity refuses; a map that advanced without touching the
         route's edges stays LIVE (new revision recorded); corridor
         impact or staleness revokes. Returns ``(live, reason, detail)``.
+
+        [ST09-I S5.7-6] Per-leg scope: when the executor claims a
+        specific leg, the leg must be one of the certified route's
+        legs AND its certified load-state index must match the claim.
+        One place route covers the carrying legs, the release
+        boundary, and the unloaded retreat — each leg executes under
+        ITS OWN load-state index, so the vacuum-off attachment digest
+        change at release is never misread as an identity change (the
+        liveness verdict never consults the live attachment state),
+        and a carrying-phase scope can never authorize a post-release
+        leg (LOAD_STATE_MISMATCH / LEG_DIGEST_MISMATCH).
         """
         selection = getattr(self, "last_selection", None)
         if not selection or selection.get("path_hash") != str(route_digest):
+            superseded = getattr(self, "superseded_admissions", None) or {}
+            if str(route_digest) in superseded:
+                return False, "CERTIFICATE_SUPERSEDED", {
+                    "live": (selection or {}).get("path_hash", ""),
+                    "demoted_certification_id": superseded[
+                        str(route_digest)]}
             return False, "ADMISSION_UNKNOWN", {
                 "known": (selection or {}).get("path_hash", "")}
         if str(certification_id) != str(
                 selection.get("certification_id", "")):
             return False, "CERTIFICATE_SUPERSEDED", {
                 "live": str(selection.get("certification_id", ""))}
+        if leg_digest or leg_load_state:
+            certified = [(
+                str(edge.trajectory.digest()),
+                str(getattr(edge, "load_state", "") or "").lower(),
+            ) for edge in selection["edges"]]
+            claimed = [state for digest, state in certified
+                       if digest == str(leg_digest)] if leg_digest else []
+            if leg_digest and not claimed:
+                return False, "LEG_DIGEST_MISMATCH", {
+                    "claimed_leg": str(leg_digest),
+                    "certified_legs": len(certified)}
+            if leg_digest and leg_load_state \
+                    and str(leg_load_state).lower() != claimed[0]:
+                return False, "LOAD_STATE_MISMATCH", {
+                    "claimed": str(leg_load_state).lower(),
+                    "certified": claimed[0]}
         snapshot = selection["snapshot"]
         if str(scene_revision) != str(
                 getattr(snapshot, "scene_revision", "")):
@@ -1110,6 +1207,8 @@ class RouteProducer(object):
         from st09_contracts.attachment import compose_transform
         from st09_contracts.graph import LoadState, PlannedRoute
 
+        started_ns = self._clock_ns()
+        self._stage_ns = {"certify": 0, "revalidate": 0}
         targets = list(camera_targets or [])
         if not targets:
             return self._fail("OBSERVATION_TARGET_MISSING", [])
@@ -1231,7 +1330,7 @@ class RouteProducer(object):
                 self.last_certification = certification
                 self.last_revalidation = revalidation
                 self.last_rows = rows
-                self.last_selection = {
+                self._promote_selection({
                     "path_hash": route.digest(),
                     "route": route,
                     "edges": edges,
@@ -1242,7 +1341,7 @@ class RouteProducer(object):
                     "certification_id": certification.digest(),
                     "load_state": LoadState.UNLOADED,
                     "purpose": str(purpose),
-                }
+                })
                 return {
                     "success": True,
                     "reason_code": "OK",
@@ -1255,6 +1354,7 @@ class RouteProducer(object):
                     "legs": legs,
                     "certification": certification,
                     "revalidation": revalidation,
+                    "stage_timings": self._stage_timings(started_ns),
                 }
         finally:
             if callable(reset_scene):
@@ -1426,6 +1526,9 @@ class RouteProducer(object):
                 exc, traceback.format_exc(limit=4).replace("\n", " | ")))
             return None, "CERT_SERVICE_EXCEPTION"
         elapsed = (self._clock_ns() - started_ns) / 1e9
+        stages = getattr(self, "_stage_ns", None)
+        if stages is not None:
+            stages["certify"] += self._clock_ns() - started_ns
         self._log("route: certify wall %.3fs edges=%d" % (
             elapsed, len(edges)))
         if elapsed > CERTIFICATION_TIMEOUT_S:
@@ -1435,6 +1538,9 @@ class RouteProducer(object):
     def _revalidate(self, route, snapshot, edges):
         if self.revalidator is None:
             return None
+        import time as _reval_time
+
+        _reval_t0 = _reval_time.monotonic_ns()
         from luggage_planning.map_revalidation import RevalidationInput
 
         latest = snapshot
@@ -1444,9 +1550,16 @@ class RouteProducer(object):
             if fetched is None:
                 return None  # named MAP_REVALIDATION_UNAVAILABLE upstream
             latest = fetched
-        return self.revalidator.revalidate(RevalidationInput(
-            route=route, planned_snapshot=snapshot, latest_snapshot=latest,
-            edges=edges, now_ns=self._clock_ns(), in_flight=False))
+        try:
+            return self.revalidator.revalidate(RevalidationInput(
+                route=route, planned_snapshot=snapshot,
+                latest_snapshot=latest, edges=edges,
+                now_ns=self._clock_ns(), in_flight=False))
+        finally:
+            stages = getattr(self, "_stage_ns", None)
+            if stages is not None:
+                stages["revalidate"] += \
+                    _reval_time.monotonic_ns() - _reval_t0
 
     def _fail(self, reason, rows):
         return {

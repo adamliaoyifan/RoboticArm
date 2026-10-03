@@ -53,7 +53,8 @@ class _Driver(object):
 
 def _ok_verify_response():
     return SimpleNamespace(
-        valid=True, reason_code="", leg_digests=[],
+        valid=True, reason_code="", leg_digests=[], leg_load_states=[],
+        certify_ms=1.0, verify_ms=2.0,
         start_state_delta_rad=0.0, certification_id="cert-1",
         validated_map_revision=7)
 

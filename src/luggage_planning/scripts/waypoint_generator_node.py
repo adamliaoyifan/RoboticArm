@@ -550,15 +550,26 @@ class WaypointGeneratorNode(Node):
                      float(pose.position.z)),
                     (float(pose.orientation.x), float(pose.orientation.y),
                      float(pose.orientation.z), float(pose.orientation.w))))
+            import time as _timing
+
+            _t0 = _timing.monotonic_ns()
             legs, edges = pick_leg_records(
                 waypoints,
                 graph=stack["graph"], edge_builder=stack["edge_builder"],
                 refine=stack["refine"], fk=stack["fk"], start_q=start_q,
                 request_id=request_id, scene_revision=scene_revision,
                 stamp_ns=stamp_ns)
+            _t1 = _timing.monotonic_ns()
             self._certify_pick_legs(
                 stack, edges, request_id=request_id,
                 scene_revision=scene_revision, stamp_ns=stamp_ns)
+            _t2 = _timing.monotonic_ns()
+            # [ST09-I S5.7-6] frozen-budget attribution for the pick
+            # build; stamped into the v2 response by the service handler.
+            self._last_pick_stage_ms = {
+                "edge_build_ms": round((_t1 - _t0) / 1e6, 1),
+                "certification_ms": round((_t2 - _t1) / 1e6, 1),
+            }
             return _rewrap_legs(legs)
         return encode
 
@@ -604,6 +615,10 @@ class WaypointGeneratorNode(Node):
         response = handle_build_v2(
             request, response, pick=pick,
             pick_encoder=self._pick_leg_encoder())
+        import json as _json
+
+        response.stage_timings_json = _json.dumps(
+            getattr(self, "_last_pick_stage_ms", None) or {})
         if getattr(self, "_runtime", None) is not None and bool(getattr(response, "success", False)):
             # Effect boundary: the builder ran under the admission; recheck.
             from luggage_description.frame_contracts import ContractError

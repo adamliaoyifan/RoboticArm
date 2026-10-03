@@ -7,6 +7,15 @@ string route_digest
 string certification_id
 uint64 admission_map_revision
 string scene_revision
+# [ST09-I S5.7-6] per-leg scope (empty = route-level claim only). The
+# leg must be one of the certified route's legs AND its certified
+# load-state index must match the claim: the carrying phase authorizes
+# pre-release legs, the unloaded phase the post-release retreat — a
+# carrying scope never authorizes a post-release leg, and the release
+# boundary (vacuum-off attachment digest change) is never misread as
+# an identity change.
+string leg_digest
+string leg_load_state
 ---
 bool live
 string reason_code

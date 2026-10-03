@@ -31,3 +31,7 @@ luggage_msgs/MotionSegment[] carry_segments
 luggage_msgs/PoseContractV2[] waypoint_poses
 luggage_msgs/MotionSegmentV2[] motion_segments
 string rows_json
+# [ST09-I S5.7-6] frozen-budget attribution: how the select wall time
+# split across graph/edge search, certification, and map revalidation
+# (JSON object of floats in ms).
+string stage_timings_json

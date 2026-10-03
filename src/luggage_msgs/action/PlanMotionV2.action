@@ -10,6 +10,9 @@ luggage_msgs/MotionSegmentV2 segment
 string route_digest
 string certification_id
 uint64 admission_map_revision
+# Per-leg scope of the same admission (empty = route-level only).
+string admission_leg_digest
+string admission_load_state
 ---
 bool success
 string message
@@ -17,6 +20,9 @@ float64 fraction
 bool used_ompl_fallback
 int32 moveit_error_code
 string settle_json
+# [ST09-I S5.7-6] execution-admission liveness RPC duration (ms; 0
+# when the goal made no admission claim).
+float64 admission_check_ms
 luggage_msgs/BoundaryDiagnosticV2 diagnostic
 ---
 string stage

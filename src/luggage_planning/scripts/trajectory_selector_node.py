@@ -453,6 +453,10 @@ class TrajectorySelectorNode(Node):
             or (producer.last_selection or {}).get("certification_id", ""))
         response.leg_digests = [
             str(digest) for digest in detail.get("leg_digests") or []]
+        response.leg_load_states = [
+            str(state) for state in detail.get("leg_load_states") or []]
+        response.certify_ms = float(detail.get("certify_ms", 0.0) or 0.0)
+        response.verify_ms = float(detail.get("verify_ms", 0.0) or 0.0)
         return response
 
     def _check_execution_admission(self, request, response):
@@ -468,7 +472,9 @@ class TrajectorySelectorNode(Node):
                 certification_id=str(request.certification_id or ""),
                 admission_map_revision=int(
                     request.admission_map_revision or 0),
-                scene_revision=str(request.scene_revision or ""))
+                scene_revision=str(request.scene_revision or ""),
+                leg_digest=str(request.leg_digest or ""),
+                leg_load_state=str(request.leg_load_state or ""))
         except Exception as error:  # noqa: BLE001 - service boundary
             import traceback
 
@@ -568,6 +574,12 @@ class TrajectorySelectorNode(Node):
                   "scene_revision": str(request.scene_revision)})
         response.leg_digests = [
             str(edge.trajectory.digest()) for edge in result["edges"]]
+        response.leg_load_states = [
+            str(getattr(edge, "load_state", "") or "").lower()
+            for edge in result["edges"]]
+        response.certify_ms = float(
+            (result.get("stage_timings") or {}).get("certify_ms", 0.0)
+            or 0.0)
         return response
 
     def _select_v2(self, request, response):

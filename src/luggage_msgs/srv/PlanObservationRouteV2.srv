@@ -25,3 +25,8 @@ string certification_id
 uint64 validated_map_revision
 # Per-leg trajectory digests in execution order (certify A, execute A).
 string[] leg_digests
+# Certified load-state per leg ("unloaded" for observation routes),
+# aligned with leg_digests.
+string[] leg_load_states
+# [ST09-I S5.7-6] certification wall time of the returned route (ms).
+float64 certify_ms

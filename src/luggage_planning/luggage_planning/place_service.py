@@ -305,6 +305,10 @@ def fill_select_response_route(message, response, producer):
     response.path_source = str(result["path_source"])
     response.path_hash = str(result["path_hash"])
     response.rows_json = json.dumps(result.get("rows") or [])
+    # [ST09-I S5.7-6] frozen-budget attribution (search/certify/
+    # revalidate, ms) for the evidence records.
+    response.stage_timings_json = json.dumps(
+        result.get("stage_timings") or {})
     response.motion_segments = _route_motion_messages(
         result["legs"], request)
     response.carry_segments = _route_carry_segments(result["legs"], request)

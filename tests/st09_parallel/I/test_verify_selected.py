@@ -21,16 +21,19 @@ from luggage_planning.route_producer import RouteProducer  # noqa: E402
 
 
 class _Traj(object):
-    def __init__(self, first):
+    def __init__(self, first, digest="leg-digest-1"):
         self.positions = [tuple(first)]
+        self._digest = digest
 
     def digest(self):
-        return "leg-digest-1"
+        return self._digest
 
 
 class _Edge(object):
-    def __init__(self, first):
-        self.trajectory = _Traj(first)
+    def __init__(self, first, digest="leg-digest-1",
+                 load_state="carrying"):
+        self.trajectory = _Traj(first, digest)
+        self.load_state = load_state
 
 
 def _selection(start=(0.1, -0.2, 0.3, -0.4, 0.5, -0.6)):
@@ -52,8 +55,12 @@ class _Producer(object):
 
     def __init__(self, selection, revalidation=None, certification=None):
         self.last_selection = selection
+        self.superseded_admissions = {}
         self._stub_revalidation = revalidation
         self._stub_certification = certification
+
+    _promote_selection = RouteProducer._promote_selection
+    _stage_timings = RouteProducer._stage_timings
 
     def _revalidate(self, route, snapshot, edges):
         return self._stub_revalidation
@@ -61,6 +68,9 @@ class _Producer(object):
     def _certify(self, route, snapshot, attachment, edges, candidate,
                  request, load_state=None):
         return self._stub_certification
+
+    def _clock_ns(self):
+        return 0
 
     verify_selected = RouteProducer.verify_selected
     execution_admission_is_live = RouteProducer.execution_admission_is_live
@@ -232,10 +242,11 @@ def _live_producer(revalidation=None):
 
 
 def _admission(producer, *, digest="hash-1", cert="cert-1", revision=5,
-               scene="scene-A"):
+               scene="scene-A", leg_digest=None, leg_load_state=None):
     return producer.execution_admission_is_live(
         route_digest=digest, certification_id=cert,
-        admission_map_revision=revision, scene_revision=scene)
+        admission_map_revision=revision, scene_revision=scene,
+        leg_digest=leg_digest, leg_load_state=leg_load_state)
 
 
 def test_execution_admission_unknown_covers_peer_restart():
@@ -283,3 +294,88 @@ def test_execution_admission_live_when_map_advanced_without_impact():
     live, reason, detail = _admission(producer, revision=5)
     assert live and reason == "OK"
     assert detail["live_map_revision"] == 7
+
+
+def test_new_selection_immediately_supersedes_old_certificate():
+    """[ST09-I S5.7-6 lock] verify B -> B is the ONLY live admission.
+
+    Route A's next leg is refused by name (CERTIFICATE_SUPERSEDED —
+    the user's ADMISSION_SUPERSEDED semantics: the certifier side knew
+    A, then replaced it), never the generic peer-restart
+    ADMISSION_UNKNOWN; and a refused admission means no controller
+    submission happens for that leg (the executor gates before submit).
+    """
+    producer = _live_producer()
+    selection_b = _selection()
+    selection_b["path_hash"] = "hash-B"
+    selection_b["certification_id"] = "cert-B"
+    producer._promote_selection(selection_b)
+    live, reason, detail = _admission(producer)
+    assert (live, reason) == (False, "CERTIFICATE_SUPERSEDED")
+    assert detail["demoted_certification_id"] == "cert-1"
+    live, reason, _detail = _admission(
+        producer, digest="hash-B", cert="cert-B")
+    assert live and reason == "OK"
+    # a stale certification id for the LIVE route is still superseded
+    assert _admission(producer, digest="hash-B", cert="cert-old")[:2] == (
+        False, "CERTIFICATE_SUPERSEDED")
+
+
+def _release_route_producer():
+    """One certified place route: carrying legs, release, unloaded legs."""
+    from st09_contracts.certification import MapDecision
+
+    selection = _selection()
+    selection["certification_id"] = "cert-1"
+    selection["edges"] = [
+        _Edge((0.1, -0.2, 0.3, -0.4, 0.5, -0.6),
+              digest="leg-carrying", load_state="carrying"),
+        _Edge((0.1, -0.2, 0.3, -0.4, 0.5, -0.6),
+              digest="leg-retreat", load_state="unloaded"),
+    ]
+    producer = _Producer(
+        selection, revalidation=SimpleNamespace(
+            decision=MapDecision.CONTINUE, reason=None, map_revision=5))
+    return producer
+
+
+def test_release_boundary_admission_uses_certificate_load_state_index():
+    """[ST09-I S5.7-6 lock] carrying -> release transition -> unloaded.
+
+    The post-release retreat executes under the certificate's UNLOADED
+    index: the vacuum-off attachment digest change at the release
+    boundary is never misread as an identity change (the liveness
+    verdict consults graph/map generations, never the live attachment
+    state), and a carrying scope can never authorize the post-release
+    leg (named LOAD_STATE_MISMATCH, no controller submission).
+    """
+    producer = _release_route_producer()
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-retreat", leg_load_state="unloaded")
+    assert live and reason == "OK"
+    # the same route's carrying phase stays live under ITS index
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-carrying", leg_load_state="carrying")
+    assert live and reason == "OK"
+    # a carrying claim on the post-release leg refuses by name
+    assert _admission(
+        producer, leg_digest="leg-retreat",
+        leg_load_state="carrying")[:2] == (False, "LOAD_STATE_MISMATCH")
+    # a foreign leg is not in the certificate at all
+    assert _admission(
+        producer, leg_digest="leg-foreign")[:2] == (
+        False, "LEG_DIGEST_MISMATCH")
+
+
+def test_stage_timings_attribution_search_is_the_residue():
+    """[ST09-I S5.7-6] frozen-budget evidence: certify/revalidate are
+    measured, the graph/edge search share is the residue — recorded
+    for attribution, the budgets themselves never move."""
+    producer = _Producer(_selection())
+    producer._clock_ns = lambda: 5_000_000
+    producer._stage_ns = {"certify": 3_000_000, "revalidate": 1_000_000}
+    timings = producer._stage_timings(0)
+    assert timings["total_ms"] == 5.0
+    assert timings["certify_ms"] == 3.0
+    assert timings["revalidate_ms"] == 1.0
+    assert timings["search_ms"] == 1.0

@@ -316,6 +316,10 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             return False, "LEG_DIGEST_MISMATCH"
         stats["start_state_delta_rad"] = float(
             result.start_state_delta_rad or 0.0)
+        # [ST09-I S5.7-6] frozen-budget attribution (re-certification
+        # ms vs the whole verify wall time) for the evidence records.
+        stats["certify_ms"] = float(result.certify_ms or 0.0)
+        stats["verify_ms"] = float(result.verify_ms or 0.0)
         stats["certification_id"] = str(result.certification_id or "")
         stats["validated_map_revision"] = int(
             result.validated_map_revision or 0)
@@ -329,6 +333,12 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             "certification_id": str(result.certification_id or ""),
             "admission_map_revision": int(
                 result.validated_map_revision or 0),
+            # [ST09-I S5.7-6] per-leg scopes: every executed leg claims
+            # its own certified load-state index (carrying -> release
+            # transition -> unloaded retreat).
+            "leg_digests": list(certified),
+            "leg_load_states": [
+                str(state) for state in (result.leg_load_states or [])],
         }
         return True, ""
 
@@ -497,7 +507,9 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         trial.extras["selector"] = {
             "reason": "", "n_slots": len(slot_messages), "n_rows": 0,
             "winner_method": str(selection.path_source),
-            "winner_slot": winner_index, "probe": probe_stats}
+            "winner_slot": winner_index, "probe": probe_stats,
+            "stage_timings": str(
+                getattr(selection, "stage_timings_json", "") or "")}
         # v1 view for the shared trial bookkeeping: container -> base_link
         # through the shared scene helpers, never hand-rolled.
         from luggage_description.scene_tf_config_utils import (

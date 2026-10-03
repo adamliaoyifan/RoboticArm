@@ -23,3 +23,6 @@ bool success
 string message
 string reason_code
 luggage_msgs/PoseContractV2 contact_pose
+# [ST09-I S5.7-6] frozen-budget attribution for the pick build: edge
+# generation vs in-build certification (JSON object of floats in ms).
+string stage_timings_json
