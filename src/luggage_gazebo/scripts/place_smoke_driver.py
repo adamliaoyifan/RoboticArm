@@ -408,16 +408,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             # layout, container on +X) — never reachable on the typed
             # production chain.
             return ("opening_corridor" if float(suction[0]) > 0.2
-                    else "outside_safe_region"), ""
+                    else "outside_container"), ""
         depth, source = self._aperture_corridor_depth()
         base = xyz_world_to_base_link(scene, suction)
         zone = container_zone(base, scene, depth)
         return zone, "corridor=%s" % source
 
     def _suction_clear_of_container(self):
-        """True only in the OUTSIDE_SAFE region, so an open-loop FJT is safe."""
+        """True only in the OUTSIDE_CONTAINER zone (classification, not
+        authorization: the named-pose motion itself still rides the
+        GoToRobotPose surface)."""
         zone, _err = self._container_zone()
-        return zone == "outside_safe_region"
+        return zone == "outside_container"
 
     def _capture_gz_contacts(self):
         """One physics-contact sample. Absent publishers stay an explicit gap."""
@@ -453,7 +455,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
         exit_ok = True
-        if (zone not in ("outside_safe_region",)
+        if (zone not in ("outside_container",)
                 and not getattr(self, "_portal_exited", False)):
             exit_ok = False
             notes.append("exit=EXIT_REQUIRES_CERTIFIED_ROUTE")

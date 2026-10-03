@@ -27,7 +27,12 @@ Cartesian/pose_target 段、Cartesian 探针、world-X 判断、固定槽位。�
 ## 1. 区域分类（Zone）
 
 替代 world-X 与固定 0.45。容器局部坐标四态：
-`INSIDE_CONTAINER` / `OPENING_CORRIDOR` / `OUTSIDE_SAFE_REGION` / `UNKNOWN`。
+`INSIDE_CONTAINER` / `OPENING_CORRIDOR` / `OUTSIDE_CONTAINER` / `UNKNOWN`
+（2026-10-03 收名：原 `OUTSIDE_SAFE_REGION`——走廊深度推导只能分类 TCP
+相对开口的位置，**不能证明整臂关节运动安全**，"SAFE" 授权语义过强）。
+
+**分类 ≠ 授权**：`OUTSIDE_CONTAINER` 不授权裸 GoToRobotPose。即使处于该
+状态，命名位运动仍必须经 MoveIt 建边 + 轨迹认证（§6 GoToRobotPoseV2）。
 
 ```
 corridor_depth = opening_wall_thickness   # (outer−inner)/2，scene 数据（部署=0.04）
@@ -58,8 +63,12 @@ Response: outcome  # ALREADY_READY | CERTIFIED_ROUTE | RECOVERY_REQUIRED
           reason   # RECOVERY_REQUIRED 具名原因
 ```
 
-状态处理：
-- zone=OUTSIDE + 未携带 → `ALREADY_READY`（caller 走 §6 命名位）。
+状态处理（2026-10-03 边界锁定：完整 unloaded recovery 搜索**不阻塞** M3——
+正常 place route 已含 release 后 retreat/return；未完成先具名
+`ROUTE_INCOMPLETE` 停止即可，通用异常恢复单列后续任务；**必须完成**的是
+认证化 GoToRobotPoseV2）：
+- zone=OUTSIDE + 未携带 → `ALREADY_READY`（caller 走 §6 命名位——注意
+  这只是"可以发起 §6 请求"，命名位运动本身仍走认证，见 §1 分类≠授权）。
 - zone=INSIDE/CORRIDOR + **已释放** → producer 以 live q 为起点、released
   box 为世界障碍，搜 **unloaded exit 路线**（机制已存在：任意 live q 注册
   pick_home 模式 + `retreat_chain` exit→home 阶梯 + unloaded SceneState 组装
@@ -150,12 +159,45 @@ Response: valid | 具名拒绝（DIGEST_MISMATCH / START_STATE_MISMATCH /
 - 成功后执行的必须是**同一份** joint_path；失败 = 具名拒绝该 placement
   （删除 excluded 重选循环——重验失败不是换槽信号）。
 
+**map 语义（2026-10-03 锁定：不是陈图回退）**——verify 的 map 行为四态：
+1. latest map 可用且 identity/revision 合法 → 重验证（全路径）；
+2. latest map **不可用**（拉取失败/服务无响应）→ 具名拒绝
+   `MAP_STATUS_UNAVAILABLE`；**过期**（2s 新鲜度）→ 具名拒绝
+   `MAP_STALE`；**revision 倒退** → 具名拒绝 `MAP_RESTART`；
+3. latest revision 增加但不影响 route edges → 允许（记录新 revision）；
+4. 影响 route corridor → 重认证或拒绝（certifier 裁决）。
+**任何情况下不得在选择时旧 snapshot 上回退**。证据与测试名须写明此语义
+（如 `test_map_status_unavailable_refuses_without_stale_fallback`）。
+
+## 5b. 执行窗口闭环（admission generation）——S6 前必须
+
+§5 证明了"认证 A、执行 A"；**尚未证明"执行 A 时认证仍有效"**。driver
+调 verify → valid → 逐腿调执行服务之间，scene、map、attachment
+incarnation 仍可能改变（peer restart / lease 过期 / identity change）。
+闭环方案（用户 2026-10-03 锁定，选项 b+c）：
+
+- **执行请求携带**：`route_digest` + `certification_id`（certificate
+  digest）+ `admission_generation`（scene_revision / geometry_hash /
+  map_revision / attachment incarnation / 授予时刻）。
+- **executor 原子验证后提交**：第一条腿实际提交控制器前，向 selector
+  的 admission 面核对 generation（机械比对，不做可行性判断——五层原则
+  不破）；不匹配 → 具名拒绝，零提交。
+- **后续每腿复核**同一 generation 未被吊销：selector 重启 →
+  `ADMISSION_UNKNOWN`；identity/attachment 变 → `GENERATION_CHANGED`；
+  map revision 前进且不影响 route edges（MapRevalidator affected_edges）
+  → 仍 LIVE（记录新 revision）；影响 corridor → `REVOKED`。
+- 语义：认证 A、执行 A、**且执行 A 时认证仍有效**；失败具名拒绝该
+  placement，不降级、不重选。
+
 `--place-probe on` 改调此面；`_frame_probe_winner` 与死代码 `_place_probe_fn`
 删除。
 
 ## 6. GoToRobotPoseV2 —— 命名位姿收紧
 
 - 只承担"从已确认安全区域进入已标定站位"；zone != OUTSIDE 拒绝（先 §2）。
+- **过渡接线（2026-10-03 记录）**：`portal_observe_sim` 目前走旧 v1
+  GoToRobotPose（裸 2 点 FJT + authorize_legacy_effect），仅视为 S5 调试期
+  临时接线；GoToRobotPoseV2 必须在**正式单箱验收前**替换它。
 - **两个真新增**（探索核实今日皆无）：(a) 执行时把位姿文件的
   `scene_revision_at_capture`（schema 已有、对冻结 cell 校验）与 live
   `RuntimeIdentityV2.scene_revision` 比对；(b) 运动走认证路径的接线
@@ -179,13 +221,21 @@ Response: valid | 具名拒绝（DIGEST_MISMATCH / START_STATE_MISMATCH /
 2. §1+§2 `_home_arm` → 四态分类状态机（分类改名先行；EnsureCycleStart 的
    unloaded-exit 路线随后；容器内携带箱 → 具名拒绝
    CARRY_EXIT_UNSUPPORTED，全量 carry 搜索为后续项——用户裁决）。
-3. §5 探针 → 选中路线重验证。
+3. §5 探针 → 选中路线重验证（含 map 四态语义：无陈图回退）。
+3b. **§5b 执行窗口闭环**（admission generation 携行 + 执行前/逐腿吊销
+   检查）——S6 前必须，正式单箱验收前落地。
 4. §4 观察链（policy 上移 + PlanObservationRouteV2 + 无 attachment 准入）
    **+ §4' pick 阶梯认证**（同一无 attachment 准能与客户端薄层，
-   单箱链前完成——用户裁决纳入本轮）。
+   单箱链前完成——用户裁决纳入本轮；S6 不留未认证 pick）。
+   边界（2026-10-03 锁定）：certifier 用**显式 LoadState.EMPTY**，不把
+   attachment 缺失解释成 unloaded；ObservationPolicy 只选**最多两个**
+   相机目标并预测可见性；TCP 转换、MoveIt 建边、认证属于
+   RouteProducer；PlanObservationRouteV2 只返回完整 certified
+   joint_path；每次观察后再按真实 integration/revision/occupancy 决定
+   是否请求第二视角。
 5. §7 legacy 锁死。
 6. 单箱全链：pick→attach→placement→route→release→exit→observe→integrate→
-   return。
+   return（GoToRobotPoseV2 替换调试期 v1 接线后才是正式验收）。
 7. 单箱过 → 三箱 M3。
 
 **运维项（并行，解除当前 smoke 阻塞）**：semantic 卡死真因是
@@ -195,6 +245,11 @@ luggage_perception/vendor/ + ~/.cache/clip 符号链接）。修法：
 (a) 确保 vendor/ 进 overlay 安装（setup.py package_data 核查）；
 (b) launch 传 `semantic_require_backend:=bbox_fill`（fail-fast，stub 回退
 永不匹配）。
+**正式结果要求（2026-10-03 锁定）**：(i) 先验证 require 的 backend 名称
+确实合法（fail-fast 才有意义）；(ii) vendor 文件进 install overlay；
+(iii) 禁止联网 AutoUpdate；(iv) 指定 backend 不可用 → 启动失败；
+(v) 不允许静默回退 stub；(vi) 不依赖用户 cache 符号链接
+（~/.cache/clip 不得是正确运行的前提）。
 
 ## 9. 认证/identity 复用备忘（实现期参考）
 

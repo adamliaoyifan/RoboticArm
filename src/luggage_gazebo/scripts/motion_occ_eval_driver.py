@@ -281,15 +281,24 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             float(v) for v in
             (_joint_positions(getattr(self, "_last_joint_state", None))
              or [])]
-        revision = 0
+        # [ST09-I S5.7 lock] Map admission is fail-closed on the LATEST
+        # map: a failed/absent stats fetch is its own named refusal and
+        # NEVER falls back to the selection-time revision (a fabricated
+        # 0 would masquerade as MAP_RESTART; a stale carry-over would
+        # verify against a map nobody can still read).
         stats_client = getattr(self, "_stats", None)
-        if stats_client is not None:
-            from luggage_msgs.srv import GetCargoMapStats
-            stats_response = self.call_srv(
-                stats_client, GetCargoMapStats.Request(), timeout=5.0)
-            if stats_response is not None and stats_response.success:
-                revision = int(stats_response.map_revision)
-        request.latest_map_revision = int(revision)
+        if stats_client is None:
+            stats["map_status_unavailable"] = \
+                stats.get("map_status_unavailable", 0) + 1
+            return False, "MAP_STATUS_UNAVAILABLE"
+        from luggage_msgs.srv import GetCargoMapStats
+        stats_response = self.call_srv(
+            stats_client, GetCargoMapStats.Request(), timeout=5.0)
+        if stats_response is None or not stats_response.success:
+            stats["map_status_unavailable"] = \
+                stats.get("map_status_unavailable", 0) + 1
+            return False, "MAP_STATUS_UNAVAILABLE"
+        request.latest_map_revision = int(stats_response.map_revision)
         result = self.call_srv(client, request, timeout=PLACE_PROBE_TIMEOUT_S)
         if result is None:
             stats["unavailable"] = stats.get("unavailable", 0) + 1

@@ -6,8 +6,11 @@ MotionSegment constructed driver-side; the executor answers those with
 SEGMENT_GENERATION_REMOVED (the S3 generation-bypass deletion), and the
 unbounded aperture prism misread the mirrored deploy pickup observe
 (~1.7 m outside the face) as "inside the opening". Now: classify the
-cup in container-local coordinates (inside / near_opening / outside);
-OUTSIDE -> the allowed named-pose goto; otherwise the exit is the
+cup in container-local coordinates (inside_container / opening_corridor /
+outside_container / unknown). outside_container classifies the TCP
+position only — it does NOT authorize a bare motion; the named-pose
+goto rides the GoToRobotPose surface, and any certified motion is
+built by RouteProducer+MoveIt. Otherwise the exit is the
 CERTIFIED route's own retreat/return legs — arriving still inside is a
 named refusal (EXIT_REQUIRES_CERTIFIED_ROUTE), never a rebuilt
 geometric escape.
@@ -29,7 +32,7 @@ from luggage_gazebo.place_metrics import PlaceTrial, place_ok  # noqa: E402
 class _Driver(object):
     """Only the collaborators `_home_arm` actually touches."""
 
-    def __init__(self, zone="outside_safe_region", goto_ok=True,
+    def __init__(self, zone="outside_container", goto_ok=True,
                  portal_exited=False, zone_reason=""):
         self._zone = zone
         self._goto_ok = goto_ok
@@ -56,15 +59,15 @@ class _Driver(object):
 class TestHomeArmClassification(unittest.TestCase):
 
     def test_outside_goes_straight_to_the_named_pose(self):
-        driver = _Driver(zone="outside_safe_region", goto_ok=True)
+        driver = _Driver(zone="outside_container", goto_ok=True)
         ok, notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertTrue(ok)
-        self.assertIn("zone=outside_safe_region", notes)
+        self.assertIn("zone=outside_container", notes)
         self.assertEqual(driver.home_arm_code(), "")
 
     def test_outside_but_goto_fails_is_goto_failed(self):
-        driver = _Driver(zone="outside_safe_region", goto_ok=False)
+        driver = _Driver(zone="outside_container", goto_ok=False)
         ok, _notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertFalse(ok)
@@ -133,7 +136,7 @@ class TestMirroredDeployZoneClassification(unittest.TestCase):
         # ~1.7 m outside the face yet inside the unbounded aperture
         # prism — the smoke03/04 misclassification.
         self.assertEqual(
-            self.zone((0.945, 0.214, 1.748)), "outside_safe_region")
+            self.zone((0.945, 0.214, 1.748)), "outside_container")
 
     def test_opening_mouth_is_in_the_corridor(self):
         self.assertEqual(self.zone((-0.70, 0.6, 1.30)), "opening_corridor")
@@ -152,7 +155,7 @@ class TestMirroredDeployZoneClassification(unittest.TestCase):
         self.assertAlmostEqual(depth, 0.44, places=6)
         face_x, normal_x = -0.745, -1.0
         just_out = (face_x - normal_x * (depth + 0.05), 0.398, 1.30)
-        self.assertEqual(self.zone(just_out), "outside_safe_region")
+        self.assertEqual(self.zone(just_out), "outside_container")
 
 
 class TestReturnFailureIsNotAPlaceFailure(unittest.TestCase):

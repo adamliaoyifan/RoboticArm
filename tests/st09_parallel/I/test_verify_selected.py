@@ -136,6 +136,68 @@ def test_recertification_failure_surfaces_its_reason():
     assert not ok and reason == "CERT_COLLISION"
 
 
+def test_latest_map_fetch_failure_refuses_without_stale_fallback():
+    """[S5.7 lock] A failed LATEST-map fetch is its own named refusal.
+
+    The producer never silently substitutes the selection-time snapshot
+    for the latest map (no stale-map fallback): _revalidate returns
+    None on fetch failure and the revalidator is never consulted.
+    """
+    import types
+
+    class _Recording(object):
+        def __init__(self):
+            self.calls = []
+
+        def revalidate(self, request):
+            self.calls.append(request)
+            raise AssertionError("must not revalidate on a failed fetch")
+
+    producer = _Producer(_selection())
+    producer.revalidator = _Recording()
+    producer.latest_snapshot_fn = lambda: None
+    producer._clock_ns = lambda: 0
+    producer._revalidate = types.MethodType(
+        RouteProducer._revalidate, producer)
+    ok, reason, _detail = producer.verify_selected(
+        route_digest="hash-1", current_joints=[0.1, -0.2, 0.3, -0.4, 0.5,
+                                               -0.6],
+        latest_map_revision=5, scene_revision="scene-A")
+    assert not ok and reason == "MAP_REVALIDATION_UNAVAILABLE"
+    assert producer.revalidator.calls == []
+
+
+def test_map_revision_advanced_without_edge_impact_allows():
+    """[S5.7 lock] Case 3: revision grew but no route edge is affected."""
+    from st09_contracts.certification import MapDecision
+    producer = _Producer(
+        _selection(),
+        revalidation=SimpleNamespace(
+            decision=MapDecision.CONTINUE, reason=None, map_revision=7),
+        certification=_ok_certification())
+    ok, reason, detail = producer.verify_selected(
+        route_digest="hash-1", current_joints=[0.1, -0.2, 0.3, -0.4, 0.5,
+                                               -0.6],
+        latest_map_revision=7, scene_revision="scene-A")
+    assert ok and reason == "OK"
+
+
+def test_map_corridor_affected_refuses():
+    """[S5.7 lock] Case 4: the new map touches the route corridor."""
+    from st09_contracts.certification import MapDecision
+    producer = _Producer(
+        _selection(),
+        revalidation=SimpleNamespace(
+            decision=MapDecision.REPLAN,
+            reason=SimpleNamespace(value="MAP_REVISION_MISMATCH"),
+            map_revision=6))
+    ok, reason, _detail = producer.verify_selected(
+        route_digest="hash-1", current_joints=[0.1, -0.2, 0.3, -0.4, 0.5,
+                                               -0.6],
+        latest_map_revision=6, scene_revision="scene-A")
+    assert not ok and reason == "MAP_REVISION_MISMATCH"
+
+
 def test_pass_path_returns_leg_digests():
     from st09_contracts.certification import MapDecision
     producer = _Producer(
