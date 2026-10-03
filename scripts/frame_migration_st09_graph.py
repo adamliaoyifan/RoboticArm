@@ -279,15 +279,23 @@ class GraphProbe:
         """One no-effect v2 call: ComputePlacementV2 must answer.
 
         The expected map revision comes from the mapper's latched surface
-        contract, exactly as the real drivers consume it.
+        contract, exactly as the real drivers consume it — INCLUDING the
+        catch-up wait: the latch can lag the last integrate's republish,
+        and every CAS consumer must read the caught-up state or be
+        refused STALE/REVISION_MISMATCH (the loop's _fresh_surface
+        discipline; without it the probe flaked STALE_MAP_REVISION when
+        the preceding test's commit was still in flight).
         """
+        import threading
+
         from luggage_msgs.msg import SurfaceContractV2
+        from luggage_msgs.srv import GetCargoMapStats
         from rclpy.qos import (DurabilityPolicy, QoSProfile,
                                ReliabilityPolicy)
         received = {}
         self.node.create_subscription(
             SurfaceContractV2, "/luggage/cargo_map/surface_v2",
-            lambda message: received.setdefault("message", message),
+            lambda message: received.__setitem__("message", message),
             QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
                        durability=DurabilityPolicy.TRANSIENT_LOCAL))
         deadline = time.monotonic() + 10.0
@@ -296,6 +304,25 @@ class GraphProbe:
         surface = received.get("message")
         if surface is None:
             return {"ok": False, "code": "SURFACE_V2_MISSING"}
+        stats_client = self.node.create_client(
+            GetCargoMapStats, "/cargo_map/get_stats")
+        if stats_client.wait_for_service(timeout_sec=5.0):
+            event = threading.Event()
+            future = stats_client.call_async(GetCargoMapStats.Request())
+            future.add_done_callback(lambda _f: event.set())
+            if event.wait(5.0) and future.done():
+                stats = future.result()
+                if stats is not None and stats.success:
+                    deadline = time.monotonic() + 10.0
+                    while (int(surface.map_revision) < int(
+                                stats.map_revision)
+                            and time.monotonic() < deadline):
+                        time.sleep(0.1)
+                        newer = received.get("message")
+                        if newer is not None and int(
+                                newer.map_revision) > int(
+                                    surface.map_revision):
+                            surface = newer
         from luggage_planning.typed_driver_adapter import TypedDriverAdapter
         from luggage_description.frame_contracts import ContractError
         adapter = TypedDriverAdapter(self.node, self.runtime)
