@@ -15,7 +15,7 @@ from luggage_description.runtime_readiness import ReadinessGate
 from luggage_gazebo.frame_dump import (
     SCHEMA, adapt_legacy_surface, read_dump, write_dump, world_marker_payload,
 )
-from luggage_gazebo.integration_acceptance import EVENT_ORDER, FROZEN_HASHES, extract_acceptance, capture_window
+from luggage_gazebo.integration_acceptance import COMMIT_STAGES, EVENT_ORDER, FROZEN_HASHES, extract_acceptance, capture_window
 
 
 def identity():
@@ -212,6 +212,45 @@ def valid_evidence():
     return dict(complete=True,hashes=frozen_inputs()["hashes"],cases=cases)
 
 
+def three_box_frozen():
+    frozen=frozen_inputs()
+    frozen.update(box_count=3,sequence_ids=["carryon","standard","carryon"])
+    return frozen
+
+
+def three_box_evidence():
+    """S5 unified form: 11 raw-stamped seq-ordered stages, per-event
+    input/output revisions, unique @ordinal box ids, joined handoffs."""
+    cases=[]
+    for index,name in enumerate(("carryon","standard","carryon"),start=1):
+        request="m3-%d"%index
+        input_revision,output_revision=index,index+1
+        events=[]
+        for seq,stage in enumerate(EVENT_ORDER):
+            event=dict(stage=stage,request_id=request,success=True,
+                       scene_revision="a"*64,geometry_hash="a"*64,
+                       acquisition_stamp_ns=10000*index+10*seq,
+                       receiver_stamp_ns=20000*index+10*seq,
+                       event_seq=seq,input_map_revision=input_revision)
+            if stage in COMMIT_STAGES:
+                event["output_map_revision"]=output_revision
+            events.append(event)
+        cases.append(dict(box_id="%s@%02d"%(name,index),request_id=request,
+                          events=events,
+                          measured=dict(integration_success=True,return_success=True,
+                                        payload_retained=True,input_map_revision=input_revision,
+                                        output_map_revision=output_revision,
+                                        sensor_occupied_cells=1,floor_through_candidates=0),
+                          gt_reference=dict(xy_error_m=0.01,z_error_m=0.01,drift_m=0.005,
+                                            roll_deg=0.5,pitch_deg=-0.5,center_inside_hull=True,
+                                            footprint_reference_cells=10,footprint_sensor_cells=5)))
+    handoffs=[dict(box_id="standard@02",request_id="m3-1",**{"from":1,"to":2},
+                   from_revision=2,to_revision=2),
+              dict(box_id="carryon@03",request_id="m3-2",**{"from":2,"to":3},
+                   from_revision=3,to_revision=3)]
+    return dict(complete=True,hashes=frozen_inputs()["hashes"],cases=cases,handoffs=handoffs)
+
+
 class IntegrationExtractor(unittest.TestCase):
     def test_missing_stale_threshold_and_truncated(self):
         frozen=frozen_inputs(); evidence=valid_evidence()
@@ -226,6 +265,37 @@ class IntegrationExtractor(unittest.TestCase):
         for mutation in mutations:
             broken=copy.deepcopy(evidence); mutation(broken)
             self.assertNotEqual(extract_acceptance(broken,frozen)["status"],"pass")
+
+    def test_three_box_strict_passes_and_disguise_fails(self):
+        frozen=three_box_frozen(); evidence=three_box_evidence()
+        result=extract_acceptance(evidence,frozen)
+        self.assertEqual(result["status"],"pass")
+        self.assertEqual(result["box_count"],3)
+        self.assertEqual(result["revision_handoff_count"],2)
+        stripped=copy.deepcopy(evidence)
+        for case in stripped["cases"]:
+            case.pop("gt_reference")
+        self.assertNotEqual(extract_acceptance(stripped,frozen)["status"],"pass")
+        disguise=copy.deepcopy(evidence)
+        for case in disguise["cases"]:
+            for event in case["events"]:
+                event["input_map_revision"]=1
+                if "output_map_revision" in event:
+                    event["output_map_revision"]=1
+            case["measured"]["input_map_revision"]=1
+            case["measured"]["output_map_revision"]=1
+        self.assertNotEqual(extract_acceptance(disguise,frozen)["status"],"pass")
+        conflict=copy.deepcopy(evidence)
+        events=conflict["cases"][0]["events"]
+        events[2]["acquisition_stamp_ns"],events[3]["acquisition_stamp_ns"]= \
+            events[3]["acquisition_stamp_ns"],events[2]["acquisition_stamp_ns"]
+        result=extract_acceptance(conflict,frozen)
+        self.assertEqual(result["status"],"fail")
+        self.assertIn("case[0]:EVENT_CAUSAL_ORDER",result["failures"])
+        self.assertEqual(events[2]["acquisition_stamp_ns"],10000+30)
+        unjoined=copy.deepcopy(evidence)
+        unjoined["handoffs"][1]["from_revision"]=9
+        self.assertNotEqual(extract_acceptance(unjoined,frozen)["status"],"pass")
 
     def test_latency_requires_observations(self):
         self.assertEqual(capture_window([0.7,1.1],[2.3]),dict(pre_seconds=3,post_seconds=3))

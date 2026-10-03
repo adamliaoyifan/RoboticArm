@@ -9,6 +9,13 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from frame_migration_st09_extract import extract_acceptance_variable
+from frame_migration_st09_extract import main as extract_main
+from luggage_gazebo.integration_acceptance import (
+    COMMIT_STAGES,
+    EVENT_ORDER,
+    FROZEN_HASHES,
+    extract_acceptance,
+)
 from frame_migration_st09_freeze import make_frame_dump, validate_frame_dump
 from frame_migration_st09_verify import (
     _canonical_sha256,
@@ -206,6 +213,139 @@ def test_extract_rejects_duplicate_crossbox_and_missing_join():
     wrong_order = _joined_evidence(("carryon-1", "standard-1"))
     wrong_order["events"][-1]["from"] = 9
     assert extract_acceptance_variable(wrong_order, {"box_count": 2})["status"] == "fail"
+
+
+def _m3_frozen():
+    return {
+        "box_count": 3,
+        "sequence_ids": ["carryon", "standard", "carryon"],
+        "hashes": {key: "a" * 64 for key in FROZEN_HASHES},
+        "release_sample_interval_s": 0.05,
+        "drift_sample_interval_s": 0.2,
+        "event_order": list(EVENT_ORDER),
+        "replay_command": ["bash", "scripts/st09_i/s5_m3_run.sh", "--n", "3"],
+    }
+
+
+def _m3_case(index, name):
+    request = "m3-req-%d" % index
+    input_revision, output_revision = index, index + 1
+    events = []
+    for seq, stage in enumerate(EVENT_ORDER):
+        event = {
+            "stage": stage,
+            "request_id": request,
+            "success": True,
+            "acquisition_stamp_ns": 10000 * index + 10 * seq,
+            "receiver_stamp_ns": 20000 * index + 10 * seq,
+            "event_seq": seq,
+            "scene_revision": "a" * 64,
+            "geometry_hash": "a" * 64,
+            "input_map_revision": input_revision,
+        }
+        if stage in COMMIT_STAGES:
+            event["output_map_revision"] = output_revision
+        events.append(event)
+    return {
+        "box_id": "%s@%02d" % (name, index),
+        "request_id": request,
+        "cycle_id": "m3-cycle-%d" % index,
+        "causal_id": "m3-causal-%d" % index,
+        "events": events,
+        "measured": {
+            "integration_success": True,
+            "return_success": True,
+            "payload_retained": True,
+            "input_map_revision": input_revision,
+            "output_map_revision": output_revision,
+            "sensor_occupied_cells": 1,
+            "floor_through_candidates": 0,
+        },
+        "gt_reference": {
+            "xy_error_m": 0.01, "z_error_m": 0.01, "drift_m": 0.005,
+            "roll_deg": 0.5, "pitch_deg": -0.5, "center_inside_hull": True,
+            "footprint_reference_cells": 10, "footprint_sensor_cells": 5,
+        },
+    }
+
+
+def _m3_evidence():
+    cases = [_m3_case(1, "carryon"), _m3_case(2, "standard"), _m3_case(3, "carryon")]
+    handoffs = [
+        {"box_id": "standard@02", "request_id": "m3-req-1", "from": 1, "to": 2,
+         "from_revision": 2, "to_revision": 2},
+        {"box_id": "carryon@03", "request_id": "m3-req-2", "from": 2, "to": 3,
+         "from_revision": 3, "to_revision": 3},
+    ]
+    return {"complete": True, "hashes": _m3_frozen()["hashes"], "cases": cases,
+            "handoffs": handoffs}
+
+
+def test_three_box_unified_judge_requires_physical_gates():
+    frozen = _m3_frozen()
+    result = extract_acceptance(_m3_evidence(), frozen)
+    assert result["status"] == "pass"
+    assert result["box_count"] == 3
+    assert result["revision_handoff_count"] == 2
+
+    stripped = _m3_evidence()
+    for case in stripped["cases"]:
+        case.pop("gt_reference")
+        case["measured"].pop("sensor_occupied_cells")
+    result = extract_acceptance(stripped, frozen)
+    assert result["status"] != "pass"
+    assert any("gt_reference.xy_error_m" in item for item in result["missing"])
+    assert any("sensor_occupied_cells" in item for item in result["missing"])
+
+    disguise = _m3_evidence()
+    for case in disguise["cases"]:
+        for event in case["events"]:
+            event["input_map_revision"] = 1
+            if "output_map_revision" in event:
+                event["output_map_revision"] = 1
+        case["measured"]["input_map_revision"] = 1
+        case["measured"]["output_map_revision"] = 1
+    assert extract_acceptance(disguise, frozen)["status"] != "pass"
+
+
+def test_three_box_raw_stamps_reported_not_rewritten():
+    frozen = _m3_frozen()
+    evidence = _m3_evidence()
+    events = evidence["cases"][0]["events"]
+    events[2]["acquisition_stamp_ns"], events[3]["acquisition_stamp_ns"] = (
+        events[3]["acquisition_stamp_ns"], events[2]["acquisition_stamp_ns"])
+    result = extract_acceptance(evidence, frozen)
+    assert result["status"] == "fail"
+    assert "case[0]:EVENT_CAUSAL_ORDER" in result["failures"]
+    assert events[2]["acquisition_stamp_ns"] == 10000 + 30
+    assert events[3]["acquisition_stamp_ns"] == 10000 + 20
+
+
+def test_main_routes_three_box_to_the_strict_judge(tmp_path, monkeypatch):
+    frozen_path = tmp_path / "frozen.json"
+    frozen_path.write_text(json.dumps(_m3_frozen()))
+    # Shallow flat-event evidence the legacy chain check would pass: the
+    # formal route must refuse it (no cases, no physical gates).
+    shallow = {"events": _joined_evidence(("carryon@01", "standard@02", "carryon@03"))["events"]}
+    shallow_path = tmp_path / "shallow.json"
+    shallow_path.write_text(json.dumps(shallow))
+    out = tmp_path / "verdict_shallow.json"
+    monkeypatch.setattr(sys, "argv", [
+        "extract", "--evidence", str(shallow_path),
+        "--frozen", str(frozen_path), "--output", str(out)])
+    assert extract_main() != 0
+    verdict = json.loads(out.read_text())
+    assert verdict["status"] != "pass"
+    assert any("3 cases" in item for item in verdict["missing"])
+
+    full_path = tmp_path / "full.json"
+    full_path.write_text(json.dumps(_m3_evidence()))
+    out_full = tmp_path / "verdict_full.json"
+    monkeypatch.setattr(sys, "argv", [
+        "extract", "--evidence", str(full_path),
+        "--frozen", str(frozen_path), "--output", str(out_full)])
+    assert extract_main() == 0
+    assert json.loads(out_full.read_text())["status"] == "pass"
 
 
 def test_fault_replay_reproduces_reason_and_effect_deltas():
