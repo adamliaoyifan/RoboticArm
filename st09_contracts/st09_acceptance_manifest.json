@@ -6,7 +6,6 @@
   "plan_revision": "docs/plans/frame_migration_st09_parallel_execution.md (2026-10-02)",
   "technical_baseline": "docs/plans/frame_migration_st09_planner_convergence.md (2026-10-02)",
   "c0_head_note": "The dispatching reviews row fills generation/base/owner per plan section 8; engineering content only here.",
-
   "unified_test_entry": {
     "command": "python3 -m pytest tests/st09_parallel/<TASK> -q",
     "environment": "source /opt/ros/humble/setup.bash; source $CANDIDATE_WS/install-st09/setup.bash; export PYTHONPATH=$CANDIDATE_WS/src:$PYTHONPATH",
@@ -17,7 +16,6 @@
     ],
     "agent_contract_checker": "bash scripts/check_agent_contract.sh"
   },
-
   "file_owners": {
     "C0_then_I": [
       "st09_contracts/**",
@@ -88,29 +86,116 @@
       "src/luggage_msgs/** (interface schema)"
     ]
   },
-
   "requirement_task_test_artifact": [
-    {"requirement": "C0-1 checkpoint verify + selective restore + QP preserved branch", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_restore_manifest.py", "artifact": "docs/status/evidence/frame_migration/ST09-parallel-C0-<rev>/restore_verification.json; experiment/st09-qp-preserved branch + qp_preserved_manifest.json"},
-    {"requirement": "C0-2 production cannot activate QP", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_production_qp_absence.py", "artifact": "evidence qp_absence scan output"},
-    {"requirement": "C0-3 resolved planning contract, no unresolved values", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_planning_contract.py", "artifact": "st09_contracts/resolved_planning_contract.json"},
-    {"requirement": "C0-4 shared ROS-free contracts + fixtures", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py, tests/st09_parallel/C0/test_attachment_fixture.py", "artifact": "st09_contracts/**"},
-    {"requirement": "C0-5 frozen call protocols", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py::protocol tests", "artifact": "st09_contracts/protocols.py"},
-    {"requirement": "C0-6 single reason taxonomy", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_contracts.py::taxonomy tests", "artifact": "st09_contracts/reasons.py"},
-    {"requirement": "C0-7 case list, workload, commands, file owners", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_manifest.py", "artifact": "this manifest"},
-    {"requirement": "C0-8 requirement->task->test->artifact map complete with no placeholders", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_manifest.py", "artifact": "this manifest"},
-    {"requirement": "attachment contract per baseline 5.1 (records, provider, resolve_place_targets, fixtures)", "task": "ST09-C0", "test": "tests/st09_parallel/C0/test_attachment_fixture.py", "artifact": "st09_contracts/attachment.py, fixtures.py, v2_field_audit.json"},
-    {"requirement": "S1 exact hull / depth ordering / observation needs (24 saved slanted-wall candidates all rejected; 16 deep/shallow cases; unsupported tilt rejected)", "task": "ST09-A", "test": "tests/st09_parallel/A/**", "artifact": "docs/status/evidence/frame_migration/ST09-parallel-A-<rev>/candidate_replay.json"},
-    {"requirement": "S2 graph/route + pure target synthesis + 8-class +/- fixtures + target fixture matrix (error<=1e-9)", "task": "ST09-B", "test": "tests/st09_parallel/B/**", "artifact": "ST09-parallel-B-<rev>/ graph+trajectory hashes, MoveIt request/scene, benchmark"},
-    {"requirement": "S3 certification, 6 map cases x sim/deploy, mutations, stop measurements, 9 attachment negatives", "task": "ST09-C", "test": "tests/st09_parallel/C/**", "artifact": "ST09-parallel-C-<rev>/certification_results.json, mock traces, stop measurements"},
-    {"requirement": "observation coverage + async map + measured attachment provider acceptance", "task": "ST09-D", "test": "tests/st09_parallel/D/**", "artifact": "ST09-parallel-D-<rev>/coverage+revision traces, attachment provider traces"},
-    {"requirement": "S5/S6 runner, dump/replay, three-box extractor, coverage inventory", "task": "ST09-E", "test": "tests/st09_parallel/E/**", "artifact": "ST09-parallel-E-<rev>/sample_manifest, capture reports"},
-    {"requirement": "Q-core preserved branch, blocked-knot diagnostics, optimize_edge", "task": "ST09-Q", "test": "src/luggage_planning/test/test_qp_*.py on experiment/st09-qp-preserved", "artifact": "ST09-parallel-Q-<rev>/diagnostics"},
-    {"requirement": "merge order A/D/C/B/E, caller migration, bypass deletion, mock whole-chain, M3", "task": "ST09-I", "test": "integration suites + M3 unit gate", "artifact": "ST09-parallel-I-<rev>/merge log, M3 evidence"},
-    {"requirement": "S5-S7 full release gates, two-box rehearsal, paired replay, proofs, close", "task": "ST09-R", "test": "frame_migration_st09_verify.sh all", "artifact": "release evidence per technical baseline S6/S7"}
+    {
+      "requirement": "C0-1 checkpoint verify + selective restore + QP preserved branch",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_restore_manifest.py",
+      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-C0-<rev>/restore_verification.json; experiment/st09-qp-preserved branch + qp_preserved_manifest.json"
+    },
+    {
+      "requirement": "C0-2 production cannot activate QP",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_production_qp_absence.py",
+      "artifact": "evidence qp_absence scan output"
+    },
+    {
+      "requirement": "C0-3 resolved planning contract, no unresolved values",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_planning_contract.py",
+      "artifact": "st09_contracts/resolved_planning_contract.json"
+    },
+    {
+      "requirement": "C0-4 shared ROS-free contracts + fixtures",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py, tests/st09_parallel/C0/test_attachment_fixture.py",
+      "artifact": "st09_contracts/**"
+    },
+    {
+      "requirement": "C0-5 frozen call protocols",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py::protocol tests",
+      "artifact": "st09_contracts/protocols.py"
+    },
+    {
+      "requirement": "C0-6 single reason taxonomy",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py::taxonomy tests",
+      "artifact": "st09_contracts/reasons.py"
+    },
+    {
+      "requirement": "C0-7 case list, workload, commands, file owners",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_manifest.py",
+      "artifact": "this manifest"
+    },
+    {
+      "requirement": "C0-8 requirement->task->test->artifact map complete with no placeholders",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_manifest.py",
+      "artifact": "this manifest"
+    },
+    {
+      "requirement": "attachment contract per baseline 5.1 (records, provider, resolve_place_targets, fixtures)",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_attachment_fixture.py",
+      "artifact": "st09_contracts/attachment.py, fixtures.py, v2_field_audit.json"
+    },
+    {
+      "requirement": "S1 exact hull / depth ordering / observation needs (24 saved slanted-wall candidates all rejected; 16 deep/shallow cases; unsupported tilt rejected)",
+      "task": "ST09-A",
+      "test": "tests/st09_parallel/A/**",
+      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-A-<rev>/candidate_replay.json"
+    },
+    {
+      "requirement": "S2 graph/route + pure target synthesis + 8-class +/- fixtures + target fixture matrix (error<=1e-9)",
+      "task": "ST09-B",
+      "test": "tests/st09_parallel/B/**",
+      "artifact": "ST09-parallel-B-<rev>/ graph+trajectory hashes, MoveIt request/scene, benchmark"
+    },
+    {
+      "requirement": "S3 certification, 6 map cases x sim/deploy, mutations, stop measurements, 9 attachment negatives",
+      "task": "ST09-C",
+      "test": "tests/st09_parallel/C/**",
+      "artifact": "ST09-parallel-C-<rev>/certification_results.json, mock traces, stop measurements"
+    },
+    {
+      "requirement": "observation coverage + async map + measured attachment provider acceptance",
+      "task": "ST09-D",
+      "test": "tests/st09_parallel/D/**",
+      "artifact": "ST09-parallel-D-<rev>/coverage+revision traces, attachment provider traces"
+    },
+    {
+      "requirement": "S5/S6 runner, dump/replay, three-box extractor, coverage inventory",
+      "task": "ST09-E",
+      "test": "tests/st09_parallel/E/**",
+      "artifact": "ST09-parallel-E-<rev>/sample_manifest, capture reports"
+    },
+    {
+      "requirement": "Q-core preserved branch, blocked-knot diagnostics, optimize_edge",
+      "task": "ST09-Q",
+      "test": "src/luggage_planning/test/test_qp_*.py on experiment/st09-qp-preserved",
+      "artifact": "ST09-parallel-Q-<rev>/diagnostics"
+    },
+    {
+      "requirement": "merge order A/D/C/B/E, caller migration, bypass deletion, mock whole-chain, M3",
+      "task": "ST09-I",
+      "test": "integration suites + M3 unit gate",
+      "artifact": "ST09-parallel-I-<rev>/merge log, M3 evidence"
+    },
+    {
+      "requirement": "S5-S7 full release gates, two-box rehearsal, paired replay, proofs, close",
+      "task": "ST09-R",
+      "test": "frame_migration_st09_verify.sh all",
+      "artifact": "release evidence per technical baseline S6/S7"
+    }
   ],
-
   "m3_workload": {
-    "sequence_ids": ["carryon", "standard", "carryon"],
+    "sequence_ids": [
+      "carryon",
+      "standard",
+      "carryon"
+    ],
     "rules": [
       "spawner input is test stimulus only; production reads measured dimensions",
       "three actually detected boxes; no preset slots; selection per-round from map + measured geometry",
@@ -119,16 +204,40 @@
       "per-box GT gates from resolved_planning_contract.json eval_gates_per_box"
     ]
   },
-
+  "semantic_assets": {
+    "frozen_at": "2026-10-03",
+    "rule": "formal runs resolve semantic assets ONLY from the candidate install overlay via the luggage_perception package share (colcon-installed vendor + checkpoint); no main-workspace path, no source tree, no user cache (~/.cache/clip), no bare filenames (ultralytics not-found fallback is a network download); absent assets are named launch failures (SEMANTIC_VENDOR_MISSING / SEMANTIC_WEIGHTS_MISSING)",
+    "yolov8s_world_pt": {
+      "path": "share/luggage_perception/models/yolov8s-world.pt",
+      "sha256": "095f5266bb9b654bd5ad9e21e9cdeda78e0f2c8460f5d652eaf04bab7ee251cf",
+      "bytes": 27169314
+    },
+    "clip_vendor": {
+      "path": "share/luggage_perception/vendor",
+      "contents": "clip_pkg/ + deps/ + clip_models/ (ViT-B/32)",
+      "tree_sha256": "150178f0db4b3a0e339ec0f2a234f584c921ce19047823e5e856858635b82c5f",
+      "tree_digest_command": "cd vendor && LC_ALL=C find clip_pkg deps clip_models -type f | LC_ALL=C sort | xargs sha256sum | sha256sum"
+    },
+    "offline_proofs": "source-tree vendor hidden + no ~/.cache/clip + dead-proxy (no-network) construction all pass; runtime-reported model_path/clip_vendor under the install overlay; verify with scripts/st09_i/verify_semantic_offline.sh",
+    "pinned_system_dependencies": {
+      "note": "interpreter-side deps live in the user site (~/.local/lib/python3.10/site-packages) — too heavy to vendor; they are the explicit pinned system dependencies, verified + recorded by scripts/st09_i/verify_semantic_offline.sh",
+      "ultralytics": "8.4.6",
+      "torch": "2.10.0+cu128",
+      "cv2": "4.13.0",
+      "numpy": "2.2.6"
+    }
+  },
   "build_and_run_commands": {
     "candidate_ws": "cd $CANDIDATE_WS && source /opt/ros/humble/setup.bash && colcon build --build-base build-st09 --install-base install-st09 && source install-st09/setup.bash",
     "offline_gate": "bash scripts/frame_migration_st09_verify.sh offline --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/offline --ros-domain-id 87",
     "graph_gate": "bash scripts/frame_migration_st09_verify.sh graph --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/graph --ros-domain-id 87",
     "all_gate": "bash scripts/frame_migration_st09_verify.sh all --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/all --ros-domain-id 87",
-    "contract_checkers": ["python3 scripts/check_frame_contracts.py --mode migration", "bash scripts/check_agent_contract.sh"],
+    "contract_checkers": [
+      "python3 scripts/check_frame_contracts.py --mode migration",
+      "bash scripts/check_agent_contract.sh"
+    ],
     "regression_base": "1795a69 (ST08 head); only the pre-existing packing exact node+reason failures may be exempted"
   },
-
   "required_case_inventory": {
     "geometry_frame_64": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
     "deep_place_16": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
@@ -143,7 +252,6 @@
     "capture_replay": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
     "budgets": "lossless replay <=1 GiB/live run, <=4 GiB campaign total; shortfall blocks new runs, never deletes failure evidence"
   },
-
   "evidence_layout": {
     "root": "docs/status/evidence/frame_migration/ST09-parallel-<task>-<revision>/",
     "per_task_required": "required/observed samples, missing items, checksums, environment (T0/T1/T2 windows and matrix per technical baseline S6)",

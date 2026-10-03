@@ -135,6 +135,39 @@ def _as_bool(value):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
 
 
+def _semantic_asset_paths(cfg):
+    """[ST09-I S5.7-6] Semantic assets resolve from the INSTALL overlay.
+
+    Formal runs must not depend on the main workspace, the source tree,
+    or the user cache: the CLIP vendor and the YOLO-World checkpoint
+    are colcon-installed under install-st09/<pkg>/share and resolved
+    through the package share (hashes recorded in the acceptance
+    manifest). Explicit launch flags override; empty falls back to the
+    share location — NEVER to a bare filename, whose ultralytics
+    not-found fallback is a network download.
+    """
+    share = get_package_share_directory("luggage_perception")
+    vendor = str(cfg.get("semantic_clip_vendor_dir") or "").strip() \
+        or os.path.join(share, "vendor")
+    model = str(cfg.get("semantic_model_name") or "").strip() \
+        or os.path.join(share, "models", "yolov8s-world.pt")
+    return vendor, model
+
+
+def _require_semantic_assets(vendor, model):
+    """Fail-closed named launch errors for absent semantic assets."""
+    if not os.path.isdir(os.path.join(vendor, "clip_pkg")):
+        raise RuntimeError(
+            "SEMANTIC_VENDOR_MISSING: CLIP vendor incomplete at %s "
+            "(need clip_pkg/; expected the colcon-installed package "
+            "share copy)" % vendor)
+    if not os.path.isfile(model):
+        raise RuntimeError(
+            "SEMANTIC_WEIGHTS_MISSING: YOLO-World checkpoint absent at "
+            "%s (expected the colcon-installed package share copy; a "
+            "bare filename would fall back to a network download)" % model)
+
+
 def _bool_text(value):
     return "true" if _as_bool(value) else "false"
 
@@ -737,15 +770,17 @@ def _launch_setup(context):
         get_package_share_directory("luggage_perception"),
         "config", "semantic_segmenter.yaml")
     require_backend = cfg["semantic_require_backend"]
-    # [ST09-I S5.7-5] offline semantic chain: one shared vendor dir
-    # (no per-worktree copy) + no ultralytics network behaviour at all
-    # (the vendored import already removes the pip auto-install path;
-    # the update check is disabled on top).
+    # [ST09-I S5.7-6] assets come from the INSTALL overlay via the
+    # package share (colcon-installed vendor + checkpoint; hash-recorded
+    # in the acceptance manifest). No main-workspace path, no source
+    # tree, no user cache, no bare filename (whose ultralytics fallback
+    # is a network download) — an absent asset is a NAMED launch error.
+    clip_vendor_dir, semantic_model_path = _semantic_asset_paths(cfg)
+    if use_semantic:
+        _require_semantic_assets(clip_vendor_dir, semantic_model_path)
     segmenter_env = dict(_arena_env)
     segmenter_env["YOLO_AUTOUPDATE"] = "false"
-    clip_vendor_dir = str(cfg.get("semantic_clip_vendor_dir") or "")
-    if clip_vendor_dir:
-        segmenter_env["LUGGAGE_CLIP_VENDOR_DIR"] = clip_vendor_dir
+    segmenter_env["LUGGAGE_CLIP_VENDOR_DIR"] = clip_vendor_dir
     segmenter = Node(
         package="luggage_perception",
         executable="semantic_segmenter_node.py",
@@ -756,12 +791,7 @@ def _launch_setup(context):
         parameters=[semantic_config, {
             "use_sim_time": True,
             "require_backend": require_backend,
-            # [ST09-I S5.7-5] absolute checkpoint path when set: a bare
-            # filename resolves against the launch CWD (the worktree),
-            # and ultralytics' not-found fallback is a network download
-            # that must never run here.
-            "model_name": str(cfg.get("semantic_model_name")
-                              or "yolov8s-world.pt"),
+            "model_name": semantic_model_path,
         }],
     )
     point_filter = Node(
@@ -1081,17 +1111,19 @@ def generate_launch_description():
                 "(e.g. bbox_fill). Empty disables the guard."),
             profile_arg(
                 "semantic_model_name",
-                "Absolute YOLO-World checkpoint path for the segmenter "
-                "(a bare filename resolves against the launch CWD and "
-                "falls back to a network download; share one weights "
-                "file instead of copying per worktree)."),
+                "YOLO-World checkpoint for the segmenter. Empty (the "
+                "default) resolves the colcon-installed copy under the "
+                "luggage_perception package share; an explicit path "
+                "overrides. A bare filename must never be used: it "
+                "resolves against the launch CWD and falls back to a "
+                "network download."),
             profile_arg(
                 "semantic_clip_vendor_dir",
-                "Shared offline CLIP vendor dir (clip_pkg/ + deps/ + "
+                "Offline CLIP vendor dir (clip_pkg/ + deps/ + "
                 "clip_models/) exported to the segmenter as "
-                "LUGGAGE_CLIP_VENDOR_DIR. One populated vendor can "
-                "serve every worktree; empty keeps the built-in "
-                "src/install probe."),
+                "LUGGAGE_CLIP_VENDOR_DIR. Empty (the default) resolves "
+                "the colcon-installed copy under the "
+                "luggage_perception package share."),
             profile_arg(
                 "visual_kind",
                 "Pickup visual: box (primitive AABB) or mesh "

@@ -165,6 +165,11 @@ class SemanticSegmenterNode(Node):
             },
             "self_body_row_start_frac": float(
                 self.get_parameter("self_body_row_start_frac").value),
+            # [ST09-I S5.7-6] with require_backend set, a construction
+            # failure raises the NAMED error (no silent stub fallback);
+            # the stats-prefix check below stays as the belt-and-braces.
+            "require_backend": str(
+                self.get_parameter("require_backend").value),
         }
         self._segmenter = build_segmenter(config)
         self.add_on_set_parameters_callback(self._on_set_parameters)

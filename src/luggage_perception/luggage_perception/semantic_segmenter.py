@@ -1001,6 +1001,7 @@ class BboxFillSegmenter(SemanticSegmenter):
                  confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD,
                  model_name="yolov8s-world.pt", device="cpu"):
         super().__init__(prompts, class_mapping, confidence_threshold)
+        import os
         import time
 
         self._time = time
@@ -1021,8 +1022,16 @@ class BboxFillSegmenter(SemanticSegmenter):
             to_fn(self._device)
         self._model.set_classes(list(self.prompts))
         self._last_stats["backend"] = "bbox_fill:%s" % self._model_name
+        # [ST09-I S5.7-6] the runtime-reported load paths (frozen-asset
+        # provenance: everything must sit under the install overlay).
+        self._last_stats["model_path"] = os.path.abspath(self._model_name)
         if clip_vendor:
             self._last_stats["clip_vendor"] = clip_vendor
+        self._load_provenance = {
+            key: self._last_stats[key]
+            for key in ("model_path", "clip_vendor")
+            if key in self._last_stats
+        }
 
     def segment(self, rgb_image):
         import numpy as _np
@@ -1045,6 +1054,10 @@ class BboxFillSegmenter(SemanticSegmenter):
             self._instance_map = instance_map
             self._last_stats = {
                 "backend": self._last_stats["backend"],
+                # [ST09-I S5.7-6] load provenance survives per-frame
+                # stats replacement (the runtime-reported paths must
+                # stay visible for overlay isolation checks).
+                **getattr(self, "_load_provenance", {}),
                 "inference_ms": inference_ms,
                 "detection_count": len(detections),
                 "label_counts": counts,
@@ -1354,10 +1367,26 @@ def build_segmenter(config):
             kwargs["sam2_model_type"] = sam2_model_type
         return _finish(cls(prompts, class_mapping, conf, **kwargs))
     except ImportError as exc:
+        # [ST09-I S5.7-6] a configured require_backend means the caller
+        # needs THIS backend: construction failure is a NAMED error,
+        # never a silent stub fallback (the stub would otherwise mask
+        # the real cause, e.g. a user-site dependency gone missing).
+        require = str(config.get("require_backend", "") or "")
+        if require:
+            raise RuntimeError(
+                "SEMANTIC_BACKEND_CONSTRUCTION_FAILED: %s import failed "
+                "(%s); require_backend=%r forbids the stub fallback"
+                % (backend, exc, require)) from exc
         stub = StubSegmenter(prompts, class_mapping, conf)
         stub._last_stats["backend"] = "stub(fallback:%s:%s)" % (backend, exc.name)
         return _finish(stub)
     except Exception as exc:  # noqa: BLE001
+        require = str(config.get("require_backend", "") or "")
+        if require:
+            raise RuntimeError(
+                "SEMANTIC_BACKEND_CONSTRUCTION_FAILED: %s construction "
+                "failed (%r); require_backend=%r forbids the stub "
+                "fallback" % (backend, exc, require)) from exc
         stub = StubSegmenter(prompts, class_mapping, conf)
         stub._last_stats["backend"] = "stub(fallback:%s:%s)" % (backend, type(exc).__name__)
         return _finish(stub)

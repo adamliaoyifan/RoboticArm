@@ -52,20 +52,29 @@ set -u
 # src-tree provenance and every peer's readiness gate rejects it
 # (WRONG_OVERLAY, live in smoke03/smoke04).
 export ROS_DOMAIN_ID=7 ROS_LOCALHOST_ONLY=1
-# [ST09-I S5.7-5] one shared offline CLIP vendor serves every worktree
-# (no per-worktree 338 MB copy). Override for another host/layout.
-M3_CLIP_VENDOR="${M3_CLIP_VENDOR:-/home/adamliao/work/elfin_humble_ws/src/luggage_perception/vendor}"
+# [ST09-I S5.7-6] semantic assets resolve from the INSTALL overlay
+# (colcon-installed package share) — formal runs must not depend on the
+# main workspace, the source tree, or the user cache. The launch's own
+# empty-flag default resolves the same share; passing it explicitly
+# keeps the runner's fail-closed pre-checks meaningful.
+M3_PERCEPTION_SHARE="$WS/install-st09/luggage_perception/share/luggage_perception"
+M3_CLIP_VENDOR="${M3_CLIP_VENDOR:-$M3_PERCEPTION_SHARE/vendor}"
 if [[ ! -d "$M3_CLIP_VENDOR/clip_pkg" ]]; then
-  echo "CLIP vendor incomplete at $M3_CLIP_VENDOR (need clip_pkg/); set M3_CLIP_VENDOR" >&2
+  echo "CLIP vendor incomplete at $M3_CLIP_VENDOR (need clip_pkg/ in the install overlay; rebuild luggage_perception)" >&2
   exit 1
 fi
-# Same sharing rule for the YOLO-World checkpoint (bare filename would
-# resolve against this worktree's CWD and fall back to a download).
-M3_YOLO_WEIGHTS="${M3_YOLO_WEIGHTS:-/home/adamliao/work/elfin_humble_ws/yolov8s-world.pt}"
-if [[ ! -f "$M3_YOLO_WEIGHTS" ]]; then
-  echo "YOLO-World weights missing at $M3_YOLO_WEIGHTS; set M3_YOLO_WEIGHTS" >&2
+M3_YOLO_WEIGHTS="${M3_YOLO_WEIGHTS:-$M3_PERCEPTION_SHARE/models/yolov8s-world.pt}"
+if [[ ! -f "$M3_YOLO_WEIGHTS" ]; then
+  echo "YOLO-World weights missing at $M3_YOLO_WEIGHTS (install overlay models/; rebuild luggage_perception)" >&2
   exit 1
 fi
+# Hash-record the frozen semantic assets into the lifecycle log (the
+# acceptance manifest carries the same values).
+weights_sha=$(sha256sum "$M3_YOLO_WEIGHTS" | cut -d' ' -f1)
+vendor_sha=$(cd "$M3_CLIP_VENDOR" && LC_ALL=C find clip_pkg deps clip_models -type f \
+  | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
+mkdir -p "$OUT"
+log semantic_assets ", \"vendor\": \"$M3_CLIP_VENDOR\", \"vendor_tree_sha256\": \"$vendor_sha\", \"weights\": \"$M3_YOLO_WEIGHTS\", \"weights_sha256\": \"$weights_sha\""
 export M3_REPO="$WS"
 export M3_SCENE_TF="$WS/install-st09/luggage_description/share/luggage_description/config/scene_tf_deploy.yaml"
 export M3_ATLAS_DIR="$WS/src/luggage_planning/data/reachability_atlas_deploy_sim"
@@ -141,6 +150,23 @@ for attempt in $(seq 1 100); do
   sleep 3
 done
 log semantic_prewarm ", \"ready\": $seg_ready, \"waited_attempt\": $attempt"
+# [ST09-I S5.7-6] the runtime-reported load paths must sit inside the
+# install overlay (frozen-asset isolation; a src/ or main-workspace
+# path here means the launch flag wiring drifted).
+if [[ "$seg_ready" -eq 1 ]]; then
+  if echo "$stats" | grep -q "clip_vendor\|model_path" \
+     && ! echo "$stats" | grep -q "install-st09"; then
+    echo "semantic assets resolved OUTSIDE the install overlay: $stats" >&2
+    stop_bag
+    kill -INT "$LAUNCH_PID" 2>/dev/null || true
+    sleep 5
+    bash "$WS/scripts/st09_i/kill_stack.sh" || true
+    exit 4
+  fi
+  prov=$(echo "$stats" | grep -o '[^ "]*install-st09[^ "]*' | sort -u \
+    | head -4 | tr '\n' ' ')
+  log semantic_provenance ", \"overlay_paths\": \"$prov\""
+fi
 if [[ "$seg_ready" -ne 1 ]]; then
   echo "semantic segmenter never published stats; refusing to start driver" >&2
   stop_bag

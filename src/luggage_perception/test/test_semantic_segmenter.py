@@ -830,6 +830,35 @@ class TestOfflineClipVendor(unittest.TestCase):
             self.assertFalse(
                 backend_matches_require(live, illegal), illegal)
 
+    def test_require_backend_forbids_silent_stub_fallback(self):
+        # [ST09-I S5.7-6] with require_backend configured, a backend
+        # construction failure must surface as a NAMED error carrying
+        # the original exception — the stub fallback would mask the
+        # real cause (e.g. a user-site dependency gone missing, or a
+        # network download attempt).
+        import unittest.mock as mock
+
+        import luggage_perception.semantic_segmenter as seg_mod
+
+        def _boom(_prompts, _mapping, _conf, **_kwargs):
+            raise ImportError("ultralytics", name="ultralytics")
+
+        config = {"backend": "bbox_fill", "prompts": ["suitcase"],
+                  "require_backend": "bbox_fill"}
+        with mock.patch.dict(seg_mod._BACKENDS, {"bbox_fill": _boom}):
+            with self.assertRaises(RuntimeError) as ctx:
+                seg_mod.build_segmenter(config)
+        self.assertIn("SEMANTIC_BACKEND_CONSTRUCTION_FAILED",
+                      str(ctx.exception))
+        self.assertIn("ultralytics", str(ctx.exception.__cause__))
+        # Without require_backend the legacy debug fallback still
+        # constructs a stub (and NAMES itself as a fallback).
+        with mock.patch.dict(seg_mod._BACKENDS, {"bbox_fill": _boom}):
+            seg = seg_mod.build_segmenter(
+                {"backend": "bbox_fill", "prompts": ["suitcase"]})
+        self.assertTrue(seg.last_stats["backend"].startswith(
+            "stub(fallback:bbox_fill:"))
+
     def test_vendored_clip_load_gets_download_root_and_no_user_cache(self):
         import os
 

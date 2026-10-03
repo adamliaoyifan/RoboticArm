@@ -1,0 +1,30 @@
+{
+  "backend": "bbox_fill:/tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/models/yolov8s-world.pt",
+  "cache_clip_absent": true,
+  "clip_vendor": "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/vendor",
+  "dead_proxy": true,
+  "manifest_match": true,
+  "model_path": "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/models/yolov8s-world.pt",
+  "module_path": "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/local/lib/python3.10/dist-packages/luggage_perception/semantic_segmenter.py",
+  "pinned_system_dependencies": {
+    "cv2": {
+      "path": "/home/adamliao/.local/lib/python3.10/site-packages/cv2/__init__.py",
+      "version": "4.13.0"
+    },
+    "numpy": {
+      "path": "/home/adamliao/.local/lib/python3.10/site-packages/numpy/__init__.py",
+      "version": "2.2.6"
+    },
+    "torch": {
+      "path": "/home/adamliao/.local/lib/python3.10/site-packages/torch/__init__.py",
+      "version": "2.10.0+cu128"
+    },
+    "ultralytics": {
+      "path": "/home/adamliao/.local/lib/python3.10/site-packages/ultralytics/__init__.py",
+      "version": "8.4.6"
+    }
+  },
+  "source_vendor_hidden": true,
+  "vendor_tree_sha256": "150178f0db4b3a0e339ec0f2a234f584c921ce19047823e5e856858635b82c5f",
+  "weights_sha256": "095f5266bb9b654bd5ad9e21e9cdeda78e0f2c8460f5d652eaf04bab7ee251cf"
+}
