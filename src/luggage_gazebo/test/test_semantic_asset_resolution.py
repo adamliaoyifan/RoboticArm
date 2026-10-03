@@ -73,5 +73,52 @@ class TestSemanticAssetPaths(unittest.TestCase):
                 self.launch._require_semantic_assets(vendor, model))
 
 
+class TestSemanticPydeps(unittest.TestCase):
+    """[ST09-I S5.7-6] interpreter deps come from the frozen prefix."""
+
+    def setUp(self):
+        self.launch = _load_launch_module()
+
+    def test_empty_flag_resolves_ws_root_and_missing_is_named(self):
+        import tempfile
+
+        ws = "/tmp/candidate-ws"
+        with mock.patch.object(
+                self.launch, "get_package_prefix",
+                return_value=os.path.join(
+                    ws, "install-st09", "luggage_gazebo")):
+            # absent prefix -> NAMED failure (the user site is never a
+            # fallback source)
+            with self.assertRaises(RuntimeError) as ctx:
+                self.launch._semantic_pydeps_env(
+                    {"semantic_pydeps_dir": ""})
+            self.assertIn("SEMANTIC_PYDEPS_MISSING", str(ctx.exception))
+            # deployed prefix -> (path, nvidia lib dirs)
+            with tempfile.TemporaryDirectory() as tmp:
+                prefix = os.path.join(tmp, "pydeps-frozen")
+                nvidia = os.path.join(prefix, "nvidia", "cublas", "lib")
+                os.makedirs(nvidia)
+                with open(os.path.join(prefix, "DEPLOYED.json"),
+                          "w", encoding="utf-8") as handle:
+                    handle.write("{}")
+                resolved, libs = self.launch._semantic_pydeps_env(
+                    {"semantic_pydeps_dir": prefix})
+                self.assertEqual(resolved, prefix)
+                self.assertEqual(libs, [nvidia])
+
+    def test_explicit_flag_wins(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            prefix = os.path.join(tmp, "explicit-pydeps")
+            os.makedirs(prefix)
+            with open(os.path.join(prefix, "DEPLOYED.json"), "w",
+                      encoding="utf-8") as handle:
+                handle.write("{}")
+            resolved, _libs = self.launch._semantic_pydeps_env(
+                {"semantic_pydeps_dir": prefix})
+            self.assertEqual(resolved, prefix)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -38,7 +38,7 @@ from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
@@ -95,6 +95,7 @@ def _default_launch_values():
         "semantic_require_backend": "",
         "semantic_clip_vendor_dir": "",
         "semantic_model_name": "",
+        "semantic_pydeps_dir": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
         "yaw_mode": "",
@@ -166,6 +167,37 @@ def _require_semantic_assets(vendor, model):
             "SEMANTIC_WEIGHTS_MISSING: YOLO-World checkpoint absent at "
             "%s (expected the colcon-installed package share copy; a "
             "bare filename would fall back to a network download)" % model)
+
+
+def _semantic_pydeps_env(cfg):
+    """[ST09-I S5.7-6] Candidate-owned frozen Python deps for the segmenter.
+
+    The semantic backend's interpreter-side dependencies (torch +
+    ultralytics + their CUDA runtime) live in a candidate-owned frozen
+    prefix deployed by scripts/st09_i/deploy_python_deps.sh — NEVER in
+    the executing user's ~/.local site (a fresh HOME proved that
+    dependency; the user lock 2026-10-03 rejects it). The segmenter
+    node ALONE gets the prefix prepended to ITS PYTHONPATH with the
+    user site disabled, plus the prefix's cuda lib dirs on ITS
+    LD_LIBRARY_PATH — the rest of the stack keeps the overlay/system
+    environment (a frozen numpy 2.x must never leak into rclpy nodes
+    with numpy-1.x compiled extensions).
+    """
+    import glob
+
+    pydeps = str(cfg.get("semantic_pydeps_dir") or "").strip()
+    if not pydeps:
+        ws_root = os.path.dirname(os.path.dirname(
+            get_package_prefix("luggage_gazebo")))
+        pydeps = os.path.join(ws_root, "pydeps-frozen")
+    if not os.path.isfile(os.path.join(pydeps, "DEPLOYED.json")):
+        raise RuntimeError(
+            "SEMANTIC_PYDEPS_MISSING: frozen python deps prefix absent "
+            "at %s (deploy with scripts/st09_i/deploy_python_deps.sh; "
+            "the user site is NOT an allowed dependency source)" % pydeps)
+    nvidia_libs = sorted(glob.glob(
+        os.path.join(pydeps, "nvidia", "*", "lib")))
+    return pydeps, nvidia_libs
 
 
 def _bool_text(value):
@@ -781,6 +813,22 @@ def _launch_setup(context):
     segmenter_env = dict(_arena_env)
     segmenter_env["YOLO_AUTOUPDATE"] = "false"
     segmenter_env["LUGGAGE_CLIP_VENDOR_DIR"] = clip_vendor_dir
+    if use_semantic:
+        # [ST09-I S5.7-6] frozen python deps, segmenter-scoped: prefix
+        # first on ITS paths, user site disabled, cuda libs reachable.
+        # Scoped on purpose — the rest of the stack must keep resolving
+        # numpy/cv2 from the overlay/system (compiled ROS extensions).
+        pydeps, nvidia_libs = _semantic_pydeps_env(cfg)
+        segmenter_env["PYTHONNOUSERSITE"] = "1"
+        segmenter_env["PYTHONPATH"] = [
+            pydeps, os.pathsep,
+            EnvironmentVariable("PYTHONPATH", default_value=""),
+        ]
+        if nvidia_libs:
+            segmenter_env["LD_LIBRARY_PATH"] = [
+                os.pathsep.join(nvidia_libs), os.pathsep,
+                EnvironmentVariable("LD_LIBRARY_PATH", default_value=""),
+            ]
     segmenter = Node(
         package="luggage_perception",
         executable="semantic_segmenter_node.py",
@@ -1124,6 +1172,15 @@ def generate_launch_description():
                 "LUGGAGE_CLIP_VENDOR_DIR. Empty (the default) resolves "
                 "the colcon-installed copy under the "
                 "luggage_perception package share."),
+            profile_arg(
+                "semantic_pydeps_dir",
+                "Frozen python deps prefix for the segmenter (torch/"
+                "ultralytics/cuda). Empty (the default) resolves "
+                "<candidate ws>/pydeps-frozen, deployed by scripts/"
+                "st09_i/deploy_python_deps.sh; the user site is never "
+                "an allowed source. Missing prefix = named launch "
+                "failure when use_semantic is on.",
+            ),
             profile_arg(
                 "visual_kind",
                 "Pickup visual: box (primitive AABB) or mesh "

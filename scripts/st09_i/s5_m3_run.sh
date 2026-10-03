@@ -64,8 +64,15 @@ if [[ ! -d "$M3_CLIP_VENDOR/clip_pkg" ]]; then
   exit 1
 fi
 M3_YOLO_WEIGHTS="${M3_YOLO_WEIGHTS:-$M3_PERCEPTION_SHARE/models/yolov8s-world.pt}"
-if [[ ! -f "$M3_YOLO_WEIGHTS" ]; then
+if [[ ! -f "$M3_YOLO_WEIGHTS" ]]; then
   echo "YOLO-World weights missing at $M3_YOLO_WEIGHTS (install overlay models/; rebuild luggage_perception)" >&2
+  exit 1
+fi
+# [ST09-I S5.7-6] the backend's interpreter deps come from the
+# candidate-owned frozen prefix — NEVER the executing user's site.
+M3_PYDEPS="${M3_PYDEPS:-$WS/pydeps-frozen}"
+if [[ ! -f "$M3_PYDEPS/DEPLOYED.json" ]]; then
+  echo "frozen python deps prefix absent at $M3_PYDEPS (scripts/st09_i/deploy_python_deps.sh; the user site is not an allowed source)" >&2
   exit 1
 fi
 # Hash-record the frozen semantic assets into the lifecycle log (the
@@ -74,7 +81,8 @@ weights_sha=$(sha256sum "$M3_YOLO_WEIGHTS" | cut -d' ' -f1)
 vendor_sha=$(cd "$M3_CLIP_VENDOR" && LC_ALL=C find clip_pkg deps clip_models -type f \
   | LC_ALL=C sort | xargs sha256sum | sha256sum | cut -d' ' -f1)
 mkdir -p "$OUT"
-log semantic_assets ", \"vendor\": \"$M3_CLIP_VENDOR\", \"vendor_tree_sha256\": \"$vendor_sha\", \"weights\": \"$M3_YOLO_WEIGHTS\", \"weights_sha256\": \"$weights_sha\""
+pydeps_dists=$(python3 -c "import json;print(len(json.load(open('$M3_PYDEPS/DEPLOYED.json'))['distributions']))")
+log semantic_assets ", \"vendor\": \"$M3_CLIP_VENDOR\", \"vendor_tree_sha256\": \"$vendor_sha\", \"weights\": \"$M3_YOLO_WEIGHTS\", \"weights_sha256\": \"$weights_sha\", \"pydeps\": \"$M3_PYDEPS\", \"pydeps_dists\": $pydeps_dists"
 export M3_REPO="$WS"
 export M3_SCENE_TF="$WS/install-st09/luggage_description/share/luggage_description/config/scene_tf_deploy.yaml"
 export M3_ATLAS_DIR="$WS/src/luggage_planning/data/reachability_atlas_deploy_sim"

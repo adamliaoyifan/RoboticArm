@@ -55,3 +55,4 @@ install-st09-*/
 SDK_sample/CppLinux_SDK/bin/
 build-fresh-pd/
 install-fresh-pd/
+pydeps-frozen/

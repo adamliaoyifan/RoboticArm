@@ -219,12 +219,139 @@
       "tree_digest_command": "cd vendor && LC_ALL=C find clip_pkg deps clip_models -type f | LC_ALL=C sort | xargs sha256sum | sha256sum"
     },
     "offline_proofs": "source-tree vendor hidden + no ~/.cache/clip + dead-proxy (no-network) construction all pass; runtime-reported model_path/clip_vendor under the install overlay; verify with scripts/st09_i/verify_semantic_offline.sh",
-    "pinned_system_dependencies": {
-      "note": "interpreter-side deps live in the user site (~/.local/lib/python3.10/site-packages) — too heavy to vendor; they are the explicit pinned system dependencies, verified + recorded by scripts/st09_i/verify_semantic_offline.sh",
-      "ultralytics": "8.4.6",
-      "torch": "2.10.0+cu128",
-      "cv2": "4.13.0",
-      "numpy": "2.2.6"
+    "python_deps": {
+      "mode": "candidate-owned frozen prefix (pydeps-frozen/)",
+      "deploy_step": "scripts/st09_i/deploy_python_deps.sh",
+      "runtime_rule": "segmenter runs with PYTHONNOUSERSITE=1 and the prefix prepended to ITS PYTHONPATH (and its cuda lib dirs on ITS LD_LIBRARY_PATH) only; the user site can never satisfy an import",
+      "verification": "PYTHONNOUSERSITE=1 + fresh HOME + dead network + source vendor hidden -> construction succeeds (scripts/st09_i/verify_semantic_offline.sh); per-dist tree digests are RECORD-based",
+      "distributions": [
+        {
+          "name": "nvidia-cublas-cu12",
+          "version": "12.8.4.1",
+          "files": 23,
+          "tree_sha256": "ac22f8b60f839263a4d6cdfea4ac2c3a3881bc86ffcc6a8525c2ade02c54481b"
+        },
+        {
+          "name": "nvidia-cuda-cupti-cu12",
+          "version": "12.8.90",
+          "files": 56,
+          "tree_sha256": "d2559c36a931e7364ae8cc54a5b46878f8e209a1c4889742f459ab5b43de6d3b"
+        },
+        {
+          "name": "nvidia-cuda-nvrtc-cu12",
+          "version": "12.8.93",
+          "files": 19,
+          "tree_sha256": "04110f7077913ea05544762ca3365812800fcc739c35a01295e2a9641f01abc8"
+        },
+        {
+          "name": "nvidia-cuda-runtime-cu12",
+          "version": "12.8.90",
+          "files": 110,
+          "tree_sha256": "6eafc5136fff9d13df792397a24a935640d36c0e06679f2ea6f549ce24650cb3"
+        },
+        {
+          "name": "nvidia-cudnn-cu12",
+          "version": "9.10.2.21",
+          "files": 28,
+          "tree_sha256": "46c44a71625f55ed71e117b36a605b3adbaa2d6ab39ca82bca04a5229db40338"
+        },
+        {
+          "name": "nvidia-cufft-cu12",
+          "version": "11.3.3.83",
+          "files": 20,
+          "tree_sha256": "36cad0905368b3a7e4c604060ed0a80f0f5e0c4850a874db948c36de39d7bbd7"
+        },
+        {
+          "name": "nvidia-cufile-cu12",
+          "version": "1.13.1.3",
+          "files": 17,
+          "tree_sha256": "0dcedadad6394caa810d2b042b78bfb899a1a8436eeb59376c02ee78fb8c53f3"
+        },
+        {
+          "name": "nvidia-curand-cu12",
+          "version": "10.3.9.90",
+          "files": 32,
+          "tree_sha256": "4ecaea3ff347e30187f83ada8764b747e10bc359ef8baaa4689df309f75bf1e5"
+        },
+        {
+          "name": "nvidia-cusolver-cu12",
+          "version": "11.7.3.90",
+          "files": 22,
+          "tree_sha256": "0e163637b850fa67e7f9c1b9f4b084a391dd6654fc400ff160f92982c24a61f9"
+        },
+        {
+          "name": "nvidia-cusparse-cu12",
+          "version": "12.5.8.93",
+          "files": 17,
+          "tree_sha256": "1ded2e4d921261b2bb6e79ea9ab785817ef253a9578a81006a7fa830ee79f70d"
+        },
+        {
+          "name": "nvidia-cusparselt-cu12",
+          "version": "0.7.1",
+          "files": 8,
+          "tree_sha256": "3348947f8be5a7cf7c9a4ee074f508ee74c4697a32a4e6ac42e8ba5543f89802"
+        },
+        {
+          "name": "nvidia-nccl-cu12",
+          "version": "2.27.5",
+          "files": 8,
+          "tree_sha256": "24b69c464c4d7ec6afd9d602c388f970ea82f4b2558a360373f3d1bf4a7c587f"
+        },
+        {
+          "name": "nvidia-nvjitlink-cu12",
+          "version": "12.8.93",
+          "files": 16,
+          "tree_sha256": "48e4df35389c228b497530d82cb501543d7e948a3b4f390b5ca1a9ada3acf179"
+        },
+        {
+          "name": "nvidia-nvshmem-cu12",
+          "version": "3.4.5",
+          "files": 65,
+          "tree_sha256": "3b7e1f23759a1b77f32aec476ecd173ed43dfd457d71919078d152fe212b12ab"
+        },
+        {
+          "name": "nvidia-nvtx-cu12",
+          "version": "12.8.90",
+          "files": 36,
+          "tree_sha256": "393d9f2da8e1213f7a9ceb79284a24c1c2500d199de9a5463d9c2c790336d50c"
+        },
+        {
+          "name": "sympy",
+          "version": "1.14.0",
+          "files": 3102,
+          "tree_sha256": "790bb4431cfe2b3335b2a55663a2633ce0d652d9da8efdc445c66300fda854d6"
+        },
+        {
+          "name": "torch",
+          "version": "2.10.0",
+          "files": 13981,
+          "tree_sha256": "87749b9c0b0baf109d981ebbf7bd17330167547ccf8d0432f01c6c5d5faac108"
+        },
+        {
+          "name": "torchvision",
+          "version": "0.25.0",
+          "files": 390,
+          "tree_sha256": "0512899d7b2a5da32bb11cf75d4df928fe93bc70f9a7fdd939b5b96c11615bda"
+        },
+        {
+          "name": "triton",
+          "version": "3.6.0",
+          "files": 466,
+          "tree_sha256": "2eb5b69248ba0812fdef2a9df2e8b011f27942834e22a14de9c98fa657796f98"
+        },
+        {
+          "name": "typing_extensions",
+          "version": "4.15.0",
+          "files": 7,
+          "tree_sha256": "72f14f220a852a705f3bcfaf71a92c6b26429b133d36cf67a92bb181f3b11694"
+        },
+        {
+          "name": "ultralytics",
+          "version": "8.4.6",
+          "files": 486,
+          "tree_sha256": "87d7be4399be7d026848b7e3691e5cbc6fb0d83b9995022bcd63712f96e0853d"
+        }
+      ]
     }
   },
   "build_and_run_commands": {
