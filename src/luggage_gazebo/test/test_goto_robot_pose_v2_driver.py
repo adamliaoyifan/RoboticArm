@@ -191,5 +191,99 @@ class TestExitToPortalProof(unittest.TestCase):
         self.assertIsNone(driver._portal_exit_proof)
 
 
+class _StatsResponse(object):
+    def __init__(self, revision):
+        self.success = True
+        self.map_revision = int(revision)
+
+
+class _GotoResponse(object):
+    def __init__(self, success=True, reason_code="", already_there=False):
+        self.success = bool(success)
+        self.reason_code = str(reason_code)
+        self.already_there = bool(already_there)
+        self.route_digest = ""
+        self.certification_id = ""
+        self.admission_map_revision = 0
+        self.leg_digests = []
+        self.leg_load_states = []
+        self.motion_segments = []
+
+
+class _ScriptedClient(object):
+    def wait_for_service(self, timeout_sec=None):
+        return True
+
+
+class _RetryDriver(object):
+    """Shell with only what _goto_named_pose_v2 + the boot-churn settle
+    touch; call_srv answers from a scripted response queue."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.goto_request_ids = []
+        self._group = None
+        self._last_joint_state = {"position": [0.0] * 6}
+        self._frame_scene_revision = "scene-md5-1"
+
+    def create_client(self, srv_type, name, callback_group=None):
+        return _ScriptedClient()
+
+    def call_srv(self, client, request, timeout):
+        if getattr(request, "pose_name", None) is not None:
+            self.goto_request_ids.append(str(request.request_id))
+        return self.responses.pop(0)
+
+    def _frame_request_id(self, prefix):
+        return "%s-x" % prefix
+
+    _goto_named_pose_v2 = PickRetreatEvalDriver._goto_named_pose_v2
+    _wait_map_quiescence = PickRetreatEvalDriver._wait_map_quiescence
+
+
+class TestGotoMapStaleRetry(unittest.TestCase):
+    """[ST09-I G2] boot-churn MAP_STALE is retried after an OBSERVABLE
+    revision-quiescence wait; other refusals are not retried; the
+    fail-closed gate itself is untouched."""
+
+    def test_map_stale_retries_after_quiescence(self):
+        driver = _RetryDriver([
+            _StatsResponse(5),                       # attempt 0 stats
+            _GotoResponse(False, "MAP_STALE"),       # attempt 0 refused
+            _StatsResponse(6), _StatsResponse(6),    # settle: advances then still
+            _StatsResponse(6),                       # attempt 1 stats
+            _GotoResponse(True, already_there=True),
+        ])
+        ok, message = driver._goto_named_pose_v2("pickup_observe_sim")
+        self.assertTrue(ok)
+        self.assertEqual(message, "already_there")
+        self.assertEqual(len(driver.goto_request_ids), 2)
+        self.assertNotEqual(driver.goto_request_ids[0],
+                            driver.goto_request_ids[1])
+
+    def test_map_stale_exhausts_retries_and_returns_the_reason(self):
+        driver = _RetryDriver([
+            _StatsResponse(5), _GotoResponse(False, "MAP_STALE"),
+            _StatsResponse(6), _StatsResponse(6),   # settle: 2 polls
+            _StatsResponse(6), _GotoResponse(False, "MAP_STALE"),
+            _StatsResponse(6),                        # settle: already equal
+            _StatsResponse(6), _GotoResponse(False, "MAP_STALE"),
+        ])
+        ok, message = driver._goto_named_pose_v2("pickup_observe_sim")
+        self.assertFalse(ok)
+        self.assertEqual(message, "MAP_STALE")
+        self.assertEqual(len(driver.goto_request_ids), 3)
+
+    def test_other_refusals_are_not_retried(self):
+        driver = _RetryDriver([
+            _StatsResponse(5),
+            _GotoResponse(False, "POSE_NOT_VALID"),
+        ])
+        ok, message = driver._goto_named_pose_v2("pickup_observe_sim")
+        self.assertFalse(ok)
+        self.assertEqual(message, "POSE_NOT_VALID")
+        self.assertEqual(len(driver.goto_request_ids), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

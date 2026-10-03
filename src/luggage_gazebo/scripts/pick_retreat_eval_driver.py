@@ -848,6 +848,31 @@ class PickRetreatEvalDriver(Node):
             pose_name, timeout=self._args.goto_timeout)
         return ok, message or ("goto %s" % pose_name), None
 
+    def _wait_map_quiescence(self, stats_client, seen_revision,
+                             timeout=10.0):
+        """[ST09-I G2] Boot-churn settle for the goto map gate.
+
+        Polls the AUTHORITATIVE stats until the map revision stops
+        advancing (two consecutive equal reads) — an observable
+        quiescent state, not a blind sleep and not a producer-gate
+        change: the fail-closed latest-map admission stays exactly as
+        strict, the caller just re-plans against a settled map."""
+        from luggage_msgs.srv import GetCargoMapStats
+
+        deadline = time.monotonic() + float(timeout)
+        last = int(seen_revision)
+        while time.monotonic() < deadline:
+            stats = self.call_srv(
+                stats_client, GetCargoMapStats.Request(), timeout=3.0)
+            if stats is None or not stats.success:
+                return False
+            revision = int(stats.map_revision)
+            if revision == last:
+                return True
+            last = revision
+            time.sleep(0.2)
+        return False
+
     def _goto_named_pose_v2(self, pose_name, timeout=30.0):
         """[ST09-I S5.7-6] Certified motion to a named site pose.
 
@@ -857,6 +882,12 @@ class PickRetreatEvalDriver(Node):
         (typed, executed in order with per-leg admission scopes) —
         never a pose spec handed to the planner. The certified route
         identity is stashed for the exit-proof bookkeeping.
+
+        [ST09-I G2] MAP_STALE is retried (bounded) after an observable
+        revision-quiescence wait: right after boot the readiness
+        integrations are still committing between the caller's stats
+        read and the producer's fresh fetch, and the first home goto
+        must not fail the whole session on that churn.
         """
         from luggage_msgs.srv import GetCargoMapStats, GoToRobotPoseV2
 
@@ -877,10 +908,6 @@ class PickRetreatEvalDriver(Node):
             self._goto_stats_client = stats_client
         if not stats_client.wait_for_service(timeout_sec=5.0):
             return False, "MAP_STATUS_UNAVAILABLE"
-        stats = self.call_srv(
-            stats_client, GetCargoMapStats.Request(), timeout=5.0)
-        if stats is None or not stats.success:
-            return False, "MAP_STATUS_UNAVAILABLE"
         request = GoToRobotPoseV2.Request()
         request.request_id = self._frame_request_id("goto_%s" % pose_name)
         request.pose_name = str(pose_name)
@@ -888,12 +915,33 @@ class PickRetreatEvalDriver(Node):
         request.current_joint_state = [
             float(v) for v in list(joints)[:6]]
         request.scene_revision = str(self._frame_scene_revision or "")
-        request.latest_map_revision = int(stats.map_revision)
-        result = self.call_srv(client, request, timeout=timeout)
-        if result is None:
-            return False, "GOTO_ROUTE_UNAVAILABLE"
-        if not result.success:
-            return False, str(result.reason_code or "GOTO_ROUTE_REJECTED")
+        result = None
+        for attempt in range(3):
+            # a fresh request id per attempt: the frame runtime may
+            # treat a repeated id as a replay, not a retry
+            request.request_id = self._frame_request_id(
+                "goto_%s" % pose_name
+                + ("" if attempt == 0 else "_r%d" % attempt))
+            stats = self.call_srv(
+                stats_client, GetCargoMapStats.Request(), timeout=5.0)
+            if stats is None or not stats.success:
+                return False, "MAP_STATUS_UNAVAILABLE"
+            request.latest_map_revision = int(stats.map_revision)
+            result = self.call_srv(client, request, timeout=timeout)
+            if result is None:
+                return False, "GOTO_ROUTE_UNAVAILABLE"
+            if result.success:
+                break
+            reason = str(result.reason_code or "GOTO_ROUTE_REJECTED")
+            if reason != "MAP_STALE" or attempt == 2:
+                return False, reason
+            if not self._wait_map_quiescence(
+                    stats_client, int(stats.map_revision)):
+                return False, reason
+        if not bool(getattr(result, "success", False)):
+            return False, str(
+                getattr(result, "reason_code", None)
+                or "GOTO_ROUTE_REJECTED")
         if bool(result.already_there):
             self._last_goto_route = None
             return True, "already_there"
