@@ -1,0 +1,25 @@
+{
+ "executable_fallback": "current",
+ "file_ok": true,
+ "hardware_calibration_prerequisite": "measured site poses required before any hardware motion; absence is a prerequisite, not a validated pose",
+ "issues": [],
+ "poses": {
+  "pickup": {
+   "outcome": "not_executable",
+   "valid": false
+  },
+  "portal_observation": {
+   "outcome": "not_executable",
+   "valid": false
+  },
+  "return": {
+   "outcome": "not_executable",
+   "valid": false
+  },
+  "second_region_observation": {
+   "outcome": "not_executable",
+   "valid": false
+  }
+ },
+ "schema": "st09.pd-site-poses/1"
+}

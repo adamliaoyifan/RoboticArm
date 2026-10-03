@@ -105,14 +105,15 @@ class HardwarePickLaunchTest(unittest.TestCase):
 
     def test_site_launch_uses_site_poses_and_current_observe(self):
         src = LAUNCH.read_text(encoding="utf-8")
-        self.assertIn("robot_poses.site.yaml", src)
+        # ST09-PD: the hardware default is the deploy site-pose file
+        # (every entry valid:false until measured, observe_pose=current).
+        self.assertIn(
+            'poses = os.path.join(desc_share, "config", "robot_poses.deploy.yaml")',
+            src,
+        )
         self.assertIn('default_value="current"', src)
         self.assertIn('"observe_pose_name"', src)
         self.assertIn('"default_observe_pose"', src)
-        self.assertIn(
-            'poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")',
-            src,
-        )
         self.assertIn("sim_poses =", src)
 
     def test_execution_backend_stays_waypoint_and_forwards_servo_j(self):

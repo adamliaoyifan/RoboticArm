@@ -28,6 +28,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
+    SetLaunchConfiguration,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -209,6 +210,57 @@ def start_planning_of(context):
     return IfCondition(LaunchConfiguration("start_planning"))
 
 
+def _deploy_profile_gate(context, *args, **kwargs):
+    """ST09-PD: fail-closed deploy asset resolution at launch time.
+
+    Empty arguments must select the installed deploy scene and
+    atlas_runtime_deploy.yaml, never a simulation asset. Missing,
+    ambiguous, sim-named, or hash-mismatched assets raise here so the
+    hardware chain never starts on the wrong cell identity. The
+    atlas/manifest identity checks run with the planning chain; a
+    detect-only bringup still resolves the scene and config strictly.
+    """
+    from luggage_planning.deploy_profile import resolve_deploy_profile
+
+    scene = LaunchConfiguration("scene_tf_config").perform(context)
+    atlas_cfg = str(
+        LaunchConfiguration("atlas_runtime_config").perform(context) or "")
+    record = resolve_deploy_profile(
+        scene, atlas_cfg,
+        check_atlas=_bool_text(
+            LaunchConfiguration("start_planning").perform(context)))
+    if "atlas_npz" not in record:
+        return [
+            LogInfo(msg=(
+                "[hardware_pick] deploy profile: scene=%s atlas_cfg=%s "
+                "(atlas identity not checked: start_planning=false)"
+                % (record["scene_tf_path"], record["atlas_runtime_config"]))),
+            SetLaunchConfiguration(
+                "deploy_scene_resolved", record["scene_tf_path"]),
+            SetLaunchConfiguration(
+                "deploy_atlas_config_resolved",
+                record["atlas_runtime_config"]),
+        ]
+    return [
+        LogInfo(msg=(
+            "[hardware_pick] deploy profile: scene=%s atlas_cfg=%s "
+            "atlas=%s meta=%s urdf=%s manifest=%s scene_hash=%s urdf_hash=%s"
+            % (record["scene_tf_path"], record["atlas_runtime_config"],
+               record["atlas_npz"], record["atlas_meta"], record["urdf_path"],
+               record.get("manifest_path", "-"), record["scene_tf_hash"],
+               record["urdf_hash"]))),
+        SetLaunchConfiguration(
+            "deploy_scene_resolved", record["scene_tf_path"]),
+        SetLaunchConfiguration(
+            "deploy_atlas_config_resolved", record["atlas_runtime_config"]),
+        SetLaunchConfiguration("deploy_atlas_npz", record["atlas_npz"]),
+        SetLaunchConfiguration("deploy_atlas_meta", record["atlas_meta"]),
+        SetLaunchConfiguration("deploy_urdf", record["urdf_path"]),
+        SetLaunchConfiguration(
+            "deploy_manifest", record.get("manifest_path", "")),
+    ]
+
+
 def _semantic_srdf():
     path = os.path.join(
         get_package_share_directory("luggage_description"),
@@ -310,11 +362,16 @@ def _launch_description():
     desc_share = get_package_share_directory("luggage_description")
     perc_share = get_package_share_directory("luggage_perception")
     exec_share = get_package_share_directory("elfin_trajectory_executor")
-    default_scene = os.path.join(desc_share, "config", "scene_tf.yaml")
-    if not os.path.isfile(default_scene):
-        default_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
-    poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")
+    planning_share = get_package_share_directory("luggage_planning")
+    # ST09-PD: empty arguments select the installed deploy assets. Never
+    # fall back to scene_tf.yaml[.example] -- that silent sim reuse is
+    # exactly what the deploy profile gate rejects.
+    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy.yaml")
+    default_atlas_cfg = os.path.join(
+        planning_share, "config", "atlas_runtime_deploy.yaml")
+    poses = os.path.join(desc_share, "config", "robot_poses.deploy.yaml")
     sim_poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
+    sim_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
     site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
@@ -326,22 +383,33 @@ def _launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("scene_tf_config", default_value=default_scene),
+            DeclareLaunchArgument(
+                "scene_tf_config",
+                default_value=default_scene,
+                description=(
+                    "Deploy scene file. The default is the installed "
+                    "scene_tf_deploy.yaml; %s and scene_tf.yaml are "
+                    "simulation assets and are rejected on this cell."
+                    % os.path.basename(sim_scene)
+                ),
+            ),
             DeclareLaunchArgument(
                 "atlas_runtime_config",
-                default_value="",
+                default_value=default_atlas_cfg,
                 description=(
-                    "Reachability-atlas runtime YAML. Empty selects the "
-                    "atlas cell whose stored scene hash matches "
-                    "scene_tf_config (simulation or scene_tf_deploy)."
+                    "Reachability-atlas runtime YAML. Default is the "
+                    "installed atlas_runtime_deploy.yaml (hash_policy "
+                    "strict); atlas_runtime.yaml is the simulation cell "
+                    "and is rejected on this cell."
                 ),
             ),
             DeclareLaunchArgument(
                 "robot_poses_config",
                 default_value=poses,
                 description=(
-                    "Named joint poses for GoToRobotPose. Default is "
-                    "robot_poses.site.yaml (observe_pose=current). "
+                    "Site pose file for GoToRobotPose. Default is "
+                    "robot_poses.deploy.yaml (all entries valid:false, "
+                    "observe_pose=current until the cell is measured). "
                     "Do not pass %s on this cell; those pickup_observe "
                     "joints are simulation." % sim_poses
                 ),
@@ -460,6 +528,10 @@ def _launch_description():
                     "(no sim pickup_observe swing)."
                 )
             ),
+            # ST09-PD: resolve the deploy profile before any node starts;
+            # a missing/ambiguous/sim-named/hash-mismatched asset fails
+            # the whole launch instead of starting on the wrong cell.
+            OpaqueFunction(function=_deploy_profile_gate),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(exec_share, "launch", "jazzy_real.launch.py")

@@ -1,7 +1,9 @@
-# Deploy-cell reachability atlas. The joint seeds were sampled against
-# luggage_description/config/scene_tf_deploy.yaml. Nodes select this file
-# automatically when the active scene hash matches the atlas metadata.
-# Pass atlas_runtime_config only to override that match.
+# Deploy-cell reachability atlas (ST09-PD). The joint seeds were sampled
+# against luggage_description/config/scene_tf_deploy.yaml and the
+# expanded hardware URDF captured beside the atlas
+# (data/reachability_atlas_deploy/robot_description.xml). The hardware
+# launch selects this file by name; an explicit atlas_runtime_config
+# still overrides it.
 #
 # atlas_dir is a directory under the package data/ tree (src first, then
 # the installed share). If container_tf_tuner rewrites the deploy scene,
@@ -11,9 +13,10 @@ enabled: true
 atlas_dir: reachability_atlas_deploy
 basename: "s20_container_collision_aware"
 atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
-# Hardware cell. warn keeps a mismatched atlas loaded. Do not certify a
-# sim campaign with this file: the simulation cell is hash_policy strict.
-hash_policy: "warn"      # off | warn | strict, against the atlas meta hashes
+# Hardware cell (ST09-PD): strict. The deploy cell refuses to plan from
+# an atlas whose scene/URDF identity is missing or mismatched, exactly
+# like the simulation certification cell; warn is forbidden here.
+hash_policy: "strict"    # off | warn | strict, against the atlas meta hashes
 query_offset: [0.0, 0.0, 0.0]   # container-frame [x, y, z] added to queries
 payload:
   policy: "auto"         # auto = smallest built atlas enveloping the measured

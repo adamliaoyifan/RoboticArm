@@ -53,3 +53,5 @@ install-st09/
 build-st09-*/
 install-st09-*/
 SDK_sample/CppLinux_SDK/bin/
+build-fresh-pd/
+install-fresh-pd/

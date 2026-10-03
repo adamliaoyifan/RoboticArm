@@ -116,9 +116,11 @@ def test_default_runtime_stays_on_sim_atlas():
     assert cfg["hash_policy"] == "strict"
 
 
-def test_deploy_runtime_is_not_fail_closed():
+def test_deploy_runtime_is_fail_closed():
+    # ST09-PD: the deploy cell refuses an unverified/mismatched atlas
+    # exactly like the simulation certification cell. warn is forbidden.
     cfg = ar.load_atlas_runtime(DEPLOY_RUNTIME)
-    assert cfg["hash_policy"] == "warn"
+    assert cfg["hash_policy"] == "strict"
 
 
 SIM_SCENE = os.path.normpath(os.path.join(
