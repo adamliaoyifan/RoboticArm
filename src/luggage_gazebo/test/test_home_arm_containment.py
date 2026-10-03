@@ -212,5 +212,172 @@ class TestReturnFailureIsNotAPlaceFailure(unittest.TestCase):
                 code)
 
 
+class _FixedClock(object):
+    def __init__(self, ns):
+        self._ns = int(ns)
+
+    def now(self):
+        import rclpy.time
+
+        return rclpy.time.Time(nanoseconds=self._ns)
+
+
+def _certified_exit_proof(**overrides):
+    """A REAL completed exit: certified route identity + final joints."""
+    proof = {
+        "request_id": "req-exit-1",
+        "route_digest": "digest-exit-1",
+        "certification_id": "cert-exit-1",
+        "scene_revision": "scene-md5-1",
+        "final_joint_values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6],
+        "attachment_state": "unloaded",
+        "proof_ns": 9_999_000_000_000,
+    }
+    proof.update(overrides)
+    return proof
+
+
+def _live_vacuum(received_ns=None, attached=False):
+    if received_ns is None:
+        received_ns = _ProofDriver.NOW_NS - 500_000_000
+    return {"attached": bool(attached), "vacuum_on": False,
+            "fail_reason": "", "received_ns": int(received_ns)}
+
+
+class _ProofDriver(object):
+    """Only the state _portal_exit_proof_valid adjudicates."""
+
+    NOW_NS = 10_000_000_000_000
+
+    def __init__(self, proof=None, scene="scene-md5-1",
+                 joints=(0.1, -0.2, 0.3, -0.4, 0.5, -0.6), vacuum=None):
+        self._portal_exit_proof = proof
+        self._frame_scene_revision = scene
+        self._last_joint_state = {"position": list(joints)}
+        self._vacuum_state = vacuum
+
+    def get_clock(self):
+        return _FixedClock(self.NOW_NS)
+
+    _portal_exit_proof_valid = PlaceSmokeDriver._portal_exit_proof_valid
+    _start_new_cycle = PlaceSmokeDriver._start_new_cycle
+
+
+class TestPortalExitProofAdjudication(unittest.TestCase):
+    """[ST09-I G0-1] the exception binds to a certified exit completed
+    in THIS cycle: empty certs, drift, and a missing/stale/reattached
+    vacuum feed all void it (fail-closed named stop, zero goto)."""
+
+    def test_a_real_certified_exit_with_live_vacuum_passes(self):
+        driver = _ProofDriver(proof=_certified_exit_proof(),
+                              vacuum=_live_vacuum())
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertTrue(ok, why)
+        self.assertTrue(why.startswith("valid"), why)
+
+    def test_empty_route_or_cert_is_uncertified_exit(self):
+        for field in ("request_id", "route_digest", "certification_id"):
+            driver = _ProofDriver(
+                proof=_certified_exit_proof(**{field: ""}),
+                vacuum=_live_vacuum())
+            ok, why = driver._portal_exit_proof_valid()
+            self.assertFalse(ok, field)
+            self.assertTrue(why.startswith("uncertified_exit"), why)
+
+    def test_wrong_scene_rejects(self):
+        driver = _ProofDriver(
+            proof=_certified_exit_proof(scene_revision="scene-md5-OTHER"),
+            vacuum=_live_vacuum())
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertEqual(why, "scene_changed")
+
+    def test_joint_drift_beyond_the_window_rejects(self):
+        joints = (0.1, -0.2, 0.3, -0.4, 0.5, -0.6 + 0.03)
+        driver = _ProofDriver(joints=joints,
+                              proof=_certified_exit_proof(),
+                              vacuum=_live_vacuum())
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertTrue(why.startswith("joints_moved"), why)
+
+    def test_missing_vacuum_feed_is_not_not_attached(self):
+        # an absent feed cannot vouch that the cycle never restarted
+        for vacuum in (None, {}):
+            driver = _ProofDriver(proof=_certified_exit_proof(),
+                                  vacuum=vacuum)
+            ok, why = driver._portal_exit_proof_valid()
+            self.assertFalse(ok)
+            self.assertEqual(why, "vacuum_state_missing")
+
+    def test_stale_vacuum_feed_rejects(self):
+        driver = _ProofDriver(
+            proof=_certified_exit_proof(),
+            vacuum=_live_vacuum(
+                received_ns=_ProofDriver.NOW_NS - 3_000_000_000))
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertTrue(why.startswith("vacuum_state_stale"), why)
+        # an unstamped record is stale, never fresh
+        driver = _ProofDriver(proof=_certified_exit_proof(),
+                              vacuum={"attached": False})
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertTrue(why.startswith("vacuum_state_stale"), why)
+
+    def test_vacuum_reattach_rejects(self):
+        driver = _ProofDriver(proof=_certified_exit_proof(),
+                              vacuum=_live_vacuum(attached=True))
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertEqual(why, "vacuum_reattached")
+
+    def test_a_new_cycle_voids_the_proof(self):
+        driver = _ProofDriver(proof=_certified_exit_proof(),
+                              vacuum=_live_vacuum())
+        driver._portal_exited = True
+        driver._start_new_cycle()
+        self.assertIsNone(driver._portal_exit_proof)
+        self.assertFalse(driver._portal_exited)
+        ok, why = driver._portal_exit_proof_valid()
+        self.assertFalse(ok)
+        self.assertEqual(why, "absent")
+
+
+class TestUncertifiedExitNeverSubmitsGoto(unittest.TestCase):
+    """[ST09-I G0-1] an empty-cert proof keeps the named stop through
+    the REAL _home_arm wiring: zero goto submissions, void reason in
+    the notes."""
+
+    def test_uncertified_proof_keeps_the_named_stop(self):
+        class _Wired(_ProofDriver):
+            _ensure = (True, False, "EXIT_ROUTE_UNAVAILABLE",
+                       "opening_corridor", "unloaded", "{}")
+
+            def __init__(self):
+                _ProofDriver.__init__(
+                    self, proof=_certified_exit_proof(route_digest=""),
+                    vacuum=_live_vacuum())
+                self.calls = []
+
+            def _ensure_cycle_start(self):
+                return self._ensure
+
+            def ros_now_sec(self):
+                return 0.0
+
+            def goto_observe(self):
+                self.calls.append("goto")
+                return True, "ok", None
+
+            _home_arm = PlaceSmokeDriver._home_arm
+
+        driver = _Wired()
+        ok, notes, _result = driver._home_arm()
+        self.assertEqual(driver.calls, [])
+        self.assertFalse(ok)
+        self.assertIn("uncertified_exit", notes)
+
+
 if __name__ == "__main__":
     unittest.main()

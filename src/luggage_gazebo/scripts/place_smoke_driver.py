@@ -132,6 +132,12 @@ GZ_WORLD = "airport_loading"
 APERTURE_ESCAPE_MARGIN_M = 0.10
 CAMERA_ENVELOPE_FALLBACK_M = 0.30
 
+# [ST09-I G0-1] Receive-time freshness the exit-proof adjudication
+# demands of /vacuum/state — mirrors the selector's
+# route_producer.VACUUM_STATE_FRESHNESS_S (the message carries no
+# stamp, so receive time on the node clock is the only basis).
+PORTAL_PROOF_VACUUM_FRESHNESS_S = 2.0
+
 # Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
 # was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
 # many seconds; grow if a planned segment plus goal_time plus tail is longer.
@@ -396,18 +402,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 str(result.detail or ""))
 
     def _portal_exit_proof_valid(self):
-        """[ST09-I S5.7-6 评审点 1] Adjudicate the structured exit proof.
+        """[ST09-I S5.7-6 评审点 1 / G0-1] Adjudicate the structured
+        exit proof.
 
         The proof is an evidence chain, not a boolean bypass: it holds
-        only while NOTHING has changed since the certified exit — same
-        scene identity, the arm still at the exit's final joints
-        (0.02 rad wrap-aware), the vacuum still not re-attached, and a
-        live unloaded attachment state. Any drift voids it and the
+        only while NOTHING has changed since the certified exit — a
+        NON-EMPTY certified exit route completed in THIS cycle (an
+        empty/already-there record is not a proof and never passes the
+        exception), same scene identity, the arm still at the exit's
+        final joints (0.02 rad wrap-aware), and a PRESENT and FRESH
+        un-attached vacuum feed (an absent or stale feed cannot vouch
+        that the cycle never restarted). Any drift voids it and the
         four-state verdict stands.
         """
         proof = getattr(self, "_portal_exit_proof", None)
         if not isinstance(proof, dict):
             return False, "absent"
+        # [G0-1] bind the exception to the ACTUALLY-certified exit
+        # route: request/route/cert must all be non-empty.
+        for field in ("request_id", "route_digest", "certification_id"):
+            if not str(proof.get(field) or "").strip():
+                return False, "uncertified_exit(%s)" % field
         if str(proof.get("scene_revision") or "") != str(
                 getattr(self, "_frame_scene_revision", "") or ""):
             return False, "scene_changed"
@@ -423,10 +438,25 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         delta = max(abs(_wrap(c - t)) for c, t in zip(live, final))
         if delta > 0.02:
             return False, "joints_moved(%.3frad)" % delta
-        vacuum = dict(getattr(self, "_vacuum_state", None) or {})
+        vacuum = getattr(self, "_vacuum_state", None)
+        if not isinstance(vacuum, dict) or not vacuum:
+            return False, "vacuum_state_missing"
         if bool(vacuum.get("attached")):
             return False, "vacuum_reattached"
+        received_ns = int(vacuum.get("received_ns") or 0)
+        age_s = max(0.0, (
+            int(self.get_clock().now().nanoseconds) - received_ns) / 1e9)
+        if received_ns <= 0 or age_s > PORTAL_PROOF_VACUUM_FRESHNESS_S:
+            return False, "vacuum_state_stale(%.1fs)" % age_s
         return True, "valid(delta=%.3frad)" % delta
+
+    def _start_new_cycle(self):
+        """[ST09-I S5.7-6 评审点 1 / G0-1] A new attach STARTS a cycle:
+        the previous cycle's exit proof is void from here — it must
+        never carry across a new carrying phase (cross-cycle rejection
+        happens at the voiding site, not at adjudication time)."""
+        self._portal_exit_proof = None
+        self._portal_exited = False
 
     def _aperture_corridor_depth(self):
         """Derived opening-corridor depth (design S5.7 section 1).
@@ -544,6 +574,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 exit_ok = True
                 proof_note = "exit=portal_proof(%s)" % why
                 notes.append(proof_note)
+            elif why != "absent":
+                # [G0-1] the void reason is evidence — record which
+                # field drifted (absent is the ordinary never-exited
+                # case and stays out of the notes).
+                notes.append("exit_proof_void(%s)" % why)
         goto_ok = True
         goto_msg = ""
         result = None
@@ -1874,8 +1909,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # [ST09-I S5.7-6 评审点 1] a new attach STARTS a cycle:
                 # the previous cycle's exit proof is void from here —
                 # it must never carry across a new carrying phase.
-                self._portal_exit_proof = None
-                self._portal_exited = False
+                self._start_new_cycle()
                 if self._typed is not None:
                     self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:

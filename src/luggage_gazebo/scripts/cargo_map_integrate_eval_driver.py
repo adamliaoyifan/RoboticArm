@@ -526,18 +526,28 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                           if ok else self._exit_yaw)
         if ok:
             route = getattr(self, "_last_goto_route", None) or {}
-            joints = (self._last_joint_state or {}).get("position") or []
-            self._portal_exit_proof = {
-                "request_id": str(route.get("request_id", "")),
-                "route_digest": str(route.get("route_digest", "")),
-                "certification_id": str(
-                    route.get("certification_id", "")),
-                "scene_revision": str(route.get("scene_revision", "")),
-                "final_joint_values": [
-                    float(v) for v in list(joints)[:6]],
-                "attachment_state": "unloaded",
-                "proof_ns": int(self.get_clock().now().nanoseconds),
-            }
+            # [G0-1] only an ACTUALLY-certified exit route mints a
+            # proof. already_there executes zero legs and promotes
+            # nothing (_last_goto_route is None): it may only INHERIT
+            # the still-valid original proof from the real exit — an
+            # empty/already-there record is never frozen as a new one.
+            certified = (
+                str(route.get("route_digest") or "").strip()
+                and str(route.get("certification_id") or "").strip())
+            if certified:
+                joints = (self._last_joint_state or {}).get(
+                    "position") or []
+                self._portal_exit_proof = {
+                    "request_id": str(route.get("request_id", "")),
+                    "route_digest": str(route.get("route_digest", "")),
+                    "certification_id": str(
+                        route.get("certification_id", "")),
+                    "scene_revision": str(route.get("scene_revision", "")),
+                    "final_joint_values": [
+                        float(v) for v in list(joints)[:6]],
+                    "attachment_state": "unloaded",
+                    "proof_ns": int(self.get_clock().now().nanoseconds),
+                }
         else:
             self._portal_exit_proof = None
         return bool(ok), str(

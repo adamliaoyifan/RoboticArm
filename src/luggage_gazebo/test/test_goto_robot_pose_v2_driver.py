@@ -81,25 +81,40 @@ class TestGotoObserve(unittest.TestCase):
 class _PortalDriver(object):
     """Shell with only what _exit_to_portal touches."""
 
-    def __init__(self, goto_ok=True):
+    def __init__(self, goto_ok=True, already_there=False,
+                 empty_cert=False, proof=None):
         self._goto_ok = goto_ok
+        self._already_there = already_there
+        self._empty_cert = empty_cert
         self._args = type("_A", (), {"goto_timeout": 30.0})()
         self._last_joint_state = {"position": [0.1, -0.2, 0.3, -0.4, 0.5,
                                                -0.6, 99.0]}
         self._portal_exited = False
         self._exit_yaw = {"source": "previous"}
-        self._portal_exit_proof = None
+        self._portal_exit_proof = proof
         self._goto_calls = []
 
     def _goto_named_pose_v2(self, pose_name, timeout=30.0):
         self._goto_calls.append(pose_name)
+        if self._already_there:
+            # helper contract: zero legs executed, nothing promoted
+            self._last_goto_route = None
+            return True, "already_there"
         if self._goto_ok:
-            self._last_goto_route = {
+            route = {
                 "request_id": "req-exit-1",
                 "route_digest": "digest-exit-1",
                 "certification_id": "cert-exit-1",
                 "scene_revision": "scene-md5-1",
             }
+            if self._empty_cert:
+                route = {
+                    "request_id": "",
+                    "route_digest": "",
+                    "certification_id": "",
+                    "scene_revision": "scene-md5-1",
+                }
+            self._last_goto_route = route
             return True, ""
         self._last_goto_route = None
         return False, "GOTO_LEG_FAILED:boom"
@@ -137,6 +152,42 @@ class TestExitToPortalProof(unittest.TestCase):
         self.assertFalse(driver._portal_exited)
         # the previous yaw source survives a failed exit attempt
         self.assertEqual(driver._exit_yaw, {"source": "previous"})
+        self.assertIsNone(driver._portal_exit_proof)
+
+    def test_already_there_never_mints_a_proof(self):
+        # [G0-1] an already-there response executes zero legs and
+        # promotes nothing — an empty record is NOT a certified exit
+        # and must never be frozen as a new proof.
+        driver = _PortalDriver(already_there=True)
+        ok, _message = driver._exit_to_portal()
+        self.assertTrue(ok)
+        self.assertTrue(driver._portal_exited)
+        self.assertIsNone(driver._portal_exit_proof)
+
+    def test_already_there_inherits_the_still_valid_original_proof(self):
+        # [G0-1] already-there may only INHERIT the original proof from
+        # the real certified exit — never mint, never clobber.
+        original = {
+            "request_id": "req-exit-0",
+            "route_digest": "digest-exit-0",
+            "certification_id": "cert-exit-0",
+            "scene_revision": "scene-md5-1",
+            "final_joint_values": [0.1, -0.2, 0.3, -0.4, 0.5, -0.6],
+            "attachment_state": "unloaded",
+            "proof_ns": 42,
+        }
+        driver = _PortalDriver(already_there=True, proof=original)
+        ok, _message = driver._exit_to_portal()
+        self.assertTrue(ok)
+        self.assertIs(driver._portal_exit_proof, original)
+
+    def test_empty_cert_route_freezes_no_proof(self):
+        # [G0-1] defensive freeze site: a "successful" route record
+        # with empty request/route/cert never becomes a proof
+        # (adjudication would reject it as uncertified_exit anyway).
+        driver = _PortalDriver(goto_ok=True, empty_cert=True)
+        ok, _message = driver._exit_to_portal()
+        self.assertTrue(ok)
         self.assertIsNone(driver._portal_exit_proof)
 
 

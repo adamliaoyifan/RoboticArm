@@ -740,6 +740,10 @@ class PickRetreatEvalDriver(Node):
             "contact_distance": float(msg.contact_distance),
             "retention_margin": float(msg.retention_margin),
             "tilt_deg": float(msg.tilt_deg),
+            # [ST09-I G0-1] receive-time freshness basis (the message
+            # carries no stamp) — mirrors route_producer's selector-side
+            # latched vacuum record.
+            "received_ns": int(self.get_clock().now().nanoseconds),
         }
 
     def _on_vacuum_events(self, msg):
