@@ -45,7 +45,7 @@ from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
-from luggage_msgs.action import GoToRobotPose, PlanMotion
+from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import DetectionFrame, VacuumState
 from luggage_msgs.srv import (
     BuildMotionSequence,
@@ -549,9 +549,10 @@ class PickRetreatEvalDriver(Node):
         self._plan = ActionClient(
             self, PlanMotion, "/motion_planner/plan_motion",
             callback_group=self._group)
-        self._goto = ActionClient(
-            self, GoToRobotPose, "/motion_planner/go_to_robot_pose",
-            callback_group=self._group)
+        # [ST09-I S5.7-6] the v1 GoToRobotPose action client is deleted:
+        # goto_observe and the cargo exit ride the certified
+        # GoToRobotPoseV2 service (the v1 action stays only for the
+        # hardware pick chain).
         self._vacuum_state = {}
         self._vacuum_events = {}
         self._scene = None
@@ -825,11 +826,109 @@ class PickRetreatEvalDriver(Node):
         return last or "graph wait timeout"
 
     def goto_observe(self):
-        return self.send_action(
-            self._goto,
-            GoToRobotPose.Goal(pose_name=self._args.observe_pose),
-            timeout=self._args.goto_timeout,
-            name="GoToRobotPose")
+        """[ST09-I S5.7-6] Home to the named observe pose via V2.
+
+        A current/here name is a CALLER-side decision to stay put (the
+        service never falls back to it); a missing typed surface is a
+        named refusal, not a v1 detour (non frame-runtime gazebo runs
+        lose goto by design — GOTO_V2_UNAVAILABLE).
+        """
+        from luggage_planning.named_robot_poses import is_current_pose_name
+
+        pose_name = str(self._args.observe_pose or "")
+        if is_current_pose_name(pose_name):
+            return True, "goto=%s (current)" % pose_name, None
+        if getattr(self, "_typed", None) is None:
+            return False, "GOTO_V2_UNAVAILABLE", None
+        ok, message = self._goto_named_pose_v2(
+            pose_name, timeout=self._args.goto_timeout)
+        return ok, message or ("goto %s" % pose_name), None
+
+    def _goto_named_pose_v2(self, pose_name, timeout=30.0):
+        """[ST09-I S5.7-6] Certified motion to a named site pose.
+
+        Mirrors the cargo driver's _execute_observation_route: the
+        GoToRobotPoseV2 service validates the site-pose file against
+        the live identity and returns COMPLETE certified joint legs
+        (typed, executed in order with per-leg admission scopes) —
+        never a pose spec handed to the planner. The certified route
+        identity is stashed for the exit-proof bookkeeping.
+        """
+        from luggage_msgs.srv import GetCargoMapStats, GoToRobotPoseV2
+
+        client = getattr(self, "_goto_route_client", None)
+        if client is None:
+            client = self.create_client(
+                GoToRobotPoseV2,
+                "/trajectory_selector/goto_robot_pose_v2",
+                callback_group=self._group)
+            self._goto_route_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "GOTO_ROUTE_UNAVAILABLE"
+        stats_client = getattr(self, "_goto_stats_client", None)
+        if stats_client is None:
+            stats_client = self.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats",
+                callback_group=self._group)
+            self._goto_stats_client = stats_client
+        if not stats_client.wait_for_service(timeout_sec=5.0):
+            return False, "MAP_STATUS_UNAVAILABLE"
+        stats = self.call_srv(
+            stats_client, GetCargoMapStats.Request(), timeout=5.0)
+        if stats is None or not stats.success:
+            return False, "MAP_STATUS_UNAVAILABLE"
+        request = GoToRobotPoseV2.Request()
+        request.request_id = self._frame_request_id("goto_%s" % pose_name)
+        request.pose_name = str(pose_name)
+        joints = (self._last_joint_state or {}).get("position") or []
+        request.current_joint_state = [
+            float(v) for v in list(joints)[:6]]
+        request.scene_revision = str(self._frame_scene_revision or "")
+        request.latest_map_revision = int(stats.map_revision)
+        result = self.call_srv(client, request, timeout=timeout)
+        if result is None:
+            return False, "GOTO_ROUTE_UNAVAILABLE"
+        if not result.success:
+            return False, str(result.reason_code or "GOTO_ROUTE_REJECTED")
+        if bool(result.already_there):
+            self._last_goto_route = None
+            return True, "already_there"
+        admission = {
+            "route_digest": str(result.route_digest or ""),
+            "certification_id": str(result.certification_id or ""),
+            "admission_map_revision": int(
+                result.admission_map_revision or 0),
+        }
+        digests = [str(d) for d in (result.leg_digests or [])]
+        states = [str(v) for v in (result.leg_load_states or [])]
+        executed = 0
+        for index, segment in enumerate(result.motion_segments or []):
+            # [ST09-I S5.7-6] each leg claims ITS OWN certified scope
+            # (named-pose routes certify under the unloaded index).
+            leg_admission = dict(admission)
+            if index < len(digests):
+                leg_admission["leg_digest"] = digests[index]
+                leg_admission["load_state"] = (
+                    states[index] if index < len(states) else "unloaded")
+            ok, message, _rec = self._typed.plan_motion(
+                segment, self._args.plan_timeout,
+                name="PlanMotionV2:goto_%s" % pose_name,
+                admission=leg_admission)
+            executed += 1
+            if not ok:
+                self._last_goto_route = None
+                return False, "GOTO_LEG_FAILED:%s" % str(
+                    message or segment.name)[:120]
+        if executed == 0:
+            self._last_goto_route = None
+            return False, "GOTO_ROUTE_EMPTY"
+        self._last_goto_route = {
+            "request_id": str(request.request_id),
+            "route_digest": admission["route_digest"],
+            "certification_id": admission["certification_id"],
+            "scene_revision": str(self._frame_scene_revision or ""),
+        }
+        return True, ""
 
     def wait_tracked_cargo(self, generation, timeout, spawn_id=None):
         """Wait for tracker cargo of *generation* with n_points > 0."""

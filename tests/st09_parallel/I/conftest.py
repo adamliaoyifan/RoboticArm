@@ -216,6 +216,71 @@ def whole_chain(tmp_path_factory):
         "config", "robot_poses.yaml.example")
     assert old_planner in launch_text, "template motion_planner drifted"
     launch_text = launch_text.replace(old_planner, new_planner)
+    # [ST09-I S5.7-6] GoToRobotPoseV2 live coverage: the template's
+    # selector has no robot_poses_config — write a fixture SIM-schema
+    # site file (identity pinned to md5(scene_tf.yaml.example),
+    # computed here, never hardcoded) and assert+replace the selector
+    # block to point at it.
+    from luggage_description.runtime_identity import scene_revision_from_path
+
+    fixture_scene_revision = scene_revision_from_path(scene_tf)
+    site_poses_path = out_dir / "robot_poses.site_sim.yaml"
+    import time as _time
+
+    site_poses_path.write_text(
+        """# Fixture SIM site-pose file (I-suite whole-chain stack).
+schema: luggage.site_poses.sim/1
+
+identity:
+  scene_revision: {scene_revision}
+  joint_names: [elfin_joint1, elfin_joint2, elfin_joint3,
+                elfin_joint4, elfin_joint5, elfin_joint6]
+  urdf_sha256: ""
+  srdf_sha256: ""
+
+poses:
+  pickup_observe_sim:
+    valid: true
+    calibration_status: synthetic
+    values: [1.8806, -1.7736, -1.0491, 4.4439, 1.7721, 1.8473]
+    acquisition_stamp_ns: {stamp_ns}
+    scene_revision_at_capture: {scene_revision}
+    provenance:
+      source: synthetic_fixture
+  portal_observe_sim:
+    valid: true
+    calibration_status: synthetic
+    # The example file's validated `observe` pose (a real reachable
+    # configuration in THIS scene; distinct from pickup_observe_sim so
+    # the goto tests exercise actual motion).
+    values: [3.5702, -1.3263, -1.0965, 3.9564, 1.6234, 0.4522]
+    acquisition_stamp_ns: {stamp_ns}
+    scene_revision_at_capture: {scene_revision}
+    provenance:
+      source: synthetic_fixture
+
+defaults:
+  observe_pose: pickup_observe_sim
+
+meta:
+  name: robot_poses_site_sim_fixture
+  version: 0.1.0
+""".format(scene_revision=fixture_scene_revision,
+               stamp_ns=int(_time.time() * 1e9)))
+    old_selector = """    nodes.append(Node(
+        package="luggage_planning", executable="trajectory_selector_node.py",
+        name="trajectory_selector", output="screen",
+        parameters=[{"scene_tf_config": scene_tf,
+                     "use_sim_time": False, **frame}]))"""
+    new_selector = """    nodes.append(Node(
+        package="luggage_planning", executable="trajectory_selector_node.py",
+        name="trajectory_selector", output="screen",
+        parameters=[{"scene_tf_config": scene_tf,
+                     "robot_poses_config": %r,
+                     "use_sim_time": False, **frame}]))""" % str(
+                        site_poses_path)
+    assert old_selector in launch_text, "template selector drifted"
+    launch_text = launch_text.replace(old_selector, new_selector)
     # The mock stack never configured the arm controller (the g4 campaign
     # was plan-only): the controller_manager sees the type map but not
     # the controller's own parameters — load them via the spawner.

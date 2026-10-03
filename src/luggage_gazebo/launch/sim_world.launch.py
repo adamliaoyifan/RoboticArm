@@ -952,6 +952,10 @@ def _launch_setup(context):
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
+                # [ST09-I S5.7-6] GoToRobotPoseV2's site-pose file (the
+                # SIM schema document; the service refuses
+                # POSE_FILE_MISSING without it — never a default).
+                "robot_poses_config": poses_path,
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),

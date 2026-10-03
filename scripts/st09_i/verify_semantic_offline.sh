@@ -123,11 +123,14 @@ record["user_site_disabled"] = __import__("site").ENABLE_USER_SITE is False
 from luggage_perception.semantic_segmenter import build_segmenter
 
 weights = os.path.join(share, "models", "yolov8s-world.pt")
+# [ST09-I S5.7-6] construction on cuda — the formal sim runs
+# device:=cuda; a prefix that imports but cannot drive the GPU is not
+# a positive proof (torch.cuda availability is asserted below).
 segmenter = build_segmenter({
     "backend": "bbox_fill",
     "prompts": ["suitcase"],
     "model_name": weights,
-    "device": "cpu",
+    "device": "cuda",
     "require_backend": "bbox_fill",
 })
 stats = getattr(segmenter, "_last_stats", {})
@@ -141,6 +144,23 @@ for key in ("model_path", "clip_vendor"):
 record["cache_clip_absent"] = not os.path.exists(
     os.path.join(os.path.expanduser("~"), ".cache", "clip"))
 assert record["cache_clip_absent"]
+
+# [ST09-I S5.7-6] one minimal INFERENCE — the model must run, not
+# merely load (segment(rgb_image) -> (label_map uint8 HxW,
+# detections); semantic_segmenter.py BboxFillSegmenter).
+import numpy as _np
+
+label_map, detections = segmenter.segment(
+    _np.zeros((96, 96, 3), dtype=_np.uint8))
+assert label_map is not None and list(label_map.shape) == [96, 96], (
+    getattr(label_map, "shape", None))
+stats = getattr(segmenter, "_last_stats", {})
+record["inference_probe"] = {
+    "label_map_shape": list(label_map.shape),
+    "detections": len(detections or []),
+    "backend": stats.get("backend", ""),
+}
+assert record["inference_probe"]["backend"].startswith("bbox_fill:")
 
 # CUDA must initialize from the prefix's own runtime (the formal sim
 # runs device:=cuda; a prefix that imports but cannot drive the GPU is
@@ -220,6 +240,37 @@ with open(os.path.join(pydeps, "DEPLOYED.json")) as h:
 manifest_deps = frozen["python_deps"]["distributions"]
 assert deployed == manifest_deps, \
     "frozen prefix deployment drifted from the acceptance manifest"
+
+# [ST09-I S5.7-6 评审点 4] whole-prefix root digest — VERIFY_ROOT_DIGEST=1
+# (freeze_python_prefix.sh, S6, and replay/R runners). Recomputed with
+# the exact recorded semantics (LC_ALL=C sorted relative paths, sha256
+# per file, sha256 of the sha256sum stream) against the manifest's
+# freeze record. The record lives OUTSIDE the prefix — recompute is
+# stable forever (the freeze script's no-self-reference rule).
+if os.environ.get("VERIFY_ROOT_DIGEST") == "1":
+    import hashlib as _hl
+
+    freeze = frozen["python_deps"].get("freeze") or {}
+    if not freeze.get("root_sha256"):
+        raise AssertionError(
+            "FREEZE_RECORD_MISSING: semantic_assets.python_deps.freeze"
+            ".root_sha256 absent — run scripts/st09_i/"
+            "freeze_python_prefix.sh")
+    entries = []
+    for root, _dirs, names in os.walk(pydeps):
+        for name in names:
+            path = os.path.join(root, name)
+            rel = "./" + os.path.relpath(path, pydeps)
+            with open(path, "rb") as fh:
+                entries.append((rel, _hl.sha256(fh.read()).hexdigest()))
+    digest = _hl.sha256()
+    for rel, file_hash in sorted(entries):
+        digest.update(("%s  %s\n" % (file_hash, rel)).encode())
+    got = digest.hexdigest()
+    assert got == freeze["root_sha256"], (
+        "root digest mismatch: %s != %s" % (got, freeze["root_sha256"]))
+    proof.update({"root_digest_verified": True,
+                  "root_digest_files": len(entries)})
 proof.update({"manifest_match": True,
               "vendor_tree_sha256": vendor_tree})
 with open(os.path.join(out_dir, "semantic_offline_proof.json"), "w") as h:
@@ -228,4 +279,9 @@ print(json.dumps({"manifest_match": True,
                   "vendor_tree_sha256": vendor_tree,
                   "frozen_dists": len(deployed)}, indent=2))
 PYEOF
+rc2=$?
+if [[ $rc2 -ne 0 ]]; then
+    echo "semantic offline manifest/root-digest proof FAILED (rc=$rc2)" >&2
+    exit $rc2
+fi
 echo "semantic offline isolation proof PASSED"

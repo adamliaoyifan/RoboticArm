@@ -222,59 +222,95 @@ def main():
             "portal_solution", "portal_refine_info", "portal_fk_pos_err_m",
             "portal_position")}}, indent=2, sort_keys=True))
 
+    # -- [ST09-I S5.7-6] SIM site-pose schema document -----------------
+    #    The identity is measured, never hardcoded: scene_revision via
+    #    scene_revision_from_path, srdf via the static SRDF file digest,
+    #    urdf deliberately EMPTY (the launch identity's urdf hash
+    #    embeds spawn initial joints — a named residual in the S6
+    #    freeze contract, never silently "full match").
+    import hashlib
+    import time
+
+    from luggage_description.runtime_identity import scene_revision_from_path
+
+    scene_revision = scene_revision_from_path(DEPLOY_SCENE)
+    srdf_path = os.path.join(
+        REPO, "src", "luggage_description", "config",
+        "S20_with_camera.srdf")
+    srdf_sha256 = hashlib.sha256(
+        open(srdf_path, "rb").read()).hexdigest()
+    stamp_ns = int(time.time() * 1e9)
+
     document = """# Robot named poses for the MIRRORED DEPLOYMENT cell in SIMULATION
-# (ST09-I S5). SIMULATION ONLY — synthesized start for the S5 Gazebo
-# runner, derived by scripts/st09_i/s5_synthesize_sim_poses.py
-# (offline_ik refine of the sim pickup_observe onto the deploy-scene
-# overhead camera target at world (+1.0, 0.0, 1.9), converted through
-# the fixed camera-to-TCP URDF transform). This is NOT a measured site
-# pose: robot_poses.deploy.yaml stays all-valid:false and nothing in
-# this file may move the real cell.
+# (ST09-I S5). SIMULATION ONLY — the SIM site-pose schema
+# (luggage.site_poses.sim/1) consumed by GoToRobotPoseV2; synthesized
+# by scripts/st09_i/s5_synthesize_sim_poses.py (offline_ik refine of
+# the sim pickup_observe onto the deploy-scene overhead camera target
+# at world (+1.0, 0.0, 1.9), converted through the fixed camera-to-TCP
+# URDF transform). This is NOT a measured site pose:
+# robot_poses.deploy.yaml stays all-valid:false and nothing in this
+# file may move the real cell.
 #
 # portal_observe_sim: the post-release observation camera position (the
 # old _exit_to_portal geometry: 0.20 m outside the opening face, 0.35 m
-# above the opening target), reached through the sanctioned GoToRobotPose
-# surface — the ad-hoc driver-side cartesian escape is deleted
-# (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK provenance.
+# above the opening target), reached through the certified
+# GoToRobotPoseV2 service — the ad-hoc driver-side cartesian escape is
+# deleted (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK
+# provenance.
+
+schema: luggage.site_poses.sim/1
+
+identity:
+  # md5(scene_tf_deploy.yaml) — computed by scene_revision_from_path at
+  # synthesis time; never hand-edited.
+  scene_revision: {scene_revision}
+  joint_names: [elfin_joint1, elfin_joint2, elfin_joint3,
+                elfin_joint4, elfin_joint5, elfin_joint6]
+  # Declared but deliberately EMPTY: the launch-time runtime identity's
+  # urdf_sha256 embeds the spawn initial joints, so a pinned value here
+  # would spuriously mismatch whenever spawn parameters change. Joint
+  # order + scene revision + SRDF are the binding (named residual
+  # "urdf_hash_separation" in the S6 freeze contract — never claimed as
+  # a URDF full match).
+  urdf_sha256: ""
+  # sha256(config/S20_with_camera.srdf) — the SRDF is static, it never
+  # changes with spawn parameters.
+  srdf_sha256: {srdf_sha256}
 
 poses:
   pickup_observe_sim:
-    group: elfin_arm
-    joints:
-      - elfin_joint1
-      - elfin_joint2
-      - elfin_joint3
-      - elfin_joint4
-      - elfin_joint5
-      - elfin_joint6
+    valid: true
+    calibration_status: synthetic
     values: [{values}]
-    tolerance: 0.15
+    acquisition_stamp_ns: {stamp_ns}
+    scene_revision_at_capture: {scene_revision}
+    provenance:
+      source: synthetic_fixture
   portal_observe_sim:
-    group: elfin_arm
-    joints:
-      - elfin_joint1
-      - elfin_joint2
-      - elfin_joint3
-      - elfin_joint4
-      - elfin_joint5
-      - elfin_joint6
+    valid: true
+    calibration_status: synthetic
     values: [{portal_values}]
-    tolerance: 0.15
+    acquisition_stamp_ns: {stamp_ns}
+    scene_revision_at_capture: {scene_revision}
+    provenance:
+      source: synthetic_fixture
 
 defaults:
   observe_pose: pickup_observe_sim
-  planning_time: 30.0
-  max_velocity_scaling: 0.3
-  max_acceleration_scaling: 0.3
 
 meta:
-  name: robot_poses_sim_deploy_v1
-  version: 0.2.0
+  name: robot_poses_sim_deploy_v2
+  version: 0.3.0
 """.format(values=", ".join("%.4f" % v for v in values),
-           portal_values=", ".join("%.4f" % v for v in portal_values))
+           portal_values=", ".join("%.4f" % v for v in portal_values),
+           scene_revision=scene_revision,
+           srdf_sha256=srdf_sha256,
+           stamp_ns=stamp_ns)
     with open(OUTPUT, "w", encoding="utf-8") as stream:
         stream.write(document)
-    print("wrote %s" % OUTPUT)
+    evidence["scene_revision"] = scene_revision
+    evidence["srdf_sha256"] = srdf_sha256
+    print("wrote %s (scene %s)" % (OUTPUT, scene_revision[:8]))
     return 0
 
 

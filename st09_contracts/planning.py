@@ -53,6 +53,13 @@ class PlanningSnapshot:
     cells_i: Tuple[int, ...]
     cells_j: Tuple[int, ...]
     cell_states: Tuple[str, ...]
+    #: [ST09-I S5.7-6] Scene identity the snapshot was planned against
+    #: (RuntimeIdentityV2.scene_revision). Empty on legacy constructions
+    #: (the identity gates compare only what both sides declare — an
+    #: empty snapshot scene never blocks a legacy producer). Excluded
+    #: from digest(): the digest pins the MAP content, not the cell's
+    #: identity binding.
+    scene_revision: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))

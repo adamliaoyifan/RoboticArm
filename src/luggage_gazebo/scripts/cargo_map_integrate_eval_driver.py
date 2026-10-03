@@ -28,7 +28,7 @@ import time
 import numpy as np
 import rclpy
 from geometry_msgs.msg import Point, Pose, Quaternion
-from luggage_msgs.action import GoToRobotPose, PlanMotion
+from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import MotionSegment, SlotSpec
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
@@ -501,22 +501,45 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         return attempts, chosen
 
     def _exit_to_portal(self):
-        """Post-place-view positioning through the sanctioned goto surface.
+        """Post-place-view positioning through the certified goto service.
 
         [ST09-I S5.7] The shared ad-hoc cartesian portal escape is deleted
         (the executor answers driver-built cartesian with
         SEGMENT_GENERATION_REMOVED); the observation camera rides the
-        named portal pose through GoToRobotPose — the same FJT surface
-        that homes the arm. The pose is a calibrated configuration asset
-        (robot_poses yaml); a general exit from inside the container is
-        the certified route's own retreat/return legs (EnsureCycleStart
-        recovery), never this call.
+        NAMED portal pose through GoToRobotPoseV2 — complete certified
+        joint legs, never a pose spec. The pose is a calibrated
+        configuration asset (robot_poses yaml); a general exit from
+        inside the container is the certified route's own retreat/return
+        legs (EnsureCycleStartV2 recovery), never this call.
+
+        [ST09-I S5.7-6 评审点 1] Success freezes a STRUCTURED exit
+        proof — request/route/cert/scene identity, the final joint
+        state, and the unloaded phase — the evidence chain _home_arm's
+        EXIT_ROUTE_UNAVAILABLE exception adjudicates. Any drift (scene,
+        joints moved, vacuum re-attached, new cycle start) invalidates
+        it; it is never a cross-cycle boolean bypass.
         """
-        ok, message, _result = self.send_action(
-            self._goto, GoToRobotPose.Goal(pose_name="portal_observe_sim"),
-            timeout=self._args.goto_timeout, name="GoToRobotPose:portal")
+        ok, message = self._goto_named_pose_v2(
+            "portal_observe_sim", timeout=self._args.goto_timeout)
         self._portal_exited = bool(ok)
-        self._exit_yaw = {"source": "named_portal_pose"}
+        self._exit_yaw = ({"source": "named_portal_pose"}
+                          if ok else self._exit_yaw)
+        if ok:
+            route = getattr(self, "_last_goto_route", None) or {}
+            joints = (self._last_joint_state or {}).get("position") or []
+            self._portal_exit_proof = {
+                "request_id": str(route.get("request_id", "")),
+                "route_digest": str(route.get("route_digest", "")),
+                "certification_id": str(
+                    route.get("certification_id", "")),
+                "scene_revision": str(route.get("scene_revision", "")),
+                "final_joint_values": [
+                    float(v) for v in list(joints)[:6]],
+                "attachment_state": "unloaded",
+                "proof_ns": int(self.get_clock().now().nanoseconds),
+            }
+        else:
+            self._portal_exit_proof = None
         return bool(ok), str(
             message or ("portal goto %s" % ("ok" if ok else "failed")))
 

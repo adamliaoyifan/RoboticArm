@@ -52,6 +52,19 @@ from luggage_planning.grid_path_search import (
 #: [ST09-I S5.7-4] ObservationRouteV2 guards.
 OBSERVATION_TARGET_LIMIT = 2
 CAMERA_LINK = "camera_depth_optical_frame"
+#: [ST09-I S5.7-6] Carrying-leg vacuum admission window (s). The
+#: /vacuum/state message carries no stamp; the RECEIVE time on the node
+#: clock is the freshness basis (the producer's clock_ns is wired to
+#: the same node clock, so the age comparison stays in one timebase).
+VACUUM_STATE_FRESHNESS_S = 2.0
+#: [ST09-I S5.7-6] GoToRobotPoseV2 already-there gate (rad, wrap
+#: aware): within it the service returns zero legs and promotes
+# nothing — the caller stays put.
+NAMED_POSE_ALREADY_THERE_RAD = 0.02
+#: [ST09-I S5.7-6] EnsureCycleStartV2 aperture-escape margin (m),
+#: re-declared planning-side (mirrors the driver's declared margin) so
+#: luggage_planning never imports eval scripts.
+APERTURE_ESCAPE_MARGIN_M = 0.10
 
 _CAMERA_TCP_CACHE = {}
 
@@ -71,10 +84,17 @@ def camera_to_tcp_transform(urdf):
     import numpy as np
 
     camera_path = urdf.path_to(CAMERA_LINK)
-    tcp_path = list(getattr(urdf, "tcp_path", None)
-                    or ("elfin_joint1", "elfin_joint2", "elfin_joint3",
-                        "elfin_joint4", "elfin_joint5", "elfin_joint6",
-                        "suction_contact_frame"))
+    tcp_path = list(getattr(urdf, "tcp_path", None) or ())
+    if not tcp_path:
+        # [ST09-I S5.7-6 fix] the offline_ik urdf has no tcp_path
+        # attribute and path_to returns the JOINT sequence — the old
+        # literal fallback ended in the LINK name and crashed urdf.tcp
+        # with KeyError('suction_contact_frame') the first time this
+        # ran on the mock stack.
+        try:
+            tcp_path = list(urdf.path_to("suction_contact_frame"))
+        except Exception:  # noqa: BLE001 - defensive default
+            tcp_path = ["elfin_joint%d" % index for index in range(1, 7)]
     if not camera_path or not tcp_path:
         return None
 
@@ -397,7 +417,9 @@ class RouteProducer(object):
                  clock_ns=None, corridor_surface_max=None,
                  opening_info=None,
                  transit_clearance_z=None, log=None,
-                 atlas_prior=None):
+                 atlas_prior=None, vacuum_state_fn=None,
+                 site_poses_fn=None, scene_config=None,
+                 scene_revision_binding=""):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
@@ -435,6 +457,23 @@ class RouteProducer(object):
         #: MoveIt and certification remain the authority for everything
         #: that runs.
         self.atlas_prior = atlas_prior
+        #: [ST09-I S5.7-6] Authoritative vacuum feed for the carrying
+        #: admission window: callable -> {"attached", "vacuum_on",
+        #: "received_ns"} or None (latest_snapshot_fn mode). Keyed on
+        #: ``attached`` ONLY — the mock sim backend sets fail_reason
+        #: while attached stays True, so fail_reason never gates here.
+        self.vacuum_state_fn = vacuum_state_fn
+        #: [ST09-I S5.7-6] Site-pose file access for GoToRobotPoseV2
+        #: (latest_snapshot_fn mode): callable -> (data_dict, path_str)
+        #: or None when no pose file is configured. The producer NEVER
+        #: falls back to defaults.observe_pose or current/here — a
+        #: named request must name a real, validated site pose.
+        self.site_poses_fn = site_poses_fn
+        #: [ST09-I S5.7-6] EnsureCycleStartV2 adjudication inputs: the
+        #: scene config (world->base_link + container geometry) and the
+        #: node's own scene-identity binding the request must match.
+        self.scene_config = scene_config
+        self.scene_revision_binding = str(scene_revision_binding or "")
         #: World Z the carried payload bottom must stay above during
         #: open-air transit (the pedestal top). None disables the staging
         #: anchor — the entry table then keeps its single-hop transit.
@@ -1061,9 +1100,10 @@ class RouteProducer(object):
         is deliberately NOT re-applied here: it bounds select/verify
         (where expire_stale already ran); execution minutes later is
         not a fresh acquisition. Payload LOSS mid-route is a live
-        vacuum-state fact and is gated by the DRIVER before each
-        carrying-leg submission (the producer never sees the vacuum
-        feed).
+        vacuum-state fact gated by the DRIVER before each carrying-leg
+        submission AND by the admission verdict's own vacuum window
+        ([ST09-I S5.7-6] ``_live_vacuum_holds`` runs right after this
+        check for carrying claims).
         """
         provider = getattr(self, "attachment_provider", None)
         if provider is None:
@@ -1087,6 +1127,126 @@ class RouteProducer(object):
             return False, "ATTACHMENT_INCARNATION_CHANGED", {
                 "certified": want_digest, "live": record_digest}
         return True, "", {"attachment_digest": record_digest}
+
+    def _live_vacuum_holds(self):
+        """[ST09-I S5.7-6] Authoritative vacuum state vs the carrying leg.
+
+        Closes the driver-check -> controller-commit window: the
+        admission verdict reads the authoritative /vacuum/state feed
+        (TRANSIENT_LOCAL latched + 30 Hz ticks; both the gazebo and the
+        I-suite mock stack run the same vacuum_controller_node). The
+        message has no stamp, so the RECEIVE time — same node clock as
+        the producer's clock_ns — is the freshness basis. Keyed on
+        ``attached`` ONLY: the mock sim backend sets fail_reason while
+        attached stays True (gz set_pose unavailable), so fail_reason
+        never gates here. Old test stubs without the attribute fail
+        CLOSED (getattr -> None -> VACUUM_STATE_UNAVAILABLE), never with
+        an AttributeError. Returns ``(ok, reason, detail)``.
+        """
+        fetch = getattr(self, "vacuum_state_fn", None)
+        state = fetch() if callable(fetch) else None
+        if not state:
+            return False, "VACUUM_STATE_UNAVAILABLE", {"feed": "absent"}
+        received_ns = int(state.get("received_ns") or 0)
+        age_s = max(0.0, (self._clock_ns() - received_ns) / 1e9)
+        if age_s > VACUUM_STATE_FRESHNESS_S:
+            return False, "VACUUM_STATE_STALE", {"age_s": round(age_s, 3)}
+        if not bool(state.get("attached")):
+            return False, "PAYLOAD_LOST", {"attached": False}
+        return True, "", {"age_s": round(age_s, 3), "attached": True}
+
+    def ensure_cycle_start_state(self, *, joints, request_scene_revision,
+                                 vacuum_state=None):
+        """[ST09-I S5.7-6 §2 minimal] Cycle-start adjudication.
+
+        Pure authoritative-state verdict, NO route planning: the
+        selector's own latched joints + offline world FK + scene config
+        + latched vacuum state classify the suction TCP into the
+        container zone taxonomy and report whether the next cycle may
+        start from here. ALREADY_READY means the caller may request
+        GoToRobotPoseV2; every other outcome is a named RECOVERY stop
+        (the certified exit is the place route's own retreat/return
+        legs, or a later recovery route — never synthesized here).
+
+        Returns ``(ready, reason, zone, attachment_state, detail)``.
+        """
+        scene = getattr(self, "scene_config", None)
+        attachment = "unknown"
+        if vacuum_state:
+            attachment = ("carrying" if bool(vacuum_state.get("attached"))
+                          else "unloaded")
+        vacuum_detail = {
+            "attached": bool((vacuum_state or {}).get("attached")),
+            "vacuum_on": bool((vacuum_state or {}).get("vacuum_on")),
+        }
+        if not scene:
+            return (False, "SCENE_CONFIG_UNAVAILABLE", "unknown",
+                    attachment, {"vacuum": vacuum_detail})
+        if str(request_scene_revision or "") != str(
+                getattr(self, "scene_revision_binding", "")):
+            return (False, "IDENTITY_UNKNOWN", "unknown", attachment, {
+                "vacuum": vacuum_detail,
+                "request": str(request_scene_revision or "")[:24],
+                "binding": str(
+                    getattr(self, "scene_revision_binding", ""))[:24]})
+        if joints is None or len(tuple(joints)) != 6:
+            return (False, "JOINT_STATE_UNAVAILABLE", "unknown",
+                    attachment, {"vacuum": vacuum_detail})
+        # world-frame FK -> base-link for the zone taxonomy
+        from luggage_description.scene_tf_config_utils import (
+            container_zone,
+            xyz_world_to_base_link,
+        )
+
+        try:
+            suction_world, _quaternion = self.fk(list(joints))
+            base = xyz_world_to_base_link(scene, list(suction_world))
+        except Exception as error:  # noqa: BLE001 - adjudication boundary
+            return (False, "ZONE_UNKNOWN", "unknown", attachment, {
+                "vacuum": vacuum_detail, "fk_error": repr(error)[:200]})
+        container = (scene.get("container") or {})
+        outer = container.get("outer") or {}
+        inner = container.get("inner") or {}
+        wall = 0.04
+        try:
+            if outer.get("length") and inner.get("length"):
+                wall = max(0.0, (float(outer["length"])
+                                 - float(inner["length"])) * 0.5)
+        except (TypeError, ValueError):
+            pass
+        transform = camera_to_tcp_transform(getattr(self, "urdf", None))
+        if transform is None:
+            return (False, "CAMERA_FRAME_UNAVAILABLE", "unknown",
+                    attachment, {
+                        "vacuum": vacuum_detail,
+                        "suction_base": [round(float(v), 4) for v in base],
+                        "wall_m": round(wall, 4)})
+        envelope = float(math.sqrt(sum(
+            float(v) * float(v) for v in transform[0])))
+        depth = wall + envelope + APERTURE_ESCAPE_MARGIN_M
+        zone = container_zone(base, scene, depth)
+        detail = {
+            "vacuum": vacuum_detail,
+            "corridor_depth_m": round(depth, 4),
+            "wall_m": round(wall, 4),
+            "camera_envelope_m": round(envelope, 4),
+            "envelope_source": "urdf",
+            "suction_base": [round(float(v), 4) for v in base],
+        }
+        if attachment == "unknown":
+            return False, "ATTACHMENT_STATE_UNKNOWN", zone, attachment, \
+                detail
+        if attachment == "carrying":
+            # The vacuum is held by the backend; the driver must NOT
+            # turn it off to force an exit.
+            return False, "CARRY_EXIT_UNSUPPORTED", zone, attachment, \
+                detail
+        if zone == "outside_container":
+            return True, "OK", zone, attachment, detail
+        if zone in ("inside_container", "opening_corridor"):
+            return False, "EXIT_ROUTE_UNAVAILABLE", zone, attachment, \
+                detail
+        return False, "ZONE_UNKNOWN", zone, attachment, detail
 
     def transition_admission_phase(self, *, route_digest,
                                    certification_id, target_phase,
@@ -1296,6 +1456,19 @@ class RouteProducer(object):
                     self._live_attachment_matches(selection)
                 if not live_ok:
                     return False, live_reason, live_detail
+                # [ST09-I S5.7-6] vacuum admission window: the measured
+                # attachment binding above proves WHAT is carried; this
+                # gate proves it is STILL carried at commit time — the
+                # authoritative /vacuum/state must be fresh and attached
+                # when the leg claims carrying (payload loss between
+                # the driver check and the controller submission refuses
+                # by name here).
+                vacuum_ok, vacuum_reason, vacuum_detail = \
+                    self._live_vacuum_holds()
+                if not vacuum_ok:
+                    detail = dict(vacuum_detail)
+                    detail["vacuum_gate"] = True
+                    return False, vacuum_reason, detail
             elif claimed_state == "unloaded" and phase != "unloaded":
                 return False, "PHASE_TRANSITION_REQUIRED", {
                     "phase": phase}
@@ -1493,6 +1666,214 @@ class RouteProducer(object):
             if callable(reset_scene):
                 reset_scene()
         return self._fail(last_reason, rows)
+
+    def plan_named_pose_route(self, *, request_id, pose_name,
+                              current_joints, scene_revision,
+                              latest_map_revision):
+        """[ST09-I S5.7-6] Certified motion to a NAMED site pose.
+
+        The caller names an explicit calibrated pose (GoToRobotPoseV2);
+        this producer validates the site-pose file against the live
+        scene identity, builds ONE MoveIt edge from the live start
+        state to the file's joint values (FK fills the goal node's pose
+        field — no IK), and returns the COMPLETE certified joint_path
+        under the explicit LoadState.UNLOADED admission — the same
+        pipeline plan_observation_route uses. No silent
+        defaults.observe_pose resolution and no current/here execution:
+        those are caller-side decisions, never server-side fallbacks.
+        Returns a dict mirroring plan_observation_route's shape.
+        """
+        from luggage_planning.named_robot_poses import (
+            is_current_pose_name)
+
+        started_ns = self._clock_ns()
+        self._stage_ns = {"certify": 0, "revalidate": 0}
+        fetch_poses = getattr(self, "site_poses_fn", None)
+        site = fetch_poses() if callable(fetch_poses) else None
+        if site is None:
+            return self._fail("POSE_FILE_MISSING", [])
+        data, site_path = site
+        pose_name = str(pose_name)
+        if is_current_pose_name(pose_name):
+            return self._fail("CURRENT_POSE_NOT_EXECUTABLE",
+                              [{"pose_name": pose_name}])
+        identity = data.get("identity") or {}
+        file_scene = str(identity.get("scene_revision") or "")
+        if file_scene != str(scene_revision):
+            return self._fail("SCENE_STALE", [{
+                "file": file_scene, "live": str(scene_revision),
+                "path": str(site_path)}])
+        if list(identity.get("joint_names") or []) != list(CANONICAL_JOINTS):
+            return self._fail("JOINT_ORDER_MISMATCH", [{
+                "file": list(identity.get("joint_names") or []),
+                "expected": list(CANONICAL_JOINTS)}])
+        from luggage_planning.site_pose_schema import (
+            executable_site_pose,
+            validate_site_poses,
+        )
+
+        report = validate_site_poses(
+            data, expected_scene_revision=str(scene_revision),
+            expected_joint_names=list(CANONICAL_JOINTS),
+            schema=data.get("schema"))
+        values = (executable_site_pose(report, pose_name)
+                  if pose_name in (data.get("poses") or {}) else None)
+        if (not report.get("ok") or values is None
+                or len(values) != len(CANONICAL_JOINTS)):
+            return self._fail("POSE_NOT_VALID", [{
+                "pose_name": pose_name,
+                "issues": report.get("issues") or ["pose not valid"]}])
+        current = tuple(float(v) for v in (current_joints or ()))
+        if len(current) != 6:
+            return self._fail("START_STATE_MISMATCH",
+                              [{"joints": len(current)}])
+
+        def _wrap(delta):
+            return (delta + math.pi) % (2.0 * math.pi) - math.pi
+
+        delta = max(abs(_wrap(c - t))
+                    for c, t in zip(current, values))
+        request = {"request_id": str(request_id),
+                   "scene_revision": str(scene_revision),
+                   "start_tcp": {}}
+        if delta <= NAMED_POSE_ALREADY_THERE_RAD:
+            # Zero legs, no admission promoted, nothing to submit — the
+            # caller records already_there and moves on. Pure
+            # joints-vs-file adjudication: no map is read (there is
+            # nothing to plan, so nothing to admit against a map).
+            return {
+                "success": True,
+                "reason_code": "OK",
+                "already_there": True,
+                "path_hash": "",
+                "rows": [{"pose_name": pose_name,
+                          "reason": "already_there",
+                          "delta_rad": round(delta, 6)}],
+                "legs": [],
+                "edges": (),
+                "stage_timings": self._stage_timings(started_ns),
+            }
+        # [S5.7 lock] map admission is fail-closed on the LATEST map —
+        # never the selection-time snapshot (verbatim from
+        # plan_observation_route).
+        fetch = getattr(self, "latest_snapshot_fn", None)
+        snapshot = fetch() if callable(fetch) else None
+        if snapshot is None:
+            return self._fail("MAP_REVALIDATION_UNAVAILABLE", [])
+        if str(scene_revision) != str(
+                getattr(snapshot, "scene_revision", "")):
+            return self._fail("IDENTITY_CHANGED",
+                              [{"scene": str(getattr(
+                                  snapshot, "scene_revision", ""))}])
+        if type(latest_map_revision) is int:
+            if latest_map_revision < int(snapshot.map_revision):
+                return self._fail("MAP_RESTART",
+                                  [{"planned": int(snapshot.map_revision),
+                                    "caller_latest": latest_map_revision}])
+            if latest_map_revision > int(snapshot.map_revision):
+                return self._fail("MAP_STALE",
+                                  [{"snapshot": int(snapshot.map_revision),
+                                    "caller_latest": latest_map_revision}])
+        reset_scene = getattr(self.edge_builder, "reset_scene", None)
+        row = {"pose_name": pose_name}
+        rows = []
+        last_reason = "EDGE_BUILD_FAILED"
+        try:
+            start_fk = self.fk(list(current))
+            start_node = self.graph.register_node(
+                current, tuple(start_fk[0]), tuple(start_fk[1]),
+                "named_pose_home", LoadState.UNLOADED, "named_pose")
+            # Goal joints are the FILE values directly; FK fills the
+            # node's pose field — no IK anywhere on this path.
+            goal_fk = self.fk(list(values))
+            goal_node = self.graph.register_node(
+                tuple(float(v) for v in values),
+                tuple(goal_fk[0]), tuple(goal_fk[1]),
+                "named_pose_%s" % pose_name, LoadState.UNLOADED,
+                "named_pose")
+            try:
+                edge = self.edge_builder(
+                    start_node, goal_node, "PORTAL_TRANSIT")
+            except Exception as error:  # noqa: BLE001 - named row
+                code = getattr(
+                    getattr(error, "reason", None), "value", None) \
+                    or "EDGE_BUILD_FAILED"
+                row["reason"] = code
+                row["detail"] = repr(error)[:200]
+                rows.append(row)
+                return self._fail(code, rows)
+            edges = (edge,)
+            route = PlannedRoute(
+                route_id="route-named-%s" % str(request_id)[:12],
+                request_id=str(request_id),
+                snapshot_digest=snapshot.digest(),
+                payload_digest=UNLOADED_ATTACHMENT_DIGEST,
+                attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
+                candidate_id="named-pose-%s" % pose_name,
+                entry_edge_ids=(edge.edge_id,),
+                retreat_edge_ids=(),
+                edge_digests=(edge.digest(),),
+                trajectory_digest=edge.trajectory.digest(),
+                planning_revision="named_pose")
+            revalidation = self._revalidate(route, snapshot, edges)
+            if revalidation is None:
+                row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
+                rows.append(row)
+                return self._fail(row["reason"], rows)
+            from st09_contracts.certification import MapDecision
+
+            if revalidation.decision is not MapDecision.CONTINUE:
+                row["reason"] = getattr(
+                    revalidation.reason, "value", "MAP_REVISION_MISMATCH")
+                rows.append(row)
+                return self._fail(row["reason"], rows)
+            certification, failure = self._certify(
+                route, snapshot, None, edges, None, None,
+                load_state=LoadState.UNLOADED)
+            if certification is None or not certification.passed:
+                row["reason"] = failure if certification is None \
+                    else certification.reason.value
+                row["recertified"] = False
+                rows.append(row)
+                return self._fail(row["reason"], rows)
+            legs = leg_records(route, edges, request)
+            row["reason"] = "OK"
+            row["certified"] = True
+            rows.append(row)
+            self.last_route = route
+            self.last_certification = certification
+            self.last_revalidation = revalidation
+            self.last_rows = rows
+            self._promote_selection({
+                "path_hash": route.digest(),
+                "route": route,
+                "edges": edges,
+                "snapshot": snapshot,
+                "attachment": None,
+                "candidate": None,
+                "request": request,
+                "certification_id": certification.digest(),
+                "load_state": LoadState.UNLOADED,
+                "purpose": "named_pose:%s" % pose_name,
+            })
+            return {
+                "success": True,
+                "reason_code": "OK",
+                "already_there": False,
+                "selection_id": route.route_id,
+                "path_source": "route-graph",
+                "path_hash": route.digest(),
+                "rows": rows,
+                "route": route,
+                "edges": edges,
+                "legs": legs,
+                "certification": certification,
+                "revalidation": revalidation,
+                "stage_timings": self._stage_timings(started_ns),
+            }
+        finally:
+            if callable(reset_scene):
+                reset_scene()
 
     def _release_box_target(self, box_target, request):
         """Lift the box target to the release-gap pose along container up.

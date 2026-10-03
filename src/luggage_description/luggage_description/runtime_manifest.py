@@ -25,8 +25,9 @@ APPLICATION_TYPES = frozenset(
                  "ProbeMotionSegmentV2", "AddSceneBoxV2", "RemoveSceneBoxV2",
                  "VacuumCommandV2", "AddPlacedBoxV2", "RemovePlacedBoxV2",
                  "SyncStaticSceneV2", "SetPlaceSupportTouchV2", "ResetCargoMapV2",
-                 "IntegrateCargoViewV2", "ValidatePoseV2")),
-        ("action", ("PlanMotionV2", "GoToRobotPoseV2")),
+                 "IntegrateCargoViewV2", "ValidatePoseV2", "GoToRobotPoseV2",
+                 "EnsureCycleStartV2")),
+        ("action", ("PlanMotionV2",)),
         ("msg", ("SurfaceContractV2", "RuntimeIdentityV2")),
     ) for name in names
 )

@@ -172,3 +172,101 @@ def test_missing_entry_and_unknown_kind():
     report = validate(data)
     assert report["poses"]["pickup"]["outcome"] == sps.NOT_EVALUATED
     assert any("unknown pose kind" in text for text in report["issues"])
+
+
+# -- [ST09-I S5.7-6] SIM site-pose schema (GoToRobotPoseV2) --------------
+
+def sim_record(scene=SCENE_REVISION, valid=True):
+    def pose(values):
+        return {
+            "valid": bool(valid),
+            "calibration_status": "synthetic",
+            "values": list(values),
+            "acquisition_stamp_ns": 1_759_000_000_000_000_000,
+            "scene_revision_at_capture": scene,
+            "provenance": {"source": "synthetic_fixture"},
+        }
+
+    return {
+        "schema": sps.SIM_SITE_POSE_SCHEMA,
+        "identity": {
+            "scene_revision": scene,
+            "joint_names": list(sps.JOINTS),
+            "urdf_sha256": "",
+            "srdf_sha256": "",
+        },
+        "poses": {
+            "pickup_observe_sim": pose([1.8806, -1.7736, -1.0491, 4.4439,
+                                        1.7721, 1.8473]),
+            "portal_observe_sim": pose([0.7412, -1.8043, -1.0461, -1.8668,
+                                        1.5749, -2.4370]),
+        },
+        "defaults": {"observe_pose": "pickup_observe_sim"},
+    }
+
+
+def test_sim_schema_accepts_synthetic_calibration():
+    report = validate(sim_record(), schema=sps.SIM_SITE_POSE_SCHEMA)
+    assert report["ok"], report["issues"]
+    values = sps.executable_site_pose(report, "pickup_observe_sim")
+    assert values is not None and len(values) == 6
+
+
+def test_deploy_schema_still_rejects_synthetic_calibration():
+    """Deploy strictness is unchanged: the same synthetic document under
+    the DEPLOY schema (or without the schema switch) is refused."""
+    report = validate(sim_record())
+    assert not report["ok"]
+    assert any("synthetic" in text or "schema is" in text
+               for text in report["issues"])
+    report = validate(sim_record(), schema=sps.SITE_POSE_SCHEMA)
+    assert not report["ok"]
+
+
+def test_sim_file_defaults_observe_pose_allowed_deploy_stays_current():
+    """A SIM file names its observe pose; the deploy schema still
+    demands current until every entry is measured."""
+    report = validate(sim_record(), schema=sps.SIM_SITE_POSE_SCHEMA)
+    assert report["ok"], report["issues"]
+    data = base_record()
+    data["defaults"]["observe_pose"] = "pickup"
+    report = validate(data)
+    assert any("defaults.observe_pose must stay" in text
+               for text in report["issues"])
+
+
+def test_sim_invalid_entry_refuses():
+    """valid:false entries are the honest unmeasured state: the file
+    stays well-formed, the pose is simply NOT executable."""
+    report = validate(sim_record(valid=False),
+                      schema=sps.SIM_SITE_POSE_SCHEMA)
+    assert report["poses"]["pickup_observe_sim"]["valid"] is False
+    assert sps.executable_site_pose(report, "pickup_observe_sim") is None
+
+
+def test_checked_in_sim_deploy_yaml_validates_against_deploy_scene():
+    """The committed sim_deploy.yaml is a well-formed SIM document whose
+    identity pins md5(scene_tf_deploy.yaml) — the scene the S5 gazebo
+    runner launches."""
+    import hashlib
+    import os
+
+    root = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
+    yaml_path = os.path.join(
+        root, "src", "luggage_description", "config",
+        "robot_poses.sim_deploy.yaml")
+    scene_path = os.path.join(
+        root, "src", "luggage_description", "config", "scene_tf_deploy.yaml")
+    data = yaml.safe_load(open(yaml_path, encoding="utf-8"))
+    scene_md5 = hashlib.md5(
+        open(scene_path, "rb").read()).hexdigest()
+    assert data["schema"] == sps.SIM_SITE_POSE_SCHEMA
+    report = validate(data, schema=sps.SIM_SITE_POSE_SCHEMA)
+    assert report["ok"], report["issues"]
+    # the identity pins the deploy scene, measured not hardcoded
+    assert data["identity"]["scene_revision"] == scene_md5 == (
+        SCENE_REVISION)
+    # the named-residual discipline: urdf declared but EMPTY
+    assert data["identity"]["urdf_sha256"] == ""
+    assert data["identity"]["srdf_sha256"]

@@ -66,10 +66,18 @@ class GzSetPoseClient(object):
             SetEntityPose, "/world/%s/set_pose" % world,
             callback_group=group)
         self._ready = False
+        self._probed = False
 
     def set_model_pose(self, model_name, xyz, quat, timeout_sec=0.05):
         if not self._ready:
-            if not self._client.wait_for_service(timeout_sec=5.0):
+            # First probe gets a real budget. A stack with no gz (the
+            # I-suite mock) must not block the 30 Hz follow timer for
+            # another 5 s every tick: that starves /vacuum/state
+            # republishing and the selector's vacuum freshness window
+            # then reads STALE on a perfectly healthy latch.
+            budget = 5.0 if not self._probed else 0.0
+            if not self._client.wait_for_service(timeout_sec=budget):
+                self._probed = True
                 return False, "set_pose service unavailable"
             self._ready = True
         elif not self._client.service_is_ready():

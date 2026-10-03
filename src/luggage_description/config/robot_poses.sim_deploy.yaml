@@ -1,48 +1,60 @@
 # Robot named poses for the MIRRORED DEPLOYMENT cell in SIMULATION
-# (ST09-I S5). SIMULATION ONLY — synthesized start for the S5 Gazebo
-# runner, derived by scripts/st09_i/s5_synthesize_sim_poses.py
-# (offline_ik refine of the sim pickup_observe onto the deploy-scene
-# overhead camera target at world (+1.0, 0.0, 1.9), converted through
-# the fixed camera-to-TCP URDF transform). This is NOT a measured site
-# pose: robot_poses.deploy.yaml stays all-valid:false and nothing in
-# this file may move the real cell.
+# (ST09-I S5). SIMULATION ONLY — the SIM site-pose schema
+# (luggage.site_poses.sim/1) consumed by GoToRobotPoseV2; synthesized
+# by scripts/st09_i/s5_synthesize_sim_poses.py (offline_ik refine of
+# the sim pickup_observe onto the deploy-scene overhead camera target
+# at world (+1.0, 0.0, 1.9), converted through the fixed camera-to-TCP
+# URDF transform). This is NOT a measured site pose:
+# robot_poses.deploy.yaml stays all-valid:false and nothing in this
+# file may move the real cell.
 #
 # portal_observe_sim: the post-release observation camera position (the
 # old _exit_to_portal geometry: 0.20 m outside the opening face, 0.35 m
-# above the opening target), reached through the sanctioned GoToRobotPose
-# surface — the ad-hoc driver-side cartesian escape is deleted
-# (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK provenance.
+# above the opening target), reached through the certified
+# GoToRobotPoseV2 service — the ad-hoc driver-side cartesian escape is
+# deleted (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK
+# provenance.
+
+schema: luggage.site_poses.sim/1
+
+identity:
+  # md5(scene_tf_deploy.yaml) — computed by scene_revision_from_path at
+  # synthesis time; never hand-edited.
+  scene_revision: 98313fb8b30e51521a4c45a829ff6d5d
+  joint_names: [elfin_joint1, elfin_joint2, elfin_joint3,
+                elfin_joint4, elfin_joint5, elfin_joint6]
+  # Declared but deliberately EMPTY: the launch-time runtime identity's
+  # urdf_sha256 embeds the spawn initial joints, so a pinned value here
+  # would spuriously mismatch whenever spawn parameters change. Joint
+  # order + scene revision + SRDF are the binding (named residual
+  # "urdf_hash_separation" in the S6 freeze contract — never claimed as
+  # a URDF full match).
+  urdf_sha256: ""
+  # sha256(config/S20_with_camera.srdf) — the SRDF is static, it never
+  # changes with spawn parameters.
+  srdf_sha256: 3cfac36d96bc9c815b0d2b9b9cdd321719198541e8a7f25343a439863506936d
 
 poses:
   pickup_observe_sim:
-    group: elfin_arm
-    joints:
-      - elfin_joint1
-      - elfin_joint2
-      - elfin_joint3
-      - elfin_joint4
-      - elfin_joint5
-      - elfin_joint6
+    valid: true
+    calibration_status: synthetic
     values: [-1.2500, -1.7466, -0.9974, -1.9153, 1.7714, 1.8610]
-    tolerance: 0.15
+    acquisition_stamp_ns: 1791040663401734400
+    scene_revision_at_capture: 98313fb8b30e51521a4c45a829ff6d5d
+    provenance:
+      source: synthetic_fixture
   portal_observe_sim:
-    group: elfin_arm
-    joints:
-      - elfin_joint1
-      - elfin_joint2
-      - elfin_joint3
-      - elfin_joint4
-      - elfin_joint5
-      - elfin_joint6
+    valid: true
+    calibration_status: synthetic
     values: [0.7412, -1.8043, -1.0461, -1.8668, 1.5749, -2.4370]
-    tolerance: 0.15
+    acquisition_stamp_ns: 1791040663401734400
+    scene_revision_at_capture: 98313fb8b30e51521a4c45a829ff6d5d
+    provenance:
+      source: synthetic_fixture
 
 defaults:
   observe_pose: pickup_observe_sim
-  planning_time: 30.0
-  max_velocity_scaling: 0.3
-  max_acceleration_scaling: 0.3
 
 meta:
-  name: robot_poses_sim_deploy_v1
-  version: 0.2.0
+  name: robot_poses_sim_deploy_v2
+  version: 0.3.0

@@ -225,7 +225,7 @@ for entry in sorted(os.listdir(target)):
             digest.update(hashlib.sha256(handle.read()).digest())
         files += 1
     dists.append({"name": name, "version": dist.version,
-                  "top_level": tops, "files": files,
+                  "files": files,
                   "tree_sha256": digest.hexdigest()})
 record["distributions"] = dists
 with open(os.path.join(target, "DEPLOYED.json"), "w") as handle:

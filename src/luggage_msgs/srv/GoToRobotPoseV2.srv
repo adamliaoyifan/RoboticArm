@@ -1,0 +1,35 @@
+# [ST09-I S5.7-6] Certified motion to a NAMED site pose.
+# The caller names an explicit calibrated pose; the selector validates
+# the pose file against the live scene identity, builds one MoveIt
+# edge from the live start state, and returns a COMPLETE certified
+# joint_path under the LoadState.UNLOADED admission — the same
+# pipeline plan_observation_route uses. No silent defaults.observe_pose
+# resolution and no current/here execution: those are caller-side
+# decisions, never server-side fallbacks. v1 GoToRobotPose (bare FJT)
+# stays for the hardware pick chain only.
+string request_id
+string pose_name
+# Live joint state at request time (start-state anchor + gate).
+float64[] current_joint_state
+# Caller-adopted live identity (RuntimeIdentityV2.scene_revision).
+string scene_revision
+# The caller's latest authoritative map revision (GetCargoMapStats).
+uint64 latest_map_revision
+---
+bool success
+string reason_code
+string detail
+# True when the live joints already hold the named pose (0.02 rad
+# wrap-aware gate): no legs, no admission promoted, nothing to submit.
+bool already_there
+luggage_msgs/MotionSegmentV2[] motion_segments
+# Digest of the certified route (the executor's per-leg admission
+# scope for check_execution_admission).
+string route_digest
+string certification_id
+uint64 admission_map_revision
+# Per-leg trajectory digests + certified load-state ("unloaded"),
+# aligned with motion_segments.
+string[] leg_digests
+string[] leg_load_states
+float64 certify_ms

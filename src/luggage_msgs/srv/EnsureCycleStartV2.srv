@@ -1,0 +1,23 @@
+# [ST09-I S5.7-6 §2 minimal] Cycle-start adjudication, server-authoritative.
+# The selector owns the latched /joint_states, the offline FK, the
+# scene config, and the latched /vacuum/state; it classifies the
+# suction TCP into the container zone taxonomy and reports whether the
+# next cycle may start from here. NO route planning rides this service:
+# ALREADY_READY means the caller may request GoToRobotPoseV2;
+# RECOVERY_REQUIRED is a named stop (the certified exit is the place
+# route's own retreat/return legs, or a later recovery route).
+# Caller-adopted live identity (RuntimeIdentityV2.scene_revision) —
+# the binding check against the selector's own scene.
+string scene_revision
+---
+uint8 ALREADY_READY=1
+uint8 RECOVERY_REQUIRED=2
+uint8 outcome
+string reason_code
+# CONTAINER_ZONES classification of the suction TCP (base-link frame;
+# "unknown" on identity/FK failure — never a world-frame guess).
+string zone
+# "carrying" | "unloaded" | "unknown" (latched /vacuum/state.attached;
+# an absent feed is unknown, never guessed).
+string attachment_state
+string detail

@@ -26,6 +26,23 @@ from luggage_planning.named_robot_poses import JOINTS
 
 SITE_POSE_SCHEMA = "luggage.site_poses/1"
 
+#: [ST09-I S5.7-6] The simulation site-pose schema: the same measured
+#: discipline (scene revision, joint order, per-entry capture binding)
+#: with ``calibration_status: synthetic`` allowed and the
+#: ``defaults.observe_pose``-must-stay-current rule lifted — a SIM file
+#: is what the S5 gazebo runtime and the I-suite fixtures launch with.
+#: The deploy validator's strictness is unchanged (``synthetic`` is
+#: accepted ONLY under this schema).
+SIM_SITE_POSE_SCHEMA = "luggage.site_poses.sim/1"
+
+#: The two synthetic pose kinds the sim runtime freezes (the pick
+#: observe anchor and the portal exit view; a sim cell never has a
+#: second cargo region).
+SIM_POSE_KINDS = (
+    "pickup_observe_sim",
+    "portal_observe_sim",
+)
+
 #: The four measured pose kinds the deploy cell freezes. ``return`` is
 #: the post-place retreat/observe base; the two observation kinds cover
 #: the portal view and the second cargo region view.
@@ -70,18 +87,33 @@ def load_site_poses(path):
 def validate_site_poses(data, *, expected_scene_revision,
                         expected_joint_names=None,
                         expected_srdf_sha256=None,
-                        expected_urdf_sha256=None):
-    """Validate a deploy site-pose record against the frozen cell.
+                        expected_urdf_sha256=None,
+                        schema=SITE_POSE_SCHEMA,
+                        pose_kinds=None):
+    """Validate a deploy (or sim) site-pose record against the cell.
 
     Returns a report dict:
     ``{"ok", "schema", "scene_revision", "joint_order", "executable_fallback",
        "poses": {kind: {"valid", "outcome", "issues"[]}}, "issues"[]}``.
-    ``ok`` is true only when the file itself is a well-formed deploy
-    site record for this exact cell (schema, scene, joint order, no
+    ``ok`` is true only when the file itself is a well-formed site
+    record for this exact cell (schema, scene, joint order, no
     simulation provenance). Individual unmeasured entries stay
     ``valid:false`` / ``not_executable`` -- that is the correct state
     before calibration, not a failure of the file.
+
+    [ST09-I S5.7-6] ``schema=SIM_SITE_POSE_SCHEMA`` switches the pose
+    kinds to ``SIM_POSE_KINDS``, accepts ``calibration_status:
+    synthetic`` (SIM only — the deploy schema still demands
+    ``measured``) and lifts the ``defaults.observe_pose``-must-stay-
+    current rule (a sim file names its observe pose). Deploy callers
+    pass nothing new: identical behavior.
     """
+    schema = str(schema or SITE_POSE_SCHEMA)
+    if schema not in (SITE_POSE_SCHEMA, SIM_SITE_POSE_SCHEMA):
+        raise ValueError("unknown site-pose schema: %r" % schema)
+    accept_synthetic = schema == SIM_SITE_POSE_SCHEMA
+    pose_kinds = tuple(pose_kinds) if pose_kinds else (
+        SIM_POSE_KINDS if accept_synthetic else SITE_POSE_KINDS)
     expected_joint_names = list(expected_joint_names or JOINTS)
     report = {
         "schema": data.get("schema"),
@@ -98,9 +130,9 @@ def validate_site_poses(data, *, expected_scene_revision,
     def issue(text):
         report["issues"].append(text)
 
-    if data.get("schema") != SITE_POSE_SCHEMA:
+    if data.get("schema") != schema:
         issue("schema is %r, expected %s" % (
-            data.get("schema"), SITE_POSE_SCHEMA))
+            data.get("schema"), schema))
     identity = data.get("identity") or {}
     if not isinstance(identity, dict):
         issue("identity block missing")
@@ -124,7 +156,7 @@ def validate_site_poses(data, *, expected_scene_revision,
     if not isinstance(poses, dict):
         issue("poses block missing")
         poses = {}
-    for kind in SITE_POSE_KINDS:
+    for kind in pose_kinds:
         if kind not in poses:
             report["poses"][kind] = {
                 "valid": False, "outcome": NOT_EVALUATED,
@@ -132,24 +164,27 @@ def validate_site_poses(data, *, expected_scene_revision,
             issue("pose %s missing" % kind)
             continue
         report["poses"][kind] = _validate_entry(
-            kind, poses[kind], expected_scene_revision)
+            kind, poses[kind], expected_scene_revision,
+            accept_synthetic=accept_synthetic)
         if poses[kind].get("valid") is True and not report["poses"][kind]["valid"]:
             # A declared-measured entry that does not hold is a file-level
             # defect, not a per-entry footnote.
             issue("pose %s declares valid but fails: %s"
                   % (kind, "; ".join(report["poses"][kind]["issues"])))
-    for key in sorted(set(poses) - set(SITE_POSE_KINDS)):
+    for key in sorted(set(poses) - set(pose_kinds)):
         issue("unknown pose kind %s" % key)
 
-    if not str(data.get("defaults", {}).get("observe_pose")
-               or EXECUTABLE_FALLBACK) == EXECUTABLE_FALLBACK:
-        issue("defaults.observe_pose must stay %r until every entry is "
-              "measured" % EXECUTABLE_FALLBACK)
+    if not accept_synthetic:
+        if not str(data.get("defaults", {}).get("observe_pose")
+                   or EXECUTABLE_FALLBACK) == EXECUTABLE_FALLBACK:
+            issue("defaults.observe_pose must stay %r until every entry is "
+                  "measured" % EXECUTABLE_FALLBACK)
     report["ok"] = not report["issues"]
     return report
 
 
-def _validate_entry(kind, entry, expected_scene_revision):
+def _validate_entry(kind, entry, expected_scene_revision,
+                    accept_synthetic=False):
     result = {"valid": False, "outcome": NOT_EXECUTABLE, "issues": []}
 
     def problem(text):
@@ -172,9 +207,14 @@ def _validate_entry(kind, entry, expected_scene_revision):
             result["outcome"] = NOT_EVALUATED
         return result
 
-    # valid:true from here on: every measured-entry requirement applies.
+    # valid:true from here on: every measured-entry requirement applies
+    # (``synthetic`` calibration is the one SIM-schema allowance; the
+    # provenance stays ``synthetic_fixture``, which the deploy cell
+    # also accepts — it is the fixture discipline, not simulation
+    # provenance).
     calibration = str(entry.get("calibration_status") or "").strip().lower()
-    if calibration != "measured":
+    if calibration != "measured" and not (
+            accept_synthetic and calibration == "synthetic"):
         problem("calibration_status is %r, not measured"
                 % entry.get("calibration_status"))
     if source not in MEASURED_SOURCES:

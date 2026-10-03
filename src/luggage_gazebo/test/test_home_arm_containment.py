@@ -30,20 +30,24 @@ from luggage_gazebo.place_metrics import PlaceTrial, place_ok  # noqa: E402
 
 
 class _Driver(object):
-    """Only the collaborators `_home_arm` actually touches."""
+    """Only the collaborators `_home_arm` actually touches (the ensure
+    machine: the selector's verdict + the structured exit proof)."""
 
-    def __init__(self, zone="outside_container", goto_ok=True,
-                 portal_exited=False, zone_reason=""):
-        self._zone = zone
+    def __init__(self, ready=True, reason="OK", zone="outside_container",
+                 attachment="unloaded", goto_ok=True, proof_valid=False):
+        self._ensure = (True, bool(ready), str(reason), str(zone),
+                        str(attachment), "{}")
         self._goto_ok = goto_ok
-        self._portal_exited = portal_exited
-        self._zone_reason = zone_reason
+        self._proof_valid = proof_valid
         self._home_arm_state = {}
         self._exit_yaw = {}
         self.calls = []
 
-    def _container_zone(self):
-        return self._zone, self._zone_reason
+    def _ensure_cycle_start(self):
+        return self._ensure
+
+    def _portal_exit_proof_valid(self):
+        return self._proof_valid, "valid" if self._proof_valid else "absent"
 
     def ros_now_sec(self):
         return 0.0
@@ -54,51 +58,87 @@ class _Driver(object):
 
     _home_arm = PlaceSmokeDriver._home_arm
     home_arm_code = PlaceSmokeDriver.home_arm_code
+    ENSURE_NAMED_STOPS = PlaceSmokeDriver.ENSURE_NAMED_STOPS
 
 
 class TestHomeArmClassification(unittest.TestCase):
+    """[ST09-I S5.7-6 §2] the ensure-first machine with the structured
+    exit-proof exception (评审点 1)."""
 
-    def test_outside_goes_straight_to_the_named_pose(self):
-        driver = _Driver(zone="outside_container", goto_ok=True)
+    def test_already_ready_goes_straight_to_the_named_pose(self):
+        driver = _Driver(ready=True, zone="outside_container")
         ok, notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertTrue(ok)
+        self.assertIn("cycle=ALREADY_READY", notes)
         self.assertIn("zone=outside_container", notes)
         self.assertEqual(driver.home_arm_code(), "")
 
-    def test_outside_but_goto_fails_is_goto_failed(self):
-        driver = _Driver(zone="outside_container", goto_ok=False)
+    def test_goto_failure_is_goto_failed(self):
+        driver = _Driver(ready=True, goto_ok=False)
         ok, _notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertFalse(ok)
         self.assertEqual(driver.home_arm_code(), "GOTO_FAILED")
 
-    def test_inside_requires_the_certified_route(self):
-        for zone in ("inside_container", "opening_corridor"):
-            driver = _Driver(zone=zone, goto_ok=True)
+    def test_recovery_required_is_the_named_stop(self):
+        for reason, zone in (
+                ("EXIT_ROUTE_UNAVAILABLE", "inside_container"),
+                ("EXIT_ROUTE_UNAVAILABLE", "opening_corridor"),
+                ("CARRY_EXIT_UNSUPPORTED", "inside_container"),
+                ("IDENTITY_UNKNOWN", "unknown"),
+                ("ATTACHMENT_STATE_UNKNOWN", "outside_container")):
+            driver = _Driver(ready=False, reason=reason, zone=zone)
             ok, notes, _result = driver._home_arm()
-            self.assertEqual(driver.calls, [], zone)
+            self.assertEqual(driver.calls, [], reason)
             self.assertFalse(ok)
-            self.assertIn("EXIT_REQUIRES_CERTIFIED_ROUTE", notes)
-            self.assertEqual(
-                driver.home_arm_code(), "EXIT_REQUIRES_CERTIFIED_ROUTE")
+            self.assertIn(reason, notes)
+            self.assertIn("cycle=RECOVERY_REQUIRED", notes)
+            self.assertEqual(driver.home_arm_code(), reason)
 
-    def test_unknown_zone_refuses_with_the_named_reason(self):
-        driver = _Driver(zone="unknown", goto_ok=True,
-                         zone_reason="SCENE_IDENTITY_MISSING")
+    def test_portal_proof_allows_goto_from_the_corridor(self):
+        driver = _Driver(ready=False, reason="EXIT_ROUTE_UNAVAILABLE",
+                         zone="opening_corridor", proof_valid=True)
         ok, notes, _result = driver._home_arm()
-        self.assertEqual(driver.calls, [])
-        self.assertFalse(ok)
-        self.assertIn("zone=unknown (SCENE_IDENTITY_MISSING)", notes)
-        self.assertEqual(
-            driver.home_arm_code(), "SCENE_IDENTITY_MISSING")
-
-    def test_portal_exited_still_allows_the_goto(self):
-        driver = _Driver(zone="opening_corridor", goto_ok=True,
-                         portal_exited=True)
-        ok, _notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertTrue(ok)
+        self.assertIn("exit=portal_proof", notes)
+        self.assertTrue(driver._home_arm_state["portal_proof"])
+        self.assertEqual(driver.home_arm_code(), "")
+
+    def test_portal_proof_invalid_keeps_the_named_stop(self):
+        driver = _Driver(ready=False, reason="EXIT_ROUTE_UNAVAILABLE",
+                         zone="opening_corridor", proof_valid=False)
+        ok, _notes, _result = driver._home_arm()
+        self.assertEqual(driver.calls, [])
+        self.assertFalse(ok)
+        self.assertEqual(
+            driver.home_arm_code(), "EXIT_ROUTE_UNAVAILABLE")
+
+    def test_proof_never_overrides_other_reasons(self):
+        driver = _Driver(ready=False, reason="CARRY_EXIT_UNSUPPORTED",
+                         zone="outside_container", proof_valid=True)
+        ok, _notes, _result = driver._home_arm()
+        self.assertEqual(driver.calls, [])
+        self.assertFalse(ok)
+        self.assertEqual(
+            driver.home_arm_code(), "CARRY_EXIT_UNSUPPORTED")
+
+    def test_failure_keeps_the_gz_contact_capture(self):
+        driver = _Driver(ready=False, reason="IDENTITY_UNKNOWN",
+                         zone="unknown")
+        driver._capture_gz_contacts = lambda: {"available": False}
+        ok, _notes, _result = driver._home_arm()
+        self.assertFalse(ok)
+        self.assertIn("contacts", driver._home_arm_state)
+
+    def test_service_absent_fails_closed_by_name(self):
+        driver = _Driver(ready=False, reason="ENSURE_CYCLE_START_UNAVAILABLE",
+                         zone="unknown", attachment="unknown")
+        ok, _notes, _result = driver._home_arm()
+        self.assertFalse(ok)
+        self.assertEqual(driver.home_arm_code(),
+                         "ENSURE_CYCLE_START_UNAVAILABLE")
 
 
 class _ZoneDriver(object):

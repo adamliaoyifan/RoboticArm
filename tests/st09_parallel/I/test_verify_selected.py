@@ -58,11 +58,17 @@ class _Producer(object):
         self.superseded_admissions = {}
         self._stub_revalidation = revalidation
         self._stub_certification = certification
+        # [ST09-I S5.7-6] fresh attached vacuum feed (fake _clock_ns
+        # returns 0 and received_ns is 0 -> age 0: the carrying-leg
+        # LIVE assertions below hold through the new vacuum window).
+        self.vacuum_state_fn = lambda: {
+            "attached": True, "vacuum_on": True, "received_ns": 0}
 
     _promote_selection = RouteProducer._promote_selection
     _stage_timings = RouteProducer._stage_timings
     _selection_phase = staticmethod(RouteProducer._selection_phase)
     _live_attachment_matches = RouteProducer._live_attachment_matches
+    _live_vacuum_holds = RouteProducer._live_vacuum_holds
     transition_admission_phase = RouteProducer.transition_admission_phase
 
     def _revalidate(self, route, snapshot, edges):
@@ -430,6 +436,79 @@ def test_carrying_leg_refuses_on_attachment_incarnation_change():
         producer, leg_digest="leg-carrying",
         leg_load_state="carrying")[:2] == (
         False, "ATTACHMENT_INCARNATION_CHANGED")
+
+
+def test_carrying_leg_requires_live_vacuum_state():
+    """[S5.7-6 lock] no authoritative vacuum feed -> named refusal.
+
+    Closes the driver-check -> controller-commit window: the admission
+    verdict itself must read a live feed (selector-side gate), and an
+    old stub without the attribute fails CLOSED, never AttributeError.
+    """
+    producer = _release_route_producer()
+    producer.vacuum_state_fn = None
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (False, "VACUUM_STATE_UNAVAILABLE")
+    # the attribute-absent legacy-stub shape fails closed the same way
+    producer = _release_route_producer()
+    del producer.vacuum_state_fn
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (False, "VACUUM_STATE_UNAVAILABLE")
+
+
+def test_carrying_leg_refuses_on_stale_vacuum_state():
+    """[S5.7-6 negative] receive-time age beyond the 2.0 s window
+    refuses by name with the age in the detail."""
+    producer = _release_route_producer()
+    producer.vacuum_state_fn = lambda: {
+        "attached": True, "vacuum_on": True, "received_ns": 0}
+    producer._clock_ns = lambda: 5_000_000_000  # 5 s later
+    live, reason, detail = _admission(
+        producer, leg_digest="leg-carrying", leg_load_state="carrying")
+    assert (live, reason) == (False, "VACUUM_STATE_STALE")
+    assert detail["age_s"] == 5.0
+
+
+def test_carrying_leg_refuses_when_vacuum_detached():
+    """[S5.7-6 negative] fresh feed, attached False: PAYLOAD_LOST."""
+    producer = _release_route_producer()
+    producer.vacuum_state_fn = lambda: {
+        "attached": False, "vacuum_on": True, "received_ns": 0}
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (False, "PAYLOAD_LOST")
+
+
+def test_carrying_leg_live_with_fresh_attached_vacuum():
+    """[S5.7-6] fresh + attached: the carrying claim stays LIVE through
+    the new vacuum window (the gate composes with, not replaces, the
+    measured-attachment binding)."""
+    producer = _release_route_producer()
+    producer.vacuum_state_fn = lambda: {
+        "attached": True, "vacuum_on": True, "received_ns": 0}
+    producer._clock_ns = lambda: 1_000_000_000  # 1 s < 2.0 s window
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-carrying", leg_load_state="carrying")
+    assert live and reason == "OK"
+
+
+def test_fail_reason_with_attached_still_admits():
+    """[S5.7-6 lock] the gate keys on ``attached`` ONLY.
+
+    The I-suite mock sim backend sets fail_reason while attached stays
+    True (gz set_pose unavailable); keying on fail_reason would fail
+    every mock-stack carrying leg. fail_reason is evidence, never the
+    admission key.
+    """
+    producer = _release_route_producer()
+    producer.vacuum_state_fn = lambda: {
+        "attached": True, "vacuum_on": True, "received_ns": 0,
+        "fail_reason": "GZ_SET_POSE_UNAVAILABLE"}
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-carrying", leg_load_state="carrying")
+    assert live and reason == "OK"
 
 
 def test_detach_unconfirmed_refuses_the_phase_transition():

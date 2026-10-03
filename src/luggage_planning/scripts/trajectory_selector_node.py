@@ -70,6 +70,13 @@ class TrajectorySelectorNode(Node):
             String, "/luggage/cargo_map/surface_2d", self._on_surface, qos)
         self.create_subscription(
             JointState, "/joint_states", self._on_joints, 10)
+        # [ST09-I S5.7-6] authoritative vacuum feed for the carrying
+        # admission window (TRANSIENT_LOCAL like the controller's own
+        # publish, so a late-joining selector sees the latched state).
+        from luggage_msgs.msg import VacuumState
+        self._vacuum_state = None
+        self.create_subscription(
+            VacuumState, "/vacuum/state", self._on_vacuum_state, qos)
         # Dedicated group: the route producer blocks inside these
         # callbacks waiting on move_group/planning-scene responses whose
         # clients live in the default group — sharing one mutually
@@ -115,9 +122,32 @@ class TrajectorySelectorNode(Node):
             "/trajectory_selector/transition_admission_phase",
             self._transition_admission_phase,
             callback_group=self._service_group)
+        # [ST09-I S5.7-6] certified motion to a NAMED site pose: the
+        # site-pose file (sim schema) is validated against the live
+        # identity; one MoveIt edge + the full certification pipeline
+        # under the explicit UNLOADED admission.
+        from luggage_msgs.srv import GoToRobotPoseV2
+        self.create_service(
+            GoToRobotPoseV2,
+            "/trajectory_selector/goto_robot_pose_v2",
+            self._goto_robot_pose_v2,
+            callback_group=self._service_group)
+        # [ST09-I S5.7-6 §2] cycle-start adjudication: authoritative
+        # state only (latched joints + vacuum + scene config + offline
+        # FK), NO route planning and no frame_runtime admission — the
+        # same pure-verdict shape as check_execution_admission.
+        from luggage_msgs.srv import EnsureCycleStartV2
+        self.create_service(
+            EnsureCycleStartV2,
+            "/trajectory_selector/ensure_cycle_start_v2",
+            self._ensure_cycle_start,
+            callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
+        # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
+        # the service refuses POSE_FILE_MISSING — never a default).
+        self.declare_parameter("robot_poses_config", "")
         self._route_producer = None
         self._route_planning = bool(
             self.get_parameter("route_planning").value)
@@ -140,6 +170,27 @@ class TrajectorySelectorNode(Node):
                 modules=[(_sys.modules["__main__"], "module", "application")],
                 package_names=["luggage_planning"])
         self.get_logger().info("trajectory_selector up")
+
+    def _site_poses(self):
+        """[ST09-I S5.7-6] Cached (data, path) for the site-pose file.
+
+        An unreadable or missing file logs and returns None so the
+        producer refuses POSE_FILE_MISSING — never an exception at the
+        service boundary, never a silent default.
+        """
+        path = str(self.get_parameter("robot_poses_config").value or "")
+        if not path:
+            return None
+        if getattr(self, "_site_poses_cache", None) is None:
+            from luggage_planning.site_pose_schema import load_site_poses
+
+            try:
+                self._site_poses_cache = (load_site_poses(path), path)
+            except Exception as error:  # noqa: BLE001 - fail closed
+                self.get_logger().error(
+                    "site poses: %r unreadable: %r" % (path, error))
+                return None
+        return self._site_poses_cache
 
     def _runtime_atlas(self):
         cfg = self._atlas_cfg
@@ -173,6 +224,20 @@ class TrajectorySelectorNode(Node):
         if msg.position and all(name in names for name in wanted):
             self._joints = [
                 float(msg.position[names.index(name)]) for name in wanted]
+
+    def _on_vacuum_state(self, msg):
+        """Latch the authoritative vacuum state with a receive stamp.
+
+        The message carries no stamp of its own; the receive time on
+        this node's clock (the same clock the producer's clock_ns uses)
+        is the freshness basis the admission window compares against.
+        """
+        self._vacuum_state = {
+            "attached": bool(msg.attached),
+            "vacuum_on": bool(msg.vacuum_on),
+            "fail_reason": str(msg.fail_reason or ""),
+            "received_ns": self.get_clock().now().nanoseconds,
+        }
 
     def _map_to_world(self, xyz):
         """Map(container)-frame point -> world frame (scene yaw + origin)."""
@@ -423,7 +488,21 @@ class TrajectorySelectorNode(Node):
             transit_clearance_z=(
                 pedestal_dimensions(self._scene)[2]
                 if pedestal_enabled(self._scene) else None),
-            atlas_prior=atlas_prior)
+            atlas_prior=atlas_prior,
+            # [ST09-I S5.7-6] carrying admission window: the producer
+            # reads the latched authoritative vacuum state (None until
+            # the first message arrives — fail-closed upstream).
+            vacuum_state_fn=lambda: (
+                dict(self._vacuum_state)
+                if getattr(self, "_vacuum_state", None) is not None
+                else None),
+            # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (None
+            # when unconfigured — the producer refuses by name).
+            site_poses_fn=self._site_poses,
+            # [ST09-I S5.7-6 §2] EnsureCycleStartV2 adjudication inputs.
+            scene_config=self._scene,
+            scene_revision_binding=str(
+                self.get_parameter("frame_scene_revision").value or ""))
         return self._route_producer
 
     def _verify_selected(self, request, response):
@@ -621,6 +700,142 @@ class TrajectorySelectorNode(Node):
         response.certify_ms = float(
             (result.get("stage_timings") or {}).get("certify_ms", 0.0)
             or 0.0)
+        return response
+
+    def _goto_robot_pose_v2(self, request, response):
+        """[ST09-I S5.7-6] GoToRobotPoseV2 service boundary.
+
+        The caller names an explicit calibrated pose; the producer
+        validates the site file against the live identity, builds the
+        MoveIt edge, and returns the COMPLETE certified joint_path
+        under the explicit LoadState.UNLOADED admission. No
+        defaults.observe_pose resolution, no current/here execution —
+        caller-side decisions, never server-side fallbacks.
+        """
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/trajectory_selector/goto_robot_pose_v2")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.detail = "%s: %s" % (error.code, error.field)
+                return response
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.success = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        try:
+            result = producer.plan_named_pose_route(
+                request_id=str(getattr(request, "request_id", "") or ""),
+                pose_name=str(getattr(request, "pose_name", "") or ""),
+                current_joints=list(
+                    request.current_joint_state or []),
+                scene_revision=str(getattr(request, "scene_revision", "")
+                                   or ""),
+                latest_map_revision=int(request.latest_map_revision))
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: goto boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.success = False
+            response.reason_code = "GOTO_SERVICE_EXCEPTION"
+            response.detail = repr(error)[:300]
+            return response
+        if not result.get("success"):
+            response.success = False
+            response.reason_code = str(
+                result.get("reason_code") or "NO_FEASIBLE_ROUTE")
+            response.detail = json.dumps(
+                result.get("rows") or [], default=str)[:2000]
+            return response
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.detail = "%s: %s" % (error.code, error.field)
+                return response
+        from luggage_planning.place_service import _route_motion_messages
+
+        response.success = True
+        response.reason_code = "OK"
+        response.already_there = bool(result.get("already_there"))
+        response.route_digest = str(result.get("path_hash") or "")
+        if response.already_there:
+            return response
+        response.certification_id = str(
+            result["certification"].digest())
+        response.admission_map_revision = int(
+            result["revalidation"].map_revision)
+        response.motion_segments = _route_motion_messages(
+            result["legs"], result["request"]
+            if isinstance(result.get("request"), dict)
+            else {"request_id": str(request.request_id),
+                  "scene_revision": str(request.scene_revision)})
+        response.leg_digests = [
+            str(edge.trajectory.digest()) for edge in result["edges"]]
+        response.leg_load_states = [
+            str(getattr(edge, "load_state", "") or "").lower()
+            for edge in result["edges"]]
+        response.certify_ms = float(
+            (result.get("stage_timings") or {}).get("certify_ms", 0.0)
+            or 0.0)
+        return response
+
+    def _ensure_cycle_start(self, request, response):
+        """[ST09-I S5.7-6 §2] EnsureCycleStartV2 service boundary.
+
+        The selector's OWN latched state answers (joints, vacuum,
+        scene); the executor never adjudicates for itself. Pure
+        verdict — ALREADY_READY authorizes nothing more than the next
+        GoToRobotPoseV2 request.
+        """
+        from luggage_msgs.srv import EnsureCycleStartV2 as _Ensure
+
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.outcome = _Ensure.Response.RECOVERY_REQUIRED
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            response.zone = "unknown"
+            response.attachment_state = "unknown"
+            return response
+        try:
+            ready, reason, zone, attachment, detail = \
+                producer.ensure_cycle_start_state(
+                    joints=self._joints,
+                    request_scene_revision=str(
+                        request.scene_revision or ""),
+                    vacuum_state=self._vacuum_state)
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: ensure boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.outcome = _Ensure.Response.RECOVERY_REQUIRED
+            response.reason_code = "ENSURE_SERVICE_EXCEPTION"
+            response.zone = "unknown"
+            response.attachment_state = "unknown"
+            response.detail = repr(error)[:300]
+            return response
+        response.outcome = (
+            _Ensure.Response.ALREADY_READY if ready
+            else _Ensure.Response.RECOVERY_REQUIRED)
+        response.reason_code = str(reason)
+        response.zone = str(zone)
+        response.attachment_state = str(attachment)
+        response.detail = json.dumps(detail, default=str)[:2000]
         return response
 
     def _select_v2(self, request, response):

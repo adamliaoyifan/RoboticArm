@@ -334,21 +334,99 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             time.sleep(0.05)
         return "not still within %.1fs (%s)" % (timeout, reason or "settle")
 
+    #: [ST09-I S5.7-6] named stops _home_arm surfaces verbatim (the
+    #: four-state machine's own reasons — never re-mapped into a
+    #: generic failure).
+    ENSURE_NAMED_STOPS = frozenset((
+        "CARRY_EXIT_UNSUPPORTED", "EXIT_ROUTE_UNAVAILABLE",
+        "IDENTITY_UNKNOWN", "ATTACHMENT_STATE_UNKNOWN",
+        "JOINT_STATE_UNAVAILABLE", "CAMERA_FRAME_UNAVAILABLE",
+        "ZONE_UNKNOWN", "SCENE_CONFIG_UNAVAILABLE",
+        "ENSURE_CYCLE_START_UNAVAILABLE", "ENSURE_SERVICE_EXCEPTION",
+        "ROUTE_PRODUCER_UNAVAILABLE", "GOTO_V2_UNAVAILABLE",
+    ))
+
     def home_arm_code(self):
         """Reason code for the last `_home_arm`, or "" when it returned."""
         state = dict(self._home_arm_state or {})
         if not state or state.get("ok"):
             return ""
         if not state.get("exit_ok"):
-            # [ST09-I S5.7] the exit is the certified route's retreat/
-            # return legs; arriving still inside means the route never
-            # completed — never the deleted ad-hoc cartesian escape.
-            # UNKNOWN (TF/scene identity) is its own named refusal.
-            if state.get("zone") == "unknown":
-                return str(state.get("zone_reason")
-                           or "SCENE_IDENTITY_MISSING")
+            # [ST09-I S5.7-6] the ensure verdict's named stops pass
+            # through verbatim; anything else means the arm arrived
+            # somewhere it may not start a cycle from without a
+            # certified exit route.
+            reason = str(state.get("cycle_reason") or "")
+            if reason in self.ENSURE_NAMED_STOPS:
+                return reason
             return "EXIT_REQUIRES_CERTIFIED_ROUTE"
         return "GOTO_FAILED"
+
+    def _ensure_cycle_start(self):
+        """[ST09-I S5.7-6 §2] The selector's authoritative cycle verdict.
+
+        Returns ``(ok_service, ready, reason, zone, attachment, detail)``
+        — the service absent fails CLOSED (the home path then refuses
+        by name; it never adjudicates for itself).
+        """
+        from luggage_msgs.srv import EnsureCycleStartV2
+
+        client = getattr(self, "_ensure_client", None)
+        if client is None:
+            client = self.create_client(
+                EnsureCycleStartV2,
+                "/trajectory_selector/ensure_cycle_start_v2",
+                callback_group=getattr(self, "_group", None))
+            self._ensure_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, False, "ENSURE_CYCLE_START_UNAVAILABLE", \
+                "unknown", "unknown", ""
+        request = EnsureCycleStartV2.Request()
+        request.scene_revision = str(self._frame_scene_revision or "")
+        result = self.call_srv(client, request, timeout=5.0) \
+            if hasattr(self, "call_srv") else None
+        if result is None:
+            return False, False, "ENSURE_CYCLE_START_UNAVAILABLE", \
+                "unknown", "unknown", ""
+        return (True, bool(result.outcome == (
+                    EnsureCycleStartV2.Response.ALREADY_READY)),
+                str(result.reason_code or ""),
+                str(result.zone or "unknown"),
+                str(result.attachment_state or "unknown"),
+                str(result.detail or ""))
+
+    def _portal_exit_proof_valid(self):
+        """[ST09-I S5.7-6 评审点 1] Adjudicate the structured exit proof.
+
+        The proof is an evidence chain, not a boolean bypass: it holds
+        only while NOTHING has changed since the certified exit — same
+        scene identity, the arm still at the exit's final joints
+        (0.02 rad wrap-aware), the vacuum still not re-attached, and a
+        live unloaded attachment state. Any drift voids it and the
+        four-state verdict stands.
+        """
+        proof = getattr(self, "_portal_exit_proof", None)
+        if not isinstance(proof, dict):
+            return False, "absent"
+        if str(proof.get("scene_revision") or "") != str(
+                getattr(self, "_frame_scene_revision", "") or ""):
+            return False, "scene_changed"
+        final = [float(v) for v in proof.get("final_joint_values") or []]
+        live = list((getattr(self, "_last_joint_state", None) or {})
+                    .get("position") or [])[:len(final)]
+        if len(final) != 6 or len(live) != 6:
+            return False, "joints_unavailable"
+
+        def _wrap(delta):
+            return (delta + math.pi) % (2.0 * math.pi) - math.pi
+
+        delta = max(abs(_wrap(c - t)) for c, t in zip(live, final))
+        if delta > 0.02:
+            return False, "joints_moved(%.3frad)" % delta
+        vacuum = dict(getattr(self, "_vacuum_state", None) or {})
+        if bool(vacuum.get("attached")):
+            return False, "vacuum_reattached"
+        return True, "valid(delta=%.3frad)" % delta
 
     def _aperture_corridor_depth(self):
         """Derived opening-corridor depth (design S5.7 section 1).
@@ -440,31 +518,39 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return {"available": True, "topic": topic, "sample": text[:4000]}
 
     def _home_arm(self):
-        """Scene-state classification + sanctioned calls only (ST09-I S5).
+        """[ST09-I S5.7-6 §2] EnsureCycleStartV2 verdict + sanctioned goto.
 
-        No geometry planning lives here. OUTSIDE -> the allowed
-        named-pose goto. INSIDE/NEAR_OPENING -> the exit is the
-        CERTIFIED route's own retreat/return legs (the place cycle
-        executes them after release); arriving here still inside means
-        the route did not complete — a named refusal, never the deleted
-        ad-hoc cartesian escape (the executor answers those with
-        SEGMENT_GENERATION_REMOVED and that bypass stays deleted).
+        The selector adjudicates the authoritative state (latched
+        joints, vacuum, scene identity — never a driver-side guess);
+        this driver only obeys. ALREADY_READY -> the named-pose goto
+        (GoToRobotPoseV2 under workstream C). RECOVERY_REQUIRED is a
+        named stop, with ONE exception: EXIT_ROUTE_UNAVAILABLE plus a
+        still-valid structured exit proof (评审点 1 — the certified
+        portal exit already happened and nothing has drifted since;
+        the portal pose legitimately classifies corridor).
         """
-        zone, zone_err = self._container_zone()
-        notes = ["zone=%s%s" % (zone, " (%s)" % zone_err if zone_err else "")]
+        (_ok_service, ready, cycle_reason, zone, attachment, _detail) = \
+            self._ensure_cycle_start()
+        notes = ["cycle=%s zone=%s attachment=%s reason=%s" % (
+            "ALREADY_READY" if ready else "RECOVERY_REQUIRED",
+            zone, attachment, cycle_reason)]
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
-        exit_ok = True
-        if (zone not in ("outside_container",)
-                and not getattr(self, "_portal_exited", False)):
-            exit_ok = False
-            notes.append("exit=EXIT_REQUIRES_CERTIFIED_ROUTE")
+        exit_ok = bool(ready)
+        proof_note = ""
+        if not exit_ok and cycle_reason == "EXIT_ROUTE_UNAVAILABLE":
+            valid, why = self._portal_exit_proof_valid()
+            if valid:
+                exit_ok = True
+                proof_note = "exit=portal_proof(%s)" % why
+                notes.append(proof_note)
         goto_ok = True
         goto_msg = ""
         result = None
         if not exit_ok:
             goto_ok = False
-            goto_msg = "route incomplete; arm still %s" % zone
+            goto_msg = "recovery required; arm %s (%s)" % (
+                zone, cycle_reason)
             notes.append("goto=%s" % goto_msg)
         else:
             goto_ok, goto_msg, result = self.goto_observe()
@@ -477,7 +563,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         ok = bool(exit_ok and goto_ok)
         self._home_arm_state = {
             "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok),
-            "zone": zone, "zone_reason": zone_err or ""}
+            "zone": zone, "zone_reason": cycle_reason,
+            "cycle_reason": cycle_reason,
+            "attachment_state": attachment,
+            "portal_proof": bool(proof_note),
+        }
         if not ok:
             capture = getattr(self, "_capture_gz_contacts", None)
             if callable(capture):
@@ -802,10 +892,19 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     holds, lost_reason = self._carrying_vacuum_holds()
                     if not holds:
                         return False, lost_reason, None
+                # [ST09-I S5.7-6] during-leg poll for carrying legs:
+                # payload loss between the pre-submission check above
+                # and the controller commit cancels mid-wait (the
+                # adapter refuses by name and waits for the cancel
+                # receipt — no detach, no map commit, no recovery).
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
                     name="PlanMotionV2:%s" % name,
-                    admission=leg_admission)
+                    admission=leg_admission,
+                    should_abort=(
+                        (lambda: not self._carrying_vacuum_holds()[0])
+                        if leg_admission.get("load_state") == "carrying"
+                        else None))
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to
@@ -1772,6 +1871,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 if not vac_ok:
                     trial.fail_code = "VACUUM_ATTACH"
                     return None
+                # [ST09-I S5.7-6 评审点 1] a new attach STARTS a cycle:
+                # the previous cycle's exit proof is void from here —
+                # it must never carry across a new carrying phase.
+                self._portal_exit_proof = None
+                self._portal_exited = False
                 if self._typed is not None:
                     self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:

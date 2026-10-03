@@ -460,6 +460,12 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
         geometry_id=str(surface_map.get("frame", "container_local")),
         geometry_hash=str(surface_map.get("geometry_hash") or
                           digest_of(surface_map["inner_size"])),
+        # [ST09-I S5.7-6] the identity gates (verify_selected /
+        # execution_admission / observation+named-pose producers) compare
+        # the snapshot's scene binding — the param was accepted but never
+        # wired, so every snapshot read as "" and a real request scene
+        # always failed IDENTITY_CHANGED.
+        scene_revision=str(scene_revision or ""),
         map_revision=int(surface_map.get("map_revision", 0)),
         acquisition_stamp_ns=int(surface_map.get("acquisition_stamp_ns", 0)),
         commit_revision=int(surface_map.get("commit_revision", 1)),
@@ -564,6 +570,7 @@ def integrate_view_with_report(snapshot, requirement, view_payload):
     new_snapshot = PlanningSnapshot(
         geometry_id=snapshot.geometry_id,
         geometry_hash=snapshot.geometry_hash,
+        scene_revision=snapshot.scene_revision,
         map_revision=snapshot.map_revision + 1,
         acquisition_stamp_ns=acquisition,
         commit_revision=snapshot.commit_revision + 1,

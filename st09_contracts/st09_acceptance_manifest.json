@@ -1,20 +1,20 @@
 {
-  "schema_version": 1,
-  "manifest_id": "st09-parallel-acceptance-manifest",
-  "frozen_at": "2026-10-02",
-  "frozen_by": "ST09-C0",
-  "plan_revision": "docs/plans/frame_migration_st09_parallel_execution.md (2026-10-02)",
-  "technical_baseline": "docs/plans/frame_migration_st09_planner_convergence.md (2026-10-02)",
-  "c0_head_note": "The dispatching reviews row fills generation/base/owner per plan section 8; engineering content only here.",
-  "unified_test_entry": {
-    "command": "python3 -m pytest tests/st09_parallel/<TASK> -q",
-    "environment": "source /opt/ros/humble/setup.bash; source $CANDIDATE_WS/install-st09/setup.bash; export PYTHONPATH=$CANDIDATE_WS/src:$PYTHONPATH",
-    "rules": [
-      "collected=0 in a task directory fails that task",
-      "each directory carries at least one healthy positive behaviour case plus every negative listed for that task in plan section 8",
-      "B/C real-MoveIt cases additionally need the isolated mock graph on the domain assigned to that task (87 final graph, 42 replay, 7 Gazebo-only)"
+  "build_and_run_commands": {
+    "all_gate": "bash scripts/frame_migration_st09_verify.sh all --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/all --ros-domain-id 87",
+    "candidate_ws": "cd $CANDIDATE_WS && source /opt/ros/humble/setup.bash && colcon build --build-base build-st09 --install-base install-st09 && source install-st09/setup.bash",
+    "contract_checkers": [
+      "python3 scripts/check_frame_contracts.py --mode migration",
+      "bash scripts/check_agent_contract.sh"
     ],
-    "agent_contract_checker": "bash scripts/check_agent_contract.sh"
+    "graph_gate": "bash scripts/frame_migration_st09_verify.sh graph --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/graph --ros-domain-id 87",
+    "offline_gate": "bash scripts/frame_migration_st09_verify.sh offline --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/offline --ros-domain-id 87",
+    "regression_base": "1795a69 (ST08 head); only the pre-existing packing exact node+reason failures may be exempted"
+  },
+  "c0_head_note": "The dispatching reviews row fills generation/base/owner per plan section 8; engineering content only here.",
+  "evidence_layout": {
+    "c0_checkpoint_evidence": "docs/status/evidence/frame_migration/ST09-g5-dirty-checkpoint-20261002/ (original failure evidence kept, never cleaned)",
+    "per_task_required": "required/observed samples, missing items, checksums, environment (T0/T1/T2 windows and matrix per technical baseline S6)",
+    "root": "docs/status/evidence/frame_migration/ST09-parallel-<task>-<revision>/"
   },
   "file_owners": {
     "C0_then_I": [
@@ -62,13 +62,6 @@
       "scripts/render_probe_fraction_reject.py",
       "tests/st09_parallel/E/**"
     ],
-    "ST09-Q (experiment branch experiment/st09-qp-preserved only)": [
-      "src/luggage_planning/luggage_planning/qp_carry/**",
-      "src/luggage_planning/config/qp_carry.yaml",
-      "scripts/replay_qp_carry.py",
-      "src/luggage_planning/test/test_qp_*.py",
-      "scripts/qp_edge_benchmark.py (new)"
-    ],
     "ST09-I (exclusive shared entries)": [
       "src/luggage_planning/luggage_planning/trajectory_selector.py",
       "src/luggage_planning/luggage_planning/motion_executor.py",
@@ -84,304 +77,343 @@
       "src/luggage_gazebo/launch/**",
       "src/luggage_description/luggage_description/ros_frame_bindings/** and runtime_* modules",
       "src/luggage_msgs/** (interface schema)"
+    ],
+    "ST09-Q (experiment branch experiment/st09-qp-preserved only)": [
+      "src/luggage_planning/luggage_planning/qp_carry/**",
+      "src/luggage_planning/config/qp_carry.yaml",
+      "scripts/replay_qp_carry.py",
+      "src/luggage_planning/test/test_qp_*.py",
+      "scripts/qp_edge_benchmark.py (new)"
     ]
   },
-  "requirement_task_test_artifact": [
-    {
-      "requirement": "C0-1 checkpoint verify + selective restore + QP preserved branch",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_restore_manifest.py",
-      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-C0-<rev>/restore_verification.json; experiment/st09-qp-preserved branch + qp_preserved_manifest.json"
-    },
-    {
-      "requirement": "C0-2 production cannot activate QP",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_production_qp_absence.py",
-      "artifact": "evidence qp_absence scan output"
-    },
-    {
-      "requirement": "C0-3 resolved planning contract, no unresolved values",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_planning_contract.py",
-      "artifact": "st09_contracts/resolved_planning_contract.json"
-    },
-    {
-      "requirement": "C0-4 shared ROS-free contracts + fixtures",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_contracts.py, tests/st09_parallel/C0/test_attachment_fixture.py",
-      "artifact": "st09_contracts/**"
-    },
-    {
-      "requirement": "C0-5 frozen call protocols",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_contracts.py::protocol tests",
-      "artifact": "st09_contracts/protocols.py"
-    },
-    {
-      "requirement": "C0-6 single reason taxonomy",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_contracts.py::taxonomy tests",
-      "artifact": "st09_contracts/reasons.py"
-    },
-    {
-      "requirement": "C0-7 case list, workload, commands, file owners",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_manifest.py",
-      "artifact": "this manifest"
-    },
-    {
-      "requirement": "C0-8 requirement->task->test->artifact map complete with no placeholders",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_manifest.py",
-      "artifact": "this manifest"
-    },
-    {
-      "requirement": "attachment contract per baseline 5.1 (records, provider, resolve_place_targets, fixtures)",
-      "task": "ST09-C0",
-      "test": "tests/st09_parallel/C0/test_attachment_fixture.py",
-      "artifact": "st09_contracts/attachment.py, fixtures.py, v2_field_audit.json"
-    },
-    {
-      "requirement": "S1 exact hull / depth ordering / observation needs (24 saved slanted-wall candidates all rejected; 16 deep/shallow cases; unsupported tilt rejected)",
-      "task": "ST09-A",
-      "test": "tests/st09_parallel/A/**",
-      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-A-<rev>/candidate_replay.json"
-    },
-    {
-      "requirement": "S2 graph/route + pure target synthesis + 8-class +/- fixtures + target fixture matrix (error<=1e-9)",
-      "task": "ST09-B",
-      "test": "tests/st09_parallel/B/**",
-      "artifact": "ST09-parallel-B-<rev>/ graph+trajectory hashes, MoveIt request/scene, benchmark"
-    },
-    {
-      "requirement": "S3 certification, 6 map cases x sim/deploy, mutations, stop measurements, 9 attachment negatives",
-      "task": "ST09-C",
-      "test": "tests/st09_parallel/C/**",
-      "artifact": "ST09-parallel-C-<rev>/certification_results.json, mock traces, stop measurements"
-    },
-    {
-      "requirement": "observation coverage + async map + measured attachment provider acceptance",
-      "task": "ST09-D",
-      "test": "tests/st09_parallel/D/**",
-      "artifact": "ST09-parallel-D-<rev>/coverage+revision traces, attachment provider traces"
-    },
-    {
-      "requirement": "S5/S6 runner, dump/replay, three-box extractor, coverage inventory",
-      "task": "ST09-E",
-      "test": "tests/st09_parallel/E/**",
-      "artifact": "ST09-parallel-E-<rev>/sample_manifest, capture reports"
-    },
-    {
-      "requirement": "Q-core preserved branch, blocked-knot diagnostics, optimize_edge",
-      "task": "ST09-Q",
-      "test": "src/luggage_planning/test/test_qp_*.py on experiment/st09-qp-preserved",
-      "artifact": "ST09-parallel-Q-<rev>/diagnostics"
-    },
-    {
-      "requirement": "merge order A/D/C/B/E, caller migration, bypass deletion, mock whole-chain, M3",
-      "task": "ST09-I",
-      "test": "integration suites + M3 unit gate",
-      "artifact": "ST09-parallel-I-<rev>/merge log, M3 evidence"
-    },
-    {
-      "requirement": "S5-S7 full release gates, two-box rehearsal, paired replay, proofs, close",
-      "task": "ST09-R",
-      "test": "frame_migration_st09_verify.sh all",
-      "artifact": "release evidence per technical baseline S6/S7"
-    }
-  ],
+  "frozen_at": "2026-10-02",
+  "frozen_by": "ST09-C0",
   "m3_workload": {
-    "sequence_ids": [
-      "carryon",
-      "standard",
-      "carryon"
-    ],
     "rules": [
       "spawner input is test stimulus only; production reads measured dimensions",
       "three actually detected boxes; no preset slots; selection per-round from map + measured geometry",
       "box N+1 consumes box N's integrated revision; each box completes pick->attach->entry->release->measured verify/integrate->map publish->retreat/return",
       "one exclusive domain-7 session, GUI/RViz off, non-scored, <=20 min; all three boxes pass or the unit fails",
       "per-box GT gates from resolved_planning_contract.json eval_gates_per_box"
+    ],
+    "sequence_ids": [
+      "carryon",
+      "standard",
+      "carryon"
     ]
   },
-  "semantic_assets": {
-    "frozen_at": "2026-10-03",
-    "rule": "formal runs resolve semantic assets ONLY from the candidate install overlay via the luggage_perception package share (colcon-installed vendor + checkpoint); no main-workspace path, no source tree, no user cache (~/.cache/clip), no bare filenames (ultralytics not-found fallback is a network download); absent assets are named launch failures (SEMANTIC_VENDOR_MISSING / SEMANTIC_WEIGHTS_MISSING)",
-    "yolov8s_world_pt": {
-      "path": "share/luggage_perception/models/yolov8s-world.pt",
-      "sha256": "095f5266bb9b654bd5ad9e21e9cdeda78e0f2c8460f5d652eaf04bab7ee251cf",
-      "bytes": 27169314
-    },
-    "clip_vendor": {
-      "path": "share/luggage_perception/vendor",
-      "contents": "clip_pkg/ + deps/ + clip_models/ (ViT-B/32)",
-      "tree_sha256": "150178f0db4b3a0e339ec0f2a234f584c921ce19047823e5e856858635b82c5f",
-      "tree_digest_command": "cd vendor && LC_ALL=C find clip_pkg deps clip_models -type f | LC_ALL=C sort | xargs sha256sum | sha256sum"
-    },
-    "offline_proofs": "source-tree vendor hidden + no ~/.cache/clip + dead-proxy (no-network) construction all pass; runtime-reported model_path/clip_vendor under the install overlay; verify with scripts/st09_i/verify_semantic_offline.sh",
-    "python_deps": {
-      "mode": "candidate-owned frozen prefix (pydeps-frozen/)",
-      "deploy_step": "scripts/st09_i/deploy_python_deps.sh",
-      "runtime_rule": "segmenter runs with PYTHONNOUSERSITE=1 and the prefix prepended to ITS PYTHONPATH (and its cuda lib dirs on ITS LD_LIBRARY_PATH) only; the user site can never satisfy an import",
-      "verification": "PYTHONNOUSERSITE=1 + fresh HOME + dead network + source vendor hidden -> construction succeeds (scripts/st09_i/verify_semantic_offline.sh); per-dist tree digests are RECORD-based",
-      "distributions": [
-        {
-          "name": "nvidia-cublas-cu12",
-          "version": "12.8.4.1",
-          "files": 23,
-          "tree_sha256": "ac22f8b60f839263a4d6cdfea4ac2c3a3881bc86ffcc6a8525c2ade02c54481b"
-        },
-        {
-          "name": "nvidia-cuda-cupti-cu12",
-          "version": "12.8.90",
-          "files": 56,
-          "tree_sha256": "d2559c36a931e7364ae8cc54a5b46878f8e209a1c4889742f459ab5b43de6d3b"
-        },
-        {
-          "name": "nvidia-cuda-nvrtc-cu12",
-          "version": "12.8.93",
-          "files": 19,
-          "tree_sha256": "04110f7077913ea05544762ca3365812800fcc739c35a01295e2a9641f01abc8"
-        },
-        {
-          "name": "nvidia-cuda-runtime-cu12",
-          "version": "12.8.90",
-          "files": 110,
-          "tree_sha256": "6eafc5136fff9d13df792397a24a935640d36c0e06679f2ea6f549ce24650cb3"
-        },
-        {
-          "name": "nvidia-cudnn-cu12",
-          "version": "9.10.2.21",
-          "files": 28,
-          "tree_sha256": "46c44a71625f55ed71e117b36a605b3adbaa2d6ab39ca82bca04a5229db40338"
-        },
-        {
-          "name": "nvidia-cufft-cu12",
-          "version": "11.3.3.83",
-          "files": 20,
-          "tree_sha256": "36cad0905368b3a7e4c604060ed0a80f0f5e0c4850a874db948c36de39d7bbd7"
-        },
-        {
-          "name": "nvidia-cufile-cu12",
-          "version": "1.13.1.3",
-          "files": 17,
-          "tree_sha256": "0dcedadad6394caa810d2b042b78bfb899a1a8436eeb59376c02ee78fb8c53f3"
-        },
-        {
-          "name": "nvidia-curand-cu12",
-          "version": "10.3.9.90",
-          "files": 32,
-          "tree_sha256": "4ecaea3ff347e30187f83ada8764b747e10bc359ef8baaa4689df309f75bf1e5"
-        },
-        {
-          "name": "nvidia-cusolver-cu12",
-          "version": "11.7.3.90",
-          "files": 22,
-          "tree_sha256": "0e163637b850fa67e7f9c1b9f4b084a391dd6654fc400ff160f92982c24a61f9"
-        },
-        {
-          "name": "nvidia-cusparse-cu12",
-          "version": "12.5.8.93",
-          "files": 17,
-          "tree_sha256": "1ded2e4d921261b2bb6e79ea9ab785817ef253a9578a81006a7fa830ee79f70d"
-        },
-        {
-          "name": "nvidia-cusparselt-cu12",
-          "version": "0.7.1",
-          "files": 8,
-          "tree_sha256": "3348947f8be5a7cf7c9a4ee074f508ee74c4697a32a4e6ac42e8ba5543f89802"
-        },
-        {
-          "name": "nvidia-nccl-cu12",
-          "version": "2.27.5",
-          "files": 8,
-          "tree_sha256": "24b69c464c4d7ec6afd9d602c388f970ea82f4b2558a360373f3d1bf4a7c587f"
-        },
-        {
-          "name": "nvidia-nvjitlink-cu12",
-          "version": "12.8.93",
-          "files": 16,
-          "tree_sha256": "48e4df35389c228b497530d82cb501543d7e948a3b4f390b5ca1a9ada3acf179"
-        },
-        {
-          "name": "nvidia-nvshmem-cu12",
-          "version": "3.4.5",
-          "files": 65,
-          "tree_sha256": "3b7e1f23759a1b77f32aec476ecd173ed43dfd457d71919078d152fe212b12ab"
-        },
-        {
-          "name": "nvidia-nvtx-cu12",
-          "version": "12.8.90",
-          "files": 36,
-          "tree_sha256": "393d9f2da8e1213f7a9ceb79284a24c1c2500d199de9a5463d9c2c790336d50c"
-        },
-        {
-          "name": "sympy",
-          "version": "1.14.0",
-          "files": 3102,
-          "tree_sha256": "790bb4431cfe2b3335b2a55663a2633ce0d652d9da8efdc445c66300fda854d6"
-        },
-        {
-          "name": "torch",
-          "version": "2.10.0",
-          "files": 13981,
-          "tree_sha256": "87749b9c0b0baf109d981ebbf7bd17330167547ccf8d0432f01c6c5d5faac108"
-        },
-        {
-          "name": "torchvision",
-          "version": "0.25.0",
-          "files": 390,
-          "tree_sha256": "0512899d7b2a5da32bb11cf75d4df928fe93bc70f9a7fdd939b5b96c11615bda"
-        },
-        {
-          "name": "triton",
-          "version": "3.6.0",
-          "files": 466,
-          "tree_sha256": "2eb5b69248ba0812fdef2a9df2e8b011f27942834e22a14de9c98fa657796f98"
-        },
-        {
-          "name": "typing_extensions",
-          "version": "4.15.0",
-          "files": 7,
-          "tree_sha256": "72f14f220a852a705f3bcfaf71a92c6b26429b133d36cf67a92bb181f3b11694"
-        },
-        {
-          "name": "ultralytics",
-          "version": "8.4.6",
-          "files": 486,
-          "tree_sha256": "87d7be4399be7d026848b7e3691e5cbc6fb0d83b9995022bcd63712f96e0853d"
-        }
-      ]
-    }
-  },
-  "build_and_run_commands": {
-    "candidate_ws": "cd $CANDIDATE_WS && source /opt/ros/humble/setup.bash && colcon build --build-base build-st09 --install-base install-st09 && source install-st09/setup.bash",
-    "offline_gate": "bash scripts/frame_migration_st09_verify.sh offline --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/offline --ros-domain-id 87",
-    "graph_gate": "bash scripts/frame_migration_st09_verify.sh graph --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/graph --ros-domain-id 87",
-    "all_gate": "bash scripts/frame_migration_st09_verify.sh all --ws $CANDIDATE_WS --install $CANDIDATE_WS/install-st09 --out $EVIDENCE_ROOT/all --ros-domain-id 87",
-    "contract_checkers": [
-      "python3 scripts/check_frame_contracts.py --mode migration",
-      "bash scripts/check_agent_contract.sh"
-    ],
-    "regression_base": "1795a69 (ST08 head); only the pre-existing packing exact node+reason failures may be exempted"
-  },
+  "manifest_id": "st09-parallel-acceptance-manifest",
+  "plan_revision": "docs/plans/frame_migration_st09_parallel_execution.md (2026-10-02)",
   "required_case_inventory": {
-    "geometry_frame_64": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
-    "deep_place_16": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
-    "yaw_ik_8_classes": "0->0, 0->90, 90->0, near-square, eccentric attachment, q/-q + pi/-pi equivalence, multi IK family, no-transition-region; positive+negative each",
-    "target_matrix_8": "centered/eccentric/relative-yaw/tilt x sim/deploy; independent expectation error <=1e-9 (C0 fixtures in st09_contracts/fixtures.py)",
     "attachment_negatives_9": "missing, NaN, non-positive dimensions, illegal quaternion, expired, wrong frame, wrong request, re-attach, GT-as-measured; named rejection, zero business effect",
-    "map_cases_6_x2": "unrelated update / related update / fully blocked / in-flight conflict / stale / restart, sim+deploy",
-    "startup_3_x2": "sim+deploy x3 healthy, <=180 s READY, <=90 s teardown, mock hardware",
+    "budgets": "lossless replay <=1 GiB/live run, <=4 GiB campaign total; shortfall blocks new runs, never deletes failure evidence",
+    "capture_replay": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
     "common_negatives_per_profile": "unknown schema, conflicting datum, mixed types, missing peer, stale atlas, missing URDF, duplicate provider, wrong overlay, restart",
+    "deep_place_16": "2 yaw x 2 scene x {deep free, deep blocked, cannot-retreat, unknown}",
+    "geometry_frame_64": "established 64 cases per boundary and caller; pure <=1e-9, ROS <=1e-6, identity/ns exact",
+    "map_cases_6_x2": "unrelated update / related update / fully blocked / in-flight conflict / stale / restart, sim+deploy",
     "mutations": "wrong-frame, position-only rotation, dropped velocities/times, legacy bypass, QP activation",
     "performance": "healthy saved graph fixture x10 warm + 1 cold, each <=10 s or named budget failure; p50/max + MoveIt call counts recorded",
-    "capture_replay": "pre=ceil(2*max upstream latency), post=ceil(max downstream latency), every required chain >=1 positive sample; domain-42 three pairs off/on, median degradation <=10%",
-    "budgets": "lossless replay <=1 GiB/live run, <=4 GiB campaign total; shortfall blocks new runs, never deletes failure evidence"
+    "startup_3_x2": "sim+deploy x3 healthy, <=180 s READY, <=90 s teardown, mock hardware",
+    "target_matrix_8": "centered/eccentric/relative-yaw/tilt x sim/deploy; independent expectation error <=1e-9 (C0 fixtures in st09_contracts/fixtures.py)",
+    "yaw_ik_8_classes": "0->0, 0->90, 90->0, near-square, eccentric attachment, q/-q + pi/-pi equivalence, multi IK family, no-transition-region; positive+negative each"
   },
-  "evidence_layout": {
-    "root": "docs/status/evidence/frame_migration/ST09-parallel-<task>-<revision>/",
-    "per_task_required": "required/observed samples, missing items, checksums, environment (T0/T1/T2 windows and matrix per technical baseline S6)",
-    "c0_checkpoint_evidence": "docs/status/evidence/frame_migration/ST09-g5-dirty-checkpoint-20261002/ (original failure evidence kept, never cleaned)"
+  "requirement_task_test_artifact": [
+    {
+      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-C0-<rev>/restore_verification.json; experiment/st09-qp-preserved branch + qp_preserved_manifest.json",
+      "requirement": "C0-1 checkpoint verify + selective restore + QP preserved branch",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_restore_manifest.py"
+    },
+    {
+      "artifact": "evidence qp_absence scan output",
+      "requirement": "C0-2 production cannot activate QP",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_production_qp_absence.py"
+    },
+    {
+      "artifact": "st09_contracts/resolved_planning_contract.json",
+      "requirement": "C0-3 resolved planning contract, no unresolved values",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_planning_contract.py"
+    },
+    {
+      "artifact": "st09_contracts/**",
+      "requirement": "C0-4 shared ROS-free contracts + fixtures",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py, tests/st09_parallel/C0/test_attachment_fixture.py"
+    },
+    {
+      "artifact": "st09_contracts/protocols.py",
+      "requirement": "C0-5 frozen call protocols",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py::protocol tests"
+    },
+    {
+      "artifact": "st09_contracts/reasons.py",
+      "requirement": "C0-6 single reason taxonomy",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_contracts.py::taxonomy tests"
+    },
+    {
+      "artifact": "this manifest",
+      "requirement": "C0-7 case list, workload, commands, file owners",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_manifest.py"
+    },
+    {
+      "artifact": "this manifest",
+      "requirement": "C0-8 requirement->task->test->artifact map complete with no placeholders",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_manifest.py"
+    },
+    {
+      "artifact": "st09_contracts/attachment.py, fixtures.py, v2_field_audit.json",
+      "requirement": "attachment contract per baseline 5.1 (records, provider, resolve_place_targets, fixtures)",
+      "task": "ST09-C0",
+      "test": "tests/st09_parallel/C0/test_attachment_fixture.py"
+    },
+    {
+      "artifact": "docs/status/evidence/frame_migration/ST09-parallel-A-<rev>/candidate_replay.json",
+      "requirement": "S1 exact hull / depth ordering / observation needs (24 saved slanted-wall candidates all rejected; 16 deep/shallow cases; unsupported tilt rejected)",
+      "task": "ST09-A",
+      "test": "tests/st09_parallel/A/**"
+    },
+    {
+      "artifact": "ST09-parallel-B-<rev>/ graph+trajectory hashes, MoveIt request/scene, benchmark",
+      "requirement": "S2 graph/route + pure target synthesis + 8-class +/- fixtures + target fixture matrix (error<=1e-9)",
+      "task": "ST09-B",
+      "test": "tests/st09_parallel/B/**"
+    },
+    {
+      "artifact": "ST09-parallel-C-<rev>/certification_results.json, mock traces, stop measurements",
+      "requirement": "S3 certification, 6 map cases x sim/deploy, mutations, stop measurements, 9 attachment negatives",
+      "task": "ST09-C",
+      "test": "tests/st09_parallel/C/**"
+    },
+    {
+      "artifact": "ST09-parallel-D-<rev>/coverage+revision traces, attachment provider traces",
+      "requirement": "observation coverage + async map + measured attachment provider acceptance",
+      "task": "ST09-D",
+      "test": "tests/st09_parallel/D/**"
+    },
+    {
+      "artifact": "ST09-parallel-E-<rev>/sample_manifest, capture reports",
+      "requirement": "S5/S6 runner, dump/replay, three-box extractor, coverage inventory",
+      "task": "ST09-E",
+      "test": "tests/st09_parallel/E/**"
+    },
+    {
+      "artifact": "ST09-parallel-Q-<rev>/diagnostics",
+      "requirement": "Q-core preserved branch, blocked-knot diagnostics, optimize_edge",
+      "task": "ST09-Q",
+      "test": "src/luggage_planning/test/test_qp_*.py on experiment/st09-qp-preserved"
+    },
+    {
+      "artifact": "ST09-parallel-I-<rev>/merge log, M3 evidence",
+      "requirement": "merge order A/D/C/B/E, caller migration, bypass deletion, mock whole-chain, M3",
+      "task": "ST09-I",
+      "test": "integration suites + M3 unit gate"
+    },
+    {
+      "artifact": "release evidence per technical baseline S6/S7",
+      "requirement": "S5-S7 full release gates, two-box rehearsal, paired replay, proofs, close",
+      "task": "ST09-R",
+      "test": "frame_migration_st09_verify.sh all"
+    }
+  ],
+  "schema_version": 1,
+  "semantic_assets": {
+    "clip_vendor": {
+      "contents": "clip_pkg/ + deps/ + clip_models/ (ViT-B/32)",
+      "path": "share/luggage_perception/vendor",
+      "tree_digest_command": "cd vendor && LC_ALL=C find clip_pkg deps clip_models -type f | LC_ALL=C sort | xargs sha256sum | sha256sum",
+      "tree_sha256": "150178f0db4b3a0e339ec0f2a234f584c921ce19047823e5e856858635b82c5f"
+    },
+    "frozen_at": "2026-10-03",
+    "offline_proofs": "source-tree vendor hidden + no ~/.cache/clip + dead-proxy (no-network) construction all pass; runtime-reported model_path/clip_vendor under the install overlay; verify with scripts/st09_i/verify_semantic_offline.sh",
+    "python_deps": {
+      "deploy_step": "scripts/st09_i/deploy_python_deps.sh",
+      "distributions": [
+        {
+          "files": 23,
+          "name": "nvidia-cublas-cu12",
+          "tree_sha256": "ac22f8b60f839263a4d6cdfea4ac2c3a3881bc86ffcc6a8525c2ade02c54481b",
+          "version": "12.8.4.1"
+        },
+        {
+          "files": 56,
+          "name": "nvidia-cuda-cupti-cu12",
+          "tree_sha256": "d2559c36a931e7364ae8cc54a5b46878f8e209a1c4889742f459ab5b43de6d3b",
+          "version": "12.8.90"
+        },
+        {
+          "files": 19,
+          "name": "nvidia-cuda-nvrtc-cu12",
+          "tree_sha256": "04110f7077913ea05544762ca3365812800fcc739c35a01295e2a9641f01abc8",
+          "version": "12.8.93"
+        },
+        {
+          "files": 110,
+          "name": "nvidia-cuda-runtime-cu12",
+          "tree_sha256": "6eafc5136fff9d13df792397a24a935640d36c0e06679f2ea6f549ce24650cb3",
+          "version": "12.8.90"
+        },
+        {
+          "files": 28,
+          "name": "nvidia-cudnn-cu12",
+          "tree_sha256": "46c44a71625f55ed71e117b36a605b3adbaa2d6ab39ca82bca04a5229db40338",
+          "version": "9.10.2.21"
+        },
+        {
+          "files": 20,
+          "name": "nvidia-cufft-cu12",
+          "tree_sha256": "36cad0905368b3a7e4c604060ed0a80f0f5e0c4850a874db948c36de39d7bbd7",
+          "version": "11.3.3.83"
+        },
+        {
+          "files": 17,
+          "name": "nvidia-cufile-cu12",
+          "tree_sha256": "0dcedadad6394caa810d2b042b78bfb899a1a8436eeb59376c02ee78fb8c53f3",
+          "version": "1.13.1.3"
+        },
+        {
+          "files": 32,
+          "name": "nvidia-curand-cu12",
+          "tree_sha256": "4ecaea3ff347e30187f83ada8764b747e10bc359ef8baaa4689df309f75bf1e5",
+          "version": "10.3.9.90"
+        },
+        {
+          "files": 22,
+          "name": "nvidia-cusolver-cu12",
+          "tree_sha256": "0e163637b850fa67e7f9c1b9f4b084a391dd6654fc400ff160f92982c24a61f9",
+          "version": "11.7.3.90"
+        },
+        {
+          "files": 17,
+          "name": "nvidia-cusparse-cu12",
+          "tree_sha256": "1ded2e4d921261b2bb6e79ea9ab785817ef253a9578a81006a7fa830ee79f70d",
+          "version": "12.5.8.93"
+        },
+        {
+          "files": 8,
+          "name": "nvidia-cusparselt-cu12",
+          "tree_sha256": "3348947f8be5a7cf7c9a4ee074f508ee74c4697a32a4e6ac42e8ba5543f89802",
+          "version": "0.7.1"
+        },
+        {
+          "files": 8,
+          "name": "nvidia-nccl-cu12",
+          "tree_sha256": "24b69c464c4d7ec6afd9d602c388f970ea82f4b2558a360373f3d1bf4a7c587f",
+          "version": "2.27.5"
+        },
+        {
+          "files": 16,
+          "name": "nvidia-nvjitlink-cu12",
+          "tree_sha256": "48e4df35389c228b497530d82cb501543d7e948a3b4f390b5ca1a9ada3acf179",
+          "version": "12.8.93"
+        },
+        {
+          "files": 65,
+          "name": "nvidia-nvshmem-cu12",
+          "tree_sha256": "3b7e1f23759a1b77f32aec476ecd173ed43dfd457d71919078d152fe212b12ab",
+          "version": "3.4.5"
+        },
+        {
+          "files": 36,
+          "name": "nvidia-nvtx-cu12",
+          "tree_sha256": "393d9f2da8e1213f7a9ceb79284a24c1c2500d199de9a5463d9c2c790336d50c",
+          "version": "12.8.90"
+        },
+        {
+          "files": 3102,
+          "name": "sympy",
+          "tree_sha256": "790bb4431cfe2b3335b2a55663a2633ce0d652d9da8efdc445c66300fda854d6",
+          "version": "1.14.0"
+        },
+        {
+          "files": 13981,
+          "name": "torch",
+          "tree_sha256": "87749b9c0b0baf109d981ebbf7bd17330167547ccf8d0432f01c6c5d5faac108",
+          "version": "2.10.0"
+        },
+        {
+          "files": 390,
+          "name": "torchvision",
+          "tree_sha256": "0512899d7b2a5da32bb11cf75d4df928fe93bc70f9a7fdd939b5b96c11615bda",
+          "version": "0.25.0"
+        },
+        {
+          "files": 466,
+          "name": "triton",
+          "tree_sha256": "2eb5b69248ba0812fdef2a9df2e8b011f27942834e22a14de9c98fa657796f98",
+          "version": "3.6.0"
+        },
+        {
+          "files": 7,
+          "name": "typing_extensions",
+          "tree_sha256": "72f14f220a852a705f3bcfaf71a92c6b26429b133d36cf67a92bb181f3b11694",
+          "version": "4.15.0"
+        },
+        {
+          "files": 486,
+          "name": "ultralytics",
+          "tree_sha256": "87d7be4399be7d026848b7e3691e5cbc6fb0d83b9995022bcd63712f96e0853d",
+          "version": "8.4.6"
+        }
+      ],
+      "freeze": {
+        "archive": {
+          "bytes": 7148431360,
+          "format": "tar",
+          "gitignored": true,
+          "path": "/tmp/elfin-st09-converge-i/docs/status/evidence/freeze/python_prefix/20261003T160054Z",
+          "sha256": "65458df46f7418c288fa01b4983798a99bebf1537b59cdbc882f9d498ea8748e"
+        },
+        "cuda_min_driver_linux": {
+          "floor": "525.60.13",
+          "observed": "580.178.04"
+        },
+        "cuda_runtime": "12.8",
+        "deployed_json_sha256": "1dbbc0c0809d9e3ddf6dd6d162b2663abf62622700f9de42926eb9e77f71f0ac",
+        "frozen_at": "2026-10-03T16:01:07.138141+00:00",
+        "module_paths": {
+          "clip": "unavailable: ModuleNotFoundError(\"No module named 'ftfy'\")",
+          "torch": "/tmp/elfin-st09-converge-i/pydeps-frozen/torch/__init__.py",
+          "torchvision": "/tmp/elfin-st09-converge-i/pydeps-frozen/torchvision/__init__.py",
+          "ultralytics": "/tmp/elfin-st09-converge-i/pydeps-frozen/ultralytics/__init__.py"
+        },
+        "named_residuals": {
+          "urdf_hash_separation": {
+            "note": "launch runtime identity urdf_sha256 embeds the spawn initial joints; sim pose files pin SRDF + scene revision + joint order and leave urdf EMPTY. Convergence: kinematic_urdf_sha256 (normalized, initial joints excluded) + initial_joint_state_digest + srdf_sha256 + joint order. Never claim a URDF full match until separated.",
+            "status": "residual"
+          }
+        },
+        "platform": "x86_64-glibc-2.35",
+        "python_abi": ".cpython-310-x86_64-linux-gnu.so",
+        "root_sha256": "d2846e0a967564a19e16ffe67e08bfa0b54dbefb0479ce94a26492f6545bdcf6",
+        "tree_digest_command": "cd pydeps-frozen && LC_ALL=C find . -type f | LC_ALL=C sort | xargs sha256sum | sha256sum"
+      },
+      "mode": "candidate-owned frozen prefix (pydeps-frozen/)",
+      "runtime_rule": "R takes the S6-frozen EXACT prefix (never a bootstrap re-run): verify the archive sha256, extract, recompute the whole-prefix root digest with the recorded file list and LC_ALL=C sort, and verify every dist's RECORD tree digest \u2014 all three layers must pass before PYTHONNOUSERSITE=1 offline start.",
+      "verification": "PYTHONNOUSERSITE=1 + fresh HOME + dead network + source vendor hidden -> construction succeeds (scripts/st09_i/verify_semantic_offline.sh); per-dist tree digests are RECORD-based"
+    },
+    "rule": "formal runs resolve semantic assets ONLY from the candidate install overlay via the luggage_perception package share (colcon-installed vendor + checkpoint); no main-workspace path, no source tree, no user cache (~/.cache/clip), no bare filenames (ultralytics not-found fallback is a network download); absent assets are named launch failures (SEMANTIC_VENDOR_MISSING / SEMANTIC_WEIGHTS_MISSING)",
+    "yolov8s_world_pt": {
+      "bytes": 27169314,
+      "path": "share/luggage_perception/models/yolov8s-world.pt",
+      "sha256": "095f5266bb9b654bd5ad9e21e9cdeda78e0f2c8460f5d652eaf04bab7ee251cf"
+    }
+  },
+  "technical_baseline": "docs/plans/frame_migration_st09_planner_convergence.md (2026-10-02)",
+  "unified_test_entry": {
+    "agent_contract_checker": "bash scripts/check_agent_contract.sh",
+    "command": "python3 -m pytest tests/st09_parallel/<TASK> -q",
+    "environment": "source /opt/ros/humble/setup.bash; source $CANDIDATE_WS/install-st09/setup.bash; export PYTHONPATH=$CANDIDATE_WS/src:$PYTHONPATH",
+    "rules": [
+      "collected=0 in a task directory fails that task",
+      "each directory carries at least one healthy positive behaviour case plus every negative listed for that task in plan section 8",
+      "B/C real-MoveIt cases additionally need the isolated mock graph on the domain assigned to that task (87 final graph, 42 replay, 7 Gazebo-only)"
+    ]
   }
 }
