@@ -61,6 +61,9 @@ class _Producer(object):
 
     _promote_selection = RouteProducer._promote_selection
     _stage_timings = RouteProducer._stage_timings
+    _selection_phase = staticmethod(RouteProducer._selection_phase)
+    _live_attachment_matches = RouteProducer._live_attachment_matches
+    transition_admission_phase = RouteProducer.transition_admission_phase
 
     def _revalidate(self, route, snapshot, edges):
         return self._stub_revalidation
@@ -321,12 +324,31 @@ def test_new_selection_immediately_supersedes_old_certificate():
         False, "CERTIFICATE_SUPERSEDED")
 
 
-def _release_route_producer():
+class _Provider(object):
+    """Measured-attachment provider fake: live / lost / re-incarnated."""
+
+    def __init__(self, digest="attach-digest"):
+        self.digest = digest
+        self.lost = False
+
+    def expire_stale(self, request_id, now_ns):
+        del request_id, now_ns
+
+    def latest_record(self, request_id):
+        del request_id
+        if self.lost:
+            raise LookupError("record expired")
+        return SimpleNamespace(digest=lambda: self.digest)
+
+
+def _release_route_producer(provider=None):
     """One certified place route: carrying legs, release, unloaded legs."""
     from st09_contracts.certification import MapDecision
 
     selection = _selection()
     selection["certification_id"] = "cert-1"
+    selection["attachment"] = SimpleNamespace(
+        digest=lambda: "attach-digest")
     selection["edges"] = [
         _Edge((0.1, -0.2, 0.3, -0.4, 0.5, -0.6),
               digest="leg-carrying", load_state="carrying"),
@@ -336,35 +358,105 @@ def _release_route_producer():
     producer = _Producer(
         selection, revalidation=SimpleNamespace(
             decision=MapDecision.CONTINUE, reason=None, map_revision=5))
+    producer.attachment_provider = provider if provider is not None \
+        else _Provider()
     return producer
 
 
-def test_release_boundary_admission_uses_certificate_load_state_index():
-    """[ST09-I S5.7-6 lock] carrying -> release transition -> unloaded.
+def _transition(producer, **kwargs):
+    return producer.transition_admission_phase(
+        route_digest="hash-1", certification_id="cert-1",
+        target_phase=kwargs.pop("target_phase", "unloaded"),
+        detach_confirmed=kwargs.pop("detach_confirmed", True),
+        release_evidence=kwargs.pop(
+            "release_evidence", "vacuum-off event-7 detach confirmed"),
+        **kwargs)
 
-    The post-release retreat executes under the certificate's UNLOADED
-    index: the vacuum-off attachment digest change at the release
-    boundary is never misread as an identity change (the liveness
-    verdict consults graph/map generations, never the live attachment
-    state), and a carrying scope can never authorize the post-release
-    leg (named LOAD_STATE_MISMATCH, no controller submission).
+
+def test_release_boundary_phase_transition_activates_unloaded():
+    """[ST09-I S5.7-6 lock] carrying -> release -> detach verified ->
+    UNLOADED activated -> retreat.
+
+    Certificate scope and live state are separate gates: the retreat
+    needs BOTH the certified unloaded index AND the completed phase
+    transition; the vacuum-off digest change at the boundary is never
+    an identity change (liveness consults graph/map generations); and
+    the carrying claim keeps requiring the live measured attachment.
     """
     producer = _release_route_producer()
-    live, reason, _detail = _admission(
-        producer, leg_digest="leg-retreat", leg_load_state="unloaded")
-    assert live and reason == "OK"
-    # the same route's carrying phase stays live under ITS index
+    # carrying leg under a live matching attachment: LIVE
     live, reason, _detail = _admission(
         producer, leg_digest="leg-carrying", leg_load_state="carrying")
     assert live and reason == "OK"
-    # a carrying claim on the post-release leg refuses by name
+    # scope errors stay named
     assert _admission(
         producer, leg_digest="leg-retreat",
         leg_load_state="carrying")[:2] == (False, "LOAD_STATE_MISMATCH")
-    # a foreign leg is not in the certificate at all
     assert _admission(
         producer, leg_digest="leg-foreign")[:2] == (
         False, "LEG_DIGEST_MISMATCH")
+    # unloaded retreat BEFORE the transition: the certificate saying
+    # unloaded is not enough — the phase must be activated
+    assert _admission(
+        producer, leg_digest="leg-retreat",
+        leg_load_state="unloaded")[:2] == (False, "PHASE_TRANSITION_REQUIRED")
+    ok, reason, _detail = _transition(producer)
+    assert ok and reason == "OK"
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-retreat", leg_load_state="unloaded")
+    assert live and reason == "OK"
+    # a stale carrying claim after the transition refuses by name
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (False, "PHASE_STATE_MISMATCH")
+
+
+def test_carrying_leg_refuses_when_payload_lost():
+    """[S5.7-6 negative] payload lost before a carrying leg: named
+    refusal, and the executor gate means zero controller submissions."""
+    producer = _release_route_producer()
+    producer.attachment_provider.lost = True
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (False, "ATTACHMENT_LOST")
+
+
+def test_carrying_leg_refuses_on_attachment_incarnation_change():
+    """[S5.7-6 negative] an external re-attach (new digest) must not
+    keep authorizing the old carrying certificate."""
+    producer = _release_route_producer()
+    producer.attachment_provider.digest = "attach-digest-reincarnated"
+    assert _admission(
+        producer, leg_digest="leg-carrying",
+        leg_load_state="carrying")[:2] == (
+        False, "ATTACHMENT_INCARNATION_CHANGED")
+
+
+def test_detach_unconfirmed_refuses_the_phase_transition():
+    """[S5.7-6 negative] vacuum-off sent but detach not confirmed: the
+    unloaded phase never activates (the retreat would be refused)."""
+    producer = _release_route_producer()
+    ok, reason, _detail = _transition(producer, detach_confirmed=False)
+    assert not ok and reason == "DETACH_UNCONFIRMED"
+    ok, reason, _detail = _transition(producer, release_evidence="  ")
+    assert not ok and reason == "RELEASE_EVIDENCE_MISSING"
+    # and the transition target is one-way carrying -> unloaded
+    ok, reason, _detail = _transition(producer, target_phase="carrying")
+    assert not ok and reason == "PHASE_TRANSITION_INVALID"
+
+
+def test_unloaded_leg_refuses_while_release_never_happened():
+    """[S5.7-6 negative] a live attachment + no transition: claiming
+    the unloaded retreat is refused (the release side effect never
+    ran), while the attachment itself is still perfectly live."""
+    provider = _Provider()
+    producer = _release_route_producer(provider=provider)
+    assert _admission(
+        producer, leg_digest="leg-retreat",
+        leg_load_state="unloaded")[:2] == (False, "PHASE_TRANSITION_REQUIRED")
+    live, reason, _detail = _admission(
+        producer, leg_digest="leg-carrying", leg_load_state="carrying")
+    assert live and reason == "OK"
 
 
 def test_stage_timings_attribution_search_is_the_residue():

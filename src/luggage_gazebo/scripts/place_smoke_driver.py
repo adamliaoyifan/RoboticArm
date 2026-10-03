@@ -657,6 +657,56 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return False, "PLACE_LOST_PAYLOAD"
         return True, ""
 
+    def _carrying_vacuum_holds(self):
+        """[ST09-I S5.7-6] Live vacuum-held check for a carrying leg."""
+        state = dict(getattr(self, "_vacuum_state", None) or {})
+        if not state:
+            return True, ""
+        if state.get("fail_reason"):
+            return False, "PAYLOAD_LOST:%s" % str(
+                state.get("fail_reason"))[:80]
+        if not bool(state.get("attached")):
+            return False, "PAYLOAD_LOST:vacuum_released"
+        return True, ""
+
+    def _transition_admission_unloaded(self, release_evidence):
+        """[ST09-I S5.7-6] Activate the unloaded phase after release.
+
+        CARRYING phase -> release side effect -> detach confirmed ->
+        UNLOADED phase -> retreat. No admission (pick legs, legacy) is
+        a no-op success: there is nothing to transition. The service
+        being absent fails CLOSED — the retreat legs would then be
+        refused per leg by the executor gate anyway.
+        """
+        admission = getattr(self, "_execution_admission", None)
+        if not admission:
+            return True, ""
+        from luggage_msgs.srv import TransitionAdmissionPhase
+
+        client = getattr(self, "_phase_client", None)
+        if client is None:
+            client = self.create_client(
+                TransitionAdmissionPhase,
+                "/trajectory_selector/transition_admission_phase",
+                callback_group=getattr(self, "_group", None))
+            self._phase_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "SERVICE_UNAVAILABLE"
+        request = TransitionAdmissionPhase.Request()
+        request.route_digest = str(admission.get("route_digest", "") or "")
+        request.certification_id = str(
+            admission.get("certification_id", "") or "")
+        request.target_phase = "unloaded"
+        request.detach_confirmed = True
+        request.release_evidence = str(release_evidence or "")[:500]
+        result = self.call_srv(client, request, timeout=5.0) \
+            if hasattr(self, "call_srv") else None
+        if result is None:
+            return False, "SERVICE_TIMEOUT"
+        if not result.success:
+            return False, str(result.reason_code or "TRANSITION_REFUSED")
+        return True, str(result.reason_code or "OK")
+
     def _leg_execution_admission(self, motion_segment):
         """[ST09-I S5.7-6] Per-leg admission scope for one typed leg.
 
@@ -740,11 +790,22 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     self._frame_motion_index = index + 1
             if motion_segment is not None:
                 use_typed = True
+                leg_admission = self._leg_execution_admission(
+                    motion_segment)
+                # [ST09-I S5.7-6] live payload state for carrying legs:
+                # the producer binds the certificate scope and the
+                # measured digest; the VACUUM feed lives here. A box
+                # that fell off refuses the leg by name BEFORE any
+                # controller submission (absent feed = no signal, not
+                # payload-lost; the producer-side gates still hold).
+                if leg_admission.get("load_state") == "carrying":
+                    holds, lost_reason = self._carrying_vacuum_holds()
+                    if not holds:
+                        return False, lost_reason, None
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
                     name="PlanMotionV2:%s" % name,
-                    admission=self._leg_execution_admission(
-                        motion_segment))
+                    admission=leg_admission)
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to
@@ -1371,12 +1432,28 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             off_ok, off_msg = self.vacuum_command(False)
             trial.extras["vac_detach"] = off_msg
             if not off_ok:
+                # [S5.7-6 negative] release backend refused: the
+                # retreat never submits (named stop, zero controller
+                # submissions past the release boundary).
                 return self._abort(trial, "VACUUM_DETACH", True, extra=extras)
             dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
             trial.extras["dynamic_body"] = dyn_msg
             trial.extras["box_pose_at_release"] = release_pose
             if not dyn_ok:
                 return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
+            # [ST09-I S5.7-6] explicit release-boundary phase
+            # transition BEFORE any post-release leg: the certifier
+            # side activates the UNLOADED phase only against verified
+            # detach evidence; a refusal stops the session by name
+            # (retreat never reaches the executor).
+            phase_ok, phase_reason = self._transition_admission_unloaded(
+                str(off_msg or ""))
+            trial.extras["admission_phase"] = phase_reason
+            if not phase_ok:
+                return self._abort(
+                    trial, "ADMISSION_PHASE_%s" % (
+                        phase_reason or "TRANSITION_FAILED"),
+                    False, extra=extras)
 
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")

@@ -1030,7 +1030,117 @@ class RouteProducer(object):
                     previous.get("certification_id", ""))
                 while len(superseded) > 16:
                     superseded.pop(next(iter(superseded)))
+        # [ST09-I S5.7-6] admission phase: place routes START in the
+        # carrying phase (an explicit, evidenced transition is the only
+        # way out); attachment-free selections (observation) are born
+        # unloaded.
+        if "phase" not in selection:
+            selection["phase"] = (
+                "unloaded" if selection.get("attachment") is None
+                else "carrying")
         self.last_selection = selection
+
+    @staticmethod
+    def _selection_phase(selection):
+        if not selection:
+            return "unloaded"
+        phase = selection.get("phase")
+        if phase:
+            return str(phase)
+        return "unloaded" if selection.get("attachment") is None \
+            else "carrying"
+
+    def _live_attachment_matches(self, selection):
+        """Measured attachment binding vs the certified one.
+
+        Returns ``(ok, reason, detail)``: a carrying-phase leg requires
+        the measured record to still exist as a VALID record whose
+        digest equals the certificate's attachment digest — an
+        incarnation change never silently re-authorizes the old
+        certificate. The frozen 10 s acquisition->PLANNING-use window
+        is deliberately NOT re-applied here: it bounds select/verify
+        (where expire_stale already ran); execution minutes later is
+        not a fresh acquisition. Payload LOSS mid-route is a live
+        vacuum-state fact and is gated by the DRIVER before each
+        carrying-leg submission (the producer never sees the vacuum
+        feed).
+        """
+        provider = getattr(self, "attachment_provider", None)
+        if provider is None:
+            return False, "ATTACHMENT_STATE_UNKNOWN", {
+                "provider": "absent"}
+        request = selection.get("request") or {}
+        request_id = str(request.get("request_id", "") or "")
+        certified = selection.get("attachment")
+        want_digest = ""
+        if certified is not None:
+            digest_fn = getattr(certified, "digest", None)
+            want_digest = str(digest_fn()) if callable(digest_fn) else ""
+        try:
+            record = provider.latest_record(request_id)
+        except (ContractViolation, LookupError, ValueError) as exc:
+            return False, "ATTACHMENT_LOST", {"reason": _named_reason(exc)}
+        record_digest_fn = getattr(record, "digest", None)
+        record_digest = str(record_digest_fn()) \
+            if callable(record_digest_fn) else ""
+        if want_digest and record_digest and record_digest != want_digest:
+            return False, "ATTACHMENT_INCARNATION_CHANGED", {
+                "certified": want_digest, "live": record_digest}
+        return True, "", {"attachment_digest": record_digest}
+
+    def transition_admission_phase(self, *, route_digest,
+                                   certification_id, target_phase,
+                                   detach_confirmed=False,
+                                   release_evidence="",
+                                   map_revision_after_release=0):
+        """[ST09-I S5.7-6] Release-boundary phase transition verdict.
+
+        CARRYING certificate phase -> release side effect (caller) ->
+        detach confirmed + evidence identity -> UNLOADED phase active
+        -> retreat/return legs execute. Refuses by name when the
+        release backend has not confirmed detach, the evidence is
+        empty, or the route is not in the carrying phase. The
+        certified content never changes — only which phase of it may
+        execute.
+        """
+        selection = getattr(self, "last_selection", None)
+        if not selection or selection.get("path_hash") != str(route_digest):
+            superseded = getattr(self, "superseded_admissions", None) or {}
+            if str(route_digest) in superseded:
+                return False, "CERTIFICATE_SUPERSEDED", {
+                    "live": (selection or {}).get("path_hash", "")}
+            return False, "ADMISSION_UNKNOWN", {
+                "known": (selection or {}).get("path_hash", "")}
+        if str(certification_id) != str(
+                selection.get("certification_id", "")):
+            return False, "CERTIFICATE_SUPERSEDED", {
+                "live": str(selection.get("certification_id", ""))}
+        current = self._selection_phase(selection)
+        target = str(target_phase or "").lower()
+        if target != "unloaded" or current != "carrying":
+            return False, "PHASE_TRANSITION_INVALID", {
+                "current": current, "target": target}
+        if not detach_confirmed:
+            return False, "DETACH_UNCONFIRMED", {
+                "release_evidence": str(release_evidence or "")[:200]}
+        if not str(release_evidence or "").strip():
+            return False, "RELEASE_EVIDENCE_MISSING", {}
+        # The release side effect is verified: activate the UNLOADED
+        # phase. The released box is already a certified world obstacle
+        # in the unloaded edge scene states (edge_scene_states builds
+        # it from the candidate rest pose); the transition records the
+        # observed post-release map revision when the caller has one.
+        selection["phase"] = "unloaded"
+        selection["phase_transition"] = {
+            "release_evidence": str(release_evidence)[:500],
+            "map_revision_after_release": int(
+                map_revision_after_release or 0),
+            "transition_ns": self._clock_ns(),
+        }
+        return True, "OK", {
+            "phase": "unloaded",
+            "map_revision_after_release": int(
+                map_revision_after_release or 0)}
 
     def verify_selected(self, *, route_digest, current_joints,
                         latest_map_revision, scene_revision):
@@ -1166,6 +1276,29 @@ class RouteProducer(object):
                 return False, "LOAD_STATE_MISMATCH", {
                     "claimed": str(leg_load_state).lower(),
                     "certified": claimed[0]}
+        # [ST09-I S5.7-6] certificate scope AND live state are separate
+        # gates: a carrying leg additionally requires the admission to
+        # still be in the carrying phase AND a live measured attachment
+        # matching the certified digest (payload lost / incarnation
+        # changed refuse by name); an unloaded leg requires the release
+        # phase transition to have ACTIVATED the unloaded phase — the
+        # vacuum-off digest change at the boundary is never misread as
+        # an identity change, but a certificate merely SAYING unloaded
+        # never authorizes the retreat on its own.
+        claimed_state = str(leg_load_state or "").lower()
+        if claimed_state:
+            phase = self._selection_phase(selection)
+            if claimed_state == "carrying":
+                if phase != "carrying":
+                    return False, "PHASE_STATE_MISMATCH", {
+                        "phase": phase}
+                live_ok, live_reason, live_detail = \
+                    self._live_attachment_matches(selection)
+                if not live_ok:
+                    return False, live_reason, live_detail
+            elif claimed_state == "unloaded" and phase != "unloaded":
+                return False, "PHASE_TRANSITION_REQUIRED", {
+                    "phase": phase}
         snapshot = selection["snapshot"]
         if str(scene_revision) != str(
                 getattr(snapshot, "scene_revision", "")):

@@ -106,6 +106,15 @@ class TrajectorySelectorNode(Node):
             "/trajectory_selector/check_execution_admission",
             self._check_execution_admission,
             callback_group=self._service_group)
+        # [ST09-I S5.7-6] release-boundary phase transition: the driver
+        # owns the release effect and its evidence; this service is the
+        # certifier-side verdict that ACTIVATES the unloaded phase.
+        from luggage_msgs.srv import TransitionAdmissionPhase
+        self.create_service(
+            TransitionAdmissionPhase,
+            "/trajectory_selector/transition_admission_phase",
+            self._transition_admission_phase,
+            callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
@@ -487,6 +496,38 @@ class TrajectorySelectorNode(Node):
             response.detail = repr(error)[:300]
             return response
         response.live = bool(live)
+        response.reason_code = str(reason)
+        response.detail = json.dumps(detail, default=str)[:2000]
+        return response
+
+    def _transition_admission_phase(self, request, response):
+        """[ST09-I S5.7-6] Phase transition verdict, certifier side."""
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.success = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        try:
+            ok, reason, detail = producer.transition_admission_phase(
+                route_digest=str(request.route_digest or ""),
+                certification_id=str(request.certification_id or ""),
+                target_phase=str(request.target_phase or ""),
+                detach_confirmed=bool(request.detach_confirmed),
+                release_evidence=str(request.release_evidence or ""),
+                map_revision_after_release=int(
+                    request.map_revision_after_release or 0))
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: phase transition boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.success = False
+            response.reason_code = "PHASE_SERVICE_EXCEPTION"
+            response.detail = repr(error)[:300]
+            return response
+        response.success = bool(ok)
         response.reason_code = str(reason)
         response.detail = json.dumps(detail, default=str)[:2000]
         return response

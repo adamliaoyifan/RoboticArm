@@ -1,0 +1,21 @@
+# [ST09-I S5.7-6] Explicit admission phase transition across the
+# release boundary. A place route's certificate covers carrying legs,
+# the release boundary, and unloaded retreat — but the UNLOADED phase
+# is only activated AFTER the release side effect is verified:
+#   CARRYING phase -> release side effect -> detach confirmed ->
+#   activate UNLOADED phase -> retreat executes.
+# The caller (driver) owns the release effect and its evidence; the
+# certifier side owns the verdict and refuses by name otherwise.
+string route_digest
+string certification_id
+string target_phase
+# Vacuum-off was accepted AND the state machine confirmed detach.
+bool detach_confirmed
+# Release evidence identity (vacuum command echo / event id).
+string release_evidence
+# Map revision observed after the release (0 = not yet advanced).
+uint64 map_revision_after_release
+---
+bool success
+string reason_code
+string detail

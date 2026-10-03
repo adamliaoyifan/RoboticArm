@@ -109,3 +109,115 @@ class TestMapAdmissionNoStaleFallback(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class _PhaseClient(object):
+    def __init__(self, available=True):
+        self.available = available
+
+    def wait_for_service(self, timeout_sec=None):
+        return self.available
+
+
+class _PhaseDriver(object):
+    """Only the collaborators `_transition_admission_unloaded` touch."""
+
+    def __init__(self, response, available=True, admission=None):
+        self._phase_client = _PhaseClient(available)
+        self._execution_admission = admission
+        self._response = response
+        self.requests = []
+
+    def call_srv(self, client, request, timeout=None):
+        del client, timeout
+        self.requests.append(request)
+        return self._response
+
+    _transition_admission_unloaded = MotionOccDriver._transition_admission_unloaded
+
+
+def _phase_response(success, reason):
+    return SimpleNamespace(success=success, reason_code=reason, detail="")
+
+
+class TestReleasePhaseTransition(unittest.TestCase):
+    """[ST09-I S5.7-6 lock] the release boundary is an explicit phase
+    transition: the certifier side activates UNLOADED only against
+    verified detach evidence, and a refusal means the retreat legs are
+    never submitted."""
+
+    _ADMISSION = {"route_digest": "hash-1", "certification_id": "cert-1"}
+
+    def test_no_admission_is_a_noop_success(self):
+        driver = _PhaseDriver(None)
+        ok, reason = driver._transition_admission_unloaded("evidence")
+        self.assertTrue(ok)
+        self.assertEqual(reason, "")
+        self.assertEqual(driver.requests, [])
+
+    def test_successful_transition_carries_the_evidence(self):
+        driver = _PhaseDriver(
+            _phase_response(True, "OK"), admission=dict(self._ADMISSION))
+        ok, reason = driver._transition_admission_unloaded("event-7 detach")
+        self.assertTrue(ok)
+        self.assertEqual(reason, "OK")
+        request = driver.requests[0]
+        self.assertEqual(request.route_digest, "hash-1")
+        self.assertEqual(request.certification_id, "cert-1")
+        self.assertEqual(request.target_phase, "unloaded")
+        self.assertTrue(request.detach_confirmed)
+        self.assertEqual(request.release_evidence, "event-7 detach")
+
+    def test_refused_transition_surfaces_the_named_reason(self):
+        driver = _PhaseDriver(
+            _phase_response(False, "DETACH_UNCONFIRMED"),
+            admission=dict(self._ADMISSION))
+        ok, reason = driver._transition_admission_unloaded("half-done")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "DETACH_UNCONFIRMED")
+
+    def test_absent_service_fails_closed(self):
+        driver = _PhaseDriver(
+            None, available=False, admission=dict(self._ADMISSION))
+        ok, reason = driver._transition_admission_unloaded("evidence")
+        self.assertFalse(ok)
+        self.assertEqual(reason, "SERVICE_UNAVAILABLE")
+
+
+class _VacuumDriver(object):
+    """Only `_carrying_vacuum_holds` touches."""
+
+    def __init__(self, state):
+        self._vacuum_state = state
+
+    _carrying_vacuum_holds = MotionOccDriver._carrying_vacuum_holds
+
+
+class TestCarryingVacuumHeldGate(unittest.TestCase):
+    """[ST09-I S5.7-6 lock] a carrying leg never executes after the
+    payload fell off: the live vacuum feed refuses by name before any
+    controller submission. An absent feed is no-signal (the
+    producer-side binding gates still hold), never payload-lost."""
+
+    def test_attached_holds(self):
+        driver = _VacuumDriver({"attached": True})
+        self.assertEqual(driver._carrying_vacuum_holds(), (True, ""))
+
+    def test_released_payload_is_lost(self):
+        driver = _VacuumDriver({"attached": False})
+        holds, reason = driver._carrying_vacuum_holds()
+        self.assertFalse(holds)
+        self.assertTrue(reason.startswith("PAYLOAD_LOST"), reason)
+
+    def test_fail_reason_is_payload_lost(self):
+        driver = _VacuumDriver({"attached": True,
+                                "fail_reason": "seal rupture"})
+        holds, reason = driver._carrying_vacuum_holds()
+        self.assertFalse(holds)
+        self.assertTrue(reason.startswith("PAYLOAD_LOST"), reason)
+
+    def test_absent_feed_is_no_signal(self):
+        driver = _VacuumDriver(None)
+        self.assertEqual(driver._carrying_vacuum_holds(), (True, ""))
+        driver = _VacuumDriver({})
+        self.assertEqual(driver._carrying_vacuum_holds(), (True, ""))
