@@ -50,8 +50,6 @@ from luggage_msgs.srv import (
 
 from luggage_description.scene_tf_config_utils import (
     container_inner_floor_z,
-    container_opening_aperture_corners_in_container,
-    container_opening_axes_in_container,
     container_opening_normal_in_world,
     container_opening_target_point_in_world,
     load_scene_tf_config,
@@ -61,9 +59,6 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
     xyz_world_to_base_link,
     yaw_world_to_base_link,
-)
-from luggage_description.scene_tf_config_utils import (
-    _point_in_container_link,
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_description.suitcase_visual import pickup_visual_sdf
@@ -127,13 +122,15 @@ CARRYING_ABORTS = {
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
 GZ_WORLD = "airport_loading"
 
-# [ST09-I S5] Beyond this outward-normal distance from the opening face
-# the cup counts CLEAR of the container even when it projects inside the
-# (unbounded) aperture prism. Basis: place_exit is the short mouth
-# escape to the portal; the deploy pickup observe sits ~1.7 m outside
-# the face and must not be mistaken for an inserted arm. Declared, not
-# tuned silently.
-APERTURE_ESCAPE_DEPTH_M = 0.45
+# [ST09-I S5.7] Safety margin in the DERIVED opening-corridor depth:
+# corridor = wall thickness ((outer-inner)/2, scene data)
+#          + TCP/camera envelope (|T_tcp_camera|, live static TF; the
+#            fallback below is the URDF-derived conservative bound)
+#          + this margin. Deploy numbers: 0.04 + ~0.27 + 0.10 ~ 0.41 m —
+# the pickup observe (1.70 m outside the face) classifies outside while
+# the mouth (+0.055 m) stays in the corridor.
+APERTURE_ESCAPE_MARGIN_M = 0.10
+CAMERA_ENVELOPE_FALLBACK_M = 0.30
 
 # Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
 # was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
@@ -343,56 +340,84 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not state or state.get("ok"):
             return ""
         if not state.get("exit_ok"):
-            # [ST09-I S5] the exit is the certified route's retreat/
+            # [ST09-I S5.7] the exit is the certified route's retreat/
             # return legs; arriving still inside means the route never
             # completed — never the deleted ad-hoc cartesian escape.
+            # UNKNOWN (TF/scene identity) is its own named refusal.
+            if state.get("zone") == "unknown":
+                return str(state.get("zone_reason")
+                           or "SCENE_IDENTITY_MISSING")
             return "EXIT_REQUIRES_CERTIFIED_ROUTE"
         return "GOTO_FAILED"
 
-    def _container_zone(self):
-        """Classify the cup in CONTAINER-LOCAL coordinates (ST09-I S5).
+    def _aperture_corridor_depth(self):
+        """Derived opening-corridor depth (design S5.7 section 1).
 
-        Returns ``(zone, err)`` with zone one of ``inside`` /
-        ``near_opening`` / ``outside`` — the explicit scene-state
-        classification ``_home_arm`` acts on. The aperture test is an
-        UNBOUNDED prism along the opening normal; the declared depth
-        bound keeps the opening-side workspace out of ``near_opening``
-        (deploy cell live failure: the pickup observe pose projects
-        inside the aperture rectangle ~1.7 m outside the face).
+        wall thickness from scene data + TCP/camera envelope from the
+        live static TF (URDF-derived fallback when TF is unavailable,
+        recorded in the return) + declared safety margin. Never a bare
+        constant.
         """
+        scene = getattr(self, "_scene_config", None) or {}
+        outer = scene.get("container", {}).get("outer", {}) or {}
+        inner = scene.get("container", {}).get("inner", {}) or {}
+        wall = 0.04
+        try:
+            if outer.get("length") and inner.get("length"):
+                wall = max(0.0, (float(outer["length"])
+                                 - float(inner["length"])) * 0.5)
+        except (TypeError, ValueError):
+            pass
+        envelope, source = CAMERA_ENVELOPE_FALLBACK_M, "fallback"
+        try:
+            from rclpy.time import Time as _RclpyTime
+            tf_msg = self._tf_buffer.lookup_transform(
+                "suction_contact_frame", "camera_depth_optical_frame",
+                _RclpyTime())
+            t = tf_msg.transform.translation
+            magnitude = math.sqrt(
+                float(t.x) ** 2 + float(t.y) ** 2 + float(t.z) ** 2)
+            if magnitude > 1e-3:
+                envelope, source = magnitude, "tf"
+        except Exception:  # noqa: BLE001 - classification must not die
+            pass
+        return (wall + envelope + APERTURE_ESCAPE_MARGIN_M,
+                {"wall_m": round(wall, 4),
+                 "camera_envelope_m": round(envelope, 4),
+                 "envelope_source": source,
+                 "margin_m": APERTURE_ESCAPE_MARGIN_M})
+
+    def _container_zone(self):
+        """Classify the cup in CONTAINER-LOCAL coordinates (S5.7 taxonomy).
+
+        Returns ``(zone, detail)`` with zone in CONTAINER_ZONES: the
+        explicit scene-state classification `_home_arm` acts on. UNKNOWN
+        whenever TF fails or (under the typed chain) the scene identity
+        is missing — a named refusal, never a world-X fallback; the
+        legacy world-X guess survives only for non-frame-runtime callers.
+        """
+        from luggage_description.scene_tf_config_utils import container_zone
         suction, err = self.suction_xyz()
         if suction is None:
-            return "outside", str(err)
+            return "unknown", str(err)
         scene = getattr(self, "_scene_config", None)
         if scene is None:
-            # No scene loaded: legacy world-X fallback (sim layout,
-            # container on +X).
-            return ("near_opening" if float(suction[0]) > 0.2
-                    else "outside"), ""
+            if getattr(self, "_typed", None) is not None:
+                return "unknown", "SCENE_IDENTITY_MISSING"
+            # Legacy eval driver without a scene: world-X guess (sim
+            # layout, container on +X) — never reachable on the typed
+            # production chain.
+            return ("opening_corridor" if float(suction[0]) > 0.2
+                    else "outside_safe_region"), ""
+        depth, source = self._aperture_corridor_depth()
         base = xyz_world_to_base_link(scene, suction)
-        if point_inside_container_inner_box(base, scene, margin=0.0):
-            return "inside", ""
-        if not point_inside_opening_aperture(base, scene, margin=0.0):
-            return "outside", ""
-        local = _point_in_container_link(base, scene)
-        normal, _lateral, _vertical = \
-            container_opening_axes_in_container(scene)
-        corners = container_opening_aperture_corners_in_container(
-            scene, 0.0)
-        if not corners or not normal:
-            return "near_opening", ""
-        face = corners[0]
-        depth = sum(
-            (local[axis] - float(face[axis])) * float(normal[axis])
-            for axis in range(3))
-        if depth > APERTURE_ESCAPE_DEPTH_M:
-            return "outside", ""
-        return ("near_opening" if depth >= 0.0 else "inside"), ""
+        zone = container_zone(base, scene, depth)
+        return zone, "corridor=%s" % source
 
     def _suction_clear_of_container(self):
-        """True only in the OUTSIDE zone, so an open-loop FJT is safe."""
+        """True only in the OUTSIDE_SAFE region, so an open-loop FJT is safe."""
         zone, _err = self._container_zone()
-        return zone == "outside"
+        return zone == "outside_safe_region"
 
     def _capture_gz_contacts(self):
         """One physics-contact sample. Absent publishers stay an explicit gap."""
@@ -428,7 +453,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
         exit_ok = True
-        if zone != "outside" and not getattr(self, "_portal_exited", False):
+        if (zone not in ("outside_safe_region",)
+                and not getattr(self, "_portal_exited", False)):
             exit_ok = False
             notes.append("exit=EXIT_REQUIRES_CERTIFIED_ROUTE")
         goto_ok = True
@@ -448,7 +474,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             rtf, dt_ros, dt_wall))
         ok = bool(exit_ok and goto_ok)
         self._home_arm_state = {
-            "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok)}
+            "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok),
+            "zone": zone, "zone_reason": zone_err or ""}
         if not ok:
             capture = getattr(self, "_capture_gz_contacts", None)
             if callable(capture):

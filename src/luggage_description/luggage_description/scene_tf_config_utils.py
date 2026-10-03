@@ -858,6 +858,43 @@ def point_inside_opening_aperture(point, config, margin=0.0):
     )
 
 
+#: Container-local zone taxonomy for motion-start decisions (ST09-I S5.7).
+#: INSIDE_CONTAINER / OPENING_CORRIDOR / OUTSIDE_SAFE_REGION are pure
+#: scene geometry; UNKNOWN is produced by the CALLER when identity or TF
+#: is unavailable (never a world-frame fallback).
+CONTAINER_ZONES = (
+    "inside_container", "opening_corridor", "outside_safe_region", "unknown")
+
+
+def container_zone(point_base_link, config, corridor_depth_m):
+    """Classify a base-link-frame point into the container zone taxonomy.
+
+    inside_container: within the inner hull. opening_corridor: inside the
+    (unbounded) opening-aperture prism AND within corridor_depth_m of the
+    face plane along the OUTWARD normal (the corridor_depth caller derives
+    it from wall thickness + TCP/camera envelope + margin — never a bare
+    constant). outside_safe_region: everything else. The aperture prism
+    alone would swallow the whole opening-side workspace (the deploy
+    pickup observe projects inside it ~1.7 m outside the face).
+    """
+    if point_inside_container_inner_box(point_base_link, config, margin=0.0):
+        return "inside_container"
+    if not point_inside_opening_aperture(point_base_link, config, margin=0.0):
+        return "outside_safe_region"
+    local = _point_in_container_link(point_base_link, config)
+    normal, _lateral, _vertical = container_opening_axes_in_container(config)
+    corners = container_opening_aperture_corners_in_container(config, 0.0)
+    if not corners or not normal:
+        return "opening_corridor"  # geometry incomplete: stay conservative
+    face = corners[0]
+    depth = sum(
+        (local[axis] - float(face[axis])) * float(normal[axis])
+        for axis in range(3))
+    if depth > float(corridor_depth_m):
+        return "outside_safe_region"
+    return ("opening_corridor" if depth >= 0.0 else "inside_container")
+
+
 def pickup_platform_config(config):
     platform = config.get("pickup_platform", {})
     return {
