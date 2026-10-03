@@ -588,6 +588,27 @@ class TypedDriverAdapter:
         request.container_stamp_is_null = True
         return self._call(self._build, request, 15.0)
 
+    def _cancel_and_close(self, handle, deadline):
+        """[ST09-I G0-4] Cancel an accepted goal and consume the
+        controller's terminal receipt within the caller's deadline —
+        stop/hold must be acknowledged, never assumed. A receipt that
+        never lands is cancel_status=TIMEOUT and the refusal stands:
+        no detach, no map commit, no auto-recovery here."""
+        import time as _time
+        result_future = handle.get_result_async()
+        handle.cancel_goal()
+        cancel_status = "TIMEOUT"
+        result = None
+        while not result_future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.02)
+        if result_future.done():
+            outcome = result_future.result()
+            cancel_status = _CANCEL_STATUS_NAMES.get(
+                int(getattr(outcome, "status", 0)), "UNKNOWN")
+            result = getattr(outcome, "result", None)
+        return False, ("CARRY_FAULT_PAYLOAD_LOST cancel_status=%s"
+                       % cancel_status), result
+
     def plan_motion(self, motion_segment, timeout_sec, name="PlanMotionV2",
                     admission=None, should_abort=None):
         """Execute one typed segment through PlanMotionV2.
@@ -597,11 +618,12 @@ class TypedDriverAdapter:
         carries the certified route digest / certificate / validated map
         revision so the executor can check the generation is still live
         before submitting. ``should_abort`` ([ST09-I S5.7-6]) is polled
-        in BOTH wait loops: a mid-execution payload loss cancels the
-        goal, WAITS for the controller's terminal receipt, and returns
-        the named CARRY_FAULT_PAYLOAD_LOST refusal — fail-closed either
-        way (a receipt that never arrives is cancel_status=TIMEOUT,
-        never a resume), zero controller submissions after it.
+        in BOTH wait loops: a payload loss mid-execution cancels the
+        goal and consumes the controller's terminal receipt; a payload
+        loss while the goal is still pending CANCELS THE LATE
+        ACCEPTANCE — "future not done" is never treated as "server did
+        not accept" (G0-4). Fail-closed either way, zero controller
+        submissions after the refusal.
         """
         import time as _time
         self.runtime.require_graph_ready()
@@ -630,10 +652,25 @@ class TypedDriverAdapter:
         deadline = _time.monotonic() + float(timeout_sec)
         while not future.done() and _time.monotonic() < deadline:
             if should_abort is not None and should_abort():
-                # Goal not yet accepted — nothing to cancel; the
-                # executor-side admission gate refuses the carrying
-                # leg anyway (zero controller submissions).
-                return False, "CARRY_FAULT_PAYLOAD_LOST", None
+                # [G0-4] the goal was already handed to the server: a
+                # late acceptance would execute it after the caller
+                # walked away. Resolve the handle within the caller's
+                # deadline and CANCEL it — only a server rejection or a
+                # consumed terminal receipt closes the fault; a goal
+                # that never resolves is a named TIMEOUT refusal, never
+                # a silent zero-submission claim.
+                while (not future.done()
+                        and _time.monotonic() < deadline):
+                    _time.sleep(0.02)
+                if not future.done():
+                    return False, ("CARRY_FAULT_PAYLOAD_LOST "
+                                   "cancel_status=TIMEOUT goal_unresolved"
+                                   ), None
+                handle = future.result()
+                if not handle.accepted:
+                    return False, (
+                        "CARRY_FAULT_PAYLOAD_LOST server_rejected"), None
+                return self._cancel_and_close(handle, deadline)
             _time.sleep(0.02)
         if not future.done():
             return False, "%s: goal timeout" % name, None
@@ -648,23 +685,10 @@ class TypedDriverAdapter:
                 break
             _time.sleep(0.02)
         if aborted:
-            # Mid-execution payload loss: cancel, then WAIT (bounded by
-            # the same deadline) for the controller's terminal receipt —
-            # stop/hold must be acknowledged, never assumed. A receipt
-            # that never lands is cancel_status=TIMEOUT and the refusal
-            # stands: no detach, no map commit, no auto-recovery here.
-            handle.cancel_goal()
-            cancel_status = "TIMEOUT"
-            result = None
-            while not result_future.done() and _time.monotonic() < deadline:
-                _time.sleep(0.02)
-            if result_future.done():
-                outcome = result_future.result()
-                cancel_status = _CANCEL_STATUS_NAMES.get(
-                    int(getattr(outcome, "status", 0)), "UNKNOWN")
-                result = outcome.result
-            return False, ("CARRY_FAULT_PAYLOAD_LOST cancel_status=%s"
-                           % cancel_status), result
+            # Mid-execution payload loss: cancel, then consume the
+            # controller's terminal receipt (bounded by the same
+            # deadline).
+            return self._cancel_and_close(handle, deadline)
         if not result_future.done():
             handle.cancel_goal()
             return False, "%s: result timeout" % name, None
