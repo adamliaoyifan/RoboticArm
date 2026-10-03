@@ -101,7 +101,7 @@ def _select_request(chain, request_id, placement, grasp_offset=(0.0, 0.0, 0.10))
 
 
 def _compute_placement(chain, request_id):
-    surface = chain.latched_surface()
+    surface = _fresh_surface(chain)
     assert surface is not None
     adapter = chain.adapter()
     return adapter.compute_placement(
@@ -176,28 +176,63 @@ def _integrate_observation(chain, request_id, xys, top_z):
     client = node.create_client(IntegrateCargoView,
                                 "/cargo_map/integrate_cargo_view")
     assert client.wait_for_service(timeout_sec=10.0)
-    request = IntegrateCargoView.Request()
-    request.schema_version = 1
-    request.view_request_id = "%s-view" % request_id
-    request.candidate_id = "observe-0"
-    # the freshness window is 0.20 s: stamp the request at call time so
-    # the nearest buffered cloud is always inside it
-    request.source_acquisition_stamp = node.get_clock().now().to_msg()
-    request.expected_map_revision = int(surface.map_revision)
-    request.geometry_hash = str(surface.geometry_hash or "")
-    request.settled = True
-    request.frame_count = 1
-    future = client.call_async(request)
-    deadline = _time.monotonic() + 15.0
-    while not future.done() and _time.monotonic() < deadline:
-        _time.sleep(0.1)
-    assert future.done(), "IntegrateCargoView timeout"
-    response = future.result()
+
+    def _current_revision():
+        # The AUTHORITATIVE revision: the latched surface can lag the
+        # republish of a previous integrate's bump (live: the land
+        # observation carried a stale revision and the CAS refused).
+        from luggage_msgs.srv import GetCargoMapStats
+
+        if not hasattr(chain, "loop_stats_client"):
+            chain.loop_stats_client = node.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats")
+        assert chain.loop_stats_client.wait_for_service(timeout_sec=5.0)
+        future = chain.loop_stats_client.call_async(
+            GetCargoMapStats.Request())
+        deadline = _time.monotonic() + 5.0
+        while not future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.05)
+        assert future.done(), "GetCargoMapStats timeout"
+        return int(future.result().map_revision)
+
+    response = None
+    for _attempt in range(3):
+        request = IntegrateCargoView.Request()
+        request.schema_version = 1
+        request.view_request_id = "%s-view" % request_id
+        request.candidate_id = "observe-0"
+        # the freshness window is 0.20 s: stamp the request at call time
+        # so the nearest buffered cloud is always inside it
+        request.source_acquisition_stamp = node.get_clock().now().to_msg()
+        request.expected_map_revision = _current_revision()
+        request.geometry_hash = str(surface.geometry_hash or "")
+        request.settled = True
+        request.frame_count = 1
+        future = client.call_async(request)
+        deadline = _time.monotonic() + 15.0
+        while not future.done() and _time.monotonic() < deadline:
+            _time.sleep(0.1)
+        assert future.done(), "IntegrateCargoView timeout"
+        response = future.result()
+        if response.success or \
+                str(response.reason_code) != "REVISION_MISMATCH":
+            break
+        _time.sleep(0.2)
     assert response.success, ("observation refused: %s %s" % (
         response.reason_code, response.message))
     node.destroy_publisher(publisher)
     node.destroy_client(client)
-    fresh = chain.latched_surface()
+    # The latched publication of THIS integrate's bump can lag (same
+    # republish delay the CAS retry handles); poll until the latch has
+    # caught up with the AUTHORITATIVE revision.
+    fresh = None
+    deadline = _time.monotonic() + 10.0
+    while _time.monotonic() < deadline:
+        fresh = chain.latched_surface()
+        if fresh is not None and \
+                int(fresh.map_revision) >= _current_revision():
+            break
+        _time.sleep(0.2)
     assert fresh is not None
     assert int(fresh.map_revision) >= int(surface.map_revision)
     return fresh
@@ -221,6 +256,37 @@ CARRY_POSE_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
 
 def _loop_revision(chain):
     return str(chain.probe.runtime.identity["scene_revision"])
+
+
+def _fresh_surface(chain):
+    """Latched surface that has caught up with the AUTHORITATIVE map
+    revision (the latch can lag the previous integrate's republish;
+    every CAS consumer — placement, select, integrate — must read the
+    caught-up state or be refused STALE/REVISION_MISMATCH)."""
+    import time as _time
+
+    from luggage_msgs.srv import GetCargoMapStats
+
+    if not hasattr(chain, "loop_stats_client"):
+        chain.loop_stats_client = chain.node.create_client(
+            GetCargoMapStats, "/cargo_map/get_stats")
+    assert chain.loop_stats_client.wait_for_service(timeout_sec=5.0)
+    deadline = _time.monotonic() + 10.0
+    fresh = None
+    while _time.monotonic() < deadline:
+        future = chain.loop_stats_client.call_async(
+            GetCargoMapStats.Request())
+        inner = _time.monotonic() + 5.0
+        while not future.done() and _time.monotonic() < inner:
+            _time.sleep(0.05)
+        assert future.done(), "GetCargoMapStats timeout"
+        current = int(future.result().map_revision)
+        fresh = chain.latched_surface()
+        if fresh is not None and int(fresh.map_revision) >= current:
+            break
+        _time.sleep(0.2)
+    assert fresh is not None, "no surface"
+    return fresh
 
 
 def _goto_named_pose(chain, pose_name, timeout_sec=45.0, attempts=3):
@@ -436,7 +502,7 @@ def _loop_select_request(chain, request_id, placement, grasp, near_y):
         container_usable_dimensions,
     )
 
-    surface = chain.latched_surface()
+    surface = _fresh_surface(chain)
     assert surface is not None, "latched surface_v2 missing"
     scene_revision = _loop_revision(chain)
     joints = chain.joint_state()
@@ -761,6 +827,18 @@ class TestMockFullLoop:
             #    drivers' _home_arm; also the good IK seed for the pick
             #    ladder — the raw controller default seeds a branch that
             #    fouls the box).
+            if index == 1:
+                from moveit_msgs.msg import PlanningSceneComponents
+
+                pre = scene_client.get_scene(
+                    PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+                chain.out_dir.joinpath("scene_at_loop_start.json").write_text(
+                    json.dumps([
+                        {"id": str(obj.object.id),
+                         "link": str(obj.link_name)}
+                        for obj in (
+                            pre.robot_state.attached_collision_objects
+                            if pre is not None else [])]))
             _goto_named_pose(chain, "pickup_observe")
 
             # -- perceive the box: synthetic detection through the
@@ -982,7 +1060,7 @@ class TestMockFullLoop:
             previous_slot_y = slot_y
 
             # -- execute the certified route; no map effect.
-            before = int(chain.latched_surface().map_revision)
+            before = int(_fresh_surface(chain).map_revision)
             legs = list(selection.motion_segments)
             record["route_legs"] = [leg.name for leg in legs]
             assert legs, "route returned no typed legs"
@@ -1025,7 +1103,7 @@ class TestMockFullLoop:
                                         for l in legs],
                                     **boundary}, indent=1, default=str))
                 assert ok, "%s: %s" % (leg.name, message)
-            assert int(chain.latched_surface().map_revision) == before, (
+            assert int(_fresh_surface(chain).map_revision) == before, (
                 "map moved during route execution")
 
             # -- release: typed vacuum off, detach confirmed.

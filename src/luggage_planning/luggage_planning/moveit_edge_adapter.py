@@ -275,6 +275,7 @@ class MoveItEdgeAdapter(object):
         self._failure_log: List[dict] = []
         self._outcomes: List[EdgeOutcome] = []
         self._scene_state_applied: Optional[str] = None
+        self._scene_world_ids_added: list = []
 
     # -- lifecycle --------------------------------------------------------
 
@@ -319,6 +320,30 @@ class MoveItEdgeAdapter(object):
 
     # -- planning scene ---------------------------------------------------
 
+    def reset_scene(self, payload_id="b-payload"):
+        """[ST09-I] leave the planning scene UNLOADED after a select.
+
+        A select that fails after its entry planning (budget, no
+        feasible route, refused certification) never reaches the retreat
+        chain's unload diff, stranding the frozen payload ATTACHED in
+        the live scene — the next motion in that scene collides with
+        the phantom (live: a later pick's attach descent stopped at
+        18.5% exactly where a phantom payload met the world box). The
+        planning-added released/placed world boxes are planning
+        artifacts too: a route that was planned but never physically
+        released leaves them behind and the NEXT select certifies
+        against a box that was never placed (live: the leftover
+        released box sat exactly on the next cycle's slot line).
+        Idempotent; the success path's real release re-adds its own
+        world geometry through the vacuum/placement surfaces.
+        """
+        if self._scene is not None:
+            self._scene.detach_and_remove(box_id=payload_id)
+            for object_id in tuple(self._scene_world_ids_added):
+                self._scene.remove_object(object_id)
+        self._scene_world_ids_added = []
+        self._scene_state_applied = None
+
     def _ensure_scene(self, scene, payload_id="b-payload"):
         """Idempotent scene diff for the edge's load state (fail closed).
 
@@ -344,6 +369,7 @@ class MoveItEdgeAdapter(object):
                     box.object_id, list(box.center), list(box.quaternion_xyzw),
                     list(box.size_whd), frame_id="world"):
                 raise RuntimeError("scene add failed for %s" % box.object_id)
+            self._scene_world_ids_added.append(str(box.object_id))
             self._call_counts["scene_apply"] += 1
         if scene.load_state == "carrying":
             if scene.payload is None:
@@ -597,11 +623,37 @@ class MoveItEdgeAdapter(object):
                 "kind": "moveit_error", "fraction": None})
         fraction = float(response.fraction)
         if fraction < CARTESIAN_MIN_FRACTION:
+            # [ST09-I] request-level diagnostics (same as the joint
+            # planner): the refused edge's exact start state and goal.
+            try:
+                self._node.get_logger().error(
+                    "edge cartesian failed %s from=%s to=%s fraction=%.3f"
+                    % (klass.value,
+                       [round(float(v), 3) for v in from_node.q],
+                       [round(float(v), 3) for v in to_node.q],
+                       fraction))
+            except Exception:  # noqa: BLE001 - diagnostics only
+                pass
             self._record_failure(klass.value, "fraction_below_min",
                                  fraction=round(fraction, 6))
             raise RoutePlanningError("EDGE_BUILD_FAILED", {
                 "kind": "fraction_below_min", "fraction": round(fraction, 6),
                 "required": CARTESIAN_MIN_FRACTION})
+        # [ST09-I] unwrap re-seeded IK samples onto one revolute branch:
+        # GetCartesianPath can answer with a joint flipped to its 2*pi
+        # equivalent mid-path (bookkeeping, not motion). Unwrapped, the
+        # excursion judge sees the true motion and the executor's
+        # continuity gate never meets a phantom whole-turn jump.
+        points = response.solution.joint_trajectory.points
+        for index in range(1, len(points)):
+            previous = points[index - 1].positions
+            current = points[index].positions
+            for joint in range(len(current)):
+                turns = round(
+                    (current[joint] - previous[joint])
+                    / (2.0 * math.pi))
+                if turns:
+                    current[joint] = current[joint] - turns * 2.0 * math.pi
         timed = self._retime(response.solution.joint_trajectory)
         excursion = _excursion(timed, distance)
         if excursion is not None and excursion["ratio"] > \
@@ -732,15 +784,27 @@ def _path_length(poses):
 
 def _excursion(trajectory, path_len_m):
     """Joint total variation per metre of cartesian travel (executor
-    semantics: floor at 0.05 m; wrist/j6 measured, never refusing)."""
+    semantics: floor at 0.05 m; wrist/j6 measured, never refusing).
+
+    [ST09-I] wrap-aware: GetCartesianPath samples can flip a revolute
+    joint to its 2*pi equivalent between re-seeded IK samples; that is
+    bookkeeping, not motion — measure angular distance on the circle
+    (live: portal/approach traverses refused with ratios 6..510 whose
+    "excursion" was exactly whole-turn flips)."""
     from luggage_planning.joint_path import max_joint_step
 
     rows = trajectory.positions
     if len(rows) < 2 or path_len_m <= 1e-9:
         return None
+
+    def _angular_step(a, b):
+        delta = abs(b - a) % (2.0 * math.pi)
+        return min(delta, 2.0 * math.pi - delta)
+
     denominator = max(path_len_m, 0.05)
     variations = [
-        sum(abs(b[index] - a[index]) for a, b in zip(rows, rows[1:]))
+        sum(_angular_step(b[index], a[index])
+            for a, b in zip(rows, rows[1:]))
         for index in range(len(rows[0]))]
     worst = max(range(len(variations)), key=lambda i: variations[i])
     return {

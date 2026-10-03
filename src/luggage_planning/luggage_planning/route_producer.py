@@ -528,6 +528,7 @@ class RouteProducer(object):
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+            cert_rebuilds_left = CERT_COLLISION_REBUILDS
             row = {
                 "slot_index": index,
                 "candidate_id": base_candidate.candidate_id,
@@ -630,7 +631,34 @@ class RouteProducer(object):
                 row["detail"] = exc.detail
                 rows.append(row)
                 last_reason = exc.code
-                continue
+                # [ST09-I] bounded sampler retry: NO_FEASIBLE after an
+                # OMPL miss (a staging transit dying at -2 when the next
+                # draw resolves) is sampling luck, not geometry. Re-plan
+                # the SAME candidate with fresh draws inside the frozen
+                # budget; geometry refusals still refuse.
+                remaining = self.budget_ns - (self._clock_ns() - started_ns)
+                route = None
+                if exc.code == "NO_FEASIBLE_ROUTE" \
+                        and cert_rebuilds_left > 0 and remaining > 0:
+                    cert_rebuilds_left -= 1
+                    self._log("route: sampler miss — re-planning "
+                              "candidate %d" % index)
+                    try:
+                        route = planner.plan_route(
+                            snapshot, attachment, candidate, targets,
+                            budget_ns=int(remaining))
+                    except RoutePlanningError:
+                        route = None
+                if route is None:
+                    continue
+                row = {
+                    "slot_index": index,
+                    "candidate_id": base_candidate.candidate_id,
+                    "depth_m": 0.0,
+                    "reason": "SAMPLER_RETRY",
+                }
+                self._log("route: candidate %d re-planned %s"
+                          % (index, route.route_id))
             except ContractViolation as exc:
                 row["reason"] = _named_reason(exc)
                 rows.append(row)
@@ -662,7 +690,6 @@ class RouteProducer(object):
             self.last_budget_snapshot = planner.last_budget_snapshot
 
             row["route_id"] = route.route_id
-            cert_rebuilds_left = CERT_COLLISION_REBUILDS
             while True:
                 edges = tuple(
                     self.graph.edges[edge_id] for edge_id in

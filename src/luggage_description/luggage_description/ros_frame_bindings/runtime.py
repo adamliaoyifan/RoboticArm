@@ -211,8 +211,14 @@ class NodeRuntime:
                 self.gate.observe(report)
         except ContractError as error:
             self._count(error.code)
+            # [ST09-I] traceability: the expected/received pair is the
+            # whole story for overlay rejections (a bare code sent a
+            # live debugging session in circles).
             self.node.get_logger().warning(
-                "runtime identity report rejected (%s %s)" % (error.code, error.field))
+                "runtime identity report rejected (%s %s) expected=%r "
+                "received=%r" % (error.code, error.field,
+                                 str(error.expected)[:160],
+                                 str(error.received)[:160]))
         except Exception as error:  # noqa: BLE001 - a bad peer must not kill the node
             self._count("INVALID_PROCESS_REPORT")
             self.node.get_logger().warning(

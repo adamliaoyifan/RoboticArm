@@ -16,9 +16,13 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
+# APPEND, never insert at 0 (same overlay-shadowing hazard as
+# test_route_producer: a front src entry flips in-process package
+# resolution off the install overlay and the whole-chain probe's
+# module provenance is then rejected by every stack node).
 for entry in (str(ROOT / "src" / "luggage_planning"), str(ROOT)):
     if entry not in sys.path:
-        sys.path.insert(0, entry)
+        sys.path.append(entry)
 
 from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
 

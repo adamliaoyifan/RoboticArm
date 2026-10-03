@@ -282,7 +282,16 @@ def fill_select_response_route(message, response, producer):
             box_wdh=request["box_wdh"])
     except ContractError as exc:
         return _reject(response, exc)
-    result = producer.plan_place_route(request)
+    # [ST09-I] scene hygiene at the service boundary: a select that
+    # fails after entry planning strands the frozen payload attached in
+    # the live scene (the retreat chain's unload never runs); the next
+    # motion then collides with the phantom. Every exit resets.
+    reset_scene = getattr(producer.edge_builder, "reset_scene", None)
+    try:
+        result = producer.plan_place_route(request)
+    finally:
+        if callable(reset_scene):
+            reset_scene()
     if not result.get("success"):
         response.success = False
         response.reason_code = str(result.get("reason_code") or "NO_FEASIBLE_ROUTE")

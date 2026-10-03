@@ -12,7 +12,15 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(ROOT / "src" / "luggage_planning"))
+# APPEND, never insert at 0: a front src/luggage_planning entry flips
+# this process's `luggage_planning` resolution from the install overlay
+# to the source tree, and the whole-chain probe (running in-process)
+# then reports src-path module provenance which every stack node's
+# overlay gate rejects (live: all peers WRONG_OVERLAY(path), 180 s
+# startup budget lost). The tail entry only serves a bare `pytest`
+# without the documented PYTHONPATH.
+if str(ROOT / "src" / "luggage_planning") not in sys.path:
+    sys.path.append(str(ROOT / "src" / "luggage_planning"))
 
 from st09_contracts._base import ContractViolation  # noqa: E402
 from st09_contracts.fixtures import make_timed_trajectory  # noqa: E402
