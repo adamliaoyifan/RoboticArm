@@ -1120,6 +1120,50 @@ class TestMockFullLoop:
             # trail is recorded for evidence.
             assert int(fresh.map_revision) >= before, (
                 before, int(fresh.map_revision))
+            # [P3.4] CAUSAL occupancy-avoidance artifacts: the occupied
+            # cells this box's landing added, the footprint of every
+            # landed box so far, and (for boxes >= 2) the zero-overlap
+            # check against them. This narrows the claim to exactly
+            # what the evidence shows: the NEXT box's placement chose a
+            # non-overlapping candidate on a revision that includes
+            # this box's observed occupancy.
+            # surface.state is FLAT row-major (rows x columns strings:
+            # "occupied" / "free" / "unknown" per cell)
+            columns = int(fresh.columns)
+            grid = [list(fresh.state[i * columns:(i + 1) * columns])
+                    for i in range(int(fresh.rows))]
+            resolution = float(fresh.resolution_m)
+            origin = [float(v) for v in fresh.origin_xy_container]
+            footprint = []
+            # grid axis order: state[ix][iy] — the FIRST index is x
+            for x_index, row in enumerate(grid):
+                for y_index, cell in enumerate(row):
+                    if str(cell) != "occupied":
+                        continue
+                    cell_x = origin[0] + (x_index + 0.5) * resolution
+                    cell_y = origin[1] + (y_index + 0.5) * resolution
+                    if (abs(cell_x - slot_x) <= 0.5 * BOX_WDH[0] + resolution
+                            and abs(cell_y - slot_y)
+                            <= 0.5 * BOX_WDH[1] + resolution):
+                        footprint.append([round(cell_x, 3),
+                                          round(cell_y, 3)])
+            record["landed_footprint_cells"] = footprint
+            occupied_total = sum(
+                1 for row in grid for cell in row
+                if str(cell) == "occupied")
+            record["grid_occupied_total"] = occupied_total
+            record["grid_shape"] = [len(grid), len(grid[0]) if grid else 0]
+            # normalize to tuples for the set intersection below
+            footprint_set = {(cell[0], cell[1]) for cell in footprint}
+            landed = {(cell[0], cell[1]) for box in evidence["boxes"]
+                      for cell in box.get("landed_footprint_cells", [])}
+            if landed:
+                overlap = sorted(footprint_set & landed)
+                record["overlap_with_previous_boxes"] = [
+                    list(cell) for cell in overlap]
+                assert not overlap, (
+                    "box %s landed on an occupied cell: %s"
+                    % (box_id, overlap[:6]))
             evidence["boxes"].append(record)
 
         chain.out_dir.joinpath("full_loop.json").write_text(

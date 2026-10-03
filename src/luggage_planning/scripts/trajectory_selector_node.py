@@ -286,46 +286,63 @@ class TrajectorySelectorNode(Node):
             return refine_to_pose(urdf, tcp_path, position, quaternion,
                                   seed, pos_tol=2e-3, rot_tol=2e-2)
 
-        def atlas_prior(position_container, quaternion_container,
-                        request):
+        def atlas_prior(targets, request):
             """[ST09-I P3] data-driven reachability prior (empty-load
             atlas: arm truth without payload-envelope conservatism).
 
-            Replaces the removed dev 1.35 m base-radius prior. The
-            query height is the candidate's TCP TARGET (slot centre +
-            half the box + the release gap), not the box centre. Status
+            Queries the REAL TCP targets — the ones
+            ``_expand_targets`` synthesized through the measured
+            attachment (T_world_box x inverse(T_tcp_box): grasp yaw
+            deviation, eccentric XY, and the actual tool rotation are
+            all composed in) — never the raw slot box pose. Status
             codes: 3 REACHABLE / 2 MARGINAL / 1 UNREACHABLE / 0
-            UNKNOWN. Only a cell the atlas SAMPLED and found
-            UNREACHABLE on BOTH pi-equivalent yaw branches is reported
-            unreachable — UNKNOWN stays unknown: atlas miss is unknown,
-            never unreachable. Reachable cells return their contact
-            seeds (the atlas' own sampled solutions) for the goal IK.
-            MoveIt and certification stay the authority for every leg
-            that actually runs.
+            UNKNOWN. A candidate is reported unreachable ONLY when
+            EVERY allowed TCP target queries as sampled-unreachable;
+            any miss stays unknown — atlas miss is unknown, never
+            unreachable. Reachable targets return their contact seeds
+            (the atlas' own sampled solutions) for the goal IK, which
+            re-refines every seed onto the exact real target and FK
+            verifies. MoveIt and certification stay the authority for
+            every leg that actually runs.
             """
             atlas, _diag = self._runtime_atlas()
-            if atlas is None:
+            if atlas is None or not targets:
                 return None
             import math as _math
 
-            from luggage_planning.route_producer import RELEASE_DROP_M
+            from st09_contracts.attachment import (
+                compose_transform,
+                invert_transform,
+            )
 
-            quat = [float(v) for v in quaternion_container]
-            yaw = _math.atan2(
-                2.0 * (quat[3] * quat[2] + quat[0] * quat[1]),
-                1.0 - 2.0 * (quat[1] ** 2 + quat[2] ** 2))
-            x = float(position_container[0])
-            y = float(position_container[1])
-            # slot pose z is the box CENTRE; the atlas grid holds TCP
-            # contact heights: centre + half the box + the release gap
-            box_height = float((request.get("box_wdh") or [0, 0, 0])[2])
-            z = float(position_container[2]) + 0.5 * box_height \
-                + RELEASE_DROP_M
+            transform = request["container_transform"]
+            if isinstance(transform, dict):
+                translation = tuple(float(v) for v in
+                                    transform["translation"])
+                quaternion = tuple(float(v) for v in
+                                   transform["quaternion_xyzw"])
+            else:
+                translation = tuple(float(v) for v in transform[2])
+                quaternion = tuple(float(v) for v in transform[3])
+            inv_xyz, inv_quat = invert_transform(translation, quaternion)
+
             statuses = []
             seeds = []
             try:
-                for yaw_query in (yaw, yaw + _math.pi):
-                    result = atlas.query(x, y, z, yaw_query)
+                for target in targets:
+                    # world TCP pose -> container frame, query at the
+                    # target's OWN yaw (the heading expansion already
+                    # enumerates the allowed physical rotations)
+                    position, quat = compose_transform(
+                        inv_xyz, inv_quat,
+                        [float(v) for v in target.position],
+                        [float(v) for v in target.quaternion_xyzw])
+                    yaw = _math.atan2(
+                        2.0 * (quat[3] * quat[2] + quat[0] * quat[1]),
+                        1.0 - 2.0 * (quat[1] ** 2 + quat[2] ** 2))
+                    result = atlas.query(
+                        float(position[0]), float(position[1]),
+                        float(position[2]), yaw)
                     status = int(result.status)
                     statuses.append(status)
                     if status in (2, 3):

@@ -235,6 +235,9 @@ class RouteSearch(object):
         self.edge_builder = edge_builder
         self.budget = budget or RouteBudget()
         self.edge_failures: List[dict] = []
+        # [ST09-I P3] per-session failure memo (see _edge_for): shared
+        # anchors must not be retried per candidate.
+        self._edge_fail_counts: Dict[tuple, int] = {}
 
     # -- edge resolution -------------------------------------------------
 
@@ -257,6 +260,15 @@ class RouteSearch(object):
         cached = self._cached_edge(from_node.node_id, to_node.node_id, edge_class)
         if cached is not None:
             return cached  # verified this session: free reuse
+        key0 = (from_node.node_id, to_node.node_id, edge_class)
+        # [ST09-I P3] failure memo: an edge that already failed twice
+        # this session is not retried for the next candidate. Shared
+        # anchors (the opening-centerline staging nodes are identical
+        # across candidates) made every candidate re-attempt the same
+        # doomed OMPL transit at ~2 s per burn until the whole route
+        # budget expired (live: 42 attempts, zero completed routes).
+        if self._edge_fail_counts.get(key0, 0) >= 2:
+            return None
         candidate = self._candidate_edge(
             from_node.node_id, to_node.node_id, edge_class)
         key = (from_node.node_id, to_node.node_id, edge_class)
@@ -265,6 +277,9 @@ class RouteSearch(object):
                                       candidate=candidate, scene=scene)
             if replacement is not None:
                 self.graph.promote_candidate(candidate.edge_id, replacement)
+            else:
+                self._edge_fail_counts[key] = self._edge_fail_counts.get(
+                    key, 0) + 1
             return replacement
         if not self.budget.begin_edge(key):
             self.edge_failures.append({
@@ -274,6 +289,9 @@ class RouteSearch(object):
         edge = self._build(from_node, to_node, hop, key, scene=scene)
         if edge is not None:
             self.graph.add_edge(edge)  # verified: later hops/goals reuse free
+        else:
+            self._edge_fail_counts[key] = self._edge_fail_counts.get(
+                key, 0) + 1
         return edge
 
     def _build(self, from_node, to_node, hop, key, candidate=None, scene=None):

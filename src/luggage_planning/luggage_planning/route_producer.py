@@ -44,6 +44,7 @@ from st09_contracts.planning import GeometryVerdict, PlacementCandidate
 from luggage_planning.grid_path_search import (
     DEFAULT_ENTRY_HOPS,
     ROUTE_TOTAL_WALL_S,
+    SINGLE_NEW_EDGE_WALL_S,
     RoutePlanningError,
     hops_from_table,
 )
@@ -95,6 +96,23 @@ EXIT_EXTRA_LIFT_M = 0.10
 #: post-release (err_xy, perceived-vs-actual z), never excused in
 #: certification. Declared and recorded in evidence, not tuned silently.
 RELEASE_DROP_M = 0.05
+
+#: [ST09-I P3 ordering contract] EXECUTABLE-FIRST. Inside each atlas
+#: bucket (seeded -> reachable -> unknown) candidates are ordered by
+#: distance-to-opening ASCENDING (projected on the opening's inward
+#: normal) — an explicit geometric key, independent of placement's sort.
+#: Audit basis (2026-10-03, two-box mock): with placement's deep-first
+#: order primary, each deep seeded candidate consumed its whole
+#: per-candidate slice (~4 s) failing goal refinement at the reach
+#: limit, and the frozen 10 s route budget expired after 2-3 attempts —
+#: deep-first enumeration cannot reach a certifiable slot under this
+#: contract. COST: near-first selection can occupy opening-adjacent
+#: cells; the THREE-BOX CAPACITY ACCEPTANCE at M3 (S6) must verify the
+#: carryon -> standard -> carryon sequence still fits with this
+#: ordering. If capacity fails, the contract decision is the user's:
+#: raise the frozen budget or restore deep-first with pre-validated
+#: graphs.
+EXECUTABLE_FIRST_ORDER = True
 
 #: IK seed prior for the tool-down branch when the atlas is unavailable
 #: and the live start configuration is degenerate (mock zero state).
@@ -534,10 +552,34 @@ class RouteProducer(object):
             seeded_order, reachable_order, unknown_order = [], [], []
             for index, slot in enumerate(request["slots"]):
                 prior_candidate = candidate_from_slot(slot, index)
-                prior = self.atlas_prior(
-                    prior_candidate.position_container,
-                    prior_candidate.quaternion_xyzw_container,
-                    request) or {}
+                # The prior is queried at the REAL TCP targets (the
+                # measured attachment composed in by _expand_targets),
+                # never at the raw slot box pose.
+                from luggage_planning.place_targets import (
+                    TargetSynthesisError,
+                )
+
+                try:
+                    prior_targets = self._expand_targets(
+                        prior_candidate, attachment, request)
+                except (ContractViolation, TargetSynthesisError):
+                    prior_targets = []
+                    rows.append({
+                        "slot_index": index,
+                        "candidate_id": prior_candidate.candidate_id,
+                        "depth_m": 0.0,
+                        "reason": "TARGET_SYNTHESIS_EMPTY",
+                    })
+                    continue
+                if not prior_targets:
+                    rows.append({
+                        "slot_index": index,
+                        "candidate_id": prior_candidate.candidate_id,
+                        "depth_m": 0.0,
+                        "reason": "TARGET_SYNTHESIS_EMPTY",
+                    })
+                    continue
+                prior = self.atlas_prior(prior_targets, request) or {}
                 if prior.get("verdict") == "unreachable":
                     rows.append({
                         "slot_index": index,
@@ -554,21 +596,44 @@ class RouteProducer(object):
                     reachable_order.append(entry)
                 else:
                     unknown_order.append(entry)
-            # Seeded cells (the atlas STORES solutions there — genuinely
-            # reachable, cheap goal IK) come first, SHALLOW-first: a
-            # deep attempt alone costs ~the whole frozen 10 s budget in
-            # edge building, so deep-first enumeration can never reach a
-            # certifiable slot under this contract. Packing's deep-first
-            # preference governs the candidate SET (and any future
-            # budget increase restores deep-first here); the producer's
-            # job under the frozen budget is one certified route.
-            seeded_order.reverse()
+            # [ST09-I P3 ordering contract] The atlas buckets
+            # (seeded -> reachable -> unknown) are each ordered by an
+            # EXPLICIT geometric key: distance-to-opening ascending
+            # (EXECUTABLE_FIRST_ORDER). This is not a reversal of
+            # placement's deep-first list — it is an independent key,
+            # frozen above with its audit basis and its capacity cost
+            # (three-box acceptance at M3). Only SAMPLED-unreachable
+            # candidates are dropped (named rows); budget fairness comes
+            # from the per-candidate planning slice below.
+            inward = self._inward_normal()
+            opening_point = (self.opening_info or {}).get("point")
+
+            def _depth_key(entry):
+                # depth ascending; ties broken by DESCENDING placement
+                # index — the shallower end of placement's deep-first
+                # list wins ties, matching the audited passing order
+                # (reverse of the deep-first list).
+                index, slot, _seeds = entry
+                position = slot["position"]
+                if not inward or not opening_point:
+                    return (-float(index),)
+                depth = sum(
+                    (float(position[axis]) - float(opening_point[axis]))
+                    * float(inward[axis]) for axis in range(3))
+                return (depth, -float(index))
+
+            if EXECUTABLE_FIRST_ORDER:
+                seeded_order.sort(key=_depth_key)
+                reachable_order.sort(key=_depth_key)
+                unknown_order.sort(key=_depth_key)
             ordered_slots = (seeded_order + reachable_order
                              + unknown_order)
             self._log("route: atlas order seeded=%d reachable=%d "
-                      "unknown=%d dropped=%d" % (
+                      "unknown=%d dropped=%d "
+                      "executable_first=%s" % (
                           len(seeded_order), len(reachable_order),
-                          len(unknown_order), len(rows)))
+                          len(unknown_order), len(rows),
+                          EXECUTABLE_FIRST_ORDER))
             if not ordered_slots:
                 return self._fail("NO_FEASIBLE_ROUTE", rows)
         else:
@@ -588,6 +653,18 @@ class RouteProducer(object):
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+            # [ST09-I P3 ordering contract] NO per-candidate slice:
+            # a measured COMPLETE route build costs ~6-10 s (staging
+            # OMPL transit dominates) — most of the frozen 10 s budget —
+            # so slicing to guarantee a second attempt starves the only
+            # viable one (live: 6 s and 4.6 s slices each killed a build
+            # that succeeds at ~7-9 s). Fairness against deep-attempt
+            # starvation comes from the EXECUTABLE_FIRST ordering (the
+            # first tried candidate is the cheapest, most robust one);
+            # if that attempt fails, PLANNING_BUDGET_EXHAUSTED is the
+            # honest named outcome. Budget growth or pre-validated
+            # persisted graphs are the levers for multi-attempt budgets.
+            candidate_budget_ns = int(remaining)
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
             row = {
                 "slot_index": index,
@@ -674,7 +751,7 @@ class RouteProducer(object):
                           % (index, remaining / 1e9))
                 route = planner.plan_route(
                     snapshot, attachment, candidate, targets,
-                    budget_ns=int(remaining))
+                    budget_ns=candidate_budget_ns)
                 self._log("route: candidate %d planned %s"
                           % (index, route.route_id))
             except RoutePlanningError as exc:
