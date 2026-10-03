@@ -1,0 +1,109 @@
+atlas_version: '3.0'
+schema_version: 3
+contract:
+  contract_version: 2
+  position_frame: container_link
+  orientation_frame: container_link
+  reference: suction_contact_frame
+  orientation_semantics: concrete_tool_pose
+  angle_unit: rad
+  length_unit: m
+  height_datum: container_origin
+  tool_down_reference: container_negative_z
+  yaw_period_rad: 6.283185307179586
+  yaw_bins_rad:
+  - 0.0
+  - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  scene_revision: 98313fb8b30e51521a4c45a829ff6d5d
+  geometry_hash: 3460c2f23aa597efe71ad8e66b6b5faf
+  urdf_hash: 689838e5ab5948877ea9c87f388a0474
+  payload_hash: 601288ca876babfb8340ef207ce7fd9b
+generated_at: '2026-10-03T10:36:56'
+computation_time_sec: 120.23
+mode: collision_aware
+marginal_joint_margin: 0.1
+query:
+  yaw_tolerance: 0.1
+  hard_reject_min_neighbor_confidence: 0.9
+  hard_reject_interior_fraction: 0.1
+builder:
+  algorithm: opening_connected_wavefront_v3
+  serial_deterministic: true
+  max_branches: 3
+  branch_distance: 0.25
+  joint_interpolation_step: 0.1
+  state_validity_available: true
+  seed_policy: fixed_anchor_connected_warm_start_repair_v1
+  ik_solver: offline_ik.refine_to_pose
+  deterministic_fingerprint: b1a224ced4d060530b9b9dc76c29baa6d4fb66aa4fd47b98f640d56f4e78a2bd
+  tool_down_tolerance: 0.0
+  transit_clearance: 0.3
+dependencies:
+  robot_model: elfin_s20_with_camera
+  scene_tf_hash: 98313fb8b30e51521a4c45a829ff6d5d
+  urdf_hash: 689838e5ab5948877ea9c87f388a0474
+  ik_link: suction_contact_frame
+  ik_group: elfin_arm
+payload:
+  enabled: true
+  shape: box
+  size:
+  - 0.8
+  - 0.5
+  - 0.32
+  attach_link: suction_contact_frame
+  offset:
+  - 0.0
+  - 0.0
+  - 0.16
+  touch_links:
+  - suction_panel
+grid:
+  frame: container_link
+  resolution_xyz: 0.15
+  origin:
+  - -0.745
+  - -0.985
+  - 0.5
+  size:
+  - 10
+  - 14
+  - 10
+  yaw_bins:
+  - 0.0
+  - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  yaw_semantics: directed_container_2pi
+  transit_clearance: 0.3
+  lift_policy:
+    nominal: 0.3
+    safe_tool_z: 1.55
+    min_lift: 0.06
+    frame: container_link
+container:
+  inner_dimensions:
+  - 1.49
+  - 1.97
+  - 2.01
+  floor_z: 0.53
+  ceiling_z: 2.01
+  usable_height: 1.4799999999999998
+  base_xyz:
+  - 0.6000055098036072
+  - 1.4999977960668185
+  - -0.86
+  base_rpy:
+  - 0.0
+  - -0.0
+  - 1.5708
+  opening_side: negative_x
+stats:
+  total_cells: 5600
+  reachable_cells: 368
+  marginal_cells: 34
+  unreachable_cells: 819
+  unknown_cells: 4379
+  reachability_rate: 0.0657
