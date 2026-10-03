@@ -1,0 +1,13 @@
+# [ST09-I S5.7-3b] Is a certified execution admission STILL live?
+# The selector (certifier side) owns the verdict; the pure executor
+# only refuses on it. Covers the verify -> execute window: peer
+# restart (selection lost), superseded certificate, identity change,
+# map regression/staleness, and corridor-affecting map advance.
+string route_digest
+string certification_id
+uint64 admission_map_revision
+string scene_revision
+---
+bool live
+string reason_code
+string detail

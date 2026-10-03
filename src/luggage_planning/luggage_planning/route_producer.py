@@ -1037,12 +1037,60 @@ class RouteProducer(object):
             reason = failure if certification is None \
                 else certification.reason.value
             return False, reason, {"recertified": False}
+        # [ST09-I S5.7-3b] the FRESH certificate is the live admission
+        # the executor will check between legs.
+        selection["certification_id"] = certification.digest()
         return True, "OK", {
             "start_state_delta_rad": round(delta, 6),
             "certification_id": certification.digest(),
             "validated_map_revision": int(snapshot.map_revision),
             "leg_digests": [edge.trajectory.digest() for edge in edges],
         }
+
+    def execution_admission_is_live(self, *, route_digest,
+                                    certification_id,
+                                    admission_map_revision,
+                                    scene_revision):
+        """[ST09-I S5.7-3b] Is a certified execution admission STILL live?
+
+        Certify A, execute A — AND the certification still holds when A
+        executes. The selector owns the verdict; the executor only
+        refuses on it. Peer restart loses the selection
+        (ADMISSION_UNKNOWN); a superseded certificate or changed scene
+        identity refuses; a map that advanced without touching the
+        route's edges stays LIVE (new revision recorded); corridor
+        impact or staleness revokes. Returns ``(live, reason, detail)``.
+        """
+        selection = getattr(self, "last_selection", None)
+        if not selection or selection.get("path_hash") != str(route_digest):
+            return False, "ADMISSION_UNKNOWN", {
+                "known": (selection or {}).get("path_hash", "")}
+        if str(certification_id) != str(
+                selection.get("certification_id", "")):
+            return False, "CERTIFICATE_SUPERSEDED", {
+                "live": str(selection.get("certification_id", ""))}
+        snapshot = selection["snapshot"]
+        if str(scene_revision) != str(
+                getattr(snapshot, "scene_revision", "")):
+            return False, "GENERATION_CHANGED", {
+                "scene": str(getattr(snapshot, "scene_revision", ""))}
+        if (type(admission_map_revision) is int
+                and admission_map_revision < int(snapshot.map_revision)):
+            return False, "MAP_RESTART", {
+                "planned": int(snapshot.map_revision),
+                "admission": admission_map_revision}
+        revalidation = self._revalidate(
+            selection["route"], snapshot, selection["edges"])
+        if revalidation is None:
+            return False, "MAP_REVALIDATION_UNAVAILABLE", {}
+        from st09_contracts.certification import MapDecision
+
+        if revalidation.decision is not MapDecision.CONTINUE:
+            return False, getattr(
+                revalidation.reason, "value", "ADMISSION_REVOKED"), {
+                "map_revision": getattr(revalidation, "map_revision", 0)}
+        return True, "OK", {
+            "live_map_revision": int(revalidation.map_revision)}
 
     def plan_observation_route(self, *, request_id, scene_revision,
                                current_joints, camera_targets,

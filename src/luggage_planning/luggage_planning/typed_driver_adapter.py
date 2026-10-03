@@ -582,11 +582,15 @@ class TypedDriverAdapter:
         request.container_stamp_is_null = True
         return self._call(self._build, request, 15.0)
 
-    def plan_motion(self, motion_segment, timeout_sec, name="PlanMotionV2"):
+    def plan_motion(self, motion_segment, timeout_sec, name="PlanMotionV2",
+                    admission=None):
         """Execute one typed segment through PlanMotionV2.
 
         Returns ``(ok, message, result)`` with the same convention as the
-        drivers' v1 send_action helper.
+        drivers' v1 send_action helper. ``admission`` ([ST09-I S5.7-3b])
+        carries the certified route digest / certificate / validated map
+        revision so the executor can check the generation is still live
+        before submitting.
         """
         import time as _time
         self.runtime.require_graph_ready()
@@ -595,6 +599,13 @@ class TypedDriverAdapter:
         from luggage_msgs.action import PlanMotionV2
         goal = PlanMotionV2.Goal()
         goal.segment = motion_segment
+        if admission:
+            goal.route_digest = str(
+                admission.get("route_digest", "") or "")
+            goal.certification_id = str(
+                admission.get("certification_id", "") or "")
+            goal.admission_map_revision = int(
+                admission.get("admission_map_revision", 0) or 0)
         # send_goal() is the blocking helper and returns the result response.
         # The executor is already spinning, so the async goal keeps the
         # caller's deadline and does not deadlock the main thread.

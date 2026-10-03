@@ -27,6 +27,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ValidateRouteV2.srv"
   "srv/ValidateSelectedRoute.srv"
   "srv/PlanObservationRouteV2.srv"
+  "srv/CheckExecutionAdmission.srv"
   "srv/ValidatePoseV2.srv"
   "srv/AddPlacedBoxV2.srv"
   "srv/RemovePlacedBoxV2.srv"

@@ -97,6 +97,15 @@ class TrajectorySelectorNode(Node):
             PlanObservationRouteV2,
             "/trajectory_selector/plan_observation_route",
             self._plan_observation, callback_group=self._service_group)
+        # [ST09-I S5.7-3b] execution-admission liveness (the pure
+        # executor checks here between legs; certify A, execute A, and
+        # the certification still holds when A executes).
+        from luggage_msgs.srv import CheckExecutionAdmission
+        self.create_service(
+            CheckExecutionAdmission,
+            "/trajectory_selector/check_execution_admission",
+            self._check_execution_admission,
+            callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
         self.declare_parameter("frame_scene_revision", "")
@@ -444,6 +453,36 @@ class TrajectorySelectorNode(Node):
             or (producer.last_selection or {}).get("certification_id", ""))
         response.leg_digests = [
             str(digest) for digest in detail.get("leg_digests") or []]
+        return response
+
+    def _check_execution_admission(self, request, response):
+        """[ST09-I S5.7-3b] Execution-window closure, certifier side."""
+        producer = self._route_producer_or_none()
+        if producer is None:
+            response.live = False
+            response.reason_code = "ROUTE_PRODUCER_UNAVAILABLE"
+            return response
+        try:
+            live, reason, detail = producer.execution_admission_is_live(
+                route_digest=str(request.route_digest or ""),
+                certification_id=str(request.certification_id or ""),
+                admission_map_revision=int(
+                    request.admission_map_revision or 0),
+                scene_revision=str(request.scene_revision or ""))
+        except Exception as error:  # noqa: BLE001 - service boundary
+            import traceback
+
+            self.get_logger().error(
+                "route: admission boundary exception %r %s" % (
+                    error, traceback.format_exc(limit=4)
+                    .replace("\n", " | ")))
+            response.live = False
+            response.reason_code = "ADMISSION_SERVICE_EXCEPTION"
+            response.detail = repr(error)[:300]
+            return response
+        response.live = bool(live)
+        response.reason_code = str(reason)
+        response.detail = json.dumps(detail, default=str)[:2000]
         return response
 
     def _plan_observation(self, request, response):

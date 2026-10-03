@@ -63,6 +63,7 @@ class _Producer(object):
         return self._stub_certification
 
     verify_selected = RouteProducer.verify_selected
+    execution_admission_is_live = RouteProducer.execution_admission_is_live
 
 
 def _ok_certification():
@@ -213,3 +214,72 @@ def test_pass_path_returns_leg_digests():
     assert detail["certification_id"] == "cert-1"
     assert detail["validated_map_revision"] == 5
     assert len(detail["leg_digests"]) == 1
+
+    # [S5.7-3b] the FRESH certificate becomes the live admission the
+    # executor checks between legs.
+    assert producer.last_selection["certification_id"] == "cert-1"
+
+
+def _live_producer(revalidation=None):
+    from st09_contracts.certification import MapDecision
+
+    producer = _Producer(
+        _selection(),
+        revalidation=revalidation or SimpleNamespace(
+            decision=MapDecision.CONTINUE, reason=None, map_revision=5))
+    producer.last_selection["certification_id"] = "cert-1"
+    return producer
+
+
+def _admission(producer, *, digest="hash-1", cert="cert-1", revision=5,
+               scene="scene-A"):
+    return producer.execution_admission_is_live(
+        route_digest=digest, certification_id=cert,
+        admission_map_revision=revision, scene_revision=scene)
+
+
+def test_execution_admission_unknown_covers_peer_restart():
+    producer = _Producer(_selection())
+    producer.last_selection = None
+    assert _admission(producer)[:2] == (False, "ADMISSION_UNKNOWN")
+    assert _admission(producer, digest="other")[:2] == (
+        False, "ADMISSION_UNKNOWN")
+
+
+def test_execution_admission_superseded_certificate_and_identity_refuse():
+    producer = _live_producer()
+    assert _admission(producer, cert="cert-old")[:2] == (
+        False, "CERTIFICATE_SUPERSEDED")
+    assert _admission(producer, scene="scene-B")[:2] == (
+        False, "GENERATION_CHANGED")
+
+
+def test_execution_admission_map_regression_refuses():
+    producer = _live_producer()
+    assert _admission(producer, revision=4)[:2] == (False, "MAP_RESTART")
+
+
+def test_execution_admission_fetch_failure_and_corridor_impact_revoke():
+    from st09_contracts.certification import MapDecision
+
+    producer = _Producer(_selection())
+    producer.last_selection["certification_id"] = "cert-1"
+    producer._stub_revalidation = None
+    assert _admission(producer)[:2] == (
+        False, "MAP_REVALIDATION_UNAVAILABLE")
+    producer = _live_producer(revalidation=SimpleNamespace(
+        decision=MapDecision.REPLAN,
+        reason=SimpleNamespace(value="MAP_REVISION_MISMATCH"),
+        map_revision=6))
+    assert _admission(producer, revision=6)[:2] == (
+        False, "MAP_REVISION_MISMATCH")
+
+
+def test_execution_admission_live_when_map_advanced_without_impact():
+    from st09_contracts.certification import MapDecision
+
+    producer = _live_producer(revalidation=SimpleNamespace(
+        decision=MapDecision.CONTINUE, reason=None, map_revision=7))
+    live, reason, detail = _admission(producer, revision=5)
+    assert live and reason == "OK"
+    assert detail["live_map_revision"] == 7

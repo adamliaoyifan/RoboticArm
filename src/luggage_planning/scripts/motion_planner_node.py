@@ -677,6 +677,40 @@ class MotionPlannerNode(Node):
                 response.message = "%s: %s" % (error.code, error.field)
         return response
 
+    def _admission_still_live(self, goal_request):
+        """[ST09-I S5.7-3b] Mechanical liveness check; fail-closed."""
+        import threading
+
+        from luggage_msgs.srv import CheckExecutionAdmission
+
+        client = getattr(self, "_admission_client", None)
+        if client is None:
+            client = self.create_client(
+                CheckExecutionAdmission,
+                "/trajectory_selector/check_execution_admission")
+            self._admission_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "ADMISSION_CHECK_UNAVAILABLE"
+        request = CheckExecutionAdmission.Request()
+        request.route_digest = str(
+            getattr(goal_request, "route_digest", "") or "")
+        request.certification_id = str(
+            getattr(goal_request, "certification_id", "") or "")
+        request.admission_map_revision = int(
+            getattr(goal_request, "admission_map_revision", 0) or 0)
+        request.scene_revision = str(
+            getattr(goal_request.segment, "scene_revision", "") or "")
+        event = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout=5.0) or not future.done():
+            return False, "ADMISSION_CHECK_UNAVAILABLE"
+        response = future.result()
+        if not bool(response.live):
+            return False, str(response.reason_code
+                              or "ADMISSION_REVOKED")
+        return True, ""
+
     def _execute_plan_motion_v2(self, goal_handle):
         from luggage_planning.motion_v2_service import handle_plan_v2
         result = PlanMotionV2.Result()
@@ -701,6 +735,20 @@ class MotionPlannerNode(Node):
         joints = self._joint_positions()[0]
         if joints:
             start = list(joints)
+        # [ST09-I S5.7-3b] execution-admission gate: when the goal
+        # claims a certified route, the generation must STILL be live
+        # before the first controller submission (and again for every
+        # later leg -- each leg is its own goal). Mechanical check
+        # only; the certifier side owns the verdict.
+        if (str(getattr(goal_handle.request, "route_digest", "") or "")
+                or str(getattr(
+                    goal_handle.request, "certification_id", "") or "")):
+            live, reason = self._admission_still_live(goal_handle.request)
+            if not live:
+                goal_handle.abort()
+                result.success = False
+                result.message = reason
+                return result
         handle_plan_v2(
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
