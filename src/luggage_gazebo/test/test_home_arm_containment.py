@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""`_home_arm` must not abandon the arm where a failed exit left it.
+"""`_home_arm` is scene-state classification + sanctioned calls only.
 
-In motion_occ/2026-09-21_1838 the portal hop aborted with
-GOAL_TOLERANCE_VIOLATED and `_home_arm` returned immediately. The arm stayed
-inside the container, so trials 1 and 2 planned from a start state already in
-collision and failed before they picked anything. `goto_observe` is an FJT to
-a fixed joint vector and does not depend on the portal pose, so it is still
-worth one attempt once the arm has stopped moving.
+[ST09-I S5] The portal hop used to be an ad-hoc cartesian
+MotionSegment constructed driver-side; the executor answers those with
+SEGMENT_GENERATION_REMOVED (the S3 generation-bypass deletion), and the
+unbounded aperture prism misread the mirrored deploy pickup observe
+(~1.7 m outside the face) as "inside the opening". Now: classify the
+cup in container-local coordinates (inside / near_opening / outside);
+OUTSIDE -> the allowed named-pose goto; otherwise the exit is the
+CERTIFIED route's own retreat/return legs — arriving still inside is a
+named refusal (EXIT_REQUIRES_CERTIFIED_ROUTE), never a rebuilt
+geometric escape.
 """
 
 import os
@@ -25,71 +29,102 @@ from luggage_gazebo.place_metrics import PlaceTrial, place_ok  # noqa: E402
 class _Driver(object):
     """Only the collaborators `_home_arm` actually touches."""
 
-    def __init__(self, exit_ok, goto_ok, inside=True):
-        self._exit_ok = exit_ok
+    def __init__(self, zone="outside", goto_ok=True, portal_exited=False):
+        self._zone = zone
         self._goto_ok = goto_ok
-        self._inside = inside
+        self._portal_exited = portal_exited
         self._home_arm_state = {}
         self._exit_yaw = {}
         self.calls = []
 
-    def suction_xyz(self):
-        return ((1.03, -0.735, 1.177) if self._inside else (0.1, 0.0, 1.5)), ""
+    def _container_zone(self):
+        return self._zone, ""
 
     def ros_now_sec(self):
         return 0.0
-
-    def _exit_to_portal(self):
-        self.calls.append("exit")
-        return self._exit_ok, "ok" if self._exit_ok else "error_code=-4"
-
-    def wait_arm_settle(self, reason="", **kwargs):
-        self.calls.append("settle")
-        return "still after 0.45s"
 
     def goto_observe(self):
         self.calls.append("goto")
         return self._goto_ok, "ok" if self._goto_ok else "abort", None
 
     _home_arm = PlaceSmokeDriver._home_arm
-    _suction_clear_of_container = PlaceSmokeDriver._suction_clear_of_container
     home_arm_code = PlaceSmokeDriver.home_arm_code
 
 
-class TestHomeArmContainment(unittest.TestCase):
+class TestHomeArmClassification(unittest.TestCase):
 
-    def test_failed_exit_inside_does_not_open_loop(self):
-        driver = _Driver(exit_ok=False, goto_ok=True, inside=True)
+    def test_outside_goes_straight_to_the_named_pose(self):
+        driver = _Driver(zone="outside", goto_ok=True)
         ok, notes, _result = driver._home_arm()
-        self.assertEqual(driver.calls, ["exit", "settle"])
-        self.assertNotIn("goto", driver.calls)
-        self.assertFalse(ok)
-        self.assertIn("inside opening", notes)
-        self.assertEqual(driver.home_arm_code(), "EXIT_FAILED_STUCK")
-
-    def test_failed_exit_that_cannot_recover_is_a_distinct_code(self):
-        driver = _Driver(exit_ok=False, goto_ok=False)
-        ok, _notes, _result = driver._home_arm()
-        self.assertFalse(ok)
-        self.assertEqual(driver.home_arm_code(), "EXIT_FAILED_STUCK")
-
-    def test_exit_ok_but_observe_unreachable_stays_goto_failed(self):
-        driver = _Driver(exit_ok=True, goto_ok=False)
-        driver._home_arm()
-        self.assertEqual(driver.calls, ["exit", "goto"])
-        self.assertEqual(driver.home_arm_code(), "GOTO_FAILED")
-
-    def test_success_has_no_reason_code(self):
-        driver = _Driver(exit_ok=True, goto_ok=True)
-        ok, _notes, _result = driver._home_arm()
+        self.assertEqual(driver.calls, ["goto"])
         self.assertTrue(ok)
+        self.assertIn("zone=outside", notes)
         self.assertEqual(driver.home_arm_code(), "")
 
-    def test_arm_already_clear_skips_the_exit(self):
-        driver = _Driver(exit_ok=False, goto_ok=True, inside=False)
+    def test_outside_but_goto_fails_is_goto_failed(self):
+        driver = _Driver(zone="outside", goto_ok=False)
+        ok, _notes, _result = driver._home_arm()
+        self.assertEqual(driver.calls, ["goto"])
+        self.assertFalse(ok)
+        self.assertEqual(driver.home_arm_code(), "GOTO_FAILED")
+
+    def test_inside_requires_the_certified_route(self):
+        for zone in ("inside", "near_opening"):
+            driver = _Driver(zone=zone, goto_ok=True)
+            ok, notes, _result = driver._home_arm()
+            self.assertEqual(driver.calls, [], zone)
+            self.assertFalse(ok)
+            self.assertIn("EXIT_REQUIRES_CERTIFIED_ROUTE", notes)
+            self.assertEqual(
+                driver.home_arm_code(), "EXIT_REQUIRES_CERTIFIED_ROUTE")
+
+    def test_portal_exited_still_allows_the_goto(self):
+        driver = _Driver(zone="near_opening", goto_ok=True,
+                         portal_exited=True)
         ok, _notes, _result = driver._home_arm()
         self.assertEqual(driver.calls, ["goto"])
         self.assertTrue(ok)
+
+
+class _ZoneDriver(object):
+    """Real scene geometry, stubbed TF, for the zone classifier."""
+
+    def __init__(self, scene, suction):
+        self._scene_config = scene
+        self._suction = suction
+
+    def suction_xyz(self):
+        return self._suction, ""
+
+    _container_zone = PlaceSmokeDriver._container_zone
+
+
+class TestMirroredDeployZoneClassification(unittest.TestCase):
+    """scene_tf_deploy: the opening-side workspace must classify OUTSIDE."""
+
+    @classmethod
+    def setUpClass(cls):
+        from luggage_description.scene_tf_config_utils import (
+            load_scene_tf_config)
+        scene_path = os.path.join(
+            _SCRIPTS, "..", "..", "luggage_description", "config",
+            "scene_tf_deploy.yaml")
+        cls.scene = load_scene_tf_config(scene_path)
+
+    def zone(self, suction):
+        return _ZoneDriver(self.scene, suction)._container_zone()[0]
+
+    def test_pickup_observe_tcp_is_outside(self):
+        # Synthesized pickup observe TCP (world 0.945, 0.214, 1.748):
+        # ~1.7 m outside the face yet inside the unbounded aperture
+        # prism — the smoke03/04 misclassification.
+        self.assertEqual(self.zone((0.945, 0.214, 1.748)), "outside")
+
+    def test_opening_mouth_is_near_opening(self):
+        self.assertEqual(self.zone((-0.70, 0.6, 1.30)), "near_opening")
+
+    def test_container_interior_is_inside(self):
+        self.assertEqual(self.zone((-1.20, 0.6, 1.30)), "inside")
 
 
 class TestReturnFailureIsNotAPlaceFailure(unittest.TestCase):

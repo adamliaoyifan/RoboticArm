@@ -6,6 +6,12 @@
 # the fixed camera-to-TCP URDF transform). This is NOT a measured site
 # pose: robot_poses.deploy.yaml stays all-valid:false and nothing in
 # this file may move the real cell.
+#
+# portal_observe_sim: the post-release observation camera position (the
+# old _exit_to_portal geometry: 0.20 m outside the opening face, 0.35 m
+# above the opening target), reached through the sanctioned GoToRobotPose
+# surface — the ad-hoc driver-side cartesian escape is deleted
+# (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK provenance.
 
 poses:
   pickup_observe_sim:
@@ -19,6 +25,17 @@ poses:
       - elfin_joint6
     values: [-1.2500, -1.7466, -0.9974, -1.9153, 1.7714, 1.8610]
     tolerance: 0.15
+  portal_observe_sim:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    values: [0.7412, -1.8043, -1.0461, -1.8668, 1.5749, -2.4370]
+    tolerance: 0.15
 
 defaults:
   observe_pose: pickup_observe_sim
@@ -28,4 +45,4 @@ defaults:
 
 meta:
   name: robot_poses_sim_deploy_v1
-  version: 0.1.0
+  version: 0.2.0

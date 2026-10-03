@@ -1,0 +1,13 @@
+{
+  "box_count": 2,
+  "claim": "finite 2-box coverage; no population reliability claim",
+  "failures": [],
+  "missing": [
+    "frozen.box_count",
+    "frozen.sequence_ids",
+    "2 cases"
+  ],
+  "revision_handoff_count": 0,
+  "sample_count": 0,
+  "status": "not_evaluated"
+}

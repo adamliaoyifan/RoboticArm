@@ -19,7 +19,7 @@ DEADLINE_SEC=1200
 SEQUENCE="carryon,standard,carryon"
 RECORD_BAG=1
 KEEP_STACK=0
-WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --out) OUT="$2"; shift 2 ;;
@@ -47,8 +47,12 @@ set +u
 source /opt/ros/humble/setup.bash
 source "$WS/install-st09/setup.bash"
 set -u
-export PYTHONPATH="$WS/src/luggage_perception:$WS/src/luggage_planning:$WS/src/luggage_packing:$WS/src/luggage_gazebo:$WS/src/luggage_description:${PYTHONPATH:-}"
+# NO src-tree PYTHONPATH: the whole session (stack AND driver) must
+# resolve from the install overlay — a src-resolved module reports
+# src-tree provenance and every peer's readiness gate rejects it
+# (WRONG_OVERLAY, live in smoke03/smoke04).
 export ROS_DOMAIN_ID=7 ROS_LOCALHOST_ONLY=1
+export M3_REPO="$WS"
 export M3_SCENE_TF="$WS/install-st09/luggage_description/share/luggage_description/config/scene_tf_deploy.yaml"
 export M3_ATLAS_DIR="$WS/src/luggage_planning/data/reachability_atlas_deploy_sim"
 export ATLAS_RUNTIME_CONFIG="$WS/install-st09/luggage_planning/share/luggage_planning/config/atlas_runtime_deploy_sim.yaml"
@@ -72,6 +76,7 @@ ros2 launch luggage_gazebo sim_world.launch.py \
   observe_pose_name:=pickup_observe_sim \
   gui:=false use_rviz:=false \
   use_vacuum:=true use_motion:=true use_semantic:=true \
+  use_cargo_map:=true use_packing:=true \
   frame_runtime:=true \
   atlas_runtime_config:="$ATLAS_RUNTIME_CONFIG" \
   sequence_ids:="$SEQUENCE" \
@@ -106,16 +111,39 @@ stop_bag() {
   fi
 }
 
+# -- pre-warm: the semantic chain must be producing decisions before the
+#    driver starts (first start AutoUpdates CLIP and can take minutes;
+#    YOLO_NOT_READY at spawn time was the smoke07 failure).
+seg_ready=0
+for attempt in $(seq 1 100); do
+  stats=$(timeout 5 ros2 topic echo /semantic_segmenter/stats_json --once --no-arr 2>/dev/null | head -40)
+  if echo "$stats" | grep -q "data"; then
+    seg_ready=1
+    break
+  fi
+  sleep 3
+done
+log semantic_prewarm ", \"ready\": $seg_ready, \"waited_attempt\": $attempt"
+if [[ "$seg_ready" -ne 1 ]]; then
+  echo "semantic segmenter never published stats; refusing to start driver" >&2
+  stop_bag
+  kill -INT "$LAUNCH_PID" 2>/dev/null || true
+  sleep 5
+  bash "$WS/scripts/st09_i/kill_stack.sh" || true
+  exit 3
+fi
+
 # -- driver under the hard deadline ---------------------------------------
 DRIVER_RC=255
 DEADLINE_HIT=0
 start_s=$SECONDS
-python3 "$WS/src/luggage_gazebo/scripts/m3_three_box_driver.py" \
+python3 "$WS/install-st09/luggage_gazebo/lib/luggage_gazebo/m3_three_box_driver.py" \
   --out "$OUT" --n "$N" --m3-sequence "$SEQUENCE" \
+  --scene-tf-config "$M3_SCENE_TF" \
   --rehearsal "$OUT/rehearsal" \
   --frame-runtime --frame-peer motion_occ_driver \
   --observe-pose pickup_observe_sim \
-  --payload vacuum --place-probe on --goto-timeout 60 \
+  --payload vacuum --place-probe on --goto-timeout 60 --geometry-timeout 90 \
   > "$OUT/driver.log" 2>&1 &
 DRIVER_PID=$!
 log driver_start ", \"driver_pid\": $DRIVER_PID, \"deadline_sec\": $DEADLINE_SEC"
@@ -134,7 +162,7 @@ while kill -0 "$DRIVER_PID" 2>/dev/null; do
   fi
   sleep 5
 done
-wait "$DRIVER_PID" 2>/dev/null || true
+wait "$DRIVER_PID" 2>/dev/null
 DRIVER_RC=$?
 log driver_end ", \"rc\": $DRIVER_RC, \"deadline\": $DEADLINE_HIT, \"elapsed_s\": $((SECONDS - start_s))"
 

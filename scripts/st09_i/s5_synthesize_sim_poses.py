@@ -177,6 +177,51 @@ def main():
     if args.dry_run:
         return 0
     values = [round(float(v), 4) for v in solution]
+
+    # -- portal observe pose: the post-release observation camera rides
+    #    the sanctioned named-pose goto surface; the target is the old
+    #    _exit_to_portal geometry (0.20 m outside the face, 0.35 m above
+    #    the opening target), yaw kept in the pickup pose's wrist family.
+    from luggage_description.scene_tf_config_utils import (
+        container_opening_normal_in_world,
+        container_opening_target_point_in_world,
+        load_scene_tf_config,
+    )
+    dep_scene = load_scene_tf_config(DEPLOY_SCENE)
+    opening = container_opening_target_point_in_world(dep_scene)
+    outward = container_opening_normal_in_world(dep_scene)
+    # Wrist-family continuity: the portal yaw keeps the DEPLOY pickup
+    # solution's TCP yaw (nearest equivalent branch).
+    tcp_dep = dep_urdf.tcp(solution, dep_tcp_path)
+    yaw_source = Rot.from_matrix(tcp_dep[:3, :3]).as_euler("xyz")[2]
+    portal_position = [
+        float(opening[0]) + 0.20 * float(outward[0]),
+        float(opening[1]) + 0.20 * float(outward[1]),
+        max(float(opening[2]) + 0.35, 0.95),
+    ]
+    portal_orientation = Rot.from_euler(
+        "xyz", [math.pi, 0.0, yaw_source]).as_quat()
+    portal_solution, portal_info = refine_to_pose(
+        dep_urdf, dep_tcp_path, portal_position, portal_orientation,
+        solution, pos_tol=1e-3, rot_tol=5e-3)
+    portal_values = None
+    if portal_solution is not None:
+        portal_values = [round(float(v), 4)
+                         for v in _wrap_into_limits(dep_urdf, portal_solution)]
+        portal_fk = dep_urdf.tcp(portal_values, dep_tcp_path)
+        portal_err = float(np.linalg.norm(portal_fk[:3, 3] - portal_position))
+        evidence["portal_solution"] = portal_values
+        evidence["portal_refine_info"] = portal_info
+        evidence["portal_fk_pos_err_m"] = round(portal_err, 6)
+        evidence["portal_position"] = [round(v, 4) for v in portal_position]
+        if portal_err > 2e-3:
+            print("PORTAL VALIDATION FAILED (FK)", file=sys.stderr)
+            return 3
+    print(json.dumps({"portal": {
+        key: evidence.get(key) for key in (
+            "portal_solution", "portal_refine_info", "portal_fk_pos_err_m",
+            "portal_position")}}, indent=2, sort_keys=True))
+
     document = """# Robot named poses for the MIRRORED DEPLOYMENT cell in SIMULATION
 # (ST09-I S5). SIMULATION ONLY — synthesized start for the S5 Gazebo
 # runner, derived by scripts/st09_i/s5_synthesize_sim_poses.py
@@ -185,6 +230,12 @@ def main():
 # the fixed camera-to-TCP URDF transform). This is NOT a measured site
 # pose: robot_poses.deploy.yaml stays all-valid:false and nothing in
 # this file may move the real cell.
+#
+# portal_observe_sim: the post-release observation camera position (the
+# old _exit_to_portal geometry: 0.20 m outside the opening face, 0.35 m
+# above the opening target), reached through the sanctioned GoToRobotPose
+# surface — the ad-hoc driver-side cartesian escape is deleted
+# (SEGMENT_GENERATION_REMOVED). Same synthesized/offline-IK provenance.
 
 poses:
   pickup_observe_sim:
@@ -198,6 +249,17 @@ poses:
       - elfin_joint6
     values: [{values}]
     tolerance: 0.15
+  portal_observe_sim:
+    group: elfin_arm
+    joints:
+      - elfin_joint1
+      - elfin_joint2
+      - elfin_joint3
+      - elfin_joint4
+      - elfin_joint5
+      - elfin_joint6
+    values: [{portal_values}]
+    tolerance: 0.15
 
 defaults:
   observe_pose: pickup_observe_sim
@@ -207,8 +269,9 @@ defaults:
 
 meta:
   name: robot_poses_sim_deploy_v1
-  version: 0.1.0
-""".format(values=", ".join("%.4f" % v for v in values))
+  version: 0.2.0
+""".format(values=", ".join("%.4f" % v for v in values),
+           portal_values=", ".join("%.4f" % v for v in portal_values))
     with open(OUTPUT, "w", encoding="utf-8") as stream:
         stream.write(document)
     print("wrote %s" % OUTPUT)

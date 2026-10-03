@@ -50,6 +50,8 @@ from luggage_msgs.srv import (
 
 from luggage_description.scene_tf_config_utils import (
     container_inner_floor_z,
+    container_opening_aperture_corners_in_container,
+    container_opening_axes_in_container,
     container_opening_normal_in_world,
     container_opening_target_point_in_world,
     load_scene_tf_config,
@@ -59,6 +61,9 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
     xyz_world_to_base_link,
     yaw_world_to_base_link,
+)
+from luggage_description.scene_tf_config_utils import (
+    _point_in_container_link,
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
 from luggage_description.suitcase_visual import pickup_visual_sdf
@@ -122,6 +127,14 @@ CARRYING_ABORTS = {
 STAGING_NAMES = ("stage_mid", "stage_late", "stage")
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
 GZ_WORLD = "airport_loading"
+
+# [ST09-I S5] Beyond this outward-normal distance from the opening face
+# the cup counts CLEAR of the container even when it projects inside the
+# (unbounded) aperture prism. Basis: place_exit is the short mouth
+# escape to the portal; the deploy pickup observe sits ~1.7 m outside
+# the face and must not be mistaken for an inserted arm. Declared, not
+# tuned silently.
+APERTURE_ESCAPE_DEPTH_M = 0.45
 
 # Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
 # was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
@@ -374,25 +387,56 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not state or state.get("ok"):
             return ""
         if not state.get("exit_ok"):
-            return ("EXIT_FAILED_RECOVERED" if state.get("goto_ok")
-                    else "EXIT_FAILED_STUCK")
+            # [ST09-I S5] the exit is the certified route's retreat/
+            # return legs; arriving still inside means the route never
+            # completed — never the deleted ad-hoc cartesian escape.
+            return "EXIT_REQUIRES_CERTIFIED_ROUTE"
         return "GOTO_FAILED"
 
-    def _suction_clear_of_container(self):
-        """True when the cup is outside the opening, so a joint line is safe.
+    def _container_zone(self):
+        """Classify the cup in CONTAINER-LOCAL coordinates (ST09-I S5).
 
-        The same x>0.2 test that decides to run place_exit is the fallback
-        when no scene is loaded: a failed exit that is still on that side of
-        the opening has not cleared the lip.
+        Returns ``(zone, err)`` with zone one of ``inside`` /
+        ``near_opening`` / ``outside`` — the explicit scene-state
+        classification ``_home_arm`` acts on. The aperture test is an
+        UNBOUNDED prism along the opening normal; the declared depth
+        bound keeps the opening-side workspace out of ``near_opening``
+        (deploy cell live failure: the pickup observe pose projects
+        inside the aperture rectangle ~1.7 m outside the face).
         """
-        suction, _err = self.suction_xyz()
+        suction, err = self.suction_xyz()
         if suction is None:
-            return True
+            return "outside", str(err)
         scene = getattr(self, "_scene_config", None)
-        if scene is not None:
-            base = xyz_world_to_base_link(scene, suction)
-            return not point_inside_opening_aperture(base, scene, margin=0.0)
-        return float(suction[0]) <= 0.2
+        if scene is None:
+            # No scene loaded: legacy world-X fallback (sim layout,
+            # container on +X).
+            return ("near_opening" if float(suction[0]) > 0.2
+                    else "outside"), ""
+        base = xyz_world_to_base_link(scene, suction)
+        if point_inside_container_inner_box(base, scene, margin=0.0):
+            return "inside", ""
+        if not point_inside_opening_aperture(base, scene, margin=0.0):
+            return "outside", ""
+        local = _point_in_container_link(base, scene)
+        normal, _lateral, _vertical = \
+            container_opening_axes_in_container(scene)
+        corners = container_opening_aperture_corners_in_container(
+            scene, 0.0)
+        if not corners or not normal:
+            return "near_opening", ""
+        face = corners[0]
+        depth = sum(
+            (local[axis] - float(face[axis])) * float(normal[axis])
+            for axis in range(3))
+        if depth > APERTURE_ESCAPE_DEPTH_M:
+            return "outside", ""
+        return ("near_opening" if depth >= 0.0 else "inside"), ""
+
+    def _suction_clear_of_container(self):
+        """True only in the OUTSIDE zone, so an open-loop FJT is safe."""
+        zone, _err = self._container_zone()
+        return zone == "outside"
 
     def _capture_gz_contacts(self):
         """One physics-contact sample. Absent publishers stay an explicit gap."""
@@ -413,23 +457,30 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return {"available": True, "topic": topic, "sample": text[:4000]}
 
     def _home_arm(self):
-        suction, _err = self.suction_xyz()
-        notes = []
+        """Scene-state classification + sanctioned calls only (ST09-I S5).
+
+        No geometry planning lives here. OUTSIDE -> the allowed
+        named-pose goto. INSIDE/NEAR_OPENING -> the exit is the
+        CERTIFIED route's own retreat/return legs (the place cycle
+        executes them after release); arriving here still inside means
+        the route did not complete — a named refusal, never the deleted
+        ad-hoc cartesian escape (the executor answers those with
+        SEGMENT_GENERATION_REMOVED and that bypass stays deleted).
+        """
+        zone, zone_err = self._container_zone()
+        notes = ["zone=%s%s" % (zone, " (%s)" % zone_err if zone_err else "")]
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
         exit_ok = True
-        if (not getattr(self, "_portal_exited", False)
-                and suction is not None and float(suction[0]) > 0.2):
-            exit_ok, exit_msg = self._exit_to_portal()
-            notes.append("exit=%s" % exit_msg)
-            if not exit_ok:
-                notes.append("settle=%s" % self.wait_arm_settle("place_exit"))
+        if zone != "outside" and not getattr(self, "_portal_exited", False):
+            exit_ok = False
+            notes.append("exit=EXIT_REQUIRES_CERTIFIED_ROUTE")
         goto_ok = True
         goto_msg = ""
         result = None
-        if (not exit_ok) and (not self._suction_clear_of_container()):
+        if not exit_ok:
             goto_ok = False
-            goto_msg = "open-loop FJT refused inside opening"
+            goto_msg = "route incomplete; arm still %s" % zone
             notes.append("goto=%s" % goto_msg)
         else:
             goto_ok, goto_msg, result = self.goto_observe()

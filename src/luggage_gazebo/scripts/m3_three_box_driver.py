@@ -65,6 +65,7 @@ from luggage_msgs.srv import (  # noqa: E402
     FinalizeCurrentBox,
     GetCargoMapStats,
 )
+from luggage_msgs.action import GoToRobotPose  # noqa: E402
 from luggage_gazebo.integration_acceptance import (  # noqa: E402
     COMMIT_STAGES,
     EVENT_ORDER,
@@ -464,6 +465,25 @@ class M3ThreeBoxDriver(MotionOccDriver):
         self._m3_note("return_complete")
         return result
 
+    def _exit_to_portal(self):
+        """Post-place-view positioning through the sanctioned goto surface.
+
+        The shared driver's portal hop was an ad-hoc cartesian
+        MotionSegment constructed driver-side; the executor answers
+        those with SEGMENT_GENERATION_REMOVED (the S3 generation-bypass
+        deletion). The M3 post-release OBSERVATION instead rides the
+        named synthesized sim portal pose through GoToRobotPose — the
+        same FJT surface that homes the arm (robot_poses.sim_deploy.yaml,
+        SIMULATION ONLY). No trajectory is generated driver-side.
+        """
+        ok, message, _result = self.send_action(
+            self._goto, GoToRobotPose.Goal(pose_name="portal_observe_sim"),
+            timeout=self._args.goto_timeout, name="GoToRobotPose:portal")
+        self._portal_exited = bool(ok)
+        self._exit_yaw = {"source": "named_portal_pose"}
+        return bool(ok), str(
+            message or ("portal goto %s" % ("ok" if ok else "failed")))
+
     # -- per-trial close: GT merge, sequence, finalize, events -----------
 
     def run_trial(self, index, slot=None, slot_meta=None,
@@ -675,7 +695,14 @@ def place_metrics_trial(index):
 
 
 def _frozen_groups(repo):
-    """Recorded-input file groups for the frozen manifest (S5)."""
+    """Recorded-input file groups for the frozen manifest (S5).
+
+    ``repo`` is the SOURCE tree root (M3_REPO from the runner, or the
+    source derivation when the driver itself runs from source). The
+    driver executable may live in the install overlay — its own path is
+    never a valid repo root.
+    """
+    repo = os.environ.get("M3_REPO", "") or repo
     scene = os.environ.get("M3_SCENE_TF", "")
     atlas_dir = os.environ.get("M3_ATLAS_DIR", "")
     scene = scene or os.path.join(

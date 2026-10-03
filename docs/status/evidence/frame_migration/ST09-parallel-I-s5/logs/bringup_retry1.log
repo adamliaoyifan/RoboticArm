@@ -293,3 +293,286 @@
 [luggage_detector_node.py-10] [INFO] [1791023098.508581437] [luggage_detector]: luggage_detector: waiting for suitcase RGB update (pickup_box_0002_standard)
 [pickup_box_spawner_node.py-8] [INFO] [1791023116.440127818] [pickup_box_spawner]: Deleted current pickup box 'pickup_box_0002_standard'
 [vacuum_controller_node.py-17] [INFO] [1791023116.440642865] [vacuum_controller]: current_box cleared
+[move_group-28] [ERROR] [1791023248.707872567] [moveit_robot_state.robot_state]: Attached body 'atlas_payload' not found
+[move_group-28] [WARN] [1791023248.707914517] [moveit_planning_scene.planning_scene]: Tried to remove world object 'atlas_payload', but it does not exist in this scene.
+[move_group-28] [ERROR] [1791023421.365562029] [moveit_robot_state.robot_state]: Attached body 'atlas_payload' not found
+[move_group-28] [WARN] [1791023421.365608457] [moveit_planning_scene.planning_scene]: Tried to remove world object 'atlas_payload', but it does not exist in this scene.
+[semantic_segmenter_node.py-11] WARNING ⚠️ Retry 2/2 failed: Command 'uv pip install --no-cache-dir --python "/usr/bin/python3" "git+https://github.com/ultralytics/CLIP.git"  --index-strategy=unsafe-best-match --break-system-packages' returned non-zero exit status 1.
+[semantic_segmenter_node.py-11] WARNING ⚠️ [31m[1mrequirements:[0m ❌ Command 'uv pip install --no-cache-dir --python "/usr/bin/python3" "git+https://github.com/ultralytics/CLIP.git"  --index-strategy=unsafe-best-match --break-system-packages' returned non-zero exit status 1.
+[semantic_segmenter_node.py-11] Using Python 3.10.12 environment at: /usr
+[semantic_segmenter_node.py-11] Resolved 37 packages in 15.84s
+[semantic_segmenter_node.py-11]    Updating https://github.com/ultralytics/CLIP.git (HEAD)
+[semantic_segmenter_node.py-11] Downloading cuda-bindings (6.8MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cufile (1.2MiB)
+[semantic_segmenter_node.py-11] Downloading networkx (1.6MiB)
+[semantic_segmenter_node.py-11] Downloading numpy (16.0MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-curand (56.8MiB)
+[semantic_segmenter_node.py-11] Downloading sympy (6.0MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cuda-runtime (2.1MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cufft (204.2MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cusparselt-cu13 (162.3MiB)
+[semantic_segmenter_node.py-11] Downloading torchvision (7.1MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cuda-nvrtc (86.0MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-nccl-cu13 (206.0MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-nvjitlink (40.5MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cuda-cupti (10.2MiB)
+[semantic_segmenter_node.py-11] Downloading triton (236.4MiB)
+[semantic_segmenter_node.py-11] Downloading pillow (6.6MiB)
+[semantic_segmenter_node.py-11] Downloading torch (528.9MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cusparse (139.2MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cusolver (191.6MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cublas (403.5MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-cudnn-cu13 (527.5MiB)
+[semantic_segmenter_node.py-11] Downloading nvidia-nvshmem-cu13 (57.6MiB)
+[semantic_segmenter_node.py-11]  Downloaded nvidia-cufile
+[semantic_segmenter_node.py-11]  Downloaded networkx
+[semantic_segmenter_node.py-11]  Downloaded nvidia-cuda-runtime
+[semantic_segmenter_node.py-11]  Downloaded sympy
+[semantic_segmenter_node.py-11]  Downloaded pillow
+[semantic_segmenter_node.py-11]  Downloaded cuda-bindings
+[semantic_segmenter_node.py-11]  Downloaded torchvision
+[semantic_segmenter_node.py-11]  Downloaded nvidia-cuda-cupti
+[semantic_segmenter_node.py-11]  Downloaded numpy
+[semantic_segmenter_node.py-11]  Downloaded nvidia-nvjitlink
+[semantic_segmenter_node.py-11]  Downloaded nvidia-curand
+[semantic_segmenter_node.py-11]  Downloaded nvidia-nvshmem-cu13
+[semantic_segmenter_node.py-11]  Downloaded nvidia-cuda-nvrtc
+[semantic_segmenter_node.py-11]  Downloaded nvidia-cusparse
+[semantic_segmenter_node.py-11]   × Failed to download and build `clip @
+[semantic_segmenter_node.py-11]   │ git+https://github.com/ultralytics/CLIP.git@a13192f8cb767260d7dfd98c843b0716593169e7`
+[semantic_segmenter_node.py-11]   ├─▶ Git operation failed
+[semantic_segmenter_node.py-11]   ├─▶ failed to clone into: /tmp/.tmpvFSS98/git-v0/db/20950dda23da74ec
+[semantic_segmenter_node.py-11]   ├─▶ failed to fetch commit `a13192f8cb767260d7dfd98c843b0716593169e7`
+[semantic_segmenter_node.py-11]   ╰─▶ process didn't exit successfully: `/usr/bin/git fetch --force
+[semantic_segmenter_node.py-11]       --update-head-ok 'https://github.com/ultralytics/CLIP.git'
+[semantic_segmenter_node.py-11]       '+a13192f8cb767260d7dfd98c843b0716593169e7:refs/commit/a13192f8cb767260d7dfd98c843b0716593169e7'`
+[semantic_segmenter_node.py-11]       (exit status: 128)
+[semantic_segmenter_node.py-11]       --- stderr
+[semantic_segmenter_node.py-11]       error: RPC failed; curl 56 GnuTLS recv error (-54): Error in the pull
+[semantic_segmenter_node.py-11]       function.
+[semantic_segmenter_node.py-11]       error: 32747 bytes of body are still expected
+[semantic_segmenter_node.py-11]       fetch-pack: unexpected disconnect while reading sideband packet
+[semantic_segmenter_node.py-11]       fatal: early EOF
+[semantic_segmenter_node.py-11]       fatal: fetch-pack: invalid index-pack output
+[semantic_segmenter_node.py-11] 
+[semantic_segmenter_node.py-11] 
+[luggage_detector_node.py-10] [WARN] [1791023453.866345026] [luggage_detector]: New publisher discovered on topic '/luggage/semantic/instance_mask', offering incompatible QoS. No messages will be received from it. Last incompatible policy: RELIABILITY
+[semantic_segmenter_node.py-11] [INFO] [1791023453.886041972] [semantic_segmenter]: suction-panel mask 12517 px source=urdf_chain
+[semantic_segmenter_node.py-11] [INFO] [1791023453.886234437] [semantic_segmenter]: semantic_segmenter ready (backend=stub(fallback:yolo_world:clip), prompts=8, self_body=urdf_chain, temporal_window=5, publish_overlay=False, confidence_threshold=0.200, cargo_min_confidence=0.200, robot_arm_confidence_threshold=0.500)
+[semantic_segmenter_node.py-11] [WARN] [1791023453.886804629] [semantic_segmenter]: New subscription discovered on topic '/luggage/semantic/instance_mask', requesting incompatible QoS. No messages will be sent to it. Last incompatible policy: RELIABILITY
+[semantic_segmenter_node.py-11] [WARN] [1791023453.892332739] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023458.904682935] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023463.928257726] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023468.947278793] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023473.970198624] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023478.990827274] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023484.013822871] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023489.032067740] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023494.053012837] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023499.070587746] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023504.095705614] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023509.120736352] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023514.143528909] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023519.161604771] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023524.181513107] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023529.202920782] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023534.255391298] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023539.274654705] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023544.299196915] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023549.350966927] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023554.375886725] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023559.429654969] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023564.484219230] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023569.518399996] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023574.592096973] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023579.617828305] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023584.635103607] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023589.661401204] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023594.714092301] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023599.738124118] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023604.760393937] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023609.779356675] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023614.798787096] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023619.822675921] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023624.841132242] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023629.863994609] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023634.882019380] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023639.909692395] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023644.931259296] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023649.996611900] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023655.016256462] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023660.039589178] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023665.055293843] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023670.077389629] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023675.103089509] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023680.119222860] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023685.142612034] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023690.164978831] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023695.191478595] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023700.242396700] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023705.266217288] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023710.287928708] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023715.308913442] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023720.326019390] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023725.349528232] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023730.366728667] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023735.387897996] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023740.410470122] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023745.432942101] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023750.450034786] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023755.472424456] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023760.491968400] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023765.514872924] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023770.540013054] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023775.563424147] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023780.582190351] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023785.603098022] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023790.627192728] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023795.652858988] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023800.674575620] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023805.696089157] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023810.718064409] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023815.735067167] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023820.760634441] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023825.776083852] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023830.801327221] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023835.821578901] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023840.846955951] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023845.863854600] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023850.888080779] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023855.906699790] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023860.930345186] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023865.951956056] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023870.975107426] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023875.993069736] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023881.015135336] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023886.044055559] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023891.055711027] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023896.078235889] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023901.100120490] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023906.116638649] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023911.140527106] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023916.158341287] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023921.189204956] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023926.204458330] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023931.221859664] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023936.245623547] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023941.266381944] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023946.288638130] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023951.309155231] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023956.329132838] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023961.348172536] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023966.372095570] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023971.389944413] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023976.412293081] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023981.433467399] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023986.457804100] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023991.479880863] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791023996.500860812] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024001.517985652] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024006.541157323] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024011.560949587] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024016.583645509] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024021.607220172] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024026.630903301] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024031.658815201] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024036.669438767] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024041.688309262] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024046.714762821] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024051.734138346] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024056.752666411] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024061.777402643] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024066.814254319] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024071.839306671] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024076.857785367] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024081.876879384] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024086.897619079] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024091.921965855] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024096.936807131] [semantic_segmenter]: self-body mesh mask is empty
+[semantic_segmenter_node.py-11] [WARN] [1791024101.961250592] [semantic_segmenter]: self-body mesh mask is empty
+[ERROR] [trajectory_selector_node.py-16]: process has died [pid 285381, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_ws_j260g --params-file /tmp/launch_params_pkxqslkc'].
+[ERROR] [motion_planner_node.py-15]: process has died [pid 285379, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params_aml3hmql --params-file /tmp/launch_params_yohg4_lv'].
+[ERROR] [move_group-28]: process has died [pid 286446, exit code -9, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_lr1o3sqb --params-file /tmp/launch_params_q50jjz9y --params-file /tmp/launch_params_z_m5st5j'].
+[move_group-28] [0m
+[ERROR] [semantic_point_filter_node.py-12]: process has died [pid 285373, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/semantic_point_filter_node.py --ros-args -r __node:=semantic_point_filter --params-file /tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_q8m14v_v'].
+[ERROR] [container_tf_publisher-18]: process has died [pid 285449, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_78kgz5sd'].
+[ERROR] [robot_state_publisher-19]: process has died [pid 285451, exit code -9, cmd '/opt/ros/humble/lib/robot_state_publisher/robot_state_publisher --ros-args -r __node:=robot_state_publisher --params-file /tmp/launch_params_45civ2ni'].
+[ERROR] [waypoint_generator_node.py-14]: process has died [pid 285377, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_yef57mb5'].
+[ERROR] [vacuum_controller_node.py-17]: process has died [pid 285383, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_lp33r8da'].
+[ERROR] [ign gazebo-1]: process has died [pid 285350, exit code -9, cmd 'ruby /usr/bin/ign gazebo -s -r -v 3 /tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf --force-version 6'].
+[INFO] [launch]: process[ign gazebo-1] was required: shutting down launched system
+[INFO] [scene_manager_node.py-13]: sending signal 'SIGINT' to process[scene_manager_node.py-13]
+[INFO] [semantic_segmenter_node.py-11]: sending signal 'SIGINT' to process[semantic_segmenter_node.py-11]
+[ERROR] [scene_manager_node.py-13]: process has died [pid 285375, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_pzrqxudh'].
+[INFO] [luggage_detector_node.py-10]: sending signal 'SIGINT' to process[luggage_detector_node.py-10]
+[INFO] [scene_viz_node.py-9]: sending signal 'SIGINT' to process[scene_viz_node.py-9]
+[INFO] [pickup_box_spawner_node.py-8]: sending signal 'SIGINT' to process[pickup_box_spawner_node.py-8]
+[INFO] [parameter_bridge-7]: sending signal 'SIGINT' to process[parameter_bridge-7]
+[INFO] [sensor_preprocessor_node.py-6]: sending signal 'SIGINT' to process[sensor_preprocessor_node.py-6]
+[INFO] [camera_info_alias.py-5]: sending signal 'SIGINT' to process[camera_info_alias.py-5]
+[INFO] [depth_image_republisher.py-4]: sending signal 'SIGINT' to process[depth_image_republisher.py-4]
+[INFO] [parameter_bridge-3]: sending signal 'SIGINT' to process[parameter_bridge-3]
+[ERROR] [parameter_bridge-2]: process has died [pid 285352, exit code -9, cmd '/opt/ros/humble/lib/ros_gz_bridge/parameter_bridge /clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock --ros-args -r __node:=clock_bridge'].
+[ERROR] [parameter_bridge-7]: process has died [pid 285363, exit code -9, cmd '/opt/ros/humble/lib/ros_gz_bridge/parameter_bridge /world/airport_loading/create@ros_gz_interfaces/srv/SpawnEntity /world/airport_loading/remove@ros_gz_interfaces/srv/DeleteEntity /world/airport_loading/set_pose@ros_gz_interfaces/srv/SetEntityPose --ros-args -r __node:=world_service_bridge'].
+[ERROR] [parameter_bridge-3]: process has died [pid 285355, exit code -9, cmd '/opt/ros/humble/lib/ros_gz_bridge/parameter_bridge /d435/image@sensor_msgs/msg/Image[gz.msgs.Image /d435/depth_image@sensor_msgs/msg/Image[gz.msgs.Image /d435/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo /livox/scan/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked --ros-args -r __node:=camera_bridge --params-file /tmp/launch_params_ysagqjqk -r /d435/image:=/camera/color/image_raw -r /d435/depth_image:=/camera/depth/image_meters -r /d435/camera_info:=/camera/depth/camera_info -r /livox/scan/points:=/livox/lidar'].
+[parameter_bridge-7] [INFO] [1791024104.637365624] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[semantic_segmenter_node.py-11] Traceback (most recent call last):
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 635, in <module>
+[semantic_segmenter_node.py-11]     main()
+[semantic_segmenter_node.py-11]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py", line 631, in main
+[semantic_segmenter_node.py-11]     rclpy.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[semantic_segmenter_node.py-11]     _shutdown(context=context)
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[semantic_segmenter_node.py-11]     return context.shutdown()
+[semantic_segmenter_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[semantic_segmenter_node.py-11]     self.__context.shutdown()
+[semantic_segmenter_node.py-11] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [pickup_box_spawner_node.py-8]: process has died [pid 285365, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/pickup_box_spawner_node.py --ros-args --params-file /tmp/launch_params_c0hbyema'].
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2238, in main
+[luggage_detector_node.py-10]     executor.spin()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 323, in spin
+[luggage_detector_node.py-10]     self.spin_once()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 863, in spin_once
+[luggage_detector_node.py-10]     self._spin_once_impl(timeout_sec)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 844, in _spin_once_impl
+[luggage_detector_node.py-10]     handler, entity, node = self.wait_for_ready_callbacks(
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 780, in wait_for_ready_callbacks
+[luggage_detector_node.py-10]     return next(self._cb_iter)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/executors.py", line 677, in _wait_for_ready_callbacks
+[luggage_detector_node.py-10]     wait_set.wait(timeout_nsec)
+[luggage_detector_node.py-10] KeyboardInterrupt
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] During handling of the above exception, another exception occurred:
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2245, in <module>
+[luggage_detector_node.py-10]     main()
+[luggage_detector_node.py-10]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2241, in main
+[luggage_detector_node.py-10]     rclpy.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[luggage_detector_node.py-10]     _shutdown(context=context)
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[luggage_detector_node.py-10]     return context.shutdown()
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[luggage_detector_node.py-10]     self.__context.shutdown()
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [sensor_preprocessor_node.py-6]: process has died [pid 285361, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/sensor_preprocessor_node.py --ros-args -r __node:=sensor_preprocessor --params-file /tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/config/sensor_preprocessor.yaml --params-file /tmp/launch_params_quzytvfv --params-file /tmp/launch_params_ggpujdsq'].
+[ERROR] [luggage_detector_node.py-10]: process has died [pid 285369, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args --params-file /tmp/launch_params_ocpku1rw'].
+[scene_viz_node.py-9] Traceback (most recent call last):
+[scene_viz_node.py-9]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 424, in <module>
+[scene_viz_node.py-9]     main()
+[scene_viz_node.py-9]   File "/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py", line 420, in main
+[scene_viz_node.py-9]     rclpy.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_viz_node.py-9]     _shutdown(context=context)
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_viz_node.py-9]     return context.shutdown()
+[scene_viz_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_viz_node.py-9]     self.__context.shutdown()
+[scene_viz_node.py-9] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [depth_image_republisher.py-4]: process has died [pid 285357, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/depth_image_republisher.py --ros-args -r __node:=depth_image_republisher --params-file /tmp/launch_params_di9aeao0'].
+[ERROR] [camera_info_alias.py-5]: process has died [pid 285359, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/camera_info_alias.py --ros-args -r __node:=camera_info_alias --params-file /tmp/launch_params_hnvcj0zb'].
+[ERROR] [scene_viz_node.py-9]: process has died [pid 285367, exit code 1, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_gazebo/lib/luggage_gazebo/scene_viz_node.py --ros-args -r __node:=scene_viz --params-file /tmp/launch_params_h882m3pj'].
+[ERROR] [semantic_segmenter_node.py-11]: process has died [pid 285371, exit code -9, cmd '/tmp/elfin-st09-converge-i/install-st09/luggage_perception/lib/luggage_perception/semantic_segmenter_node.py --ros-args -r __node:=semantic_segmenter --params-file /tmp/elfin-st09-converge-i/install-st09/luggage_perception/share/luggage_perception/config/semantic_segmenter.yaml --params-file /tmp/launch_params_yi5kwfnl'].
