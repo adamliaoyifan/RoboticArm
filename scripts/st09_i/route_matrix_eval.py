@@ -626,7 +626,7 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         if not goal_nodes:
             raise RoutePlanningError("NO_FEASIBLE_ROUTE",
                                      {"detail": "no IK goal",
-                                      "search_outcome": gps.UNREACHABLE})
+                                      "search_outcome": gps.SEARCH_INCOMPLETE})
         entry, retreat, _goal = search.best_full_route(
             graph.node_for_q("carrying", start_q).node_id, goal_nodes,
             entry_hops=entry_hops,
@@ -708,7 +708,17 @@ def _percentile(values, q):
     return float(np.percentile(values, q))
 
 
+#: Wilson 95% lower bound >= 0.90 is unattainable below 35 cases even at
+#: 100% success, so fewer feasible held-out cases is not_evaluated.
+MIN_FEASIBLE_CASES = 35
+
+
 def summarize(results, cases):
+    """Rates are per CASE: a case passes only if every repetition passed.
+
+    Offline repetitions are deterministic in outcome; they measure timing
+    and must not inflate the Wilson sample size.
+    """
     by_id = {c["id"]: c for c in cases}
     out = {}
     for mode in ("baseline", "state"):
@@ -721,15 +731,23 @@ def summarize(results, cases):
             # Invalid cases are constructed, not tuned on: all are scored.
             invalid = [r for r in rows
                        if by_id[r["case"]]["kind"] == "invalid"]
-            ok = sum(1 for r in feasible if r["success"])
+            per_case = {}
+            for r in feasible:
+                per_case.setdefault(r["case"], []).append(r["success"])
+            ok = sum(1 for flags in per_case.values() if all(flags))
+            n_cases = len(per_case)
             wall = [r["wall_s"] for r in feasible]
             good = [r for r in feasible if r["success"]]
             out["%s/atlas_%s" % (mode, "on" if atlas_on else "off")] = {
+                "held_out_feasible_cases": n_cases,
                 "held_out_feasible_runs": len(feasible),
+                "reps_outcome_consistent": all(
+                    len(set(flags)) == 1 for flags in per_case.values()),
                 "success": ok,
-                "success_rate": (ok / float(len(feasible))) if feasible
-                else None,
-                "wilson95_lower": wilson_lower(ok, len(feasible)),
+                "success_rate": (ok / float(n_cases)) if n_cases else None,
+                "wilson95_lower": wilson_lower(ok, n_cases),
+                "failed_cases": sorted(c for c, flags in per_case.items()
+                                       if not all(flags)),
                 "over_budget_runs": sum(1 for r in feasible
                                         if r["wall_s"] > 10.0),
                 "wall_p50_s": _percentile(wall, 50),
@@ -771,7 +789,12 @@ def main():
                         help="first N generated cases only (smoke)")
     parser.add_argument("--reference-budget-s", type=float, default=60.0)
     parser.add_argument("--reference-extra-seeds", type=int, default=8)
+    parser.add_argument("--resummarize", action="store_true",
+                        help="recompute summary.json from --out/trace.jsonl")
     args = parser.parse_args()
+    if args.resummarize:
+        resummarize(args.out)
+        return
     os.makedirs(args.out, exist_ok=True)
     started = time.time()
     scene = Scene(SCENE)
@@ -892,16 +915,55 @@ def main():
     raise SystemExit(0 if gate["pass"] else 1)
 
 
+def resummarize(out_dir):
+    """Rebuild summary.json from a finished run without re-planning."""
+    with open(os.path.join(out_dir, "split.json")) as handle:
+        split = json.load(handle)
+    with open(os.path.join(out_dir, "trace.jsonl")) as handle:
+        results = [json.loads(line) for line in handle]
+    reference = {r["case"]: r["success"] for r in results
+                 if r.get("reference")}
+    cases = []
+    for case_id, part in split.items():
+        slot = case_id.split("|")[-1]
+        if slot == "slot64_run02":
+            kind, klass = "regression", "regression"
+        elif slot in ("overlap_placed", "below_floor", "through_y_wall"):
+            kind, klass = "invalid", "invalid"
+        else:
+            kind = "generated"
+            klass = "feasible" if reference.get(case_id) else "undetermined"
+        cases.append({"id": case_id, "split": part, "kind": kind,
+                      "class": klass})
+    summary = summarize(results, cases)
+    regression = [r for r in results if r["case"].endswith("slot64_run02")
+                  and r["mode"] == "state"]
+    gate = _gate(summary, regression)
+    with open(os.path.join(out_dir, "summary.json"), "w") as handle:
+        json.dump({"summary": summary, "regression_slot64": regression,
+                   "gate": gate, "case_classes": _count(
+                       [c["class"] for c in cases])},
+                  handle, indent=1, default=str)
+    print(json.dumps({"summary": summary, "gate": gate}, indent=1,
+                     default=str))
+
+
 def _gate(summary, regression):
     checks = {}
     for atlas in ("on", "off"):
         row = summary["state/atlas_%s" % atlas]
-        n = row["held_out_feasible_runs"]
-        checks["feasible_rate_atlas_%s" % atlas] = (
-            "not_evaluated" if n < 20 else
-            bool(row["success_rate"] >= 0.95
-                 and row["wilson95_lower"] >= 0.90
-                 and row["over_budget_runs"] == 0))
+        n = row["held_out_feasible_cases"]
+        point_ok = row["success_rate"] is not None and \
+            row["success_rate"] >= 0.95 and row["over_budget_runs"] == 0
+        if n == 0:
+            verdict = "not_evaluated"
+        elif not point_ok:
+            verdict = False  # the point estimate alone already fails
+        elif n < MIN_FEASIBLE_CASES:
+            verdict = "not_evaluated"
+        else:
+            verdict = bool(row["wilson95_lower"] >= 0.90)
+        checks["feasible_rate_atlas_%s" % atlas] = verdict
         checks["invalid_no_false_success_atlas_%s" % atlas] = (
             "not_evaluated" if row["invalid_runs"] == 0 else
             row["invalid_false_success"] == 0)

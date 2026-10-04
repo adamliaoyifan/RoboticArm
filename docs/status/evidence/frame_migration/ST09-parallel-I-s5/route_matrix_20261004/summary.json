@@ -1,0 +1,280 @@
+{
+ "summary": {
+  "baseline/atlas_on": {
+   "held_out_feasible_cases": 16,
+   "held_out_feasible_runs": 16,
+   "reps_outcome_consistent": true,
+   "success": 10,
+   "success_rate": 0.625,
+   "wilson95_lower": 0.38640647097934805,
+   "failed_cases": [
+    "carryon|nominal|pick_far|occ1|h0|door",
+    "carryon|nominal|pick_far|occ3|hpi|door",
+    "carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+    "carryon|nominal|pick_tooldown|occ3|h0|door",
+    "carryon|offset_tol|pick_tooldown|occ0|h0|wall_y",
+    "carryon|offset_tol|pick_yaw1|occ0|h0|wall_y"
+   ],
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.1835,
+   "wall_p95_s": 0.2498,
+   "edges_p50": 7.0,
+   "edges_p95": 9.0,
+   "invalid_runs": 6,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "baseline/atlas_off": {
+   "held_out_feasible_cases": 16,
+   "held_out_feasible_runs": 16,
+   "reps_outcome_consistent": true,
+   "success": 10,
+   "success_rate": 0.625,
+   "wilson95_lower": 0.38640647097934805,
+   "failed_cases": [
+    "carryon|nominal|pick_far|occ1|h0|door",
+    "carryon|nominal|pick_far|occ3|hpi|door",
+    "carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+    "carryon|nominal|pick_tooldown|occ3|h0|door",
+    "carryon|offset_tol|pick_tooldown|occ0|h0|wall_y",
+    "carryon|offset_tol|pick_yaw1|occ0|h0|wall_y"
+   ],
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.18395,
+   "wall_p95_s": 0.247025,
+   "edges_p50": 7.0,
+   "edges_p95": 9.0,
+   "invalid_runs": 6,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "state/atlas_on": {
+   "held_out_feasible_cases": 16,
+   "held_out_feasible_runs": 48,
+   "reps_outcome_consistent": true,
+   "success": 14,
+   "success_rate": 0.875,
+   "wilson95_lower": 0.6397666856325172,
+   "failed_cases": [
+    "carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+    "carryon|offset_tol|pick_tooldown|occ0|h0|wall_y"
+   ],
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.2151,
+   "wall_p95_s": 0.3249749999999999,
+   "edges_p50": 7.0,
+   "edges_p95": 9.649999999999999,
+   "invalid_runs": 8,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "SEARCH_INCOMPLETE",
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "state/atlas_off": {
+   "held_out_feasible_cases": 16,
+   "held_out_feasible_runs": 48,
+   "reps_outcome_consistent": true,
+   "success": 14,
+   "success_rate": 0.875,
+   "wilson95_lower": 0.6397666856325172,
+   "failed_cases": [
+    "carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+    "carryon|offset_tol|pick_tooldown|occ0|h0|wall_y"
+   ],
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.21545,
+   "wall_p95_s": 0.3240799999999999,
+   "edges_p50": 7.0,
+   "edges_p95": 9.649999999999999,
+   "invalid_runs": 8,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "SEARCH_INCOMPLETE",
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  }
+ },
+ "regression_slot64": [
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": true,
+   "goal_nodes": 2,
+   "atlas_seed_count": 2,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1859,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 0,
+   "t2_bundle": "t2/f2be26bf2f49f392.json"
+  },
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": true,
+   "goal_nodes": 2,
+   "atlas_seed_count": 2,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1866,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 1,
+   "t2_bundle": "t2/d875d651e04104d8.json"
+  },
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": true,
+   "goal_nodes": 2,
+   "atlas_seed_count": 2,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1857,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 2,
+   "t2_bundle": "t2/be99810aeb746818.json"
+  },
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": false,
+   "goal_nodes": 1,
+   "atlas_seed_count": 0,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1587,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 0,
+   "t2_bundle": "t2/0bcc1b94e363c407.json"
+  },
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": false,
+   "goal_nodes": 1,
+   "atlas_seed_count": 0,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1586,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 1,
+   "t2_bundle": "t2/a48f6016b1fdc57b.json"
+  },
+  {
+   "case": "standard|nominal|pick_tooldown|occ1|run02|slot64_run02",
+   "mode": "state",
+   "atlas": false,
+   "goal_nodes": 1,
+   "atlas_seed_count": 0,
+   "success": false,
+   "reason": "NO_FEASIBLE_ROUTE",
+   "search_outcome": "UNREACHABLE",
+   "wall_s": 0.1585,
+   "edges_built": 5,
+   "first_descend": {
+    "fraction": 1.0,
+    "rank": [
+     0,
+     0.30313356650813494
+    ],
+    "ok": true
+   },
+   "rep": 2,
+   "t2_bundle": "t2/e2c9f0477f7a3836.json"
+  }
+ ],
+ "gate": {
+  "checks": {
+   "feasible_rate_atlas_on": false,
+   "invalid_no_false_success_atlas_on": true,
+   "continuity_atlas_on": true,
+   "p95_within_budget_atlas_on": true,
+   "feasible_rate_atlas_off": false,
+   "invalid_no_false_success_atlas_off": true,
+   "continuity_atlas_off": true,
+   "p95_within_budget_atlas_off": true,
+   "slot64_first_descend_fraction": true
+  },
+  "pass": false
+ },
+ "case_classes": {
+  "feasible": 48,
+  "undetermined": 252,
+  "invalid": 6,
+  "regression": 1
+ }
+}

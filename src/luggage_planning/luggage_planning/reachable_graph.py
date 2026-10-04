@@ -721,9 +721,12 @@ class GraphRoutePlanner(object):
         budget = RouteBudget(policy=policy)
         goal_nodes = self._goal_nodes(targets)
         if not goal_nodes:
+            # A seed set that refines onto no goal is a sampling miss, not
+            # proof that no configuration reaches the target.
             raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
                 "prior_gaps": list(self.graph.prior_gaps),
-                "detail": "no IK goals refined for the given targets"})
+                "detail": "no IK goals refined for the given targets",
+                "search_outcome": "SEARCH_INCOMPLETE"})
         carrying, unloaded = self._scenes(attachment, candidate, snapshot)
         self._register_branch_ladders(goal_nodes)
         search = RouteSearch(self.graph, self.edge_builder, budget,

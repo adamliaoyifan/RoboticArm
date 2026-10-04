@@ -178,7 +178,10 @@ is unchanged. Each refusal also carries `detail.search_outcome`:
 | search_outcome | Meaning |
 |---|---|
 | `UNREACHABLE` | Every goal was tried, no failure class was capped, no budget refusal. |
-| `SEARCH_INCOMPLETE` | Budget, a budget refusal or a failure-class cap left alternatives open. Not a reachability verdict. |
+| `SEARCH_INCOMPLETE` | Budget, a budget refusal or a failure-class cap left alternatives open, or no IK seed refined onto any goal. Not a reachability verdict. |
+
+`UNREACHABLE` means only that the bounded alternative set was exhausted;
+it is not a proof that no configuration-space route exists.
 
 `BIN_FULL` is packing capacity only and is never either case.
 `detail.coverage` reports edges built, goals tried and left open, capped

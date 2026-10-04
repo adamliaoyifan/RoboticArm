@@ -231,6 +231,18 @@ class TestPlannerLadderAndContinuation:
         assert solve(frontier, RouteHop("portal", "PORTAL_TRANSIT",
                                         "carrying"), (goal,)) == ()
 
+    def test_no_refined_goal_is_search_incomplete_not_unreachable(self):
+        graph = _scaffold(RouteGraph(static_identity="static-test"),
+                          families=("f1",))
+        planner = GraphRoutePlanner(
+            graph, FakeEdgeBuilder(graph),
+            home_node_id=_start(graph).node_id,
+            goal_seeds=lambda target: [], refine=_shift_refine(0.0))
+        with pytest.raises(RoutePlanningError) as info:
+            planner.plan_route(None, None, None, [], budget_ns=int(1e9))
+        assert info.value.code == "NO_FEASIBLE_ROUTE"
+        assert info.value.search_outcome == SEARCH_INCOMPLETE
+
     def test_ladder_uses_plan_pose_when_anchor_refine_missed(self):
         graph = RouteGraph(static_identity="static-test")
         _node(graph, (0.0,) * 6, "home")
