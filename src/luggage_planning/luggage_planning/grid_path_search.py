@@ -290,10 +290,14 @@ class RouteSearch(object):
     """
 
     def __init__(self, graph, edge_builder, budget=None, *,
-                 continuation=None, branch_lock=True):
+                 continuation=None, branch_lock=True, scope=None):
         self.graph = graph
         self.edge_builder = edge_builder
         self.budget = budget or RouteBudget()
+        # scope: node ids of the current candidate. A request-lifetime
+        # graph also holds earlier candidates' anchors and goals; those
+        # are never destinations or pair-rank sources. None = whole graph.
+        self.scope = None if scope is None else set(scope)
         # continuation(frontier_node, hop, destinations) -> nodes solved
         # from the frontier's actual q; tried before stored destinations.
         self.continuation = continuation
@@ -407,11 +411,20 @@ class RouteSearch(object):
 
     # -- chain construction ----------------------------------------------
 
+    def _in_scope(self, node):
+        return self.scope is None or node.node_id in self.scope
+
+    def _admit(self, node):
+        if self.scope is not None:
+            self.scope.add(node.node_id)
+        return node
+
     def _destinations(self, hop, goal_nodes, final):
         if final and goal_nodes:
             return tuple(goal_nodes)
         return tuple(node for node in self.graph.nodes_by_region(hop.to_region)
-                     if str(node.load_state) == hop.load_state)
+                     if str(node.load_state) == hop.load_state
+                     and self._in_scope(node))
 
     def _order_goals_for_descend(self, goal_nodes):
         """Try the slot goal that continues a hover branch before the rest."""
@@ -419,7 +432,8 @@ class RouteSearch(object):
         if not goals:
             return goals
         sources = [node for node in self.graph.nodes_by_region("slot_upper")
-                   if str(node.load_state) == str(goals[0].load_state)]
+                   if str(node.load_state) == str(goals[0].load_state)
+                   and self._in_scope(node)]
         if not sources:
             return goals
 
@@ -430,25 +444,33 @@ class RouteSearch(object):
 
     def _ordered_destinations(self, hop, goal_nodes, final, frontier, rest):
         dests = list(self._destinations(hop, goal_nodes, final))
+        locked = self.branch_lock and \
+            hop.edge_class in BRANCH_LOCKED_EDGE_CLASSES
+
+        def off_branch(node):
+            # Another branch is deferred, not deleted; its preferred route
+            # is the back-seeded ladder whose branch change is a transit.
+            if not locked:
+                return 0
+            return 0 if descend_pair_rank(frontier.q, node.q)[0] == 0 else 1
+
         if hop.edge_class == "DESCEND":
             dests.sort(key=lambda node: descend_pair_rank(frontier.q, node.q))
         elif rest and rest[0].edge_class == "DESCEND" and goal_nodes:
-            # The hover tried first is the one this goal can descend from.
-            dests.sort(key=lambda node: min(
-                descend_pair_rank(node.q, goal.q) for goal in goal_nodes))
+            # The hover tried first is the one this goal can descend from;
+            # continuity with the frontier only breaks ties.
+            dests.sort(key=lambda node: (min(
+                descend_pair_rank(node.q, goal.q) for goal in goal_nodes),
+                off_branch(node)))
+        elif locked:
+            dests.sort(key=off_branch)
         if self.continuation is not None:
-            solved = [node for node in
+            solved = [self._admit(node) for node in
                       (self.continuation(frontier, hop, tuple(dests)) or ())
                       if node is not None]
             seen = {node.node_id for node in solved}
             dests = solved + [node for node in dests
                               if node.node_id not in seen]
-        if self.branch_lock and hop.edge_class in BRANCH_LOCKED_EDGE_CLASSES:
-            # Stable: frontier-solved nodes stay first. Another branch is
-            # deferred, not deleted; its preferred route is the
-            # back-seeded ladder whose branch change is a joint transit.
-            dests.sort(key=lambda node: 0 if descend_pair_rank(
-                frontier.q, node.q)[0] == 0 else 1)
         return dests
 
     def _chain_from(self, frontier, hops, goal_nodes, acc_edges, acc_nodes,
@@ -501,7 +523,7 @@ class RouteSearch(object):
                         destination.region,
                         LoadState(hop.load_state),
                         destination.ik_family)
-                next_node = anchored
+                next_node = self._admit(anchored)
             result = self._chain_from(
                 next_node, rest, goal_nodes,
                 acc_edges + [edge], acc_nodes + [next_node.node_id],
@@ -600,6 +622,7 @@ class RouteSearch(object):
                     final_q, goal.tcp_position,
                     goal.tcp_quaternion_xyzw, goal.region,
                     LoadState.UNLOADED, goal.ik_family)
+            self._admit(twin)
             try:
                 retreat = self.retreat_chain(
                     twin.node_id, hops=retreat_hops, scene=scene_unloaded)

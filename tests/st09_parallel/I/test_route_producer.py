@@ -8,6 +8,7 @@ revalidator, and the frozen v2 segment admission the legs must survive.
 
 from __future__ import division
 
+import dataclasses
 from pathlib import Path
 import sys
 
@@ -469,6 +470,70 @@ class TestAtlasSeedCheck:
         assert result["success"], result["rows"]
         assert result["slot_index"] == 0
         assert result["rows"][0]["reason"] == "ATLAS_SEED_MISS"
+
+
+class _FirstSlotDescendFails(FakeEdgeBuilder):
+    """Every DESCEND onto the first slot position it sees fails."""
+
+    def __init__(self):
+        super(_FirstSlotDescendFails, self).__init__()
+        self.first_slot_xy = None
+        self.nodes = {}
+
+    def __call__(self, from_node, to_node, edge_class, candidate=None,
+                 scene=None):
+        self.nodes[from_node.node_id] = from_node
+        self.nodes[to_node.node_id] = to_node
+        if edge_class == "DESCEND":
+            xy = tuple(round(v, 6) for v in to_node.tcp_position[:2])
+            if self.first_slot_xy is None:
+                self.first_slot_xy = xy
+            if xy == self.first_slot_xy:
+                self.calls.append((from_node.node_id, to_node.node_id,
+                                   edge_class))
+                raise RoutePlanningError("EDGE_BUILD_FAILED",
+                                         {"pair": edge_class})
+        edge = super(_FirstSlotDescendFails, self).__call__(
+            from_node, to_node, edge_class, candidate=candidate, scene=scene)
+        # End on the destination q: a shared canned endpoint would merge
+        # every candidate's chain into one re-anchored node.
+        base = edge.trajectory
+        trajectory = type(base)(
+            joint_names=base.joint_names,
+            positions=(tuple(from_node.q), tuple(to_node.q)),
+            velocities=tuple(base.velocities[:2]),
+            accelerations=tuple(base.accelerations[:2]),
+            time_from_start_ns=tuple(base.time_from_start_ns[:2]))
+        return dataclasses.replace(edge, trajectory=trajectory)
+
+
+class TestCandidateScope:
+
+    def test_second_candidate_never_uses_first_candidates_hover(self):
+        producer, _clock = build_producer()
+        builder = _FirstSlotDescendFails()
+        producer.edge_builder = builder
+        request = _two_slot_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        first_xy = builder.first_slot_xy
+        assert first_xy is not None
+        second = [call for call in builder.calls
+                  if call[2] in ("INSERT", "DESCEND")
+                  and tuple(round(v, 6) for v in builder.nodes[call[1]]
+                            .tcp_position[:2]) != first_xy]
+        assert second, "the second candidate was never planned"
+        start = builder.calls.index(second[0])
+        for source, dest, klass in builder.calls[start:]:
+            if klass not in ("INSERT", "DESCEND"):
+                continue
+            for node_id in (source, dest):
+                xy = tuple(round(v, 6) for v in
+                           builder.nodes[node_id].tcp_position[:2])
+                assert xy != first_xy, (klass, node_id)
 
 
 class TestMapStaleRefresh:

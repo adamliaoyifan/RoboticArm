@@ -650,10 +650,13 @@ class RouteProducer(object):
 
         graph = self.graph
         seed_q = tuple(float(v) for v in start_q)
-        graph.register_node(seed_q, self.fk(seed_q)[0], orientation,
-                            "home", LoadState.CARRYING, "start")
-        graph.register_node(seed_q, self.fk(seed_q)[0], orientation,
-                            "home", LoadState.UNLOADED, "start")
+        # Node ids this candidate may route through. The request graph
+        # also keeps earlier candidates' anchors; the search ignores them.
+        node_ids = set()
+        for load_state in (LoadState.CARRYING, LoadState.UNLOADED):
+            node_ids.add(graph.register_node(
+                seed_q, self.fk(seed_q)[0], orientation, "home",
+                load_state, "start").node_id)
         seeded = []
         has_opening = (self.opening_info or {}).get("point") is not None
         anchor_rows = [
@@ -678,10 +681,11 @@ class RouteProducer(object):
             for seed in self._seed_candidates(seed_q):
                 q, _info = self._refine_to(position, orientation, seed)
                 if q is not None:
-                    graph.register_node(q, position, orientation, region,
-                                        load_state, "anchor")
+                    node_ids.add(graph.register_node(
+                        q, position, orientation, region, load_state,
+                        "anchor").node_id)
             seeded.append(region)
-        return candidate, box_target, plan, seeded
+        return candidate, box_target, plan, seeded, node_ids
 
     def _inward_normal(self):
         info = self.opening_info or {}
@@ -875,7 +879,8 @@ class RouteProducer(object):
                     ordered_slots.append(
                         (index, slot, [], opening_depth, "seed_miss"))
                     continue
-            candidate, _box_target, plan, _seeded = self._prepare_candidate(
+            candidate, _box_target, plan, _seeded, scope_ids = \
+                self._prepare_candidate(
                 base_candidate, attachment, request, start_q,
                 tcp_orientation=prior_targets[0].quaternion_xyzw,
                 tcp_position=prior_targets[0].position)
@@ -926,7 +931,8 @@ class RouteProducer(object):
                         anchor_qs=[
                             node.q for node in
                             self.graph.nodes_by_region("slot_upper")
-                            if str(node.load_state) == "carrying"],
+                            if str(node.load_state) == "carrying"
+                            and node.node_id in scope_ids],
                         atlas_seeds=atlas_seeds),
                     tcp_path=self.tcp_path,
                     region_poses={
@@ -936,7 +942,8 @@ class RouteProducer(object):
                             ("slot_approach", plan.slot_approach),
                             ("slot_upper", plan.slot_upper),
                             ("exit", plan.exit))
-                        if position is not None})
+                        if position is not None},
+                    scope_node_ids=scope_ids)
                 targets = self._expand_targets(
                     candidate, attachment, request)
                 if not targets:

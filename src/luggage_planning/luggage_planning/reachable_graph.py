@@ -486,10 +486,14 @@ class GraphRoutePlanner(object):
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
-                 region_poses=None):
+                 region_poses=None, scope_node_ids=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
         #: region -> world TCP position from the anchor plan.
         self.region_poses = dict(region_poses or {})
+        #: Node ids of the current candidate (None = whole graph). Nodes
+        #: this planner registers join it; earlier candidates' do not.
+        self.scope = None if scope_node_ids is None \
+            else set(scope_node_ids)
         self.graph = graph
         self.edge_builder = edge_builder
         self.home_node_id = str(home_node_id)
@@ -547,11 +551,13 @@ class GraphRoutePlanner(object):
                     "slot", load_state.CARRYING,
                     ik_family=goal.ik_family)
                 # Release twin for the post-release retreat chain.
-                self.graph.register_node(
+                twin = self.graph.register_node(
                     goal.q, goal_set.target.position,
                     goal_set.target.quaternion_xyzw,
                     "slot", load_state.UNLOADED,
                     ik_family=goal.ik_family)
+                if self.scope is not None:
+                    self.scope.update((node.node_id, twin.node_id))
                 goal_nodes.append(node)
         return goal_nodes
 
@@ -567,11 +573,13 @@ class GraphRoutePlanner(object):
         return None if q is None else tuple(float(v) for v in q)
 
     def _register(self, q, position, quaternion, region, load_state, family):
-        existing = self.graph.node_for_q(str(load_state), q)
-        if existing is not None:
-            return existing
-        return self.graph.register_node(q, position, quaternion, region,
-                                        load_state, ik_family=family)
+        node = self.graph.node_for_q(str(load_state), q)
+        if node is None:
+            node = self.graph.register_node(q, position, quaternion, region,
+                                            load_state, ik_family=family)
+        if self.scope is not None:
+            self.scope.add(node.node_id)
+        return node
 
     def _entry_table(self):
         from luggage_planning.grid_path_search import (
@@ -592,7 +600,8 @@ class GraphRoutePlanner(object):
             return tuple(float(v) for v in position), \
                 tuple(goal.tcp_quaternion_xyzw)
         anchors = [node for node in self.graph.nodes_by_region(region)
-                   if str(node.load_state) == "carrying"]
+                   if str(node.load_state) == "carrying"
+                   and (self.scope is None or node.node_id in self.scope)]
         if anchors:
             return (tuple(anchors[0].tcp_position),
                     tuple(anchors[0].tcp_quaternion_xyzw))
@@ -731,8 +740,11 @@ class GraphRoutePlanner(object):
                 "search_outcome": "SEARCH_INCOMPLETE"})
         carrying, unloaded = self._scenes(attachment, candidate, snapshot)
         self._register_branch_ladders(goal_nodes)
+        if self.scope is not None:
+            self.scope.add(self.home_node_id)
         search = RouteSearch(self.graph, self.edge_builder, budget,
-                             continuation=self._frontier_continuation())
+                             continuation=self._frontier_continuation(),
+                             scope=self.scope)
         self.last_search = search
         entry, retreat, goal = search.best_full_route(
             self.home_node_id, goal_nodes,
