@@ -12,6 +12,9 @@ Full contract: `docs/architecture/container_geometry.md`.
 
 - Use `luggage_description.container_geometry` as the authority for container
   usable-space descriptor/hash, containment, area, and volume.
+- When drawing the interior, draw the seven-face hull from
+  `container_inner_hull_edges_in_container`. The enclosing AABB is not the
+  hull. The ±X faces are pentagons; the lower +Y edge is the chamfer.
 - Treat AABBs as indexing or broad-phase structures only. Clip to the hull
   before reporting usable, free, reachable, blocked, covered, or placeable
   space.
