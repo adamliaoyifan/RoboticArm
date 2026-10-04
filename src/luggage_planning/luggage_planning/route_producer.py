@@ -875,7 +875,7 @@ class RouteProducer(object):
                     ordered_slots.append(
                         (index, slot, [], opening_depth, "seed_miss"))
                     continue
-            candidate, _box_target, _plan, _seeded = self._prepare_candidate(
+            candidate, _box_target, plan, _seeded = self._prepare_candidate(
                 base_candidate, attachment, request, start_q,
                 tcp_orientation=prior_targets[0].quaternion_xyzw,
                 tcp_position=prior_targets[0].position)
@@ -928,7 +928,15 @@ class RouteProducer(object):
                             self.graph.nodes_by_region("slot_upper")
                             if str(node.load_state) == "carrying"],
                         atlas_seeds=atlas_seeds),
-                    tcp_path=self.tcp_path)
+                    tcp_path=self.tcp_path,
+                    region_poses={
+                        region: position for region, position in (
+                            ("staging", plan.staging),
+                            ("portal", plan.portal),
+                            ("slot_approach", plan.slot_approach),
+                            ("slot_upper", plan.slot_upper),
+                            ("exit", plan.exit))
+                        if position is not None})
                 targets = self._expand_targets(
                     candidate, attachment, request)
                 if not targets:

@@ -120,9 +120,13 @@ The active scene file selects the atlas cell. A scene hash that matches
 that match. No match keeps the simulation cell.
 
 The simulation runtime is the certification
-cell: `hash_policy: strict`. The node hashes the scene file it was given
-and the live `robot_description` on `robot_state_publisher` (the same MD5
-the atlas builder stores). Strict mode loads the atlas only when both
+cell: `hash_policy: strict`. Atlas identity is the reachability identity:
+the MD5 of the place-reachability subset of the scene file
+(`compute_reachability_scene_hash`: container, robot base and attachment
+fields, numerically rounded) plus the MD5 of the live `robot_description`
+on `robot_state_publisher` (the same MD5 the atlas builder stores). The
+whole-file scene MD5 (`compute_scene_tf_hash`) is a diagnostic only;
+comments or pickup-platform edits must not change admission. Strict mode loads the atlas only when both
 hashes are present and match the atlas metadata. Otherwise
 `ComputePlacement` returns `ATLAS_IDENTITY_UNVERIFIED` and does not
 hard-reject or re-rank. `hash_policy: warn` on the deploy cell may keep a
@@ -133,6 +137,52 @@ a missing or mismatched hash disables the grid
 (`GRID_DISABLED_SCENE_TF` / `GRID_DISABLED_URDF`) instead of searching
 stale connectivity. The motion planner refuses IK seeds from an atlas
 that fails the same check.
+
+### Atlas is a prior for route search
+
+The `atlas_unreachable` slot reject above is the only hard use of the
+atlas. Inside place-route search the atlas ranks and seeds; it does not
+decide feasibility. An atlas miss, a failed atlas seed, or a sampled-cell
+IK failure is not proof that the continuous configuration space has no
+route; online IK, collision checking and certification decide.
+
+Route search (`grid_path_search` / `route_producer`) is state-conditioned:
+
+- Every hop is solved from the **actual frontier joint state** (the real
+  endpoint of the previous edge), not from a per-target seed chosen in
+  isolation.
+- Short constrained hops (`INSERT`, `DESCEND`) are first solved as
+  continuous local IK from the frontier (exact refine seeded by the
+  frontier q). Same-branch destinations are tried before any destination
+  on another elbow, wrist or heading branch; those are deferred, not
+  deleted.
+- Each goal's branch is back-seeded up the entry hops to the last
+  joint-space hop (`PORTAL_TRANSIT`), so a goal on another branch has a
+  same-branch cartesian chain and the branch change is made in that
+  joint-space transit.
+- When a continuation fails, the search backtracks to the nearest upstream
+  choice that can change the result (hover goal, then entry, then slot)
+  instead of only retrying another final IK. Multi-branch goals stay as
+  ordered alternatives of that full-route search.
+- A 180-degree heading alternative is legal only when the frozen
+  attachment transform and payload geometry are re-checked for that
+  heading; an equal rectangular footprint is not sufficient.
+- The request budget (10 s total, 2 s per edge) is shared across
+  expansions. A failure class (goal, edge class, reason) that fails
+  `MAX_SAME_FAILURE_PER_GOAL` (3) times stops building for that goal, so
+  the next goal and slot get attempts.
+
+The frozen Reason code (`NO_FEASIBLE_ROUTE`, `PLANNING_BUDGET_EXHAUSTED`)
+is unchanged. Each refusal also carries `detail.search_outcome`:
+
+| search_outcome | Meaning |
+|---|---|
+| `UNREACHABLE` | Every goal was tried, no failure class was capped, no budget refusal. |
+| `SEARCH_INCOMPLETE` | Budget, a budget refusal or a failure-class cap left alternatives open. Not a reachability verdict. |
+
+`BIN_FULL` is packing capacity only and is never either case.
+`detail.coverage` reports edges built, goals tried and left open, capped
+failure classes and budget refusals.
 
 ## Occupancy update after place
 

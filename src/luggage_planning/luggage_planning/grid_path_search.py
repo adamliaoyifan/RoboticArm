@@ -67,6 +67,31 @@ class RoutePlanningError(Exception):
     def code(self):
         return self.reason.value
 
+    @property
+    def search_outcome(self):
+        """SEARCH_INCOMPLETE (budget/cap left work open) or UNREACHABLE."""
+        stored = self.detail.get("search_outcome")
+        if stored:
+            return str(stored)
+        if self.code == "PLANNING_BUDGET_EXHAUSTED":
+            return SEARCH_INCOMPLETE
+        return UNREACHABLE
+
+
+#: Search-outcome labels beside the frozen Reason code. Only UNREACHABLE
+#: means every alternative was tried; neither is BIN_FULL.
+SEARCH_INCOMPLETE = "SEARCH_INCOMPLETE"
+UNREACHABLE = "UNREACHABLE"
+
+#: Builds of one (goal, edge class, reason) failure class before that
+#: class is skipped for the goal, so one repeating failure cannot spend
+#: the budget other branches and slots need.
+MAX_SAME_FAILURE_PER_GOAL = 3
+
+#: Constrained cartesian hops: a same-branch continuation of the frontier
+#: is tried before any destination on another branch.
+BRANCH_LOCKED_EDGE_CLASSES = ("INSERT", "DESCEND")
+
 
 def map_edge_failure(kind, detail=None):
     """Map one edge-build failure kind onto the frozen Reason set."""
@@ -264,14 +289,23 @@ class RouteSearch(object):
     certification, not this search).
     """
 
-    def __init__(self, graph, edge_builder, budget=None):
+    def __init__(self, graph, edge_builder, budget=None, *,
+                 continuation=None, branch_lock=True):
         self.graph = graph
         self.edge_builder = edge_builder
         self.budget = budget or RouteBudget()
+        # continuation(frontier_node, hop, destinations) -> nodes solved
+        # from the frontier's actual q; tried before stored destinations.
+        self.continuation = continuation
+        self.branch_lock = bool(branch_lock)
         self.edge_failures: List[dict] = []
         # [ST09-I P3] per-session failure memo (see _edge_for): shared
         # anchors must not be retried per candidate.
         self._edge_fail_counts: Dict[tuple, int] = {}
+        self._goal_scope = ""
+        self._class_failures: Dict[tuple, int] = {}
+        self.capped_classes: List[dict] = []
+        self.edges_built = 0
 
     # -- edge resolution -------------------------------------------------
 
@@ -328,8 +362,22 @@ class RouteSearch(object):
                 key, 0) + 1
         return edge
 
+    def _capped_class(self, edge_class):
+        for (scope, klass, reason), count in self._class_failures.items():
+            if scope == self._goal_scope and klass == edge_class and \
+                    count >= MAX_SAME_FAILURE_PER_GOAL:
+                return reason
+        return None
+
     def _build(self, from_node, to_node, hop, key, candidate=None, scene=None):
+        capped = self._capped_class(hop.edge_class)
+        if capped is not None:
+            self.edge_failures.append({
+                "edge": list(key), "kind": "class_capped",
+                "reason": capped, "goal": self._goal_scope})
+            return None
         started = self.budget.now()
+        self.edges_built += 1
         try:
             edge = self.edge_builder(from_node, to_node, hop.edge_class,
                                      candidate=candidate, scene=scene)
@@ -338,6 +386,13 @@ class RouteSearch(object):
             self.edge_failures.append({
                 "edge": list(key), "kind": "edge_build_failed",
                 "reason": err.code, "detail": err.detail})
+            class_key = (self._goal_scope, hop.edge_class, err.code)
+            self._class_failures[class_key] = \
+                self._class_failures.get(class_key, 0) + 1
+            if self._class_failures[class_key] == MAX_SAME_FAILURE_PER_GOAL:
+                self.capped_classes.append({
+                    "goal": self._goal_scope, "edge_class": hop.edge_class,
+                    "reason": err.code})
             return None
         self.budget.finish_edge(key, self.budget.now() - started)
         if edge is not None and \
@@ -381,6 +436,19 @@ class RouteSearch(object):
             # The hover tried first is the one this goal can descend from.
             dests.sort(key=lambda node: min(
                 descend_pair_rank(node.q, goal.q) for goal in goal_nodes))
+        if self.continuation is not None:
+            solved = [node for node in
+                      (self.continuation(frontier, hop, tuple(dests)) or ())
+                      if node is not None]
+            seen = {node.node_id for node in solved}
+            dests = solved + [node for node in dests
+                              if node.node_id not in seen]
+        if self.branch_lock and hop.edge_class in BRANCH_LOCKED_EDGE_CLASSES:
+            # Stable: frontier-solved nodes stay first. Another branch is
+            # deferred, not deleted; its preferred route is the
+            # back-seeded ladder whose branch change is a joint transit.
+            dests.sort(key=lambda node: 0 if descend_pair_rank(
+                frontier.q, node.q)[0] == 0 else 1)
         return dests
 
     def _chain_from(self, frontier, hops, goal_nodes, acc_edges, acc_nodes,
@@ -493,19 +561,26 @@ class RouteSearch(object):
         still tried, after the same-heading same-branch goal.
         """
         last_error = None
-        for goal in self._order_goals_for_descend(goal_nodes):
+        ordered = list(self._order_goals_for_descend(goal_nodes))
+        self._goals_tried = []
+        self._goals_open = [goal.node_id for goal in ordered]
+        for goal in ordered:
+            self._goal_scope = goal.node_id
+            self._goals_open.remove(goal.node_id)
+            self._goals_tried.append(goal.node_id)
             try:
                 entry = self.entry_chain(
                     start_node_id, (goal,), hops=entry_hops, scene=scene_carrying)
             except RoutePlanningError as err:
                 last_error = err
                 if err.code == "PLANNING_BUDGET_EXHAUSTED":
-                    raise
+                    raise self._classified(err)
                 continue
             if self.budget.exhausted():
-                raise RoutePlanningError("PLANNING_BUDGET_EXHAUSTED", {
-                    "budget": self.budget.snapshot(),
-                    "edge_failures": list(self.edge_failures)})
+                raise self._classified(RoutePlanningError(
+                    "PLANNING_BUDGET_EXHAUSTED", {
+                        "budget": self.budget.snapshot(),
+                        "edge_failures": list(self.edge_failures)}))
             # [ST09-I] the release twin must sit where the entry chain
             # ACTUALLY ends (the descend edge's last knot — the cartesian
             # solver may land a different IK branch than the bookkept
@@ -541,11 +616,38 @@ class RouteSearch(object):
                 [n[:22] for n in retreat.node_ids]), flush=True)
             return entry, retreat, goal
         if last_error is not None:
-            raise last_error
-        raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
+            raise self._classified(last_error)
+        raise self._classified(RoutePlanningError("NO_FEASIBLE_ROUTE", {
             "prior_gaps": list(self.graph.prior_gaps),
             "edge_failures": list(self.edge_failures),
-            "budget": self.budget.snapshot()})
+            "budget": self.budget.snapshot()}))
+
+    def coverage(self):
+        """How much of the alternative space this search actually tried."""
+        budget_refusals = sum(
+            1 for row in self.edge_failures if row.get("kind") == "budget")
+        return {
+            "edges_built": int(self.edges_built),
+            "goals_tried": list(getattr(self, "_goals_tried", [])),
+            "goals_open": list(getattr(self, "_goals_open", [])),
+            "capped_classes": list(self.capped_classes),
+            "budget_refusals": budget_refusals,
+            "budget": self.budget.snapshot(),
+        }
+
+    def _classified(self, err):
+        """Attach search_outcome + coverage; never relabels the Reason."""
+        cov = self.coverage()
+        incomplete = (err.code == "PLANNING_BUDGET_EXHAUSTED"
+                      or self.budget.exhausted()
+                      or bool(cov["goals_open"])
+                      or bool(cov["capped_classes"])
+                      or cov["budget_refusals"] > 0)
+        detail = dict(err.detail)
+        detail["search_outcome"] = SEARCH_INCOMPLETE if incomplete \
+            else UNREACHABLE
+        detail["coverage"] = cov
+        return RoutePlanningError(err.code, detail)
 
 
 def _scene_note(scene):

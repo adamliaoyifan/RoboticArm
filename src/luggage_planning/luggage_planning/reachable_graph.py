@@ -485,8 +485,11 @@ class GraphRoutePlanner(object):
                  entry_hops=None, retreat_hops=None,
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
-                 certifier=None, refine=None, urdf=None, tcp_path=None):
+                 certifier=None, refine=None, urdf=None, tcp_path=None,
+                 region_poses=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
+        #: region -> world TCP position from the anchor plan.
+        self.region_poses = dict(region_poses or {})
         self.graph = graph
         self.edge_builder = edge_builder
         self.home_node_id = str(home_node_id)
@@ -552,6 +555,117 @@ class GraphRoutePlanner(object):
                 goal_nodes.append(node)
         return goal_nodes
 
+    def _refine_one(self, position, quaternion, seed_q):
+        """Exact refine from one seed; a miss stays a miss."""
+        if self.refine is None:
+            return None
+        try:
+            q, _info = self.refine(tuple(position), tuple(quaternion),
+                                   list(seed_q))
+        except Exception:  # noqa: BLE001 - one seed must not abort search
+            return None
+        return None if q is None else tuple(float(v) for v in q)
+
+    def _register(self, q, position, quaternion, region, load_state, family):
+        existing = self.graph.node_for_q(str(load_state), q)
+        if existing is not None:
+            return existing
+        return self.graph.register_node(q, position, quaternion, region,
+                                        load_state, ik_family=family)
+
+    def _entry_table(self):
+        from luggage_planning.grid_path_search import (
+            DEFAULT_ENTRY_HOPS, hops_from_table)
+        return self.entry_hops or hops_from_table(DEFAULT_ENTRY_HOPS,
+                                                  "carrying")
+
+    def _region_pose(self, region, goal):
+        """Anchor pose for a region: a registered anchor, else the plan.
+
+        ``region_poses`` lets a region whose anchor refine missed from
+        every forward seed still be back-seeded from the goal branch.
+        """
+        anchors = [node for node in self.graph.nodes_by_region(region)
+                   if str(node.load_state) == "carrying"]
+        if anchors:
+            return (tuple(anchors[0].tcp_position),
+                    tuple(anchors[0].tcp_quaternion_xyzw))
+        position = (self.region_poses or {}).get(region)
+        if position is None:
+            return None
+        return tuple(float(v) for v in position), \
+            tuple(goal.tcp_quaternion_xyzw)
+
+    def _register_branch_ladders(self, goal_nodes):
+        """Back-seed each upstream region from every goal's branch.
+
+        Walks the entry hops backwards from the slot, refining each
+        region's pose from the next region's q, and stops at the
+        destination of the last joint-space hop. A goal on another
+        elbow/wrist/heading branch then has a same-branch cartesian chain,
+        and the branch change happens in that joint-space transit.
+        """
+        if self.refine is None:
+            return 0
+        load_state = _contracts()[0].LoadState
+        hops = list(self._entry_table())
+        upstream = hops[:-1]
+        registered = 0
+        for goal in goal_nodes:
+            q = tuple(goal.q)
+            for hop in reversed(upstream):
+                pose = self._region_pose(hop.to_region, goal)
+                if pose is None:
+                    break
+                position, quaternion = pose
+                q_new = self._refine_one(position, quaternion, q)
+                if q_new is None:
+                    break
+                self._register(q_new, position, quaternion, hop.to_region,
+                               load_state.CARRYING, "ladder")
+                registered += 1
+                q = q_new
+                if hop.edge_class in ("PORTAL_TRANSIT", "RETURN"):
+                    break
+        return registered
+
+    def _frontier_continuation(self):
+        """Short cartesian hops (INSERT, DESCEND, RETREAT) solved from
+        the frontier's own q. A region with no registered node falls back
+        to its anchor-plan pose (RETREAT holds the frontier orientation)."""
+        if self.refine is None:
+            return None
+        load_state = _contracts()[0].LoadState
+
+        def solve(frontier, hop, destinations):
+            if hop.edge_class not in ("INSERT", "DESCEND", "RETREAT"):
+                return ()
+            poses = []
+            for node in destinations:
+                pose = (tuple(node.tcp_position),
+                        tuple(node.tcp_quaternion_xyzw), node.region)
+                if pose not in poses:
+                    poses.append(pose)
+            planned = self.region_poses.get(hop.to_region)
+            if not poses and planned is not None:
+                poses.append((tuple(float(v) for v in planned),
+                              tuple(frontier.tcp_quaternion_xyzw),
+                              hop.to_region))
+            solved = []
+            for position, quaternion, region in poses:
+                q = self._refine_one(position, quaternion, frontier.q)
+                if q is None:
+                    continue
+                node = self._register(q, position, quaternion, region,
+                                      load_state(hop.load_state), "frontier")
+                if hop.edge_class == "DESCEND":
+                    self._register(q, position, quaternion, region,
+                                   load_state.UNLOADED, "frontier")
+                solved.append(node)
+            return solved
+
+        return solve
+
     def _released_box(self, attachment, candidate):
         """World-frame box at the candidate's placed pose, composed
         through the injected world<-container transform."""
@@ -611,7 +725,10 @@ class GraphRoutePlanner(object):
                 "prior_gaps": list(self.graph.prior_gaps),
                 "detail": "no IK goals refined for the given targets"})
         carrying, unloaded = self._scenes(attachment, candidate, snapshot)
-        search = RouteSearch(self.graph, self.edge_builder, budget)
+        self._register_branch_ladders(goal_nodes)
+        search = RouteSearch(self.graph, self.edge_builder, budget,
+                             continuation=self._frontier_continuation())
+        self.last_search = search
         entry, retreat, goal = search.best_full_route(
             self.home_node_id, goal_nodes,
             entry_hops=self.entry_hops, retreat_hops=self.retreat_hops,
