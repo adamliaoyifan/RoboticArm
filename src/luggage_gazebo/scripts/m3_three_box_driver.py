@@ -464,7 +464,13 @@ class M3ThreeBoxDriver(MotionOccDriver):
 
     def _verify_selected_route(self, response, request_id, stats):
         self._m3_note_route_boundaries()
-        return super()._verify_selected_route(response, request_id, stats)
+        result = super()._verify_selected_route(response, request_id, stats)
+        if stats.get("map_source") is not None:
+            self._m3_selection_map = {
+                "map_source": stats.get("map_source"),
+                "map_revision": stats.get("admitted_map_revision"),
+            }
+        return result
 
     def _execute_segment(self, segment, trial):
         if any(note["stage"] == "selected_path"
@@ -498,6 +504,7 @@ class M3ThreeBoxDriver(MotionOccDriver):
             trial.fail_code = "M3_SESSION_STOPPED"
             return trial
         self._m3_notes = []
+        self._m3_selection_map = None
         self._m3_trial_index = index
         self._m3_request_id = "m3-box-%02d" % (int(index) + 1)
         trial = super().run_trial(
@@ -629,6 +636,8 @@ class M3ThreeBoxDriver(MotionOccDriver):
                 "output_map_revision": output_revision,
                 "sensor_occupied_cells": integrate.get("n_sensor_occupied"),
                 "floor_through_candidates": integrate.get("floor_through"),
+                "selection_map": getattr(self, "_m3_selection_map", None),
+                "retreat_start": trial.extras.get("retreat_start"),
             },
             "gt_reference": self._m3_gt_reference(verify, integrate, gt),
             "release_gt": gt,
@@ -707,6 +716,7 @@ class M3ThreeBoxDriver(MotionOccDriver):
             "last_acquisition_stamp_ns": int(
                 response.last_acquisition_stamp_ns),
             "geometry_hash": str(response.geometry_hash),
+            "map_source": str(response.map_source),
         }
 
 

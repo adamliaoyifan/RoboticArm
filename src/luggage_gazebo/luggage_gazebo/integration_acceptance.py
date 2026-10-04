@@ -41,6 +41,10 @@ COMMIT_STAGES = ("measured_integration", "map_update")
 #: Session-level handoff rows may live under evidence["handoffs"] or ride
 #: the flat event stream with one of these types.
 HANDOFF_TYPES = ("revision_handoff", "map_revision_handoff")
+# Boxes after the first must select against a map that saw the prior box.
+OBSERVED_MAP_SOURCES = ("release_integrated", "measured")
+# Same value as motion_executor.QP_START_TOLERANCE_RAD; never widened here.
+RETREAT_START_TOLERANCE_RAD = 0.01
 
 
 def _handoff_rows(evidence):
@@ -198,6 +202,18 @@ def extract_acceptance(evidence, frozen):
                 failures.append(prefix + ":STALE_MAP_REVISION")
             previous_revision = after
         case_revisions.append((before, after))
+        if strict_revisions:
+            if index >= 1:
+                source = (measured.get("selection_map") or {}).get("map_source")
+                if not isinstance(source, str) or not source:
+                    missing.append(prefix + ".measured.selection_map.map_source")
+                elif source not in OBSERVED_MAP_SOURCES:
+                    failures.append(prefix + ":STATIC_EMPTY_MAP")
+            retreat = measured.get("retreat_start")
+            if (not isinstance(retreat, dict) or retreat.get("status") != "ready"
+                    or type(retreat.get("max_delta")) not in (int, float)
+                    or retreat["max_delta"] > RETREAT_START_TOLERANCE_RAD):
+                failures.append(prefix + ":RETREAT_START_UNVERIFIED")
         if type(measured.get("sensor_occupied_cells")) is int and measured["sensor_occupied_cells"] < 1:
             failures.append(prefix + ":NO_SENSOR_OCCUPANCY")
         if type(measured.get("floor_through_candidates")) is int and measured["floor_through_candidates"] != 0:

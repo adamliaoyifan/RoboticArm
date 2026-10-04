@@ -303,6 +303,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 stats.get("map_status_unavailable", 0) + 1
             return False, "MAP_STATUS_UNAVAILABLE"
         request.latest_map_revision = int(stats_response.map_revision)
+        stats["map_source"] = str(stats_response.map_source or "")
+        stats["admitted_map_revision"] = int(stats_response.map_revision)
         result = self.call_srv(client, request, timeout=PLACE_PROBE_TIMEOUT_S)
         if result is None:
             stats["unavailable"] = stats.get("unavailable", 0) + 1

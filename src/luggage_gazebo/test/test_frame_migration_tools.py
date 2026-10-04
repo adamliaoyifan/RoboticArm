@@ -240,7 +240,12 @@ def three_box_evidence():
                           measured=dict(integration_success=True,return_success=True,
                                         payload_retained=True,input_map_revision=input_revision,
                                         output_map_revision=output_revision,
-                                        sensor_occupied_cells=1,floor_through_candidates=0),
+                                        sensor_occupied_cells=1,floor_through_candidates=0,
+                                        selection_map=dict(
+                                            map_source=("static_empty" if index==1
+                                                        else "release_integrated"),
+                                            map_revision=input_revision),
+                                        retreat_start=dict(status="ready",max_delta=0.005)),
                           gt_reference=dict(xy_error_m=0.01,z_error_m=0.01,drift_m=0.005,
                                             roll_deg=0.5,pitch_deg=-0.5,center_inside_hull=True,
                                             footprint_reference_cells=10,footprint_sensor_cells=5)))
@@ -296,6 +301,29 @@ class IntegrationExtractor(unittest.TestCase):
         unjoined=copy.deepcopy(evidence)
         unjoined["handoffs"][1]["from_revision"]=9
         self.assertNotEqual(extract_acceptance(unjoined,frozen)["status"],"pass")
+
+    def test_three_box_map_source_and_retreat_start_gates(self):
+        frozen=three_box_frozen(); evidence=three_box_evidence()
+        self.assertEqual(extract_acceptance(evidence,frozen)["status"],"pass")
+        measured=lambda e,i:e["cases"][i]["measured"]
+        empty=copy.deepcopy(evidence)
+        measured(empty,1)["selection_map"]["map_source"]="static_empty"
+        result=extract_acceptance(empty,frozen)
+        self.assertIn("case[1]:STATIC_EMPTY_MAP",result["failures"])
+        absent=copy.deepcopy(evidence)
+        measured(absent,2).pop("selection_map")
+        result=extract_acceptance(absent,frozen)
+        self.assertNotEqual(result["status"],"pass")
+        self.assertIn("case[2].measured.selection_map.map_source",result["missing"])
+        for retreat in (None,dict(status="mismatch",max_delta=0.011),
+                        dict(status="ready",max_delta=0.0101)):
+            broken=copy.deepcopy(evidence)
+            measured(broken,1)["retreat_start"]=retreat
+            result=extract_acceptance(broken,frozen)
+            self.assertIn("case[1]:RETREAT_START_UNVERIFIED",result["failures"])
+        edge=copy.deepcopy(evidence)
+        measured(edge,2)["retreat_start"]["max_delta"]=0.01
+        self.assertEqual(extract_acceptance(edge,frozen)["status"],"pass")
 
     def test_latency_requires_observations(self):
         self.assertEqual(capture_window([0.7,1.1],[2.3]),dict(pre_seconds=3,post_seconds=3))
