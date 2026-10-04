@@ -134,6 +134,18 @@ class RehearsalEvidence(unittest.TestCase):
                 self.assertEqual(stamps, sorted(stamps))
                 self.assertEqual(len(set(stamps)), len(EVENT_ORDER))
                 self.assertTrue(all(event["request_id"] == case["request_id"] for event in case["events"]))
+            one = copy.deepcopy(bound)
+            one["cases"] = [one["cases"][0]]
+            one["complete"] = True
+            one["handoffs"] = []
+            frozen["box_count"] = 1
+            frozen["sequence_ids"] = ["carryon"]
+            single = extract_acceptance(one, frozen)
+            self.assertEqual(single["status"], "pass", single)
+            self.assertEqual(single["box_count"], 1)
+            self.assertEqual(single["revision_handoff_count"], 0)
+            self.assertNotIn("2 cases", single["missing"])
+            self.assertNotIn("frozen.box_count", single["missing"])
 
     def test_missing_stale_threshold_and_hash_change(self):
         evidence = paired_evidence()

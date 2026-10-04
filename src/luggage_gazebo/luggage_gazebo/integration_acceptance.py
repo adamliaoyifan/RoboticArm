@@ -1,4 +1,4 @@
-"""Finite two- or three-box integration acceptance over joined, measured boundary events.
+"""Finite one-, two-, or three-box integration acceptance over joined, measured boundary events.
 
 This extractor never advances a campaign or labels synthetic fixtures live
 coverage. GT placement checks are separate from measured map admission.
@@ -85,7 +85,7 @@ def extract_acceptance(evidence, frozen):
         missing.append("frozen.replay_command")
     # -- workload shape (S5: box_count generalizes the two-box form) -----
     box_count = frozen.get("box_count", 2)
-    if type(box_count) is not int or box_count not in (2, 3):
+    if type(box_count) is not int or box_count not in (1, 2, 3):
         missing.append("frozen.box_count")
         box_count = 2
     sequence = frozen.get("sequence_ids")
@@ -239,7 +239,10 @@ def extract_acceptance(evidence, frozen):
                 failures.append(prefix + ":EVENT_REVISION_OUTPUT")
     # -- session revision handoffs (mandatory for three boxes) ----------
     handoffs = _handoff_rows(evidence)
-    if box_count >= 3 and len(handoffs) != box_count - 1:
+    if box_count == 1 and len(handoffs) != 0:
+        failures.append("revision handoffs: observed %d expected 0"
+                        % len(handoffs))
+    elif box_count >= 3 and len(handoffs) != box_count - 1:
         missing.append("revision handoffs: observed %d expected %d"
                        % (len(handoffs), box_count - 1))
     expected_pairs = [(index, index + 1) for index in range(1, box_count)]
