@@ -8,7 +8,7 @@
 #   Robot base: URDF world_base -> elfin_base_link (robot_state_publisher)
 #   Pedestal enabled: world -> pedestal_link (visual reference only)
 #   Container: world -> container_link -> container_opening_frame (static_transforms below)
-#   Pickup platform enabled: world -> pickup_platform_link -> pickup_platform_top
+#   Pickup platform disabled: no pickup_platform_link. Suitcases spawn on world z=0.
 #
 # Pedestal enabled:
 #   pedestal.size[2] = pedestal height = robot base offset above pedestal origin
@@ -98,23 +98,22 @@ static_transforms:
     translation: [-0.745, -0.27, 1.30]
     rotation_rpy: [0.0, 0.0, 0.0]
 
-# Pickup platform: independent static platform where suitcases are spawned.
-# Same height as robot pedestal so the robot arm can reach the suitcase.
+# Pickup platform is disabled in this deploy sim scene. Suitcases spawn on
+# the airport_loading ground plane (world z=0). The robot pedestal above
+# stays enabled; it is the arm base, not the suitcase support.
 # Model origin at bottom-center (same convention as robot_pedestal).
 pickup_platform:
-  enabled: true
+  enabled: false
   size: [1.0, 1.0, 0.86]
-  translation: [1.0, 0.0, 0.0]  # mirrored with container across elfin_base_link XZ
+  translation: [1.0, 0.0, 0.0]  # unused while disabled; kept as the old slab pose
   rotation_rpy: [0.0, 0.0, 0.0]
   gazebo_model: pickup_platform
 
-# Pickup source: where suitcases appear on the platform top surface.
-# When pickup_platform is enabled, translation is LOCAL to the platform top frame
-# (i.e. relative to the center of the platform top surface, z=0 means on top).
-# When pickup_platform is disabled, translation is in world frame (legacy mode).
+# Pickup source is world-frame while the platform is disabled.
+# pickup_box_pose() treats translation.z as the box bottom, then adds height/2.
 pickup_source:
-  parent: pickup_platform_top
-  translation: [0.0, 0.0, 0.0]
+  parent: world
+  translation: [1.0, 0.0, 0.0]
   rotation_rpy: [0.0, 0.0, 0.0]
 
 gazebo:
