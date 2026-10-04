@@ -30,6 +30,7 @@ from luggage_description.suitcase_visual import (
     sized_mesh_uri,
     sized_model_name,
     sized_stl_path,
+    sized_visual_mesh_uri,
     source_stl_path,
     suitcase_sdf,
     visual_id_for_entry,
@@ -244,9 +245,13 @@ class TestPickupVisualSdf(unittest.TestCase):
         col_uri = root.find(".//collision/geometry/mesh/uri").text
         scale = [float(v) for v in root.find(
             ".//visual/geometry/mesh/scale").text.split()]
-        self.assertEqual(vis_uri, sized_mesh_uri(VISUAL_LOAFBRR, "small"))
-        self.assertEqual(col_uri, vis_uri)
+        self.assertEqual(vis_uri, sized_visual_mesh_uri(VISUAL_LOAFBRR, "small"))
+        self.assertEqual(col_uri, sized_mesh_uri(VISUAL_LOAFBRR, "small"))
+        self.assertNotEqual(vis_uri, col_uri)
+        self.assertTrue(vis_uri.endswith("suitcase.dae"))
+        self.assertTrue(col_uri.endswith("suitcase.stl"))
         self.assertEqual(scale, [1.0, 1.0, 1.0])
+        self.assertIsNone(root.find(".//visual/material"))
         self.assertEqual(os.listdir(dest_dir), [])
         self.assertEqual(root.find(".//model/static").text, "true")
 
@@ -282,9 +287,28 @@ class TestSizedPickupAssets(unittest.TestCase):
                 root = ET.parse(sdf_path).getroot()
                 vis_uri = root.find(".//visual/geometry/mesh/uri").text
                 col_uri = root.find(".//collision/geometry/mesh/uri").text
-                self.assertEqual(vis_uri, sized_mesh_uri(visual, tier))
-                self.assertEqual(col_uri, vis_uri)
+                self.assertEqual(vis_uri, sized_visual_mesh_uri(visual, tier))
+                self.assertEqual(col_uri, sized_mesh_uri(visual, tier))
+                vis_scale = [float(v) for v in root.find(
+                    ".//visual/geometry/mesh/scale").text.split()]
+                col_scale = [float(v) for v in root.find(
+                    ".//collision/geometry/mesh/scale").text.split()]
+                self.assertEqual(vis_scale, [1.0, 1.0, 1.0])
+                self.assertEqual(col_scale, [1.0, 1.0, 1.0])
+                self.assertIsNone(root.find(".//visual/material"))
                 self.assertIsNone(root.find(".//collision/geometry/box"))
+                mesh_dir = os.path.join(GAZEBO_MODELS, name, "meshes")
+                for asset in (
+                        "suitcase.dae", "suitcase.png", "material.mtl",
+                        "suitcase.obj", "suitcase.stl"):
+                    self.assertTrue(
+                        os.path.isfile(os.path.join(mesh_dir, asset)),
+                        os.path.join(mesh_dir, asset))
+                with open(os.path.join(mesh_dir, "suitcase.dae"),
+                          encoding="utf-8") as handle:
+                    dae = handle.read()
+                self.assertIn("<init_from>suitcase.png</init_from>", dae)
+                self.assertIn("<up_axis>Z_UP</up_axis>", dae)
                 self.assertNotIn(vis_uri, uris)
                 uris.add(vis_uri)
         self.assertEqual(len(uris), 6)

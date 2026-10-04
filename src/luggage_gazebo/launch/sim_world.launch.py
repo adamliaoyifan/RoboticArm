@@ -840,6 +840,18 @@ def _launch_setup(context):
             "use_sim_time": True,
             "require_backend": require_backend,
             "model_name": semantic_model_path,
+            # Sim vocabulary for the textured suitcase mesh. The earlier
+            # "without texture" prompts described the untextured STL and
+            # are not the query for this asset. Thresholds stay at 0.2.
+            "prompts": [
+                "suitcase",
+                "luggage",
+                "box",
+                "container",
+                "floor",
+                "robot arm",
+            ],
+            "class_mapping_labels": [2, 2, 2, 1, 0, 3],
         }],
     )
     point_filter = Node(
@@ -978,7 +990,6 @@ def _launch_setup(context):
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
     move_group = _move_group_node(robot_description, cfg["use_moveit"])
-
     # Top-down orthographic RViz view (same viewpoint as the camera) plus
     # RobotModel/TF/point cloud/image panels for calibration checks.
     rviz = Node(
