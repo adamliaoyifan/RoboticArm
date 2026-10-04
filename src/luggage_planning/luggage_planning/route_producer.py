@@ -541,10 +541,11 @@ class RouteProducer(object):
                    prefer_tool_down=False):
         if self.refine is None:
             return None, {"reason": "no_refine"}
+        requested = tuple(float(v) for v in seed_q)
         seeds = self._seed_candidates(seed_q)
         if prefer_tool_down and len(seeds) > 1:
             seeds = [seeds[1], seeds[0]]
-        info = {}
+        infos = {}
         for seed in seeds:
             try:
                 q, info = self.refine(tuple(position), tuple(orientation),
@@ -553,7 +554,43 @@ class RouteProducer(object):
                     return tuple(q), info
             except Exception:  # noqa: BLE001 - anchor seeding is best effort
                 info = {"reason": "ik_unavailable"}
+            infos[tuple(seed)] = dict(info or {"reason": "ik_unavailable"})
+        # Failure evidence is the REQUESTED seed's residual; the tool-down
+        # fallback's residual rides beside it, never in its place.
+        info = infos.get(requested) or next(iter(infos.values()), {})
+        fallback = [value for key, value in infos.items() if key != requested]
+        if fallback:
+            info = dict(info, fallback=fallback)
         return None, info or {"reason": "ik_unavailable"}
+
+    def _atlas_seed_check(self, targets, atlas_seeds):
+        """Refine each atlas seed onto each exact TCP target (offline IK).
+
+        ``ok`` when any (seed, target) pair refines within the refine
+        tolerance. Uses the raw refine, so no tool-down fallback can mask
+        the atlas seed's own residual. Costs milliseconds, not a route build.
+        """
+        best = None
+        attempts = 0
+        if self.refine is None:
+            return {"ok": True, "attempts": 0, "best_pos_err_m": None}
+        for target in targets:
+            for seed in atlas_seeds:
+                attempts += 1
+                try:
+                    q, info = self.refine(tuple(target.position),
+                                          tuple(target.quaternion_xyzw),
+                                          list(seed))
+                except Exception:  # noqa: BLE001 - check fails open
+                    return {"ok": True, "attempts": attempts,
+                            "best_pos_err_m": None}
+                if q is not None:
+                    return {"ok": True, "attempts": attempts,
+                            "best_pos_err_m": 0.0}
+                err = (info or {}).get("pos_err_m")
+                if isinstance(err, (int, float)):
+                    best = err if best is None else min(best, err)
+        return {"ok": False, "attempts": attempts, "best_pos_err_m": best}
 
     def _box_target(self, candidate, attachment, request):
         from luggage_planning.place_targets import box_target_from_candidate
@@ -807,6 +844,19 @@ class RouteProducer(object):
                 self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
+            if atlas_seeds:
+                seed_check = self._atlas_seed_check(prior_targets, atlas_seeds)
+                if not seed_check["ok"]:
+                    # A 0.15 m atlas cell can straddle the reach boundary:
+                    # REACHABLE for the cell, unreachable at this exact
+                    # target. Defer the slot (seedless) behind every other
+                    # candidate instead of spending the route budget on it.
+                    row.update(reason="ATLAS_SEED_MISS",
+                               seed_check=seed_check)
+                    self._close_row(rows, row)
+                    ordered_slots.append(
+                        (index, slot, [], opening_depth, "seed_miss"))
+                    continue
             candidate, _box_target, _plan, _seeded = self._prepare_candidate(
                 base_candidate, attachment, request, start_q,
                 tcp_orientation=prior_targets[0].quaternion_xyzw,

@@ -361,6 +361,86 @@ class TestGoalRefineEvidence:
         assert record["attempts"][0]["pos_err_m"] == 0.52
 
 
+    def test_refine_failure_reports_requested_seed_not_fallback(self):
+        producer, _clock = build_producer()
+        requested = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
+
+        def refuse(_position, _quaternion, seed):
+            err = 0.008 if tuple(seed) == requested else 0.24
+            return None, {"pos_err_m": err, "rot_err_rad": 0.0}
+
+        producer.refine = refuse
+        q, info = producer._refine_to(
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), requested)
+        assert q is None
+        assert info["pos_err_m"] == 0.008
+        assert [item["pos_err_m"] for item in info["fallback"]] == [0.24]
+
+
+MISS_SEED = (0.9, -0.9, 0.9, -0.9, 0.9, -0.9)
+GOOD_SEED = tuple(START_Q)
+
+
+def _two_slot_request():
+    request = make_request(slots=[
+        {"position": [0.20, -0.10, 0.14],
+         "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0], "request_id": "cand-0"},
+        {"position": [0.30, -0.10, 0.14],
+         "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0], "request_id": "cand-1"},
+    ])
+    request["slot_scores"] = [1.0, 1.0]
+    return request
+
+
+def _seed_miss_producer(slot1_seeds):
+    producer, _clock = build_producer()
+
+    def atlas_prior(targets, _request):
+        first_slot = float(targets[0].position[0]) < 0.25
+        seeds = [MISS_SEED, MISS_SEED] if first_slot else list(slot1_seeds)
+        return {"verdict": "reachable", "seeds": seeds}
+
+    def refine(position, quaternion, seed):
+        if tuple(float(v) for v in seed) == MISS_SEED:
+            return None, {"pos_err_m": 0.008, "rot_err_rad": 0.0}
+        return fake_refine(position, quaternion, seed)
+
+    producer.atlas_prior = atlas_prior
+    producer.refine = refine
+    return producer
+
+
+class TestAtlasSeedCheck:
+
+    def test_seed_miss_slot_is_deferred_behind_verified_slot(self):
+        producer = _seed_miss_producer([GOOD_SEED])
+        request = _two_slot_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert result["slot_index"] == 1
+        miss = [row for row in result["rows"]
+                if row.get("reason") == "ATLAS_SEED_MISS"]
+        assert [row["slot_index"] for row in miss] == [0]
+        assert miss[0]["seed_check"]["best_pos_err_m"] == 0.008
+        assert miss[0]["seed_check"]["attempts"] >= 2
+
+    def test_seed_miss_slot_is_retried_seedless_not_dropped(self):
+        producer = _seed_miss_producer([])
+        request = _two_slot_request()
+        request["slots"] = request["slots"][:1]
+        request["slot_scores"] = [1.0]
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert result["slot_index"] == 0
+        assert result["rows"][0]["reason"] == "ATLAS_SEED_MISS"
+
+
 class TestMapStaleRefresh:
 
     def _rev(self, decisions):
