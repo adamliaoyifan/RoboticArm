@@ -20,6 +20,11 @@ float64[4] container_quaternion_xyzw
 int64 container_stamp_ns
 bool container_stamp_is_null
 string[] excluded_ids
+# Attach identity frozen with the grasp. Empty box_id and generation 0
+# mean "not claimed"; a claim that disagrees with the frozen record is
+# ATTACHMENT_REQUEST_MISMATCH.
+string box_id
+uint64 generation
 ---
 bool success
 string reason_code

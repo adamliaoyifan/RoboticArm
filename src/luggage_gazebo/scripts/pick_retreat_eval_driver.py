@@ -639,14 +639,25 @@ class PickRetreatEvalDriver(Node):
         return built, ""
 
     def _frame_capture_grasp(self, pick_msg):
-        """Measure the box-frame grasp transport at attach (TF + detection)."""
+        """Measure the box-frame grasp transport at attach (TF + detection).
+
+        The grasp stamp is the suction-contact TF stamp at contact. A
+        zero stamp is left as zero so the selector can refuse it; it is
+        not replaced with the clock.
+        """
         try:
-            tool_position, tool_quaternion = self._lookup_xyz_quat(
-                "world", "suction_contact_frame")
+            tf_msg = self._tf_buffer.lookup_transform(
+                "world", "suction_contact_frame", rclpy.time.Time(),
+                rclpy.duration.Duration(seconds=1.0))
         except Exception as exc:  # noqa: BLE001 - grasp capture is best effort
             self.get_logger().warning("frame grasp capture TF failed: %s" % exc)
             return
+        translation = tf_msg.transform.translation
+        rotation = tf_msg.transform.rotation
+        stamp = tf_msg.header.stamp
+        tool_stamp_ns = int(stamp.sec) * 10 ** 9 + int(stamp.nanosec)
         from luggage_planning.typed_driver_adapter import grasp_from_attach
+        box_id, generation = self._frame_box_identity()
         self._frame_grasp = grasp_from_attach(
             self._frame_request_id("grasp"), self._frame_scene_revision,
             [float(pick_msg.pose.position.x), float(pick_msg.pose.position.y),
@@ -655,7 +666,13 @@ class PickRetreatEvalDriver(Node):
              float(pick_msg.pose.orientation.y),
              float(pick_msg.pose.orientation.z),
              float(pick_msg.pose.orientation.w)],
-            tool_position, tool_quaternion)
+            (float(translation.x), float(translation.y), float(translation.z)),
+            (float(rotation.x), float(rotation.y),
+             float(rotation.z), float(rotation.w)),
+            stamp_ns=tool_stamp_ns)
+        self._frame_grasp["box_id"] = str(box_id or "")
+        self._frame_grasp["generation"] = int(generation or 0)
+        self._frame_grasp_stamp_ns = int(tool_stamp_ns)
 
     def _frame_box_identity(self):
         """(box_id, generation) from the latched current_box payload."""
@@ -666,10 +683,13 @@ class PickRetreatEvalDriver(Node):
         return str(box_id or ""), int(generation or 0)
 
     def vacuum_command(self, enable, pick_msg=None):
+        self._last_vacuum_attach_evidence = None
         pick_msg = pick_msg or getattr(self, "_frame_pick_msg", None)
         if self._typed is not None and pick_msg is not None:
             from luggage_planning.typed_driver_adapter import (
                 detection_record_from_box)
+            from luggage_planning.attachment_frame_adapters import (
+                vacuum_attach_revision_dump)
             from luggage_description.frame_contracts import ContractError
             box_id, generation = self._frame_box_identity()
             request_id = self._frame_request_id("vacuum")
@@ -691,6 +711,23 @@ class PickRetreatEvalDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum command timeout"
+            if not response.success:
+                stamp = pick_msg.header.stamp
+                self._last_vacuum_attach_evidence = vacuum_attach_revision_dump(
+                    response.message,
+                    live_scene_revision=self._frame_scene_revision,
+                    fallback={
+                        "request_scene_revision": str(
+                            self._frame_scene_revision or ""),
+                        "box_pose_scene_revision": str(
+                            box_pose.get("scene_revision") or ""),
+                        "tool_pose_scene_revision": "",
+                        "bound_scene_revision": "",
+                        "measured_stamp_ns": (
+                            int(stamp.sec) * 10 ** 9 + int(stamp.nanosec)),
+                        "box_id": str(box_id),
+                        "generation": int(generation),
+                    })
             return bool(response.success), str(response.message or "")
         if self._vacuum is None:
             return False, "no vacuum client"
@@ -1950,6 +1987,11 @@ class PickRetreatEvalDriver(Node):
                     fields["vac_attach"] = vac_ok
                     fields["extras"]["vac_attach"] = vac_msg
                     if not vac_ok:
+                        revision_dump = getattr(
+                            self, "_last_vacuum_attach_evidence", None)
+                        if revision_dump:
+                            fields["extras"]["vacuum_attach_revisions"] = (
+                                revision_dump)
                         failures.append(("vacuum_attach", vac_msg))
                         fields["fail_code"] = "VACUUM_ATTACH"
                         break

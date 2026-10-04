@@ -90,6 +90,7 @@ class MeasuredAttachmentProvider:
         self._box_frame = str(box_frame)
         self._records: Dict[str, AttachmentRecord] = {}
         self._incarnations: Dict[str, int] = {}
+        self._generations: Dict[str, int] = {}
         self._active_request: Optional[str] = None
         self._invalidations: Tuple[AttachmentInvalidation, ...] = ()
 
@@ -101,6 +102,20 @@ class MeasuredAttachmentProvider:
 
     def record_for(self, request_id: str) -> Optional[AttachmentRecord]:
         return self._records.get(str(request_id))
+
+    def live_count(self) -> int:
+        return sum(
+            1 for record in self._records.values()
+            if record.validity is AttachmentValidity.VALID)
+
+    def bind_generation(self, request_id: str, generation: Optional[int]) -> None:
+        """Remember the attach generation beside the frozen record."""
+        if generation is None:
+            return
+        self._generations[str(request_id)] = int(generation)
+
+    def generation_for(self, request_id: str) -> Optional[int]:
+        return self._generations.get(str(request_id))
 
     # -- protocol --------------------------------------------------------
 
@@ -118,15 +133,38 @@ class MeasuredAttachmentProvider:
         return record
 
     def expire_stale(self, request_id: str, now_ns: int) -> None:
-        """Apply the frozen 10 s acquisition->use window."""
-        record = self._records.get(str(request_id))
+        """Apply the frozen 10 s acquisition->use window.
+
+        A zero acquisition stamp is not a live measurement. It is
+        invalidated as ``STAMP_INVALID`` instead of being aged from the
+        epoch and then reported as a missing record.
+        """
+        request_id = str(request_id)
+        record = self._records.get(request_id)
         if record is None or record.validity is not AttachmentValidity.VALID:
             return
-        if int(now_ns) - record.acquisition_stamp_ns > ATTACHMENT_MAX_AGE_NS:
-            self._invalidate_record(
-                record, Reason.ATTACHMENT_EXPIRED,
-                {"age_ns": int(now_ns) - record.acquisition_stamp_ns,
-                 "max_age_ns": ATTACHMENT_MAX_AGE_NS})
+        now_ns = int(now_ns)
+        stamp = int(record.acquisition_stamp_ns)
+        age = now_ns - stamp
+        if stamp <= 0:
+            reason = Reason.STAMP_INVALID
+        elif age > ATTACHMENT_MAX_AGE_NS:
+            reason = Reason.ATTACHMENT_EXPIRED
+        else:
+            return
+        before = self.live_count()
+        self._invalidate_record(record, reason, {
+            "record_stamp_ns": stamp,
+            "now_stamp_ns": now_ns,
+            "age_ns": age,
+            "stale_window_ns": ATTACHMENT_MAX_AGE_NS,
+            "box_id": str(record.box_id),
+            "generation": self.generation_for(request_id),
+            "attachment_digest": record.digest(),
+            "attachment_incarnation": int(record.attachment_incarnation),
+            "records_before": before,
+            "records_after": before - 1,
+        })
 
     def invalidate(self, reason: Reason,
                    detail: Mapping[str, Any]) -> AttachmentInvalidation:

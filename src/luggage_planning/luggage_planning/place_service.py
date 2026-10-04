@@ -198,6 +198,8 @@ def request_dict(message):
         "grasp": grasp,
         "container_transform": transform,
         "excluded_ids": [str(v) for v in message.excluded_ids],
+        "box_id": str(getattr(message, "box_id", "") or ""),
+        "generation": int(getattr(message, "generation", 0) or 0),
     }
 
 
@@ -277,9 +279,12 @@ def fill_select_response_route(message, response, producer):
 
     try:
         request = request_dict(message)
+        generation = int(request.get("generation") or 0)
         register_attach_from_request(
             producer.attachment_provider, request,
-            box_wdh=request["box_wdh"])
+            box_wdh=request["box_wdh"],
+            box_id=str(request.get("box_id") or ""),
+            generation=(generation or None))
     except ContractError as exc:
         return _reject(response, exc)
     # [ST09-I] scene hygiene at the service boundary: a select that

@@ -34,8 +34,13 @@ def slot_record(request_id, scene_revision, center, yaw):
     }
 
 
-def grasp_record(request_id, scene_revision, translation, quaternion_xyzw):
-    """Grasp transport: suction_contact_frame -> box offset of the grasp."""
+def grasp_record(request_id, scene_revision, translation, quaternion_xyzw,
+                 stamp_ns=0):
+    """Grasp transport: suction_contact_frame -> box offset of the grasp.
+
+    ``stamp_ns`` is the attach acquisition stamp. Zero is not a live
+    measurement; the selector refuses it instead of ageing it from epoch.
+    """
     return {
         "reference": "suction_contact_frame",
         "orientation_semantics": "box",
@@ -46,7 +51,7 @@ def grasp_record(request_id, scene_revision, translation, quaternion_xyzw):
         "request_id": str(request_id),
         "frame_id": "suction_contact_frame",
         "length_unit": "m",
-        "stamp_ns": 0,
+        "stamp_ns": int(stamp_ns),
         "time_basis": "scene",
     }
 
@@ -100,7 +105,8 @@ def detection_record_from_box(box_message, request_id, scene_revision):
 
 
 def grasp_from_attach(request_id, scene_revision, box_position,
-                      box_quaternion, tool_position, tool_quaternion):
+                      box_quaternion, tool_position, tool_quaternion,
+                      stamp_ns=0):
     """Box-frame grasp transport measured at attach.
 
     Exact inverse math on the measured world poses: the box-frame offset
@@ -118,7 +124,9 @@ def grasp_from_attach(request_id, scene_revision, box_position,
     quaternion = (box_rotation.inv()
                   * Rotation.from_quat([float(v) for v in tool_quaternion])
                   ).as_quat()
-    return grasp_record(request_id, scene_revision, translation, quaternion)
+    return grasp_record(
+        request_id, scene_revision, translation, quaternion,
+        stamp_ns=int(stamp_ns))
 
 
 def pose_segment_message(name, target_position, target_quaternion,
@@ -475,7 +483,7 @@ class TypedDriverAdapter:
                           surface_message, inner_size, geometry_hash,
                           map_revision, start_tcp, start_joints, grasp,
                           container_transform, excluded_ids=(),
-                          timeout_sec=30.0):
+                          box_id="", generation=0, timeout_sec=30.0):
         """SelectPlacePathV2; the mapper's surface message rides verbatim."""
         from luggage_msgs.srv import SelectPlacePathV2
         source, target, translation, quaternion = container_transform
@@ -501,6 +509,8 @@ class TypedDriverAdapter:
         request.container_stamp_ns = 0
         request.container_stamp_is_null = True
         request.excluded_ids = [str(v) for v in excluded_ids]
+        request.box_id = str(box_id or "")
+        request.generation = int(generation or 0)
         return self._call(self._select, request, timeout_sec)
 
     # -- probe ---------------------------------------------------------------

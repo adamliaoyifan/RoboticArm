@@ -372,7 +372,8 @@ class VacuumControllerNode(Node):
     # ------------------------------------------------------------------
 
     def _handle_command_v2(self, request, response):
-        from luggage_planning.attachment_frame_adapters import handle_vacuum_command_v2
+        from luggage_planning.attachment_frame_adapters import (
+            bound_attachment_scene_revision, handle_vacuum_command_v2)
         from luggage_planning.atlas_runtime import compute_scene_tf_hash
         from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
         if getattr(self, "_frame_runtime", None) is not None:
@@ -388,8 +389,18 @@ class VacuumControllerNode(Node):
                 response.success = False
                 response.message = "%s: %s" % (error.code, error.field)
                 return response
-        path = resolve_scene_tf_config_path(None)
-        revision = compute_scene_tf_hash(path)
+        # Bind the freeze to the launch-measured identity when the v2
+        # runtime is on. Hashing the default scene file here would stamp
+        # the tool with scene_tf.yaml.example (the atlas example
+        # scene_revision) while the driver stamps the detection with the
+        # live deploy scene.
+        runtime = getattr(self, "_frame_runtime", None)
+        identity = None if runtime is None else runtime.identity
+        fallback = ""
+        if identity is None:
+            path = resolve_scene_tf_config_path(None)
+            fallback = compute_scene_tf_hash(path)
+        revision = bound_attachment_scene_revision(identity, fallback)
         generation = int(self._identity[1] or 0)
 
         def resolve_tool(stamp_ns):

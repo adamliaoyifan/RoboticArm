@@ -1925,6 +1925,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 trial.vac_attach = vac_ok
                 trial.extras["vac_attach"] = vac_msg
                 if not vac_ok:
+                    revision_dump = getattr(
+                        self, "_last_vacuum_attach_evidence", None)
+                    if revision_dump:
+                        trial.extras["vacuum_attach_revisions"] = revision_dump
                     trial.fail_code = "VACUUM_ATTACH"
                     return None
                 # [ST09-I S5.7-6 评审点 1] a new attach STARTS a cycle:

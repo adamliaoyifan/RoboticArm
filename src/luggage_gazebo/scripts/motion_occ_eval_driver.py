@@ -412,6 +412,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         grasp = dict(grasp)
         grasp["request_id"] = request_id
         self._frame_grasp = grasp
+        box_id = str(grasp.get("box_id") or "")
+        generation = int(grasp.get("generation") or 0)
         probe_stats = {"mode": "on", "probed": 0, "ik_reject": 0,
                        "fraction_reject": 0, "unavailable": 0, "sec": 0.0,
                        "excluded": []}
@@ -437,7 +439,9 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                     start_joints=start_joints,
                     grasp=grasp,
                     container_transform=container_transform,
-                    excluded_ids=excluded)
+                    excluded_ids=excluded,
+                    box_id=box_id,
+                    generation=generation)
             except ContractError as error:
                 trial.fail_code = trial.fail_code or error.code
                 trial.extras["selector_error"] = "%s: %s" % (
@@ -450,6 +454,19 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 trial.extras["selector_error"] = (
                     selection.reason_code if selection else "timeout")
                 trial.extras["probe"] = probe_stats
+                rows = (self._rows_from_selection(selection)
+                        if selection is not None else [])
+                invalidation = next(
+                    (row for row in rows
+                     if isinstance(row, dict) and "record_stamp_ns" in row),
+                    None)
+                if invalidation is not None:
+                    trial.extras["attachment_invalidation"] = invalidation
+                self._dump_selector(
+                    trial, [], rows, None, trial.extras["selector_error"],
+                    (self._surface_from_selection(selection)
+                     if selection is not None else {}),
+                    probe=probe_stats)
                 return None, None
             if getattr(self._args, "place_probe", "on") != "on":
                 probe_ok = True

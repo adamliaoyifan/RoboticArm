@@ -506,14 +506,19 @@ class RouteProducer(object):
 
     def _attachment(self, request, now_ns):
         """Latest valid measured record for this request, or a named reason."""
-        provider = self.attachment_provider
-        expire = getattr(provider, "expire_stale", None)
-        if expire is not None:
-            expire(str(request["request_id"]), now_ns)
-        try:
-            return provider.latest_record(str(request["request_id"])), None
-        except (ContractViolation, LookupError, ValueError) as exc:
-            return None, _named_reason(exc)
+        record, reason, evidence = admit_attachment_for_route(
+            self.attachment_provider, request, now_ns)
+        self.last_attachment_evidence = evidence
+        return record, reason
+
+    def _fail_attachment(self, reason, rows):
+        """Attachment refusal plus the invalidation row the selector dumps."""
+        evidence = getattr(self, "last_attachment_evidence", None)
+        if evidence:
+            row = dict(evidence)
+            row["reason"] = str(reason)
+            rows = [row] + list(rows)
+        return self._fail(reason, rows)
 
     def _seed_candidates(self, start_q):
         seeds = [tuple(float(v) for v in start_q), tuple(TOOL_DOWN_SEED_Q)]
@@ -637,7 +642,7 @@ class RouteProducer(object):
         attachment, attachment_reason = self._attachment(
             request, self._clock_ns())
         if attachment is None:
-            return self._fail(attachment_reason, rows)
+            return self._fail_attachment(attachment_reason, rows)
 
         start_q = tuple(float(v) for v in request["start_joints"])
         last_reason = "NO_FEASIBLE_ROUTE"
@@ -2247,10 +2252,140 @@ def certify_unloaded_legs(*, edges, snapshot, request_id, route_id, purpose,
     return result, route
 
 
+def _live_count(provider) -> int:
+    counter = getattr(provider, "live_count", None)
+    if callable(counter):
+        return int(counter())
+    records = getattr(provider, "_records", None)
+    if not isinstance(records, dict):
+        return 0
+    from st09_contracts.attachment import AttachmentValidity
+    return sum(
+        1 for record in records.values()
+        if getattr(record, "validity", None) is AttachmentValidity.VALID)
+
+
+def _record_snapshot(record):
+    """Identity of the record admission saw, before expiry replaces it."""
+    if record is None or not hasattr(record, "acquisition_stamp_ns"):
+        return None
+    digest = getattr(record, "digest", None)
+    return {
+        "record_stamp_ns": int(record.acquisition_stamp_ns),
+        "box_id": str(getattr(record, "box_id", "") or ""),
+        "attachment_digest": str(digest()) if callable(digest) else "",
+        "attachment_incarnation": int(
+            getattr(record, "attachment_incarnation", 0) or 0),
+    }
+
+
+def attachment_invalidation_evidence(snapshot, *, now_ns, records_before,
+                                     records_after, generation,
+                                     invalidation_reason="",
+                                     request_box_id="",
+                                     request_generation=0):
+    """Selector row: why the frozen attach was or was not still live."""
+    from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
+    stamp = None if snapshot is None else int(snapshot["record_stamp_ns"])
+    age = None if stamp is None else int(now_ns) - stamp
+    return {
+        "record_stamp_ns": stamp,
+        "now_stamp_ns": int(now_ns),
+        "age_ns": age,
+        "stale_window_ns": int(ATTACHMENT_MAX_AGE_NS),
+        "box_id": "" if snapshot is None else str(snapshot["box_id"]),
+        "generation": None if generation is None else int(generation),
+        "attachment_digest": (
+            "" if snapshot is None else str(snapshot["attachment_digest"])),
+        "attachment_incarnation": (
+            None if snapshot is None else int(
+                snapshot["attachment_incarnation"])),
+        "records_before": int(records_before),
+        "records_after": int(records_after),
+        "invalidation_reason": str(invalidation_reason or ""),
+        "request_box_id": str(request_box_id or ""),
+        "request_generation": int(request_generation or 0),
+    }
+
+
+def _attachment_identity_reason(record, request, stored_generation):
+    """Refuse a live record whose box or generation is not this select."""
+    from st09_contracts.attachment import AttachmentValidity
+    if getattr(record, "validity", None) is not AttachmentValidity.VALID:
+        return None
+    if not hasattr(record, "box_id"):
+        return None
+    wanted_box = str(request.get("box_id") or "")
+    if wanted_box and wanted_box != str(record.box_id):
+        return "ATTACHMENT_REQUEST_MISMATCH"
+    wanted_generation = int(request.get("generation") or 0)
+    if not wanted_generation:
+        return None
+    if stored_generation is None or int(stored_generation) != wanted_generation:
+        return "ATTACHMENT_REQUEST_MISMATCH"
+    return None
+
+
+def admit_attachment_for_route(provider, request, now_ns):
+    """Admit the frozen attach for one select.
+
+    Returns ``(record, reason, evidence)``. A zero stamp is
+    ``STAMP_INVALID`` and is not a live record. A box_id or generation
+    that disagrees with the frozen record is
+    ``ATTACHMENT_REQUEST_MISMATCH``. Expiry still surfaces as
+    ``ATTACHMENT_MISSING``, with the age fields on ``evidence``.
+    """
+    from st09_contracts.attachment import AttachmentValidity
+    from st09_contracts.reasons import Reason
+
+    request_id = str(request["request_id"])
+    now_ns = int(now_ns)
+    record_for = getattr(provider, "record_for", None)
+    prior = record_for(request_id) if callable(record_for) else None
+    snapshot = _record_snapshot(prior)
+    before = _live_count(provider)
+    generation_for = getattr(provider, "generation_for", None)
+    generation = (
+        generation_for(request_id) if callable(generation_for) else None)
+    expire = getattr(provider, "expire_stale", None)
+    if callable(expire):
+        expire(request_id, now_ns)
+    after_record = record_for(request_id) if callable(record_for) else None
+    after = _live_count(provider)
+    invalidation = ""
+    if after_record is not None:
+        invalidation = str(
+            getattr(after_record, "invalidation_reason", "") or "")
+    evidence = attachment_invalidation_evidence(
+        snapshot, now_ns=now_ns, records_before=before,
+        records_after=after, generation=generation,
+        invalidation_reason=invalidation,
+        request_box_id=str(request.get("box_id") or ""),
+        request_generation=int(request.get("generation") or 0))
+    if invalidation == Reason.STAMP_INVALID.value:
+        evidence["reason"] = Reason.STAMP_INVALID.value
+        return None, Reason.STAMP_INVALID.value, evidence
+    if (after_record is not None and getattr(
+            after_record, "validity", None) is AttachmentValidity.VALID):
+        mismatch = _attachment_identity_reason(
+            after_record, request, generation)
+        if mismatch:
+            evidence["reason"] = mismatch
+            evidence["invalidation_reason"] = mismatch
+            return None, mismatch, evidence
+    try:
+        return provider.latest_record(request_id), None, evidence
+    except (ContractViolation, LookupError, ValueError) as exc:
+        reason = _named_reason(exc)
+        evidence["reason"] = reason
+        return None, reason, evidence
+
+
 def register_attach_from_request(provider, request: Mapping,
                                  *, box_wdh: Sequence[float],
                                  cargo_id: str = "", box_id: str = "",
                                  cycle_id: str = "",
+                                 generation: Optional[int] = None,
                                  source_method: str =
                                  "v2_grasp_contract_attach_confirmed",
                                  ) -> None:
@@ -2293,3 +2428,6 @@ def register_attach_from_request(provider, request: Mapping,
         box_id=str(box_id or request["request_id"]),
         cycle_id=str(cycle_id or request["request_id"]),
     )
+    bind = getattr(provider, "bind_generation", None)
+    if callable(bind):
+        bind(str(request["request_id"]), generation)

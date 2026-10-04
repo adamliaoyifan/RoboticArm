@@ -42,6 +42,7 @@ from luggage_planning.moveit_validity_adapter import (  # noqa: E402
 from luggage_planning.reachable_graph import RouteGraph  # noqa: E402
 from luggage_planning.route_producer import (  # noqa: E402
     RouteProducer,
+    admit_attachment_for_route,
     candidate_from_slot,
     leg_records,
     register_attach_from_request,
@@ -245,6 +246,84 @@ class TestRegisterAttach:
         again = provider.latest_record("req-i-1")
         assert again.digest() == first.digest()
         assert again.attachment_incarnation == first.attachment_incarnation
+
+
+class TestAttachmentStampAdmission:
+
+    def test_zero_stamp_is_not_a_live_attachment(self):
+        producer, clock = build_producer()
+        request = make_request()
+        request["grasp"]["stamp_ns"] = 0
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"], box_id="pickup_box_0001",
+            generation=3)
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["reason_code"] == "STAMP_INVALID"
+        row = result["rows"][0]
+        assert row["record_stamp_ns"] == 0
+        assert row["now_stamp_ns"] == clock()
+        assert row["age_ns"] == clock()
+        assert row["stale_window_ns"] == 10_000_000_000
+        assert row["box_id"] == "pickup_box_0001"
+        assert row["generation"] == 3
+        assert row["attachment_incarnation"] == 0
+        assert row["attachment_digest"]
+        assert row["records_before"] == 1
+        assert row["records_after"] == 0
+        try:
+            producer.attachment_provider.latest_record(request["request_id"])
+            stayed_live = True
+        except ContractViolation:
+            stayed_live = False
+        assert not stayed_live
+
+    def test_measured_attach_stamp_is_not_expired_immediately(self):
+        producer, clock = build_producer()
+        request = make_request()
+        request["grasp"]["stamp_ns"] = clock()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"], box_id="pickup_box_0001",
+            generation=3)
+        record, reason, evidence = admit_attachment_for_route(
+            producer.attachment_provider, request, clock())
+        assert reason is None, evidence
+        assert record is not None
+        assert record.acquisition_stamp_ns == clock()
+        assert evidence["age_ns"] == 0
+        assert evidence["records_before"] == 1
+        assert evidence["records_after"] == 1
+        assert evidence["invalidation_reason"] == ""
+        assert evidence["box_id"] == "pickup_box_0001"
+        assert evidence["generation"] == 3
+
+    def test_box_id_and_generation_mismatch_are_named(self):
+        producer, _clock = build_producer()
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"], box_id="pickup_box_0001",
+            generation=4)
+        request["box_id"] = "pickup_box_0002"
+        request["generation"] = 4
+        mismatched_box = producer.plan_place_route(request)
+        assert mismatched_box["reason_code"] == "ATTACHMENT_REQUEST_MISMATCH"
+        box_row = mismatched_box["rows"][0]
+        assert box_row["box_id"] == "pickup_box_0001"
+        assert box_row["request_box_id"] == "pickup_box_0002"
+        assert box_row["generation"] == 4
+        assert box_row["records_before"] == 1
+        assert box_row["records_after"] == 1
+
+        request["box_id"] = "pickup_box_0001"
+        request["generation"] = 9
+        mismatched_generation = producer.plan_place_route(request)
+        assert (mismatched_generation["reason_code"]
+                == "ATTACHMENT_REQUEST_MISMATCH")
+        assert mismatched_generation["rows"][0]["request_generation"] == 9
+        assert mismatched_generation["rows"][0]["generation"] == 4
 
 
 class TestPlanPlaceRoute:
