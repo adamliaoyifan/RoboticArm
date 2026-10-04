@@ -19,9 +19,9 @@ schema: luggage.site_poses.sim/1
 
 identity:
   # md5(scene_tf_deploy.yaml) via scene_revision_from_path. Recomputed
-  # after pickup_platform was disabled (ground spawn). Joint values were
+  # after pickup_platform height changed 0.56 -> 0.66. Joint values were
   # not re-solved: robot base and the camera target (1, 0, 1.9) are unchanged.
-  scene_revision: fb0dfdc1565a208edb5b9ea61c257754
+  scene_revision: 35f15c4ceb0f2a938600da9b2c52df7a
   joint_names: [elfin_joint1, elfin_joint2, elfin_joint3,
                 elfin_joint4, elfin_joint5, elfin_joint6]
   # Declared but deliberately EMPTY: the launch-time runtime identity's
@@ -41,7 +41,7 @@ poses:
     calibration_status: synthetic
     values: [-1.2500, -1.7466, -0.9974, -1.9153, 1.7714, 1.8610]
     acquisition_stamp_ns: 1791040663401734400
-    scene_revision_at_capture: fb0dfdc1565a208edb5b9ea61c257754
+    scene_revision_at_capture: 35f15c4ceb0f2a938600da9b2c52df7a
     provenance:
       source: synthetic_fixture
   portal_observe_sim:
@@ -49,7 +49,7 @@ poses:
     calibration_status: synthetic
     values: [0.7412, -1.8043, -1.0461, -1.8668, 1.5749, -2.4370]
     acquisition_stamp_ns: 1791040663401734400
-    scene_revision_at_capture: fb0dfdc1565a208edb5b9ea61c257754
+    scene_revision_at_capture: 35f15c4ceb0f2a938600da9b2c52df7a
     provenance:
       source: synthetic_fixture
 

@@ -262,11 +262,13 @@ def test_checked_in_sim_deploy_yaml_validates_against_deploy_scene():
     scene_md5 = hashlib.md5(
         open(scene_path, "rb").read()).hexdigest()
     assert data["schema"] == sps.SIM_SITE_POSE_SCHEMA
-    report = validate(data, schema=sps.SIM_SITE_POSE_SCHEMA)
+    # Sim poses pin md5(scene_tf_deploy.yaml). That file is the gazebo
+    # scene, not the hardware cell hash in SCENE_REVISION.
+    report = sps.validate_site_poses(
+        data, expected_scene_revision=scene_md5,
+        schema=sps.SIM_SITE_POSE_SCHEMA)
     assert report["ok"], report["issues"]
-    # the identity pins the deploy scene, measured not hardcoded
-    assert data["identity"]["scene_revision"] == scene_md5 == (
-        SCENE_REVISION)
+    assert data["identity"]["scene_revision"] == scene_md5
     # the named-residual discipline: urdf declared but EMPTY
     assert data["identity"]["urdf_sha256"] == ""
     assert data["identity"]["srdf_sha256"]

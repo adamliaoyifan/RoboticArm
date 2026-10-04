@@ -98,22 +98,23 @@ static_transforms:
     translation: [-0.745, -0.27, 1.30]
     rotation_rpy: [0.0, 0.0, 0.0]
 
-# Pickup platform is disabled in this deploy sim scene. Suitcases spawn on
-# the airport_loading ground plane (world z=0). The robot pedestal above
-# stays enabled; it is the arm base, not the suitcase support.
-# Model origin at bottom-center (same convention as robot_pedestal).
+# Pickup platform stays. Top surface is size.z above the bottom-center
+# origin, so [1, 1, 0.66] at translation z=0 puts the suitcase support
+# at world z=0.66. The robot pedestal stays 0.86 m; it is the arm base.
+# Gazebo collision/visual in models/pickup_platform/model.sdf must use
+# the same height (box center at z=0.33). The observe camera stays at
+# world z=1.9.
 pickup_platform:
-  enabled: false
-  size: [1.0, 1.0, 0.86]
-  translation: [1.0, 0.0, 0.0]  # unused while disabled; kept as the old slab pose
+  enabled: true
+  size: [1.0, 1.0, 0.66]
+  translation: [1.0, 0.0, 0.0]
   rotation_rpy: [0.0, 0.0, 0.0]
   gazebo_model: pickup_platform
 
-# Pickup source is world-frame while the platform is disabled.
-# pickup_box_pose() treats translation.z as the box bottom, then adds height/2.
+# Local to pickup_platform_top. z=0 means the box bottom sits on the top.
 pickup_source:
-  parent: world
-  translation: [1.0, 0.0, 0.0]
+  parent: pickup_platform_top
+  translation: [0.0, 0.0, 0.0]
   rotation_rpy: [0.0, 0.0, 0.0]
 
 gazebo:
