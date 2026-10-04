@@ -301,6 +301,35 @@ Open questions:
 
 Box 1's retreat delta (0.009924 rad) also passed with almost no margin.
 
+### G3 fix generation 2: offline T3 (2026-10-04)
+
+Bundle: `g3_three_box_run01_20261004/t3/` (`manifest.json`,
+`ik_target_t3.json`). Script: `scripts/st09_i/g3_ik_target_t3.py`, which
+replays the logged targets against the live `atlas_runtime_deploy_sim`
+atlas.
+
+- **The 0.24–0.27 m residual was a logging artifact.**
+  `RouteProducer._refine_to` always retries with `TOOL_DOWN_SEED_Q` and
+  returns the last attempt's info. So every seed label logged the
+  tool-down residual.
+- **Real residuals.** Refining from the atlas seeds leaves 8 mm on slot 66
+  and 34 mm on slot 65, against a 2 mm tolerance. Seed FK lands 5–7 cm from
+  the target, inside the same 0.15 m atlas cell. The target math is
+  consistent: not H1, H2, or H3.
+- **H4: the targets are genuinely unreachable.** 300 random seeds per
+  target solve 0 times, with a best residual equal to the atlas-seed
+  residual. The control slot solves about 1 time in 3. Sweeping y puts the
+  tool-down reach boundary at about 1.69 m from the base, and slot 66 is at
+  1.70 m.
+- **Why the selector chose them.** The 0.15 m cell around the boundary is
+  labeled REACHABLE, and opening-distance-first ordering puts these
+  boundary slots first.
+- **Yaw is not the cause.** Placement uses the node's default 4 yaws; the
+  catalog is not installed.
+
+Per the stop rule, no behavior was changed. The decision is posted to discuss
+`2026-10-04_1710_st09-i-g3-fix-g2.md`.
+
 
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
 - G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 Run01 was blocked on box 2 at place selection (`PLANNING_BUDGET_EXHAUSTED`); a joint decision is pending in discuss `2026-10-04_1712_st09-i-g3-box2-place-selection.md`.
