@@ -65,6 +65,10 @@ def test_reference_classes_label_generated_cases_only():
     assert cases[1]["class"] == "undetermined"
     assert cases[2]["class"] == "invalid"
     assert cases[3]["class"] == "regression"
+    assert module.case_is_scored(cases[0])
+    assert not module.case_is_scored(cases[1])
+    assert module.case_is_scored(cases[2])
+    assert module.case_is_scored(cases[3])
 
 
 def test_historical_matrix_manifest_keeps_its_original_revision():

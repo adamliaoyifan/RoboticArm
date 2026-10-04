@@ -1032,6 +1032,17 @@ def apply_reference_classes(cases, classes):
             len(missing), missing[0]))
 
 
+def case_is_scored(case):
+    """Reference-undetermined generated cases are not an acceptance sample.
+
+    The reference search already failed them. They are excluded from the
+    Wilson denominator, and running the 10 s planner on them does not
+    change the gate.
+    """
+    return not (case.get("kind") == "generated"
+                and case.get("class") == "undetermined")
+
+
 def score_frozen(args):
     """Baseline and state on the frozen reference labels.
 
@@ -1084,6 +1095,8 @@ def score_frozen(args):
             results.append(row)
 
         for index, case in enumerate(cases):
+            if not case_is_scored(case):
+                continue
             for atlas_on in (True, False):
                 reps = args.reps if case["split"] == "held_out" else 1
                 for rep in range(reps):
