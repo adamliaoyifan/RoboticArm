@@ -376,6 +376,36 @@ class TestGoalRefineEvidence:
         assert info["pos_err_m"] == 0.008
         assert [item["pos_err_m"] for item in info["fallback"]] == [0.24]
 
+    def test_anchor_seed_precedes_atlas_and_does_not_fall_back(self):
+        producer, _clock = build_producer()
+        anchor = (0.2, -0.2, 0.2, -0.2, 0.2, -0.2)
+        atlas = (0.4, -0.4, 0.4, -0.4, 0.4, -0.4)
+        calls = []
+
+        def refine(_position, _quaternion, seed):
+            key = tuple(float(v) for v in seed)
+            calls.append(key)
+            if key == anchor:
+                return None, {"pos_err_m": 0.05, "rot_err_rad": 0.0}
+            return key, {"pos_err_m": 0.0, "rot_err_rad": 0.0}
+
+        producer.refine = refine
+        seeds = producer._goal_seed_fn(
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
+            anchor_qs=[anchor], atlas_seeds=[atlas])
+        target = type("Target", (), {})()
+        target.position = (0.0, 0.0, 0.5)
+        target.quaternion_xyzw = (0.0, 1.0, 0.0, 0.0)
+        seeds(target)
+        record = producer.last_goal_refine[-1]
+        labels = [item["seed"] for item in record["attempts"]]
+        assert labels[:3] == ["anchor", "atlas", "tool_down"]
+        assert record["attempts"][0]["ok"] is False
+        assert record["attempts"][0]["pos_err_m"] == 0.05
+        assert calls[0] == anchor
+        # The anchor attempt is one call. Tool-down is not substituted for it.
+        assert calls.count(anchor) == 1
+
 
 MISS_SEED = (0.9, -0.9, 0.9, -0.9, 0.9, -0.9)
 GOOD_SEED = tuple(START_Q)

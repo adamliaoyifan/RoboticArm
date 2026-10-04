@@ -563,6 +563,24 @@ class RouteProducer(object):
             info = dict(info, fallback=fallback)
         return None, info or {"reason": "ik_unavailable"}
 
+    def _refine_exact(self, position, orientation, seed_q):
+        """Refine one seed only. A miss stays a miss.
+
+        DESCEND anchor seeds use this so a tool-down fallback cannot
+        replace the hover branch with the opposite heading.
+        """
+        if self.refine is None:
+            return None, {"reason": "no_refine"}
+        try:
+            q, info = self.refine(tuple(position), tuple(orientation),
+                                  list(seed_q))
+        except Exception:  # noqa: BLE001 - one seed must not abort the set
+            return None, {"reason": "ik_unavailable"}
+        info = info if isinstance(info, dict) else {}
+        if q is None:
+            return None, info or {"reason": "ik_unavailable"}
+        return tuple(q), info
+
     def _atlas_seed_check(self, targets, atlas_seeds):
         """Refine each atlas seed onto each exact TCP target (offline IK).
 
@@ -905,10 +923,10 @@ class RouteProducer(object):
                     refine=self.refine, urdf=self.urdf,
                     goal_seeds=self._goal_seed_fn(
                         start_q,
-                        branch_q=next(
-                            (node.q for node in reversed(
-                                self.graph.nodes_by_region("slot_upper"))),
-                            None),
+                        anchor_qs=[
+                            node.q for node in
+                            self.graph.nodes_by_region("slot_upper")
+                            if str(node.load_state) == "carrying"],
                         atlas_seeds=atlas_seeds),
                     tcp_path=self.tcp_path)
                 targets = self._expand_targets(
@@ -1999,31 +2017,49 @@ class RouteProducer(object):
             self._box_target(candidate, attachment, request), request)
         return expand_place_targets(box_target, attachment)
 
-    def _goal_seed_fn(self, start_q, branch_q=None, atlas_seeds=None):
+    def _goal_seed_fn(self, start_q, branch_q=None, atlas_seeds=None,
+                      anchor_qs=None):
         """Goal seeds from the offline refine (B requires injected seeds).
 
-        Atlas contact seeds come first (the atlas' own sampled
-        solutions for this cell — the best-informed branch), then the
-        slot-upper anchor branch so the descend edge stays on one IK
-        branch (a branch-crossing descend blows the frozen
-        joint-excursion bound); the tool-down prior and the live-start
-        branch follow as alternatives. A seed is never a verdict — the
-        bounded supplementation and certifier decide.
+        Each slot_upper hover q is refined onto the exact target first,
+        and that attempt does not fall back to the tool-down seed. Those
+        solutions are the same-heading, same-branch descend goals. Atlas
+        seeds, the tool-down prior, and the live start remain as
+        alternatives for a branch whose own edge collides. Pair order
+        (same heading, then same branch, pi and cross-elbow last) is
+        applied by the route search; this function only makes the
+        continuous goal exist. A seed is never a verdict.
         """
         from luggage_planning.place_targets import GoalSeed
 
-        seeds_to_try = [("atlas", tuple(q)) for q in (atlas_seeds or [])]
-        seeds_to_try += ([("branch", branch_q)] if branch_q is not None else [])
-        seeds_to_try += [("tool_down", TOOL_DOWN_SEED_Q),
-                         ("start", start_q)]
+        anchors = []
+        seen = set()
+        for q in list(anchor_qs or []):
+            key = tuple(float(v) for v in q)
+            if key not in seen:
+                anchors.append(("anchor", key))
+                seen.add(key)
+        if branch_q is not None:
+            key = tuple(float(v) for v in branch_q)
+            if key not in seen:
+                anchors.append(("anchor", key))
+                seen.add(key)
+        alternatives = [("atlas", tuple(float(v) for v in q))
+                        for q in (atlas_seeds or [])]
+        alternatives += [("tool_down", tuple(float(v) for v in TOOL_DOWN_SEED_Q)),
+                         ("start", tuple(float(v) for v in start_q))]
         self.last_goal_refine = []
 
         def goal_seeds(target):
             seeds = []
             attempts = []
-            for label, seed in seeds_to_try:
-                q, info = self._refine_to(
-                    target.position, target.quaternion_xyzw, seed)
+            for label, seed in anchors + alternatives:
+                if label == "anchor":
+                    q, info = self._refine_exact(
+                        target.position, target.quaternion_xyzw, seed)
+                else:
+                    q, info = self._refine_to(
+                        target.position, target.quaternion_xyzw, seed)
                 info = info if isinstance(info, dict) else {}
                 attempts.append({
                     "seed": label,

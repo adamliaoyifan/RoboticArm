@@ -36,6 +36,7 @@ from luggage_planning.grid_path_search import (  # noqa: E402
     RouteHop,
     RoutePlanningError,
     RouteSearch,
+    descend_pair_rank,
     map_edge_failure,
     route_bearing_sort_key,
 )
@@ -628,6 +629,55 @@ class TestFailureTaxonomy:
         error = RoutePlanningError("PLANNING_BUDGET_EXHAUSTED", {"x": 1})
         assert error.detail == {"x": 1}
         assert error.code == "PLANNING_BUDGET_EXHAUSTED"
+
+
+# Run02 box 2 slot 64. The live graph's first DESCEND joined the hover to
+# the heading-pi goal (joint 6 delta pi, fraction 0.1). The same-heading
+# goal is the one offline IK reaches from that hover.
+SLOT64_UPPER_A = (0.987648, -2.814621, -0.239051, -1.65526, 1.565548, 0.987631)
+SLOT64_UPPER_B = (3.913403, -0.327031, 0.239368, -1.487647, -1.575175, 0.771786)
+SLOT64_GOAL_A = (0.9876, -2.8086, -0.3882, -1.5122, 1.5655, 0.9876)
+SLOT64_GOAL_B = (3.9134, -0.3330, 0.3883, -1.6306, -1.5752, 0.7718)
+SLOT64_GOAL_PI = (0.986457, -2.808695, -0.386532, -1.520632, 1.576033, 4.128033)
+
+
+class TestDescendPairOrder:
+    """DESCEND tries the continuous hover branch before a heading-pi goal."""
+
+    def test_rank_matches_the_run02_pairs(self):
+        assert descend_pair_rank(SLOT64_UPPER_A, SLOT64_GOAL_A)[0] == 0
+        assert descend_pair_rank(SLOT64_UPPER_B, SLOT64_GOAL_B)[0] == 0
+        assert descend_pair_rank(SLOT64_UPPER_A, SLOT64_GOAL_PI)[0] == 2
+        assert descend_pair_rank(SLOT64_UPPER_A, SLOT64_GOAL_B)[0] == 1
+
+    def test_first_descend_is_same_heading_same_branch(self):
+        graph = RouteGraph(static_identity="static-test")
+        _node(graph, Q_START, "home")
+        _node(graph, Q_PORTAL, "portal")
+        _node(graph, tuple(v + 0.01 for v in SLOT64_UPPER_A), "slot_approach",
+              tcp=(-1.28, 1.06, 1.05))
+        # The cross-elbow hover is registered first. Pair rank must still
+        # descend from the hover that matches the goal.
+        upper_b = _node(graph, SLOT64_UPPER_B, "slot_upper", tcp=(-1.28, 1.06, 0.955))
+        upper_a = _node(graph, SLOT64_UPPER_A, "slot_upper", tcp=(-1.28, 1.06, 0.955))
+        pi_goal = _node(graph, SLOT64_GOAL_PI, "slot", ik_family="pi",
+                        tcp=(-1.28, 1.06, 0.858))
+        good = _node(graph, SLOT64_GOAL_A, "slot", ik_family="same",
+                     tcp=(-1.28, 1.06, 0.858))
+        _node(graph, SLOT64_GOAL_PI, "slot", LoadState.UNLOADED, "pi")
+        _node(graph, SLOT64_GOAL_A, "slot", LoadState.UNLOADED, "same")
+        _node(graph, Q_HOME, "home", LoadState.UNLOADED)
+        _node(graph, Q_START, "exit", LoadState.UNLOADED)
+        search, builder, _budget = _search(graph)
+        start = [n for n in graph.nodes.values()
+                 if n.region == "home" and n.load_state is LoadState.CARRYING][0]
+        _entry, _retreat, goal = search.best_full_route(
+            start.node_id, [pi_goal, good])
+        first = next(call for call in builder.calls if call[2] == "DESCEND")
+        assert first[0] == upper_a.node_id
+        assert first[1] == good.node_id
+        assert goal.node_id == good.node_id
+        assert upper_b.node_id != first[0]
 
 
 class TestSectionARemoved(object):

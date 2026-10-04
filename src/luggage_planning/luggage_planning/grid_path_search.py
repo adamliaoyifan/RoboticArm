@@ -195,6 +195,40 @@ def hops_from_table(table, load_state):
                  for region, edge_class in table)
 
 
+def _wrap_rad(delta):
+    return (float(delta) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+#: Between a short same-branch descend (~0.15 rad) and a pi heading or
+#: wrist flip (~3.14 rad). Pairs inside this band are the same branch.
+DESCEND_BRANCH_TOL_RAD = 1.0
+
+
+def descend_pair_rank(from_q, to_q):
+    """Order one DESCEND pair. Lower is tried first.
+
+    Tier 0 is same tool heading and same arm branch. Tier 1 is same
+    heading on another elbow or wrist branch. Tier 2 is the same arm
+    branch with joint 6 flipped by about pi. Tier 3 is both. Wrapped
+    joint travel breaks ties inside a tier. Opposite-branch goals stay
+    in the set; they are only deferred.
+    """
+    dj = [_wrap_rad(b - a) for a, b in zip(from_q, to_q)]
+    if len(dj) < 6:
+        return (3, float("inf"))
+    same_heading = abs(dj[5]) <= DESCEND_BRANCH_TOL_RAD
+    same_branch = max(abs(d) for d in dj[:5]) <= DESCEND_BRANCH_TOL_RAD
+    if same_heading and same_branch:
+        tier = 0
+    elif same_heading:
+        tier = 1
+    elif same_branch:
+        tier = 2
+    else:
+        tier = 3
+    return (tier, sum(abs(d) for d in dj))
+
+
 @dataclass(frozen=True)
 class RouteChain:
     """A resolved chain of verified edges between concrete q-nodes."""
@@ -324,6 +358,31 @@ class RouteSearch(object):
         return tuple(node for node in self.graph.nodes_by_region(hop.to_region)
                      if str(node.load_state) == hop.load_state)
 
+    def _order_goals_for_descend(self, goal_nodes):
+        """Try the slot goal that continues a hover branch before the rest."""
+        goals = tuple(goal_nodes)
+        if not goals:
+            return goals
+        sources = [node for node in self.graph.nodes_by_region("slot_upper")
+                   if str(node.load_state) == str(goals[0].load_state)]
+        if not sources:
+            return goals
+
+        def key(goal):
+            return min(descend_pair_rank(source.q, goal.q) for source in sources)
+
+        return tuple(sorted(goals, key=key))
+
+    def _ordered_destinations(self, hop, goal_nodes, final, frontier, rest):
+        dests = list(self._destinations(hop, goal_nodes, final))
+        if hop.edge_class == "DESCEND":
+            dests.sort(key=lambda node: descend_pair_rank(frontier.q, node.q))
+        elif rest and rest[0].edge_class == "DESCEND" and goal_nodes:
+            # The hover tried first is the one this goal can descend from.
+            dests.sort(key=lambda node: min(
+                descend_pair_rank(node.q, goal.q) for goal in goal_nodes))
+        return dests
+
     def _chain_from(self, frontier, hops, goal_nodes, acc_edges, acc_nodes,
                      scene=None):
         if not hops:
@@ -340,7 +399,8 @@ class RouteSearch(object):
                 joint_travel_rad=travel)
         hop, rest = hops[0], hops[1:]
         final = not rest and bool(goal_nodes)
-        for destination in self._destinations(hop, goal_nodes, final):
+        for destination in self._ordered_destinations(
+                hop, goal_nodes, final, frontier, rest):
             if destination.node_id == frontier.node_id:
                 continue
             edge = self._edge_for(frontier, destination, hop, scene=scene)
@@ -426,9 +486,14 @@ class RouteSearch(object):
     def best_full_route(self, start_node_id, goal_nodes, *, entry_hops=None,
                         retreat_hops=None, scene_carrying=None,
                         scene_unloaded=None):
-        """First goal (in order) whose entry and retreat both resolve."""
+        """First continuable goal whose entry and retreat both resolve.
+
+        Goal order is descend-pair rank against the hover nodes, not
+        registration order. A heading-pi or cross-elbow slot goal is
+        still tried, after the same-heading same-branch goal.
+        """
         last_error = None
-        for goal in goal_nodes:
+        for goal in self._order_goals_for_descend(goal_nodes):
             try:
                 entry = self.entry_chain(
                     start_node_id, (goal,), hops=entry_hops, scene=scene_carrying)
