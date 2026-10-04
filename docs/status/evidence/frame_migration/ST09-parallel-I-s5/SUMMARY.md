@@ -92,6 +92,88 @@ synthesized for the post-place observation goto.
 | dead-gate repairs en route | (1) PlanningSnapshot had NO scene_revision field — planning_snapshot_from_surface accepted the parameter but never wired it, so every select snapshot read "" and the identity gates were dead (a real request scene always failed IDENTITY_CHANGED; my fault-injection test surfaced it). Field added (default "", excluded from digest()) and wired at both construction sites. (2) camera_to_tcp_transform's literal tcp_path fallback ended in the LINK name — offline_ik urdf raised KeyError('suction_contact_frame') on first use; now derived via urdf.path_to. |
 | verification @5a9ab4b | I live suite 97/0 (includes the new live tests: carry_fault mid-release injection, goto_v2 direct-service certified legs + already_there + named refusal, ensure_cycle_start live verdict). Offline planning/gazebo/description/PD 1202 green; PD 47+2s. Known non-regressions: frame_contracts inventory 18 pending is base-existing (stash-verified; refreshed by the frame verify runner), frame_migration_st09_verify offline requires the frame campaign's runtime sample envelopes (not in this tree). |
 
+## G0 named close-out (2026-10-04, plan docs/plans/st09_i_finish_execution_20261004.md)
+
+Base af71a41 (99948e4 evidence confirmed upstream). Four defects, each
+one repro -> fix -> verify chain, clean commits; untouched surfaces reuse
+the 5a9ab4b-bound results (installed-overlay live runs included — the
+offline/live split below is deliberate).
+
+| item | commit | content | tests |
+|---|---|---|---|
+| G0-1 exit-proof binding | 29af367 | adjudication requires non-empty request/route/cert (`uncertified_exit`), PRESENT vacuum feed (`vacuum_state_missing` — absent is not "not attached"), receive-time freshness 2.0 s mirroring route_producer (`vacuum_state_stale`); void reason recorded in _home_arm notes (`exit_proof_void(...)`); freeze site mints only from an actually-certified route (already-there INHERITS the original proof, never mints/clobbers; empty-cert route freezes nothing); cross-cycle voiding extracted to `_start_new_cycle` (attach site) | 12 new (uncertified/scene/joints/vacuum matrix, new-cycle void, already-there never-mints/inherits, zero-goto through the real _home_arm); focused 48 green |
+| G0-2 goto live tests standalone | ca4ae55 | v1 `_goto_named_pose` bootstrap deleted; every test self-preps via V2 (`_prep_at_pickup_observe` drives or confirms pickup_observe_sim through certified legs / already_there); ONE case carries move -> arrival -> identical-goto already_there (zero legs, nothing promoted) -> certified return | file 3 passed (55 s); each test standalone green (25 s / 46 s) |
+| G0-3 scene gate independence | b1c8c93 | PlanningSnapshot.scene_revision stays out of the digest BY DESIGN; select-boundary negatives added (same geometry_hash+map_revision+grid, other scene on surface or slot -> CALIBRATION_REVISION_MISMATCH inside request_dict, before plan_place_route, zero controller commits) + matching-scene positive; verify (IDENTITY_CHANGED) and admission (GENERATION_CHANGED) negatives cited from test_verify_selected.py | 3 new; test_verify_selected 26 green |
+| G0-4 pending-abort late acceptance | d05c574 | goal-pending abort no longer equates "future not done" with "server did not accept": resolves the handle within the deadline and CANCELS through the shared `_cancel_and_close` (late rejection named `server_rejected`; unresolved goal named `cancel_status=TIMEOUT goal_unresolved`); mid-execution messages byte-identical | 3 new pending-gap negatives; file 7 green (src-prepended import) |
+
+Touched-module runs (once): luggage_gazebo/test 250 passed / 3 skipped /
+152 subtests (skip count matches the 5a9ab4b baseline; E/C untouched).
+Offline unit tests for luggage_planning run with src/luggage_planning
+PREPENDED (the I-suite appends, so the stale install-st09 overlay wins
+otherwise); live stack runs must stay pure-overlay (WRONG_OVERLAY
+otherwise — the smoke03/04 lesson; live carry-fault revalidation moves
+to G1's fresh build, where the new adapter reaches the stack).
+
+Audit 2026-10-04_0008 disposition: finding 1 (v1 bootstrap/order) closed
+by G0-2; finding 2 (empty/already-there exit record) closed by G0-1;
+finding 3 (relocatable freeze, clip resolution) is S6 scope; finding 4
+(fresh non-symlink build, zero skips) is G1 scope.
+
+G0 close state: HEAD d05c574, `git status --porcelain` empty.
+
+## G1 fresh-install isolation re-verification (2026-10-04, 182180a)
+
+Plan step 3 of docs/plans/st09_i_finish_execution_20261004.md. Old
+build/install preserved as build-st09-g0base-99948e4 /
+install-st09-g0base-99948e4 (failure-evidence reuse; nothing deleted).
+Fresh colcon build in a clean env (only /opt/ros/humble sourced, no
+inherited overlay/pydeps PYTHONPATH): 14 packages, 28 s, RC 0, real
+copies (no symlink-install). Core production modules hash-match source
+to install (fresh_install_g1/module_hashes.txt).
+
+I suite from the fresh overlay: run3 **101 passed / 0 skipped /
+0 xfail** (255.6 s). Runs 1-2 each surfaced one face of a latent
+latch-lag family the G0-2 goto reordering exposed (shorter gap between
+the previous file's last integrate and the whole-chain tests):
+(1) route-legs revision check sampled the raw lagging latch (fixed
+8c6b1fc — _fresh_surface discipline, as the loop test already did);
+(2) the graph probe's exercise_compute CAS'd the lagging latch ->
+STALE_MAP_REVISION (fixed 182180a — bounded catch-up vs authoritative
+stats before the CAS; the probe is shared by the A-E graph scenarios).
+Both fixes test/probe-side; install sources unchanged since the build.
+
+Dependencies: A/B/C/C0/D/E/PD 363 passed / 2 skipped with itemized
+skip/fail sets IDENTICAL to the preserved 99948e4 overlay baseline
+(both skips PD test_install_resolution ELFIN_PD_INSTALL_ROOT-conditioned).
+VERIFY_ROOT_DIGEST=1 verify_semantic_offline.sh PASSED (13 s):
+root digest recomputed over 18891 files, cuda from the frozen prefix,
+manifest_match, clip resolved from the isolated install share with the
+source vendor hidden. Evidence: fresh_install_g1/ (logs, hashes,
+proof json).
+
+## G2 single-box campaign (2026-10-04, in progress @ ed93014 + uncommitted detector instrumentation)
+
+Plan step 4. Three runs, each a distinct named blocker; every rerun
+carried new evidence (no blind reruns). Evidence dirs under
+`m3/g2_single_box_*` (each with failure_manifest*.json).
+
+| run | outcome | root cause | fix |
+|---|---|---|---|
+| run1 | GOTO_FAILED @ t+2.6s, goto=MAP_STALE | goto helper read map stats ONCE; producer's fail-closed gate refused | 0ddbe7f: bounded MAP_STALE retry (3x) after an OBSERVABLE revision-quiescence wait (_wait_map_quiescence, two consecutive equal stats reads, 10 s cap, fresh request id per attempt); producer gate untouched |
+| run2 | same signature | deeper: Gazebo /joint_states publishes in controller-registration order [j1,j2,j5,j3,j4,j6]; the driver stored raw positions -> the boot pose (physically AT pickup_observe_sim) compared ~2.77 rad off, already-there (adjudicated BEFORE the map gates) never fired, and the empty boot map (surface_v2 count=1, acquisition stamp 0) refused deterministically; run1's churn theory was wrong (revision was frozen) | ed93014: normalize positions to canonical elfin_joint1..6 AT INGESTION (_on_joint_state), same discipline as the selector's _on_joints; nameless messages keep raw order; 3 unit tests pin the verbatim bag shape |
+| run3 | goto PASSED (already_there); DETECT_FULL_GEOMETRY_REQUIRED at pick authorization | DetectLuggage answers conf=1.00 height_valid=false every attempt: the MEASURED_SUPPORT gate fails. Camera pose CONFIRMED correct (FK replay: camera (1.0,0,1.9), 88.4 deg depression, box centered; S5.2 calibration vindicated). AABB-starvation and backend-downgrade theories REJECTED (support input is the PF-R9 g2 full-view raw-depth deprojection; yolo_world is an alias OF bbox_fill). Remaining unknown: exact-stamp raw join miss vs side-coverage geometry — no telemetry distinguishes them | instrumentation landed in the working tree (UNCOMMITTED/UNTESTED): DetectLuggage response message now carries support=<reason> sides=<coverage> raw=<lookup status> -> next run names the cause |
+
+Run3 world-geometry replay (bag FK): box top 27,855 pts z~1.107
+(0.518x0.375 m footprint), platform 2,625 pts z~0.860, GT box yaw=0.
+Support config for reference: band dz [0.15,0.60], annulus inner 0.03 /
+outer 0.18 m, min 80 pts, min 2 sides x 15 inliers, stride 4.
+
+Known tooling gap before the G2 verdict can be produced:
+frame_migration_st09_extract.py + integration_acceptance.extract_acceptance
+both pin box_count to (2,3); the judge itself is N-box parameterized —
+minimal change is allowing 1 plus focused E-suite tests (no second set
+of physical thresholds).
+
 ## Remaining (S5.7-6 + S5.6 close)
 
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
