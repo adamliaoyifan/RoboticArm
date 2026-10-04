@@ -1492,6 +1492,23 @@ class LuggageDetector(Node):
         box = result.box
         top = box.top
         height_valid = bool(result.height_valid)
+        # [ST09-I G2 instrumentation] the support-fit verdict must be
+        # observable from the service boundary: G2 run3 failed
+        # DETECT_FULL_GEOMETRY_REQUIRED with no recorded distinction
+        # between an exact-stamp raw-depth join miss, an unobservable
+        # support, and an unstable side coverage — one physical run was
+        # burned guessing. The response message carries it into the
+        # driver's trial evidence verbatim.
+        self._last_support_diag = {
+            "reason": str(getattr(result, "reason", "") or ""),
+            "side_coverage": (
+                round(float(getattr(result.support, "side_coverage",
+                                     float("nan"))), 3)
+                if getattr(result, "support", None) is not None else None),
+            "raw_lookup": str(
+                (getattr(self, "_last_raw_lookup", None) or {}).get(
+                    "raw_lookup_status", "n/a")),
+        }
         if height_valid and box.center_xyz is not None:
             center_z = float(box.center_xyz[2])
         else:
@@ -2095,9 +2112,16 @@ class LuggageDetector(Node):
                 "perception", True, confidence, "ok", detected)
             response.luggage = [detected]
             response.success = True
+            # [ST09-I G2 instrumentation] support verdict + raw-depth
+            # join status ride the message into the driver's evidence.
+            diag = getattr(self, "_last_support_diag", None) or {}
             response.message = (
-                "perception estimate (conf=%.2f, height_valid=%s)"
-                % (confidence, detected.height_valid))
+                "perception estimate (conf=%.2f, height_valid=%s, "
+                "support=%s, sides=%s, raw=%s)"
+                % (confidence, detected.height_valid,
+                   diag.get("reason") or "n/a",
+                   diag.get("side_coverage"),
+                   diag.get("raw_lookup") or "n/a"))
             return response
 
         response.message = self._failure_message(self._last_failure_reason)
