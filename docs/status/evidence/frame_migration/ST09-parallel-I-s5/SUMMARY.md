@@ -330,6 +330,45 @@ atlas.
 Per the stop rule, no behavior was changed. The decision is posted to discuss
 `2026-10-04_1710_st09-i-g3-fix-g2.md`.
 
+### G3 Run02 (2026-10-04, at `eade32e`; blocked on box 2 again, new stage)
+
+This run applies the user's choice of A+B:
+
+- A: `_refine_to` reports the requested seed's residual, with the fallback
+  residual alongside.
+- B: seeded slots whose atlas seeds miss the exact target become
+  `ATLAS_SEED_MISS` and are deferred, seedless, to the back of the order.
+
+Tests: `test_route_producer` passes 26/26. In the wider set, 204 pass; the 2
+observation-route failures occur identically at baseline `45756d7`. On the
+real Run01 targets, the control slot passes in 17 ms and slots 66/65 are
+flagged in about 90 ms.
+
+Run02 conditions: one `/clock` publisher, bag off, 4.0 MB, zero residual
+processes.
+
+- **Box 1:** passes the full chain again. Revision 1 -> 2; retreat
+  `ready` at 0.00885 rad; `map_source=static_empty`, which is legal for
+  box 1.
+- **Box 2, the fix worked as intended.** Slots 66 and 65 became
+  `ATLAS_SEED_MISS` (8 mm / 34 mm, about 350 ms each).
+- **Box 2, new failure.** Slot 64 (1.662 m from the base, IK-reachable,
+  atlas seeds refine to 0.0) spent 8.25 s of the 9.27 s route budget. All
+  68 edge failures are `DESCEND` `fraction_below_min` (0.1 of the required
+  0.95) on the 9.7 cm drop from `slot_upper` (z 0.955) to the slot
+  (z 0.858). The result was `PLANNING_BUDGET_EXHAUSTED`, and box 3 did not
+  run. Verdict: `not_evaluated`, with one handoff `(1,2)`.
+
+First divergent stage: route-graph pairing on the `DESCEND` edge
+(`t3_slot64_descend.json`). Every failed pair either joins a `slot_upper`
+anchor to the slot goal of the other heading (joint 6 differs by exactly
+π, so the straight descend would need a 180° tool rotation) or crosses
+elbow branches. Offline, refining the slot target from that same anchor
+gives a same-heading goal (joint-6 delta 0), and the straight descend
+succeeds in 20/20 steps. The live graph never attempted that pair. This
+is a route-graph wiring defect, not reach. It lives in planner code, so
+it was stopped and raised for discussion.
+
 
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
 - G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 Run01 was blocked on box 2 at place selection (`PLANNING_BUDGET_EXHAUSTED`); a joint decision is pending in discuss `2026-10-04_1712_st09-i-g3-box2-place-selection.md`.
