@@ -41,6 +41,9 @@ if(BUILD_TESTING)
   ament_add_pytest_test(dsim2_observe_geometry_pytest test/test_dsim2_observe_geometry.py)
   ament_add_pytest_test(place_only_fixture_pytest test/test_place_only_fixture.py)
   ament_add_pytest_test(startup_probe_pytest test/test_startup_probe.py)
+  ament_add_pytest_test(payload_attachment_gate_pytest test/test_payload_attachment_gate.py)
+  ament_add_pytest_test(m3_place_event_order_pytest test/test_m3_place_event_order.py)
+  ament_add_pytest_test(retreat_start_contract_pytest test/test_retreat_start_contract.py)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and

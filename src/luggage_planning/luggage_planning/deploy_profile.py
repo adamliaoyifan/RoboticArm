@@ -23,6 +23,7 @@ from __future__ import division
 import os
 
 from luggage_planning.atlas_runtime import (
+    compute_reachability_scene_hash,
     compute_scene_tf_hash,
     compute_urdf_hash,
     identity_verdict,
@@ -196,7 +197,8 @@ def resolve_deploy_profile(scene_arg="", atlas_config_arg="",
         meta.get("dependencies") or {},
         scene_tf_hash=compute_scene_tf_hash(scene),
         urdf_hash=compute_urdf_hash(_read_bytes(urdf_path)),
-        policy="strict")
+        policy="strict",
+        reachability_scene_hash=compute_reachability_scene_hash(scene))
     if not ok:
         reject_asset("ATLAS_IDENTITY_MISMATCH",
                      "atlas meta dependencies", "ok", message)

@@ -186,14 +186,74 @@ both pin box_count to (2,3); the judge itself is N-box parameterized —
 minimal change is allowing 1 plus focused E-suite tests (no second set
 of physical thresholds).
 
+## G2 run13 (2026-10-04) reachability identity
+
+Place atlas admission now uses `reachability_scene_hash` (arm-to-container
+TF, inner/opening/chamfer, collision mesh, URDF still separate). The
+whole-file `scene_tf_hash` stays a diagnostic. Run13 loaded the sim atlas
+(`atlas load: ok`) even though the file hash is still `35f15c4c` against
+the build-time `fb0dfdc1` (pickup platform only). Placement returned
+`768/768` slots, `reachable:267`, depth `0.200..1.300`. Select then
+stopped at `PLANNING_BUDGET_EXHAUSTED` after one seeded route hit
+`MAP_STALE` and the next cartesian traverse stayed under fraction 0.4.
+G2 is not passed. G3 was not started.
+
+## G2 run14 map identity (2026-10-04)
+
+Slot 656 built 7 legs and stopped at `MAP_STALE_REPEATED` because
+revision 1 had `last_acquisition_stamp_ns=0`. That grid is the mapper's
+initial empty container, not a sensor view. First-box placement may use
+`map_source=static_empty` when `placed_count=0` and `cargo_observed` is
+false; stamp 0 is legal only in that case. A placed box becomes
+`release_integrated` and a settled view becomes `measured`; both require
+an acquisition stamp inside the existing 10 s window. `static_empty`
+after a place or an observation is refused.
+
+## G2 run15b (2026-10-04) static empty admission
+
+`g2_single_box_run15_20261004` died at pick `BUILD_FAILED` because the
+installed `st09_contracts.PlanningSnapshot` did not yet accept
+`map_source`. After installing that package, `run15b` admitted slot 656
+`route-b-948680a7de2c` (7 legs, `decision=continue`) with
+`map_source=static_empty`, `placed_count=0`,
+`last_acquisition_stamp_ns=0`, `freshness_policy=static_empty`,
+`why_allowed=static_empty_unplaced_unobserved`. No `MAP_STALE_REPEATED`.
+The route executed through release and retreat, then the trial failed
+`PLACE_LOST_PAYLOAD`. G2 is not passed. G3 was not started.
+
+## G2 single-box pass (2026-10-04, Run18)
+
+`m3/g2_single_box_run18_20261004` is the G2 single-box pass. One
+`carryon`, bag off, domain 7. G3 was not started.
+
+| check | result |
+|---|---|
+| legs | 7/7, including retreat and return |
+| retreat start | `ready`; descend final equals retreat first; post-detach joint stamp 67.24 s after detach response 66.82 s; max delta 0.005451 rad, tolerance 0.01 rad |
+| handoff | `revision_handoff_count=0` |
+| verdict | `m3_verdict.status=pass`, `failures=[]` |
+
+Run17c and Run17d had refused retreat with `QP_START_STATE_MISMATCH`.
+Descend had already reported success while joint 2 was still about
+0.011 rad short of the certified final knot, just over the 0.01 rad
+gate. The joint sample was fresh and in canonical order, and retreat's
+first knot matched descend's last knot. The fix waits up to 3 s for a
+`/joint_states` sample stamped after the detach response and within
+0.01 rad of both knots. The tolerance is unchanged. Run18's sample was
+already inside the gate (0.005451 rad), so the wait returned
+immediately.
+
+Before any G3 three-box run, check and do not mix that run into this
+commit:
+
+- boxes 2 and 3 use `map_source` `release_integrated` or `measured`, never `static_empty`
+- handoffs are exactly `(1, 2)` and `(2, 3)`
+- each box has its own `request_id` and `box_id`
+- the retreat-start wait runs for every box
+- the bag stays off or capped; do not keep a ~1.8 GB capture
+
 ## Remaining (S5.7-6 + S5.6 close)
 
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
-- remaining: fresh-install isolation re-verification -> single-box full chain (GT/measured evidence) -> three-box M3; the old text kept for reference: EnsureCycleStartV2 unloaded-exit service (inside+released ->
-  certified exit; carrying -> CARRY_EXIT_UNSUPPORTED named refusal; full
-  recovery search does NOT block M3 — ROUTE_INCOMPLETE named stop is
-  acceptable, general recovery is a follow-up task); GoToRobotPoseV2
-  (scene_revision_at_capture binding + certified motion wiring; replaces
-  the v1 portal_observe_sim debug wiring before formal single-box
-  acceptance); single-box full chain pick->attach->placement->route->
-  release->exit->observe->integrate->return; then three-box M3.
+- G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 three-box is not started.
+- remaining: three-box M3 only, under the checks in the Run18 section.

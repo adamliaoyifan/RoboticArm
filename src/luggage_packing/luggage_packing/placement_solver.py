@@ -906,15 +906,64 @@ def best_candidate(candidates):
     return None
 
 
-def ranked_feasible_candidates(result, max_candidates=5):
-    """Ordering-sorted feasible prefix for ComputePlacement.candidates.
+def _reachability_band(candidate):
+    """0 when the atlas has a reachable or marginal sample, else 1.
 
-    ``candidates[0]`` matches ``result['selected']`` when any slot is
-    feasible. ``max_candidates <= 0`` uses the default of 5.
+    Unknown and no-atlas slots stay in band 1 so a deep unsampled cell
+    does not outrank a seeded one. Reachable slots then prefer the
+    opening side. Unknown slots keep the frozen deep-first key.
+    """
+    status = candidate.get("atlas_status")
+    if status in (2, 3):
+        return 0
+    return 1
+
+
+def candidate_prefix_note(returned, feasible_count):
+    """One line describing which feasible slots the prefix kept."""
+    bands = {}
+    depths = []
+    for candidate in returned:
+        if candidate.get("atlas_status") in (2, 3):
+            band = "reachable"
+        elif str(candidate.get("atlas_status_name") or "") == "no_atlas":
+            band = "no_atlas"
+        else:
+            band = "unknown"
+        bands[band] = bands.get(band, 0) + 1
+        depths.append(float(candidate.get("depth_m") or 0.0))
+    band_text = ",".join(
+        "%s:%d" % item for item in sorted(bands.items())) or "none"
+    if depths:
+        span = "%.3f..%.3f" % (min(depths), max(depths))
+    else:
+        span = "none"
+    return "returned=%d/%d bands=%s depth=%s" % (
+        len(returned), int(feasible_count), band_text, span)
+
+
+def _motion_rank_key(candidate):
+    band = _reachability_band(candidate)
+    frozen = _candidate_sort_key(candidate)
+    if band == 0:
+        return (0, float(candidate.get("depth_m") or 0.0),
+                frozen[0], -float(candidate.get("score") or 0.0))
+    return (1,) + frozen
+
+
+def ranked_feasible_candidates(result, max_candidates=5):
+    """Feasible prefix for ComputePlacement.candidates.
+
+    Reachable and marginal atlas samples come before unknown slots,
+    and the shallower reachable slot comes first. Unknown slots keep
+    the frozen deep-first key, so ``candidates[0]`` still matches
+    ``result['selected']`` when the atlas did not annotate anyone.
+    ``max_candidates <= 0`` uses 5.
     """
     feasible = [
         candidate for candidate in (result.get("candidates") or [])
         if candidate.get("feasible")]
+    feasible.sort(key=_motion_rank_key)
     limit = int(max_candidates or 0)
     if limit <= 0:
         limit = 5

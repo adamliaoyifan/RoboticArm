@@ -43,6 +43,7 @@ builder:
 dependencies:
   robot_model: elfin_s20_with_camera
   scene_tf_hash: fb0dfdc1565a208edb5b9ea61c257754
+  reachability_scene_hash: ddac09b919333ca79933b84ca781c917
   urdf_hash: 689838e5ab5948877ea9c87f388a0474
   ik_link: suction_contact_frame
   ik_group: elfin_arm

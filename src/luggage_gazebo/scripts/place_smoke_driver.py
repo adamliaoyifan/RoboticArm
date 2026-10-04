@@ -120,6 +120,18 @@ CARRYING_ABORTS = {
 }
 
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
+# Legs that still hold the box. The attached check applies only here,
+# and only before a successful detach. Explicit
+# ``requires_payload_attached`` or a certified ``load_state`` wins over
+# these names.
+_CARRYING_LEG_NAMES = frozenset((
+    "transit", "traverse", "insert", "descend",
+))
+# Legs after the box is supposed to be down. ``attached == false`` is
+# the expected vacuum state, not a lost payload.
+_UNLOADED_LEG_NAMES = frozenset((
+    "retreat", "return", "place_exit", "home",
+))
 GZ_WORLD = "airport_loading"
 
 # [ST09-I S5.7] Safety margin in the DERIVED opening-corridor depth:
@@ -196,6 +208,271 @@ def _xyz3(sample):
     return [float(sample[0]), float(sample[1]), float(sample[2])]
 
 
+def segment_requires_payload_attached(segment, load_state=None, detached=False):
+    """Whether this leg may start only while vacuum still holds the box.
+
+    ``requires_payload_attached`` on the segment is the contract. Else a
+    certified ``load_state`` (``carrying`` / ``unloaded``). Else the leg
+    name. After a successful detach, a leg without an explicit True
+    requirement does not need ``attached``.
+    """
+    explicit = getattr(segment, "requires_payload_attached", None)
+    if explicit is not None:
+        return bool(explicit)
+    if detached:
+        return False
+    if load_state is not None and str(load_state) != "":
+        return str(load_state) == "carrying"
+    name = str(getattr(segment, "name", "") or "")
+    if name in _UNLOADED_LEG_NAMES:
+        return False
+    if name in _CARRYING_LEG_NAMES:
+        return True
+    return True
+
+
+def payload_attachment_gate(segment, vacuum_state, use_vacuum=True,
+                            detached=False, load_state=None):
+    """Pre-leg vacuum gate.
+
+    Returns ``(ok, code)``. A carrying leg with ``attached`` false or a
+    ``fail_reason`` is ``PLACE_LOST_PAYLOAD``. An unloaded leg
+    (retreat, return, home, or any leg after a successful detach) may
+    run with ``attached`` false. A non-empty ``fail_reason`` on that
+    leg is a release/vacuum failure, ``VACUUM_DETACH:<reason>``.
+    """
+    if not use_vacuum:
+        return True, ""
+    state = dict(vacuum_state or {})
+    reason = str(state.get("fail_reason") or "")
+    attached = bool(state.get("attached"))
+    requires = segment_requires_payload_attached(
+        segment, load_state=load_state, detached=detached)
+    if requires:
+        if reason or not attached:
+            return False, "PLACE_LOST_PAYLOAD"
+        return True, ""
+    if reason:
+        return False, "VACUUM_DETACH:%s" % reason
+    return True, ""
+
+
+# Same gate as motion_executor._execute_timed_joint_v2: drift greater than
+# this refuses the timed path. Do not raise it; wait for the arm instead.
+QP_START_TOLERANCE_RAD = 0.01
+CANONICAL_ARM_JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))
+_RETREAT_START_WAIT_SEC = 3.0
+
+
+def _angular_gap(left, right):
+    """Shortest absolute joint distance, matching the executor QP gate."""
+    gap = abs(float(left) - float(right))
+    return min(gap, (2.0 * math.pi) - gap)
+
+
+def canonical_joint_positions(names, positions, wanted=CANONICAL_ARM_JOINTS):
+    """Order ``positions`` as elfin_joint1..6. None when the names cannot."""
+    if names is None or positions is None:
+        return None
+    try:
+        names = [str(name) for name in names]
+        values = [float(value) for value in positions]
+    except (TypeError, ValueError):
+        return None
+    if len(names) != len(values) or len(names) != len(wanted):
+        return None
+    if len(set(names)) != len(names):
+        return None
+    if tuple(names) == tuple(wanted):
+        return values
+    index = dict(zip(names, values))
+    if any(name not in index for name in wanted):
+        return None
+    return [index[name] for name in wanted]
+
+
+def trajectory_endpoint(segment, which):
+    """``(names, positions)`` of the first or last timed knot, or Nones."""
+    if segment is None or which not in ("first", "last"):
+        return None, None
+    if isinstance(segment, dict):
+        joint = segment.get("joint_trajectory")
+    else:
+        joint = getattr(segment, "joint_trajectory", None)
+    if joint is None:
+        return None, None
+    if isinstance(joint, dict):
+        names = list(joint.get("joint_names") or [])
+        points = list(joint.get("points") or [])
+        if not points:
+            return names, None
+        point = points[0] if which == "first" else points[-1]
+        if isinstance(point, dict):
+            raw = point.get("positions")
+        else:
+            raw = point
+        if raw is None:
+            return names, None
+        return names, [float(value) for value in raw]
+    trajectory = getattr(joint, "trajectory", None)
+    if trajectory is None:
+        return None, None
+    names = list(trajectory.joint_names)
+    points = list(trajectory.points)
+    if not points:
+        return names, None
+    point = points[0] if which == "first" else points[-1]
+    return names, [float(value) for value in point.positions]
+
+
+def _round_joints(values):
+    if values is None:
+        return None
+    return [round(float(value), 6) for value in values]
+
+
+def retreat_start_decision(samples, detach_stamp, retreat_names,
+                           retreat_positions, descend_names,
+                           descend_positions,
+                           tolerance=QP_START_TOLERANCE_RAD):
+    """Decide whether retreat may submit against the descend-final contract.
+
+    A sample counts only when its stamp is strictly after ``detach_stamp``.
+    Ready requires that retreat's first knot and descend's last knot agree
+    within ``tolerance``, and that the newest post-detach joint state is
+    within ``tolerance`` of both. The tolerance is the executor QP gate.
+    """
+    tolerance = float(tolerance)
+    record = {
+        "tolerance_rad": tolerance,
+        "detach_stamp": (
+            None if detach_stamp is None else float(detach_stamp)),
+        "retreat_first_joints": None,
+        "descend_final_joints": None,
+        "joint_states": None,
+        "joint_names": list(CANONICAL_ARM_JOINTS),
+        "joint_state_stamp": None,
+        "stamp_after_detach": False,
+        "delta_per_joint": None,
+        "max_delta": None,
+        "delta_vs_retreat_per_joint": None,
+        "max_delta_vs_retreat": None,
+        "status": "missing_contract",
+    }
+    if retreat_positions is None or descend_positions is None:
+        return record
+    retreat = canonical_joint_positions(retreat_names, retreat_positions)
+    descend = canonical_joint_positions(descend_names, descend_positions)
+    if retreat is None or descend is None:
+        record["status"] = "joint_order"
+        return record
+    record["retreat_first_joints"] = _round_joints(retreat)
+    record["descend_final_joints"] = _round_joints(descend)
+    contract_delta = [
+        _angular_gap(left, right) for left, right in zip(retreat, descend)]
+    record["contract_delta_per_joint"] = _round_joints(contract_delta)
+    record["contract_max_delta"] = round(max(contract_delta), 6)
+
+    ordered = []
+    for sample in samples or []:
+        if not isinstance(sample, dict):
+            continue
+        try:
+            stamp = float(sample.get("stamp"))
+        except (TypeError, ValueError):
+            continue
+        ordered.append((stamp, sample))
+    newest = ordered[-1][1] if ordered else None
+    if newest is not None:
+        live = canonical_joint_positions(
+            newest.get("name"), newest.get("position"))
+        record["joint_state_stamp"] = float(newest.get("stamp"))
+        record["stamp_after_detach"] = bool(
+            detach_stamp is not None
+            and float(newest.get("stamp")) > float(detach_stamp))
+        if live is not None:
+            record["joint_states"] = _round_joints(live)
+
+    if max(contract_delta) > tolerance:
+        record["status"] = "contract_mismatch"
+        record["delta_per_joint"] = record["contract_delta_per_joint"]
+        record["max_delta"] = record["contract_max_delta"]
+        return record
+
+    fresh = [
+        sample for stamp, sample in ordered
+        if detach_stamp is not None and stamp > float(detach_stamp)]
+    if not fresh:
+        record["status"] = "stale_joint_state"
+        if newest is not None:
+            held = canonical_joint_positions(
+                newest.get("name"), newest.get("position"))
+            if held is not None:
+                versus_descend = [
+                    _angular_gap(left, right)
+                    for left, right in zip(held, descend)]
+                versus_retreat = [
+                    _angular_gap(left, right)
+                    for left, right in zip(held, retreat)]
+                record["delta_per_joint"] = _round_joints(versus_descend)
+                record["max_delta"] = round(max(versus_descend), 6)
+                record["delta_vs_retreat_per_joint"] = _round_joints(
+                    versus_retreat)
+                record["max_delta_vs_retreat"] = round(max(versus_retreat), 6)
+        return record
+    sample = max(fresh, key=lambda item: float(item.get("stamp")))
+    live = canonical_joint_positions(sample.get("name"), sample.get("position"))
+    record["joint_state_stamp"] = float(sample.get("stamp"))
+    record["stamp_after_detach"] = True
+    if live is None:
+        record["status"] = "joint_order"
+        record["joint_states"] = None
+        record["joint_states_raw_names"] = [
+            str(name) for name in (sample.get("name") or [])]
+        return record
+    versus_descend = [
+        _angular_gap(left, right) for left, right in zip(live, descend)]
+    versus_retreat = [
+        _angular_gap(left, right) for left, right in zip(live, retreat)]
+    record["joint_states"] = _round_joints(live)
+    record["delta_per_joint"] = _round_joints(versus_descend)
+    record["max_delta"] = round(max(versus_descend), 6)
+    record["delta_vs_retreat_per_joint"] = _round_joints(versus_retreat)
+    record["max_delta_vs_retreat"] = round(max(versus_retreat), 6)
+    if (max(versus_descend) > tolerance) or (max(versus_retreat) > tolerance):
+        record["status"] = "mismatch"
+        return record
+    record["status"] = "ready"
+    return record
+
+
+def detach_joint_motion(before, after):
+    """Change between two joint samples. ``moved`` is a gap above 1e-4 rad."""
+    out = {
+        "before_stamp": None,
+        "after_stamp": None,
+        "delta_per_joint": None,
+        "max_delta": None,
+        "moved": None,
+    }
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return out
+    try:
+        out["before_stamp"] = float(before.get("stamp"))
+        out["after_stamp"] = float(after.get("stamp"))
+    except (TypeError, ValueError):
+        return out
+    left = canonical_joint_positions(before.get("name"), before.get("position"))
+    right = canonical_joint_positions(after.get("name"), after.get("position"))
+    if left is None or right is None:
+        return out
+    deltas = [_angular_gap(a, b) for a, b in zip(left, right)]
+    out["delta_per_joint"] = _round_joints(deltas)
+    out["max_delta"] = round(max(deltas), 6)
+    out["moved"] = bool(max(deltas) > 1e-4)
+    return out
+
+
 def _ign_model_bin():
     for name in ("ign", "gz"):
         path = shutil.which(name)
@@ -262,6 +539,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                        durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self._timeline = []
         self._place_state = "INIT"
+        self._payload_detached = False
         self._segments_log = []
         self._tf_trace = []
         self._probe_joints = None
@@ -559,7 +837,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         portal exit already happened and nothing has drifted since;
         the portal pose legitimately classifies corridor).
         """
-        (_ok_service, ready, cycle_reason, zone, attachment, _detail) = \
+        (_ok_service, ready, cycle_reason, zone, attachment, detail) = \
             self._ensure_cycle_start()
         notes = ["cycle=%s zone=%s attachment=%s reason=%s" % (
             "ALREADY_READY" if ready else "RECOVERY_REQUIRED",
@@ -602,6 +880,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "cycle_reason": cycle_reason,
             "attachment_state": attachment,
             "portal_proof": bool(proof_note),
+            "ensure_detail": str(detail or ""),
+            "t_ros": float(self.ros_now_sec()),
         }
         if not ok:
             capture = getattr(self, "_capture_gz_contacts", None)
@@ -858,6 +1138,129 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 admission["load_state"] = str(states[index])
         return admission
 
+    def _peek_leg_load_state(self, segment):
+        """Certified load_state for this leg, without consuming the index."""
+        explicit = getattr(segment, "load_state", None)
+        if explicit:
+            return str(explicit)
+        segments_v2 = getattr(self, "_frame_motion_segments", None) or []
+        index = int(getattr(self, "_frame_motion_index", 0) or 0)
+        if index >= len(segments_v2):
+            return None
+        motion = segments_v2[index]
+        if str(getattr(motion, "name", "")) != str(getattr(segment, "name", "")):
+            return None
+        admission = self._leg_execution_admission(motion)
+        if not admission:
+            return None
+        state = admission.get("load_state")
+        return str(state) if state else None
+
+    def _payload_attachment_gate(self, segment):
+        """Attached is required only on a carrying leg before detach.
+
+        Carrying legs still go through ``_check_i1`` so a subclass can
+        keep its own retry policy. Unloaded legs do not.
+        """
+        if not getattr(self._args, "use_vacuum", False):
+            return True, ""
+        detached = bool(getattr(self, "_payload_detached", False))
+        load_state = self._peek_leg_load_state(segment)
+        requires = segment_requires_payload_attached(
+            segment, load_state=load_state, detached=detached)
+        if requires:
+            return self._check_i1()
+        state = dict(getattr(self, "_vacuum_state", None) or {})
+        reason = str(state.get("fail_reason") or "")
+        if reason:
+            return False, "VACUUM_DETACH:%s" % reason
+        return True, ""
+
+    def _timed_leg(self, name):
+        for segment in list(getattr(self, "_frame_motion_segments", None) or []):
+            if str(getattr(segment, "name", "") or "") == str(name):
+                return segment
+        return None
+
+    def _joint_sample(self):
+        record = getattr(self, "_last_joint_state", None)
+        if not isinstance(record, dict):
+            return None
+        try:
+            stamp = float(record.get("stamp"))
+        except (TypeError, ValueError):
+            return None
+        return {
+            "stamp": stamp,
+            "name": list(record.get("name") or []),
+            "position": [float(value) for value in (record.get("position") or [])],
+        }
+
+    def _await_retreat_start_contract(self, retreat_seg, detach_request_stamp,
+                                      detach_response_stamp,
+                                      joints_before_detach,
+                                      timeout=_RETREAT_START_WAIT_SEC):
+        """Wait until a post-detach joint sample matches descend's final knot.
+
+        Descend can report success while joint 2 is still outside the 0.01 rad
+        QP gate (run17c/d). Stillness is not enough: the residual creeps slower
+        than the settle epsilon. This does not widen the gate.
+        """
+        retreat_names, retreat_q = trajectory_endpoint(
+            self._timed_leg("retreat"), "first")
+        descend_names, descend_q = trajectory_endpoint(
+            self._timed_leg("descend"), "last")
+        if detach_response_stamp is None:
+            detach_response_stamp = float(self.ros_now_sec())
+        started = time.time()
+        deadline = started + float(timeout)
+        seen = []
+        decision = None
+        while True:
+            sample = self._joint_sample()
+            if sample is not None and (
+                    not seen or sample["stamp"] != seen[-1]["stamp"]):
+                seen.append(sample)
+            decision = retreat_start_decision(
+                seen,
+                detach_stamp=float(detach_response_stamp),
+                retreat_names=retreat_names,
+                retreat_positions=retreat_q,
+                descend_names=descend_names,
+                descend_positions=descend_q)
+            if decision["status"] == "ready":
+                break
+            if decision["status"] in (
+                    "contract_mismatch", "joint_order", "missing_contract"):
+                break
+            if time.time() >= deadline or not rclpy.ok():
+                break
+            time.sleep(0.05)
+        fresh = [
+            sample for sample in seen
+            if sample["stamp"] > float(detach_response_stamp)]
+        decision["detach_request_stamp"] = detach_request_stamp
+        decision["detach_response_stamp"] = float(detach_response_stamp)
+        decision["detach_motion"] = detach_joint_motion(
+            joints_before_detach, fresh[0] if fresh else None)
+        decision["controller_settle"] = detach_joint_motion(
+            fresh[0] if fresh else None,
+            fresh[-1] if fresh else None)
+        decision["driver_motion_submitted"] = False
+        decision["waited_sec"] = round(time.time() - started, 3)
+        decision["timeout_sec"] = float(timeout)
+        load_state = self._peek_leg_load_state(retreat_seg)
+        decision["load_state"] = load_state
+        decision["requires_payload_attached"] = bool(
+            segment_requires_payload_attached(
+                retreat_seg, load_state=load_state,
+                detached=bool(getattr(self, "_payload_detached", False))))
+        self.get_logger().info(
+            "retreat start %s max_delta=%s stamp=%s" % (
+                decision["status"], decision.get("max_delta"),
+                decision.get("joint_state_stamp")))
+        return decision
+
     def _execute_segment(self, segment, trial):
         t0 = time.time()
         if self._last_joint_state:
@@ -870,8 +1273,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self._segment_exec_t0 = stamp0
         self._joint_ring_horizon_sec = joint_ring_horizon_sec()
         before = self._sample_tf_box("before_%s" % segment.name)
-        ok_i1, code = self._check_i1()
-        if not ok_i1 and str(segment.name) != "retreat":
+        ok_i1, code = self._payload_attachment_gate(segment)
+        if not ok_i1:
             return False, code, None
         if self._args.plan_only:
             probe = self._probe.probe_segment(
@@ -1476,6 +1879,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
+        self._payload_detached = False
         self._follow_skipped0 = self._follow_skipped()
         extras = {"slot.json": slot_meta}
         if not self._box_model:
@@ -1582,10 +1986,19 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             {})
         trial.extras["release_settle"] = descend_rec.get("settle_json") or "probe"
         self._set_state("RELEASED")
+        joints_before_detach = None
+        detach_request_stamp = None
+        detach_response_stamp = None
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            joints_before_detach = self._joint_sample()
+            detach_request_stamp = float(self.ros_now_sec())
             # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
+            detach_response_stamp = float(self.ros_now_sec())
             trial.extras["vac_detach"] = off_msg
+            if off_ok:
+                # Later legs are unloaded. attached=false is expected.
+                self._payload_detached = True
             if not off_ok:
                 # [S5.7-6 negative] release backend refused: the
                 # retreat never submits (named stop, zero controller
@@ -1609,6 +2022,21 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     trial, "ADMISSION_PHASE_%s" % (
                         phase_reason or "TRANSITION_FAILED"),
                     False, extra=extras)
+
+        if retreat_seg is not None and not self._args.plan_only:
+            # The certified retreat knot is descend's final waypoint. Submit
+            # only after a joint sample newer than the detach response sits
+            # inside the existing QP tolerance of that knot.
+            evidence = self._await_retreat_start_contract(
+                retreat_seg,
+                detach_request_stamp=detach_request_stamp,
+                detach_response_stamp=detach_response_stamp,
+                joints_before_detach=joints_before_detach)
+            trial.extras["retreat_start"] = evidence
+            extras["retreat_start.json"] = evidence
+            if evidence.get("status") != "ready":
+                return self._abort(
+                    trial, "QP_START_STATE_MISMATCH", False, extra=extras)
 
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")

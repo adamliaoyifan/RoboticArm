@@ -326,6 +326,26 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             traces["lookback"] = t_look
             final = t_look
         self._accept_view(trial, final, traces)
+        # The aim/lookback route leaves the portal. Re-mint the exit
+        # proof at the certified portal pose before _home_arm classifies
+        # the live TCP. A failed re-exit leaves the proof void so home
+        # refuses by name instead of trusting the pre-view joints.
+        self._restore_portal_after_views(trial)
+
+    def _restore_portal_after_views(self, trial):
+        back_ok, back_msg = self._exit_to_portal()
+        joints = (getattr(self, "_last_joint_state", None) or {}).get(
+            "position") or []
+        proof = getattr(self, "_portal_exit_proof", None) or {}
+        trial.extras["cargo_view_portal_return"] = {
+            "ok": bool(back_ok),
+            "message": str(back_msg or ""),
+            "t_ros": float(self.ros_now_sec()),
+            "final_joint_values": [float(v) for v in list(joints)[:6]],
+            "proof_ns": int(proof.get("proof_ns") or 0) if back_ok else 0,
+        }
+        if not back_ok:
+            trial.fail_code = trial.fail_code or "PORTAL_EXIT_FAILED"
 
     def _world_box_corners(self, center, size, yaw):
         corners = []

@@ -151,6 +151,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         try:
             from luggage_planning.atlas_runtime import (
                 certification_block_reason,
+                compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime_for_scene,
                 load_runtime_atlas,
@@ -164,6 +165,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             scene_path = resolve_scene_tf_config_path(
                 getattr(args, "scene_tf_config", None) or None)
             self._scene_tf_hash = compute_scene_tf_hash(scene_path)
+            self._reachability_scene_hash = compute_reachability_scene_hash(
+                scene_path)
             self._atlas_cfg = load_atlas_runtime_for_scene(
                 scene_path, os.environ.get("ATLAS_RUNTIME_CONFIG") or None)
             self._urdf_identity = UrdfIdentity(self)
@@ -381,7 +384,12 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 scene_revision=self._frame_scene_revision,
                 geometry_hash=geometry_hash,
                 expected_map_revision=int(surface_msg.map_revision),
-                max_candidates=5)
+                # Deep-first placement keeps the back wall in the first
+                # handful of slots. Those container-x cells are outside
+                # the arm (run10: world TCP x=-2.06, IK residual 0.5 m).
+                # The route producer reorders by increasing depth, so it
+                # needs the shallow end of the feasible list in hand.
+                max_candidates=2000)
         except ContractError as error:
             trial.fail_code = trial.fail_code or error.code
             trial.extras["compute_placement"] = "%s: %s" % (
@@ -652,10 +660,13 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._urdf_identity.hash
             if self._urdf_identity is not None and self._urdf_identity.ready
             else "")
-        key = (self._scene_tf_hash, urdf_hash)
+        key = (getattr(self, "_reachability_scene_hash", ""),
+               self._scene_tf_hash, urdf_hash)
         if key != self._atlas_key:
             self._atlas, self._atlas_diag = self._load_runtime_atlas(
-                cfg, scene_tf_hash=self._scene_tf_hash, urdf_hash=urdf_hash)
+                cfg, scene_tf_hash=self._scene_tf_hash, urdf_hash=urdf_hash,
+                reachability_scene_hash=getattr(
+                    self, "_reachability_scene_hash", ""))
             self._atlas_key = key
         return self._atlas, self._atlas_diag
 

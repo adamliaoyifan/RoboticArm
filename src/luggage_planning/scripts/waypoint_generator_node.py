@@ -433,6 +433,9 @@ class WaypointGeneratorNode(Node):
         surface.update({
             "acquisition_stamp_ns": int(
                 stats.last_acquisition_stamp_ns),
+            "map_source": str(getattr(stats, "map_source", "") or ""),
+            "placed_count": int(getattr(stats, "placed_count", 0) or 0),
+            "cargo_observed": bool(getattr(stats, "cargo_observed", False)),
             "map_revision": int(stats.map_revision),
             "commit_revision": int(stats.map_revision),
             "geometry_hash": str(stats.geometry_hash),

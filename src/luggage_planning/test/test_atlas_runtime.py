@@ -301,6 +301,75 @@ def test_atlas_seeds_none_atlas():
     assert out["status_name"] == "no_atlas"
 
 
+def _scene_copy():
+    return {
+        "pedestal": {
+            "enabled": True,
+            "size": [1.05, 0.74, 0.86],
+            "translation": [0.0, 0.0, 0.0],
+            "rotation_rpy": [0.0, 0.0, 1.5708],
+        },
+        "robot": {"base_frame": "elfin_base_link", "rotation_rpy": [0.0, 0.0, 0.0]},
+        "container": {
+            "inner": {
+                "length": 1.49, "width": 1.97, "floor_z": 0.53,
+                "ceiling_z": 2.01, "height": 2.01,
+                "chamfer": {"side": "positive_y", "floor_y": 0.55, "wall_z": 0.90},
+            },
+            "opening": {
+                "side": "negative_x", "width": 1.33, "height": 1.41,
+                "aperture": {"corners": [[-0.745, -0.928, 0.597]]},
+            },
+        },
+        "static_transforms": [{
+            "parent": "world", "child": "container_link",
+            "translation": [-1.5, 0.6, 0.0],
+            "rotation_rpy": [0.0, 0.0, 3.1416],
+        }],
+        "gazebo": {"container_model": "airport_container_real"},
+        "pickup_platform": {"enabled": False, "size": [1.0, 1.0, 0.86]},
+        "pickup_source": {"parent": "world", "translation": [1.0, 0.0, 0.0]},
+    }
+
+
+def test_reachability_hash_ignores_pickup_and_catches_container_motion(tmp_path):
+    import yaml
+    original = _scene_copy()
+    moved_pickup = _scene_copy()
+    moved_pickup["pickup_platform"] = {
+        "enabled": True, "size": [1.0, 1.0, 0.66]}
+    moved_pickup["pickup_source"] = {
+        "parent": "pickup_platform_top", "translation": [0.0, 0.0, 0.0]}
+    moved_container = _scene_copy()
+    moved_container["static_transforms"][0]["translation"] = [-1.2, 0.6, 0.0]
+    paths = {}
+    for name, doc in (
+            ("base", original), ("pickup", moved_pickup),
+            ("container", moved_container)):
+        path = tmp_path / ("%s.yaml" % name)
+        path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+        paths[name] = str(path)
+    base = ar.compute_reachability_scene_hash(paths["base"])
+    assert base
+    assert ar.compute_reachability_scene_hash(paths["pickup"]) == base
+    assert ar.compute_reachability_scene_hash(paths["container"]) != base
+    assert ar.compute_scene_tf_hash(paths["base"]) != ar.compute_scene_tf_hash(
+        paths["pickup"])
+    ok, message, scene_ok, _urdf_ok = ar.identity_verdict(
+        {"reachability_scene_hash": base, "scene_tf_hash": "old-file",
+         "urdf_hash": "urdf"},
+        scene_tf_hash="new-file", urdf_hash="urdf", policy="strict",
+        reachability_scene_hash=base)
+    assert ok and scene_ok
+    assert "diagnostic" in message
+    bad, _message, scene_bad, _urdf = ar.identity_verdict(
+        {"reachability_scene_hash": base, "scene_tf_hash": "old-file",
+         "urdf_hash": "urdf"},
+        scene_tf_hash="new-file", urdf_hash="urdf", policy="strict",
+        reachability_scene_hash="not-the-same-hash")
+    assert not bad and not scene_bad
+
+
 def test_compute_scene_tf_hash(tmp_path):
     path = tmp_path / "scene_tf.yaml"
     path.write_bytes(b"hello atlas")

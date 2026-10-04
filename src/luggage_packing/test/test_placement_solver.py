@@ -18,6 +18,7 @@ import unittest
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 from luggage_packing.placement_solver import (  # noqa: E402
+    candidate_prefix_note,
     generate_candidates,
     placement_constraint_verdict,
     ranked_feasible_candidates,
@@ -248,6 +249,33 @@ class TestRankedFeasibleCandidates(unittest.TestCase):
         self.assertLessEqual(len(top), 5)
         self.assertEqual(top[0]["center_base"], result["selected"]["center_base"])
         self.assertAlmostEqual(top[0]["score"], result["selected"]["score"])
+
+    def test_reachable_band_precedes_a_deeper_unknown_slot(self):
+        deep = {
+            "feasible": True, "depth_m": 1.3, "support_layer_z": 0.0,
+            "score": 1.0, "candidate_id": "deep", "center_base": [0, 0, 0],
+            "atlas_status": 0, "atlas_status_name": "unknown",
+        }
+        shallow = {
+            "feasible": True, "depth_m": 0.4, "support_layer_z": 0.0,
+            "score": 0.2, "candidate_id": "shallow", "center_base": [1, 0, 0],
+            "atlas_status": 3, "atlas_status_name": "reachable",
+        }
+        result = {"candidates": [deep, shallow], "selected": deep}
+        top = ranked_feasible_candidates(result, 1)
+        self.assertEqual(top[0]["candidate_id"], "shallow")
+        deeper = dict(shallow)
+        deeper.update(depth_m=1.1, candidate_id="deeper", score=5.0)
+        both = {"candidates": [deeper, shallow], "selected": deeper}
+        ordered = ranked_feasible_candidates(both, 2)
+        self.assertEqual(
+            [item["candidate_id"] for item in ordered],
+            ["shallow", "deeper"])
+        note = candidate_prefix_note(
+            ranked_feasible_candidates(result, 5), 2)
+        self.assertIn("returned=2/2", note)
+        self.assertIn("reachable:1", note)
+        self.assertIn("unknown:1", note)
 
 
 if __name__ == "__main__":

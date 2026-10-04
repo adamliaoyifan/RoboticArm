@@ -7,6 +7,10 @@ import unittest
 
 from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
 from luggage_perception.cargo_view_integration import (
+    MAP_MEASURED,
+    MAP_RELEASE_INTEGRATED,
+    measured_identity,
+    release_identity,
     DEFAULT_FRESHNESS_WINDOW_SEC,
     REASON_GEOMETRY_HASH_MISMATCH,
     REASON_NOT_SETTLED,
@@ -298,6 +302,29 @@ class TestUntrackedConcat(unittest.TestCase):
     def test_include_obstacle(self):
         xyz = untracked_xyz([(1.0, 0.0, 0.0)], [(9.0, 0.0, 0.0)], True)
         self.assertEqual(len(xyz), 2)
+
+
+class TestMapIdentity(unittest.TestCase):
+
+    def test_measured_keeps_the_sensor_stamp(self):
+        stamp, source = measured_identity(38_000_000_000)
+        self.assertEqual(stamp, 38_000_000_000)
+        self.assertEqual(source, MAP_MEASURED)
+
+    def test_measured_does_not_invent_a_stamp(self):
+        stamp, source = measured_identity(0)
+        self.assertEqual(stamp, 0)
+        self.assertEqual(source, MAP_MEASURED)
+
+    def test_release_uses_the_commit_clock(self):
+        stamp, source = release_identity(38_350_000_000)
+        self.assertEqual(stamp, 38_350_000_000)
+        self.assertEqual(source, MAP_RELEASE_INTEGRATED)
+
+    def test_release_before_the_clock_starts_stays_unstamped(self):
+        stamp, source = release_identity(0)
+        self.assertEqual(stamp, 0)
+        self.assertEqual(source, MAP_RELEASE_INTEGRATED)
 
 
 if __name__ == "__main__":

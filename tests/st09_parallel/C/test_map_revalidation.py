@@ -56,6 +56,74 @@ def test_in_flight_conflict_stops_and_enters_carry_fault():
     assert decision.reason is Reason.CARRY_FAULT
 
 
+def _identity(stamp_ns, source, placed=0, observed=False):
+    return dataclasses.replace(
+        make_snapshot(map_revision=3, observed_free=[(1, 1)],
+                      acquisition_stamp_ns=stamp_ns),
+        map_source=source, placed_count=placed, cargo_observed=observed)
+
+
+def test_static_empty_first_box_skips_the_age_window():
+    latest = _identity(0, "static_empty")
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.decision is MapDecision.CONTINUE
+    freshness = decision.detail["freshness"]
+    assert freshness["freshness_policy"] == "static_empty"
+    assert freshness["why_allowed"] == "static_empty_unplaced_unobserved"
+    assert freshness["placed_count"] == 0
+    assert freshness["last_acquisition_stamp_ns"] == 0
+
+
+def test_static_empty_after_place_or_observation_is_refused():
+    placed = _identity(0, "static_empty", placed=1)
+    observed = _identity(0, "static_empty", observed=True)
+    for latest in (placed, observed):
+        decision = MapRevalidator().revalidate(
+            _request(latest, now_ns=40_000_000_000))
+        assert decision.reason is Reason.MAP_STALE
+        assert decision.detail["freshness"]["why_allowed"] == ""
+        assert decision.detail["freshness"]["why_refused"]
+
+
+def test_measured_or_release_without_stamp_is_refused():
+    for source, placed in (("measured", 0), ("release_integrated", 1)):
+        latest = _identity(0, source, placed=placed, observed=(source == "measured"))
+        decision = MapRevalidator().revalidate(
+            _request(latest, now_ns=40_000_000_000))
+        assert decision.reason is Reason.MAP_STALE, source
+        assert decision.detail["freshness"]["why_refused"] == \
+            "acquisition_stamp_required"
+
+
+def test_unlabeled_stamp_zero_is_not_a_fresh_sensor_map():
+    latest = make_snapshot(
+        map_revision=3, observed_free=[(1, 1)], acquisition_stamp_ns=0)
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.reason is Reason.MAP_STALE
+    assert decision.detail["freshness"]["why_refused"] == \
+        "acquisition_stamp_required"
+
+
+def test_stamp_inside_the_window_continues():
+    latest = _identity(39_000_000_000, "measured", observed=True)
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.decision is MapDecision.CONTINUE
+    assert decision.detail["freshness"]["why_allowed"] == \
+        "measured_within_window"
+
+
+def test_release_integrated_stamp_inside_the_window_continues():
+    latest = _identity(39_000_000_000, "release_integrated", placed=1)
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.decision is MapDecision.CONTINUE
+    assert decision.detail["freshness"]["map_source"] == "release_integrated"
+    assert decision.detail["freshness"]["placed_count"] == 1
+
+
 def test_stale_restart_and_start_joint_mismatch_fail_closed():
     stale = make_snapshot(map_revision=3, observed_free=[(1, 1)], acquisition_stamp_ns=1)
     assert MapRevalidator().revalidate(_request(stale, now_ns=4_000_000_000)).reason is Reason.MAP_STALE

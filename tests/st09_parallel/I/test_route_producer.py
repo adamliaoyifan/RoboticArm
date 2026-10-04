@@ -326,6 +326,225 @@ class TestAttachmentStampAdmission:
         assert mismatched_generation["rows"][0]["generation"] == 4
 
 
+def test_cartesian_failure_names_the_unreached_waypoint():
+    from luggage_planning.moveit_edge_adapter import cartesian_failure_detail
+    detail = cartesian_failure_detail(
+        [0.1], [0.2], [1.0, 0.0, 0.5], [1.2, 0.0, 0.5],
+        0.286, 0.95, 8)
+    assert detail["fraction"] == 0.286
+    assert detail["failed_waypoint_index"] == 2
+    assert detail["waypoint_count"] == 8
+    assert detail["from_position"] == [1.0, 0.0, 0.5]
+
+
+class TestGoalRefineEvidence:
+
+    def test_failed_refine_names_the_seed_and_residual(self):
+        producer, _clock = build_producer()
+
+        def refuse(_position, _quaternion, _seed):
+            return None, {"pos_err_m": 0.52, "rot_err_rad": 0.2, "ok": False}
+
+        producer.refine = refuse
+        seeds = producer._goal_seed_fn(
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), atlas_seeds=[])
+        target = type("Target", (), {})()
+        target.position = (-2.055, 1.035, 0.828)
+        target.quaternion_xyzw = (0.7071, -0.7071, 0.0, 0.0)
+        assert seeds(target) == []
+        record = producer.last_goal_refine[-1]
+        assert record["atlas_seed_count"] == 0
+        assert record["target_world"][0][0] == -2.055
+        labels = [item["seed"] for item in record["attempts"]]
+        assert labels[:2] == ["tool_down", "start"]
+        assert all(item["ok"] is False for item in record["attempts"])
+        assert record["attempts"][0]["pos_err_m"] == 0.52
+
+
+class TestMapStaleRefresh:
+
+    def _rev(self, decisions):
+        from st09_contracts.certification import (
+            MapDecision, MapRevalidationDecision)
+        from st09_contracts.reasons import Reason
+
+        state = {"n": 0}
+
+        class Rev(object):
+            policy = type("P", (), {"max_snapshot_age_ns": 10_000_000_000})()
+
+            def revalidate(self, request):
+                del request
+                kind = decisions[min(state["n"], len(decisions) - 1)]
+                state["n"] += 1
+                stale = kind == "stale"
+                return MapRevalidationDecision(
+                    decision=(MapDecision.FAULT if stale
+                              else MapDecision.CONTINUE),
+                    reason=Reason.MAP_STALE if stale else Reason.OK,
+                    map_revision=4 if stale else 5,
+                    validation_epoch=1,
+                    affected_edge_ids=(),
+                    detail={})
+
+        return Rev(), state
+
+    def test_one_stale_check_refreshes_the_same_route(self):
+        producer, _clock = build_producer()
+        rev, state = self._rev(["stale", "fresh"])
+        producer.revalidator = rev
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert state["n"] == 2
+        assert result["rows"][0]["map_refresh"] == "fresh_snapshot_accepted"
+        refusal = result["rows"][0]["map_refusal"]
+        assert refusal["route_id"]
+        assert refusal["latest_map_revision"] == 4
+        assert refusal["planned_map_revision"] == request["map_revision"]
+        assert refusal["legs"]
+        assert refusal["stale_window_ns"] == 10_000_000_000
+
+    def test_second_stale_check_names_the_repeat(self):
+        producer, _clock = build_producer()
+        rev, state = self._rev(["stale", "stale"])
+        producer.revalidator = rev
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["reason_code"] == "MAP_STALE_REPEATED"
+        assert state["n"] == 2
+        row = result["rows"][0]
+        assert row["map_refusal_after_refresh"]["latest_map_revision"] == 4
+        assert row["elapsed_ms"] >= 0
+        assert result["rows"][-1]["reason"] == "ATTEMPT_SUMMARY"
+        assert result["rows"][-1]["tried_slot_indices"] == [0]
+
+
+def _live_snapshot(request, stamp_ns, source, placed=0, observed=False):
+    import dataclasses
+
+    from luggage_perception.cargo_view_integration import (
+        planning_snapshot_from_surface)
+
+    base = planning_snapshot_from_surface(
+        surface_map_from_contract(request["surface"], request),
+        scene_revision=str(request["scene_revision"]),
+        request_id=str(request["request_id"]))
+    return dataclasses.replace(
+        base, acquisition_stamp_ns=int(stamp_ns),
+        map_source=str(source), placed_count=int(placed),
+        cargo_observed=bool(observed))
+
+
+class TestAcquisitionStampAdmission:
+
+    def _producer(self, snapshots):
+        producer, clock = build_producer()
+        clock.now_ns = 38_350_000_000
+        producer.revalidator = MapRevalidator(
+            RevalidationPolicy(max_snapshot_age_ns=10_000_000_000))
+        state = {"n": 0}
+
+        def latest():
+            snap = snapshots[min(state["n"], len(snapshots) - 1)]
+            state["n"] += 1
+            return snap
+
+        producer.latest_snapshot_fn = latest
+        return producer, clock, state
+
+    def test_stamp_zero_stays_refused_after_refresh(self):
+        request = make_request(stamp_s=38.35)
+        stale = _live_snapshot(
+            request, 0, "release_integrated", placed=1)
+        producer, _clock, state = self._producer((stale, stale))
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["reason_code"] == "MAP_STALE_REPEATED"
+        assert state["n"] == 2
+        refusal = result["rows"][0]["map_refusal_after_refresh"]
+        assert refusal["map_source"] == "release_integrated"
+        assert refusal["placed_count"] == 1
+        assert refusal["last_acquisition_stamp_ns"] == 0
+        assert refusal["freshness_policy"] == "acquisition_age"
+        assert refusal["why_allowed"] == ""
+        assert refusal["why_refused"] == "acquisition_stamp_required"
+        assert refusal["legs"]
+
+    def test_refresh_with_a_new_stamp_admits_the_same_route(self):
+        request = make_request(stamp_s=38.35)
+        stale = _live_snapshot(
+            request, 0, "release_integrated", placed=1)
+        fresh = _live_snapshot(
+            request, 38_350_000_000, "release_integrated", placed=1)
+        producer, _clock, state = self._producer((stale, fresh))
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert state["n"] == 2
+        assert result["rows"][0]["map_refresh"] == "fresh_snapshot_accepted"
+        admission = result["rows"][0]["map_admission"]
+        assert admission["why_allowed"] == "release_integrated_within_window"
+        assert admission["placed_count"] == 1
+
+    def test_static_empty_first_box_is_admitted(self):
+        request = make_request(stamp_s=38.35)
+        initial = _live_snapshot(request, 0, "static_empty")
+        producer, _clock, state = self._producer((initial,))
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert state["n"] == 1
+        admission = result["rows"][0]["map_admission"]
+        assert admission["map_source"] == "static_empty"
+        assert admission["placed_count"] == 0
+        assert admission["last_acquisition_stamp_ns"] == 0
+        assert admission["freshness_policy"] == "static_empty"
+        assert admission["why_allowed"] == "static_empty_unplaced_unobserved"
+
+    def test_static_empty_with_a_placed_box_does_not_execute(self):
+        request = make_request(stamp_s=38.35)
+        stale = _live_snapshot(request, 0, "static_empty", placed=1)
+        producer, _clock, state = self._producer((stale, stale))
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["reason_code"] == "MAP_STALE_REPEATED"
+        refusal = result["rows"][0]["map_admission"]
+        assert refusal["why_refused"] == "static_empty_after_place"
+        assert refusal["placed_count"] == 1
+
+    def test_stamp_inside_the_window_admits_without_refresh(self):
+        request = make_request(stamp_s=38.35)
+        fresh = _live_snapshot(
+            request, 30_000_000_000, "measured", observed=True)
+        producer, _clock, state = self._producer((fresh,))
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        assert state["n"] == 1
+        assert result["rows"][0]["map_admission"]["why_allowed"] == \
+            "measured_within_window"
+
+
 class TestPlanPlaceRoute:
 
     def test_happy_path_produces_certified_legs(self):

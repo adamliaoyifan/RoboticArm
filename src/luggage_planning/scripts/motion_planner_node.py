@@ -53,6 +53,7 @@ from luggage_planning.atlas_runtime import (
     apply_query_semantics,
     apply_ros_overrides,
     atlas_seeds_for_query,
+    compute_reachability_scene_hash,
     compute_scene_tf_hash,
     load_atlas_runtime_for_scene,
     load_runtime_atlas,
@@ -198,6 +199,8 @@ class MotionPlannerNode(Node):
 
         self._scene = load_scene_tf_config(scene_path)
         self._scene_tf_hash = compute_scene_tf_hash(scene_path)
+        self._reachability_scene_hash = compute_reachability_scene_hash(
+            scene_path)
         self._surface_2d = None
         self._surface_recv = None
         self._payload_measured = None
@@ -408,12 +411,13 @@ class MotionPlannerNode(Node):
         urdf_hash = (
             self._urdf_identity.hash if self._urdf_identity.ready else "")
         key = (tuple(round(float(v), 4) for v in wdh),
-               self._scene_tf_hash, urdf_hash)
+               self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
         if key not in self._atlas_cache:
             self._atlas_cache[key] = load_runtime_atlas(
                 self._atlas_cfg, box_size=list(key[0]),
                 scene_tf_hash=self._scene_tf_hash,
-                urdf_hash=urdf_hash)[0]
+                urdf_hash=urdf_hash,
+                reachability_scene_hash=self._reachability_scene_hash)[0]
         atlas = self._atlas_cache[key]
         if atlas is None:
             return None
@@ -767,6 +771,13 @@ class MotionPlannerNode(Node):
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
             link=self._executor_client._link, current_joints=start)
+        if not result.success:
+            mismatch = (self._executor_client.last_boundary() or {}).get(
+                "qp_start_state_mismatch")
+            if mismatch:
+                self.get_logger().error(
+                    "QP_START_STATE_MISMATCH %s" % json.dumps(
+                        mismatch, sort_keys=True))
         if result.success:
             goal_handle.succeed()
         else:

@@ -185,7 +185,11 @@ def load_atlas_runtime(path=None):
 
 
 def compute_scene_tf_hash(path):
-    """MD5 of file bytes, byte-compatible with the atlas builder."""
+    """MD5 of the whole scene file, kept as a diagnostic.
+
+    Comments and pickup-platform fields change this hash. Place
+    reachability admission uses ``compute_reachability_scene_hash``.
+    """
     if not path or not os.path.isfile(path):
         return ""
     digest = hashlib.md5()
@@ -193,6 +197,127 @@ def compute_scene_tf_hash(path):
         for chunk in iter(lambda: handle.read(4096), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _round_tree(value):
+    """Stable numbers so equivalent poses hash together."""
+    if isinstance(value, bool) or value is None:
+        return value
+    if isinstance(value, (int, float)):
+        return round(float(value), 6)
+    if isinstance(value, (list, tuple)):
+        return [_round_tree(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _round_tree(value[key]) for key in sorted(value)}
+    return value
+
+
+def _collision_mesh_path(model_name):
+    """Installed or source collision STL for one Gazebo container model."""
+    name = str(model_name or "").strip()
+    if not name:
+        return ""
+    relative = os.path.join(
+        "models", name, "meshes", "container_collision.stl")
+    try:
+        from ament_index_python.packages import get_package_share_directory
+        installed = os.path.join(
+            get_package_share_directory("luggage_gazebo"), relative)
+        if os.path.isfile(installed):
+            return installed
+    except Exception:  # noqa: BLE001 - source-tree tests have no overlay
+        pass
+    source = os.path.normpath(os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "..", "..",
+        "luggage_gazebo", relative))
+    if os.path.isfile(source):
+        return source
+    return ""
+
+
+def _file_sha256(path):
+    if not path or not os.path.isfile(path):
+        return ""
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def reachability_scene_record(config):
+    """Scene facts that move the arm relative to the container.
+
+    Pickup platform, pickup source, suitcase spawn, and comment text are
+    not part of this record. A change there must not retire a container
+    atlas.
+    """
+    from luggage_description.scene_tf_config_utils import (
+        _compose,
+        _invert_transform,
+        origin_in_world,
+        robot_base_in_world,
+    )
+
+    base_xyz, base_rpy = robot_base_in_world(config)
+    container_xyz, container_rpy = origin_in_world(config)
+    inv_xyz, inv_rpy = _invert_transform(base_xyz, base_rpy)
+    relative_xyz, relative_rpy = _compose(
+        inv_xyz, inv_rpy, container_xyz, container_rpy)
+    opening_frame = None
+    for item in config.get("static_transforms") or []:
+        if (str(item.get("parent") or "") == "container_link"
+                and str(item.get("child") or "") == "container_opening_frame"):
+            opening_frame = {
+                "translation": list(item.get("translation") or []),
+                "rotation_rpy": list(item.get("rotation_rpy") or []),
+            }
+            break
+    container = config.get("container") or {}
+    inner = container.get("inner") or {}
+    opening = container.get("opening") or {}
+    model = str((config.get("gazebo") or {}).get("container_model") or "")
+    mesh = _collision_mesh_path(model)
+    return _round_tree({
+        "base_to_container": {
+            "translation": list(relative_xyz),
+            "rotation_rpy": list(relative_rpy),
+        },
+        "opening_frame_in_container": opening_frame,
+        "inner": {
+            "length": inner.get("length"),
+            "width": inner.get("width"),
+            "floor_z": inner.get("floor_z"),
+            "ceiling_z": inner.get("ceiling_z"),
+            "height": inner.get("height"),
+            "chamfer": inner.get("chamfer"),
+        },
+        "opening": {
+            "side": opening.get("side"),
+            "width": opening.get("width"),
+            "height": opening.get("height"),
+            "aperture": opening.get("aperture"),
+        },
+        "collision_model": model,
+        "collision_mesh_sha256": _file_sha256(mesh),
+    })
+
+
+def compute_reachability_scene_hash(path):
+    """MD5 of the place-reachability subset of a scene file."""
+    if not path or not os.path.isfile(path):
+        return ""
+    import json
+    try:
+        import yaml
+        config = yaml.safe_load(open(path, "r", encoding="utf-8")) or {}
+    except Exception:  # noqa: BLE001 - unreadable scene is not an identity
+        return ""
+    if not isinstance(config, dict):
+        return ""
+    payload = json.dumps(
+        reachability_scene_record(config), sort_keys=True, separators=(",", ":"))
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()
 
 
 def compute_urdf_hash(urdf_text):
@@ -257,42 +382,69 @@ def directed_yaw_candidates(atlas, yaw):
 
 
 def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
-                     policy="warn"):
+                     policy="warn", reachability_scene_hash=None):
     """Return ``(ok, message, scene_ok, urdf_ok)``.
 
-    ``off`` skips the check. ``warn`` reports a supplied hash that differs
-    from a stored hash. ``strict`` also fails when the caller or the atlas
-    is missing either hash: an unverified atlas must not be used.
+    ``off`` skips the check. The scene gate is
+    ``reachability_scene_hash`` when the atlas carries one: that is the
+    arm-to-container fingerprint. The whole-file ``scene_tf_hash`` stays
+    in the message when it differs, and it does not retire the atlas.
+    Atlases built before that field still gate on the file hash.
+    ``strict`` fails when the active scene hash or the URDF hash is
+    missing: an unverified atlas must not be used.
     """
     mode = str(policy or "warn")
     if mode == "off":
         return True, "ok", True, True
     deps = dependencies or {}
-    stored_scene = str(deps.get("scene_tf_hash") or "")
+    stored_file = str(deps.get("scene_tf_hash") or "")
+    stored_reach = str(deps.get("reachability_scene_hash") or "")
     stored_urdf = str(deps.get("urdf_hash") or "")
-    current_scene = str(scene_tf_hash or "")
+    current_file = str(scene_tf_hash or "")
+    current_reach = str(reachability_scene_hash or "")
     current_urdf = str(urdf_hash or "")
+    # Only artifacts that publish a reachability fingerprint use it as
+    # the scene gate. Older atlases still compare the whole-file hash.
+    use_reachability = bool(stored_reach)
     scene_ok = True
     urdf_ok = True
     messages = []
     if mode == "strict":
-        if not current_scene:
-            scene_ok = False
-            messages.append("scene_tf hash missing")
         if not current_urdf:
             urdf_ok = False
             messages.append("urdf hash missing")
-        if not stored_scene:
-            scene_ok = False
-            messages.append("atlas scene_tf hash missing")
         if not stored_urdf:
             urdf_ok = False
             messages.append("atlas urdf hash missing")
-    if current_scene and stored_scene and stored_scene != current_scene:
+        if use_reachability:
+            if not current_reach:
+                scene_ok = False
+                messages.append("reachability_scene hash missing")
+            if not stored_reach:
+                scene_ok = False
+                messages.append("atlas reachability_scene hash missing")
+        else:
+            if not current_file:
+                scene_ok = False
+                messages.append("scene_tf hash missing")
+            if not stored_file:
+                scene_ok = False
+                messages.append("atlas scene_tf hash missing")
+    if use_reachability:
+        if current_reach and stored_reach and stored_reach != current_reach:
+            scene_ok = False
+            messages.append(
+                "reachability_scene hash mismatch (atlas=%s, current=%s)" % (
+                    stored_reach[:8], current_reach[:8]))
+        if current_file and stored_file and stored_file != current_file:
+            messages.append(
+                "scene_tf file hash differs (diagnostic, atlas=%s, current=%s)"
+                % (stored_file[:8], current_file[:8]))
+    elif current_file and stored_file and stored_file != current_file:
         scene_ok = False
         messages.append(
             "scene_tf hash mismatch (atlas=%s, current=%s)" % (
-                stored_scene[:8], current_scene[:8]))
+                stored_file[:8], current_file[:8]))
     if current_urdf and stored_urdf and stored_urdf != current_urdf:
         urdf_ok = False
         messages.append(
@@ -461,7 +613,7 @@ def load_atlas_runtime_for_scene(scene_path, explicit_path=None):
 
 
 def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
-                       urdf_hash=None):
+                       urdf_hash=None, reachability_scene_hash=None):
     """Load the atlas under hash_policy.
 
     Returns (atlas_or_None, diagnostics). warn keeps the atlas loaded and
@@ -500,7 +652,11 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
             return None, diagnostics
         ok, message, scene_ok, urdf_ok = identity_verdict(
             atlas.meta.get("dependencies") or {},
-            scene_tf_hash, urdf_hash, policy=policy)
+            scene_tf_hash, urdf_hash, policy=policy,
+            reachability_scene_hash=reachability_scene_hash)
+        diagnostics["scene_tf_hash"] = str(scene_tf_hash or "")
+        diagnostics["reachability_scene_hash"] = str(
+            reachability_scene_hash or "")
         diagnostics["scene_tf_ok"] = scene_ok
         diagnostics["urdf_ok"] = urdf_ok
         diagnostics["hash_message"] = message
@@ -515,7 +671,8 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
                 % (message, os.path.basename(npz_path)))
         if contract is not None:
             verdict, contract_message = verify_atlas_contract(
-                atlas, scene_tf_hash, urdf_hash, policy=policy)
+                atlas, scene_tf_hash, urdf_hash, policy=policy,
+                reachability_scene_hash=reachability_scene_hash)
             diagnostics["contract_ok"] = verdict
             diagnostics["contract_message"] = contract_message
             if not verdict:
@@ -540,7 +697,7 @@ def _is_directed_yaw_axis(bins):
 
 
 def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
-                          policy="warn"):
+                          policy="warn", reachability_scene_hash=None):
     """Validate the artifact contract against its own identity blocks.
 
     The expected identity is reproduced from the artifact's geometry and
@@ -591,7 +748,12 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
             "(contract=%r grid=%r)" % (contract_bins, grid_bins))
     if str(grid.get("yaw_semantics") or "") != "directed_container_2pi":
         return False, "grid yaw semantics marker missing or wrong"
-    if scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
+    stored_reach = str(deps.get("reachability_scene_hash") or "")
+    live_reach = str(reachability_scene_hash or "")
+    if stored_reach or live_reach:
+        if stored_reach != live_reach:
+            return False, "reachability scene identity differs from the live scene"
+    elif scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
         return False, "scene identity differs from the live scene"
     if urdf_hash and expected["urdf_hash"] != str(urdf_hash):
         return False, "urdf identity differs from the live model"

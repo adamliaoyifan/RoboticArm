@@ -1003,6 +1003,11 @@ class ReachabilityAtlasBuilder:
         # artifact's own geometry/payload sections, so an existing v1 NPZ
         # cannot be relabelled as v2 by stamping metadata onto it.
         scene_tf_hash = _file_hash(scene_tf_path)
+        from luggage_planning.atlas_runtime import (
+            compute_reachability_scene_hash,
+        )
+        reachability_scene_hash = compute_reachability_scene_hash(
+            scene_tf_path)
         urdf_hash = hashlib.md5(urdf.encode()).hexdigest()
         contract = atlas_contract_record(
             self._yaw_bins,
@@ -1046,6 +1051,7 @@ class ReachabilityAtlasBuilder:
             "dependencies": {
                 "robot_model": rospy.get_param("/robot_name", "elfin_s20_with_camera"),
                 "scene_tf_hash": scene_tf_hash,
+                "reachability_scene_hash": reachability_scene_hash,
                 "urdf_hash": urdf_hash,
                 "ik_link": self._ik_link,
                 "ik_group": self._ik_group,

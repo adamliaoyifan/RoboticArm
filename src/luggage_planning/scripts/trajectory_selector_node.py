@@ -28,6 +28,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_planning.atlas_runtime import (
     certification_block_reason,
+    compute_reachability_scene_hash,
     compute_scene_tf_hash,
     load_atlas_runtime_for_scene,
     load_runtime_atlas,
@@ -54,6 +55,8 @@ class TrajectorySelectorNode(Node):
             scene_path = resolve_scene_tf_config_path()
         self._scene_tf_path = scene_path
         self._scene_tf_hash = compute_scene_tf_hash(scene_path)
+        self._reachability_scene_hash = compute_reachability_scene_hash(
+            scene_path)
         self._scene = load_scene_tf_config(scene_path)
         cfg_path = str(self.get_parameter("atlas_runtime_config").value or "")
         self._atlas_cfg = load_atlas_runtime_for_scene(scene_path, cfg_path or None)
@@ -199,15 +202,17 @@ class TrajectorySelectorNode(Node):
         self._urdf_identity.poll()
         urdf_hash = (
             self._urdf_identity.hash if self._urdf_identity.ready else "")
-        key = (self._scene_tf_hash, urdf_hash)
+        key = (self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
         if key != self._atlas_key:
             self._atlas, self._atlas_diag = load_runtime_atlas(
-                cfg, scene_tf_hash=self._scene_tf_hash, urdf_hash=urdf_hash)
+                cfg, scene_tf_hash=self._scene_tf_hash, urdf_hash=urdf_hash,
+                reachability_scene_hash=self._reachability_scene_hash)
             self._atlas_key = key
-            self.get_logger().info(
-                "atlas load: %s" % (
-                    self._atlas_diag.get("reason")
-                    or self._atlas_diag.get("hash_message")))
+            reason = str(self._atlas_diag.get("reason") or "")
+            note = str(self._atlas_diag.get("hash_message") or "")
+            if note and note != "ok":
+                reason = "%s (%s)" % (reason, note)
+            self.get_logger().info("atlas load: %s" % reason)
         return self._atlas, self._atlas_diag
 
     def _on_surface(self, msg):
@@ -335,11 +340,11 @@ class TrajectorySelectorNode(Node):
 
         def latest_snapshot():
             """Fresh mapper state at admission time — never the planned
-            snapshot. The stats service supplies the live map revision
-            and the last REAL observation stamp (the surface records
-            are scene-basis stamp-0 by contract); the grid is the
-            node's current latched v1 surface. Any unavailable piece
-            fails the revalidation closed."""
+            snapshot. Stats supply map_source, placed_count, whether a
+            cargo view was integrated, and the acquisition stamp. Stamp
+            0 is legal only for static_empty with no placed boxes and
+            no observation. The grid is the latched v1 surface. Any
+            unavailable piece fails the revalidation closed."""
             import threading
 
             from luggage_msgs.srv import GetCargoMapStats
@@ -367,6 +372,10 @@ class TrajectorySelectorNode(Node):
             surface.update({
                 "acquisition_stamp_ns": int(
                     stats.last_acquisition_stamp_ns),
+                "map_source": str(getattr(stats, "map_source", "") or ""),
+                "placed_count": int(getattr(stats, "placed_count", 0) or 0),
+                "cargo_observed": bool(
+                    getattr(stats, "cargo_observed", False)),
                 "map_revision": int(stats.map_revision),
                 # same fallback the planned snapshot uses (the v1 dict
                 # carries no separate commit ledger revision)
@@ -402,7 +411,17 @@ class TrajectorySelectorNode(Node):
             verifies. MoveIt and certification stay the authority for
             every leg that actually runs.
             """
-            atlas, _diag = self._runtime_atlas()
+            atlas, diag = self._runtime_atlas()
+            producer = getattr(self, "_route_producer", None)
+            if producer is not None:
+                diag = diag or {}
+                producer.last_atlas_diag = {
+                    "loaded": bool(diag.get("loaded")),
+                    "reason": diag.get("reason"),
+                    "hash_message": diag.get("hash_message"),
+                    "scene_tf_ok": diag.get("scene_tf_ok"),
+                    "urdf_ok": diag.get("urdf_ok"),
+                }
             if atlas is None or not targets:
                 return None
             import math as _math

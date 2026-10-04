@@ -25,6 +25,26 @@ REASON_TF_MISSING = "TF_MISSING"
 
 DEFAULT_FRESHNESS_WINDOW_SEC = 0.20
 
+#: Map identity the selector admits. ``static_empty`` is the configured
+#: empty container (no placed boxes, no observation). A settled view is
+#: ``measured``. A placed-box commit is ``release_integrated``.
+MAP_STATIC_EMPTY = "static_empty"
+MAP_MEASURED = "measured"
+MAP_RELEASE_INTEGRATED = "release_integrated"
+MAP_SOURCES = (MAP_STATIC_EMPTY, MAP_MEASURED, MAP_RELEASE_INTEGRATED)
+
+
+def measured_identity(sensor_stamp_ns):
+    """A settled view. Stamp 0 stays 0; it is not filled from the clock."""
+    return int(sensor_stamp_ns or 0), MAP_MEASURED
+
+
+def release_identity(node_now_ns):
+    """A placed-box commit. The stamp is the node clock, or 0 if it has
+    not started. A zero stamp does not pass the acquisition-age gate."""
+    now = int(node_now_ns or 0)
+    return (now if now > 0 else 0), MAP_RELEASE_INTEGRATED
+
 
 def stamp_to_sec(stamp):
     """``(sec, nanosec)``, mapping, or object with those fields -> float seconds."""
@@ -468,6 +488,9 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
         scene_revision=str(scene_revision or ""),
         map_revision=int(surface_map.get("map_revision", 0)),
         acquisition_stamp_ns=int(surface_map.get("acquisition_stamp_ns", 0)),
+        map_source=str(surface_map.get("map_source") or ""),
+        placed_count=int(surface_map.get("placed_count") or 0),
+        cargo_observed=bool(surface_map.get("cargo_observed") or False),
         commit_revision=int(surface_map.get("commit_revision", 1)),
         occupancy_digest=digest_of(tuple(cells_i), tuple(cells_j),
                                    tuple(cell_states)),
@@ -573,6 +596,9 @@ def integrate_view_with_report(snapshot, requirement, view_payload):
         scene_revision=snapshot.scene_revision,
         map_revision=snapshot.map_revision + 1,
         acquisition_stamp_ns=acquisition,
+        map_source=MAP_MEASURED,
+        placed_count=int(getattr(snapshot, "placed_count", 0) or 0),
+        cargo_observed=True,
         commit_revision=snapshot.commit_revision + 1,
         occupancy_digest=digest_of(cells_i, cells_j, cell_states),
         resolution_m=resolution,

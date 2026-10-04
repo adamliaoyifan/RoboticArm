@@ -36,6 +36,64 @@ class RevalidationInput:
     start_joints_match: bool = True
 
 
+def freshness_verdict(snapshot, now_ns, max_age_ns):
+    """Whether this map identity may admit a route.
+
+    ``static_empty`` is the configured empty container. Stamp 0 is legal
+    only while nothing has been placed and no cargo view has been
+    integrated. A placed box or a settled view must be
+    ``release_integrated`` or ``measured`` and carry a positive
+    acquisition stamp inside the age window. The window itself does not
+    change. An unlabeled stamp 0 is not a fresh sensor map.
+    """
+    source = str(getattr(snapshot, "map_source", "") or "")
+    placed = int(getattr(snapshot, "placed_count", 0) or 0)
+    observed = bool(getattr(snapshot, "cargo_observed", False))
+    stamp = int(getattr(snapshot, "acquisition_stamp_ns", 0) or 0)
+    verdict = {
+        "map_source": source,
+        "placed_count": placed,
+        "last_acquisition_stamp_ns": stamp,
+        "cargo_observed": observed,
+        "freshness_policy": "",
+        "why_allowed": "",
+        "why_refused": "",
+        "allowed": False,
+        "age_ns": None,
+    }
+    if source == "static_empty":
+        verdict["freshness_policy"] = "static_empty"
+        if placed == 0 and not observed:
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "static_empty_unplaced_unobserved"
+            return verdict
+        verdict["why_refused"] = (
+            "static_empty_after_place" if placed else
+            "static_empty_after_observation")
+        return verdict
+    if source not in ("", "measured", "release_integrated"):
+        verdict["freshness_policy"] = "reject_unknown_source"
+        verdict["why_refused"] = "unknown_map_source"
+        return verdict
+    verdict["freshness_policy"] = "acquisition_age"
+    if stamp <= 0:
+        verdict["why_refused"] = "acquisition_stamp_required"
+        return verdict
+    age = int(now_ns) - stamp
+    verdict["age_ns"] = age
+    if age > int(max_age_ns):
+        verdict["why_refused"] = "acquisition_older_than_window"
+        return verdict
+    verdict["allowed"] = True
+    if source == "measured":
+        verdict["why_allowed"] = "measured_within_window"
+    elif source == "release_integrated":
+        verdict["why_allowed"] = "release_integrated_within_window"
+    else:
+        verdict["why_allowed"] = "legacy_stamp_within_window"
+    return verdict
+
+
 class MapRevalidator:
     """Decide whether a fresh map can continue, must replan, or must stop."""
 
@@ -44,18 +102,25 @@ class MapRevalidator:
 
     def revalidate(self, request: RevalidationInput) -> MapRevalidationDecision:
         latest = request.latest_snapshot
-        reason = self._preflight_reason(request)
+        freshness = freshness_verdict(
+            latest, request.now_ns, self.policy.max_snapshot_age_ns)
+        reason = self._preflight_reason(request, freshness)
         if reason is not Reason.OK:
             decision = MapDecision.STOP if request.in_flight else MapDecision.FAULT
-            return self._decision(decision, reason, latest, ())
+            return self._decision(decision, reason, latest, (), freshness)
         affected = self._affected_edges(request.edges, latest)
         if affected:
             if request.in_flight:
-                return self._decision(MapDecision.STOP, Reason.CARRY_FAULT, latest, affected)
-            return self._decision(MapDecision.REPLAN, Reason.MAP_REVISION_MISMATCH, latest, affected)
-        return self._decision(MapDecision.CONTINUE, Reason.OK, latest, ())
+                return self._decision(
+                    MapDecision.STOP, Reason.CARRY_FAULT, latest, affected,
+                    freshness)
+            return self._decision(
+                MapDecision.REPLAN, Reason.MAP_REVISION_MISMATCH, latest,
+                affected, freshness)
+        return self._decision(
+            MapDecision.CONTINUE, Reason.OK, latest, (), freshness)
 
-    def _preflight_reason(self, request: RevalidationInput) -> Reason:
+    def _preflight_reason(self, request: RevalidationInput, freshness) -> Reason:
         planned, latest = request.planned_snapshot, request.latest_snapshot
         if not request.runtime_lease_valid:
             return Reason.MAP_RESTART
@@ -65,7 +130,7 @@ class MapRevalidator:
             return Reason.MAP_GEOMETRY_HASH_MISMATCH
         if latest.map_revision < planned.map_revision or latest.commit_revision < planned.commit_revision:
             return Reason.MAP_RESTART
-        if request.now_ns - latest.acquisition_stamp_ns > self.policy.max_snapshot_age_ns:
+        if not freshness["allowed"]:
             return Reason.MAP_STALE
         if latest.occupancy_counts()["occupied"] == latest.cell_count:
             return Reason.MAP_FULLY_BLOCKED
@@ -83,14 +148,17 @@ class MapRevalidator:
         return tuple(affected)
 
     def _decision(self, decision: MapDecision, reason: Reason, snapshot: PlanningSnapshot,
-                  affected: Tuple[str, ...]) -> MapRevalidationDecision:
+                  affected: Tuple[str, ...], freshness) -> MapRevalidationDecision:
         return MapRevalidationDecision(
             decision=decision,
             reason=reason,
             map_revision=snapshot.map_revision,
             validation_epoch=self.policy.validation_epoch,
             affected_edge_ids=affected,
-            detail={"policy": "st09-c-map-revalidation"},
+            detail={
+                "policy": "st09-c-map-revalidation",
+                "freshness": dict(freshness),
+            },
         )
 
 

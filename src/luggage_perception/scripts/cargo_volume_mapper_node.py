@@ -76,10 +76,15 @@ from luggage_perception.cargo_volume_mapper import (
 )
 from luggage_perception.frame_message_adapters import measured_surface_to_message
 from luggage_perception.cargo_view_integration import (
+    MAP_MEASURED,
+    MAP_RELEASE_INTEGRATED,
+    MAP_STATIC_EMPTY,
     REASON_TF_MISSING,
     REASON_VIEW_EMPTY,
     SCHEMA_VERSION,
     apply_integrate,
+    measured_identity,
+    release_identity,
     select_fresh_record,
     stamp_key,
     stamp_to_sec,
@@ -162,9 +167,12 @@ class CargoVolumeMapperNode(Node):
         self._lock = threading.Lock()
         self._clouds = OrderedDict()
         self._integrated = set()
-        #: Sensor stamp of the last integrated settled view (0 = never
-        #: observed) — the freshness datum surfaced through get_stats.
+        #: Empty-container identity until a settled view or a placed-box
+        #: commit. Stamp 0 is legal only while this stays static_empty,
+        #: placed_count is 0, and no view has been integrated.
         self._last_acquisition_ns = 0
+        self._map_source = MAP_STATIC_EMPTY
+        self._cargo_observed = False
 
         self._tf_buffer = Buffer()
         self._tf_node = Node(
@@ -397,11 +405,15 @@ class CargoVolumeMapperNode(Node):
                     result["n_finite"], result["n_kept"]),
                 self._mapper.stats())
 
+        sensor_ns = (
+            int(record["stamp"].sec) * 1_000_000_000
+            + int(record["stamp"].nanosec))
+        stamp_ns, source = measured_identity(sensor_ns)
         with self._lock:
             self._integrated.add(tuple(record["stamp_key"]))
-            self._last_acquisition_ns = (
-                int(record["stamp"].sec) * 1_000_000_000
-                + int(record["stamp"].nanosec))
+            self._last_acquisition_ns = int(stamp_ns)
+            self._map_source = source
+            self._cargo_observed = True
         self._publish_all()
         stats = self._mapper.stats()
         response.schema_version = SCHEMA_VERSION
@@ -443,6 +455,7 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
+        self._adopt_release(committed_now=bool(added))
         self._publish_all()
         response.success = True
         response.message = "%s %d boxes (rev %d)" % (
@@ -472,6 +485,8 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "unmark failed: %s" % exc
             return response
+        if removed:
+            self._adopt_after_removal()
         self._publish_all()
         response.success = bool(removed)
         response.message = (
@@ -486,6 +501,9 @@ class CargoVolumeMapperNode(Node):
         with self._lock:
             self._clouds.clear()
             self._integrated.clear()
+            self._last_acquisition_ns = 0
+            self._map_source = MAP_STATIC_EMPTY
+            self._cargo_observed = False
         self._publish_all()
         response.success = True
         response.message = "reset"
@@ -506,6 +524,9 @@ class CargoVolumeMapperNode(Node):
         response.map_revision = int(stats["map_revision"])
         response.geometry_hash = self._geometry_hash
         response.last_acquisition_stamp_ns = int(self._last_acquisition_ns)
+        response.map_source = str(self._map_source)
+        response.placed_count = int(stats["committed_box_count"])
+        response.cargo_observed = bool(self._cargo_observed)
         response.message = "committed=%d" % stats["committed_box_count"]
         return response
 
@@ -517,8 +538,42 @@ class CargoVolumeMapperNode(Node):
             2.0 * (q.w * q.z + q.x * q.y),
             1.0 - 2.0 * (q.y * q.y + q.z * q.z))
 
+    def _node_clock_ns(self):
+        stamp = self.get_clock().now().to_msg()
+        return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
+
+    def _adopt_release(self, committed_now):
+        """A placed box leaves the static-empty identity.
+
+        A new commit stamps the node clock. A duplicate commit keeps an
+        existing release stamp so it does not look freshly acquired.
+        """
+        if len(self._mapper.commit_ledger()) <= 0:
+            return
+        stamp, source = release_identity(self._node_clock_ns())
+        refresh = bool(committed_now) or int(self._last_acquisition_ns) <= 0 \
+            or self._map_source != MAP_RELEASE_INTEGRATED
+        self._map_source = source
+        if refresh:
+            self._last_acquisition_ns = int(stamp)
+
+    def _adopt_after_removal(self):
+        placed = len(self._mapper.commit_ledger())
+        if placed > 0:
+            self._map_source = MAP_RELEASE_INTEGRATED
+            return
+        if self._cargo_observed:
+            self._map_source = MAP_MEASURED
+            return
+        self._map_source = MAP_STATIC_EMPTY
+        self._last_acquisition_ns = 0
+
     def _publish_all(self):
         surface = self._mapper.surface_map_2d()
+        surface["acquisition_stamp_ns"] = int(self._last_acquisition_ns)
+        surface["map_source"] = str(self._map_source)
+        surface["placed_count"] = len(self._mapper.commit_ledger())
+        surface["cargo_observed"] = bool(self._cargo_observed)
         self._surface_pub.publish(String(data=json.dumps(
             surface, sort_keys=True)))
         self._ledger_pub.publish(String(data=json.dumps({
@@ -632,6 +687,7 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
+        self._adopt_release(committed_now=bool(added))
         self._publish_all()
         response.success = True
         response.message = "%s %d boxes (rev %d)" % (
@@ -670,6 +726,8 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "unmark failed: %s" % exc
             return response
+        if removed:
+            self._adopt_after_removal()
         self._publish_all()
         response.success = bool(removed)
         response.message = (

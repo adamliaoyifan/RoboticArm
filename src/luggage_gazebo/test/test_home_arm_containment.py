@@ -73,6 +73,8 @@ class TestHomeArmClassification(unittest.TestCase):
         self.assertIn("cycle=ALREADY_READY", notes)
         self.assertIn("zone=outside_container", notes)
         self.assertEqual(driver.home_arm_code(), "")
+        self.assertEqual(driver._home_arm_state["ensure_detail"], "{}")
+        self.assertEqual(driver._home_arm_state["t_ros"], 0.0)
 
     def test_goto_failure_is_goto_failed(self):
         driver = _Driver(ready=True, goto_ok=False)

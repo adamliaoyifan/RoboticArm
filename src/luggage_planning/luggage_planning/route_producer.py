@@ -230,6 +230,16 @@ def certification_policy_from_contract(contract: Mapping):
         joint_lower=tuple(lower), joint_upper=tuple(upper))
 
 
+def _opening_depth(slot, inward, opening_point):
+    """Signed distance from the opening along the inward normal."""
+    if not inward or not opening_point:
+        return 0.0
+    position = slot["position"]
+    return sum(
+        (float(position[axis]) - float(opening_point[axis]))
+        * float(inward[axis]) for axis in range(3))
+
+
 def _named_reason(exc):
     """``ContractViolation`` messages are ``REASON: detail``; keep the name."""
     text = str(exc)
@@ -257,6 +267,9 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
         "ny": columns,
         "state": [list(row) for row in state],
         "acquisition_stamp_ns": int(surface.get("stamp_ns") or 0),
+        "map_source": str(surface.get("map_source") or ""),
+        "placed_count": int(surface.get("placed_count") or 0),
+        "cargo_observed": bool(surface.get("cargo_observed") or False),
         "commit_revision": int(surface.get("commit_revision")
                                or request["map_revision"]),
         "geometry_hash": str(request["geometry_hash"]),
@@ -658,6 +671,8 @@ class RouteProducer(object):
         ordered_slots = []
         if self.atlas_prior is not None:
             seeded_order, reachable_order, unknown_order = [], [], []
+            inward = self._inward_normal()
+            opening_point = (self.opening_info or {}).get("point")
             for index, slot in enumerate(request["slots"]):
                 prior_candidate = candidate_from_slot(slot, index)
                 # The prior is queried at the REAL TCP targets (the
@@ -696,11 +711,13 @@ class RouteProducer(object):
                         "reason": "ATLAS_UNREACHABLE",
                     })
                     continue
-                entry = (index, slot,
-                         list(prior.get("seeds") or []))
-                if entry[2]:
+                seeds = list(prior.get("seeds") or [])
+                verdict = str(prior.get("verdict") or "unknown")
+                entry = (index, slot, seeds, _opening_depth(
+                    slot, inward, opening_point), verdict)
+                if seeds:
                     seeded_order.append(entry)
-                elif prior.get("verdict") == "reachable":
+                elif verdict == "reachable":
                     reachable_order.append(entry)
                 else:
                     unknown_order.append(entry)
@@ -713,22 +730,12 @@ class RouteProducer(object):
             # (three-box acceptance at M3). Only SAMPLED-unreachable
             # candidates are dropped (named rows); budget fairness comes
             # from the per-candidate planning slice below.
-            inward = self._inward_normal()
-            opening_point = (self.opening_info or {}).get("point")
-
             def _depth_key(entry):
-                # depth ascending; ties broken by DESCENDING placement
-                # index — the shallower end of placement's deep-first
-                # list wins ties, matching the audited passing order
-                # (reverse of the deep-first list).
-                index, slot, _seeds = entry
-                position = slot["position"]
-                if not inward or not opening_point:
-                    return (-float(index),)
-                depth = sum(
-                    (float(position[axis]) - float(opening_point[axis]))
-                    * float(inward[axis]) for axis in range(3))
-                return (depth, -float(index))
+                # Opening distance ascending, then more atlas seeds,
+                # then the shallower end of placement's list. A deep
+                # seeded slot does not jump a nearer seeded slot.
+                _index, _slot, seeds, depth, _verdict = entry
+                return (float(depth), -len(seeds), -float(_index))
 
             if EXECUTABLE_FIRST_ORDER:
                 seeded_order.sort(key=_depth_key)
@@ -746,12 +753,13 @@ class RouteProducer(object):
                 return self._fail("NO_FEASIBLE_ROUTE", rows)
         else:
             ordered_slots = [
-                (index, slot, []) for index, slot
+                (index, slot, [], 0.0, "no_atlas") for index, slot
                 in enumerate(request["slots"])]
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
-        for index, slot, atlas_seeds in ordered_slots:
+        tried_indices = []
+        for index, slot, atlas_seeds, opening_depth, verdict in ordered_slots:
             if index and index % 100 == 0:
                 self._log("route: slot %d/%d %.1fs last=%s" % (
                     index, len(request["slots"]),
@@ -760,6 +768,7 @@ class RouteProducer(object):
             elapsed = self._clock_ns() - started_ns
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
+                rows.append(self._attempt_summary(ordered_slots, tried_indices))
                 return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
             # [ST09-I P3 ordering contract] NO per-candidate slice:
             # a measured COMPLETE route build costs ~6-10 s (staging
@@ -774,10 +783,14 @@ class RouteProducer(object):
             # persisted graphs are the levers for multi-attempt budgets.
             candidate_budget_ns = int(remaining)
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
+            tried_indices.append(index)
             row = {
                 "slot_index": index,
                 "candidate_id": base_candidate.candidate_id,
-                "depth_m": 0.0,
+                "depth_m": float(opening_depth),
+                "reachability": str(verdict),
+                "seed_count": len(atlas_seeds),
+                "_started_ns": self._clock_ns(),
                 "reason": "",
             }
             # [ST09-I P3] the dev 1.35 m base-radius prior is REMOVED:
@@ -791,7 +804,7 @@ class RouteProducer(object):
                     base_candidate, attachment, request)
             except ContractViolation as exc:
                 row["reason"] = _named_reason(exc)
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
             candidate, _box_target, _plan, _seeded = self._prepare_candidate(
@@ -852,7 +865,7 @@ class RouteProducer(object):
                     candidate, attachment, request)
                 if not targets:
                     row["reason"] = "TARGET_SYNTHESIS_EMPTY"
-                    rows.append(row)
+                    self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
                 self._log("route: planning candidate %d (%.2fs left)"
@@ -869,7 +882,9 @@ class RouteProducer(object):
                      for t in targets], default=float)[:2000]
                 row["reason"] = exc.code
                 row["detail"] = exc.detail
-                rows.append(row)
+                row["ik_refine"] = list(getattr(self, "last_goal_refine", []) or [])
+                row["atlas"] = getattr(self, "last_atlas_diag", None)
+                self._close_row(rows, row)
                 last_reason = exc.code
                 # [ST09-I] bounded sampler retry: NO_FEASIBLE after an
                 # OMPL miss (a staging transit dying at -2 when the next
@@ -901,7 +916,7 @@ class RouteProducer(object):
                           % (index, route.route_id))
             except ContractViolation as exc:
                 row["reason"] = _named_reason(exc)
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
             except RoutePlanningError as exc:
@@ -914,7 +929,7 @@ class RouteProducer(object):
                                    None)
                 if callable(failures):
                     row["moveit_failures"] = list(failures())[-8:]
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = exc.code
                 self._log("route: candidate %d failed %s" % (index, exc.code))
                 continue
@@ -923,7 +938,7 @@ class RouteProducer(object):
                 # per-candidate failures, never a crashed service.
                 row["reason"] = "EDGE_BUILD_FAILED"
                 row["detail"] = {"error": repr(exc)[:300]}
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = row["reason"]
                 self._log("route: candidate %d error %r" % (index, exc))
                 continue
@@ -978,7 +993,7 @@ class RouteProducer(object):
                     except RoutePlanningError:
                         pass
                 row["reason"] = reason
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = row["reason"]
                 break
             if row.get("reason"):
@@ -986,23 +1001,49 @@ class RouteProducer(object):
             revalidation = self._revalidate(route, snapshot, edges)
             if revalidation is None:
                 row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
-                rows.append(row)
+                self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
             from st09_contracts.certification import MapDecision
 
             row["decision"] = getattr(revalidation.decision, "value",
                                       str(revalidation.decision))
+            row["map_admission"] = self._map_admission(revalidation)
             if revalidation.decision is not MapDecision.CONTINUE:
-                row["reason"] = getattr(
+                reason = getattr(
                     revalidation.reason, "value", "MAP_REVISION_MISMATCH")
-                rows.append(row)
-                last_reason = row["reason"]
-                continue
+                row["map_refusal"] = self._map_refusal(
+                    snapshot, revalidation, route, edges, request)
+                if reason == "MAP_STALE":
+                    refreshed = self._revalidate(route, snapshot, edges)
+                    if (refreshed is not None
+                            and refreshed.decision is MapDecision.CONTINUE):
+                        revalidation = refreshed
+                        row["map_refresh"] = "fresh_snapshot_accepted"
+                        row["map_admission"] = self._map_admission(
+                            refreshed)
+                    else:
+                        row["reason"] = "MAP_STALE_REPEATED"
+                        if refreshed is not None:
+                            row["map_refusal_after_refresh"] = (
+                                self._map_refusal(
+                                    snapshot, refreshed, route, edges,
+                                    request))
+                            row["map_admission"] = self._map_admission(
+                                refreshed)
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                else:
+                    row["reason"] = reason
+                    self._close_row(rows, row)
+                    last_reason = row["reason"]
+                    continue
             legs = leg_records(route, edges, request)
             row["reason"] = "OK"
             row["certified"] = True
-            rows.append(row)
+            row["map_admission"] = self._map_admission(revalidation)
+            self._close_row(rows, row)
             self.last_route = route
             self.last_certification = certification
             self.last_revalidation = revalidation
@@ -1035,6 +1076,7 @@ class RouteProducer(object):
                 "elapsed_s": (self._clock_ns() - started_ns) / 1e9,
                 "stage_timings": self._stage_timings(started_ns),
             }
+        rows.append(self._attempt_summary(ordered_slots, tried_indices))
         return self._fail(last_reason, rows)
 
     def _stage_timings(self, started_ns):
@@ -1575,7 +1617,7 @@ class RouteProducer(object):
                     tcp_position, tcp_quaternion, list(current))
                 if q is None:
                     row["reason"] = "IK_UNAVAILABLE"
-                    rows.append(row)
+                    self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
                 goal_node = self.graph.register_node(
@@ -1611,7 +1653,7 @@ class RouteProducer(object):
                 revalidation = self._revalidate(route, snapshot, edges)
                 if revalidation is None:
                     row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
-                    rows.append(row)
+                    self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
                 from st09_contracts.certification import MapDecision
@@ -1620,7 +1662,7 @@ class RouteProducer(object):
                     row["reason"] = getattr(
                         revalidation.reason, "value",
                         "MAP_REVISION_MISMATCH")
-                    rows.append(row)
+                    self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
                 certification, failure = self._certify(
@@ -1630,7 +1672,7 @@ class RouteProducer(object):
                     row["reason"] = failure if certification is None \
                         else certification.reason.value
                     row["recertified"] = False
-                    rows.append(row)
+                    self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
                 legs = leg_records(route, edges, request)
@@ -1924,16 +1966,32 @@ class RouteProducer(object):
         seeds_to_try += ([("branch", branch_q)] if branch_q is not None else [])
         seeds_to_try += [("tool_down", TOOL_DOWN_SEED_Q),
                          ("start", start_q)]
+        self.last_goal_refine = []
 
         def goal_seeds(target):
             seeds = []
+            attempts = []
             for label, seed in seeds_to_try:
-                q, _info = self._refine_to(
+                q, info = self._refine_to(
                     target.position, target.quaternion_xyzw, seed)
+                info = info if isinstance(info, dict) else {}
+                attempts.append({
+                    "seed": label,
+                    "ok": q is not None,
+                    "pos_err_m": info.get("pos_err_m"),
+                    "rot_err_rad": info.get("rot_err_rad"),
+                })
                 if q is not None:
                     seeds.append(GoalSeed(
                         tuple(q), "refine-%s" % label,
                         "route_producer:offline_refine"))
+            self.last_goal_refine.append({
+                "target_world": [
+                    [float(v) for v in target.position],
+                    [float(v) for v in target.quaternion_xyzw]],
+                "atlas_seed_count": len(atlas_seeds or []),
+                "attempts": attempts,
+            })
             return seeds
         return goal_seeds
 
@@ -2069,6 +2127,7 @@ class RouteProducer(object):
             if fetched is None:
                 return None  # named MAP_REVALIDATION_UNAVAILABLE upstream
             latest = fetched
+        self.last_latest_snapshot = latest
         try:
             return self.revalidator.revalidate(RevalidationInput(
                 route=route, planned_snapshot=snapshot,
@@ -2079,6 +2138,127 @@ class RouteProducer(object):
             if stages is not None:
                 stages["revalidate"] += \
                     _reval_time.monotonic_ns() - _reval_t0
+
+    def _close_row(self, rows, row):
+        """Stamp elapsed time, seed source, and recent Cartesian refusals."""
+        started = row.pop("_started_ns", None)
+        if started is not None:
+            row["elapsed_ms"] = round(
+                (self._clock_ns() - int(started)) / 1e6, 1)
+        if "seed_source" not in row:
+            sources = []
+            for record in getattr(self, "last_goal_refine", None) or []:
+                for attempt in record.get("attempts") or []:
+                    if attempt.get("ok"):
+                        sources.append(attempt.get("seed"))
+            if sources:
+                row["seed_source"] = sources
+        log = getattr(getattr(self, "edge_builder", None),
+                      "edge_failure_log", None)
+        if callable(log) and "cartesian" not in row:
+            cartesian = [
+                item for item in log()
+                if item.get("reason") == "fraction_below_min"]
+            if cartesian:
+                row["cartesian"] = cartesian[-4:]
+        rows.append(row)
+        return row
+
+    def _map_admission(self, revalidation):
+        """Identity the freshness gate actually judged."""
+        detail = getattr(revalidation, "detail", None) or {}
+        freshness = {}
+        if isinstance(detail, Mapping):
+            raw = detail.get("freshness") or {}
+            if isinstance(raw, Mapping):
+                freshness = raw
+        latest = getattr(self, "last_latest_snapshot", None)
+        source = freshness.get("map_source")
+        if source is None:
+            source = getattr(latest, "map_source", "") or ""
+        placed = freshness.get("placed_count")
+        if placed is None:
+            placed = getattr(latest, "placed_count", 0) or 0
+        stamp = freshness.get("last_acquisition_stamp_ns")
+        if stamp is None:
+            stamp = getattr(latest, "acquisition_stamp_ns", 0) or 0
+        return {
+            "map_source": str(source or ""),
+            "placed_count": int(placed or 0),
+            "last_acquisition_stamp_ns": int(stamp or 0),
+            "freshness_policy": str(freshness.get("freshness_policy") or ""),
+            "why_allowed": str(freshness.get("why_allowed") or ""),
+            "why_refused": str(freshness.get("why_refused") or ""),
+        }
+
+    def _map_refusal(self, snapshot, revalidation, route, edges, request):
+        """Why a planned route was not admitted, plus the legs already built."""
+        latest = getattr(self, "last_latest_snapshot", None)
+        now_ns = int(self._clock_ns())
+        latest_stamp = int(getattr(latest, "acquisition_stamp_ns", 0) or 0)
+        planned_stamp = int(getattr(snapshot, "acquisition_stamp_ns", 0) or 0)
+        policy = getattr(getattr(self, "revalidator", None), "policy", None)
+        legs = []
+        for edge in edges or ():
+            trajectory = getattr(edge, "trajectory", None)
+            positions = list(getattr(trajectory, "positions", []) or [])
+            legs.append({
+                "edge_id": str(getattr(edge, "edge_id", "")),
+                "name": str((getattr(edge, "attributes", {}) or {}).get(
+                    "edge_class") or ""),
+                "digest": edge.digest() if hasattr(edge, "digest") else "",
+                "n_points": len(positions),
+                "joint_names": list(getattr(trajectory, "joint_names", [])
+                                    or []),
+                "positions": [[float(v) for v in point] for point in positions],
+            })
+        refusal = {
+            "route_id": str(getattr(route, "route_id", "") or ""),
+            "planned_map_revision": int(getattr(snapshot, "map_revision", 0)
+                                        or 0),
+            "planned_acquisition_stamp_ns": planned_stamp,
+            "request_map_revision": int((request or {}).get("map_revision")
+                                        or 0),
+            "latest_map_revision": int(getattr(revalidation, "map_revision", 0)
+                                       or 0),
+            "latest_acquisition_stamp_ns": latest_stamp,
+            "live_map_revision": int(getattr(latest, "map_revision", 0) or 0),
+            "now_ns": now_ns,
+            # Stamp 0 is "never observed", not time zero. Age is only
+            # meaningful once a real acquisition stamp exists.
+            "age_ns": (now_ns - latest_stamp) if latest_stamp > 0 else None,
+            "stamp_valid": latest_stamp > 0,
+            "stale_window_ns": int(getattr(policy, "max_snapshot_age_ns", 0)
+                                   or 0),
+            "legs": legs,
+        }
+        refusal.update(self._map_admission(revalidation))
+        return refusal
+
+    def _attempt_summary(self, ordered_slots, tried_indices):
+        """Whether a shallower seeded slot was still waiting."""
+        tried = set(tried_indices or [])
+        seeded = [entry for entry in ordered_slots if entry[2]]
+        tried_depths = [
+            float(entry[3]) for entry in ordered_slots if entry[0] in tried]
+        shallowest_tried = min(tried_depths) if tried_depths else None
+        untried_shallower = [
+            entry[0] for entry in seeded
+            if entry[0] not in tried and (
+                shallowest_tried is None or float(entry[3]) < shallowest_tried)]
+        seeded_depths = [float(entry[3]) for entry in seeded]
+        return {
+            "reason": "ATTEMPT_SUMMARY",
+            "n_ordered": len(ordered_slots),
+            "n_seeded": len(seeded),
+            "tried_slot_indices": list(tried_indices or []),
+            "untried_seeded": sum(
+                1 for entry in seeded if entry[0] not in tried),
+            "shallowest_seeded_depth_m": (
+                min(seeded_depths) if seeded_depths else None),
+            "shallowest_tried_depth_m": shallowest_tried,
+            "untried_shallower_slot_indices": untried_shallower,
+        }
 
     def _fail(self, reason, rows):
         return {

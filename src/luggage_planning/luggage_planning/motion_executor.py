@@ -62,6 +62,9 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 TOOL_DOWN_QUAT = (1.0, 0.0, 0.0, 0.0)
 JOINTS = ["elfin_joint1", "elfin_joint2", "elfin_joint3",
           "elfin_joint4", "elfin_joint5", "elfin_joint6"]
+# Timed-path start gate. place_smoke_driver.QP_START_TOLERANCE_RAD must
+# stay equal to this; the driver waits for it and does not widen it.
+QP_START_TOLERANCE_RAD = 0.01
 # Match S20 URDF revolute limits (±2π). Used only to pick the nearest
 # equivalent wrap of an IK solution so OMPL does not command a 4 rad spin.
 _JOINT_LIMIT = 6.28
@@ -660,14 +663,23 @@ class MotionExecutor:
         if current_joints and len(current_joints) == len(knots[0]):
             import math as _math
 
-            drift = max(
+            deltas = [
                 min(abs(float(a) - float(b)),
                     2.0 * _math.pi - abs(float(a) - float(b)))
-                for a, b in zip(current_joints, knots[0]))
-            if drift > 0.01:
+                for a, b in zip(current_joints, knots[0])]
+            drift = max(deltas) if deltas else 0.0
+            if drift > QP_START_TOLERANCE_RAD:
                 if isinstance(self._last_boundary, dict):
                     self._last_boundary["qp_start_state_mismatch"] = {
-                        "drift_rad": round(drift, 4)}
+                        "drift_rad": round(drift, 6),
+                        "tolerance_rad": QP_START_TOLERANCE_RAD,
+                        "joint_names": list(names),
+                        "current_joints": [
+                            round(float(v), 6) for v in current_joints],
+                        "trajectory_first_joints": [
+                            round(float(v), 6) for v in knots[0]],
+                        "delta_per_joint": [round(v, 6) for v in deltas],
+                    }
                 return self._result(False, "QP_START_STATE_MISMATCH", 0.0)
         if getattr(self, "_occupancy", None) is not None \
                 and getattr(self, "_payload_wdh", None):

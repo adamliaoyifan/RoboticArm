@@ -41,6 +41,29 @@ from typing import Dict, List, Optional, Sequence, Tuple
 #: Frozen judge values (a B test pins equality against
 #: st09_contracts/resolved_planning_contract.json).
 CARTESIAN_MIN_FRACTION = 0.95
+
+
+def cartesian_failure_detail(from_q, to_q, from_xyz, to_xyz, fraction,
+                             required, waypoint_count):
+    """Refusal context for a short Cartesian path.
+
+    ``failed_waypoint_index`` is the first requested waypoint the
+    fraction did not reach. MoveIt reports a fraction, not an index.
+    """
+    count = max(int(waypoint_count), 0)
+    span = max(count - 1, 0)
+    index = int(math.floor(float(fraction) * span))
+    return {
+        "kind": "fraction_below_min",
+        "fraction": round(float(fraction), 6),
+        "required": float(required),
+        "from_q": [round(float(v), 6) for v in from_q],
+        "to_q": [round(float(v), 6) for v in to_q],
+        "from_position": [round(float(v), 6) for v in from_xyz],
+        "to_position": [round(float(v), 6) for v in to_xyz],
+        "waypoint_count": count,
+        "failed_waypoint_index": index,
+    }
 CARTESIAN_EXCURSION_RAD_PER_M = 3.0
 MOVEIT_VELOCITY_SCALING = 0.3
 MOVEIT_ACCELERATION_SCALING = 0.3
@@ -634,11 +657,12 @@ class MoveItEdgeAdapter(object):
                        fraction))
             except Exception:  # noqa: BLE001 - diagnostics only
                 pass
-            self._record_failure(klass.value, "fraction_below_min",
-                                 fraction=round(fraction, 6))
-            raise RoutePlanningError("EDGE_BUILD_FAILED", {
-                "kind": "fraction_below_min", "fraction": round(fraction, 6),
-                "required": CARTESIAN_MIN_FRACTION})
+            detail = cartesian_failure_detail(
+                from_node.q, to_node.q, from_node.tcp_position,
+                to_node.tcp_position, fraction, CARTESIAN_MIN_FRACTION,
+                len(poses))
+            self._record_failure(klass.value, "fraction_below_min", **detail)
+            raise RoutePlanningError("EDGE_BUILD_FAILED", detail)
         # [ST09-I] unwrap re-seeded IK samples onto one revolute branch:
         # GetCartesianPath can answer with a joint flipped to its 2*pi
         # equivalent mid-path (bookkeeping, not motion). Unwrapped, the

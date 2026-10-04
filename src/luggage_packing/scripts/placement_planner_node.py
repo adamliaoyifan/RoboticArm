@@ -70,6 +70,7 @@ from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
     placement_constraint_verdict,
+    candidate_prefix_note,
     ranked_feasible_candidates,
     solve_placement,
 )
@@ -152,6 +153,7 @@ class PlacementPlannerNode(Node):
                 apply_query_semantics,
                 apply_ros_overrides,
                 certification_block_reason,
+                compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime,
                 load_atlas_runtime_for_scene,
@@ -166,6 +168,7 @@ class PlacementPlannerNode(Node):
             load_atlas_runtime_for_scene = None
             UrdfIdentity = None
             compute_scene_tf_hash = lambda path: ""  # noqa: E731
+            compute_reachability_scene_hash = lambda path: ""  # noqa: E731
             self.get_logger().warning(
                 "atlas runtime unavailable (%s); placement runs no_atlas",
                 exc)
@@ -196,6 +199,8 @@ class PlacementPlannerNode(Node):
 
         self._scene = load_scene_tf_config(config_path)
         self._scene_tf_hash = compute_scene_tf_hash(config_path)
+        self._reachability_scene_hash = compute_reachability_scene_hash(
+            config_path)
 
         self._allowed_yaws = [
             float(v) for v in self.get_parameter("allowed_yaws").value]
@@ -694,14 +699,19 @@ class PlacementPlannerNode(Node):
         response.slot = slot_message
         response.success = True
         response.reason_code = ""
-        response.message = result["message"]
         want = int(request.max_candidates or 0)
         if want <= 0:
             want = int(self.get_parameter("max_candidates").value)
+        topk = ranked_feasible_candidates(result, want)
+        n_feasible = sum(
+            1 for candidate in (result.get("candidates") or [])
+            if candidate.get("feasible"))
+        response.message = "%s %s" % (
+            result["message"], candidate_prefix_note(topk, n_feasible))
         response.candidates = []
         response.candidate_scores = []
         response.candidate_reasons = []
-        for candidate in ranked_feasible_candidates(result, want):
+        for candidate in topk:
             message, _record = self._slot_message(candidate, request_id)
             response.candidates.append(message)
             response.candidate_scores.append(float(candidate.get("score", 0.0)))
@@ -721,12 +731,13 @@ class PlacementPlannerNode(Node):
             if self._urdf_identity is not None and self._urdf_identity.ready
             else "")
         key = (tuple(round(float(v), 4) for v in size),
-               self._scene_tf_hash, urdf_hash)
+               self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
         if key not in self._atlas_cache:
             self._atlas_cache[key] = self._load_runtime_atlas(
                 self._atlas_cfg, box_size=list(key[0]),
                 scene_tf_hash=self._scene_tf_hash,
-                urdf_hash=urdf_hash)
+                urdf_hash=urdf_hash,
+                reachability_scene_hash=self._reachability_scene_hash)
         return self._atlas_cache[key]
 
     def _atlas_hook(self, size):
@@ -990,6 +1001,11 @@ class PlacementPlannerNode(Node):
         if want <= 0:
             want = int(self.get_parameter("max_candidates").value)
         topk = ranked_feasible_candidates(result, want)
+        n_feasible = sum(
+            1 for candidate in (result.get("candidates") or [])
+            if candidate.get("feasible"))
+        response.message = "%s %s" % (
+            result["message"], candidate_prefix_note(topk, n_feasible))
         response.candidates = []
         response.candidate_scores = []
         response.candidate_reasons = []

@@ -60,6 +60,14 @@ class PlanningSnapshot:
     #: from digest(): the digest pins the MAP content, not the cell's
     #: identity binding.
     scene_revision: str = ""
+    #: ``static_empty`` / ``measured`` / ``release_integrated``. Empty
+    #: keeps the legacy acquisition-age check. Excluded from digest().
+    map_source: str = ""
+    #: Committed placed boxes. ``static_empty`` is legal only at 0.
+    placed_count: int = 0
+    #: True after a settled cargo view has been integrated. ``static_empty``
+    #: is then no longer a legal identity.
+    cargo_observed: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))
@@ -69,6 +77,18 @@ class PlanningSnapshot:
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ContractViolation("%s: non-negative int required (%r)" % (name, value))
         object.__setattr__(self, "acquisition_stamp_ns", stamp_ns(self.acquisition_stamp_ns, "acquisition_stamp_ns"))
+        source = str(self.map_source or "")
+        if source not in ("", "static_empty", "measured", "release_integrated"):
+            raise ContractViolation(
+                "map_source: unknown identity %r" % source)
+        object.__setattr__(self, "map_source", source)
+        placed = self.placed_count
+        if isinstance(placed, bool) or not isinstance(placed, int) or placed < 0:
+            raise ContractViolation(
+                "placed_count: non-negative int required (%r)" % placed)
+        if not isinstance(self.cargo_observed, bool):
+            raise ContractViolation(
+                "cargo_observed: bool required (%r)" % self.cargo_observed)
         object.__setattr__(self, "resolution_m", finite(self.resolution_m, "resolution_m"))
         if self.resolution_m <= 0.0:
             raise ContractViolation("resolution_m: non-positive (%r)" % self.resolution_m)
@@ -114,6 +134,9 @@ class PlanningSnapshot:
             "geometry_hash": self.geometry_hash,
             "map_revision": self.map_revision,
             "acquisition_stamp_ns": self.acquisition_stamp_ns,
+            "map_source": self.map_source,
+            "placed_count": self.placed_count,
+            "cargo_observed": self.cargo_observed,
             "commit_revision": self.commit_revision,
             "occupancy_digest": self.occupancy_digest,
             "resolution_m": self.resolution_m,
