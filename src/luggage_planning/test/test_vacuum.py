@@ -399,6 +399,51 @@ class TestPlanningSceneMessages(unittest.TestCase):
         self.assertEqual(
             list(obj.meshes[0].triangles[0].vertex_indices), [0, 1, 2])
 
+    def test_stl_roundtrip_without_trimesh(self):
+        import struct
+        import tempfile
+        pytest.importorskip("moveit_msgs")
+        from luggage_planning.planning_scene_client import (
+            load_stl_mesh_msg,
+            static_sync_failure_is_permanent,
+        )
+        tri = struct.pack(
+            "<12fH",
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0)
+        binary = b"\0" * 80 + struct.pack("<I", 1) + tri
+        ascii_stl = (
+            "solid t\n"
+            "  facet normal 0 0 1\n"
+            "    outer loop\n"
+            "      vertex 0 0 0\n"
+            "      vertex 1 0 0\n"
+            "      vertex 0 1 0\n"
+            "    endloop\n"
+            "  endfacet\n"
+            "endsolid t\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            binary_path = tmp + "/one.bin.stl"
+            ascii_path = tmp + "/one.ascii.stl"
+            with open(binary_path, "wb") as handle:
+                handle.write(binary)
+            with open(ascii_path, "w", encoding="utf-8") as handle:
+                handle.write(ascii_stl)
+            loaded = load_stl_mesh_msg(binary_path)
+            self.assertEqual(len(loaded.triangles), 1)
+            self.assertEqual(
+                list(loaded.triangles[0].vertex_indices), [0, 1, 2])
+            self.assertAlmostEqual(loaded.vertices[1].x, 1.0)
+            ascii_loaded = load_stl_mesh_msg(ascii_path)
+            self.assertEqual(len(ascii_loaded.triangles), 1)
+        self.assertTrue(static_sync_failure_is_permanent(
+            "stl load failed: No module named 'trimesh'"))
+        self.assertFalse(static_sync_failure_is_permanent(
+            "container mesh apply: planning scene not ready"))
+
     def test_acm_pair_roundtrip(self):
         pytest.importorskip("moveit_msgs")
         from moveit_msgs.msg import AllowedCollisionMatrix

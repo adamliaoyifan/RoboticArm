@@ -14,9 +14,13 @@ Subscribes the *preprocessed* color image so the mask inherits the RGB
 ``primary_stamp`` and the downstream point filter can join on exact stamps
 with the preprocessed cloud.
 
-The mask/instance-mask/overlay outputs are BEST_EFFORT (sensor-stream
-contract); ``/luggage/semantic/yolo_detections`` is the structured per-frame
-box list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
+The label mask and overlay stay BEST_EFFORT. ``instance_mask`` is
+RELIABLE so the detector's exact-stamp subscription can connect; a
+BEST_EFFORT subscriber (the point filter) still matches. A BEST_EFFORT
+publisher is incompatible with that RELIABLE subscription, and the
+detector then never receives the topic.
+``/luggage/semantic/yolo_detections`` is the structured per-frame box
+list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
 late consumer sees the last record.
 """
 
@@ -32,7 +36,9 @@ import rclpy
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import (
+    DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
+)
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -236,8 +242,15 @@ class SemanticSegmenterNode(Node):
             Image, self.get_parameter("output.mask").value, mask_qos)
         self._overlay_pub = self.create_publisher(
             Image, self.get_parameter("output.overlay").value, mask_qos)
+        # Match the detector's RELIABLE instance-mask subscription.
+        # BEST_EFFORT subscribers remain compatible with a RELIABLE publisher.
+        instance_qos = QoSProfile(
+            depth=15,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         self._instance_pub = self.create_publisher(
-            Image, self.get_parameter("output.instance_mask").value, mask_qos)
+            Image, self.get_parameter("output.instance_mask").value,
+            instance_qos)
         self._yolo_pub = self.create_publisher(
             YoloDetections,
             self.get_parameter("output.yolo_detections").value,
