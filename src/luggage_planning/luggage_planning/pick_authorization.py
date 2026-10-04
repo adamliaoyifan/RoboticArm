@@ -5,6 +5,12 @@ TOP_ONLY is a valid DetectLuggage result (cargo present, height unknown).
 It never authorizes a grasp, a pickup MoveIt AABB, or ComputePlacement.
 Configured and catalog height sources never authorize either.
 
+``hold_track`` (and the ``DETECT_SUPPORT_STAMP_MISMATCH`` gate that names
+it) is continuity output from an earlier cargo cloud. It is not a fresh
+measurement, so it cannot authorize a pick and it does not consume the
+attempt budget. The wait still ends at ``max_elapsed_sec`` with
+``DETECT_FULL_GEOMETRY_REQUIRED``.
+
 No ROS, no numpy. Elapsed budget is supplied by the caller so tests can
 drive a fake clock. Drivers treat REOBSERVE as TERMINAL until named
 recovery poses exist (ACTIVE-VIEW-2 follow-on).
@@ -12,6 +18,7 @@ recovery poses exist (ACTIVE-VIEW-2 follow-on).
 
 from __future__ import division
 
+import re
 from dataclasses import dataclass, field
 
 # Match luggage_msgs/DetectedLuggage.msg (kept numeric so this module
@@ -30,11 +37,16 @@ DETECT_FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
 DETECT_FAILED = "DETECT_FAILED"
 WAIT_FOR_FULL_3D = "WAIT_FOR_FULL_3D"
 
-# Detector estimate_retry_count=4 at 0.25 s plus settle margin. Stays
-# well under typical DetectLuggage timeouts (15-20 s).
-DEFAULT_MAX_ATTEMPTS = 5
-DEFAULT_MAX_ELAPSED_SEC = 5.0
+HOLD_TRACK_GATE = "hold_track"
+HOLD_TRACK_SUPPORT = "DETECT_SUPPORT_STAMP_MISMATCH"
+
+# The wait is the elapsed window. Samples are one detect plus one per
+# wait period, so the attempt cap must not close the window early:
+# 5 attempts at 0.5 s ended at 2 s while max_elapsed_sec was already 5.
 DEFAULT_WAIT_PERIOD_SEC = 0.5
+DEFAULT_MAX_ELAPSED_SEC = 5.0
+DEFAULT_MAX_ATTEMPTS = int(round(
+    DEFAULT_MAX_ELAPSED_SEC / DEFAULT_WAIT_PERIOD_SEC)) + 1
 
 _FORBIDDEN_SOURCES = (
     HEIGHT_SOURCE_CONFIGURED_SUPPORT,
@@ -80,6 +92,11 @@ class AuthorizationLoopResult:
     detect_ok: bool
     detect_reason: str
     trace: tuple = field(default_factory=tuple)
+    attempts: int = 0
+    hold_track_skipped: int = 0
+    first_measure_latency_sec: object = None
+    last_gate: str = ""
+    last_measure_age_sec: object = None
 
     @property
     def authorized(self):
@@ -91,6 +108,11 @@ class AuthorizationLoopResult:
             "detect_ok": bool(self.detect_ok),
             "detect_reason": str(self.detect_reason or ""),
             "authorized": bool(self.authorized),
+            "attempts": int(self.attempts),
+            "hold_track_skipped": int(self.hold_track_skipped),
+            "first_measure_latency_sec": self.first_measure_latency_sec,
+            "last_gate": str(self.last_gate or ""),
+            "last_measure_age_sec": self.last_measure_age_sec,
             "trace": [dict(row) for row in self.trace],
         }
 
@@ -104,9 +126,70 @@ def _height_source(box):
         return HEIGHT_SOURCE_UNAVAILABLE
 
 
-def pick_authorized(box):
-    """True only for a measured top plus measured support plane."""
-    if box is None:
+def _diag_fields(text):
+    """``key=value`` pairs from a DetectLuggage message. ``n/a`` is absent."""
+    found = {}
+    for key, value in re.findall(r"([A-Za-z_]+)=([^,\)]*)", str(text or "")):
+        token = value.strip()
+        if token in ("", "n/a", "None"):
+            continue
+        found[key] = token
+    return found
+
+
+def _attr_or_diag(box, attr, diag, key):
+    value = str(getattr(box, attr, "") or "")
+    if value in ("", "n/a", "None"):
+        value = str(diag.get(key) or "")
+    if value in ("", "n/a", "None"):
+        return ""
+    return value
+
+
+def observation_gate(box, detect_reason=""):
+    """Gate label for one detect sample. ``hold_track`` is continuity."""
+    diag = _diag_fields(detect_reason)
+    gate = _attr_or_diag(box, "support_gate", diag, "gate")
+    source = _attr_or_diag(box, "pca_source", diag, "source")
+    if not source:
+        source = _attr_or_diag(box, "source", diag, "pca_source")
+    support = _attr_or_diag(box, "support_reason", diag, "support")
+    if source == HOLD_TRACK_GATE or gate == HOLD_TRACK_GATE:
+        return HOLD_TRACK_GATE
+    if support == HOLD_TRACK_SUPPORT:
+        return HOLD_TRACK_GATE
+    if gate:
+        return gate
+    if source:
+        return source
+    return support
+
+
+def is_continuity_hold(box, detect_reason=""):
+    """True when this sample is a held cargo cloud, not a new measurement."""
+    return observation_gate(box, detect_reason) == HOLD_TRACK_GATE
+
+
+def is_fresh_measure(detect_ok, box, detect_reason=""):
+    """A non-hold sample the estimator actually measured this acquisition."""
+    if not detect_ok or box is None or is_continuity_hold(box, detect_reason):
+        return False
+    source = _attr_or_diag(
+        box, "pca_source", _diag_fields(detect_reason), "source")
+    if not source:
+        source = str(getattr(box, "source", "") or "")
+    if source:
+        return source == "measure"
+    return bool(getattr(box, "height_valid", False))
+
+
+def pick_authorized(box, detect_reason=""):
+    """True only for a measured top plus measured support plane.
+
+    Continuity output never qualifies, even if height fields were copied
+    forward from an older measure.
+    """
+    if box is None or is_continuity_hold(box, detect_reason):
         return False
     return (
         bool(getattr(box, "top_surface_valid", False))
@@ -121,23 +204,31 @@ class PickAuthorizationPolicy:
     def __init__(self, config=None):
         self.config = config or AuthorizationConfig()
 
-    def _budget_left(self, attempts, elapsed_sec):
+    def _budget_left(self, scored_attempts, elapsed_sec):
         cfg = self.config
-        return (int(attempts) < int(cfg.max_attempts)
+        return (int(scored_attempts) < int(cfg.max_attempts)
                 and float(elapsed_sec) < float(cfg.max_elapsed_sec))
 
     def evaluate(self, detect_ok, box, elapsed_sec, attempts,
-                 detect_reason=""):
+                 detect_reason="", scored_attempts=None):
         elapsed = float(elapsed_sec)
         n = int(attempts)
         if n < 1:
             raise ValueError("attempts must be >= 1")
-        if pick_authorized(box):
+        # Continuity frames are not failure samples. Callers that omit
+        # scored_attempts keep the historical "every call counts" budget.
+        if scored_attempts is None:
+            scored = n if not is_continuity_hold(box, detect_reason) else n - 1
+        else:
+            scored = int(scored_attempts)
+        if pick_authorized(box, detect_reason):
             return AuthorizationDecision(AUTHORIZE, "ok", n, elapsed)
-        if box is not None and _height_source(box) in _FORBIDDEN_SOURCES:
+        if (box is not None
+                and not is_continuity_hold(box, detect_reason)
+                and _height_source(box) in _FORBIDDEN_SOURCES):
             return AuthorizationDecision(
                 TERMINAL, DETECT_FULL_GEOMETRY_REQUIRED, n, elapsed)
-        if self._budget_left(n, elapsed):
+        if self._budget_left(scored, elapsed):
             return AuthorizationDecision(WAIT, WAIT_FOR_FULL_3D, n, elapsed)
         if bool(detect_ok) and box is not None:
             return AuthorizationDecision(
@@ -160,20 +251,46 @@ def run_authorization_loop(detect_fn, sleep_fn, monotonic_fn, policy=None):
     box = None
     detect_reason = ""
     attempts = 0
+    scored = 0
+    skipped = 0
+    first_measure = None
+    last_measure_elapsed = None
+    last_gate = ""
     while True:
         detect_ok, box, detect_reason = detect_fn()
         attempts += 1
         elapsed = float(monotonic_fn()) - t0
+        held = is_continuity_hold(box, detect_reason)
+        gate = observation_gate(box, detect_reason)
+        if gate:
+            last_gate = gate
+        if held:
+            skipped += 1
+        else:
+            scored += 1
+        if is_fresh_measure(detect_ok, box, detect_reason):
+            if first_measure is None:
+                first_measure = elapsed
+            last_measure_elapsed = elapsed
         decision = policy.evaluate(
-            detect_ok, box, elapsed, attempts, detect_reason)
+            detect_ok, box, elapsed, attempts, detect_reason,
+            scored_attempts=scored if not held else scored)
         trace.append(decision.to_dict())
         if decision.action == WAIT:
             sleep_fn(float(policy.config.wait_period_sec))
             continue
+        age = None
+        if last_measure_elapsed is not None:
+            age = float(elapsed) - float(last_measure_elapsed)
         return AuthorizationLoopResult(
             decision=decision,
             box=box,
             detect_ok=bool(detect_ok),
             detect_reason=str(detect_reason or ""),
             trace=tuple(trace),
+            attempts=int(attempts),
+            hold_track_skipped=int(skipped),
+            first_measure_latency_sec=first_measure,
+            last_gate=str(last_gate or ""),
+            last_measure_age_sec=age,
         )

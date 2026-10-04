@@ -784,7 +784,10 @@ def main(argv=None):
     parser.add_argument("--goto-timeout", type=float, default=90.0)
     parser.add_argument("--detect-timeout", type=float, default=40.0)
     parser.add_argument("--detect-retries", type=int, default=5)
-    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument(
+        "--auth-max-attempts", type=int, default=11,
+        help="Safety cap on non-hold detect samples. The wait itself "
+             "is --auth-max-elapsed-sec (default 5 s).")
     parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)

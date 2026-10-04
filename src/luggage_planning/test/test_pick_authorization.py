@@ -12,24 +12,49 @@ from luggage_planning.pick_authorization import (
     HEIGHT_SOURCE_CONFIGURED_SUPPORT,
     HEIGHT_SOURCE_MEASURED_SUPPORT,
     HEIGHT_SOURCE_UNAVAILABLE,
+    HOLD_TRACK_SUPPORT,
     REOBSERVE,
     TERMINAL,
     WAIT,
     WAIT_FOR_FULL_3D,
     AuthorizationConfig,
     PickAuthorizationPolicy,
+    is_continuity_hold,
     pick_authorized,
     run_authorization_loop,
 )
 
 
 def _box(**fields):
-    return SimpleNamespace(
+    box = SimpleNamespace(
         top_surface_valid=fields.get("top_surface_valid", True),
         height_valid=fields.get("height_valid", False),
         height_source=fields.get(
             "height_source", HEIGHT_SOURCE_UNAVAILABLE),
     )
+    for name in ("support_gate", "support_reason", "pca_source", "source"):
+        if name in fields:
+            setattr(box, name, fields[name])
+    return box
+
+
+def _hold_reason():
+    return (
+        "perception estimate (conf=1.00, height_valid=False, "
+        "support=%s, gate=hold_track, sides=0.0, raw=hit)"
+        % HOLD_TRACK_SUPPORT)
+
+
+def _measure_ok_reason():
+    return (
+        "perception estimate (conf=1.00, height_valid=True, "
+        "support=ok, gate=n/a, sides=0.80, raw=hit)")
+
+
+def _unstable_reason():
+    return (
+        "perception estimate (conf=1.00, height_valid=False, "
+        "support=DETECT_SUPPORT_UNSTABLE, gate=n/a, sides=0.10, raw=hit)")
 
 
 class TestPickAuthorized(unittest.TestCase):
@@ -62,6 +87,23 @@ class TestPickAuthorized(unittest.TestCase):
 
     def test_none_does_not_authorize(self):
         self.assertFalse(pick_authorized(None))
+
+    def test_hold_track_fields_never_authorize(self):
+        box = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+            pca_source="hold_track",
+            support_gate="hold_track",
+            support_reason=HOLD_TRACK_SUPPORT)
+        self.assertTrue(is_continuity_hold(box))
+        self.assertFalse(pick_authorized(box))
+
+    def test_hold_track_message_never_authorizes(self):
+        box = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT)
+        self.assertTrue(is_continuity_hold(box, _hold_reason()))
+        self.assertFalse(pick_authorized(box, _hold_reason()))
 
 
 class TestPickAuthorizationPolicy(unittest.TestCase):
@@ -168,6 +210,85 @@ class TestAuthorizationLoop(unittest.TestCase):
         self.assertFalse(result.authorized)
         self.assertEqual(result.decision.action, REOBSERVE)
         self.assertEqual(len(result.trace), 2)
+
+
+class TestHoldTrackWait(unittest.TestCase):
+    """Continuity frames wait; only a fresh measured FULL_3D authorizes."""
+
+    def _run(self, samples, max_elapsed, period=0.5, max_attempts=11):
+        pending = list(samples)
+        clock = {"t": 0.0}
+
+        def detect():
+            return pending.pop(0)
+
+        def sleep(wait):
+            clock["t"] += wait
+
+        policy = PickAuthorizationPolicy(AuthorizationConfig(
+            max_attempts=max_attempts,
+            max_elapsed_sec=max_elapsed,
+            wait_period_sec=period))
+        return run_authorization_loop(
+            detect, sleep, lambda: clock["t"], policy)
+
+    def test_hold_then_measure_authorizes(self):
+        measured = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+            pca_source="measure",
+            support_reason="ok")
+        result = self._run([
+            (True, _box(pca_source="hold_track",
+                        support_gate="hold_track",
+                        support_reason=HOLD_TRACK_SUPPORT),
+             _hold_reason()),
+            (True, _box(pca_source="hold_track",
+                        support_gate="hold_track",
+                        support_reason=HOLD_TRACK_SUPPORT),
+             _hold_reason()),
+            (True, measured, _measure_ok_reason()),
+        ], max_elapsed=5.0)
+        self.assertTrue(result.authorized)
+        self.assertEqual(result.decision.reason, "ok")
+        self.assertEqual(result.hold_track_skipped, 2)
+        self.assertEqual(result.attempts, 3)
+        self.assertAlmostEqual(result.first_measure_latency_sec, 1.0)
+        self.assertEqual(result.last_gate, "measure")
+        self.assertAlmostEqual(result.last_measure_age_sec, 0.0)
+        self.assertIs(result.box, measured)
+
+    def test_hold_only_times_out_full_geometry(self):
+        hold = (
+            True,
+            _box(pca_source="hold_track", support_gate="hold_track",
+                 support_reason=HOLD_TRACK_SUPPORT),
+            _hold_reason(),
+        )
+        result = self._run([hold] * 8, max_elapsed=1.0, period=0.5)
+        self.assertFalse(result.authorized)
+        self.assertEqual(
+            result.decision.reason, DETECT_FULL_GEOMETRY_REQUIRED)
+        self.assertGreaterEqual(result.hold_track_skipped, 1)
+        self.assertIsNone(result.first_measure_latency_sec)
+        self.assertEqual(result.last_gate, "hold_track")
+
+    def test_unstable_measure_is_not_authorized(self):
+        unstable = (
+            True,
+            _box(height_valid=False,
+                 height_source=HEIGHT_SOURCE_UNAVAILABLE,
+                 pca_source="measure",
+                 support_reason="DETECT_SUPPORT_UNSTABLE"),
+            _unstable_reason(),
+        )
+        result = self._run([unstable] * 8, max_elapsed=1.0, period=0.5)
+        self.assertFalse(result.authorized)
+        self.assertEqual(
+            result.decision.reason, DETECT_FULL_GEOMETRY_REQUIRED)
+        self.assertEqual(result.hold_track_skipped, 0)
+        self.assertIsNotNone(result.first_measure_latency_sec)
+        self.assertEqual(result.last_gate, "measure")
 
 
 if __name__ == "__main__":

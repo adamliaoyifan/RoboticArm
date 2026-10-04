@@ -59,6 +59,9 @@ from luggage_msgs.srv import (
 
 from luggage_perception import ros_message_adapters as adapters
 from luggage_planning.pick_authorization import (
+    DEFAULT_MAX_ATTEMPTS,
+    DEFAULT_MAX_ELAPSED_SEC,
+    DEFAULT_WAIT_PERIOD_SEC,
     AuthorizationConfig,
     PickAuthorizationPolicy,
     run_authorization_loop,
@@ -1569,9 +1572,12 @@ class PickRetreatEvalDriver(Node):
     def _auth_policy(self):
         args = self._args
         return PickAuthorizationPolicy(AuthorizationConfig(
-            max_attempts=int(getattr(args, "auth_max_attempts", 5)),
-            max_elapsed_sec=float(getattr(args, "auth_max_elapsed_sec", 5.0)),
-            wait_period_sec=float(getattr(args, "auth_wait_period_sec", 0.5)),
+            max_attempts=int(getattr(
+                args, "auth_max_attempts", DEFAULT_MAX_ATTEMPTS)),
+            max_elapsed_sec=float(getattr(
+                args, "auth_max_elapsed_sec", DEFAULT_MAX_ELAPSED_SEC)),
+            wait_period_sec=float(getattr(
+                args, "auth_wait_period_sec", DEFAULT_WAIT_PERIOD_SEC)),
         ))
 
     def detect_until_authorized(self):
@@ -2216,9 +2222,12 @@ def parse_args(argv):
     parser.add_argument(
         "--use-vacuum", action="store_true",
         help="Add pickup_box to PlanningScene and call /vacuum/command.")
-    parser.add_argument("--auth-max-attempts", type=int, default=5)
-    parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
-    parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
+    parser.add_argument("--auth-max-attempts", type=int,
+                        default=DEFAULT_MAX_ATTEMPTS)
+    parser.add_argument("--auth-max-elapsed-sec", type=float,
+                        default=DEFAULT_MAX_ELAPSED_SEC)
+    parser.add_argument("--auth-wait-period-sec", type=float,
+                        default=DEFAULT_WAIT_PERIOD_SEC)
     return parser.parse_args(argv)
 
 

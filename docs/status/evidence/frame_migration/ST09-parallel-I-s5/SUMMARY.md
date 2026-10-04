@@ -162,11 +162,23 @@ carried new evidence (no blind reruns). Evidence dirs under
 | run1 | GOTO_FAILED @ t+2.6s, goto=MAP_STALE | goto helper read map stats ONCE; producer's fail-closed gate refused | 0ddbe7f: bounded MAP_STALE retry (3x) after an OBSERVABLE revision-quiescence wait (_wait_map_quiescence, two consecutive equal stats reads, 10 s cap, fresh request id per attempt); producer gate untouched |
 | run2 | same signature | deeper: Gazebo /joint_states publishes in controller-registration order [j1,j2,j5,j3,j4,j6]; the driver stored raw positions -> the boot pose (physically AT pickup_observe_sim) compared ~2.77 rad off, already-there (adjudicated BEFORE the map gates) never fired, and the empty boot map (surface_v2 count=1, acquisition stamp 0) refused deterministically; run1's churn theory was wrong (revision was frozen) | ed93014: normalize positions to canonical elfin_joint1..6 AT INGESTION (_on_joint_state), same discipline as the selector's _on_joints; nameless messages keep raw order; 3 unit tests pin the verbatim bag shape |
 | run3 | goto PASSED (already_there); DETECT_FULL_GEOMETRY_REQUIRED at pick authorization | DetectLuggage answers conf=1.00 height_valid=false every attempt: the MEASURED_SUPPORT gate fails. Camera pose CONFIRMED correct (FK replay: camera (1.0,0,1.9), 88.4 deg depression, box centered; S5.2 calibration vindicated). AABB-starvation and backend-downgrade theories REJECTED (support input is the PF-R9 g2 full-view raw-depth deprojection; yolo_world is an alias OF bbox_fill). Remaining unknown: exact-stamp raw join miss vs side-coverage geometry — no telemetry distinguishes them | instrumentation landed in the working tree (UNCOMMITTED/UNTESTED): DetectLuggage response message now carries support=<reason> sides=<coverage> raw=<lookup status> -> next run names the cause |
+| run6 | DETECT_FULL_GEOMETRY_REQUIRED at pick authorization | render buffer frozen after the suitcase appears, instance mask nonempty on about 2/5 of those frames, authorization sampled `hold_track` | evidence `m3/g2_single_box_run6_20261004`. Not TF (`tf_miss=0`), not a raw-depth join miss (nonempty mask stamp equals depth stamp, 57/57), not support geometry (39/43 `measure` frames `support=ok`), not a YOLO publish-rate drop (mask topic stays at the configured 15 Hz). The 5-attempt / 0.5 s cap closed the wait at ~2 s, inside the first `hold_track` burst (~2.0 s to the first `measure`) |
 
 Run3 world-geometry replay (bag FK): box top 27,855 pts z~1.107
 (0.518x0.375 m footprint), platform 2,625 pts z~0.860, GT box yaw=0.
 Support config for reference: band dz [0.15,0.60], annulus inner 0.03 /
 outer 0.18 m, min 80 pts, min 2 sides x 15 inliers, stride 4.
+
+Run6 bag
+`m3/g2_single_box_run6_20261004/bag` (preprocessed color/depth, not raw
+`/camera/*/image_raw`). After the first nonempty mask, color has 2
+distinct images in the whole bag (one change) and depth the same: stamps
+continue at 15 Hz, pixels do not. Post-freeze instance masks are nonempty
+57/141, always 22016 px. `hold_track` keeps that earlier 6188-point cloud
+and the detector maps the gate to `DETECT_SUPPORT_STAMP_MISMATCH`. The
+service returns those frames as successful estimates with
+`height_valid=false`, and the outer 5-attempt loop treats them as the
+budget. Fresh `measure` frames in the same bag already satisfy support.
 
 Known tooling gap before the G2 verdict can be produced:
 frame_migration_st09_extract.py + integration_acceptance.extract_acceptance

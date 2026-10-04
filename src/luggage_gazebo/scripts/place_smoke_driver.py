@@ -1975,7 +1975,10 @@ def parse_args(argv):
     parser.add_argument(
         "--synthetic-size", default="",
         help="W,D,H metres for --dry-run / --payload none. Required there.")
-    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument(
+        "--auth-max-attempts", type=int, default=11,
+        help="Safety cap on non-hold detect samples. The wait itself "
+             "is --auth-max-elapsed-sec (default 5 s).")
     parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     args = parser.parse_args(argv)
