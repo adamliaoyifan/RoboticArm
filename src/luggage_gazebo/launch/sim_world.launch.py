@@ -990,6 +990,22 @@ def _launch_setup(context):
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
     move_group = _move_group_node(robot_description, cfg["use_moveit"])
+    # Same URDF/SRDF move_group plans with. Pick certification calls
+    # /validate_route_v2; without this node the first authorized detect
+    # dies as BUILD_FAILED / CERT_SERVICE_UNAVAILABLE.
+    motion_chain.append(Node(
+        package="luggage_planning",
+        executable="validate_route_node",
+        name="validate_route_v2",
+        output="screen",
+        parameters=[
+            robot_description,
+            _gazebo_semantic_description(),
+            {"use_sim_time": True},
+        ],
+        condition=IfCondition(_bool_text(cfg["use_motion"])),
+    ))
+
     # Top-down orthographic RViz view (same viewpoint as the camera) plus
     # RobotModel/TF/point cloud/image panels for calibration checks.
     rviz = Node(
