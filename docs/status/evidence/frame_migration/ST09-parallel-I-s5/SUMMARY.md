@@ -252,8 +252,56 @@ commit:
 - the retreat-start wait runs for every box
 - the bag stays off or capped; do not keep a ~1.8 GB capture
 
-## Remaining (S5.7-6 + S5.6 close)
+## G3 three-box Run01 (2026-10-04, blocked on box 2)
+
+`m3/g3_three_box_run01_20261004` at `15cb485`:
+`carryon,standard,carryon`, bag off, domain 7, one `/clock`
+publisher, 3.7 MB, zero residual processes after teardown.
+`15cb485` adds evidence wiring only. Selection-time `map_source` and
+the per-box retreat-start record now go into each case. For three boxes,
+the judge refuses `STATIC_EMPTY_MAP` on ordinal 2 and later, and
+`RETREAT_START_UNVERIFIED` on any box.
+
+| box | outcome |
+|---|---|
+| carryon@01 | full chain; finalize ok; map revision 1 -> 2; `map_source=static_empty`, which is legal for box 1; retreat start `ready`, max delta 0.009924 rad, waited 0.0 s |
+| standard@02 | `PLANNING_BUDGET_EXHAUSTED` in place selection; no motion submitted |
+| carryon@03 | not run (session stopped) |
+
+Verdict: `not_evaluated`. Missing: the 3 cases and the trailer.
+`revision_handoff_count=1`, and the `(1,2)` handoff is joined at
+revision 2. G3 is not passed.
+
+First divergent stage for box 2 is candidate/waypoint generation into
+route certification (`box_01_paths/candidates.json`):
+
+- `ComputePlacement` returned 218 slots in reachability bands
+  `reachable:67, unknown:151`.
+- 24 slots were `ATLAS_UNREACHABLE`.
+- Only 2 seeded slots (66, 65) were tried. Both were `NO_FEASIBLE_ROUTE`,
+  `no IK goals refined`: all 6 atlas seeds missed by 0.24 m / 0.10 rad
+  and 0.27 m / 0.11 rad.
+- 65 seeded slots were never tried before the budget ran out.
+
+Box 1 had a similar profile: 1 OK out of 57 rows. The atlas reported
+`scene_tf file hash differs (diagnostic, atlas=fb0dfdc1,
+current=35f15c4c)`. The replay manifest for trial 01 is
+`capture_complete=false` (`missing: last_boundary`), because no motion
+leg ran.
+
+This is a chain defect, not wiring, so the box was not patched and the
+session was not rerun.
+
+Open questions:
+
+- Why do atlas seeds land about 0.25 m from the `standard` place targets?
+  Possible causes are a payload-variant or TCP offset, or atlas staleness
+  against the current scene_tf.
+- Is a 2-slot attempt budget correct when 65 seeded slots remain?
+
+Box 1's retreat delta (0.009924 rad) also passed with almost no margin.
+
 
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
-- G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 three-box is not started.
-- remaining: three-box M3 only, under the checks in the Run18 section.
+- G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 Run01 was blocked on box 2 at place selection (`PLANNING_BUDGET_EXHAUSTED`); a joint decision is pending in discuss `2026-10-04_1712_st09-i-g3-box2-place-selection.md`.
+- remaining: three-box M3 only, under the checks in the Run18 section, after that decision.
