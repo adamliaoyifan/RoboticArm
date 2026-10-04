@@ -104,6 +104,12 @@ CONTINUITY_MAX_STEP_RAD = 0.1
 CARTESIAN_MIN_FRACTION = 0.95
 TRANSIT_CLEARANCE_Z = 0.86
 HELD_OUT_FRACTION = 0.3
+#: New held-out draws use this salt. The 2026-10-04 held-out ids are forced
+#: to dev so that split cannot accept a later planner.
+SPLIT_SALT = "st09-matrix-g2-20261005"
+SLOT_LIMIT = 16
+#: One failure still clears Wilson 95% lower bound 0.90 at n >= 53.
+TARGET_HELD_OUT_FEASIBLE = 53
 TOOL_DOWN_QUAT = (0.0, 1.0, 0.0, 0.0)
 PAYLOADS = {
     "carryon": (0.55, 0.40, 0.25),
@@ -398,24 +404,65 @@ def _candidate_slots(scene, size, placed, heading):
     return slots
 
 
-def _pick_slots(slots):
-    """Deterministic spread: door-near, deepest, +Y wall, highest."""
+def _slot_key(centre):
+    return tuple(round(float(v), 3) for v in centre)
+
+
+def _grid_slot_name(centre):
+    return "s%05d_%05d_%05d" % tuple(int(round(float(v) * 1000)) for v in centre)
+
+
+def _pick_slots(slots, limit=SLOT_LIMIT):
+    """Deterministic spread, then a stable fill up to ``limit`` centres.
+
+    The first four names stay door / deep / wall_y / high so the original
+    case ids still exist. Extra centres are named from their rounded
+    coordinates and sorted, so the pool can grow without reshuffling.
+    """
     if not slots:
         return []
-    picks = {
-        "door": min(slots, key=lambda c: (c[0], c[1], c[2])),
-        "deep": max(slots, key=lambda c: (c[0], -c[1], -c[2])),
-        "wall_y": max(slots, key=lambda c: (c[1], -c[0], -c[2])),
-        "high": max(slots, key=lambda c: (c[2], -c[0], c[1])),
-    }
+    picks = (
+        ("door", min(slots, key=lambda c: (c[0], c[1], c[2]))),
+        ("deep", max(slots, key=lambda c: (c[0], -c[1], -c[2]))),
+        ("wall_y", max(slots, key=lambda c: (c[1], -c[0], -c[2]))),
+        ("high", max(slots, key=lambda c: (c[2], -c[0], c[1]))),
+    )
     out = []
     seen = set()
-    for name, centre in picks.items():
-        key = tuple(round(v, 3) for v in centre)
+    for name, centre in picks:
+        key = _slot_key(centre)
         if key not in seen:
             seen.add(key)
             out.append((name, centre))
+    for centre in sorted(slots, key=_slot_key):
+        if len(out) >= int(limit):
+            break
+        key = _slot_key(centre)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append((_grid_slot_name(centre), centre))
     return out
+
+
+def load_retired_held_out(path):
+    """Case ids whose 2026-10-04 split was held_out. Empty if absent."""
+    if not path or not os.path.isfile(path):
+        return set()
+    with open(path, "r", encoding="utf-8") as handle:
+        split = json.load(handle)
+    return {case_id for case_id, part in split.items() if part == "held_out"}
+
+
+def assign_split(case_id, retired_held_out):
+    """Dev/held-out bit. Retired held-out ids stay dev."""
+    if case_id in retired_held_out:
+        return "dev"
+    digest = int(hashlib.sha1(
+        (SPLIT_SALT + "|" + case_id).encode()).hexdigest()[:8], 16)
+    if (digest % 1000) < HELD_OUT_FRACTION * 1000:
+        return "held_out"
+    return "dev"
 
 
 def _occupancies(scene):
@@ -461,7 +508,7 @@ def _invalid_cases(scene, occupancy):
     ]
 
 
-def build_cases(scene, starts):
+def build_cases(scene, starts, retired_held_out=()):
     occupancy = _occupancies(scene)
     cases = []
     for payload_name, size in PAYLOADS.items():
@@ -498,9 +545,7 @@ def build_cases(scene, starts):
     for case in cases:
         case["id"] = "|".join(str(case[k]) for k in (
             "payload", "offset", "start", "occupancy", "heading", "slot"))
-        digest = int(hashlib.sha1(case["id"].encode()).hexdigest()[:8], 16)
-        case["split"] = "held_out" if (digest % 1000) < \
-            HELD_OUT_FRACTION * 1000 else "dev"
+        case["split"] = assign_split(case["id"], set(retired_held_out))
     return cases, occupancy
 
 
@@ -803,6 +848,15 @@ def main():
     parser.add_argument("--reference-extra-seeds", type=int, default=8)
     parser.add_argument("--resummarize", action="store_true",
                         help="recompute summary.json from --out/trace.jsonl")
+    parser.add_argument("--reference-only", action="store_true",
+                        help="classify feasible/undetermined and write the "
+                             "freeze, then stop before baseline/state")
+    parser.add_argument(
+        "--retired-held-out",
+        default=os.path.join(
+            ROOT, "docs", "status", "evidence", "frame_migration",
+            "ST09-parallel-I-s5", "route_matrix_20261004", "split.json"),
+        help="split.json whose held_out ids are forced to dev")
     args = parser.parse_args()
     if args.resummarize:
         resummarize(args.out)
@@ -814,7 +868,8 @@ def main():
     tcp = urdf.path_to("suction_contact_frame")
     fk = make_offline_fk(urdf, tcp)
     starts = _starts(urdf, tcp)
-    cases, occupancy = build_cases(scene, starts)
+    retired = load_retired_held_out(args.retired_held_out)
+    cases, occupancy = build_cases(scene, starts, retired)
     if args.limit:
         generated = [c for c in cases if c["kind"] == "generated"]
         keep = set(c["id"] for c in generated[:args.limit])
@@ -859,6 +914,10 @@ def main():
                 case["class"] = "regression"
             else:
                 case["class"] = "invalid"
+            if args.reference_only:
+                print("[%d/%d] %s %s" % (index + 1, len(cases), case["id"],
+                                         case["class"]), flush=True)
+                continue
             for atlas_on in (True, False):
                 reps = args.reps if case["split"] == "held_out" else 1
                 for rep in range(reps):
@@ -873,6 +932,9 @@ def main():
                         emit(row)
             print("[%d/%d] %s %s" % (index + 1, len(cases), case["id"],
                                      case["class"]), flush=True)
+    if args.reference_only:
+        freeze = write_reference_freeze(args, cases, started)
+        raise SystemExit(0 if freeze["ready_for_scored_run"] else 2)
     summary = summarize(results, cases)
     regression = [r for r in results if r["case"].endswith("slot64_run02")
                   and r["mode"] == "state"]
@@ -926,6 +988,61 @@ def main():
     print(json.dumps({"summary": summary, "gate": gate}, indent=1,
                      default=str))
     raise SystemExit(0 if gate["pass"] else 1)
+
+
+def write_reference_freeze(args, cases, started):
+    """Record the frozen split after reference classification.
+
+    The scored baseline/state run must read this directory's ``split.json``.
+    Held-out rows are not a tuning set.
+    """
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT,
+        capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT,
+        capture_output=True, text=True).stdout
+    generated = [c for c in cases if c["kind"] == "generated"]
+    held_feasible = [
+        c["id"] for c in generated
+        if c["split"] == "held_out" and c.get("class") == "feasible"]
+    dev_feasible = [
+        c["id"] for c in generated
+        if c["split"] == "dev" and c.get("class") == "feasible"]
+    freeze = {
+        "schema": "st09.route_matrix_freeze/1",
+        "planner_revision": MATRIX_LINEAGE["candidate_scope"],
+        "harness_commit": commit,
+        "dirty_count": len([line for line in dirty.splitlines() if line.strip()]),
+        "lineage": dict(MATRIX_LINEAGE),
+        "split_salt": SPLIT_SALT,
+        "retired_held_out": os.path.relpath(args.retired_held_out, ROOT)
+        if args.retired_held_out else "",
+        "reference": {
+            "budget_s": args.reference_budget_s,
+            "extra_seeds": args.reference_extra_seeds,
+        },
+        "command": " ".join(sys.argv),
+        "started": started,
+        "ended": time.time(),
+        "target_held_out_feasible": TARGET_HELD_OUT_FEASIBLE,
+        "held_out_feasible": len(held_feasible),
+        "dev_feasible": len(dev_feasible),
+        "case_classes": _count([c.get("class") for c in cases]),
+        "split": _count([c["split"] for c in cases]),
+        "ready_for_scored_run": len(held_feasible) >= TARGET_HELD_OUT_FEASIBLE,
+        "held_out_feasible_ids": held_feasible,
+        "dev_feasible_ids": dev_feasible,
+    }
+    with open(os.path.join(args.out, "freeze.json"), "w") as handle:
+        json.dump(freeze, handle, indent=1)
+    print(json.dumps({
+        "held_out_feasible": freeze["held_out_feasible"],
+        "dev_feasible": freeze["dev_feasible"],
+        "ready_for_scored_run": freeze["ready_for_scored_run"],
+        "target": TARGET_HELD_OUT_FEASIBLE,
+    }), flush=True)
+    return freeze
 
 
 def resummarize(out_dir):

@@ -32,6 +32,26 @@ def test_lineage_names_the_three_planner_commits():
     assert lineage["candidate_scope"].startswith("dd6d48e")
 
 
+def test_retired_held_out_ids_stay_on_the_dev_split():
+    module = _eval_module()
+    assert module.assign_split("old-held-out", {"old-held-out"}) == "dev"
+    again = module.assign_split("carryon|nominal|pick_tooldown|occ0|h0|door", set())
+    assert again == module.assign_split(
+        "carryon|nominal|pick_tooldown|occ0|h0|door", set())
+    assert again in ("dev", "held_out")
+
+
+def test_extra_slots_keep_the_original_four_names():
+    module = _eval_module()
+    slots = [(x * 0.15, y * 0.15, 0.4 + 0.05 * x)
+             for x in range(6) for y in range(4)]
+    picked = module._pick_slots(slots, limit=6)
+    assert [name for name, _centre in picked[:4]] == [
+        "door", "deep", "wall_y", "high"]
+    assert len(picked) == 6
+    assert picked[4][0].startswith("s")
+
+
 def test_historical_matrix_manifest_keeps_its_original_revision():
     manifest = json.loads(open(_OLD_MANIFEST, encoding="utf-8").read())
     assert manifest["commit"].startswith("e5c9a87")
