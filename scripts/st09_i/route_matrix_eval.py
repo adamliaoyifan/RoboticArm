@@ -1132,6 +1132,8 @@ def score_frozen(args):
             results.append(row)
 
         for index, case in enumerate(cases):
+            if split_name and case.get("split") != split_name:
+                continue
             if not case_is_scored(case):
                 continue
             for atlas_on in (True, False):
