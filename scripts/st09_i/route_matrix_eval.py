@@ -34,6 +34,10 @@ Case classes:
 
 The dev/held-out split is a sha1 of the case id, frozen in
 ``split.json`` before any planner runs.
+
+``MATRIX_LINEAGE`` names the planner commits a new run is descended from.
+The historical ``route_matrix_20261004`` manifest stays at its original
+``e5c9a87`` revision; do not rewrite it as a later commit's result.
 """
 import argparse
 import hashlib
@@ -76,6 +80,14 @@ from st09_contracts.fixtures import make_timed_trajectory
 from st09_contracts.graph import GraphEdge, LoadState
 
 ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+#: Planner commits that later matrix runs must name. Values are full hashes.
+#: ``route_matrix_20261004/manifest.json`` is historical and is not updated.
+MATRIX_LINEAGE = {
+    "descend_pair_baseline": "f9ba0e84aebb0b39979871aee3ebf1306c040232",
+    "container_drawing_rule": "bdb9394307d81a44496f7baa7b5e7bdf983a5a67",
+    "candidate_scope": "dd6d48eaec68965b1e94d4a9df68346ace1b4957",
+}
 SCENE = os.path.join(
     ROOT, "install-st09/luggage_description/share/luggage_description/"
     "config/scene_tf_deploy.yaml")
@@ -873,6 +885,7 @@ def main():
     manifest = {
         "commit": commit,
         "dirty_count": len([l for l in dirty.splitlines() if l.strip()]),
+        "lineage": dict(MATRIX_LINEAGE),
         "command": " ".join(sys.argv),
         "started": started, "ended": time.time(),
         "scene": os.path.relpath(SCENE, ROOT),
