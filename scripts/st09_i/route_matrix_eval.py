@@ -75,11 +75,7 @@ from luggage_planning.reachable_graph import (
     RouteGraph,
     make_offline_fk,
 )
-from luggage_planning.route_producer import (
-    TOOL_DOWN_SEED_Q,
-    anchor_plan,
-    tool_down_branch_seeds,
-)
+from luggage_planning.route_producer import TOOL_DOWN_SEED_Q, anchor_plan
 from st09_contracts.fixtures import make_timed_trajectory
 from st09_contracts.graph import GraphEdge, LoadState
 
@@ -619,8 +615,7 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         entry_table = [("staging", "PORTAL_TRANSIT"),
                        ("portal", "TRAVERSE")] + entry_table[1:]
     rng = random.Random(case["id"])
-    seeds = [start_q]
-    seeds.extend(q for _label, q in tool_down_branch_seeds())
+    seeds = [start_q, tuple(TOOL_DOWN_SEED_Q)]
     lower = [lo for lo, _ in urdf.joint_limits()]
     upper = [hi for _, hi in urdf.joint_limits()]
     for _ in range(extra_seeds):
@@ -632,7 +627,8 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
             if q is not None and graph.node_for_q(str(load), q) is None:
                 graph.register_node(tuple(q), tuple(position), goal_quat,
                                     region, load, "anchor")
-    goal_seed_list = [n.q for n in graph.nodes_by_region("slot_upper")]
+    labeled_goal_seeds = [
+        ("slot_upper", n.q) for n in graph.nodes_by_region("slot_upper")]
     atlas_seed_count = 0
     if atlas_on:
         contact_c = scene.to_container(goal_pos)
@@ -644,10 +640,14 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         atlas_seeds = [tuple(float(v) for v in s)
                        for s in (result.contact_seeds or [])]
         atlas_seed_count = len(atlas_seeds)
-        goal_seed_list += atlas_seeds
-    goal_seed_list += seeds
+        labeled_goal_seeds += [("atlas", seed) for seed in atlas_seeds]
+    # ``seeds`` is start, tool-down, then reference-only uniform extras.
+    labeled_goal_seeds.append(("start", seeds[0]))
+    labeled_goal_seeds.append(("tool_down", seeds[1]))
+    labeled_goal_seeds += [("reference_extra", seed) for seed in seeds[2:]]
     goal_nodes = []
-    for seed in goal_seed_list:
+    goal_seed_sources = []
+    for label, seed in labeled_goal_seeds:
         q, _ = refine(goal_pos, goal_quat, seed)
         if q is None:
             continue
@@ -659,6 +659,8 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         graph.register_node(q, tuple(goal_pos), goal_quat, "slot",
                             LoadState.UNLOADED, "goal")
         goal_nodes.append(node)
+        if label not in goal_seed_sources:
+            goal_seed_sources.append(label)
     builder = OfflineEdgeBuilder(urdf, tcp, fk, Collision(scene, placed),
                                  payload)
     entry_hops = hops_from_table(tuple(entry_table), "carrying")
@@ -683,9 +685,14 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         gps.MAX_SAME_FAILURE_PER_GOAL = 10 ** 6
     result = {"case": case["id"], "mode": mode, "atlas": atlas_on,
               "goal_nodes": len(goal_nodes),
-              "atlas_seed_count": atlas_seed_count}
+              "goal_seed_sources": goal_seed_sources,
+              "atlas_seed_count": atlas_seed_count,
+              "goals_open": None,
+              "goals_tried": None,
+              "first_failure_stage": ""}
     try:
         if not goal_nodes:
+            result["first_failure_stage"] = "goal_seed"
             raise RoutePlanningError("NO_FEASIBLE_ROUTE",
                                      {"detail": "no IK goal",
                                       "search_outcome": gps.SEARCH_INCOMPLETE})
@@ -703,6 +710,14 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         result["success"] = False
         result["reason"] = err.code
         result["search_outcome"] = err.search_outcome
+        coverage = err.detail.get("coverage") or {}
+        result["goals_open"] = len(coverage.get("goals_open") or [])
+        result["goals_tried"] = len(coverage.get("goals_tried") or [])
+        if result["first_failure_stage"] != "goal_seed":
+            result["first_failure_stage"] = (
+                "search_incomplete"
+                if err.search_outcome == gps.SEARCH_INCOMPLETE
+                else "search_unreachable")
         result["t2"] = {
             "goal_pos": list(goal_pos), "goal_quat": list(goal_quat),
             "start_q": list(start_q), "placed": placed,
