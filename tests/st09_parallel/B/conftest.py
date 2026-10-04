@@ -1,5 +1,9 @@
 """Shared pytest fixtures for the ST09-B route test battery.
 
+``mock_graph`` calls ``rclpy.init()`` on its own domain. Do not collect it
+in the same interpreter as ``tests/st09_parallel/I`` ``whole_chain``.
+The gate is ``scripts/st09_i/run_bi_route_tests.sh``.
+
 Keeps the unified manifest entry ``python3 -m pytest tests/st09_parallel/B``
 working with or without an install overlay: the repo root (for
 ``st09_contracts``) and the src tree (for ``luggage_planning``) are both

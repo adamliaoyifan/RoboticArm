@@ -1,6 +1,11 @@
 """ST09-I whole-chain fixtures: the real seven-endpoint v2 stack on mock
 controllers, reused from the g4 graph campaign template.
 
+``whole_chain`` calls ``rclpy.init()`` on its own domain. Do not collect it
+in the same interpreter as ``tests/st09_parallel/B`` ``mock_graph``; that
+double init is the nine whole_chain errors. The gate is
+``scripts/st09_i/run_bi_route_tests.sh``.
+
 Domain discipline: probe 55..70 (never the reserved 87/42/7), localhost
 only, startup budget 180 s, teardown SIGINT->TERM->KILL within 90 s.
 """

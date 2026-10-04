@@ -97,6 +97,7 @@ class _Producer(object):
         return _Builder()
 
     _fail = RouteProducer._fail
+    _close_row = RouteProducer._close_row
     _promote_selection = RouteProducer._promote_selection
     _stage_timings = RouteProducer._stage_timings
 
