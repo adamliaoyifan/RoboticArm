@@ -128,6 +128,12 @@ if [[ "$RECORD_BAG" -eq 1 ]]; then
     /luggage/perception/size_eval/spawned \
     /luggage/cargo_map/surface_2d /luggage/cargo_map/surface_v2 \
     /luggage/semantic/cargo_points_untracked \
+    /luggage/semantic/cargo_points \
+    /luggage/semantic/instance_mask \
+    /luggage/preprocessed/camera/color/image \
+    /luggage/preprocessed/camera/depth/image \
+    /luggage/preprocessed/camera/color/camera_info \
+    /luggage_detector/stream_stats_json \
     /motion_planner/last_boundary \
     > "$OUT/bag_record.log" 2>&1 &
   BAG_PID=$!

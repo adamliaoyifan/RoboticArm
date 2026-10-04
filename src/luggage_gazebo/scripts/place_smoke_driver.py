@@ -1266,7 +1266,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         missing = []
         boundary = load_latest_boundary(
             os.environ.get("MOTION_BOUNDARY_DUMP", ""))
-        if boundary:
+        fail = str(getattr(trial, "fail_code", "") or "")
+        detect_stage = fail.startswith("DETECT_")
+        if boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
                       encoding="utf-8") as handle:
                 json.dump(boundary, handle, indent=2, sort_keys=True,
@@ -1275,7 +1277,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             artifacts["last_boundary"] = "replay/last_boundary.json"
             if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
                 missing.append("trajectory")
-        else:
+        elif not detect_stage:
             missing.append("last_boundary")
         scene = self._scene_snapshot()
         with open(os.path.join(replay_dir, "planning_scene.json"), "w",
@@ -1297,7 +1299,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             for row in joints:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
         artifacts["joint_ring"] = "replay/joint_ring.jsonl"
-        if not joints:
+        if not joints and not detect_stage:
             missing.append("joint_ring")
         surface = getattr(self, "_surface_2d", None)
         if surface:
@@ -1331,21 +1333,25 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras.setdefault("replay", {})[
                 "capture_missing"] = list(capture["missing"])
         suction, serr = self.suction_xyz()
+        extras = getattr(trial, "extras", None) or {}
         perception = {
             "suction_xyz": suction,
             "suction_error": serr,
             "pick_detection": self._last_pick_detection,
             "gz_box": self._gz_box_pose() if hasattr(self, "_gz_box_pose")
             else None,
+            "detect_message": extras.get("detect_message"),
+            "support_stream": extras.get("support_stream"),
         }
         with open(os.path.join(replay_dir, "perception_refs.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(perception, handle, indent=2, sort_keys=True, default=str)
             handle.write("\n")
         artifacts["perception_refs"] = "replay/perception_refs.json"
-        fail = str(getattr(trial, "fail_code", "") or "")
         stage = "motion"
-        if fail.startswith("PLACE_PLAN_"):
+        if detect_stage:
+            stage = "detect"
+        elif fail.startswith("PLACE_PLAN_"):
             stage = fail[len("PLACE_PLAN_"):]
         elif fail == "GOTO_FAILED":
             stage = "goto_observe"

@@ -436,6 +436,7 @@ class PickRetreatEvalDriver(Node):
         self._cloud = {"recv": None, "stamp": 0.0}
         self._cargo = {"recv": None, "stamp": 0.0, "n_points": 0}
         self._diag = {"payload": None}
+        self._support_stream = {}
         self._seg_stats = {"payload": None}
         self._filter_stats = {"payload": None}
         self._seg_stats_buf = _JsonStampBuffer(maxlen=30)
@@ -484,6 +485,9 @@ class PickRetreatEvalDriver(Node):
             String, "/luggage_detector/diagnostics_json",
             lambda m: self._diag.__setitem__("payload", m.data),
             latch, callback_group=self._group)
+        self.create_subscription(
+            String, "/luggage_detector/stream_stats_json",
+            self._on_support_stream, latch, callback_group=self._group)
         self.create_subscription(
             String, "/semantic_segmenter/stats_json",
             self._on_seg_stats, latch, callback_group=self._group)
@@ -728,6 +732,29 @@ class PickRetreatEvalDriver(Node):
             if stamp is None or float(stamp or 0) <= 0.0:
                 stamp = parsed.get("cloud_stamp")
             self._filter_stats_buf.push(stamp, parsed)
+
+    def _on_support_stream(self, msg):
+        parsed = _parse_json(msg.data)
+        if isinstance(parsed, dict):
+            self._support_stream = parsed
+
+    def _support_stream_snapshot(self):
+        stats = self._support_stream or {}
+        timing = stats.get("timing_ms") or {}
+        pipeline = timing.get("pipeline") or {}
+        return {
+            "support_reason": stats.get("support_reason"),
+            "support_gate": stats.get("support_gate"),
+            "support_valid": stats.get("support_valid"),
+            "geometry_level": stats.get("geometry_level"),
+            "n_cargo_points": stats.get("n_cargo_points"),
+            "raw_lookup": stats.get("raw_lookup"),
+            "top_input_points": pipeline.get("top_input_points"),
+            "support_input_points": pipeline.get("support_input_points"),
+            "support_candidate_points": pipeline.get(
+                "support_candidate_points"),
+            "support_inlier_points": pipeline.get("support_inlier_points"),
+        }
 
     def _on_camera_info(self, msg):
         self._camera_info = msg
@@ -1777,6 +1804,7 @@ class PickRetreatEvalDriver(Node):
             fields["fail_code"] = auth.decision.reason
             fields["detect_failure"] = auth.detect_reason or auth.decision.reason
             fields["extras"]["detect_message"] = auth.detect_reason
+            fields["extras"]["support_stream"] = self._support_stream_snapshot()
             fields["extras"]["backend"] = (
                 (_parse_json(self._seg_stats["payload"]) or {}).get("backend"))
             return self.finish_trial(

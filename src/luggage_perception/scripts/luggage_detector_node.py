@@ -91,6 +91,7 @@ from luggage_perception.platform_free_pipeline import (
     GATE_SUPPORT_REASONS,
     GeometryStatusGate,
     PlatformFreeDetector,
+    support_service_fields,
 )
 from luggage_perception.top_support_estimator import (
     GEOMETRY_FULL_3D,
@@ -1499,12 +1500,11 @@ class LuggageDetector(Node):
         # support, and an unstable side coverage — one physical run was
         # burned guessing. The response message carries it into the
         # driver's trial evidence verbatim.
+        service_fields = support_service_fields(result)
         self._last_support_diag = {
-            "reason": str(getattr(result, "reason", "") or ""),
-            "side_coverage": (
-                round(float(getattr(result.support, "side_coverage",
-                                     float("nan"))), 3)
-                if getattr(result, "support", None) is not None else None),
+            "reason": service_fields["reason"],
+            "gate": service_fields["gate"],
+            "side_coverage": service_fields["side_coverage"],
             "raw_lookup": str(
                 (getattr(self, "_last_raw_lookup", None) or {}).get(
                     "raw_lookup_status", "n/a")),
@@ -2117,9 +2117,10 @@ class LuggageDetector(Node):
             diag = getattr(self, "_last_support_diag", None) or {}
             response.message = (
                 "perception estimate (conf=%.2f, height_valid=%s, "
-                "support=%s, sides=%s, raw=%s)"
+                "support=%s, gate=%s, sides=%s, raw=%s)"
                 % (confidence, detected.height_valid,
-                   diag.get("reason") or "n/a",
+                   diag.get("reason") or "DETECT_SUPPORT_UNOBSERVABLE",
+                   diag.get("gate") or "n/a",
                    diag.get("side_coverage"),
                    diag.get("raw_lookup") or "n/a"))
             return response
