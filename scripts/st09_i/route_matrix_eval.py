@@ -75,7 +75,11 @@ from luggage_planning.reachable_graph import (
     RouteGraph,
     make_offline_fk,
 )
-from luggage_planning.route_producer import TOOL_DOWN_SEED_Q, anchor_plan
+from luggage_planning.route_producer import (
+    TOOL_DOWN_SEED_Q,
+    anchor_plan,
+    tool_down_branch_seeds,
+)
 from st09_contracts.fixtures import make_timed_trajectory
 from st09_contracts.graph import GraphEdge, LoadState
 
@@ -615,7 +619,8 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         entry_table = [("staging", "PORTAL_TRANSIT"),
                        ("portal", "TRAVERSE")] + entry_table[1:]
     rng = random.Random(case["id"])
-    seeds = [start_q, tuple(TOOL_DOWN_SEED_Q)]
+    seeds = [start_q]
+    seeds.extend(q for _label, q in tool_down_branch_seeds())
     lower = [lo for lo, _ in urdf.joint_limits()]
     upper = [hi for _, hi in urdf.joint_limits()]
     for _ in range(extra_seeds):
@@ -854,6 +859,10 @@ def main():
     parser.add_argument("--score-frozen", action="store_true",
                         help="score baseline and state on an existing "
                              "reference trace; does not rewrite it")
+    parser.add_argument("--score-split", choices=("dev", "held_out"),
+                        default=None,
+                        help="score one split into its own trace; "
+                             "held_out is the acceptance run")
     parser.add_argument(
         "--retired-held-out",
         default=os.path.join(
@@ -1074,7 +1083,14 @@ def score_frozen(args):
         raise SystemExit(2)
     ctx = {"scene": scene, "urdf": urdf, "tcp": tcp, "fk": fk,
            "starts": starts, "occupancy": occupancy, "atlases": Atlases()}
-    score_path = os.path.join(args.out, "score_trace.jsonl")
+    split_name = getattr(args, "score_split", None)
+    score_name = ("score_%s_trace.jsonl" % split_name) if split_name \
+        else "score_trace.jsonl"
+    summary_name = ("summary_%s.json" % split_name) if split_name \
+        else "summary.json"
+    manifest_name = ("score_%s_manifest.json" % split_name) if split_name \
+        else "score_manifest.json"
+    score_path = os.path.join(args.out, score_name)
     t2_dir = os.path.join(args.out, "t2")
     os.makedirs(t2_dir, exist_ok=True)
     results = list(reference_rows)
@@ -1140,10 +1156,10 @@ def score_frozen(args):
         "replay_possible": True,
     }
     gate = _gate(summary, regression)
-    with open(os.path.join(args.out, "summary.json"), "w") as handle:
+    with open(os.path.join(args.out, summary_name), "w") as handle:
         json.dump({"summary": summary, "regression_slot64": regression,
                    "gate": gate}, handle, indent=1, default=str)
-    with open(os.path.join(args.out, "score_manifest.json"), "w") as handle:
+    with open(os.path.join(args.out, manifest_name), "w") as handle:
         json.dump(manifest, handle, indent=1)
     print(json.dumps({"summary": summary, "gate": gate}, indent=1,
                      default=str))
@@ -1196,6 +1212,25 @@ def write_reference_freeze(args, cases, started):
     }
     with open(os.path.join(args.out, "freeze.json"), "w") as handle:
         json.dump(freeze, handle, indent=1)
+    manifest = {
+        "schema": "st09.route_matrix_manifest/1",
+        "commit": commit,
+        "dirty_count": freeze["dirty_count"],
+        "lineage": dict(MATRIX_LINEAGE),
+        "planner_revision": freeze["planner_revision"],
+        "command": freeze["command"],
+        "split_salt": SPLIT_SALT,
+        "reference": dict(freeze["reference"]),
+        "case_ids": [c["id"] for c in cases],
+        "split": {c["id"]: c["split"] for c in cases},
+        "case_classes": freeze["case_classes"],
+        "held_out_feasible": freeze["held_out_feasible"],
+        "dev_feasible": freeze["dev_feasible"],
+        "ready_for_scored_run": freeze["ready_for_scored_run"],
+        "capture_complete": True,
+    }
+    with open(os.path.join(args.out, "manifest.json"), "w") as handle:
+        json.dump(manifest, handle, indent=1)
     print(json.dumps({
         "held_out_feasible": freeze["held_out_feasible"],
         "dev_feasible": freeze["dev_feasible"],
