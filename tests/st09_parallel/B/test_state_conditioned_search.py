@@ -259,6 +259,16 @@ class TestPlannerLadderAndContinuation:
         assert upper.tcp_position == (0.5, 0.0, 0.5)
         assert upper.tcp_quaternion_xyzw == goal.tcp_quaternion_xyzw
 
+    def test_plan_pose_beats_an_earlier_candidates_anchor(self):
+        graph = _scaffold(RouteGraph(static_identity="static-test"),
+                          families=("f1",))  # stale anchors at z 0.5/0.55
+        goal = _goal(graph, "f1")
+        planner = GraphRoutePlanner(
+            graph, FakeEdgeBuilder(graph),
+            home_node_id=_start(graph).node_id, refine=_shift_refine(0.2),
+            region_poses={"slot_upper": (0.9, 0.1, 0.8)})
+        assert planner._region_pose("slot_upper", goal)[0] == (0.9, 0.1, 0.8)
+
     def test_retreat_continuation_uses_plan_exit_pose(self):
         graph = _scaffold(RouteGraph(static_identity="static-test"),
                           families=("f1",))

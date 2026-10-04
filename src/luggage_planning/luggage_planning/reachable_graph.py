@@ -580,21 +580,23 @@ class GraphRoutePlanner(object):
                                                   "carrying")
 
     def _region_pose(self, region, goal):
-        """Anchor pose for a region: a registered anchor, else the plan.
+        """Anchor pose for a region: the current plan, else an anchor.
 
-        ``region_poses`` lets a region whose anchor refine missed from
-        every forward seed still be back-seeded from the goal branch.
+        ``region_poses`` belong to the current candidate, so they win over
+        graph anchors, which may be left from an earlier candidate in the
+        same request. They also let a region whose anchor refine missed
+        from every forward seed be back-seeded from the goal branch.
         """
+        position = (self.region_poses or {}).get(region)
+        if position is not None:
+            return tuple(float(v) for v in position), \
+                tuple(goal.tcp_quaternion_xyzw)
         anchors = [node for node in self.graph.nodes_by_region(region)
                    if str(node.load_state) == "carrying"]
         if anchors:
             return (tuple(anchors[0].tcp_position),
                     tuple(anchors[0].tcp_quaternion_xyzw))
-        position = (self.region_poses or {}).get(region)
-        if position is None:
-            return None
-        return tuple(float(v) for v in position), \
-            tuple(goal.tcp_quaternion_xyzw)
+        return None
 
     def _register_branch_ladders(self, goal_nodes):
         """Back-seed each upstream region from every goal's branch.
