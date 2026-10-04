@@ -851,6 +851,9 @@ def main():
     parser.add_argument("--reference-only", action="store_true",
                         help="classify feasible/undetermined and write the "
                              "freeze, then stop before baseline/state")
+    parser.add_argument("--score-frozen", action="store_true",
+                        help="score baseline and state on an existing "
+                             "reference trace; does not rewrite it")
     parser.add_argument(
         "--retired-held-out",
         default=os.path.join(
@@ -860,6 +863,9 @@ def main():
     args = parser.parse_args()
     if args.resummarize:
         resummarize(args.out)
+        return
+    if args.score_frozen:
+        score_frozen(args)
         return
     os.makedirs(args.out, exist_ok=True)
     started = time.time()
@@ -984,6 +990,146 @@ def main():
         json.dump({"summary": summary, "regression_slot64": regression,
                    "gate": gate}, handle, indent=1, default=str)
     with open(os.path.join(args.out, "manifest.json"), "w") as handle:
+        json.dump(manifest, handle, indent=1)
+    print(json.dumps({"summary": summary, "gate": gate}, indent=1,
+                     default=str))
+    raise SystemExit(0 if gate["pass"] else 1)
+
+
+def load_reference_rows(trace_path):
+    """Reference classifications already written by ``--reference-only``."""
+    rows = []
+    classes = {}
+    with open(trace_path, "r", encoding="utf-8") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            if not row.get("reference"):
+                continue
+            rows.append(row)
+            classes[row["case"]] = ("feasible" if row.get("success")
+                                    else "undetermined")
+    return rows, classes
+
+
+def apply_reference_classes(cases, classes):
+    """Label each generated case from the frozen reference trace."""
+    missing = []
+    for case in cases:
+        if case["kind"] == "generated":
+            label = classes.get(case["id"])
+            if label is None:
+                missing.append(case["id"])
+            else:
+                case["class"] = label
+        elif case["kind"] == "regression":
+            case["class"] = "regression"
+        else:
+            case["class"] = "invalid"
+    if missing:
+        raise SystemExit("reference trace missing %d cases, first %s" % (
+            len(missing), missing[0]))
+
+
+def score_frozen(args):
+    """Baseline and state on the frozen reference labels.
+
+    Reads ``trace.jsonl`` and writes ``score_trace.jsonl``. The reference
+    file is not opened for write.
+    """
+    trace_path = os.path.join(args.out, "trace.jsonl")
+    if not os.path.isfile(trace_path):
+        raise SystemExit("no reference trace at %s" % trace_path)
+    started = time.time()
+    scene = Scene(SCENE)
+    urdf = load_urdf(scene_tf_config=SCENE)
+    tcp = urdf.path_to("suction_contact_frame")
+    fk = make_offline_fk(urdf, tcp)
+    starts = _starts(urdf, tcp)
+    retired = load_retired_held_out(args.retired_held_out)
+    cases, occupancy = build_cases(scene, starts, retired)
+    reference_rows, classes = load_reference_rows(trace_path)
+    apply_reference_classes(cases, classes)
+    held_feasible = sum(
+        1 for case in cases
+        if case["split"] == "held_out" and case.get("class") == "feasible")
+    if held_feasible < MIN_FEASIBLE_CASES:
+        print(json.dumps({
+            "held_out_feasible": held_feasible,
+            "outcome": "not_evaluated",
+            "reason": "below minimum feasible held-out",
+        }))
+        raise SystemExit(2)
+    ctx = {"scene": scene, "urdf": urdf, "tcp": tcp, "fk": fk,
+           "starts": starts, "occupancy": occupancy, "atlases": Atlases()}
+    score_path = os.path.join(args.out, "score_trace.jsonl")
+    t2_dir = os.path.join(args.out, "t2")
+    os.makedirs(t2_dir, exist_ok=True)
+    results = list(reference_rows)
+    with open(score_path, "w", encoding="utf-8") as trace:
+        def emit(row):
+            t2 = row.pop("t2", None)
+            if t2 is not None:
+                name = hashlib.sha1(("%s|%s|%s|%s" % (
+                    row["case"], row["mode"], row["atlas"],
+                    row.get("rep", 0))).encode()).hexdigest()[:16]
+                path = os.path.join(t2_dir, name + ".json")
+                with open(path, "w", encoding="utf-8") as handle:
+                    json.dump(dict(t2, case=row["case"], mode=row["mode"],
+                                   atlas=row["atlas"]), handle, default=str)
+                row["t2_bundle"] = os.path.relpath(path, args.out)
+            trace.write(json.dumps(row, default=str) + "\n")
+            trace.flush()
+            results.append(row)
+
+        for index, case in enumerate(cases):
+            for atlas_on in (True, False):
+                reps = args.reps if case["split"] == "held_out" else 1
+                for rep in range(reps):
+                    for mode in ("baseline", "state"):
+                        if mode == "baseline" and rep > 0:
+                            continue
+                        row = run_case(
+                            case, ctx, mode, atlas_on,
+                            capture_first_descend=(
+                                case["kind"] == "regression"))
+                        row["rep"] = rep
+                        emit(row)
+            print("[%d/%d] %s %s" % (index + 1, len(cases), case["id"],
+                                     case.get("class")), flush=True)
+    summary = summarize(results, cases)
+    regression = [r for r in results if r["case"].endswith("slot64_run02")
+                  and r["mode"] == "state" and not r.get("reference")]
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT,
+        capture_output=True, text=True).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=ROOT,
+        capture_output=True, text=True).stdout
+    manifest = {
+        "commit": commit,
+        "dirty_count": len([line for line in dirty.splitlines() if line.strip()]),
+        "lineage": dict(MATRIX_LINEAGE),
+        "planner_revision": MATRIX_LINEAGE["candidate_scope"],
+        "command": " ".join(sys.argv),
+        "started": started,
+        "ended": time.time(),
+        "cases": len(cases),
+        "case_classes": _count([c.get("class") for c in cases]),
+        "split": _count([c["split"] for c in cases]),
+        "reps_held_out": args.reps,
+        "held_out_feasible": held_feasible,
+        "score_trace": "score_trace.jsonl",
+        "reference_trace": "trace.jsonl",
+        "capture_complete": True,
+        "replay_possible": True,
+    }
+    gate = _gate(summary, regression)
+    with open(os.path.join(args.out, "summary.json"), "w") as handle:
+        json.dump({"summary": summary, "regression_slot64": regression,
+                   "gate": gate}, handle, indent=1, default=str)
+    with open(os.path.join(args.out, "score_manifest.json"), "w") as handle:
         json.dump(manifest, handle, indent=1)
     print(json.dumps({"summary": summary, "gate": gate}, indent=1,
                      default=str))

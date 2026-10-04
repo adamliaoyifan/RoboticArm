@@ -52,6 +52,21 @@ def test_extra_slots_keep_the_original_four_names():
     assert picked[4][0].startswith("s")
 
 
+def test_reference_classes_label_generated_cases_only():
+    module = _eval_module()
+    cases = [
+        {"id": "a", "kind": "generated"},
+        {"id": "b", "kind": "generated"},
+        {"id": "bad", "kind": "invalid"},
+        {"id": "slot", "kind": "regression"},
+    ]
+    module.apply_reference_classes(cases, {"a": "feasible", "b": "undetermined"})
+    assert cases[0]["class"] == "feasible"
+    assert cases[1]["class"] == "undetermined"
+    assert cases[2]["class"] == "invalid"
+    assert cases[3]["class"] == "regression"
+
+
 def test_historical_matrix_manifest_keeps_its_original_revision():
     manifest = json.loads(open(_OLD_MANIFEST, encoding="utf-8").read())
     assert manifest["commit"].startswith("e5c9a87")
