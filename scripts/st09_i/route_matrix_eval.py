@@ -1133,6 +1133,7 @@ def score_frozen(args):
         "split": _count([c["split"] for c in cases]),
         "reps_held_out": args.reps,
         "held_out_feasible": held_feasible,
+        "skipped_reference_undetermined": True,
         "score_trace": "score_trace.jsonl",
         "reference_trace": "trace.jsonl",
         "capture_complete": True,
