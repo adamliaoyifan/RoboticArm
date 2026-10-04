@@ -189,6 +189,22 @@ EXECUTABLE_FIRST_ORDER = True
 TOOL_DOWN_SEED_Q = (0.936, -1.025, 1.268, -1.819, -1.567, -0.635)
 
 
+def tool_down_branch_seeds():
+    """Finite tool-down basins refined onto a candidate pose.
+
+    ``tool_down`` is the nominal prior. ``tool_down_j1_minus_pi`` is the
+    same prior with joint 1 shifted by -pi. On the dev split, goal refine
+    from the nominal prior and from the live start produced no IK goal,
+    while this one shifted prior did. It is not a random joint sample.
+    """
+    shifted = list(TOOL_DOWN_SEED_Q)
+    shifted[0] = float(shifted[0]) - math.pi
+    return (
+        ("tool_down", tuple(float(v) for v in TOOL_DOWN_SEED_Q)),
+        ("tool_down_j1_minus_pi", tuple(shifted)),
+    )
+
+
 def revalidation_policy_from_contract(contract: Mapping):
     """RevalidationPolicy with the FROZEN snapshot freshness window.
 
@@ -2061,8 +2077,8 @@ class RouteProducer(object):
                 seen.add(key)
         alternatives = [("atlas", tuple(float(v) for v in q))
                         for q in (atlas_seeds or [])]
-        alternatives += [("tool_down", tuple(float(v) for v in TOOL_DOWN_SEED_Q)),
-                         ("start", tuple(float(v) for v in start_q))]
+        alternatives += list(tool_down_branch_seeds())
+        alternatives.append(("start", tuple(float(v) for v in start_q)))
         self.last_goal_refine = []
 
         def goal_seeds(target):

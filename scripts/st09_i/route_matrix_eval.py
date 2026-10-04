@@ -75,7 +75,11 @@ from luggage_planning.reachable_graph import (
     RouteGraph,
     make_offline_fk,
 )
-from luggage_planning.route_producer import TOOL_DOWN_SEED_Q, anchor_plan
+from luggage_planning.route_producer import (
+    TOOL_DOWN_SEED_Q,
+    anchor_plan,
+    tool_down_branch_seeds,
+)
 from st09_contracts.fixtures import make_timed_trajectory
 from st09_contracts.graph import GraphEdge, LoadState
 
@@ -642,8 +646,10 @@ def run_case(case, ctx, mode, atlas_on, *, budget_s=None, extra_seeds=0,
         atlas_seed_count = len(atlas_seeds)
         labeled_goal_seeds += [("atlas", seed) for seed in atlas_seeds]
     # ``seeds`` is start, tool-down, then reference-only uniform extras.
+    # The joint-1 shift is a finite tool-down prior, not one of those extras.
     labeled_goal_seeds.append(("start", seeds[0]))
-    labeled_goal_seeds.append(("tool_down", seeds[1]))
+    for label, seed in tool_down_branch_seeds():
+        labeled_goal_seeds.append((label, seed))
     labeled_goal_seeds += [("reference_extra", seed) for seed in seeds[2:]]
     goal_nodes = []
     goal_seed_sources = []

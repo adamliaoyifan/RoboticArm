@@ -357,7 +357,8 @@ class TestGoalRefineEvidence:
         assert record["atlas_seed_count"] == 0
         assert record["target_world"][0][0] == -2.055
         labels = [item["seed"] for item in record["attempts"]]
-        assert labels[:2] == ["tool_down", "start"]
+        assert labels == [
+            "tool_down", "tool_down_j1_minus_pi", "start"]
         assert all(item["ok"] is False for item in record["attempts"])
         assert record["attempts"][0]["pos_err_m"] == 0.52
 

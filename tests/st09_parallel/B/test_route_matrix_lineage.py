@@ -71,6 +71,49 @@ def test_reference_classes_label_generated_cases_only():
     assert module.case_is_scored(cases[3])
 
 
+def test_tool_down_joint1_branch_is_one_pi_shift():
+    import math
+    from luggage_planning.route_producer import (
+        TOOL_DOWN_SEED_Q,
+        tool_down_branch_seeds,
+    )
+    labels = [label for label, _q in tool_down_branch_seeds()]
+    assert labels == ["tool_down", "tool_down_j1_minus_pi"]
+    shifted = tool_down_branch_seeds()[1][1]
+    assert abs((TOOL_DOWN_SEED_Q[0] - math.pi) - shifted[0]) < 1e-12
+    assert shifted[1:] == tuple(TOOL_DOWN_SEED_Q[1:])
+
+
+def test_dev_zero_goal_case_needs_the_joint1_branch():
+    """Nominal tool-down misses this dev goal; the -pi joint-1 prior hits it."""
+    module = _eval_module()
+    from luggage_planning.route_producer import tool_down_branch_seeds
+    scene = module.Scene(module.SCENE)
+    urdf = module.load_urdf(scene_tf_config=module.SCENE)
+    tcp = urdf.path_to("suction_contact_frame")
+    starts = module._starts(urdf, tcp)
+    retired = module.load_retired_held_out(module.os.path.join(
+        module.ROOT, "docs", "status", "evidence", "frame_migration",
+        "ST09-parallel-I-s5", "route_matrix_20261004", "split.json"))
+    cases, _occ = module.build_cases(scene, starts, retired)
+    case = next(c for c in cases
+                if c["id"] == "carryon|nominal|pick_tooldown|occ0|h0|wall_y")
+    assert case["split"] == "dev"
+    size = module.PAYLOADS[case["payload"]]
+    payload = module.Payload(size, module.OFFSETS[case["offset"]])
+    pos, quat = payload.tcp_for_box(
+        scene.to_world(case["centre_container"]),
+        scene.yaw + module.HEADINGS[case["heading"]])
+    nominal = tool_down_branch_seeds()[0][1]
+    branch = tool_down_branch_seeds()[1][1]
+    miss, _info = module.refine_to_pose(
+        urdf, tcp, pos, quat, list(nominal), pos_tol=2e-3, rot_tol=2e-2)
+    hit, _info = module.refine_to_pose(
+        urdf, tcp, pos, quat, list(branch), pos_tol=2e-3, rot_tol=2e-2)
+    assert miss is None
+    assert hit is not None
+
+
 def test_historical_matrix_manifest_keeps_its_original_revision():
     manifest = json.loads(open(_OLD_MANIFEST, encoding="utf-8").read())
     assert manifest["commit"].startswith("e5c9a87")
