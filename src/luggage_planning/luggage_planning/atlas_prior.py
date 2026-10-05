@@ -38,12 +38,9 @@ def _container_pose(transform):
 
 
 def _coerce_targets(targets):
-    """Accept a list of pairs or the legacy truncated JSON string."""
-    if isinstance(targets, str):
-        import json
-        parsed = json.loads(targets)
-        return parsed if isinstance(parsed, list) else []
-    return targets or []
+    """Accept pose pairs, a JSON string, or that string split into characters."""
+    from luggage_planning.planning_capture import normalize_targets
+    return normalize_targets(targets)
 
 
 def _target_pose(target):

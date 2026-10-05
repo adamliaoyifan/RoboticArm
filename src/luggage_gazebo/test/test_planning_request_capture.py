@@ -101,6 +101,19 @@ def test_complete_fixture_replays_atlas_on_and_off():
     assert by_id["cand-1"]["seed_sources"] == ["atlas"]
 
 
+def test_character_split_json_targets_replay():
+    from luggage_planning.planning_capture import normalize_targets
+    encoded = "[[[0.1, 0.2, 0.8], [0.0, 0.0, 0.0, 1.0]]]"
+    pairs = normalize_targets(list(encoded))
+    assert pairs == [[[0.1, 0.2, 0.8], [0.0, 0.0, 0.0, 1.0]]]
+    document = _complete()
+    document["candidates"][0]["targets"] = list(encoded)
+    rows = replay_captured_candidates(document, lambda _x, y, _z, _yaw: 1 if y < 0 else 3)
+    by_id = {row["candidate_id"]: row for row in rows}
+    assert by_id["cand-0"]["n_targets"] == 1
+    assert by_id["cand-0"]["atlas_on"] == "reachable"
+
+
 def test_stringified_targets_are_parsed_before_replay():
     from luggage_planning.planning_capture import candidates_from_rows
     rows = [{

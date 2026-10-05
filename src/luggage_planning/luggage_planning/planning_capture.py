@@ -37,12 +37,42 @@ def capture_fields(slot, targets, reachability, seed_sources):
     }
 
 
-def _target_list(value):
+def normalize_targets(value):
+    """Pose pairs, a JSON string, or that string split into characters."""
     if isinstance(value, str):
         import json
-        parsed = json.loads(value)
-        return parsed if isinstance(parsed, list) else []
-    return list(value or [])
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    if (isinstance(value, list) and value
+            and all(isinstance(item, str) and len(item) == 1 for item in value)):
+        import json
+        try:
+            value = json.loads("".join(value))
+        except ValueError:
+            return []
+    pairs = []
+    for item in value or []:
+        if not isinstance(item, (list, tuple)) or len(item) != 2:
+            continue
+        position, quaternion = item
+        if (not isinstance(position, (list, tuple)) or len(position) != 3
+                or not isinstance(quaternion, (list, tuple))
+                or len(quaternion) != 4):
+            continue
+        try:
+            pairs.append([
+                [float(v) for v in position],
+                [float(v) for v in quaternion],
+            ])
+        except (TypeError, ValueError):
+            continue
+    return pairs
+
+
+def _target_list(value):
+    return normalize_targets(value)
 
 
 def candidates_from_rows(rows):
@@ -76,8 +106,7 @@ def candidate_complete(cand):
     if (not isinstance(position, list) or len(position) != 3
             or not isinstance(quaternion, list) or len(quaternion) != 4):
         return False
-    targets = cand.get("targets")
-    if not isinstance(targets, list) or not targets:
+    if not normalize_targets(cand.get("targets")):
         return False
     if not isinstance(cand.get("seed_sources"), list):
         return False
