@@ -929,6 +929,14 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._rehearsal_mark("observation")
         return result
 
+    def _place_slot_for(self, pick_msg, box_msg, trial):
+        # Pre-place is a carrying-state fault. It must run before route
+        # selection: a budget failure there would skip the injection.
+        if getattr(self._args, "rehearsal_fault", "") == "pre_place":
+            self._rehearsal_refuse(trial, "pre_place")
+            return None, None
+        return super()._place_slot_for(pick_msg, box_msg, trial)
+
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         if getattr(self._args, "rehearsal_fault", "") == "pre_place":
             self._rehearsal_refuse(trial, "pre_place")

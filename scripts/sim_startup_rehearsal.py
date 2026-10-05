@@ -32,6 +32,27 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src" / "luggage_gazebo"))
 
+# Keys the launch subprocess and the in-process probe must share. rclpy
+# reads them at init, not from the Popen env of the launch.
+_LAUNCH_ENV_KEYS = ("ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY")
+
+
+def adopt_launch_environment(env):
+    """Copy the launch domain into this process. Returns the previous values."""
+    saved = {key: os.environ.get(key) for key in _LAUNCH_ENV_KEYS}
+    for key in _LAUNCH_ENV_KEYS:
+        if key in env and env[key] is not None:
+            os.environ[key] = str(env[key])
+    return saved
+
+
+def restore_environment(saved):
+    for key, value in saved.items():
+        if value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = value
+
 from luggage_gazebo.startup_probe import (  # noqa: E402
     DEFAULT_STAGE_DEADLINE,
     EXPECTED_JOINT_COUNT,
@@ -101,13 +122,15 @@ class RosStartupProbe:
 
         self._node = node
         self._param_name = param_name
+        self._rsp_node_name = rsp_node_name.strip("/") or "robot_state_publisher"
+        self._param_service = "/%s/get_parameters" % self._rsp_node_name
         self._controller_manager = controller_manager
         self._required = tuple(required_controllers)
         self._expected_joint_count = int(expected_joint_count)
         self._list_srv = "%s/list_controllers" % controller_manager.rstrip("/")
 
         self._param_client = node.create_client(
-            GetParameters, "/%s/get_parameters" % rsp_node_name.strip("/"))
+            GetParameters, self._param_service)
         self._cm_client = node.create_client(ListControllers, self._list_srv)
         self._ListControllers = ListControllers
         self._GetParameters = GetParameters
@@ -126,6 +149,22 @@ class RosStartupProbe:
         import rclpy
         rclpy.spin_once(self._node, timeout_sec=timeout_sec)
 
+    def _rsp_detail(self, **extra):
+        """Provider identity for a robot_description stage result.
+
+        The service is the parameter server of the ``robot_state_publisher``
+        node that ``sim_world`` starts with the xacro ``robot_description``.
+        It is visible only on the launch domain.
+        """
+        detail = {
+            "node": self._rsp_node_name,
+            "service": self._param_service,
+            "parameter": self._param_name,
+            "probe_domain": os.environ.get("ROS_DOMAIN_ID", "0"),
+        }
+        detail.update(extra)
+        return detail
+
     def check_robot_description(self):
         """One bounded async ``get_parameters`` on a persistent client.
 
@@ -135,23 +174,24 @@ class RosStartupProbe:
         import rclpy
         if not self._param_client.service_is_ready():
             self.spin(0.1)
-            return False, {"service_ready": False}
+            return False, self._rsp_detail(service_ready=False)
         request = self._GetParameters.Request()
         request.names = [self._param_name]
         future = self._param_client.call_async(request)
         rclpy.spin_until_future_complete(self._node, future, timeout_sec=3.0)
         if not future.done():
             future.cancel()
-            return False, {"service_ready": True, "response": False}
+            return False, self._rsp_detail(service_ready=True, response=False)
         response = future.result()
         if response is None or not response.values:
-            return False, {"service_ready": True, "response": False}
+            return False, self._rsp_detail(service_ready=True, response=False)
         value = response.values[0].string_value or ""
         if not value.lstrip().startswith("<"):
-            return False, {"service_ready": True, "bytes": len(value)}
+            return False, self._rsp_detail(
+                service_ready=True, bytes=len(value))
         self.robot_description = value
         self.robot_description_bytes = len(value)
-        return True, {"bytes": len(value)}
+        return True, self._rsp_detail(bytes=len(value))
 
     def check_controller_manager(self):
         self.spin(0.1)

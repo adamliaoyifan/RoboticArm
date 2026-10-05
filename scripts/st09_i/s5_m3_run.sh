@@ -118,26 +118,28 @@ ros2 launch luggage_gazebo sim_world.launch.py \
 LAUNCH_PID=$!
 log stack_start ", \"launch_pid\": $LAUNCH_PID"
 
-# -- bag (small topic set; volumes are NOT a cap — verified post-run) -----
+# -- bag: light topics plus 3 s copies of the fat sensor streams ----------
+# Full-rate color/depth/mask exceeded 1 GiB in 51 s. The throttle keeps a
+# 1200 s session under that cap. Do not delete an earlier oversized bag.
 BAG_PID=""
+THROTTLE_PID=""
 if [[ "$RECORD_BAG" -eq 1 ]]; then
+  if ! BUDGET_JSON="$(PYTHONPATH="$WS/src/luggage_gazebo${PYTHONPATH:+:$PYTHONPATH}" \
+    python3 -c 'import json; from luggage_gazebo.capture_budget import THROTTLE_PERIOD_S, bag_topics, worst_case_bytes, RUN_BUDGET_BYTES; total=worst_case_bytes(); assert total < RUN_BUDGET_BYTES, total; print(json.dumps({"topics": bag_topics(), "period_s": THROTTLE_PERIOD_S, "worst_case_bytes": total}))')"; then
+    echo "capture budget refuses this topic set" >&2
+    exit 2
+  fi
+  WORST_BYTES="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["worst_case_bytes"])' "$BUDGET_JSON")"
+  PERIOD_S="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["period_s"])' "$BUDGET_JSON")"
+  mapfile -t BAG_TOPICS < <(python3 -c 'import json,sys; print("\n".join(json.loads(sys.argv[1])["topics"]))' "$BUDGET_JSON")
+  python3 "$WS/scripts/st09_i/throttle_capture_topics.py" \
+    > "$OUT/capture_throttle.log" 2>&1 &
+  THROTTLE_PID=$!
   ros2 bag record -o "$OUT/bag" --max-bag-size 200000000 \
-    /clock /tf /joint_states \
-    /vacuum/state /vacuum/events_json \
-    /luggage/current_box /luggage/finalized_models \
-    /luggage/perception/size_eval/spawned \
-    /luggage/cargo_map/surface_2d /luggage/cargo_map/surface_v2 \
-    /luggage/semantic/cargo_points_untracked \
-    /luggage/semantic/cargo_points \
-    /luggage/semantic/instance_mask \
-    /luggage/preprocessed/camera/color/image \
-    /luggage/preprocessed/camera/depth/image \
-    /luggage/preprocessed/camera/color/camera_info \
-    /luggage_detector/stream_stats_json \
-    /motion_planner/last_boundary \
+    "${BAG_TOPICS[@]}" \
     > "$OUT/bag_record.log" 2>&1 &
   BAG_PID=$!
-  log bag_start ", \"bag_pid\": $BAG_PID"
+  log bag_start ", \"bag_pid\": $BAG_PID, \"throttle_pid\": $THROTTLE_PID, \"throttle_period_s\": $PERIOD_S, \"worst_case_bytes\": $WORST_BYTES"
 fi
 
 stop_bag() {
@@ -148,6 +150,11 @@ stop_bag() {
     wait "$BAG_PID" 2>/dev/null || true
     BAG_PID=""
     log bag_stop ""
+  fi
+  if [[ -n "$THROTTLE_PID" ]]; then
+    kill -INT "$THROTTLE_PID" 2>/dev/null || true
+    wait "$THROTTLE_PID" 2>/dev/null || true
+    THROTTLE_PID=""
   fi
 }
 

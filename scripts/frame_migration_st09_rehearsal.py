@@ -32,16 +32,70 @@ from luggage_gazebo.startup_probe import (  # noqa: E402
 import sim_startup_rehearsal as startup  # noqa: E402
 
 SESSION_BUDGET_S = 20 * 60
-LAUNCH_PARAMS = (
-    "gui:=false use_rviz:=false "
-    "use_semantic:=true use_motion:=true use_vacuum:=true "
-    "use_cargo_map:=true use_packing:=true "
-    "visual_kind:=mesh size_mode:=catalog "
-    "sequence_ids:=carryon,standard "
-    "observe_pose_name:=pickup_observe semantic_require_backend:=bbox_fill "
-    "frame_runtime:=true frame_driver_peer:=motion_occ_driver "
-    "atlas_enabled:=false"
-)
+# The GoTo pose file must be the one synthesized for the launched scene.
+# robot_poses.yaml.example has no scene revision, so a frame-runtime
+# launch that leaves the default pose file returns SCENE_STALE.
+OBSERVE_POSE = "pickup_observe_sim"
+
+
+def cell_binding(install):
+    """Scene file revision versus the named-pose file that cites it.
+
+    The pose revision is whatever the file already stores. This does not
+    write a revision into the file.
+    """
+    import yaml
+    from luggage_description.runtime_identity import scene_revision_from_path
+
+    root = Path(install)
+    desc = root / "luggage_description/share/luggage_description/config"
+    planning = root / "luggage_planning/share/luggage_planning/config"
+    scene = desc / "scene_tf_deploy.yaml"
+    poses = desc / "robot_poses.sim_deploy.yaml"
+    atlas = planning / "atlas_runtime_deploy_sim.yaml"
+    for path in (scene, poses, atlas):
+        if not path.is_file():
+            raise FileNotFoundError(path)
+    data = yaml.safe_load(poses.read_text(encoding="utf-8")) or {}
+    identity = data.get("identity") or {}
+    pose_revision = str(identity.get("scene_revision") or "")
+    captures = {
+        str(name): str((entry or {}).get("scene_revision_at_capture") or "")
+        for name, entry in (data.get("poses") or {}).items()
+        if isinstance(entry, dict)
+    }
+    scene_revision = scene_revision_from_path(scene)
+    bound = (pose_revision == scene_revision
+             and bool(captures)
+             and all(value == scene_revision for value in captures.values())
+             and OBSERVE_POSE in (data.get("poses") or {}))
+    return {
+        "scene_path": str(scene),
+        "pose_path": str(poses),
+        "atlas_path": str(atlas),
+        "pose_name": OBSERVE_POSE,
+        "scene_file_revision": scene_revision,
+        "pose_file_revision": pose_revision,
+        "capture_revisions": captures,
+        "bound": bound,
+    }
+
+
+def launch_params(binding):
+    return (
+        "gui:=false use_rviz:=false "
+        "use_semantic:=true use_motion:=true use_vacuum:=true "
+        "use_cargo_map:=true use_packing:=true "
+        "visual_kind:=mesh size_mode:=catalog "
+        "sequence_ids:=carryon,standard "
+        "semantic_require_backend:=bbox_fill "
+        "frame_runtime:=true frame_driver_peer:=motion_occ_driver "
+        "atlas_enabled:=false "
+        "scene_tf_config:=%s robot_poses_config:=%s "
+        "atlas_runtime_config:=%s observe_pose_name:=%s"
+        % (binding["scene_path"], binding["pose_path"],
+           binding["atlas_path"], binding["pose_name"])
+    )
 BAG_TOPICS = (
     "/clock", "/tf", "/tf_static", "/joint_states",
     "/monitored_planning_scene",
@@ -81,8 +135,14 @@ def write_json(path, payload):
 
 def probe_launch(attempt, env, deadlines):
     import rclpy
-    from sim_startup_rehearsal import RosStartupProbe
+    from sim_startup_rehearsal import (
+        RosStartupProbe, adopt_launch_environment, restore_environment,
+    )
 
+    # The launch is a subprocess with ``env``. rclpy in this process reads
+    # os.environ, which previously stayed on the caller's domain and never
+    # discovered /robot_state_publisher/get_parameters.
+    saved = adopt_launch_environment(env)
     rclpy.init(args=None)
     node = rclpy.create_node("st09_rehearsal_probe")
     probe = RosStartupProbe(node)
@@ -105,11 +165,19 @@ def probe_launch(attempt, env, deadlines):
     finally:
         node.destroy_node()
         rclpy.shutdown()
+        restore_environment(saved)
     record = result.as_dict()
     record["n_clock_publishers"] = startup.count_clock_publishers(env)
     record["marker_order_ok"] = marker_order_ok(attempt.log_text())
     record["spawn_marker_count"] = spawn_marker_count(attempt.log_text())
     record["plugin_received_urdf"] = plugin_received_urdf(attempt.log_text())
+    record["launch_domain"] = str(env.get("ROS_DOMAIN_ID", "0"))
+    record["probe_domain"] = record["launch_domain"]
+    record["rsp_node"] = "robot_state_publisher"
+    record["rsp_service"] = "/robot_state_publisher/get_parameters"
+    record["rsp_dependency"] = (
+        "sim_world robot_state_publisher parameter robot_description, "
+        "same ROS_DOMAIN_ID as the probe")
     return record
 
 
@@ -156,6 +224,7 @@ def run_driver(args, env, out, deadline_s):
         "ros2", "run", "luggage_gazebo", "motion_occ_eval_driver.py",
         "--frame-runtime", "--frame-peer", "motion_occ_driver",
         "--payload", "vacuum", "--goto-timeout", "60",
+        "--observe-pose", OBSERVE_POSE,
         "--out", str(out),
     ]
     if args.fault:
@@ -177,6 +246,8 @@ def main(argv=None):
     parser.add_argument("--install", required=True, type=Path)
     parser.add_argument("--ros-domain-id", type=int, default=7)
     parser.add_argument("--fault", choices=("", "pre_pick", "pre_place"), default="")
+    parser.add_argument("--startup-only", action="store_true",
+                        help="stop after a ready startup probe; do not run a case")
     parser.add_argument("--pidfile", default="/tmp/elfin_humble_sim.pid")
     args = parser.parse_args(argv)
     if args.ros_domain_id != 7:
@@ -195,7 +266,19 @@ def main(argv=None):
     env["YOLO_OFFLINE"] = "1"
     env["ULTRALYTICS_OFFLINE"] = "1"
     env["YOLO_AUTOINSTALL"] = "false"
+    try:
+        binding = cell_binding(args.install)
+    except FileNotFoundError as error:
+        record = {"reason": "POSE_SCENE_UNBOUND", "detail": str(error)}
+        write_json(args.out / "startup_failure.json", record)
+        return 2
+    write_json(args.out / "pose_scene_binding.json", binding)
+    if not binding["bound"]:
+        record = {"reason": "POSE_SCENE_UNBOUND", "binding": binding}
+        write_json(args.out / "startup_failure.json", record)
+        return 2
     deadlines = dict(DEFAULT_STAGE_DEADLINE)
+    params = launch_params(binding)
     attempt = None
     bag = None
     record = {"scored": False, "namespace": "rehearsal", "cases_attempted": 0,
@@ -209,8 +292,7 @@ def main(argv=None):
             attempt_dir = args.out / "startup"
             attempt_dir.mkdir(exist_ok=True)
             attempt = startup.LaunchAttempt(
-                attempt_dir, env, args.pidfile,
-                LAUNCH_PARAMS)
+                attempt_dir, env, args.pidfile, params)
             attempt.start()
             probed = probe_launch(attempt, env, deadlines)
             write_json(args.out / "startup_probe.json", probed)
@@ -233,6 +315,10 @@ def main(argv=None):
             record["reason"] = record.get("startup_failure") or record.get("reason")
             write_json(args.out / "startup_failure.json", record)
             return 2
+        if args.startup_only:
+            record["startup_only"] = True
+            write_json(args.out / "rehearsal_session.json", record)
+            return 0
         if not budget_allows(0, directory_bytes(args.out),
                              total_limit=TOTAL_BUDGET_BYTES):
             record["reason"] = "total_budget"

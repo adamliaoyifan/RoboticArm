@@ -1025,6 +1025,9 @@ class PickRetreatEvalDriver(Node):
                 break
             reason = str(result.reason_code or "GOTO_ROUTE_REJECTED")
             if reason != "MAP_STALE" or attempt == 2:
+                detail = str(getattr(result, "detail", "") or "")
+                if detail:
+                    return False, "%s detail=%s" % (reason, detail[:500])
                 return False, reason
             if not self._wait_map_quiescence(
                     stats_client, int(stats.map_revision)):

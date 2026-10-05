@@ -373,3 +373,39 @@ it was stopped and raised for discussion.
 - (landed 5a9ab4b) EnsureCycleStartV2 + GoToRobotPoseV2 + vacuum window + frozen-prefix artifact;
 - G2 single-box passed at Run18 (`g2_single_box_run18_20261004`, verdict pass, zero handoffs). G3 Run01 was blocked on box 2 at place selection (`PLANNING_BUDGET_EXHAUSTED`); a joint decision is pending in discuss `2026-10-04_1712_st09-i-g3-box2-place-selection.md`.
 - remaining: three-box M3 only, under the checks in the Run18 section, after that decision.
+
+## S6 readiness at 0bdcc88 (2026-10-05)
+
+Historical G2 Run18 stays a pass of that older candidate. This revision's
+own one-box rehearsal did not pass. G3 stays deferred. S6 multi-box
+acceptance stays pending. S7 stays blocked.
+
+Evidence: `docs/status/evidence/frame_migration/ST09-parallel-I-s6-readiness/7ec5c40/`.
+
+- Commits `7ec5c40` and `0bdcc88`. Install `install-st09`: 185 Python
+  modules matched source, and the rebuilt planning modules matched again.
+- Input hashes frozen. Live two-case bind and capture window are
+  `not_evaluated`.
+- Prefix archive SHA, extracted root digest (18891 files), 21 dist
+  RECORDs, and CUDA inference from the relocated prefix passed. Clip
+  loaded from the install vendor.
+- Mock graph startup: sim 3/3 and hardware_plan_only 3/3, ready about
+  2 s, teardown inside 90 s.
+- One-box deploy-scene rehearsal: `PLANNING_BUDGET_EXHAUSTED` at 45 s,
+  65 candidates recorded, no winner. Teardown 62 s. Bag 1.13 GiB, over
+  the 1 GiB cap. Judge `not_evaluated`.
+- Startup probe: the rehearsal process was not on the launch domain.
+  After it adopts `ROS_DOMAIN_ID` before `rclpy.init`, a parent on
+  domain 0 reaches `joint_states` in 8.0 s with one `/clock` publisher
+  (`startup_probe_domain_fix`). `robot_state_publisher` /
+  `/robot_state_publisher/get_parameters` returned a 22986-byte URDF
+  in 1.21 s.
+- `pre_pick` then refused `MISSING_PEER` with no attach, segments, or
+  commits (`fault_pre_pick_r2`).
+- `pre_place` still does not reach the injection: observe goto returns
+  `SCENE_STALE` (`fault_pre_place_r3`).
+- Continuous capture worst case at a 3 s sensor period is 838167511
+  bytes, under 1 GiB. The 1.13 GiB bag is kept.
+- Deploy named poses are unmeasured. `robot_poses.deploy.yaml` pins
+  scene `98313fb8`; the current scene file is `35f15c4c`, so the site
+  pose check is not ok. Fallback remains `current`. No arm motion.
