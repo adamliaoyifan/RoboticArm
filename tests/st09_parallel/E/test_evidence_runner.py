@@ -260,6 +260,11 @@ def _m3_case(index, name):
             "output_map_revision": output_revision,
             "sensor_occupied_cells": 1,
             "floor_through_candidates": 0,
+            "retreat_start": {"status": "ready", "max_delta": 0.008},
+            # Boxes after the first must name an observed map. Box 1 stays
+            # without one; the judge only requires it from the second case.
+            "selection_map": (
+                {"map_source": "release_integrated"} if index > 1 else {}),
         },
         "gt_reference": {
             "xy_error_m": 0.01, "z_error_m": 0.01, "drift_m": 0.005,

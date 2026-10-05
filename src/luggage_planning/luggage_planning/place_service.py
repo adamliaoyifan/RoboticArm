@@ -302,6 +302,8 @@ def fill_select_response_route(message, response, producer):
         response.reason_code = str(result.get("reason_code") or "NO_FEASIBLE_ROUTE")
         response.slot_index = -1
         response.rows_json = json.dumps(result.get("rows") or [])
+        response.stage_timings_json = json.dumps(
+            result.get("stage_timings") or {})
         return response
     response.success = True
     response.reason_code = "OK"

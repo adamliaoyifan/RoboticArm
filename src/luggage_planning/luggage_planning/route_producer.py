@@ -567,6 +567,11 @@ class RouteProducer(object):
                 q, info = self.refine(tuple(position), tuple(orientation),
                                       list(seed))
                 if q is not None:
+                    solved = tuple(float(v) for v in seed)
+                    info = dict(info or {})
+                    info["solved_by"] = (
+                        "requested" if solved == requested else "fallback")
+                    info["solved_seed"] = [float(v) for v in solved]
                     return tuple(q), info
             except Exception:  # noqa: BLE001 - anchor seeding is best effort
                 info = {"reason": "ik_unavailable"}
@@ -1176,7 +1181,9 @@ class RouteProducer(object):
                 "stage_timings": self._stage_timings(started_ns),
             }
         rows.append(self._attempt_summary(ordered_slots, tried_indices))
-        return self._fail(last_reason, rows)
+        failed = self._fail(last_reason, rows)
+        failed["stage_timings"] = self._stage_timings(started_ns)
+        return failed
 
     def _stage_timings(self, started_ns):
         """[ST09-I S5.7-6] Frozen-budget attribution (ms, rounded).
@@ -2095,6 +2102,7 @@ class RouteProducer(object):
                 attempts.append({
                     "seed": label,
                     "ok": q is not None,
+                    "solved_by": info.get("solved_by"),
                     "pos_err_m": info.get("pos_err_m"),
                     "rot_err_rad": info.get("rot_err_rad"),
                 })

@@ -431,6 +431,13 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         selection = None
         probe_ok = True
         probe_reason = ""
+
+        def _request_doc(current, rows):
+            return self._planning_request_document(
+                rows, request_id, box_wdh, start_joints, grasp,
+                container_transform, surface_msg, stats, geometry_hash,
+                self._stage_timings_from_selection(current))
+
         attempts = max(1, min(5, len(slot_messages)))
         start_joints = (_joint_positions(
             getattr(self, "_last_joint_state", None)) or [])
@@ -476,7 +483,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                     trial, [], rows, None, trial.extras["selector_error"],
                     (self._surface_from_selection(selection)
                      if selection is not None else {}),
-                    probe=probe_stats)
+                    probe=probe_stats,
+                    planning_request=_request_doc(selection, rows))
                 return None, None
             if getattr(self._args, "place_probe", "on") != "on":
                 probe_ok = True
@@ -499,9 +507,10 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 "n_rows": 0, "winner_method": None,
                 "winner_slot": None, "probe": probe_stats,
                 "excluded": excluded}
-            self._dump_selector(trial, [], self._rows_from_selection(
-                selection), None, probe_reason,
-                self._surface_from_selection(selection), probe=probe_stats)
+            probe_rows = self._rows_from_selection(selection)
+            self._dump_selector(trial, [], probe_rows, None, probe_reason,
+                self._surface_from_selection(selection), probe=probe_stats,
+                planning_request=_request_doc(selection, probe_rows))
             return None, None
 
         winner_index = int(selection.slot_index)
@@ -553,10 +562,13 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         slot.place_pose.orientation.z = math.sin(0.5 * yaw_container)
         slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
         slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
-        self._dump_selector(trial, [], self._rows_from_selection(selection),
+        winner_rows = self._rows_from_selection(selection)
+        self._dump_selector(trial, [], winner_rows,
                             self._selected_path,
                             "", self._surface_from_selection(selection),
-                            probe=probe_stats)
+                            probe=probe_stats,
+                            planning_request=_request_doc(
+                                selection, winner_rows))
         return slot, self._slot_meta(slot)
 
     @staticmethod
@@ -617,8 +629,81 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         normal = container_opening_normal_in_world(self._scene_config)
         return (-float(normal[1]), float(normal[0]))
 
+    def _stage_timings_from_selection(self, selection):
+        raw = str(getattr(selection, "stage_timings_json", "") or "")
+        if not raw:
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except ValueError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+
+    def _planning_request_document(self, rows, request_id, box_wdh,
+                                   start_joints, grasp, container_transform,
+                                   surface_msg, stats, geometry_hash,
+                                   stage_timings):
+        from luggage_gazebo.planning_request_capture import (
+            build_planning_request,
+            candidate_targets_from_rows,
+        )
+
+        translation, quaternion = [], []
+        if isinstance(container_transform, (list, tuple)) and len(
+                container_transform) >= 4:
+            translation = list(container_transform[2])
+            quaternion = list(container_transform[3])
+        cfg = getattr(self, "_atlas_cfg", None) or {}
+        diag = getattr(self, "_atlas_diag", None) or {}
+        identity = "|".join((
+            str(cfg.get("atlas_dir") or ""),
+            str(cfg.get("basename") or ""),
+            str(getattr(self, "_scene_tf_hash", "") or ""),
+        ))
+        snapshot = None
+        if surface_msg is not None:
+            snapshot = {
+                "rows": int(getattr(surface_msg, "rows", 0) or 0),
+                "columns": int(getattr(surface_msg, "columns", 0) or 0),
+                "resolution_m": float(
+                    getattr(surface_msg, "resolution_m", 0.0) or 0.0),
+                "map_revision": int(
+                    getattr(surface_msg, "map_revision", 0) or 0),
+                "geometry_hash": str(
+                    getattr(surface_msg, "geometry_hash", "") or ""),
+            }
+        grasp = grasp or {}
+        revision = None
+        if surface_msg is not None:
+            revision = int(getattr(surface_msg, "map_revision", 0) or 0)
+        return build_planning_request({
+            "request_id": request_id,
+            "box_wdh": box_wdh,
+            "start_joints": start_joints,
+            "attachment_transform": {
+                "translation": list(grasp.get("position") or []),
+                "quaternion_xyzw": list(grasp.get("quaternion_xyzw") or []),
+            },
+            "container_transform": {
+                "translation": translation,
+                "quaternion_xyzw": quaternion,
+            },
+            "map_revision": revision,
+            "map_source": str(getattr(stats, "map_source", "") or ""),
+            "geometry_hash": geometry_hash,
+            "candidate_targets": candidate_targets_from_rows(rows),
+            "atlas_identity": {
+                "identity": identity,
+                "enabled": bool(cfg.get("enabled")),
+                "loaded": bool(diag.get("loaded")),
+                "reason": str(diag.get("reason") or ""),
+            },
+            "stage_timings": stage_timings or {},
+            "map_snapshot": snapshot,
+        })
+
     def _dump_selector(self, trial, candidates, rows, winner, reason, surface,
-                       probe=None):
+                       probe=None, planning_request=None):
         folder = os.path.join(self._args.dump_dir, "box_%02d_paths" % trial.index)
         os.makedirs(folder, exist_ok=True)
         payload = {
@@ -632,10 +717,21 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             "candidates": candidates,
             "probe": probe,
         }
+        if planning_request:
+            payload["geometry_hash"] = planning_request.get(
+                "geometry_hash") or payload["geometry_hash"]
+            payload["map_revision"] = planning_request.get("map_revision")
+            payload["map_source"] = planning_request.get("map_source")
         with open(os.path.join(folder, "candidates.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2, sort_keys=True, default=str)
             handle.write("\n")
+        if planning_request:
+            with open(os.path.join(folder, "planning_request.json"), "w",
+                      encoding="utf-8") as handle:
+                json.dump(planning_request, handle, indent=2, sort_keys=True,
+                          default=str)
+                handle.write("\n")
         trial.extras["selector"] = {
             "reason": reason,
             "n_slots": len(candidates),

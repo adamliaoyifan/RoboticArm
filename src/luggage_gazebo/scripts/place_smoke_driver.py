@@ -1575,14 +1575,27 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         separate an unreachable target from a bad start state or a collision,
         and the next run repeats the same blind failure.
         """
+        waypoints = []
+        for pose in getattr(failed, "waypoints", ()) or ():
+            waypoints.append([
+                float(pose.position.x), float(pose.position.y),
+                float(pose.position.z)])
+        release_poses = []
+        events = self._vacuum_events if isinstance(
+            self._vacuum_events, dict) else {}
+        for event in events.values():
+            if isinstance(event, dict) and event.get("release_pose"):
+                release_poses.append(event["release_pose"])
         return {
             "failed_segment": self._segment_record(failed),
+            "failed_leg_waypoints": waypoints,
             "planner_message": str(message),
             "sequence": [self._segment_record(s) for s in segments],
             "joint_state_at_failure": self._last_joint_state,
             "pick_detection": self._last_pick_detection,
             "scene_pickup_box": self._scene_box_record(),
             "place_state": self._place_state,
+            "release_poses": release_poses,
         }
 
     def _dump_place(self, trial, extra_files=None, extra=None, debug=None):

@@ -362,8 +362,32 @@ class TestGoalRefineEvidence:
         assert all(item["ok"] is False for item in record["attempts"])
         assert record["attempts"][0]["pos_err_m"] == 0.52
 
+    def test_joint1_goal_records_that_seed_not_the_fallback(self):
+        from luggage_planning.route_producer import tool_down_branch_seeds
 
-    def test_refine_failure_reports_requested_seed_not_fallback(self):
+        producer, _clock = build_producer()
+        shifted = tool_down_branch_seeds()[1][1]
+
+        def refine(_position, _quaternion, seed):
+            key = tuple(float(v) for v in seed)
+            if key == shifted:
+                return list(shifted), {"pos_err_m": 0.0, "rot_err_rad": 0.0}
+            return None, {"pos_err_m": 0.2, "rot_err_rad": 0.1}
+
+        producer.refine = refine
+        seeds = producer._goal_seed_fn(
+            (0.0, 0.0, 0.0, 0.0, 0.0, 0.0), atlas_seeds=[])
+        target = type("Target", (), {})()
+        target.position = (1.2, -0.2, 0.8)
+        target.quaternion_xyzw = (0.0, 1.0, 0.0, 0.0)
+        goals = seeds(target)
+        record = producer.last_goal_refine[-1]
+        joint1 = next(item for item in record["attempts"]
+                      if item["seed"] == "tool_down_j1_minus_pi")
+        assert joint1["ok"] is True
+        assert joint1["solved_by"] == "requested"
+        assert any(goal.ik_family == "refine-tool_down_j1_minus_pi"
+                   for goal in goals)
         producer, _clock = build_producer()
         requested = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6)
 

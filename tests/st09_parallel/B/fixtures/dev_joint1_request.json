@@ -1,0 +1,71 @@
+{
+ "request_id": "probe-carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+ "matrix_case_id": "carryon|nominal|pick_tooldown|occ0|h0|wall_y",
+ "box_wdh": [
+  0.55,
+  0.4,
+  0.25
+ ],
+ "start_joints": [
+  1.3899213963554564,
+  -1.3812435297784402,
+  1.657084270304342,
+  -1.8455177882203173,
+  -1.5646119636302491,
+  -1.751682074514483
+ ],
+ "attachment_transform": {
+  "translation": [
+   -0.0,
+   -0.0,
+   0.125
+  ],
+  "quaternion_xyzw": [
+   0.0,
+   0.0,
+   0.0,
+   1.0
+  ]
+ },
+ "container_transform": {
+  "translation": [
+   -1.5,
+   0.6,
+   0.0
+  ],
+  "quaternion_xyzw": [
+   0.0,
+   0.0,
+   0.9999999999932537,
+   -3.673205103346574e-06
+  ]
+ },
+ "map_revision": 0,
+ "map_source": "static_empty",
+ "geometry_hash": "50b76d4fac2908da8a0f730477daf44d8e5448ef0e0f3b98e8bdb33eafc148da",
+ "candidate_targets": [
+  [
+   [
+    -1.0549987878543243,
+    0.43500326915699433,
+    0.785
+   ],
+   [
+    -0.9999999999932537,
+    -3.673205103346574e-06,
+    0.0,
+    -0.0
+   ]
+  ]
+ ],
+ "atlas_identity": {
+  "identity": "deploy:a4dfd5d23903f721",
+  "enabled": true,
+  "atlas_yaml_sha256": "a4dfd5d23903f721831557926a43237be688f110f0e676f9202ac0de5573598a"
+ },
+ "stage_timings": {},
+ "provenance": {
+  "solved_by": "requested",
+  "producer_file": "/tmp/elfin-st09-converge-i/src/luggage_planning/luggage_planning/route_producer.py"
+ }
+}
