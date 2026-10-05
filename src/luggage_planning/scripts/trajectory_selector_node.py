@@ -422,16 +422,27 @@ class TrajectorySelectorNode(Node):
                     "hash_message": diag.get("hash_message"),
                     "scene_tf_ok": diag.get("scene_tf_ok"),
                     "urdf_ok": diag.get("urdf_ok"),
+                    "scene_tf_hash": self._scene_tf_hash,
+                    "urdf_hash": (
+                        self._urdf_identity.hash
+                        if self._urdf_identity.ready else ""),
+                    "query_offset": [
+                        float(v) for v in (
+                            self._atlas_cfg.get("query_offset") or [])],
                 }
             if atlas is None or not targets:
                 return None
             try:
                 # World TCP -> container frame, then the shared status
-                # rule. Atlas-off never reaches this function.
-                return prior_for_targets(
+                # rule. The configured query_offset is recorded and is
+                # not added here: this query is the synthesized TCP.
+                prior = prior_for_targets(
                     targets, request["container_transform"], atlas.query)
             except Exception:  # noqa: BLE001 - prior fails open
                 return {"verdict": "unknown", "seeds": []}
+            policy = str((self._atlas_cfg or {}).get("hash_policy") or "")
+            prior["admission"] = "strict" if policy == "strict" else "open"
+            return prior
 
         def validity_factory(*, scene_states, edges):
             adapter = MoveItStateValidityAdapter(

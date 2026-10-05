@@ -248,6 +248,15 @@ def certification_policy_from_contract(contract: Mapping):
         joint_lower=tuple(lower), joint_upper=tuple(upper))
 
 
+def _defer_reachable(ordered_slots, entry):
+    """Insert a seed-miss retry after reachable slots, before marginal."""
+    for pos, item in enumerate(ordered_slots):
+        if item[4] in ("marginal", "unknown"):
+            ordered_slots.insert(pos, entry)
+            return
+    ordered_slots.append(entry)
+
+
 def _opening_depth(slot, inward, opening_point):
     """Signed distance from the opening along the inward normal."""
     if not inward or not opening_point:
@@ -760,17 +769,47 @@ class RouteProducer(object):
         purge = getattr(self.graph, "clear_request_scoped", None)
         if callable(purge):
             purge()
-        # [ST09-I P3] atlas-informed iteration order: the producer tries
-        # atlas-reachable candidates first, unknown next, and drops only
-        # SAMPLED-unreachable cells with a named row (placement's frozen
-        # deep-first response order is a packing policy, not a planning
-        # one — without this, unreachable-deep rows burn the whole
-        # route budget before a reachable slot is ever examined).
+        # Frozen admission order for this generation:
+        #   trust gate
+        #   -> reachable seeded
+        #   -> reachable unseeded
+        #   -> reachable seed-miss deferred (inserted while planning)
+        #   -> marginal
+        #   -> unknown, and only when the atlas admission is not strict
+        # Inside a tier, EXECUTABLE_FIRST_ORDER is unchanged:
+        # opening distance, then more seeds, then placement index.
+        # Placement score is recorded and is not part of that key.
         ordered_slots = []
+        slot_notes = {}
         if self.atlas_prior is not None:
-            seeded_order, reachable_order, unknown_order = [], [], []
+            seeded_order, reachable_order = [], []
+            marginal_order, unknown_order = [], []
             inward = self._inward_normal()
             opening_point = (self.opening_info or {}).get("point")
+            scores = list(request.get("slot_scores") or [])
+
+            def _note(index, prior):
+                diag = getattr(self, "last_atlas_diag", None) or {}
+                score = float(scores[index]) if index < len(scores) else 0.0
+                slot_notes[index] = {
+                    "queries": list((prior or {}).get("queries") or []),
+                    "placement_score": score,
+                    "scene_tf_hash": diag.get("scene_tf_hash") or "",
+                    "urdf_hash": diag.get("urdf_hash") or "",
+                    "query_offset": list(diag.get("query_offset") or []),
+                }
+
+            def _drop(index, slot, candidate, targets, reason, reachability):
+                row = self._early_row(
+                    index, slot, candidate, targets, reason, reachability)
+                row["route_build_count"] = 0
+                row["placement_score"] = (
+                    float(scores[index]) if index < len(scores) else 0.0)
+                note = slot_notes.get(index) or {}
+                if note.get("queries"):
+                    row["atlas_queries"] = note["queries"]
+                rows.append(row)
+
             for index, slot in enumerate(request["slots"]):
                 prior_candidate = candidate_from_slot(slot, index)
                 # The prior is queried at the REAL TCP targets (the
@@ -784,66 +823,62 @@ class RouteProducer(object):
                     prior_targets = self._expand_targets(
                         prior_candidate, attachment, request)
                 except (ContractViolation, TargetSynthesisError):
-                    prior_targets = []
-                    rows.append(self._early_row(
-                        index, slot, prior_candidate, [],
-                        "TARGET_SYNTHESIS_EMPTY", "not_synthesized"))
+                    _drop(index, slot, prior_candidate, [],
+                          "TARGET_SYNTHESIS_EMPTY", "not_synthesized")
                     continue
                 if not prior_targets:
-                    rows.append(self._early_row(
-                        index, slot, prior_candidate, [],
-                        "TARGET_SYNTHESIS_EMPTY", "not_synthesized"))
+                    _drop(index, slot, prior_candidate, [],
+                          "TARGET_SYNTHESIS_EMPTY", "not_synthesized")
                     continue
                 prior = self.atlas_prior(prior_targets, request) or {}
-                if prior.get("verdict") == "unreachable":
-                    rows.append(self._early_row(
-                        index, slot, prior_candidate, prior_targets,
-                        "ATLAS_UNREACHABLE", "unreachable"))
+                _note(index, prior)
+                verdict = str(prior.get("verdict") or "unknown")
+                if verdict == "unreachable":
+                    _drop(index, slot, prior_candidate, prior_targets,
+                          "ATLAS_UNREACHABLE", "unreachable")
                     continue
                 seeds = list(prior.get("seeds") or [])
-                verdict = str(prior.get("verdict") or "unknown")
                 entry = (index, slot, seeds, _opening_depth(
                     slot, inward, opening_point), verdict)
-                if seeds:
+                if verdict == "reachable" and seeds:
                     seeded_order.append(entry)
                 elif verdict == "reachable":
                     reachable_order.append(entry)
+                elif verdict == "marginal":
+                    marginal_order.append(entry)
+                elif str(prior.get("admission") or "") == "strict":
+                    _drop(index, slot, prior_candidate, prior_targets,
+                          "ATLAS_UNKNOWN_STRICT", "unknown")
                 else:
                     unknown_order.append(entry)
-            # [ST09-I P3 ordering contract] The atlas buckets
-            # (seeded -> reachable -> unknown) are each ordered by an
-            # EXPLICIT geometric key: distance-to-opening ascending
-            # (EXECUTABLE_FIRST_ORDER). This is not a reversal of
-            # placement's deep-first list — it is an independent key,
-            # frozen above with its audit basis and its capacity cost
-            # (three-box acceptance at M3). Only SAMPLED-unreachable
-            # candidates are dropped (named rows); budget fairness comes
-            # from the per-candidate planning slice below.
+            # Opening distance ascending, then more atlas seeds, then
+            # the shallower end of placement's list. The key is already
+            # deterministic (placement index is unique in one request),
+            # so placement score stays a recorded field.
             def _depth_key(entry):
-                # Opening distance ascending, then more atlas seeds,
-                # then the shallower end of placement's list. A deep
-                # seeded slot does not jump a nearer seeded slot.
                 _index, _slot, seeds, depth, _verdict = entry
                 return (float(depth), -len(seeds), -float(_index))
 
             if EXECUTABLE_FIRST_ORDER:
                 seeded_order.sort(key=_depth_key)
                 reachable_order.sort(key=_depth_key)
+                marginal_order.sort(key=_depth_key)
                 unknown_order.sort(key=_depth_key)
             ordered_slots = (seeded_order + reachable_order
-                             + unknown_order)
+                             + marginal_order + unknown_order)
             self._log("route: atlas order seeded=%d reachable=%d "
-                      "unknown=%d dropped=%d "
+                      "marginal=%d unknown=%d dropped=%d "
                       "executable_first=%s" % (
                           len(seeded_order), len(reachable_order),
-                          len(unknown_order), len(rows),
-                          EXECUTABLE_FIRST_ORDER))
+                          len(marginal_order), len(unknown_order),
+                          len(rows), EXECUTABLE_FIRST_ORDER))
             if not ordered_slots:
                 return self._fail("NO_FEASIBLE_ROUTE", rows)
         else:
             ordered_slots = [
                 (index, slot, [], 0.0, "no_atlas") for index, slot
                 in enumerate(request["slots"])]
+        self._slot_notes = slot_notes
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
@@ -875,12 +910,22 @@ class RouteProducer(object):
                 candidate_budget_ns = int(remaining)
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
             tried_indices.append(index)
+            note = (getattr(self, "_slot_notes", None) or {}).get(index) or {}
+            scores = list(request.get("slot_scores") or [])
             row = {
                 "slot_index": index,
                 "candidate_id": base_candidate.candidate_id,
                 "depth_m": float(opening_depth),
                 "reachability": str(verdict),
                 "seed_count": len(atlas_seeds),
+                "placement_score": note.get(
+                    "placement_score",
+                    float(scores[index]) if index < len(scores) else 0.0),
+                "route_build_count": 0,
+                "atlas_queries": list(note.get("queries") or []),
+                "scene_tf_hash": note.get("scene_tf_hash") or "",
+                "urdf_hash": note.get("urdf_hash") or "",
+                "query_offset": list(note.get("query_offset") or []),
                 "_started_ns": self._clock_ns(),
                 "reason": "",
             }
@@ -911,7 +956,11 @@ class RouteProducer(object):
                     row.update(reason="ATLAS_SEED_MISS",
                                seed_check=seed_check)
                     self._close_row(rows, row)
-                    ordered_slots.append(
+                    # Defer behind the remaining reachable slots and
+                    # ahead of marginal / unknown. A seed miss is not
+                    # an unreachability proof.
+                    _defer_reachable(
+                        ordered_slots,
                         (index, slot, [], opening_depth, "seed_miss"))
                     continue
             candidate, _box_target, plan, _seeded, scope_ids = \
@@ -1003,6 +1052,8 @@ class RouteProducer(object):
                     continue
                 self._log("route: planning candidate %d (%.2fs left)"
                           % (index, remaining / 1e9))
+                row["route_build_count"] = int(
+                    row.get("route_build_count") or 0) + 1
                 route = planner.plan_route(
                     snapshot, attachment, candidate, targets,
                     budget_ns=candidate_budget_ns)
@@ -1059,6 +1110,8 @@ class RouteProducer(object):
                     "candidate_id": base_candidate.candidate_id,
                     "depth_m": 0.0,
                     "reason": "SAMPLER_RETRY",
+                    "route_build_count": 1,
+                    "reachability": str(verdict),
                 }
                 self._log("route: candidate %d re-planned %s"
                           % (index, route.route_id))
@@ -1172,9 +1225,19 @@ class RouteProducer(object):
                     last_reason = row["reason"]
                     continue
             legs = leg_records(route, edges, request)
+            missing = route_missing_parts(route, edges, self.graph, legs)
+            if missing:
+                row["reason"] = "ROUTE_INCOMPLETE"
+                row["detail"] = {"missing": missing}
+                row["certified"] = True
+                self._close_row(rows, row)
+                last_reason = row["reason"]
+                continue
             row["reason"] = "OK"
             row["certified"] = True
             row["map_admission"] = self._map_admission(revalidation)
+            selected = _selected_record(row, rows, route, legs)
+            row["selected"] = selected
             self._close_row(rows, row)
             self.last_route = route
             self.last_certification = certification
@@ -1201,6 +1264,7 @@ class RouteProducer(object):
                 "route": route,
                 "edges": edges,
                 "legs": legs,
+                "selected": selected,
                 "certification": certification,
                 "revalidation": revalidation,
                 "graph_digest": self.graph.digest(),
@@ -1218,6 +1282,7 @@ class RouteProducer(object):
                 "BRANCH_DISCONTINUITY", "IK_UNAVAILABLE",
                 "EGRESS_INFEASIBLE", "RETREAT_TARGET_MISSING",
                 "PATH_NOT_ROBUST", "CERT_COLLISION",
+                "ROUTE_INCOMPLETE",
                 "TARGET_SYNTHESIS_EMPTY"):
             last_reason = "NO_FEASIBLE_ROUTE"
         failed = self._fail(last_reason, rows)
@@ -2500,6 +2565,94 @@ def _leg_record(name, trajectory, request_id, scene_revision, stamp_ns):
             "joint_names": list(trajectory.joint_names),
             "points": points,
         },
+    }
+
+
+_OUTSIDE_REGIONS = ("portal", "staging", "exit", "outside")
+_HOME_REGIONS = ("home", "ready")
+
+
+def route_missing_parts(route, edges, graph, legs=None):
+    """Semantic completeness. Staging may be absent; leg count is not a gate.
+
+    A carrying entry must reach the slot and end in descend. An unloaded
+    retreat must reach portal/outside when the entry used one of those
+    regions, and must at least leave the slot otherwise. Return must
+    reach home. Every edge and typed leg needs a trajectory.
+    """
+    by_id = {edge.edge_id: edge for edge in edges}
+
+    def dest_region(edge):
+        return str(graph.node(edge.destination_node_id).region)
+
+    def edge_class(edge):
+        return str((edge.attributes or {}).get("edge_class") or "")
+
+    entry = [by_id[item] for item in route.entry_edge_ids if item in by_id]
+    retreat = [by_id[item] for item in route.retreat_edge_ids if item in by_id]
+    missing = []
+    if not any(str(edge.load_state) == "carrying" and dest_region(edge) == "slot"
+               for edge in entry):
+        missing.append("carrying_entry_slot")
+    if not any(edge_class(edge) == "DESCEND" and dest_region(edge) == "slot"
+               for edge in entry):
+        missing.append("descend_release")
+    entry_outside = any(dest_region(edge) in _OUTSIDE_REGIONS for edge in entry)
+    outside_retreat = any(
+        str(edge.load_state) == "unloaded" and edge_class(edge) == "RETREAT"
+        and dest_region(edge) in _OUTSIDE_REGIONS for edge in retreat)
+    left_slot = any(
+        str(edge.load_state) == "unloaded" and edge_class(edge) == "RETREAT"
+        and dest_region(edge) != "slot" for edge in retreat)
+    if entry_outside:
+        if not outside_retreat:
+            missing.append("unloaded_retreat")
+    elif not left_slot:
+        missing.append("unloaded_retreat")
+    if not any(edge_class(edge) == "RETURN" and dest_region(edge) in _HOME_REGIONS
+               for edge in retreat):
+        missing.append("return_home")
+    untyped = False
+    for edge in entry + retreat:
+        positions = getattr(getattr(edge, "trajectory", None), "positions", ()) or ()
+        certified = (edge.attributes or {}).get("certified", True)
+        if not positions or certified is False:
+            untyped = True
+    for leg in legs or ():
+        points = ((leg.get("joint_trajectory") or {}).get("points") or [])
+        if not points:
+            untyped = True
+    if untyped or not (entry or retreat):
+        missing.append("typed_trajectory")
+    return missing
+
+
+def _selected_record(row, rows, route, legs):
+    rejected = []
+    indices = set()
+    for item in rows:
+        if not isinstance(item, dict):
+            continue
+        if "slot_index" in item:
+            indices.add(item.get("slot_index"))
+        if item is row or item.get("reason") in ("OK", "ATTEMPT_SUMMARY", ""):
+            continue
+        if "slot_index" not in item and not item.get("candidate_id"):
+            continue
+        rejected.append({
+            "candidate_id": item.get("candidate_id"),
+            "reason": item.get("reason"),
+            "tier": item.get("reachability"),
+            "route_build_count": int(item.get("route_build_count") or 0),
+        })
+    indices.add(row.get("slot_index"))
+    return {
+        "candidate_id": row.get("candidate_id"),
+        "atlas_status": row.get("reachability"),
+        "attempted_candidates": len(indices),
+        "rejected_candidates": rejected,
+        "route_id": route.route_id,
+        "route_leg_count": len(legs),
     }
 
 

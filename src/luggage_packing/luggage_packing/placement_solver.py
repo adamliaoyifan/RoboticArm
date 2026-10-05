@@ -1063,6 +1063,9 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
 
     return {
         "success": bool(feasible),
+        # preferred_candidate is the packing preference. It is not a
+        # certified selected slot; SelectPlacePathV2 owns that.
+        "preferred_candidate": selected,
         "selected": selected,
         "candidates": candidates,
         "reject_histogram": histogram,
@@ -1088,16 +1091,19 @@ def best_candidate(candidates):
 
 
 def _reachability_band(candidate):
-    """0 when the atlas has a reachable or marginal sample, else 1.
+    """0 reachable, 1 marginal, 2 unknown or no atlas.
 
-    Unknown and no-atlas slots stay in band 1 so a deep unsampled cell
-    does not outrank a seeded one. Reachable slots then prefer the
-    opening side. Unknown slots keep the frozen deep-first key.
+    Unknown and no-atlas slots stay in band 2 so a deep unsampled cell
+    does not outrank a reachable or marginal one. Reachable and
+    marginal slots then prefer the opening side. Unknown slots keep
+    the frozen deep-first key.
     """
     status = candidate.get("atlas_status")
-    if status in (2, 3):
+    if status == 3:
         return 0
-    return 1
+    if status == 2:
+        return 1
+    return 2
 
 
 def candidate_prefix_note(returned, feasible_count):
@@ -1105,8 +1111,10 @@ def candidate_prefix_note(returned, feasible_count):
     bands = {}
     depths = []
     for candidate in returned:
-        if candidate.get("atlas_status") in (2, 3):
+        if candidate.get("atlas_status") == 3:
             band = "reachable"
+        elif candidate.get("atlas_status") == 2:
+            band = "marginal"
         elif str(candidate.get("atlas_status_name") or "") == "no_atlas":
             band = "no_atlas"
         else:
@@ -1126,20 +1134,20 @@ def candidate_prefix_note(returned, feasible_count):
 def _motion_rank_key(candidate):
     band = _reachability_band(candidate)
     frozen = _candidate_sort_key(candidate)
-    if band == 0:
-        return (0, float(candidate.get("depth_m") or 0.0),
+    if band in (0, 1):
+        return (band, float(candidate.get("depth_m") or 0.0),
                 frozen[0], -float(candidate.get("score") or 0.0))
-    return (1,) + frozen
+    return (2,) + frozen
 
 
 def ranked_feasible_candidates(result, max_candidates=5):
     """Feasible prefix for ComputePlacement.candidates.
 
-    Reachable and marginal atlas samples come before unknown slots,
-    and the shallower reachable slot comes first. Unknown slots keep
-    the frozen deep-first key, so ``candidates[0]`` still matches
-    ``result['selected']`` when the atlas did not annotate anyone.
-    ``max_candidates <= 0`` uses 5.
+    Groups are reachable, then marginal, then unknown. Inside the
+    reachable and marginal groups the shallower slot comes first.
+    Unknown slots keep the frozen deep-first key, so ``candidates[0]``
+    still matches ``result['preferred_candidate']`` when the atlas did
+    not annotate anyone. ``max_candidates <= 0`` uses 5.
     """
     feasible = [
         candidate for candidate in (result.get("candidates") or [])

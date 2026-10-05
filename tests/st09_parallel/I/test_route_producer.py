@@ -41,12 +41,18 @@ from luggage_planning.moveit_validity_adapter import (  # noqa: E402
     ValiditySample,
 )
 from luggage_planning.reachable_graph import RouteGraph  # noqa: E402
+from luggage_planning.atlas_prior import (  # noqa: E402
+    prior_for_targets,
+    prior_from_statuses,
+    replay_captured_candidates,
+)
 from luggage_planning.route_producer import (  # noqa: E402
     RouteProducer,
     admit_attachment_for_route,
     candidate_from_slot,
     leg_records,
     register_attach_from_request,
+    route_missing_parts,
     surface_map_from_contract,
 )
 from luggage_planning.trajectory_certifier import (  # noqa: E402
@@ -1078,3 +1084,297 @@ class TestReverseEgressTable:
                     if call[2] == "RETREAT"]
         assert len(descends) == 1
         assert len(retreats) == 1
+
+
+class _Query:
+    def __init__(self, status, hard=False, cell=(1, 2, 3, 0), seeds=()):
+        self.status = status
+        self.hard_reject_safe = hard
+        self.indices = cell
+        self.contact_seeds = list(seeds)
+
+
+class TestAtlasAdmission:
+    def test_only_hard_reject_is_unreachable_and_marginal_is_separate(self):
+        assert prior_from_statuses([1, 1], [], [True, True])["verdict"] == \
+            "unreachable"
+        low = prior_from_statuses([1, 1], [], [True, False])
+        assert low["verdict"] == "unknown"
+        assert prior_from_statuses([2], [(0.1,) * 6])["verdict"] == "marginal"
+        assert prior_from_statuses([3, 2], [(0.2,) * 6])["verdict"] == \
+            "reachable"
+        assert prior_from_statuses([0], [])["verdict"] == "unknown"
+
+    def test_replay_recomputes_the_same_cell(self):
+        seen = []
+
+        def query_fn(x, y, z, yaw):
+            seen.append((x, y, z, yaw))
+            return _Query(3, cell=(4, 5, 6, 1))
+
+        document = {
+            "container_transform": {
+                "translation": [0.0, 0.0, 0.0],
+                "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+            },
+            "candidates": [{
+                "candidate_id": "c",
+                "slot_index": 0,
+                "reachability": "reachable",
+                "targets": [[[0.2, -0.1, 0.3], [0.0, 0.0, 0.0, 1.0]]],
+                "seed_sources": [],
+            }],
+        }
+        first = replay_captured_candidates(document, query_fn)
+        document["candidates"][0]["atlas_queries"] = first[0]["queries"]
+        second = replay_captured_candidates(document, query_fn)
+        assert second[0]["query_match"] is True
+        assert second[0]["queries"][0]["cell"] == [4, 5, 6, 1]
+        assert prior_for_targets(
+            document["candidates"][0]["targets"],
+            document["container_transform"], query_fn)["verdict"] == "reachable"
+
+
+def _tier_slots():
+    specs = [
+        (0.05, "A"),
+        (0.35, "D"),
+        (0.45, "E"),
+        (0.25, "C"),
+        (0.15, "B"),
+    ]
+    return [{
+        "position": [x, -0.10, 0.14],
+        "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+        "request_id": name,
+    } for x, name in specs]
+
+
+def _tier_prior(targets, _request):
+    x = float(targets[0].position[0])
+    if x < 0.10:
+        verdict, seeds = "unreachable", []
+    elif x < 0.20:
+        verdict, seeds = "reachable", [GOOD_SEED]
+    elif x < 0.30:
+        verdict, seeds = "reachable", [GOOD_SEED]
+    elif x < 0.40:
+        verdict, seeds = "marginal", []
+    else:
+        verdict, seeds = "unknown", []
+    return {
+        "verdict": verdict, "seeds": list(seeds), "admission": "strict",
+        "queries": [{
+            "query_xyz": [round(x, 6), -0.1, 0.24],
+            "query_yaw": 0.0, "status": 3, "hard_reject_safe": False,
+            "cell": [0, 0, 0, 0],
+        }],
+    }
+
+
+class TestTieredRouteAdmission:
+    def test_unreachable_is_not_built_and_reachable_failure_falls_through(self):
+        producer, _clock = build_producer()
+        producer.atlas_prior = _tier_prior
+        producer.edge_builder = _FirstSlotDescendFails()
+        request = make_request(slots=_tier_slots())
+        request["slot_scores"] = [0.1, 0.2, 0.3, 0.9, 0.4]
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("rows")
+        assert result["elapsed_s"] < 10.0
+        assert result["selection_id"]
+        assert result["legs"]
+        names = [leg["name"] for leg in result["legs"]]
+        assert "descend" in names and "return" in names
+        assert all(leg["joint_trajectory"]["points"] for leg in result["legs"])
+        selected = result["selected"]
+        assert selected["candidate_id"] == "C"
+        assert selected["atlas_status"] == "reachable"
+        assert selected["route_id"] == result["selection_id"]
+        assert selected["route_leg_count"] == len(result["legs"])
+        rows = result["rows"]
+        unreachable = [row for row in rows if row.get("candidate_id") == "A"]
+        assert len(unreachable) == 1
+        assert unreachable[0]["reason"] == "ATLAS_UNREACHABLE"
+        assert unreachable[0]["route_build_count"] == 0
+        failed = [row for row in rows if row.get("candidate_id") == "B"]
+        assert failed and failed[0]["reason"]
+        assert failed[0]["reason"] != "OK"
+        assert failed[0]["route_build_count"] >= 1
+        for name in ("D", "E"):
+            built = [
+                row for row in rows
+                if row.get("candidate_id") == name
+                and int(row.get("route_build_count") or 0) > 0]
+            assert built == []
+        assert "staging" not in names
+
+    def test_strict_unknown_is_not_a_selected_slot(self):
+        producer, _clock = build_producer()
+
+        def only_unknown(_targets, _request):
+            return {"verdict": "unknown", "seeds": [], "admission": "strict"}
+
+        producer.atlas_prior = only_unknown
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        calls_before = len(producer._builder.calls)
+        result = producer.plan_place_route(request)
+        assert result["success"] is False
+        assert result["rows"][0]["reason"] == "ATLAS_UNKNOWN_STRICT"
+        assert result["rows"][0]["route_build_count"] == 0
+        assert len(producer._builder.calls) == calls_before
+
+    def test_route_completeness_names_the_missing_part(self):
+        producer, _clock = build_producer()
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("rows")
+        route, edges, legs = result["route"], result["edges"], result["legs"]
+        graph = producer.graph
+        assert route_missing_parts(route, edges, graph, legs) == []
+        regions = [
+            graph.node(edge.destination_node_id).region for edge in edges]
+        assert "staging" not in regions
+
+        no_return_ids = tuple(
+            edge.edge_id for edge in edges
+            if edge.edge_id in route.retreat_edge_ids
+            and edge.attributes.get("edge_class") != "RETURN")
+        no_return = dataclasses.replace(
+            route, retreat_edge_ids=no_return_ids)
+        assert "return_home" in route_missing_parts(
+            no_return, edges, graph, legs)
+
+        no_retreat_ids = tuple(
+            edge.edge_id for edge in edges
+            if edge.edge_id in route.retreat_edge_ids
+            and edge.attributes.get("edge_class") != "RETREAT")
+        no_retreat = dataclasses.replace(
+            route, retreat_edge_ids=no_retreat_ids)
+        assert "unloaded_retreat" in route_missing_parts(
+            no_retreat, edges, graph, legs)
+
+        bad = []
+        flipped = False
+        for edge in edges:
+            if not flipped and edge.attributes.get("edge_class") == "DESCEND":
+                bad.append(dataclasses.replace(
+                    edge, attributes=dict(edge.attributes, certified=False)))
+                flipped = True
+            else:
+                bad.append(edge)
+        assert "typed_trajectory" in route_missing_parts(
+            route, bad, graph, legs)
+
+
+def _service_message(stamp_ns):
+    from luggage_msgs.srv import SelectPlacePathV2
+    from luggage_description.ros_frame_bindings.surfaces import (
+        surface_to_message,
+    )
+    from luggage_planning.place_service import boundary_context, pose_message
+
+    scene = "scene-1"
+    request_id = "req-i-1"
+
+    def identity():
+        return dict(
+            contract_version=2, frame_id="container_link", length_unit="m",
+            stamp_ns=stamp_ns, time_basis="scene",
+            scene_revision=scene, request_id=request_id)
+
+    def slot(x, name):
+        record = identity()
+        record.update(
+            reference="box_center", orientation_semantics="box_axis_pi",
+            position=[x, -0.10, 0.14],
+            quaternion_xyzw=[0.0, 0.0, 0.0, 1.0])
+        record["request_id"] = request_id
+        message = pose_message(record)
+        message.identity.request_id = request_id
+        return message
+
+    message = SelectPlacePathV2.Request()
+    message.request_id = request_id
+    for x, _name in (
+            (0.05, "A"), (0.35, "D"), (0.45, "E"), (0.25, "C"), (0.15, "B")):
+        message.slots.append(slot(x, _name))
+    message.slot_scores = [0.1, 0.2, 0.3, 0.9, 0.4]
+    surface = dict(
+        contract_version=2, kind="surface", frame_id="container_link",
+        length_unit="m", stamp_ns=stamp_ns, time_basis="scene",
+        scene_revision=scene, request_id="req-map-1",
+        geometry_hash="geo-1", map_revision=1,
+        height_datum="container_origin",
+        floor_z_container=0.0, ceiling_z_container=1.0,
+        resolution_m=0.05, origin_xy_container=[0.0, 0.0],
+        surface_z_container=[[0.0, 0.0], [0.0, 0.0]],
+        state=[["free", "free"], ["free", "free"]],
+        confidence=[["sensor", "sensor"], ["sensor", "sensor"]])
+    message.surface = surface_to_message(
+        surface, boundary_context(
+            "req-map-1", scene, "container_link", "",
+            geometry_hash="geo-1", map_revision=1))
+    message.box_wdh = [0.30, 0.20, 0.20]
+    message.inner_size = [0.6, 0.4, 0.4]
+    message.geometry_hash = "geo-1"
+    message.map_revision = 1
+    start = identity()
+    start.update(
+        reference="suction_contact_frame",
+        orientation_semantics="tool_quaternion",
+        position=[0.0, 0.0, 0.8],
+        quaternion_xyzw=[0.0, 0.0, 0.0, 1.0])
+    message.start_tcp = pose_message(start)
+    message.start_joints = list(START_Q)
+    grasp = identity()
+    grasp.update(
+        reference="box", orientation_semantics="suction_contact_frame",
+        position=[0.0, 0.0, 0.10],
+        quaternion_xyzw=[0.0, 0.0, 0.0, 1.0])
+    message.grasp = pose_message(grasp)
+    message.container_source_frame = "container_link"
+    message.container_target_frame = "world"
+    message.container_translation = [0.0, 0.0, 0.0]
+    message.container_quaternion_xyzw = [0.0, 0.0, 0.0, 1.0]
+    message.container_stamp_is_null = True
+    message.box_id = "box-1"
+    message.generation = 1
+    return message
+
+
+class TestSelectPlacePathV2Admission:
+    def test_service_selects_the_reachable_route(self):
+        import json
+        from luggage_msgs.srv import SelectPlacePathV2
+        from luggage_planning.place_service import fill_select_response_route
+
+        producer, clock = build_producer()
+        producer.atlas_prior = _tier_prior
+        producer.edge_builder = _FirstSlotDescendFails()
+        message = _service_message(clock.now_ns)
+        response = SelectPlacePathV2.Response()
+        fill_select_response_route(message, response, producer)
+        assert response.success, response.reason_code
+        assert response.slot_index == 3
+        assert response.motion_segments
+        rows = json.loads(response.rows_json)
+        selected = [row.get("selected") for row in rows if row.get("selected")]
+        assert selected
+        assert selected[-1]["atlas_status"] == "reachable"
+        assert selected[-1]["route_id"]
+        assert selected[-1]["route_leg_count"] == len(response.motion_segments)
+        by_index = {row.get("slot_index"): row for row in rows}
+        assert by_index[0]["reason"] == "ATLAS_UNREACHABLE"
+        assert by_index[0]["route_build_count"] == 0
+        assert by_index[4]["reason"] not in ("", "OK")
+        assert by_index[4]["route_build_count"] >= 1

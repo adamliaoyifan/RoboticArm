@@ -688,7 +688,7 @@ class PlacementPlannerNode(Node):
             response.reason_code = result["reason_code"]
             response.message = result["message"]
             return response
-        best = result["selected"]
+        best = result.get("preferred_candidate", result["selected"])
         if getattr(self, "_runtime", None) is not None:
             # Effect boundary: the solver ran asynchronously under the
             # admission; recheck before committing the slot to the caller.
@@ -999,7 +999,7 @@ class PlacementPlannerNode(Node):
             self._publish_last(dump)
             return response
 
-        best = result["selected"]
+        best = result.get("preferred_candidate", result["selected"])
         slot, annotated = self._slot_from_candidate(best, size)
         response.slot = slot
         response.success = True
@@ -1023,7 +1023,9 @@ class PlacementPlannerNode(Node):
             response.candidate_scores.append(float(candidate.get("score", 0.0)))
             response.candidate_reasons.append(str(candidate.get("reason") or "ok"))
         dump["message"] = response.message
-        dump["selected"] = jsonable_candidate(annotated)
+        # Packing preference only. The certified slot is written by
+        # SelectPlacePathV2 after a complete route succeeds.
+        dump["preferred_candidate"] = jsonable_candidate(annotated)
         dump["pose_base_link"] = annotated["center_base_link"]
         dump["pose_world"] = annotated["center_world"]
         self._publish_last(dump)

@@ -271,6 +271,9 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
             candidate["atlas_contact_z"] = round(z, 4)
             candidate["atlas_yaw_bins_queried"] = [
                 round(float(v), 6) for v in yaws]
+            candidate["atlas_query"] = _atlas_query_record(
+                candidate, x, y, z, offset, yaws, result, all_hard_reject,
+                atlas)
             bump(str(result.reason))
             if dump_only:
                 continue
@@ -285,6 +288,36 @@ def make_atlas_annotate(atlas, floor_z, inner_h, score_weight=0.3,
         return candidates, report
 
     return hook
+
+
+def _atlas_query_record(candidate, x, y, z, offset, yaws, result,
+                        all_hard_reject, atlas):
+    """Dump of the query that already ran. Does not query again."""
+    center = candidate.get("center_container")
+    if center is None:
+        center = candidate.get("center_local") or [x, y, z]
+    meta = getattr(atlas, "meta", None) or {}
+    dependencies = meta.get("dependencies") or {}
+    indices = getattr(result, "indices", None)
+    return {
+        "center": [round(float(v), 6) for v in center[:3]],
+        "yaw": round(float(candidate.get("box_yaw", 0.0)), 6),
+        "contact_xyz": [round(float(x), 6), round(float(y), 6),
+                        round(float(z), 6)],
+        "query_offset": [round(float(v), 6) for v in offset],
+        "query_offset_applied": True,
+        "query_xyz": [
+            round(float(x) + float(offset[0]), 6),
+            round(float(y) + float(offset[1]), 6),
+            round(float(z) + float(offset[2]), 6)],
+        "query_yaw": [round(float(v), 6) for v in yaws],
+        "cell": None if indices is None else [int(v) for v in indices],
+        "status": int(result.status),
+        "hard_reject_safe": bool(getattr(result, "hard_reject_safe", False)),
+        "all_hard_reject_safe": bool(all_hard_reject),
+        "scene_tf_hash": dependencies.get("scene_tf_hash") or "",
+        "urdf_hash": dependencies.get("urdf_hash") or "",
+    }
 
 
 def _best_result(results):
