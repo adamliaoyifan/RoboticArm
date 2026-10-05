@@ -1,0 +1,17 @@
+grid:
+  frame: container_link
+  origin:
+  - -0.745
+  - -0.985
+  - 0.53
+  resolution_xyz: 0.05
+  yaw_bins:
+  - 0.0
+  - 1.5707963267948966
+payload:
+  enabled: false
+stats:
+  reachable_cells: 22445
+  marginal_cells: 0
+  unreachable_cells: 45955
+  reachability_rate: 0.3281

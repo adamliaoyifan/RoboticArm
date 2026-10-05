@@ -41,7 +41,7 @@ STATUS_COLORS = {
 }
 
 
-def _load_one(npz_path):
+def _load_one(npz_path, reachable_only=False):
     meta_path = npz_path[:-4] + ".yaml" if npz_path.endswith(".npz") else npz_path + ".yaml"
     data = np.load(npz_path, allow_pickle=True)
     with open(meta_path, "r") as handle:
@@ -59,6 +59,8 @@ def _load_one(npz_path):
             for iz in range(nz):
                 for iyaw in range(nyaw):
                     code = int(status[ix, iy, iz, iyaw])
+                    if reachable_only and code != 3:
+                        continue
                     points.append({
                         "x": origin[0] + (ix + 0.5) * res,
                         "y": origin[1] + (iy + 0.5) * res,
@@ -171,10 +173,11 @@ def _discover(atlas_dir):
     return found
 
 
-def _html(atlases, hull, skip_unknown):
+def _html(atlases, hull, skip_unknown, reachable_only=False):
     payload = json.dumps(atlases)
     hull_js = json.dumps(hull)
     skip = "true" if skip_unknown else "false"
+    only_reachable = "true" if reachable_only else "false"
     return """<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8"/>
@@ -210,6 +213,7 @@ spheres are atlas cells. Sampled 2026-08-11, 0.15 m, yaw 0 / 90 deg.</p>
 const ATLASES = %s;
 const HULL = %s;
 const SKIP_UNKNOWN_DEFAULT = %s;
+const REACHABLE_ONLY = %s;
 const COLORS = {
   reachable: "#2ca02c",
   marginal: "#ffbf00",
@@ -240,7 +244,8 @@ function draw() {
   document.getElementById("stats").textContent =
     atlas.file + "  shown " +
     Object.keys(by).map(k => k[0] + "=" + by[k].length).join(" ");
-  const traces = Object.keys(by).map(k => ({
+  const keys = REACHABLE_ONLY ? ["reachable"] : Object.keys(by);
+  const traces = keys.map(k => ({
     type: "scatter3d",
     mode: "markers",
     name: k,
@@ -290,7 +295,7 @@ function draw() {
 draw();
 </script>
 </body></html>
-""" % (payload, hull_js, skip)
+""" % (payload, hull_js, skip, only_reachable)
 
 
 def main():
@@ -303,16 +308,19 @@ def main():
     parser.add_argument("--out", default="/tmp/reachability_atlas.html")
     parser.add_argument("--skip-unknown", action="store_true", default=True)
     parser.add_argument("--keep-unknown", action="store_true")
+    parser.add_argument(
+        "--reachable-only", action="store_true",
+        help="Embed and draw only status=reachable cells")
     args = parser.parse_args()
     paths = list(args.atlas) or _discover(args.atlas_dir)
     if not paths:
         raise SystemExit("no atlas .npz found under %s" % args.atlas_dir)
-    atlases = [_load_one(path) for path in paths]
+    atlases = [_load_one(path, reachable_only=args.reachable_only) for path in paths]
     hull = load_container_outline(args.scene_tf)
     skip_unknown = not args.keep_unknown
     out = os.path.abspath(args.out)
     with open(out, "w") as handle:
-        handle.write(_html(atlases, hull, skip_unknown))
+        handle.write(_html(atlases, hull, skip_unknown, args.reachable_only))
     print("wrote %s (%d atlases)" % (out, len(atlases)))
     print("  hull %s hash=%s inner_pts=%d outer_pts=%d aperture_pts=%d" % (
         hull["scene_tf"],

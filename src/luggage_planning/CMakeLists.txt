@@ -21,6 +21,7 @@ install(DIRECTORY config
 install(PROGRAMS
   scripts/waypoint_generator_node.py
   scripts/motion_planner_node.py
+  scripts/trajectory_selector_node.py
   scripts/vacuum_controller_node.py
   scripts/scene_manager_node.py
   scripts/hardware_pick_driver.py

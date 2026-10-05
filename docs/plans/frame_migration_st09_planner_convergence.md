@@ -106,7 +106,7 @@ margin 按静态壁、货物、支撑接触分别具名；统一来源而非把�
 5. 再按总执行时间、总关节行程从小到大，candidate_id/route_id 稳定打破平局。
 
 深度优先应用到当前箱子的候选集合，不承诺解决全局最优装箱。
-禁止为一个更深但超时的候选无限搜索。总体 route 请求默认预算 10 s、单次新 MoveIt 边调用上限 2 s、最多 4 次补边尝试；缓存命中不计补边次数。
+禁止为一个更深但超时的候选无限搜索。总体 route 请求默认预算 15 s（2026-10-05 用户将验收时限由 10 s 提高到 15 s）、单次新 MoveIt 边调用上限 2 s、最多 4 次补边尝试；缓存命中不计补边次数。
 搜索所有已有图路径可行候选，依上述 key 验证；预算耗尽返回 PLANNING_BUDGET_EXHAUSTED，不冒充 BIN_FULL，也不执行未认证路线。
 记录每候选 depth、层高、支撑、进入/撤离可行性、净空、预计耗时和最终选择原因。
 
@@ -246,16 +246,18 @@ runner负责两profile及所有suite，必须输出实际命令、node IDs、sam
 独占domain7，GUI/RViz off，persistent startup probe，predecessor-relative deadline，每session<=20min，startup<=180s、teardown<=90s。
 保留失败记录；修复源码/配置后使用新不可变candidate和新目录。
 
-1. 一次完整 carryon->standard 两箱健康排练，先深后浅策略由实际候选/route证据判断，不能硬编码预选slot。
+1. 一次完整在线 `carryon->standard->carryon` 三箱健康排练；不硬编码 candidate ID、不要求先深后浅，每箱基于实测尺寸和当前 OCC 重新生成候选。前三箱中的前两箱仅在 workload、配置、事件与采集窗口完全一致时满足原两箱样本，避免重复 live run。
 2. pre_pick、pre_place各一次故障排练；前者无业务effect，后者保真空并经明确recovery，未授权不得detach。
 3. 每箱GT：XY<=0.04m、abs Z<=0.03m、drift<=0.02m、abs roll/pitch<=2deg、center inside hull、footprint coverage>=0.40且分母>0。
-4. 两箱均完成release、measured integration、map publication与return；无lost payload、0 floor-through、至少1 sensor-occupied cell；第二箱用第一箱积分后的revision且已验证地图足以支撑其route。
+4. 三箱均完成release、measured integration、map publication与return；无lost payload、0 floor-through、至少1 sensor-occupied cell；第二/三箱分别使用前箱积分后的revision且已验证地图足以支撑其route。
 5. 事件用request/route/causal sequence关联pick execution、attach、place execution、release、integration、map publish、return/recovery；采集时间单独保存，不以不同clock timestamp排序。
 6. capture pre=ceil(2*max upstream latency)，post=ceil(max downstream completion latency)，每条必需链路至少1正样本，否则not_evaluated。
 7. domain42三对capture off/on replay，同bag、同输入、交替顺序、相同资源；每对记录成功完成单位/时间，median(1-throughput_on/throughput_off)<=10%。失败/丢数据不能算吞吐改善。
 8. failure replay重现同一拒绝码及effect counters。固定记录轨迹可确定性重放；重新跑OMPL不要求字节相同或边序列必然相同，要求安全不变量、任务结果和预算通过，并记录seed/build。
 9. exactly one /clock publisher，所有必需stream joins/checksums完整，lossless replay <=1GiB/live run、<=4GiB该campaign合计。原历史失败不删除以腾预算；空间不足先阻塞新run。
 10. F23 dump统一versioned envelope，measured与GT分离；F24 fresh install、ament executable index及全过程sim/deploy graph均无legacy executable/node/connection。
+11. 候选级确定性失败必须具名记录并在同一请求内自动换点；至少一条行为证据证明首选路径失败而后续候选成功。请求级失败须列出 attempted/untried 和逐候选原因，不能由单个候选耗尽预算后笼统返回。
+12. 本轮冻结 `same_layer_clearance_m=0.05` 并进入 runtime/freeze hash，未来改值必须新 generation。每个同层旋转 footprint pair 的实测边界距离达到 0.05 m；叠放只对明确 support parent 豁免水平间距，并记录 parent、support coverage、top clearance 与无穿透。冻结 candidate ID 或预规划轨迹不能作为健康排练输入。
 
 排练CLI保留现有 --fault pre_pick/pre_place；删除 --carry-planner geometric/qp选择，生产仅graph。
 freeze/replay脚本必须接收显式 --install，不可偷偷source旧默认install。
@@ -285,7 +287,7 @@ bash scripts/check_agent_contract.sh
 
 all负责顺序offline->graph->独占domain7 rehearsal->domain42 paired replay->final proof/release gates，内部domain不得继承错到Gazebo。
 支持复用同candidate/config/install/hash的完整已通过证据以避免无谓live重复；否则新目录实际执行。缺任何必需sample均exit2。
-刷新所有受影响的F01/F06–F24证明，F01/F21–F23 verified、F24 isolated；两个checker退出0且无pending/stale。
+刷新所有受影响的F01/F06–F24证明，F01/F21–F23 verified、F24 isolated；proof/checker 复算候选尝试/拒绝、同层旋转 footprint gap、stack parent 支撑与无穿透，两个checker退出0且无pending/stale。
 源代码、消息typesupport、graph/certifier配置、观察位、scene/atlas、dump/extractor、expected events及安装artifact全部hash匹配。
 
 更新INTEGRATION g2的候选来源为最终被接受的高generation head；删除其允许旧seeded-hop/executor fallback的事件规则，改成route-owned边规划/重验证事件。

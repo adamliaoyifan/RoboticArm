@@ -14,6 +14,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_description.suitcase_visual import (
     DEFAULT_MODEL_VISUAL,
+    INCH_SIZE_TIERS,
     SIZE_TIERS,
     VISUAL_LOAFBRR,
     VISUAL_VINTAGE,
@@ -26,6 +27,7 @@ from luggage_description.suitcase_visual import (
     pickup_box_pose,
     pickup_visual_sdf,
     scaled_stl_path,
+    size_tier_mass,
     size_tier_name,
     sized_mesh_uri,
     sized_model_name,
@@ -281,6 +283,28 @@ class TestSizedPickupAssets(unittest.TestCase):
                 uris.add(vis_uri)
         self.assertEqual(len(uris), 6)
 
+    def test_inch_models_use_lying_axes(self):
+        """Standing height x width x depth is stored as (width, height, depth)."""
+        for visual in (VISUAL_LOAFBRR, VISUAL_VINTAGE):
+            for tier, size, mass, _cid in INCH_SIZE_TIERS:
+                name = sized_model_name(visual, tier)
+                stl = sized_stl_path(visual, tier, GAZEBO_MODELS)
+                self.assertTrue(os.path.isfile(stl), stl)
+                mins, maxs = _stl_aabb(stl)
+                for axis in range(3):
+                    self.assertAlmostEqual(
+                        maxs[axis] - mins[axis], size[axis], places=3)
+                root = ET.parse(os.path.join(
+                    GAZEBO_MODELS, name, "model.sdf")).getroot()
+                self.assertAlmostEqual(
+                    float(root.find(".//inertia/mass").text)
+                    if root.find(".//inertia/mass") is not None
+                    else float(root.find(".//mass").text),
+                    mass, places=2)
+                self.assertEqual(
+                    root.find(".//visual/geometry/mesh/uri").text,
+                    sized_mesh_uri(visual, tier))
+
     def test_top_footprint_uses_lid_band_not_full_aabb(self):
         """Vintage GT is the lid XY, not the handle/body vertex AABB."""
         stl = sized_stl_path(VISUAL_VINTAGE, "large", GAZEBO_MODELS)
@@ -311,7 +335,7 @@ class TestSizedPickupAssets(unittest.TestCase):
 
     def test_manifest_measure_size_matches_stl(self):
         manifest = load_sized_suitcases_manifest(GAZEBO_MODELS)
-        self.assertEqual(len(manifest), 6)
+        self.assertEqual(len(manifest), 6 + 2 * len(INCH_SIZE_TIERS))
         rec = manifest[sized_model_name(VISUAL_LOAFBRR, "small")]
         stl = sized_stl_path(VISUAL_LOAFBRR, "small", GAZEBO_MODELS)
         measure = mesh_top_footprint(stl)
@@ -323,6 +347,12 @@ class TestSizedPickupAssets(unittest.TestCase):
         self.assertEqual(size_tier_name([0.55, 0.40, 0.25]), "small")
         self.assertEqual(size_tier_name([0.70, 0.45, 0.28]), "medium")
         self.assertEqual(size_tier_name([0.80, 0.50, 0.32]), "large")
+        self.assertEqual(size_tier_name([0.35, 0.53, 0.22]), "inch20")
+        self.assertEqual(size_tier_name([0.37, 0.58, 0.24]), "inch22")
+        self.assertEqual(size_tier_name([0.40, 0.63, 0.25]), "inch24")
+        self.assertEqual(size_tier_name([0.42, 0.68, 0.27]), "inch26")
+        self.assertAlmostEqual(size_tier_mass([0.35, 0.53, 0.22]), 5.67)
+        self.assertIsNone(size_tier_name([0.53, 0.35, 0.22]))
         self.assertIsNone(size_tier_name([0.61, 0.44, 0.27]))
 
 

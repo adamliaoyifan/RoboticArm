@@ -452,14 +452,49 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None, None
         return self._fixed_slot(pick_msg)
 
+    def _container_to_world(self, xyz):
+        origin, rpy = origin_in_world(self._scene_config)
+        yaw = float(rpy[2])
+        cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+        x, y, z = [float(v) for v in xyz]
+        return [
+            origin[0] + cos_y * x - sin_y * y,
+            origin[1] + sin_y * x + cos_y * y,
+            origin[2] + z,
+        ]
+
+    def _note_perception(self, trial, box):
+        """Truth stays beside the request. The slot still uses measured size."""
+        truth = _parse_synthetic_size(
+            getattr(self._args, "truth_size", "") or "")
+        perceived = [
+            float(box.width), float(box.depth), float(box.height)]
+        trial.extras["perceived_size_wdh"] = perceived
+        if not truth:
+            return
+        trial.extras["truth_size_wdh"] = list(truth)
+        trial.extras["perception_size_off"] = any(
+            abs(float(a) - float(b)) > 0.05 for a, b in zip(perceived, truth))
+
     def _fixed_slot(self, box):
         height = float(box.height)
         width = float(box.width)
         depth = float(box.depth)
         origin, _rpy = origin_in_world(self._scene_config)
         floor_z = container_inner_floor_z(self._scene_config)
-        world_xyz = [
-            origin[0], origin[1], origin[2] + floor_z + 0.5 * height]
+        prescribed = _parse_prescribed_centers(
+            getattr(self._args, "prescribed_centers", ""))
+        if (str(getattr(self._args, "slot_source", "")) == "prescribed"
+                and prescribed):
+            index = int(getattr(self, "_prescribed_index", 0))
+            if index >= len(prescribed):
+                raise IndexError(
+                    "prescribed center %d missing (%d given)" % (
+                        index, len(prescribed)))
+            world_xyz = self._container_to_world(prescribed[index])
+        else:
+            world_xyz = [
+                origin[0], origin[1], origin[2] + floor_z + 0.5 * height]
         world_yaw = 0.0
         if float(getattr(self._args, "release_gap", 0.0) or 0.0) > 0.0:
             world_xyz[2] += float(self._args.release_gap)
@@ -1183,6 +1218,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._keep_placed = bool(keep_placed)
         trial = PlaceTrial(index=index)
         trial.extras = {}
+        self._prescribed_index = index
 
         if self._args.plan_only or self._args.payload == "none":
             size = _parse_synthetic_size(
@@ -1211,6 +1247,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return trial
         pick_msg, box_msg = carry
         self._box_model = str(getattr(box_msg, "id", "") or self._box_model or "")
+        self._note_perception(trial, pick_msg)
         if slot is None:
             slot, slot_meta = self._place_slot_for(pick_msg, box_msg, trial)
             if slot is None:
@@ -1218,6 +1255,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._dump_place(trial)
                 return trial
         result = self.run_place_from_carry(pick_msg, trial, slot, slot_meta)
+        result.extras["diagnosis"] = _diagnosis(result)
         result.wall_time_sec = time.time() - t0
         if (not keep_placed) and result.fail_code not in CARRYING_ABORTS:
             self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
@@ -1354,6 +1392,44 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return pick_msg, current.box
 
 
+def _parse_prescribed_centers(text):
+    """container_link x,y,z triples separated by ';'."""
+    raw = str(text or "").strip()
+    if not raw:
+        return []
+    centers = []
+    for part in raw.replace("/", ";").split(";"):
+        nums = [float(v) for v in part.split(",")]
+        if len(nums) != 3:
+            raise ValueError("prescribed center must be x,y,z: %s" % part)
+        centers.append(nums)
+    return centers
+
+
+def _diagnosis(trial):
+    """Coarse label: perception, or planner fact."""
+    code = str(getattr(trial, "fail_code", "") or "")
+    blob = (code + " " + json.dumps(getattr(trial, "extras", {}) or {})).lower()
+    size_off = bool((getattr(trial, "extras", {}) or {}).get("perception_size_off"))
+    singular = any(token in blob for token in (
+        "singular", "wrist", "no_ik", "ik_fail", "no ik"))
+    collision = "collid" in blob
+    planned = code.startswith("PLAN_") or code.startswith("PLACE_BUILD")
+    if not code:
+        return {"class": "ok"}
+    if size_off and (collision or code.startswith("DETECT")):
+        return {"class": "perception", "planner_fact": ""}
+    if singular and planned:
+        return {"class": "planner", "planner_fact": "planned_singularity"}
+    if collision and planned:
+        return {"class": "planner", "planner_fact": "planner_rejected_collision"}
+    if collision and not planned:
+        return {"class": "planner", "planner_fact": "planner_missed_collision"}
+    if code.startswith("DETECT") or code.startswith("YOLO"):
+        return {"class": "perception", "planner_fact": ""}
+    return {"class": "planner", "planner_fact": "other"}
+
+
 def parse_args(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=3)
@@ -1381,6 +1457,12 @@ def parse_args(argv):
         "--dry-run", dest="plan_only", action="store_true",
         help="IK + cartesian probe only, do not execute.")
     parser.add_argument("--slot-source", default="fixed_floor_center")
+    parser.add_argument(
+        "--prescribed-centers", default="",
+        help="container_link x,y,z centers separated by ';'")
+    parser.add_argument(
+        "--truth-size", default="",
+        help="W,D,H metres recorded beside perception. Not sent to the planner.")
     parser.add_argument("--on-place-fail", default="stop")
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)

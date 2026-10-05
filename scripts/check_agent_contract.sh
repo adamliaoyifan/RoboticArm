@@ -36,6 +36,7 @@ check_required_files() {
     docs/agents/FORMAT.md \
     docs/agents/RUNTIME.md \
     docs/agents/discuss/OPEN.md \
+    docs/agents/QID_LEDGER.md \
     docs/agents/reviews/README.md \
     docs/agents/eng/README.md \
     docs/agents/test/README.md \
@@ -51,11 +52,13 @@ check_required_files() {
     scripts/agent_mailbox.py \
     scripts/agent_flow_metrics.py \
     scripts/agent_notify.sh \
+    scripts/agent_reply.sh \
     scripts/agent_register.sh \
     scripts/agent_scheduler.py \
     scripts/agent_poll_self.py \
     scripts/poll_eng_completed.py \
     scripts/test_agent_lifecycle_smoke.sh \
+    scripts/test_agent_mailbox_concurrency.sh \
     scripts/test_agent_mailbox_freshness.sh \
     scripts/test_agent_scheduler_poller_freshness.sh \
     scripts/eng_checkpoint_gates.json \
@@ -357,11 +360,13 @@ check_executables() {
   require_executable scripts/agent_start.sh
   require_executable scripts/agent_flow_metrics.py
   require_executable scripts/agent_notify.sh
+  require_executable scripts/agent_reply.sh
   require_executable scripts/agent_register.sh
   require_executable scripts/agent_scheduler.py
   require_executable scripts/agent_poll_self.py
   require_executable scripts/poll_eng_completed.py
   require_executable scripts/test_agent_lifecycle_smoke.sh
+  require_executable scripts/test_agent_mailbox_concurrency.sh
   require_executable scripts/test_agent_mailbox_freshness.sh
   require_executable scripts/test_agent_scheduler_poller_freshness.sh
   require_executable scripts/stop_sim.sh

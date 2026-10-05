@@ -116,6 +116,25 @@ class TestWaypointGenerator(unittest.TestCase):
         self.assertAlmostEqual(segs[2].target_pose.position.z, 0.64)
         self.assertAlmostEqual(segs[3].target_pose.position.z, 1.00)
 
+    def test_low_contact_retreat_stays_at_the_corridor_clearance(self):
+        segs = build_sequence(
+            Box(), Slot(), "place", retreat_safe_tool_z=1.55)
+        retreat = [segment for segment in segs if segment.name == "retreat"][0]
+        # contact = 0.20 + 0.25, default place clearance 0.15.
+        self.assertAlmostEqual(retreat.target_pose.position.z, 0.60)
+        self.assertAlmostEqual(retreat.clearance_truncation_m, 0.0)
+
+    def test_high_contact_retreat_stops_at_the_safe_tool_z(self):
+        slot = Slot()
+        slot.place_pose.position.z = 1.25  # contact 1.50 with box height 0.50
+        segs = build_sequence(
+            Box(), slot, "place", place_clearance_z=0.30,
+            retreat_safe_tool_z=1.55)
+        by_name = {segment.name: segment for segment in segs}
+        self.assertAlmostEqual(by_name["transit"].target_pose.position.z, 1.80)
+        self.assertAlmostEqual(by_name["retreat"].target_pose.position.z, 1.55)
+        self.assertAlmostEqual(by_name["retreat"].clearance_truncation_m, 0.25)
+
     def test_place_clearance_is_configurable(self):
         segs = build_sequence(Box(), Slot(), "place", place_clearance_z=0.42)
         self.assertEqual(segs[0].name, "transit")
@@ -436,6 +455,36 @@ class TestCorridorClearance(unittest.TestCase):
         self.assertGreaterEqual(
             by_name["retreat"].target_pose.position.z - box_height
             - surface_max, margin - 1e-9)
+
+    def test_corridor_raise_does_not_lift_retreat_through_the_cap(self):
+        box_height = 0.30
+        slot_z = 0.655
+        surface_max = 1.30
+        margin = 0.05
+        box = Box()
+        slot = Slot()
+        slot.place_pose.position.z = slot_z
+        slot.height = box_height
+        segs = build_sequence(
+            box, slot, "place",
+            opening_info={
+                "point": [0.755, 0.0, 1.30],
+                "normal": [-1.0, 0.0, 0.0],
+                "outward_clearance": 0.15,
+                "min_height_above_opening": 0.35,
+                "stage_outward_clearance": 0.65,
+            },
+            corridor_surface_max=surface_max,
+            corridor_margin=margin,
+            retreat_safe_tool_z=1.55,
+        )
+        by_name = {segment.name: segment for segment in segs}
+        required = surface_max + box_height + margin  # 1.65
+        self.assertGreaterEqual(
+            by_name["traverse"].target_pose.position.z, required)
+        self.assertAlmostEqual(by_name["retreat"].target_pose.position.z, 1.55)
+        self.assertAlmostEqual(
+            by_name["retreat"].clearance_truncation_m, required - 1.55)
 
     def test_low_neighbor_keeps_default_clearance(self):
         # Neighbor below the slot top: no raise needed beyond default 0.15.

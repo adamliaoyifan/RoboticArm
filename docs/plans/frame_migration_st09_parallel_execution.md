@@ -202,13 +202,20 @@ M3 workload固定carryon,standard,carryon，三个实际检测箱体，slot不�
 记录选择depth及替代candidate；不能宣称对未知后续箱体全局最优或图中中心可达就一定可放。
 返回/观察路线也必须经统一入口认证。
 
+I 冻结前必须关闭两项生产行为：
+
+- 路径级确定性失败（精确 IK、碰撞、fraction、excursion、branch、退出）只拒绝当前 candidate，同一 placement 请求继续后续 candidate；行为测试必须证明 A 失败而 B 可行时返回 B。请求级失败记录 attempted/untried、逐候选原因和预算，不允许一个确定性失败候选独占总预算。
+- 本轮冻结 `same_layer_clearance_m=0.05`；同一 support layer 的旋转 footprint 边界距离必须达到该值，未来改值必须新 generation。叠放只对明确 support parent 豁免该水平间距，仍要求 support coverage、top clearance、容器边界和无穿透；与其他箱体继续执行间距/碰撞门。该配置进入 runtime/freeze hash。
+
+冻结 candidate ID 和预规划轨迹只允许作为离线诊断，不得进入生产 M3 输入。正式 M3 每箱重新调用在线 placement/route；候选失败时保存具名拒绝并自动换点。
+
 M3是1个三箱unit、AND全部3箱，要求该unit100%通过，只证明这个固定场景的闭环，不估计总体可靠性。
 产物：immutable candidate、fresh install manifest、三箱事件/trajectory、两次revision交接、独立GT和capture_complete报告。
 
 ## 7. R：保留原ST09 release，不让三箱替代它
 
-技术基线S5–S7完整执行：每profile三次healthy startup、所有fault/mutation、64-case各适用边界和driver、匹配base1795a69回归、原两箱carryon->standard、pre_pick/pre_place各一次、paired replay三对、F23与F24证明。
-三箱的前两箱trace仅在冻结workload/配置/事件/观察窗口完全相同且runner支持严格证据子集复用时复用；否则单独两箱，不能手工口头替代。
+技术基线S5–S7完整执行：每profile三次healthy startup、所有fault/mutation、64-case各适用边界和driver、匹配base1795a69回归、在线多箱、pre_pick/pre_place各一次、paired replay三对、F23与F24证明。64-case/fault matrix 的既有适用槽位必须绑定候选 fallback 与间距/叠放边界，不另增 live 重复：首选碰撞、excursion 或退出失败后次选成功；全部候选失败；同层 gap 小于/等于门槛；旋转 footprint；support-parent 叠放通过；支撑不足及非 support 箱间距拒绝。
+三箱的前两箱 trace 仅在在线候选、workload、配置、事件、观察窗口完全相同且 runner 支持严格证据子集复用时复用；否则单独两箱，不能手工口头替代。冻结 candidate ID 的回放不满足在线多箱样本。
 captured replay <=1GiB/live run、campaign总计<=4GiB（包括三箱、两箱及fault包；去重按hash但各run依赖必须可恢复）。预计超限先阻塞新run，不删失败证据。
 pre=ceil(2*max upstream latency)，post=ceil(max downstream latency)，各必需链路正样本>=1。
 domain42三对off/on replay，median throughput degradation<=10%，完整stream joins/checksums，exactly one clock publisher。
@@ -216,7 +223,7 @@ domain42三对off/on replay，median throughput degradation<=10%，完整stream 
 修复后新candidate/new evidence，不在同一冻结run改artifact。
 
 runner CLI沿用技术基线的offline/graph/rehearsal/all及显式ws/install/out/domain参数；E新增并测试 --sequence-ids carryon,standard,carryon，只覆盖测试激励。
-最终all须要求M3与原ST09所有sample inventory齐全，exit0；两个contract checker exit0，无pending/stale。
+最终all须要求M3与原ST09所有sample inventory齐全，exit0；两个 contract checker 还要复算 candidate 尝试/拒绝、所有同层 pair 的旋转 footprint gap、stack parent 支撑与无穿透，且 exit0、无pending/stale。
 R统一刷新所有受影响proof，F01/F21–F23 verified，F24 isolated；独立install/ament index/全过程graph均无legacy。
 最终clean源码与loaded artifacts、scene/URDF/SRDF/atlas/graph、schema、观察位、extractor、配置hash匹配。
 QP分支hash作为保留资产列入交接，不标为生产certified artifact。

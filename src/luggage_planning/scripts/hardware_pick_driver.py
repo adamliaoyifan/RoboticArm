@@ -30,7 +30,8 @@ Typical order after hardware_pick.launch.py is up:
 
   ros2 run luggage_planning hardware_pick_driver.py --detect-only
   ros2 run luggage_planning hardware_pick_driver.py --plan-only
-  ros2 run luggage_planning hardware_pick_driver.py --dry-run   # C7 protocol
+  ros2 run luggage_planning hardware_pick_driver.py --certification-only
+      # C7 no-motion protocol; alias: --dry-run
   ros2 run luggage_planning hardware_pick_driver.py
       # default --observe-pose current: stay at live joints
   ros2 run luggage_planning hardware_pick_driver.py --observe-pose pickup_observe
@@ -342,7 +343,7 @@ class HardwarePickDriver(Node):
         if (self._args.use_vacuum
                 and not self._args.detect_only
                 and not self._args.plan_only
-                and not self._args.dry_run):
+                and not self._args.certification_only):
             needed.append((self._vacuum, "VacuumCommand", "service"))
         for client, name, kind in needed:
             if not self._wait_ready(client, name, kind, deadline, timeout):
@@ -351,7 +352,8 @@ class HardwarePickDriver(Node):
             if not self._wait_ready(
                     self._goto, "GoToRobotPose", "action", deadline, timeout):
                 return False, "GoToRobotPose missing after %.0fs" % timeout
-        if self._args.detect_only or self._args.plan_only or self._args.dry_run:
+        if (self._args.detect_only or self._args.plan_only
+                or self._args.certification_only):
             return True, "observe/detect graph ready"
         if not self._wait_ready(
                 self._plan, "PlanMotion", "action", deadline, timeout):
@@ -486,7 +488,7 @@ class HardwarePickDriver(Node):
             planning_frame="world",
             contact_model_version=model.model_version,
             contact_model_hash=model.identity_hash,
-            dry_run=bool(self._args.dry_run),
+            dry_run=bool(self._args.certification_only),
             dry_run_count=int(self._args.dry_run_count),
         )
 
@@ -566,7 +568,7 @@ class HardwarePickDriver(Node):
             self.get_logger().error("contact model unusable: %s" % exc)
             return 9
 
-        if self._args.dry_run:
+        if self._args.certification_only:
             ports = RosPickSessionPorts(self, self)
             try:
                 session = PickSession(
@@ -647,6 +649,10 @@ def main(argv=None):
         "--dry-run", action="store_true",
         help="C7 no-motion protocol: N detections printing ranked "
              "candidates; zero probe/motion/vacuum/scene calls.")
+    parser.add_argument(
+        "--certification-only", action="store_true",
+        help="No-motion certification stage; same C7 protocol as --dry-run. "
+             "Use after --detect-only and --plan-only before real pick.")
     parser.add_argument("--dry-run-count", type=int, default=10)
     parser.add_argument("--no-vacuum", dest="use_vacuum", action="store_false")
     parser.add_argument(
@@ -680,6 +686,8 @@ def main(argv=None):
         help="Write the session JSONL trace to this path (evidence).")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
+    if args.dry_run:
+        args.certification_only = True
 
     rclpy.init()
     node = HardwarePickDriver(args)

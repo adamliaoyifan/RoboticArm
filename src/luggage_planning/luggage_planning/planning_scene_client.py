@@ -200,22 +200,120 @@ def mesh_msg_from_arrays(vertices, faces):
     return msg
 
 
+# Auto-sync treats these as configuration failures. Retrying them every
+# second never makes the module or the mesh file appear, and it hides the
+# blocker behind a "waiting" warning.
+PERMANENT_STATIC_SYNC_PREFIXES = (
+    "stl load failed:",
+    "container mesh: ",
+    "scene_tf load failed:",
+)
+
+
+def static_sync_failure_is_permanent(message):
+    """True when another sync attempt cannot succeed without a new process."""
+    return str(message or "").startswith(PERMANENT_STATIC_SYNC_PREFIXES)
+
+
+def _stl_is_binary(data):
+    """Binary STL is 84 + 50*n bytes. ASCII files that start with ``solid``
+    are not binary unless the length matches that layout exactly.
+    """
+    if len(data) < 84:
+        return False
+    import struct
+    n_tri = struct.unpack_from("<I", data, 80)[0]
+    if n_tri <= 0:
+        return False
+    expected = 84 + n_tri * 50
+    if len(data) == expected:
+        return True
+    head = data.lstrip()[:5].lower()
+    if head == b"solid" and b"facet" in data[:2048].lower():
+        return False
+    return expected <= len(data) < expected + 256
+
+
+def _read_stl_arrays(path):
+    """Return ``(vertices Nx3, faces Mx3)`` from a binary or ASCII STL.
+
+    Vertices are not welded: each triangle keeps its own three corners.
+    Decimation is a separate step and is the only path that needs trimesh.
+    """
+    import struct
+
+    import numpy as np
+
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 84:
+        raise ValueError("STL %s is too small (%d bytes)" % (path, len(data)))
+    if _stl_is_binary(data):
+        n_tri = struct.unpack_from("<I", data, 80)[0]
+        record = np.dtype([
+            ("normal", "<f4", (3,)),
+            ("v0", "<f4", (3,)),
+            ("v1", "<f4", (3,)),
+            ("v2", "<f4", (3,)),
+            ("attr", "<u2"),
+        ])
+        recs = np.frombuffer(data, dtype=record, count=int(n_tri), offset=84)
+        vertices = np.empty((int(n_tri) * 3, 3), dtype=np.float64)
+        vertices[0::3] = recs["v0"]
+        vertices[1::3] = recs["v1"]
+        vertices[2::3] = recs["v2"]
+        faces = np.arange(int(n_tri) * 3, dtype=np.int64).reshape(int(n_tri), 3)
+        return vertices, faces
+
+    text = data.decode("utf-8", "replace")
+    vertices = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[0].lower() == "vertex":
+            vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
+    if len(vertices) < 3 or len(vertices) % 3 != 0:
+        raise ValueError(
+            "STL %s is not a triangular mesh (%d vertices)"
+            % (path, len(vertices)))
+    n_tri = len(vertices) // 3
+    arr = np.asarray(vertices, dtype=np.float64)
+    faces = np.arange(n_tri * 3, dtype=np.int64).reshape(n_tri, 3)
+    return arr, faces
+
+
+def _decimate_stl(vertices, faces, limit, path):
+    """Quadric-decimate. ``python3-trimesh`` is required only for this path."""
+    try:
+        import trimesh
+    except ImportError as exc:
+        raise ImportError(
+            "mesh_max_faces=%d needs python3-trimesh to decimate %s (%s). "
+            "Install python3-trimesh or set mesh_max_faces to 0."
+            % (int(limit), path, exc)) from exc
+    mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=True)
+    try:
+        mesh = mesh.simplify_quadric_decimation(int(limit))
+    except TypeError:
+        mesh = mesh.simplify_quadric_decimation(face_count=int(limit))
+    if mesh is None or not hasattr(mesh, "faces") or len(mesh.faces) == 0:
+        raise ValueError("trimesh decimation of %s produced no triangles" % path)
+    return mesh.vertices, mesh.faces
+
+
 def load_stl_mesh_msg(path, max_faces=0):
-    """Load an STL into shape_msgs/Mesh. Optional quadric decimation."""
-    import trimesh
-    mesh = trimesh.load(path, force="mesh")
-    if mesh is None:
-        raise FileNotFoundError("trimesh failed to load %s" % path)
-    if not hasattr(mesh, "faces"):
-        raise ValueError("STL %s did not produce a triangular mesh" % path)
-    n_faces = int(len(mesh.faces))
+    """Load an STL into shape_msgs/Mesh.
+
+    The default path (``max_faces`` 0) parses binary and ASCII STL with
+    numpy and does not import trimesh. A positive ``max_faces`` decimates
+    through trimesh and fails closed if that module is missing.
+    """
+    vertices, faces = _read_stl_arrays(path)
+    if len(faces) == 0:
+        raise ValueError("STL %s produced no triangles" % path)
     limit = int(max_faces)
-    if limit > 0 and n_faces > limit:
-        try:
-            mesh = mesh.simplify_quadric_decimation(limit)
-        except TypeError:
-            mesh = mesh.simplify_quadric_decimation(face_count=limit)
-    return mesh_msg_from_arrays(mesh.vertices, mesh.faces)
+    if limit > 0 and len(faces) > limit:
+        vertices, faces = _decimate_stl(vertices, faces, limit, path)
+    return mesh_msg_from_arrays(vertices, faces)
 
 
 def build_mesh_collision_object(obj_id, xyz, quat, mesh_msg,

@@ -648,9 +648,10 @@ class LuggageDetector(Node):
             CameraInfo, self.get_parameter("support_camera_info_topic").value,
             self._support_info_cb, stream_qos, callback_group=self._group)
         if self._use_instance_mask:
-            # Pixel instance masks (SAM2-class backends) join the dynamic
-            # top path by the exact acquisition stamp, same contract as the
-            # depth buffer.
+            # Pixel instance masks join the dynamic top path by the exact
+            # acquisition stamp, same contract as the depth buffer. The
+            # segmenter publishes this topic RELIABLE; a BEST_EFFORT offer
+            # is incompatible with this subscription.
             self.create_subscription(
                 Image, self.get_parameter("instance_mask_topic").value,
                 self._instance_mask_cb, support_qos,

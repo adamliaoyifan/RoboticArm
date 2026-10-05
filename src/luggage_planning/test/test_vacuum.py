@@ -1,6 +1,7 @@
 """Vacuum gate + backend + planning-scene message tests (no ROS graph)."""
 
 import math
+import struct
 import unittest
 
 import pytest
@@ -388,6 +389,91 @@ class TestPlanningSceneMessages(unittest.TestCase):
         set_acm_pair(acm, "pickup_box", "airport_container_real", False)
         self.assertFalse(acm_pair_allowed(
             acm, "pickup_box", "airport_container_real"))
+
+    def test_stl_load_does_not_need_trimesh(self):
+        pytest.importorskip("moveit_msgs")
+        import os
+        import tempfile
+
+        import numpy as np
+
+        from luggage_planning.planning_scene_client import (
+            _read_stl_arrays,
+            load_stl_mesh_msg,
+            static_sync_failure_is_permanent,
+        )
+
+        tri = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0],
+        ], dtype=np.float64)
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = os.path.join(tmp, "one.stl")
+            header = b"solid not really binary".ljust(80, b"\0")
+            record = struct.pack(
+                "<12fH",
+                0.0, 0.0, 1.0,
+                *tri.reshape(-1).tolist(),
+                0)
+            with open(binary, "wb") as handle:
+                handle.write(header)
+                handle.write(struct.pack("<I", 1))
+                handle.write(record)
+            vertices, faces = _read_stl_arrays(binary)
+            self.assertEqual(faces.shape, (1, 3))
+            self.assertTrue(np.allclose(vertices, tri))
+            msg = load_stl_mesh_msg(binary, max_faces=0)
+            self.assertEqual(len(msg.triangles), 1)
+
+            ascii_path = os.path.join(tmp, "one_ascii.stl")
+            with open(ascii_path, "w", encoding="utf-8") as handle:
+                handle.write(
+                    "solid one\n"
+                    "  facet normal 0 0 1\n"
+                    "    outer loop\n"
+                    "      vertex 0 0 0\n"
+                    "      vertex 1 0 0\n"
+                    "      vertex 0 1 0\n"
+                    "    endloop\n"
+                    "  endfacet\n"
+                    "endsolid one\n")
+            vertices, faces = _read_stl_arrays(ascii_path)
+            self.assertEqual(len(faces), 1)
+            self.assertTrue(np.allclose(vertices, tri))
+
+        self.assertTrue(static_sync_failure_is_permanent(
+            "stl load failed: No module named 'trimesh'"))
+        self.assertTrue(static_sync_failure_is_permanent(
+            "container mesh: missing file"))
+        self.assertFalse(static_sync_failure_is_permanent(
+            "container mesh apply: planning scene not ready"))
+
+    def test_decimate_reports_missing_trimesh(self):
+        pytest.importorskip("moveit_msgs")
+        import builtins
+
+        import numpy as np
+
+        from luggage_planning.planning_scene_client import _decimate_stl
+
+        real_import = builtins.__import__
+
+        def _block_trimesh(name, globals=None, locals=None, fromlist=(), level=0):
+            if name == "trimesh":
+                raise ImportError("No module named 'trimesh'")
+            return real_import(name, globals, locals, fromlist, level)
+
+        vertices = np.zeros((6, 3), dtype=np.float64)
+        faces = np.arange(6, dtype=np.int64).reshape(2, 3)
+        builtins.__import__ = _block_trimesh
+        try:
+            with self.assertRaises(ImportError) as caught:
+                _decimate_stl(vertices, faces, 1, "/tmp/container.stl")
+        finally:
+            builtins.__import__ = real_import
+        self.assertIn("mesh_max_faces=1", str(caught.exception))
+        self.assertIn("python3-trimesh", str(caught.exception))
 
     def test_apply_wraps_planning_scene_request(self):
         pytest.importorskip("moveit_msgs")

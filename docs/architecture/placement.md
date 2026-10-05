@@ -104,6 +104,36 @@ Stacking wins once no feasible floor slot remains (floor tiled, remaining
 floor lost to overlap / hull / corridor, or clearance under a full-floor
 occupied map).
 
+## Reachability atlas on the live node
+
+`placement_planner_node` may annotate solver candidates from the
+reachability atlas. A high-confidence unreachable cell is a hard reject
+(`atlas_unreachable`). A reachable or marginal cell adds
+`w_reachability * prior` to the score. This gate is not the FreeSpaceModel
+replay scorer, and it does not generate slots.
+
+The active scene file selects the atlas cell. A scene hash that matches
+`data/reachability_atlas` loads `config/atlas_runtime.yaml` (simulation,
+`scene_tf.yaml.example`). A scene hash that matches
+`data/reachability_atlas_deploy` loads `config/atlas_runtime_deploy.yaml`
+(`scene_tf_deploy.yaml`). An explicit `atlas_runtime_config` overrides
+that match. No match keeps the simulation cell.
+
+The simulation runtime is the certification
+cell: `hash_policy: strict`. The node hashes the scene file it was given
+and the live `robot_description` on `robot_state_publisher` (the same MD5
+the atlas builder stores). Strict mode loads the atlas only when both
+hashes are present and match the atlas metadata. Otherwise
+`ComputePlacement` returns `ATLAS_IDENTITY_UNVERIFIED` and does not
+hard-reject or re-rank. `hash_policy: warn` on the deploy cell may keep a
+mismatched atlas; that cell is not a certification result.
+
+`TrajectorySelector` grid paths use the same two hashes. Under `strict`,
+a missing or mismatched hash disables the grid
+(`GRID_DISABLED_SCENE_TF` / `GRID_DISABLED_URDF`) instead of searching
+stale connectivity. The motion planner refuses IK seeds from an atlas
+that fails the same check.
+
 ## Occupancy update after place
 
 Required source of `surface_2d` is live depth integration and/or a verified
@@ -193,9 +223,14 @@ code). Do not relabel that as `BIN_FULL` or `PLACE_CANDIDATE_EXHAUSTED`.
 Retain every tried path and rejection reason in the dump (same rule as
 exhausted placement candidates).
 
-Current Humble `motion_executor` cartesian `avoid_collisions` plus OMPL
-`RRTConnect` fallback does not read `surface_2d` and does not keep a
-scored path set (`RS-27`).
+`TrajectorySelector` keeps the scored set: geometric variants and, when a
+reachability atlas is loaded, shortest paths on its reachable cells. The
+atlas is a path prior here. It does not generate placement slots.
+`motion_occ` applies the winner before `PlanMotion`. A `joint_path` segment
+executes those joint knots with an occupancy sweep and does not fall back
+to `RRTConnect`. `motion_planner_node` still injects occupancy and re-sweeps;
+it does not select. `RS-27` stays open until a scored run shows every
+transit and traverse took the selector path.
 
 ## Replay / redesign path (not the live node)
 
@@ -208,8 +243,8 @@ blocked-deep term clip those tiles to the seven-face hull.
 
 `proxy_score` without that term is structurally stack-biased: a committed box
 top scores high on support and observation confidence, an unobserved floor
-scores 0. The floor-first term restores flatten-first for replay. The
-reachability atlas is a **score prior**, not the candidate generator.
+scores 0. The floor-first term restores flatten-first for replay. On this replay path the reachability atlas is a **score prior**, not the
+candidate generator. The live selector may also use it as a path prior.
 
 Offline replay (`packing_replay.FreeSpaceModelStrategy`) and
 `scripts/ros1_reference/placement_planner_node.py` use this path. Humble

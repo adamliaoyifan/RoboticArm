@@ -14,10 +14,13 @@ Subscribes the *preprocessed* color image so the mask inherits the RGB
 ``primary_stamp`` and the downstream point filter can join on exact stamps
 with the preprocessed cloud.
 
-The mask/instance-mask/overlay outputs are BEST_EFFORT (sensor-stream
-contract); ``/luggage/semantic/yolo_detections`` is the structured per-frame
-box list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
-late consumer sees the last record.
+The label mask and overlay are BEST_EFFORT. ``instance_mask`` is RELIABLE
+so the detector's exact-stamp subscription can connect; a BEST_EFFORT
+publisher is incompatible with that RELIABLE subscriber, and the detector
+then never sees the topic. BEST_EFFORT subscribers such as the point
+filter still match a RELIABLE publisher. ``/luggage/semantic/yolo_detections``
+is the structured per-frame box list (BEST_EFFORT, depth 10).
+``~/stats_json`` is transient-local so a late consumer sees the last record.
 """
 
 from __future__ import division
@@ -32,7 +35,9 @@ import rclpy
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import (
+    DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
+)
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -221,6 +226,12 @@ class SemanticSegmenterNode(Node):
             depth=1, reliability=ReliabilityPolicy.BEST_EFFORT)
         mask_qos = QoSProfile(
             depth=5, reliability=ReliabilityPolicy.BEST_EFFORT)
+        # Match the detector subscription (RELIABLE, exact stamp). The
+        # point filter stays BEST_EFFORT and remains compatible.
+        instance_qos = QoSProfile(
+            depth=15,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         stream_qos = QoSProfile(
             depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         stats_qos = QoSProfile(
@@ -232,7 +243,8 @@ class SemanticSegmenterNode(Node):
         self._overlay_pub = self.create_publisher(
             Image, self.get_parameter("output.overlay").value, mask_qos)
         self._instance_pub = self.create_publisher(
-            Image, self.get_parameter("output.instance_mask").value, mask_qos)
+            Image, self.get_parameter("output.instance_mask").value,
+            instance_qos)
         self._yolo_pub = self.create_publisher(
             YoloDetections,
             self.get_parameter("output.yolo_detections").value,

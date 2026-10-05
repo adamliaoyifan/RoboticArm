@@ -1,0 +1,20 @@
+# Select one occupancy-checked place path for the top-K slots.
+# Candidates come from the reachability-grid search and the geometric variants.
+string request_id
+luggage_msgs/DetectedLuggage box
+luggage_msgs/SlotSpec[] candidates
+float64[] candidate_scores
+string geometry_hash
+int32 map_revision
+geometry_msgs/Pose start_pose
+float64[] start_joints
+string[] excluded_candidate_ids
+---
+bool success
+string reason_code
+int32 slot_index
+luggage_msgs/MotionSegment[] carry_segments
+string selection_id
+string path_source
+string rows_json
+string dump_path

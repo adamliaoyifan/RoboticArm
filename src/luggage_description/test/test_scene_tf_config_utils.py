@@ -8,6 +8,7 @@ import unittest
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 from luggage_description.scene_tf_config_utils import (  # noqa: E402
+    resolve_named_scene_tf,
     container_in_base_link,
     container_inner_ceiling_z,
     container_inner_chamfer,
@@ -255,6 +256,17 @@ class TestSceneTfConfigUtils(unittest.TestCase):
     self.assertTrue(point_inside_container_inner_hull_container(
         [0.0, 0.90, 0.55], config))
     self.assertEqual(len(container_inner_hull_edges_in_container(config)), 12)
+
+  def test_named_scene_selects_scene_tf_files(self):
+    directory = os.path.join(PKG_ROOT, "config")
+    deploy = resolve_named_scene_tf("scene_tf_deploy", config_dir=directory)
+    sim = resolve_named_scene_tf("scene_tf", config_dir=directory)
+    self.assertTrue(deploy.endswith("scene_tf_deploy.yaml"))
+    self.assertTrue(sim.endswith(os.path.join("config", "scene_tf.yaml")))
+    self.assertEqual(
+        resolve_named_scene_tf(deploy, config_dir=directory), deploy)
+    with self.assertRaises(ValueError):
+      resolve_named_scene_tf("scene_tf_not_a_cell", config_dir=directory)
 
   def test_hull_has_pentagon_end_walls(self):
     edges = container_inner_hull_edges_in_container(self.example_scene)

@@ -81,4 +81,17 @@
     <disable_collisions link1="camera_link" link2="elfin_link1" reason="Never" />
     <disable_collisions link1="camera_depth_optical_frame" link2="camera_link" reason="Adjacent" />
     <disable_collisions link1="camera_color_optical_frame" link2="camera_link" reason="Adjacent" />
+
+    <!-- Mid-360 housing. Fixed to the adapter, so arm/EEF pairs are always
+         the same contact. World and container collisions stay enabled. -->
+    <disable_collisions link1="mid360_mount_frame" link2="eef_mount_adapter" reason="Adjacent" />
+    <disable_collisions link1="mid360_mount_frame" link2="suction_panel" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="camera_link" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_end_link" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link6" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link5" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link4" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link3" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link2" reason="Never" />
+    <disable_collisions link1="mid360_mount_frame" link2="elfin_link1" reason="Never" />
 </robot>

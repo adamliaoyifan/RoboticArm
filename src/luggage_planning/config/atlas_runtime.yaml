@@ -1,0 +1,51 @@
+# Runtime reachability-atlas wiring, shared by placement_planner_node and
+# motion_planner_node. This file is the simulation cell, selected when the
+# active scene file hash matches data/reachability_atlas. The deploy cell
+# is config/atlas_runtime_deploy.yaml and is selected the same way from
+# scene_tf_deploy.yaml. An explicit atlas_runtime_config overrides both.
+# Loaded by luggage_planning.atlas_runtime; every value
+# can be overridden per node through atlas_* ROS parameters (launch profiles,
+# runner --atlas, or a different config path entirely).
+#
+# The atlas is queried in the container_link frame, so container moves are
+# tracked automatically through scene_tf. query_offset exists for the case
+# where the *robot-relative* reachability baked into the atlas no longer
+# matches the real machine and needs a manual nudge (or a rebuilt atlas set
+# dropped in via atlas_dir / atlas_file).
+enabled: true
+atlas_dir: ""            # "" = package data/reachability_atlas
+basename: "s20_container_collision_aware"
+atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
+# Certification cell. strict refuses the atlas unless the live scene file
+# and the live robot_description both match the atlas metadata. Placement
+# then returns ATLAS_IDENTITY_UNVERIFIED instead of hard-rejecting or
+# re-ranking from a stale grid. The deploy cell stays warn.
+hash_policy: "strict"    # off | warn | strict, against the atlas meta hashes
+query_offset: [0.0, 0.0, 0.0]   # container-frame [x, y, z] added to queries
+payload:
+  policy: "auto"         # auto = smallest built atlas enveloping the measured
+                         # box (conservative); explicit = use explicit_size
+  explicit_size: [0.0, 0.0, 0.0]
+placement:
+  hard_reject: true      # high-confidence unreachable cell -> infeasible
+  w_reachability: 0.3    # score weight on the atlas prior; 0 = dump-only rank
+  dump_only: false       # true = never reject, never re-rank; record only
+motion:
+  enabled: true
+  seed_set: "transit"    # transit | contact | both
+  max_seeds: 3           # branches per query (NaN/zero-padded rows dropped)
+  mode: "miss-retry"     # miss-retry = after unseeded KDL miss; always-first
+                         # = seed before the unseeded try (slower when it hits)
+  target_z_lift_m: 0.008 # attach-hang compensation for in-container goals
+                         # (GT attach hangs the box ~5 mm low + 8 mm lateral;
+                         # unlifted slot-contact goals sit 3.5 mm in the floor)
+  refine: true           # deterministic offline refine of atlas seeds onto
+                         # the exact target (scipy; KDL restarts are a
+                         # lottery for this class -- 2026-09-24 smokes)
+  # KDL misses this target class even when seeded (2026-09-24 smoke: 3
+  # atlas seeds x 2 yaws all NO_IK_SOLUTION), so the FK-verified joint-goal
+  # submit is the working path. OMPL validates the goal state itself when
+  # planning to it. Transit is a coarse leg: the 1838 run placed fine from
+  # a 27 mm-off goal, so half a cell (0.15 m) is the right tolerance here.
+  fk_verify_tol_m: 0.25
+  submit_mode: "joint_goal"

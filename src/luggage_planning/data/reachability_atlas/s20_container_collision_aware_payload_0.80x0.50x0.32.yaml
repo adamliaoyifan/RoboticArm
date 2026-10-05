@@ -1,7 +1,7 @@
 atlas_version: '2.0'
 schema_version: 2
-generated_at: '2026-08-11T07:12:57'
-computation_time_sec: 129.3
+generated_at: '2026-09-29T04:07:21'
+computation_time_sec: 99.02
 mode: collision_aware
 marginal_joint_margin: 0.1
 query:
@@ -9,20 +9,21 @@ query:
   hard_reject_min_neighbor_confidence: 0.9
   hard_reject_interior_fraction: 0.1
 builder:
-  algorithm: opening_connected_wavefront_v2
+  algorithm: opening_connected_wavefront_v3
   serial_deterministic: true
   max_branches: 3
   branch_distance: 0.25
   joint_interpolation_step: 0.1
   state_validity_available: true
   seed_policy: fixed_anchor_connected_warm_start_repair_v1
-  deterministic_fingerprint: 2e66876299d90aa91645d3b923ebc676ebc9b98751908345e25c2898f0a9d1be
+  ik_solver: offline_ik.refine_to_pose
+  deterministic_fingerprint: 51c0cee157eda740020c1de0131cde1aca0e6bfa3f023f8106a212c2dca0655e
   tool_down_tolerance: 0.0
   transit_clearance: 0.3
 dependencies:
   robot_model: elfin_s20_with_camera
-  scene_tf_hash: df5cccc65c5c9ceb2ca13e6eb4aa47b8
-  urdf_hash: 6dbca5f9423c84cbbc91efd24b3efe65
+  scene_tf_hash: b40c85ae6eb2eabc47d7da2ffb23b72c
+  urdf_hash: 85e96b56debd30d8469f7d5a8131d32c
   ik_link: suction_contact_frame
   ik_group: elfin_arm
 payload:
@@ -54,6 +55,11 @@ grid:
   - 0.0
   - 1.5707963267948966
   transit_clearance: 0.3
+  lift_policy:
+    nominal: 0.3
+    safe_tool_z: 1.55
+    min_lift: 0.06
+    frame: container_link
 container:
   inner_dimensions:
   - 1.49
@@ -73,8 +79,8 @@ container:
   opening_side: negative_x
 stats:
   total_cells: 2800
-  reachable_cells: 334
-  marginal_cells: 124
-  unreachable_cells: 482
-  unknown_cells: 1860
-  reachability_rate: 0.1193
+  reachable_cells: 363
+  marginal_cells: 7
+  unreachable_cells: 520
+  unknown_cells: 1910
+  reachability_rate: 0.1296

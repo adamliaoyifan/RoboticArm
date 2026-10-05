@@ -39,3 +39,8 @@ class MotionSegment:
     # (0.0 = executor default). Suction approach/attach/retry_reverse carry
     # 1.0 so a partial straight-line path is refused, not executed.
     required_cartesian_fraction: float = 0.0
+    # Metres cut from a requested vertical retreat so the tool stays at or
+    # below the lid-clear carry height. Zero when the retreat was not capped.
+    # Not part of the ROS message; the waypoint node copies it into the
+    # service reply text.
+    clearance_truncation_m: float = 0.0

@@ -90,6 +90,14 @@ The printed pocket was cut for **D555**, not a D435 90 mm body.
 | Mass | 72 g | 337 g |
 | Stereo baseline | 50 mm | 95 mm |
 
+Reachability sampling treats a tool-down pose as unreachable when any of
+these bodies intersects the container: `suction_panel` collision STLs,
+`eef_mount_adapter` mesh, the D555 box on `camera_link`, and the Mid-360
+housing on `mid360_mount_frame` (65 × 65 × 60 mm). Fixed contacts among
+those links and the arm are disabled in the SRDF. The Gazebo spawn URDF
+strips the Mid-360 collision so the 360° lidar does not hit its own body;
+MoveIt keeps it.
+
 URDF visual and collision use that D555 envelope in `camera_link`:
 
 - box size `(0.048, 0.167, 0.042)` m

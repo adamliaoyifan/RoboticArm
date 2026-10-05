@@ -2,12 +2,17 @@
 # MOTION-OCC occupancy-aware place-path eval. Exclusive Gazebo on ROS_DOMAIN_ID=7.
 #
 # Usage:
-#   scripts/motion_occ_place_path_run.sh --out DIR [--n 2] [--record-bag]
+#   scripts/motion_occ_place_path_run.sh --out DIR [--n 2] [--place-probe on|off]
+#                                       [--selector on|off]
+#                                       [--atlas on|off|<yaml path>] [--record-bag]
 set -euo pipefail
 
 OUT=""
 N=2
 SEQUENCE_IDS="carryon,standard"
+PLACE_PROBE="on"
+SELECTOR="on"
+ATLAS="on"
 RECORD_BAG=0
 WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 while [[ $# -gt 0 ]]; do
@@ -15,6 +20,9 @@ while [[ $# -gt 0 ]]; do
     --out) OUT="$2"; shift 2 ;;
     --n) N="$2"; shift 2 ;;
     --sequence-ids) SEQUENCE_IDS="$2"; shift 2 ;;
+    --place-probe) PLACE_PROBE="$2"; shift 2 ;;
+    --selector) SELECTOR="$2"; shift 2 ;;
+    --atlas) ATLAS="$2"; shift 2 ;;
     --ws) WS="$2"; shift 2 ;;
     --record-bag) RECORD_BAG=1; shift ;;
     --no-record-bag) RECORD_BAG=0; shift ;;
@@ -115,6 +123,17 @@ teardown() {
 }
 
 launch_stack() {
+  local atlas_args=()
+  case "$ATLAS" in
+    on)  atlas_args=(atlas_enabled:=true) ;;
+    off) atlas_args=(atlas_enabled:=false) ;;
+    *)   [[ -f "$ATLAS" ]] || { echo "atlas config not found: $ATLAS" >&2; return 1; }
+         atlas_args=(atlas_runtime_config:="$ATLAS")
+         # The eval driver runs outside launch; it reads the same config
+         # through this env var (its certification gate otherwise loads
+         # the default yaml and can block on strict identity).
+         export ATLAS_RUNTIME_CONFIG="$ATLAS" ;;
+  esac
   (ros2 launch luggage_gazebo sim_world.launch.py \
       gui:=false use_rviz:=false \
       use_semantic:=true use_motion:=true use_vacuum:=true \
@@ -123,6 +142,7 @@ launch_stack() {
       sequence_ids:="$SEQUENCE_IDS" \
       observe_pose_name:=pickup_observe \
       semantic_require_backend:=bbox_fill \
+      "${atlas_args[@]}" \
       > "$OUT/launch.log" 2>&1 &)
   sleep 3
   local pid
@@ -135,6 +155,7 @@ launch_stack() {
 
 mkdir -p "$OUT"
 echo "{\"stage\": \"start\", \"n\": $N, \"sequence_ids\": \"$SEQUENCE_IDS\",
+      \"place_probe\": \"$PLACE_PROBE\", \"selector\": \"$SELECTOR\", \"atlas\": \"$ATLAS\",
       \"ws\": \"$WS\", \"ts\": \"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
 
 wait_for_slot
@@ -145,6 +166,8 @@ start_bag
 
 setsid ros2 run luggage_gazebo motion_occ_eval_driver.py \
   --n "$N" \
+  --place-probe "$PLACE_PROBE" \
+  --selector "$SELECTOR" \
   --payload vacuum \
   --goto-timeout 60 \
   --out "$OUT"

@@ -22,7 +22,7 @@ Accepted C0 commit `ba0505dc0d5c180310ee778a5888771f5a8d9cde` as the implementat
 | ID | Owner agent/model | Depends on | Base revision | Scope | Acceptance | Required tests | Commit evidence |
 |---|---|---|---|---|---|---|---|
 | ST09-A | `codex-placement/gpt-6` | C0 satisfied | `ba0505d` | Placement geometry and ordering | Parallel plan ST09-A | `tests/st09_parallel/A` plus saved replay | Clean commit and A evidence |
-| ST09-B | `cursor-route/grok-4.7` | C0 satisfied | `ba0505d` | Graph and MoveIt route | Parallel plan ST09-B | `tests/st09_parallel/B` plus mock MoveIt | Clean commit and B evidence |
+| ST09-B | `claude-route/glm-5.3` | C0 satisfied | `ba0505d` | Graph and MoveIt route | Parallel plan ST09-B | `tests/st09_parallel/B` plus mock MoveIt | Clean commit and B evidence |
 | ST09-C | `codex-certifier/gpt-6` | C0 satisfied | `ba0505d` | Certification and stop policy | Parallel plan ST09-C | `tests/st09_parallel/C` plus mock controller | Clean commit and C evidence |
 | ST09-D | `claude-map/glm-5.3` | C0 satisfied | `ba0505d` | Observation, map and attachment provider | Parallel plan ST09-D | `tests/st09_parallel/D` plus saved sensor inputs | Clean commit and D evidence |
 | ST09-E | `codex-evidence/gpt-6` | C0 satisfied | `ba0505d` | Runner, dumps and replay | Parallel plan ST09-E | `tests/st09_parallel/E` | Clean commit and E evidence |
@@ -41,6 +41,7 @@ Accepted C0 commit `ba0505dc0d5c180310ee778a5888771f5a8d9cde` as the implementat
 - `docs/agents/discuss/2026-10-01_1104_frame-stage-09-g5-cursor-handoff.md`
 - `docs/agents/discuss/2026-10-02_1449_st09-a-placement.md`
 - `docs/agents/discuss/2026-10-02_1449_st09-b-route.md`
+- `docs/agents/discuss/2026-10-02_1457_st09-b-route-claude-g2.md`
 - `docs/agents/discuss/2026-10-02_1449_st09-c-certifier.md`
 - `docs/agents/discuss/2026-10-02_1449_st09-d-map-attachment.md`
 - `docs/agents/discuss/2026-10-02_1449_st09-e-evidence.md`

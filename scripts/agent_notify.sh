@@ -32,7 +32,11 @@ Options:
   --question TEXT    Backward-compatible alias for --request.
   --body TEXT       Thread post body. Defaults to --request.
   --pointer PATH    Add one pointer. May be repeated.
-  --thread FILE     Append to an existing discuss thread filename.
+  --thread FILE     Append to an existing discuss thread filename. The thread's
+                    kind must match --kind; a runnable thread additionally
+                    refuses any in-place change to protected metadata. Never
+                    send a question on a runnable thread -- use a separate
+                    thread or scripts/agent_reply.sh.
   --title TEXT      Thread title for a new thread.
   -h, --help        Show this help.
 
@@ -98,25 +102,53 @@ safe_slug() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -cs '[:alnum:]_-' '-'
 }
 
-next_question_id() {
-  local open_file="$1"
-  local today prefix max line raw_id suffix
+thread_meta_value() {
+  local file="$1" key="$2"
+  awk -v key="$key" '
+    /^## / { exit }
+    index($0, "- " key ": ") == 1 {
+      print substr($0, length("- " key ": ") + 1)
+      exit
+    }
+  ' "$file"
+}
 
-  today="$(date +%Y%m%d)"
-  prefix="Q-$today-"
-  max=0
-
-  while IFS= read -r line; do
-    [[ "$line" == \|* ]] || continue
-    [[ "$line" == "| id "* || "$line" == "|---"* ]] && continue
-    raw_id="${line#|}"
-    raw_id="${raw_id%%|*}"
-    raw_id="${raw_id// /}"
+max_id_suffix() {
+  local prefix="$1" raw_id suffix max=0
+  while IFS= read -r raw_id; do
     [[ "$raw_id" == "$prefix"* ]] || continue
     suffix="${raw_id#"$prefix"}"
     [[ "$suffix" =~ ^[0-9]+$ ]] || continue
     (( suffix > max )) && max="$suffix"
-  done < "$open_file"
+  done
+  printf '%s' "$max"
+}
+
+# Ids must be unique for the whole mailbox history, not just the live rows:
+# completed rows are removed from OPEN.md, so the allocator also consults the
+# append-only ledger. Both reads happen under the mailbox lock.
+next_question_id() {
+  local open_file="$1" ledger_file="$2"
+  local today prefix max line raw_id
+
+  today="$(date +%Y%m%d)"
+  prefix="Q-$today-"
+
+  max="$(
+    {
+      while IFS= read -r line; do
+        [[ "$line" == \|* ]] || continue
+        [[ "$line" == "| id "* || "$line" == "|---"* ]] && continue
+        raw_id="${line#|}"
+        raw_id="${raw_id%%|*}"
+        raw_id="${raw_id// /}"
+        printf '%s\n' "$raw_id"
+      done < "$open_file"
+      if [[ -f "$ledger_file" ]]; then
+        grep -oE 'Q-[0-9]{8}-[0-9]+' "$ledger_file" || true
+      fi
+    } | max_id_suffix "$prefix"
+  )"
 
   printf '%s%s' "$prefix" "$((max + 1))"
 }
@@ -277,6 +309,88 @@ set_thread_target() {
   mv "$tmp" "$file"
 }
 
+# Reusing --thread on runnable work must never rewrite the metadata the
+# scheduler treats as the source of truth. Every field set_thread_target would
+# write is compared against the live thread header; only the reviews dispatch
+# flip (dispatch_ready no -> yes) may differ.
+guard_thread_metadata() {
+  local file="$1"
+  local pairs=("$TO" "$TO_AGENT" "$TO_MODEL" "$KIND" "$PARENT" "$SUBTASK"
+               "$DEPENDS_ON" "$REVISION" "$GENERATION" "$PLAN_REVISION"
+               "$DISPATCH_READY")
+  local keys=(to_role to_agent to_model kind parent subtask depends_on revision
+              generation plan_revision dispatch_ready)
+  local changes="" index key value current
+
+  for index in "${!keys[@]}"; do
+    key="${keys[$index]}"
+    value="${pairs[$index]}"
+    current="$(thread_meta_value "$file" "$key")"
+    [[ "$current" == "$value" ]] && continue
+    if [[ "$key" == "dispatch_ready" && "$value" == "yes" && "$FROM" == "reviews" ]] \
+        && [[ -z "$current" || "$current" == "no" ]]; then
+      continue
+    fi
+    changes+="$key '$current' -> '$value'; "
+  done
+
+  if [[ -n "$changes" ]]; then
+    echo "refusing: reusing --thread would change protected metadata of $THREAD" >&2
+    echo "changed: $changes" >&2
+    echo "owner/scope/dependencies/revisions must not change in place; dispatch a" >&2
+    echo "higher-generation thread instead, or append a Reply via scripts/agent_reply.sh" >&2
+    exit 1
+  fi
+}
+
+# Cross-field dispatch rules. Runs after the existing-thread defaulting step so
+# that reusing a runnable thread can inherit generation/plan_revision/
+# dispatch_ready from its own metadata instead of being forced to restate them.
+validate_cross_fields() {
+  if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+        ( "$PARENT" == "n/a" || "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+    echo "--kind $KIND requires --parent, --subtask, and --base-revision" >&2
+    exit 2
+  fi
+  if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+        ( -z "$GENERATION" || -z "$PLAN_REVISION" ) ]]; then
+    echo "--kind $KIND requires --generation and --plan-revision" >&2
+    exit 2
+  fi
+  if [[ "$KIND" =~ ^(subtask|integration|regression)$ && -z "$DISPATCH_READY" ]]; then
+    DISPATCH_READY="no"
+  fi
+  if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
+        ( "$TO_AGENT" == "any" || "$TO_MODEL" == "any" ) ]]; then
+    echo "--kind $KIND requires concrete --to-agent and --to-model values" >&2
+    exit 2
+  fi
+  if [[ "$KIND" == "consensus" && \
+        ( "$PARENT" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+    echo "--kind consensus requires --parent and --base-revision" >&2
+    exit 2
+  fi
+  if [[ "$KIND" == "consensus" && \
+        ( "$TO_AGENT" != codex* || "$TO_AGENT" == "$FROM_AGENT" ) ]]; then
+    echo "--kind consensus requires a distinct Codex --to-agent" >&2
+    exit 2
+  fi
+  if [[ "$KIND" == "consensus" && \
+        ( "$FROM" != "reviews" || "$TO" != "reviews" ) ]]; then
+    echo "--kind consensus must be a reviews-to-reviews Codex consultation" >&2
+    exit 2
+  fi
+  if [[ "$KIND" =~ ^(subtask|integration)$ && "$FROM" != "reviews" ]]; then
+    echo "--kind $KIND must be dispatched by reviews" >&2
+    exit 2
+  fi
+  if [[ "$KIND" =~ ^(task|checkpoint)$ && \
+        ( "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
+    echo "legacy --kind $KIND requires --subtask/--checkpoint and --base-revision/--revision" >&2
+    exit 2
+  fi
+}
+
 TO=""
 TO_AGENT="any"
 TO_MODEL="any"
@@ -289,6 +403,7 @@ REVISION="n/a"
 GENERATION=""
 PLAN_REVISION=""
 DISPATCH_READY=""
+DISPATCH_READY_SET=0
 FROM=""
 FROM_AGENT=""
 FROM_MODEL="unknown"
@@ -309,7 +424,7 @@ while [[ $# -gt 0 ]]; do
     --base-revision|--revision) REVISION="${2:-}"; shift 2 ;;
     --generation) GENERATION="${2:-}"; shift 2 ;;
     --plan-revision) PLAN_REVISION="${2:-}"; shift 2 ;;
-    --dispatch-ready) DISPATCH_READY="${2:-}"; shift 2 ;;
+    --dispatch-ready) DISPATCH_READY="${2:-}"; DISPATCH_READY_SET=1; shift 2 ;;
     --to) TO="${2:-}"; shift 2 ;;
     --to-agent) TO_AGENT="${2:-}"; shift 2 ;;
     --to-model) TO_MODEL="${2:-}"; shift 2 ;;
@@ -389,48 +504,6 @@ if [[ -n "$DISPATCH_READY" && ! "$DISPATCH_READY" =~ ^(yes|no)$ ]]; then
   exit 2
 fi
 FROM_AGENT="${FROM_AGENT:-$CLI}"
-if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
-      ( "$PARENT" == "n/a" || "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
-  echo "--kind $KIND requires --parent, --subtask, and --base-revision" >&2
-  exit 2
-fi
-if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
-      ( -z "$GENERATION" || -z "$PLAN_REVISION" ) ]]; then
-  echo "--kind $KIND requires --generation and --plan-revision" >&2
-  exit 2
-fi
-if [[ "$KIND" =~ ^(subtask|integration|regression)$ && -z "$DISPATCH_READY" ]]; then
-  DISPATCH_READY="no"
-fi
-if [[ "$KIND" =~ ^(subtask|integration|regression)$ && \
-      ( "$TO_AGENT" == "any" || "$TO_MODEL" == "any" ) ]]; then
-  echo "--kind $KIND requires concrete --to-agent and --to-model values" >&2
-  exit 2
-fi
-if [[ "$KIND" == "consensus" && \
-      ( "$PARENT" == "n/a" || "$REVISION" == "n/a" ) ]]; then
-  echo "--kind consensus requires --parent and --base-revision" >&2
-  exit 2
-fi
-if [[ "$KIND" == "consensus" && \
-      ( "$TO_AGENT" != codex* || "$TO_AGENT" == "$FROM_AGENT" ) ]]; then
-  echo "--kind consensus requires a distinct Codex --to-agent" >&2
-  exit 2
-fi
-if [[ "$KIND" == "consensus" && \
-      ( "$FROM" != "reviews" || "$TO" != "reviews" ) ]]; then
-  echo "--kind consensus must be a reviews-to-reviews Codex consultation" >&2
-  exit 2
-fi
-if [[ "$KIND" =~ ^(subtask|integration)$ && "$FROM" != "reviews" ]]; then
-  echo "--kind $KIND must be dispatched by reviews" >&2
-  exit 2
-fi
-if [[ "$KIND" =~ ^(task|checkpoint)$ && \
-      ( "$SUBTASK" == "n/a" || "$REVISION" == "n/a" ) ]]; then
-  echo "legacy --kind $KIND requires --subtask/--checkpoint and --base-revision/--revision" >&2
-  exit 2
-fi
 valid_agent_id "$TO_AGENT" || {
   echo "invalid --to-agent: $TO_AGENT" >&2
   exit 2
@@ -469,6 +542,7 @@ cd "$ROOT"
 
 DISCUSS_DIR="docs/agents/discuss"
 OPEN_FILE="$DISCUSS_DIR/OPEN.md"
+LEDGER_FILE="docs/agents/QID_LEDGER.md"
 [[ -d "$DISCUSS_DIR" ]] || {
   echo "missing $DISCUSS_DIR" >&2
   exit 1
@@ -499,6 +573,37 @@ TITLE="${TITLE:-$SLUG}"
 if [[ "$THREAD" == */* || "$THREAD" != *.md ]]; then
   echo "--thread must be a filename under $DISCUSS_DIR ending in .md" >&2
   exit 2
+fi
+
+EXISTING_KIND=""
+if [[ -f "$THREAD_PATH" ]]; then
+  EXISTING_KIND="$(thread_meta_value "$THREAD_PATH" kind)"
+  if [[ -z "$EXISTING_KIND" ]]; then
+    echo "refusing: $THREAD has no kind metadata; create a new thread instead" >&2
+    exit 1
+  fi
+  if [[ "$KIND" != "$EXISTING_KIND" ]]; then
+    echo "refusing: --kind $KIND does not match existing thread kind $EXISTING_KIND in $THREAD" >&2
+    echo "never reuse a runnable thread to send a question; create a separate" >&2
+    echo "question thread or append a Reply via scripts/agent_reply.sh" >&2
+    exit 1
+  fi
+  if [[ "$EXISTING_KIND" =~ ^(subtask|integration|regression)$ ]]; then
+    # Reuse may inherit lifecycle fields from the thread metadata instead of
+    # restating them; anything explicitly passed is still compared below so a
+    # silent in-place change remains impossible.
+    [[ -n "$GENERATION" ]] || GENERATION="$(thread_meta_value "$THREAD_PATH" generation)"
+    [[ -n "$PLAN_REVISION" ]] || PLAN_REVISION="$(thread_meta_value "$THREAD_PATH" plan_revision)"
+    if [[ "$DISPATCH_READY_SET" -eq 0 ]]; then
+      DISPATCH_READY="$(thread_meta_value "$THREAD_PATH" dispatch_ready)"
+    fi
+  fi
+fi
+
+validate_cross_fields
+
+if [[ -f "$THREAD_PATH" && "$EXISTING_KIND" =~ ^(subtask|integration|regression)$ ]]; then
+  guard_thread_metadata "$THREAD_PATH"
 fi
 
 if [[ ! -f "$THREAD_PATH" ]]; then
@@ -543,7 +648,36 @@ set_thread_target "$THREAD_PATH" "$TO" "$TO_AGENT" "$TO_MODEL" \
   printf -- '- %s\n\n' "$QUESTION"
 } >> "$THREAD_PATH"
 
-ID="$(next_question_id "$OPEN_FILE")"
+# An existing row keeps its id (no allocation, no ledger entry); only genuinely
+# new rows allocate, so the ledger records every id exactly once.
+ROW_EXISTS=0
+ID=""
+while IFS= read -r row_line; do
+  [[ "$row_line" == \|* ]] || continue
+  [[ "$row_line" == "| id "* || "$row_line" == "|---"* ]] && continue
+  if [[ "$row_line" == *"| $THREAD |"* ]]; then
+    ROW_EXISTS=1
+    ID="$(parse_first_cell "$row_line")"
+    break
+  fi
+done < "$OPEN_FILE"
+
+if [[ "$ROW_EXISTS" -eq 0 ]]; then
+  ID="$(next_question_id "$OPEN_FILE" "$LEDGER_FILE")"
+  if [[ ! -f "$LEDGER_FILE" ]]; then
+    {
+      printf '# Mailbox Q-id allocation ledger\n\n'
+      printf 'Append-only record of every mailbox id allocated by agent_notify.sh.\n'
+      printf 'The allocator takes max+1 over this ledger plus the live OPEN.md\n'
+      printf 'rows, so ids of completed and removed rows are never reused.\n'
+    } > "$LEDGER_FILE"
+  fi
+  {
+    printf '\n## %s\n\n' "$(date +%Y-%m-%d)"
+    printf -- '- %s\n' "$ID"
+  } >> "$LEDGER_FILE"
+fi
+
 ROW="$(printf '| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |' \
   "$ID" "$KIND" "$(trim_cell "$PARENT")" "$(trim_cell "$SUBTASK")" \
   "$(trim_cell "$DEPENDS_ON")" "$(trim_cell "$REVISION")" "$TO" \

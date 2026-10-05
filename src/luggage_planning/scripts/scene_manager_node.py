@@ -39,6 +39,7 @@ from luggage_planning.planning_scene_client import (
     BOX_OBJECT_ID,
     PlanningSceneClient,
     load_stl_mesh_msg,
+    static_sync_failure_is_permanent,
 )
 
 
@@ -65,6 +66,7 @@ class SceneManagerNode(Node):
         self._container_id = ""
         self._place_support_touch = False
         self._synced = False
+        self._sync_stopped = False
         self._sync_lock = threading.Lock()
 
         self._scene = PlanningSceneClient(self, callback_group=group)
@@ -93,7 +95,7 @@ class SceneManagerNode(Node):
         return load_scene_tf_config(resolve_scene_tf_config_path(path or None))
 
     def _auto_sync_tick(self):
-        if self._synced:
+        if self._synced or self._sync_stopped:
             return
         if not self._scene.wait_ready(timeout_sec=0.2):
             return
@@ -103,9 +105,20 @@ class SceneManagerNode(Node):
             if self._sync_timer is not None:
                 self._sync_timer.cancel()
             self.get_logger().info("auto sync_static_scene: %s" % message)
-        else:
-            self.get_logger().warn(
-                "auto sync_static_scene waiting: %s" % message)
+            return
+        if static_sync_failure_is_permanent(message):
+            # Missing trimesh, a missing mesh file, or a bad scene config
+            # will not appear on the next 1 s tick. Stop the timer so the
+            # failure stays a single error instead of a waiting loop.
+            # The sync service itself can still be called again.
+            self._sync_stopped = True
+            if self._sync_timer is not None:
+                self._sync_timer.cancel()
+            self.get_logger().error(
+                "auto sync_static_scene failed closed: %s" % message)
+            return
+        self.get_logger().warn(
+            "auto sync_static_scene waiting: %s" % message)
 
     def _handle_sync_static(self, _request, response):
         ok, message = self._sync_static()

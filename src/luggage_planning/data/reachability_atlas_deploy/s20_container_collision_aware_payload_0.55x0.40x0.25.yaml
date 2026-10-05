@@ -1,0 +1,86 @@
+atlas_version: '2.0'
+schema_version: 2
+generated_at: '2026-09-29T02:07:02'
+computation_time_sec: 73.03
+mode: collision_aware
+marginal_joint_margin: 0.1
+query:
+  yaw_tolerance: 0.1
+  hard_reject_min_neighbor_confidence: 0.9
+  hard_reject_interior_fraction: 0.1
+builder:
+  algorithm: opening_connected_wavefront_v3
+  serial_deterministic: true
+  max_branches: 3
+  branch_distance: 0.25
+  joint_interpolation_step: 0.1
+  state_validity_available: true
+  seed_policy: fixed_anchor_connected_warm_start_repair_v1
+  ik_solver: offline_ik.refine_to_pose
+  deterministic_fingerprint: fa6cb1513293d8acbc484da5c08d086135d570d4c2405001591a011d8dff7142
+  tool_down_tolerance: 0.0
+  transit_clearance: 0.3
+dependencies:
+  robot_model: elfin_s20_with_camera
+  scene_tf_hash: 98313fb8b30e51521a4c45a829ff6d5d
+  urdf_hash: 85e96b56debd30d8469f7d5a8131d32c
+  ik_link: suction_contact_frame
+  ik_group: elfin_arm
+payload:
+  enabled: true
+  shape: box
+  size:
+  - 0.55
+  - 0.4
+  - 0.25
+  attach_link: suction_contact_frame
+  offset:
+  - 0.0
+  - 0.0
+  - 0.125
+  touch_links:
+  - suction_panel
+grid:
+  frame: container_link
+  resolution_xyz: 0.15
+  origin:
+  - -0.745
+  - -0.985
+  - 0.5
+  size:
+  - 10
+  - 14
+  - 10
+  yaw_bins:
+  - 0.0
+  - 1.5707963267948966
+  transit_clearance: 0.3
+  lift_policy:
+    nominal: 0.3
+    safe_tool_z: 1.55
+    min_lift: 0.06
+    frame: container_link
+container:
+  inner_dimensions:
+  - 1.49
+  - 1.97
+  - 2.01
+  floor_z: 0.53
+  ceiling_z: 2.01
+  usable_height: 1.4799999999999998
+  base_xyz:
+  - 0.6000055098036072
+  - 1.4999977960668185
+  - -0.86
+  base_rpy:
+  - 0.0
+  - -0.0
+  - 1.5708
+  opening_side: negative_x
+stats:
+  total_cells: 2800
+  reachable_cells: 200
+  marginal_cells: 34
+  unreachable_cells: 415
+  unknown_cells: 2151
+  reachability_rate: 0.0714

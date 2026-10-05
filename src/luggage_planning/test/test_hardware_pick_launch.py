@@ -103,6 +103,14 @@ class HardwarePickLaunchTest(unittest.TestCase):
         self.assertNotIn("wait_for_service(timeout_sec=remain)", src)
         self.assertNotIn("wait_for_server(timeout_sec=remain)", src)
 
+    def test_scene_parameter_selects_named_scene_tf(self):
+        src = LAUNCH.read_text(encoding="utf-8")
+        self.assertIn('DeclareLaunchArgument(\n                "scene"', src)
+        self.assertIn('default_value="scene_tf_deploy"', src)
+        self.assertIn("scene_tf, scene_tf_deploy", src)
+        self.assertIn("class ResolvedSceneTf", src)
+        self.assertIn('"scene_tf_config": ResolvedSceneTf()', src)
+
     def test_site_launch_uses_site_poses_and_current_observe(self):
         src = LAUNCH.read_text(encoding="utf-8")
         self.assertIn("robot_poses.site.yaml", src)

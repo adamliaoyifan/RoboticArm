@@ -64,6 +64,7 @@ from luggage_description.suitcase_visual import (
     pickup_box_pose,
     pickup_visual_sdf,
     resolve_observable_reference,
+    size_tier_mass,
     size_tier_name,
     sized_model_name,
     visual_id_for_entry,
@@ -162,6 +163,7 @@ class PickupBoxSpawner(Node):
         self.declare_parameter("visual_settle_sec", 2.0)
         # box: primitive AABB. mesh: pre-scaled model:// visual=collision.
         self.declare_parameter("visual_kind", "mesh")
+        self.declare_parameter("fixed_size", "")
         self.declare_parameter("models_root", "")
 
         scene_cfg = self.get_parameter("scene_tf_config").value
@@ -572,6 +574,15 @@ class PickupBoxSpawner(Node):
     def _sample_box(self):
         """Return (entry, size, mass_kg, generated, id_suffix)."""
         entry = self._choose_entry()
+        fixed = str(self.get_parameter("fixed_size").value or "").strip()
+        if fixed:
+            parts = [float(v) for v in fixed.split(",")]
+            if len(parts) != 3 or min(parts) <= 0.0:
+                raise ValueError("fixed_size must be W,D,H metres: %s" % fixed)
+            mass = size_tier_mass(parts)
+            if mass is None:
+                mass = float(entry.get("mass_kg", 8.0))
+            return entry, parts, mass, True, "fixed"
         if self._size_mode != "continuous":
             size = list(entry["size"])
             mass = float(entry.get("mass_kg", 0.0))

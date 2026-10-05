@@ -185,15 +185,14 @@ Unported / `ros1_reference` / `COLCON_IGNORE`. Forbidden to copy into Humble.
 
 ### E. Place motion without occupancy
 
-- **RS-27.** Place motion (cartesian `GetCartesianPath` and OMPL
-  `RRTConnect` in `motion_executor`) collision-checks MoveIt URDF, the
-  attached payload, and `scene_manager` boxes only. It does not query
-  cargo occupancy (`surface_2d` / voxel map) at `geometry_hash` /
-  `map_revision`, does not emit a scored multi-path set, and has no
-  dimension/safety/efficiency selector. OCC-1 trial 1
-  `PLACE_PLAN_traverse` fraction 0.859 then OMPL `FAILURE` is this gap.
-  Contract: [placement.md](placement.md) Place motion through occupancy.
-  `src/luggage_planning/luggage_planning/motion_executor.py`.
+- **RS-27.** Open. `motion_executor` now re-sweeps cargo occupancy, and
+  `TrajectorySelector` scores geometric variants plus atlas grid paths
+  (dimension, safety, efficiency, placement). `joint_path` does not fall
+  back to `RRTConnect`. The production `motion_planner_node` still does
+  not select, and no scored run has shown transit and traverse staying
+  on the selector path. OCC-1 trial 1 `PLACE_PLAN_traverse` fraction
+  0.859 then OMPL `FAILURE` is the original gap. Contract:
+  [placement.md](placement.md) Place motion through occupancy.
 
 ## Not defects
 

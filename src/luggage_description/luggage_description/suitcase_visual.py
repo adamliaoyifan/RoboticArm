@@ -5,10 +5,10 @@ Unit-AABB sources live in ``luggage_gazebo/models/suitcase_loafbrr`` and
 two: Fortress ogre2 caches GPU meshes by URI, so sharing one STL with SDF
 ``<scale>`` makes later boxes render at the first scale.
 
-Pickup mesh assets are six pre-scaled models (each visual x small/medium/large)
-with visual and collision using the same STL at scale 1 1 1. Spawn only
-``gz create``s the matching ``model://``. Box visual stays a primitive box of
-the catalog size (production default).
+Pickup mesh assets are pre-scaled models: each visual times
+small/medium/large, plus the inch20/22/24/26 sizes. Visual and collision
+use the same STL at scale 1 1 1. Spawn only ``gz create``s the matching
+``model://``.
 """
 
 from __future__ import division
@@ -53,6 +53,17 @@ SIZE_TIERS = (
     ("large", (0.80, 0.50, 0.32), 23.0, "large"),
 )
 
+# Standing suitcase order is height x width x depth. Lying spawn size is
+# (X, Y, Z) = (width, standing height, depth): width along X, the long
+# standing side along Y, thickness along Z. Masses follow the catalog
+# affine density rho = 119.7 + 468.5 * V, clamped to the 2..23 kg band.
+INCH_SIZE_TIERS = (
+    ("inch20", (0.35, 0.53, 0.22), 5.67, "inch20"),  # 0.53 x 0.35 x 0.22
+    ("inch22", (0.37, 0.58, 0.24), 7.41, "inch22"),  # 0.58 x 0.37 x 0.24
+    ("inch24", (0.40, 0.63, 0.25), 9.40, "inch24"),  # 0.63 x 0.40 x 0.25
+    ("inch26", (0.42, 0.68, 0.27), 12.02, "inch26"),  # 0.68 x 0.42 x 0.27
+)
+
 SIZED_MANIFEST_NAME = "sized_suitcases.json"
 
 
@@ -80,13 +91,33 @@ def sized_mesh_uri(visual_id, tier):
     return "model://%s/%s" % (sized_model_name(visual_id, tier), MESH_FILE)
 
 
+def iter_size_tiers():
+    """Catalog tiers first, then the inch sizes."""
+    return SIZE_TIERS + INCH_SIZE_TIERS
+
+
+def _size_matches(size, spec, atol):
+    return all(
+        abs(float(size[i]) - float(spec[i])) <= atol for i in range(3))
+
+
 def size_tier_name(size, atol=1e-3):
-    """Return small/medium/large if *size* matches a catalog tier, else None."""
+    """Return the tier name if *size* matches a registered tier, else None."""
     if size is None or len(size) < 3:
         return None
-    for name, spec, _mass, _catalog_id in SIZE_TIERS:
-        if all(abs(float(size[i]) - float(spec[i])) <= atol for i in range(3)):
+    for name, spec, _mass, _catalog_id in iter_size_tiers():
+        if _size_matches(size, spec, atol):
             return name
+    return None
+
+
+def size_tier_mass(size, atol=1e-3):
+    """Return the registered mass in kg, or None when *size* is unknown."""
+    if size is None or len(size) < 3:
+        return None
+    for _name, spec, mass, _catalog_id in iter_size_tiers():
+        if _size_matches(size, spec, atol):
+            return float(mass)
     return None
 
 
@@ -298,7 +329,7 @@ def resolve_observable_reference(models_root, size, visual_id):
 def write_scaled_stl(src_path, dest_path, scale):
     """Copy a binary STL with vertices multiplied by ``scale`` (W, D, H).
 
-    Used once when generating the six pickup models. Spawn does not call this.
+    Used once when generating pickup models. Spawn does not call this.
     """
     sx, sy, sz = (float(scale[0]), float(scale[1]), float(scale[2]))
     with open(src_path, "rb") as handle:
@@ -407,8 +438,8 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
-            "mesh pickup visual requires a catalog size "
-            "(small/medium/large), got %s" % (list(size),))
+            "mesh pickup visual requires a registered size tier, got %s"
+            % (list(size),))
     return suitcase_sdf(
         model_name, size, mass_kg, visual_id,
         mesh_uri_override=sized_mesh_uri(visual_id, tier),
@@ -502,17 +533,21 @@ def _model_config_xml(name, description):
 """ % (name, description)
 
 
-def write_sized_suitcase_models(models_root):
-    """Write the six pre-scaled pickup models and a measure_size manifest.
+def write_sized_suitcase_models(models_root, tiers=None, merge_manifest=False):
+    """Write pre-scaled pickup models and a measure_size manifest.
 
-    Spawn must not call this. Run from the generator script when assets change.
+    *tiers* defaults to the three catalog sizes. Pass ``INCH_SIZE_TIERS``
+    with ``merge_manifest=True`` to add the inch sizes without dropping
+    the catalog rows. Spawn must not call this.
     """
+    if tiers is None:
+        tiers = SIZE_TIERS
     records = {}
     for visual_id in VISUAL_IDS:
         src = source_stl_path(visual_id, models_root)
         if not os.path.isfile(src):
             raise IOError("missing unit STL: %s" % src)
-        for tier, size, mass_kg, catalog_id in SIZE_TIERS:
+        for tier, size, mass_kg, catalog_id in tiers:
             name = sized_model_name(visual_id, tier)
             dest_stl = sized_stl_path(visual_id, tier, models_root)
             write_scaled_stl(src, dest_stl, size)
@@ -543,6 +578,10 @@ def write_sized_suitcase_models(models_root):
                 "uri": sized_mesh_uri(visual_id, tier),
             }
     manifest_path = sized_suitcases_manifest_path(models_root)
+    if merge_manifest:
+        merged = load_sized_suitcases_manifest(models_root)
+        merged.update(records)
+        records = merged
     with open(manifest_path, "w") as handle:
         json.dump(records, handle, indent=2, sort_keys=True)
         handle.write("\n")

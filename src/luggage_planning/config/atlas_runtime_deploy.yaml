@@ -1,0 +1,44 @@
+# Deploy-cell reachability atlas. The joint seeds were sampled against
+# luggage_description/config/scene_tf_deploy.yaml. Nodes select this file
+# automatically when the active scene hash matches the atlas metadata.
+# Pass atlas_runtime_config only to override that match.
+#
+# atlas_dir is a directory under the package data/ tree (src first, then
+# the installed share). If container_tf_tuner rewrites the deploy scene,
+# the stored seeds no longer match; resample before planning with them.
+# Motion, placement, and query settings match atlas_runtime.yaml.
+enabled: true
+atlas_dir: reachability_atlas_deploy
+basename: "s20_container_collision_aware"
+atlas_file: ""           # absolute .npz override; meta = same stem + .yaml
+# Hardware cell. warn keeps a mismatched atlas loaded. Do not certify a
+# sim campaign with this file: the simulation cell is hash_policy strict.
+hash_policy: "warn"      # off | warn | strict, against the atlas meta hashes
+query_offset: [0.0, 0.0, 0.0]   # container-frame [x, y, z] added to queries
+payload:
+  policy: "auto"         # auto = smallest built atlas enveloping the measured
+                         # box (conservative); explicit = use explicit_size
+  explicit_size: [0.0, 0.0, 0.0]
+placement:
+  hard_reject: true      # high-confidence unreachable cell -> infeasible
+  w_reachability: 0.3    # score weight on the atlas prior; 0 = dump-only rank
+  dump_only: false       # true = never reject, never re-rank; record only
+motion:
+  enabled: true
+  seed_set: "transit"    # transit | contact | both
+  max_seeds: 3           # branches per query (NaN/zero-padded rows dropped)
+  mode: "miss-retry"     # miss-retry = after unseeded KDL miss; always-first
+                         # = seed before the unseeded try (slower when it hits)
+  target_z_lift_m: 0.008 # attach-hang compensation for in-container goals
+                         # (GT attach hangs the box ~5 mm low + 8 mm lateral;
+                         # unlifted slot-contact goals sit 3.5 mm in the floor)
+  refine: true           # deterministic offline refine of atlas seeds onto
+                         # the exact target (scipy; KDL restarts are a
+                         # lottery for this class -- 2026-09-24 smokes)
+  # KDL misses this target class even when seeded (2026-09-24 smoke: 3
+  # atlas seeds x 2 yaws all NO_IK_SOLUTION), so the FK-verified joint-goal
+  # submit is the working path. OMPL validates the goal state itself when
+  # planning to it. Transit is a coarse leg: the 1838 run placed fine from
+  # a 27 mm-off goal, so half a cell (0.15 m) is the right tolerance here.
+  fk_verify_tol_m: 0.25
+  submit_mode: "joint_goal"

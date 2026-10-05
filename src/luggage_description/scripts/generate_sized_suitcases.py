@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the six pre-scaled pickup suitcase models (run once, not at spawn)."""
+"""Write pre-scaled pickup suitcase models (run once, not at spawn)."""
 
 from __future__ import division
 
@@ -13,8 +13,13 @@ def main(argv=None):
     default_root = os.path.normpath(os.path.join(
         here, "..", "luggage_gazebo", "models"))
     models_root = argv[0] if argv else default_root
-    from luggage_description.suitcase_visual import write_sized_suitcase_models
-    records = write_sized_suitcase_models(models_root)
+    from luggage_description.suitcase_visual import (
+        INCH_SIZE_TIERS,
+        write_sized_suitcase_models,
+    )
+    write_sized_suitcase_models(models_root)
+    records = write_sized_suitcase_models(
+        models_root, tiers=INCH_SIZE_TIERS, merge_manifest=True)
     print("wrote %d sized suitcase models under %s" % (
         len(records), models_root))
     for name in sorted(records):

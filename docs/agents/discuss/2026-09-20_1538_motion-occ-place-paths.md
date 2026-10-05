@@ -336,3 +336,332 @@ perception map / motion core / MOTION-OCC+eval).
 Follow-up debt (this thread): selector not in the production chain —
 acceptance is pack_to_full_run.sh placing through the selector; probe
 service is the seam. MOTION-OCC stays open. OCC-1 stays open.
+
+## Reply -- eng/claude-code -- 2026-09-21 22:35 -- claude-code/glm-5.3
+
+First scored A1 under the new stack (pre-registered gates at
+`docs/status/evidence/motion_occ/2026-09-21_2215_a1_allsweep/GATES.md`).
+Verdict FAIL, and the failure is mine: the 20:55 row probe, not the
+occupancy work.
+
+Trial 0 selection probed 20/20 rows (mode on, unavailable 0) and
+rejected every one — 15 IK (single-pose IK from the observe seed, the
+POS-1 a9743a4 lesson relearned) and 5 fraction, all at the SAME 0.3167:
+the probe asks one cartesian from the current EE through the portal
+polyline, a path nobody executes (transit is OMPL free-space; traverse
+starts at the portal). Winner NULL -> PLACE_PATH_INFEASIBLE,
+fail-closed with a correct dump (n_slots 5, n_rows 20).
+
+Occupancy side is healthy: the 20:45 hull blocker is confirmed fixed
+(20 sweep-clean rows here + a1c/a1d), all-segment injection is live
+(pre_grasp boundary occupancy_checked=true, objs 0 on the empty map).
+Two instrument bugs surfaced: probe-rejected rows keep reason "ok"
+(plan() gate uses `or`), and cartesian segments report
+occupancy_checked=False because `_execute_trajectory` constructs
+SegmentExecResult positionally (default False) instead of via
+`_result()`.
+
+First measured probe cost: 31.66 s / 20 rows (0.09 s IK-hit, ~2.08 s
+IK-miss) — top-N capping is warranted.
+
+Full scoring + follow-ups (per-leg chain-seeded probe, reason hygiene,
+result routing, re-run): RESULT.md in the evidence dir. MOTION-OCC
+stays open. OCC-1 stays open.
+
+## Reply -- eng/claude-code -- 2026-09-21 23:30 -- claude-code/glm-5.3
+
+User-directed relaxation of the 20:45 wrist gate: the return path only
+needs collision-free executable motion — wrist-branch preservation is a
+placement requirement, not a return requirement.
+
+`wrist_free_segments` node param (default
+`place_exit,stage_mid,stage_late,stage`): those segments skip the wrist
+rejection on all three gates (cartesian solution, pose-target IK joint
+goal, `_finish_move_group` backstop) — the wrist measurement is still
+recorded in the boundary, only the refusal is dropped. The excursion
+gate (3 rad/m) deliberately stays on free legs: that is the
+execution-health check that catches the 1838 unwind-monster class.
+Placement legs (transit carrying payload, traverse/insert/descend,
+retreat inside the container) keep the full gate; `*` widens the free
+set if needed. Per-segment resolution lives in
+`motion_executor.wrist_enforced`; named-pose recovery keeps its
+explicit enforce_wrist=False.
+
+Offline: planning suite 497 passed (incl. 8 new
+`test_wrist_policy.py` + the wrist-singularity/excursion suites). Not
+sim-verified yet — exercises on the next A1 run together with the probe
+fix. MOTION-OCC stays open. OCC-1 stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 09:53 -- cursor/grok-4.6
+
+User-directed: finish `wrist_free_segments` so the three wrist refusals
+are actually skipped on free legs, not only named in the predicate.
+
+Free set default is `place_exit,stage_mid,stage_late,stage` (`*` frees
+all). `wrist_enforced(name, free_set)` is module-level; the node parses
+the CSV into a set on `MotionExecutor`. Cartesian `_judge_cartesian_response`,
+pose-target IK `_wrist_blocked` / joint-delta precheck, and
+`_finish_move_group` all record `wrist_margin` then refuse only when
+enforced. Explicit `enforce_wrist=True/False` still overrides the name
+lookup (named observe/home stays False). Excursion 3 rad/m and collision
+stay on free legs — a 6.58 rad/1.39 m unwind is still rejected.
+
+Offline: `test_wrist_policy.py` + `test_wrist_singularity.py` +
+`test_cartesian_excursion.py` 42 passed. No sim this turn. MOTION-OCC
+stays open. OCC-1 stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 09:57 -- cursor/grok-4.6
+
+User-directed non-scored A1 for `wrist_free_segments`. Command:
+`scripts/motion_occ_place_path_run.sh --n 1 --place-probe off` (probe-on
+still dies at selection). Evidence
+`docs/status/evidence/motion_occ/2026-09-22_0955_wrist_free_a1/`.
+`clock_publishers=1`, teardown residual 0.
+
+Verdict FAIL `PLACE_PLAN_transit`. `wrist_free` was not exercised: free
+legs `stage_mid`/`stage_late` succeeded cartesian fraction 1.0 with
+`wrist_margin` 1.565/1.567 (no branch cross, so the skip never fired).
+`place_exit` never ran. Locked `transit` still dies at
+`MoveGroup error_code=99999 (pose constraint fallback)`, 0 traj points.
+New dump field: `pose_target_joint_delta n_solutions=0` — dual-quat IK
+returned no collision-aware solution for either yaw, then OMPL pose
+constraints also failed. Same goal `[1.03, -0.735, 0.777]` and payload
+as 2154/a1c. MOTION-OCC stays open. OCC-1 stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 10:10 -- cursor/grok-4.6
+
+User-directed: is A1 `PLACE_PLAN_transit` mostly the wrist singularity?
+
+No. `2026-09-22_0955_wrist_free_a1` is not cartesian-through-kπ and not
+the wrist threshold refusing a planned path. Transit is already
+`pose_target` (joint-space). Staging cartesian parked `j5` at 1.565–1.567
+(`wrist_margin` ok). Transit dump: `wrist_margin` null, trajectory 0
+points, `pose_target_joint_delta n_solutions=0`, then MoveGroup `99999`
+pose-constraint fallback (`plan_sec` 7.13 s ≈ two 1 s collision-aware
+IK searches + 5 s OMPL). Occupancy object count 0; scene is attached
+`pickup_box` + container mesh + pedestal.
+
+Compare `2026-09-21_1838` same seed/target/payload: IK joint goal
+succeeded as a π wrist flip (`j5` 1.570→4.707, 82 pts). After the
+branch lock, that PTP is no longer accepted; a same-branch goal was
+not returned either. So the *lineage* is wrist-branch, but this dump
+is empty collision-aware IK + OMPL FAILURE, not a σ_min reject.
+IK error codes were not recorded, so flip-missed-in-1 s vs goal-in-
+collision is not split. Elbow/shoulder detectors would not have
+changed this outcome. Main repair remains path type (already PTP)
+plus a same-branch joint goal, not another closed-form refuse gate.
+MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 11:00 -- cursor/grok-4.6
+
+User-directed: drop the j5 branch lock; the intended gate is "j6 does
+not spin." Cartesian / pose_target / MoveGroup backstop now refuse
+`PLACE_PATH_J6_ROTATION` when elfin_joint6 travel exceeds 2.50 rad
+(staging 0.71, 1838 transit 1.90, unwind place_exit 5.88+). j5 = k*pi
+and the 1.50 all-joint IK hop stay dump-only (`wrist_margin`,
+`pose_target_joint_delta`). Dual-quat IK prefers a solution whose j6
+travel is under the limit, then the nearer seed. `wrist_free_segments`
+default is empty (j6 enforced on every named segment, including
+`place_exit`). Named observe/home still `enforce_j6=False`.
+
+Offline: `test_wrist_policy.py` + `test_wrist_singularity.py` +
+`test_cartesian_excursion.py` 44 passed. No sim this turn. MOTION-OCC
+stays open. OCC-1 stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 11:05 -- cursor/grok-4.6
+
+User-directed A1 after dropping the j5 lock. Command:
+`scripts/motion_occ_place_path_run.sh --n 1 --place-probe off`.
+Evidence `docs/status/evidence/motion_occ/2026-09-22_1103_j6_a1/`.
+`clock_publishers=1`, teardown residual 0.
+
+Verdict FAIL `PLACE_PLAN_transit`. Same mechanism as 0955: collision-aware
+IK `n_solutions=0`, then `MoveGroup 99999` pose-constraint fallback, 0
+traj points, `plan_sec` 7.13 s. `j6_rotation` and `wrist_margin` are
+null on transit — the new flange gate never saw a path. Staging
+cartesian succeeded: `j6` travel 0.709 / 0.489, both under 2.50.
+Target still `[1.03, -0.735, 0.777]`, payload `0.507×0.360×0.247`.
+Unlocking j5 did not change this dump. MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 14:21 -- cursor/grok-4.6
+
+User-directed: is transit "lift then return to observe"? No. Transit
+is the carry into the suitcase, not the observe named pose. This A1's
+transit input is pose_target from stage_late suction
+`[-0.286, -0.553, 1.827]` (j5≈π/2, box attached) to world
+`[1.03, -0.735, 0.777]` tool-down — the occupancy `direct` last
+waypoint (slot contact height). Intermediate portal is ignored
+because type is pose_target. Collision-aware IK still `n_solutions=0`.
+place_exit / observe are later and were not reached. MOTION-OCC stays
+open.
+
+## Reply -- eng/cursor -- 2026-09-22 14:28 -- cursor/grok-4.6
+
+User-directed: what did occupancy look like at the 1103 transit fail,
+and did the carried box's own occupancy reject the path?
+
+No. `fail_1790046304290_transit_surface_2d.json` is a 30×40 empty
+suitcase: height all 0, clearance all 1.48, state 1170 unknown + 30
+free, zero `occupied`. `floor_z` 0.0 so unknown cells are not
+obstacles. Injected `occupancy_boxes` is empty,
+`occupancy_object_count` 0. Selector `direct` row is
+`feasible=true`, `min_clearance=Infinity`, `first_hit_cell=null`.
+The carried box is MoveIt attached `pickup_box`, not a cargo-map
+cell. The fail code is still `MoveGroup 99999` / `n_solutions=0`,
+not `PLACE_PATH_INFEASIBLE`. MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 14:40 -- cursor/grok-4.6
+
+User-directed picture of the 1103 transit instant. There is no planned
+trajectory to draw (0 points, no occupancy collision reject). Figure
+uses URDF FK of the recorded joints (suction error 0.0 mm), the
+attached box at the Gazebo pose, the container collision STL at
+scene origin `[1.5, 0, 0]`, the pedestal box, and a dotted chord to
+the requested goal. PNG and HTML:
+`docs/status/evidence/motion_occ/2026-09-22_1103_j6_a1/dumps/trial_00_PLACE_PLAN_transit/replay/transit_fail_scene.png`
+MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 14:46 -- cursor/grok-4.6
+
+User-directed: the transit motion has a feasible trajectory. Confirmed.
+`2026-09-21_1838` trial 0 used the same start joints and the same target
+`[1.03, -0.735, 0.777]`, and executed `ompl ok (IK joint goal)`, 82
+points. End joints `j5` 1.570→4.707, `j6` travel 1.904 rad, under the
+2.50 gate. FK of that endpoint is 27 mm from the nominal suction
+target. Traverse through retreat also succeeded; the trial died on
+`place_exit`. `2026-09-22_1103` never submitted that joint goal:
+collision-aware IK returned `n_solutions=0`. MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 15:30 -- cursor/grok-4.6
+
+User-directed: release j5 and j6. The only orientation gate on a
+`keep_tool_down` segment is suction roll/pitch within
+`tool_down_abs_tol` (0.05 rad) of world -Z; yaw is free. j5/j6 travel
+stays in the dump and does not refuse. IK no longer drops a joint goal
+for j6 travel. Offline: wrist/tool-down/excursion tests 39 passed.
+No sim this turn. MOTION-OCC stays open.
+
+## Reply -- eng/cursor -- 2026-09-22 15:43 -- cursor/grok-4.6
+
+User-directed A1 with at least 3 placements. Command:
+`scripts/motion_occ_place_path_run.sh --n 3 --sequence-ids carryon,standard,large --place-probe off`.
+Evidence `docs/status/evidence/motion_occ/2026-09-22_1540_tool_down_a3/`.
+`clock_publishers=1`, teardown residual 0. `place_ok=0`.
+
+Trial 0 `PLACE_PLAN_transit` while carrying, so the campaign stopped
+before box 1. Replay bundle `replay_possible: true`. IK
+`n_solutions=0`, then RRTConnect `Unable to sample any valid states
+for goal tree`, MoveIt `Unable to solve` / `Catastrophic failure`,
+`99999`, 0 points. j5/j6 gates did not fire. Occupancy boxes 0.
+Scene figure: `dumps/trial_00_PLACE_PLAN_transit/replay/transit_fail_scene.png`.
+Review: `failure_review.md`. MOTION-OCC stays open.
+
+
+
+
+
+
+
+
+
+
+## Reply -- eng/claude-code -- 2026-09-24 11:00 -- claude-code/glm-5.3
+
+User-directed: which object / container face blocked the collision-aware
+IK at the 1540 `transit` target? Answer offline, no sim: none.
+
+New tool `scripts/replay_collision_attribution.py` rebuilds the scene
+from the replay bundle (container mesh at container_link [1.5,0,0],
+pedestal, attached payload), solves IK offline for both requested
+tool-down quats, and closest-point-tests every link against named
+container faces. FK validates against the recorded suction pose to
+0.4 mm.
+
+Result: 5 distinct IK branches reach the exact nominal target; the
+tightest approach anywhere is pickup_box bottom to `floor_top` 1.0 mm
+-- the slot contact gap, not a penetration. Everything else clears
+>=105 mm (camera_link nearest). elfin_base-pedestal 0 mm is the
+bolted joint, identical in the executed 1838 control. The 1838
+endpoint is 0.02 rad from offline solution IK_yaw+pi #5 at the target.
+
+So the goal is collision-free; the reject was solver nondeterminism:
+KDLKinematicsPlugin (config timeout 0.05 s, executor override 1 s),
+seeded Newton + random restarts, same seed/target/scene solved at 1838
+and failed at 0955/1103/1540. OMPL goal-tree starvation follows the
+same IK via the constrained goal sampler inside the 5 mm sphere.
+
+Repair ranking: seed the IK retry with the atlas/last-executed transit
+endpoint (or submit that joint goal straight to OMPL on IK miss);
+raising the IK budget second; widening the 5 mm sphere only patches
+the sampler. Evidence:
+`docs/status/evidence/motion_occ/2026-09-22_1540_tool_down_a3/collision_attribution.md`
+(table json + self-contained HTML figure in the trial replay dir).
+MOTION-OCC stays open. OCC-1 stays open.
+
+## Reply -- eng/claude-code -- 2026-09-24 11:30 -- claude-code/glm-5.3
+
+User-directed: is there a more efficient IK solver than the failing
+KDL?
+
+The problem is not hard, the implementation is weak: scipy LM (same
+numerical family) from the recorded start seed reaches the 1540 target
+to 1e-9 in 0.00 s. Options ranked:
+
+1. No new dependency, fastest win: seed the IK retry from the
+   reachability atlas. `transit_seeds`/`contact_seeds`
+   (`src/luggage_planning/data/reachability_atlas/*_payload_*.npz`)
+   hold collision-aware joint goals per 0.15 m cell x 2 yaw bins, and
+   the failing slot cell [2,2,2] yaw0 is covered:
+   `[0.936,-0.602,0.496,1.671,1.567,2.507]` (third posture family,
+   j5 same-branch). Atlas payload 0.55x0.40x0.25 is slightly larger
+   than the measured box, i.e. conservative. Caveat: atlas URDF hash
+   (2026-08-11) predates current -- re-FK a seed before submitting it
+   as a joint goal; a stale seed still works as a KDL seed.
+2. Config-level (both apt-installed in this Humble):
+   `cached_ik_kinematics_plugin` (repeats of the same slot region hit
+   the cache; nondeterminism becomes one-time per process) and
+   `lma_kinematics_plugin` (damped LM vs KDL Newton; same
+   local+restart paradigm, marginal).
+3. Strategic: IkFast analytic plugin -- all branches, deterministic,
+   microseconds. Elfin S20 is an OFFSET wrist (j4 parallel j6,
+   0.138 m apart -- NOT spherical), so hand-derivation is messy;
+   OpenRAVE generation handles it. Cost: generation env + plugin
+   build + branch validation. BioIK (source build) is the other
+   candidate; TRAC-IK has no Humble port.
+
+Recommended: (1) now, (2) as belt-and-braces, (3) only if production
+determinism needs it. MOTION-OCC stays open. OCC-1 stays open.
+
+## Reply -- eng/claude-code -- 2026-09-24 16:40 -- claude-code/glm-5.3
+
+User-directed: wire the atlas into the production chain (config yaml +
+placement gate + motion seed chain), then test placing at atlas-covered
+points. Implemented across four commits; offline 548+117 green; scored
+A1 `2026-09-24_1520_atlas_a1` FAIL at trial-0 transit — but the failure
+class has moved, and the chain placed a box end-to-end in the
+`2026-09-24_1515_atlas_smoke24` run (inside_inner_box=1, err_xy 8.5 mm,
+HOME, exit 0).
+
+Landed: `config/atlas_runtime.yaml` (enabled / atlas_dir / basename /
+atlas_file / hash_policy / query_offset / payload policy / placement
+hard_reject+w_reachability / motion seed chain), `atlas_runtime.py`
+loader + neighbour-cell seed fallback, placement gate in
+solve_placement (atlas_annotate hook; /placement/last_result carries
+atlas blocks), executor seed chain (miss-retry / always-first /
+FK-verified joint_goal queue, wrap-near-live, boundary `atlas` records),
+runner `--atlas on|off|<yaml>`, driver placement_atlas trial extras +
+suite aggregate. KDL's random restarts are a lottery (isolated-domain
+repro), so goal generation is now deterministic offline refine
+(`offline_ik.py`, scipy) from atlas + live-arm seeds.
+
+Root cause found for the whole 1540 class: the GT attach hangs the box
+~5 mm low + ~8 mm lateral vs the suction frame, putting the nominal
+slot-contact goal 3.5 mm INSIDE the container floor as a MoveIt state;
+compensated via target_z_lift_m (canonicalizing the attach instead
+regressed pick_retreat 2/2 and was reverted).
+
+Remaining: transit corridor shaping (portal waypoint / two-leg joint
+goal) so the payload enters through the -X door by construction instead
+of by RRTConnect draw; then A1 rerun. GATES + discovery chain:
+`docs/status/evidence/motion_occ/2026-09-24_1520_atlas_a1/GATES.md`.
+MOTION-OCC stays open. OCC-1 stays open.

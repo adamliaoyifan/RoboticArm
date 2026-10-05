@@ -4,6 +4,7 @@
 import math
 
 from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
+from luggage_planning.reachability_wavefront import retreat_height
 
 # Single source of truth for the motion clearances. These used to be declared
 # three times each (launch arg, node param default, module constant) with
@@ -200,7 +201,8 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
                    place_clearance_z=None, perception_info=None,
                    opening_info=None, fallback_yaw=0.0,
                    corridor_surface_max=None,
-                   corridor_margin=DEFAULT_CORRIDOR_MARGIN):
+                   corridor_margin=DEFAULT_CORRIDOR_MARGIN,
+                   retreat_safe_tool_z=None):
     """Build MotionSegment list for pick or place phase.
 
     Args:
@@ -225,6 +227,11 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             None keeps the single-slot fixed-clearance behavior.
         corridor_margin: clearance kept between the payload bottom and the
             corridor surface when raising heights.
+        retreat_safe_tool_z: optional tool-z cap in the same frame as
+            ``place_slot.place_pose``. When set, the place retreat stops at
+            this height instead of lifting into the lid. Traverse is not
+            capped. None keeps the uncapped retreat (tests and callers that
+            have not converted container_link's safe tool z).
 
     Returns:
         list[MotionSegment]
@@ -391,7 +398,12 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             contact_z + insertion_clearance(box_height, clearance),
             place_yaw)
         contact_pose = _pose_at(slot_pose, contact_z, place_yaw)
-        retreat_pose = _pose_at(slot_pose, contact_z + clearance, place_yaw)
+        retreat_z = contact_z + clearance
+        retreat_truncation = 0.0
+        if retreat_safe_tool_z is not None:
+            retreat_z, retreat_truncation = retreat_height(
+                contact_z, clearance, retreat_safe_tool_z)
+        retreat_pose = _pose_at(slot_pose, retreat_z, place_yaw)
         # Transit keeps the suction normal tool-down during payload carry.
         # Do not also lock J4/J5/J6: that redundant joint-space constraint can
         # exclude every IK branch for an otherwise valid tool-down goal
@@ -445,6 +457,7 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
                 name="retreat", type="cartesian", target_pose=retreat_pose,
                 keep_tool_down=True, keep_camera_down=True,
                 allow_ompl_fallback=False,
+                clearance_truncation_m=retreat_truncation,
             ),
         ])
         return segments

@@ -1,0 +1,19 @@
+scene_tf: scene_tf_deploy.yaml
+scene_tf_hash: 98313fb8b30e51521a4c45a829ff6d5d
+urdf_hash: 85e96b56debd30d8469f7d5a8131d32c
+opening_side: negative_x
+source_npz: s20_container_collision_aware_payload_0.55x0.40x0.25.npz
+max_joint_step_rad: 1.2
+node_count: 234
+edge_count: 902
+edge_counts:
+  inward: 134
+  outward: 134
+  lateral: 296
+  vertical: 338
+edge_kind_codes:
+  inward: 0
+  outward: 1
+  lateral: 2
+  vertical: 3
+seed_set: transit_then_contact

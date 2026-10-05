@@ -5,6 +5,13 @@
 #
 #   ./scripts/hardware_pick.sh
 #   ./scripts/hardware_pick.sh semantic_device:=cpu
+#   ./scripts/hardware_pick.sh scene:=scene_tf_deploy
+#   ./scripts/hardware_pick.sh scene:=scene_tf
+#   ./scripts/hardware_pick.sh scene:=<future_stem>
+#   ./scripts/hardware_pick.sh scene_tf_config:=/path/to/new_scene.yaml
+#
+# scene defaults to scene_tf_deploy. The atlas sampled for that file is
+# selected by its scene hash, including a later atlas_runtime_<name>.yaml.
 #   ./scripts/hardware_pick.sh use_rviz:=true
 #   ./scripts/hardware_pick.sh preprocessor_config:=<share>/preprocessor_d555_site.yaml
 #

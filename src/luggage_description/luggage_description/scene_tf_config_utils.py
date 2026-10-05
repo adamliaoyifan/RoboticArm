@@ -36,6 +36,41 @@ def resolve_scene_tf_config_path(path=None):
     return default_scene_tf_config_path()
 
 
+def scene_tf_config_dir():
+    """Directory of installed scene_tf yaml files, else the source config dir."""
+    try:
+        return os.path.dirname(description_config_path("scene_tf.yaml"))
+    except Exception:  # noqa: BLE001 - package not installed
+        return os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "config"))
+
+
+def resolve_named_scene_tf(name, config_dir=None):
+    """Resolve a scene parameter to one scene_tf yaml.
+
+    ``scene_tf`` and ``scene_tf_deploy`` select those files. Any other
+    stem selects ``<stem>.yaml`` in the same config directory, so a future
+    cell file is loaded without a new launch argument. An existing path is
+    used as given.
+    """
+    text = str(name or "").strip()
+    if not text:
+        raise ValueError("scene name is empty")
+    if os.path.isabs(text) or os.path.isfile(text):
+        if not os.path.isfile(text):
+            raise ValueError("scene file does not exist: %s" % text)
+        return os.path.abspath(text)
+    filename = text if text.endswith((".yaml", ".yml")) else text + ".yaml"
+    if os.path.basename(filename) != filename:
+        raise ValueError("scene name must be a file stem, not a path: %s" % text)
+    directory = config_dir or scene_tf_config_dir()
+    path = os.path.join(directory, filename)
+    if not os.path.isfile(path):
+        raise ValueError(
+            "unknown scene %r; expected %s" % (text, path))
+    return os.path.abspath(path)
+
+
 def resolve_scene_config(scene_config=None, scene_config_path=None):
     if scene_config is not None:
         return scene_config

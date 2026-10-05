@@ -31,13 +31,34 @@ from launch.actions import (
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import Command, LaunchConfiguration, Substitution
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 
 
 def _bool_text(value):
     return str(value).strip().lower() in ("true", "1", "yes", "on")
+
+
+class ResolvedSceneTf(Substitution):
+    """``scene_tf_config`` path, else the named ``scene`` stem.
+
+    Names are ``scene_tf``, ``scene_tf_deploy``, or a future
+    ``<stem>.yaml`` in luggage_description/config. The planning nodes
+    then load the atlas whose stored scene hash matches that file, so a
+    newly sampled cell is selected with the scene and not by a second
+    hard-coded name.
+    """
+
+    def perform(self, context):
+        from luggage_description.scene_tf_config_utils import (
+            resolve_named_scene_tf,
+        )
+        explicit = LaunchConfiguration("scene_tf_config").perform(context).strip()
+        if explicit:
+            return resolve_named_scene_tf(explicit)
+        scene = LaunchConfiguration("scene").perform(context).strip()
+        return resolve_named_scene_tf(scene or "scene_tf_deploy")
 
 
 _RAW_COLOR = "/camera/d555/color/image_raw"
@@ -126,7 +147,7 @@ def _move_group(context, *args, **kwargs):
                 "ros-jazzy-moveit-kinematics ros-jazzy-moveit-simple-controller-manager"
             ))
         ]
-    scene = LaunchConfiguration("scene_tf_config").perform(context)
+    scene = ResolvedSceneTf().perform(context)
     robot_description = _robot_description(scene)
     moveit_config = (
         MoveItConfigsBuilder("S20", package_name="elfin_moveit_config")
@@ -178,9 +199,6 @@ def generate_launch_description():
     desc_share = get_package_share_directory("luggage_description")
     perc_share = get_package_share_directory("luggage_perception")
     exec_share = get_package_share_directory("elfin_trajectory_executor")
-    default_scene = os.path.join(desc_share, "config", "scene_tf.yaml")
-    if not os.path.isfile(default_scene):
-        default_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
     poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")
     sim_poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
@@ -194,7 +212,35 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("scene_tf_config", default_value=default_scene),
+            DeclareLaunchArgument(
+                "scene",
+                default_value="scene_tf_deploy",
+                description=(
+                    "Scene stem in luggage_description/config. "
+                    "scene_tf, scene_tf_deploy, or a future <stem>.yaml. "
+                    "The matching sampled atlas is selected from that file's "
+                    "hash. scene_tf_config overrides this when set."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "scene_tf_config",
+                default_value="",
+                description=(
+                    "Explicit scene yaml path or stem. Empty uses scene. "
+                    "A new cell file can be passed here before it has a "
+                    "short name."
+                ),
+            ),
+            DeclareLaunchArgument(
+                "atlas_runtime_config",
+                default_value="",
+                description=(
+                    "Reachability-atlas runtime YAML. Empty selects the "
+                    "atlas_runtime*.yaml whose stored scene hash matches "
+                    "the resolved scene file, including a newly sampled cell."
+                ),
+            ),
+            LogInfo(msg=["[hardware_pick] scene_tf ", ResolvedSceneTf()]),
             DeclareLaunchArgument(
                 "robot_poses_config",
                 default_value=poses,
@@ -344,7 +390,7 @@ def generate_launch_description():
                     os.path.join(desc_share, "launch", "scene_hardware.launch.py")
                 ),
                 launch_arguments={
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                    "scene_tf_config": ResolvedSceneTf(),
                     "use_rviz": LaunchConfiguration("use_rviz"),
                     "use_sim_time": "false",
                 }.items(),
@@ -406,7 +452,7 @@ def generate_launch_description():
                 name="luggage_detector",
                 output="screen",
                 parameters=[{
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                    "scene_tf_config": ResolvedSceneTf(),
                     "use_semantic": True,
                     "use_sim_time": False,
                     "depth_topic": "/luggage/preprocessed/camera/depth/image",
@@ -435,7 +481,7 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{
                     "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                    "scene_tf_config": ResolvedSceneTf(),
                     "world_frame": "world",
                     "pickup_object_id": "pickup_box",
                     "auto_sync": True,
@@ -449,7 +495,7 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{
                     "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                    "scene_tf_config": ResolvedSceneTf(),
                     "world_frame": "world",
                     "place_slot_frame": "elfin_base_link",
                     "use_perception_approach": False,
@@ -463,6 +509,9 @@ def generate_launch_description():
                 output="screen",
                 parameters=[{
                     "use_sim_time": False,
+                    "scene_tf_config": ResolvedSceneTf(),
+                    "atlas_runtime_config": LaunchConfiguration(
+                        "atlas_runtime_config"),
                     "robot_poses_config": LaunchConfiguration("robot_poses_config"),
                     "default_observe_pose": LaunchConfiguration("observe_pose_name"),
                     "named_pose_duration": 8.0,
