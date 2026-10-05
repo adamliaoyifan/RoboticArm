@@ -92,6 +92,51 @@ MAX_SAME_FAILURE_PER_GOAL = 3
 #: is tried before any destination on another branch.
 BRANCH_LOCKED_EDGE_CLASSES = ("INSERT", "DESCEND")
 
+#: A complete place route in the plan-only three-box runs takes about 5 s.
+#: When another candidate is still waiting, the current search may not
+#: spend the whole remaining select; this much stays reserved so the next
+#: candidate can still be built once.
+COMPLETE_ROUTE_RESERVE_S = 5.0
+
+#: Edge-build kinds that will not change if the same slot tries another
+#: wrist/elbow branch. The candidate is finished; the request continues.
+DETERMINISTIC_EDGE_KINDS = {
+    "fraction_below_min": "CARTESIAN_FRACTION",
+    "excursion_exceeded": "EXCURSION",
+    "branch_discontinuity": "BRANCH_DISCONTINUITY",
+    "collision": "CANDIDATE_COLLISION",
+    "sweep_collision": "SWEEP_COLLISION",
+    "ik_unavailable": "IK_UNAVAILABLE",
+}
+
+
+def candidate_failure_reason(detail):
+    """Named candidate refusal, or None when another branch may still work.
+
+    Sampler misses stay unnamed so one joint-transit redraw is still
+    allowed. A short-hop geometry or IK refusal is final for this slot.
+    """
+    if not detail:
+        return None
+    named = detail.get("candidate_failure")
+    if named:
+        return str(named)
+    if detail.get("egress_infeasible"):
+        return "EGRESS_INFEASIBLE"
+    if detail.get("retreat_target_missing"):
+        return "RETREAT_TARGET_MISSING"
+    if detail.get("path_not_robust"):
+        return "PATH_NOT_ROBUST"
+    if detail.get("detail") == "no IK goals refined for the given targets":
+        return "IK_UNAVAILABLE"
+    for row in detail.get("edge_failures") or ():
+        inner = row.get("detail") or {}
+        kind = inner.get("kind")
+        mapped = DETERMINISTIC_EDGE_KINDS.get(kind)
+        if mapped:
+            return mapped
+    return None
+
 
 def map_edge_failure(kind, detail=None):
     """Map one edge-build failure kind onto the frozen Reason set."""
@@ -229,6 +274,76 @@ def _wrap_rad(delta):
 DESCEND_BRANCH_TOL_RAD = 1.0
 
 
+class SearchTrace(object):
+    """Append-only record of one route search.
+
+    Recording is off unless a search is given a trace. The search reads
+    the trace only to append; it does not branch on the contents.
+    """
+
+    def __init__(self):
+        self.orders = []
+        self.attempts = []
+        self.regions = []
+
+    def note_regions(self, graph, when):
+        counts = {}
+        for node in graph.nodes.values():
+            counts[node.region] = counts.get(node.region, 0) + 1
+        self.regions.append({
+            "when": str(when),
+            "n": len(graph.nodes),
+            "counts": counts,
+        })
+
+    def note_order(self, hop, frontier, destinations, goal_nodes):
+        goals = tuple(goal_nodes or ())
+
+        def row(node):
+            versus_goals = [descend_pair_rank(node.q, goal.q) for goal in goals]
+            return {
+                "id": node.node_id,
+                "region": node.region,
+                "ik_family": str(getattr(node, "ik_family", "")),
+                "q": [round(float(v), 4) for v in node.q],
+                "pair_vs_frontier": list(descend_pair_rank(frontier.q, node.q)),
+                "best_vs_goals": list(min(versus_goals)) if versus_goals else None,
+            }
+
+        self.orders.append({
+            "edge_class": hop.edge_class,
+            "from_region": hop.from_region if hasattr(hop, "from_region") else "",
+            "to_region": hop.to_region,
+            "frontier_id": frontier.node_id,
+            "frontier_region": frontier.region,
+            "frontier_q": [round(float(v), 4) for v in frontier.q],
+            "n_dest": len(destinations),
+            "dests": [row(node) for node in list(destinations)[:8]],
+        })
+
+    def note_attempt(self, hop, frontier, destination, built, new_ids):
+        self.attempts.append({
+            "edge_class": hop.edge_class,
+            "frontier_id": frontier.node_id,
+            "frontier_region": frontier.region,
+            "frontier_q": [round(float(v), 4) for v in frontier.q],
+            "frontier_pose": [
+                [round(float(v), 6) for v in frontier.tcp_position],
+                [round(float(v), 6) for v in frontier.tcp_quaternion_xyzw],
+            ],
+            "dest_id": destination.node_id,
+            "dest_region": destination.region,
+            "dest_ik_family": str(getattr(destination, "ik_family", "")),
+            "dest_q": [round(float(v), 4) for v in destination.q],
+            "dest_pose": [
+                [round(float(v), 6) for v in destination.tcp_position],
+                [round(float(v), 6) for v in destination.tcp_quaternion_xyzw],
+            ],
+            "built": bool(built),
+            "new_node_ids": list(new_ids),
+        })
+
+
 def descend_pair_rank(from_q, to_q):
     """Order one DESCEND pair. Lower is tried first.
 
@@ -290,10 +405,15 @@ class RouteSearch(object):
     """
 
     def __init__(self, graph, edge_builder, budget=None, *,
-                 continuation=None, branch_lock=True, scope=None):
+                 continuation=None, branch_lock=True, scope=None,
+                 trace=None, fk=None):
         self.graph = graph
         self.edge_builder = edge_builder
         self.budget = budget or RouteBudget()
+        self.trace = trace
+        # q -> (tcp_position, tcp_quaternion). Used only when a Cartesian
+        # edge ends on a different joint solution than the booked node.
+        self.fk = fk
         # scope: node ids of the current candidate. A request-lifetime
         # graph also holds earlier candidates' anchors and goals; those
         # are never destinations or pair-rank sources. None = whole graph.
@@ -424,7 +544,8 @@ class RouteSearch(object):
             return tuple(goal_nodes)
         return tuple(node for node in self.graph.nodes_by_region(hop.to_region)
                      if str(node.load_state) == hop.load_state
-                     and self._in_scope(node))
+                     and self._in_scope(node)
+                     and str(getattr(node, "ik_family", "")) != "endpoint")
 
     def _order_goals_for_descend(self, goal_nodes):
         """Try the slot goal that continues a hover branch before the rest."""
@@ -454,6 +575,34 @@ class RouteSearch(object):
                 return 0
             return 0 if descend_pair_rank(frontier.q, node.q)[0] == 0 else 1
 
+        if hop.edge_class == "PORTAL_TRANSIT" \
+                and getattr(frontier, "region", "") == "staging" \
+                and goal_nodes:
+            # The joint hop into the portal must land on the corridor
+            # branch (the back-seeded ladder), not an earlier anchor of
+            # the same pose. Home -> portal keeps registration order.
+            uppers = [
+                node for node in self.graph.nodes_by_region("slot_upper")
+                if str(node.load_state) == hop.load_state
+                and self._in_scope(node)
+                and descend_pair_rank(node.q, goal_nodes[0].q)[0] == 0]
+            if not uppers:
+                uppers = [
+                    node for node in self.graph.nodes_by_region("slot_upper")
+                    if str(node.load_state) == hop.load_state
+                    and self._in_scope(node)]
+
+            def _portal_rank(node, _uppers=uppers):
+                family = 0 if str(getattr(node, "ik_family", "")) == "ladder" \
+                    else 1
+                if not _uppers:
+                    return (family, 0.0)
+                distance = min(
+                    sum(_wrap_rad(a - b) ** 2 for a, b in zip(node.q, upper.q))
+                    for upper in _uppers)
+                return (family, distance)
+
+            dests.sort(key=_portal_rank)
         if hop.edge_class == "DESCEND":
             dests.sort(key=lambda node: descend_pair_rank(frontier.q, node.q))
         elif rest and rest[0].edge_class == "DESCEND" and goal_nodes:
@@ -469,6 +618,10 @@ class RouteSearch(object):
                       (self.continuation(frontier, hop, tuple(dests)) or ())
                       if node is not None]
             seen = {node.node_id for node in solved}
+            # A short hop keeps the node refined from this frontier.
+            # Other seeds of the same pose are a different wrist branch.
+            if hop.edge_class in ("INSERT", "DESCEND", "RETREAT"):
+                return solved
             dests = solved + [node for node in dests
                               if node.node_id not in seen]
         return dests
@@ -489,12 +642,46 @@ class RouteSearch(object):
                 joint_travel_rad=travel)
         hop, rest = hops[0], hops[1:]
         final = not rest and bool(goal_nodes)
-        for destination in self._ordered_destinations(
-                hop, goal_nodes, final, frontier, rest):
+        destinations = self._ordered_destinations(
+            hop, goal_nodes, final, frontier, rest)
+        if self.trace is not None:
+            self.trace.note_order(hop, frontier, destinations, goal_nodes)
+        # Exit is one pose per candidate. An empty destination set is not
+        # repaired by trying another heading, and the Cartesian probe of
+        # this geometric exit did not reach it (collision off and on both
+        # stopped at fraction 0.56). Stop the candidate instead of
+        # enumerating the other headings.
+        if hop.edge_class == "RETREAT" and not destinations:
+            raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
+                "retreat_target_missing": True,
+                "detail": "RETREAT_TARGET_MISSING",
+                "frontier": frontier.node_id,
+                "edge_class": "RETREAT",
+            })
+        for destination in destinations:
             if destination.node_id == frontier.node_id:
                 continue
+            ids_before = set(self.graph.nodes) if self.trace is not None \
+                else None
             edge = self._edge_for(frontier, destination, hop, scene=scene)
             if edge is None:
+                if self.trace is not None:
+                    self.trace.note_attempt(
+                        hop, frontier, destination, False,
+                        sorted(set(self.graph.nodes) - ids_before))
+                # A short-hop geometry refusal is a property of this
+                # slot. The next destination is another branch, not
+                # another placement.
+                if hop.edge_class in (
+                        "TRAVERSE", "INSERT", "DESCEND", "RETREAT") \
+                        and self.edge_failures:
+                    named = candidate_failure_reason({
+                        "edge_failures": [self.edge_failures[-1]]})
+                    if named:
+                        raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
+                            "candidate_failure": named,
+                            "edge_failures": list(self.edge_failures),
+                        })
                 continue
             # [ST09-I] chain continuity: a cartesian edge reaches the
             # requested POSE, not the destination node's IK branch — the
@@ -517,13 +704,24 @@ class RouteSearch(object):
                 if anchored is None:
                     from st09_contracts import LoadState
 
+                    position = destination.tcp_position
+                    quaternion = destination.tcp_quaternion_xyzw
+                    if self.fk is not None:
+                        position, quaternion = self.fk(actual)
+                    # An actual endpoint is the frontier of this chain only.
+                    # It is not another destination for the same region, or
+                    # one truncated Cartesian edge becomes the next hop's
+                    # extra target.
                     anchored = self.graph.register_node(
-                        actual, destination.tcp_position,
-                        destination.tcp_quaternion_xyzw,
+                        actual, position, quaternion,
                         destination.region,
                         LoadState(hop.load_state),
-                        destination.ik_family)
+                        "endpoint")
                 next_node = self._admit(anchored)
+            if self.trace is not None:
+                self.trace.note_attempt(
+                    hop, frontier, destination, True,
+                    sorted(set(self.graph.nodes) - ids_before))
             result = self._chain_from(
                 next_node, rest, goal_nodes,
                 acc_edges + [edge], acc_nodes + [next_node.node_id],
@@ -562,15 +760,27 @@ class RouteSearch(object):
         hops = hops or hops_from_table(DEFAULT_RETREAT_HOPS, "unloaded")
         self.budget.start()
         release = self.graph.node(release_node_id)
+        logged = len(self.edge_failures)
         chain = self._chain_from(release, hops, (), [], [release.node_id],
                                  scene=scene)
         if chain is None:
-            raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
+            fresh = self.edge_failures[logged:]
+            cartesian = any(
+                len(row.get("edge") or ()) >= 3 and row["edge"][2] == "RETREAT"
+                for row in fresh)
+            detail = {
                 "prior_gaps": list(self.graph.prior_gaps),
                 "edge_failures": list(self.edge_failures),
                 "budget": self.budget.snapshot(),
                 "scene": _scene_note(scene),
-            })
+            }
+            # A failed reverse Cartesian hop is a property of this slot's
+            # release pose. Other headings keep the same corridor, so the
+            # candidate yields instead of spending the rest of the budget.
+            if cartesian:
+                detail["egress_infeasible"] = True
+                detail["detail"] = "EGRESS_INFEASIBLE"
+            raise RoutePlanningError("NO_FEASIBLE_ROUTE", detail)
         return chain
 
     def best_full_route(self, start_node_id, goal_nodes, *, entry_hops=None,
@@ -595,14 +805,20 @@ class RouteSearch(object):
                     start_node_id, (goal,), hops=entry_hops, scene=scene_carrying)
             except RoutePlanningError as err:
                 last_error = err
-                if err.code == "PLANNING_BUDGET_EXHAUSTED":
+                named = candidate_failure_reason(err.detail)
+                if err.code == "PLANNING_BUDGET_EXHAUSTED" or named:
+                    if named:
+                        err.detail["candidate_failure"] = named
+                    self._note_path_not_robust(err)
                     raise self._classified(err)
                 continue
             if self.budget.exhausted():
-                raise self._classified(RoutePlanningError(
+                err = RoutePlanningError(
                     "PLANNING_BUDGET_EXHAUSTED", {
                         "budget": self.budget.snapshot(),
-                        "edge_failures": list(self.edge_failures)}))
+                        "edge_failures": list(self.edge_failures)})
+                self._note_path_not_robust(err)
+                raise self._classified(err)
             # [ST09-I] the release twin must sit where the entry chain
             # ACTUALLY ends (the descend edge's last knot — the cartesian
             # solver may land a different IK branch than the bookkept
@@ -618,15 +834,24 @@ class RouteSearch(object):
             if twin is None:
                 from st09_contracts import LoadState
 
+                position = goal.tcp_position
+                quaternion = goal.tcp_quaternion_xyzw
+                # The bookkept goal quaternion can be a pi wrist heading
+                # away from the joint state the Cartesian chain actually
+                # arrived on. Retreat has to start from that arrival.
+                if self.fk is not None:
+                    position, quaternion = self.fk(final_q)
                 twin = self.graph.register_node(
-                    final_q, goal.tcp_position,
-                    goal.tcp_quaternion_xyzw, goal.region,
-                    LoadState.UNLOADED, goal.ik_family)
+                    final_q, position, quaternion, goal.region,
+                    LoadState.UNLOADED, "endpoint")
             self._admit(twin)
             try:
                 retreat = self.retreat_chain(
                     twin.node_id, hops=retreat_hops, scene=scene_unloaded)
             except RoutePlanningError as err:
+                if err.detail.get("retreat_target_missing") \
+                        or err.detail.get("egress_infeasible"):
+                    raise self._classified(err)
                 last_error = err
                 continue
             # [ST09-I] chain-continuity diagnostics: the executed legs must
@@ -639,11 +864,14 @@ class RouteSearch(object):
                 [n[:22] for n in retreat.node_ids]), flush=True)
             return entry, retreat, goal
         if last_error is not None:
+            self._note_path_not_robust(last_error)
             raise self._classified(last_error)
-        raise self._classified(RoutePlanningError("NO_FEASIBLE_ROUTE", {
+        err = RoutePlanningError("NO_FEASIBLE_ROUTE", {
             "prior_gaps": list(self.graph.prior_gaps),
             "edge_failures": list(self.edge_failures),
-            "budget": self.budget.snapshot()}))
+            "budget": self.budget.snapshot()})
+        self._note_path_not_robust(err)
+        raise self._classified(err)
 
     def coverage(self):
         """How much of the alternative space this search actually tried."""
@@ -658,6 +886,24 @@ class RouteSearch(object):
             "budget": self.budget.snapshot(),
         }
 
+    def _note_path_not_robust(self, err):
+        """A short hop that spun onto another wrist branch is not a miss.
+
+        Every continuous branch of this slot failed the excursion gate.
+        Resampling the joint transit does not change that geometry.
+        """
+        if err.detail.get("egress_infeasible") \
+                or err.detail.get("retreat_target_missing"):
+            return
+        for row in self.edge_failures:
+            edge = row.get("edge") or ()
+            detail = row.get("detail") or {}
+            if len(edge) >= 3 and edge[2] in ("INSERT", "DESCEND") \
+                    and detail.get("kind") == "excursion_exceeded":
+                err.detail["path_not_robust"] = True
+                err.detail["detail"] = "PATH_NOT_ROBUST"
+                return
+
     def _classified(self, err):
         """Attach search_outcome + coverage; never relabels the Reason."""
         cov = self.coverage()
@@ -667,8 +913,15 @@ class RouteSearch(object):
                       or bool(cov["capped_classes"])
                       or cov["budget_refusals"] > 0)
         detail = dict(err.detail)
-        detail["search_outcome"] = SEARCH_INCOMPLETE if incomplete \
-            else UNREACHABLE
+        if detail.get("retreat_target_missing"):
+            detail["search_outcome"] = "RETREAT_TARGET_MISSING"
+        elif detail.get("egress_infeasible"):
+            detail["search_outcome"] = "EGRESS_INFEASIBLE"
+        elif detail.get("path_not_robust"):
+            detail["search_outcome"] = "PATH_NOT_ROBUST"
+        else:
+            detail["search_outcome"] = SEARCH_INCOMPLETE if incomplete \
+                else UNREACHABLE
         detail["coverage"] = cov
         return RoutePlanningError(err.code, detail)
 

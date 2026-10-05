@@ -65,17 +65,27 @@ class FakeEdgeBuilder(object):
         #: fail every slot-region DESCEND whose target TCP x is above
         #: this bound (candidate-discriminating across goal branches).
         self.fail_descend_x = fail_descend_x
+        self.collision_calls = 0
         self.calls = []
 
     def __call__(self, from_node, to_node, edge_class, candidate=None,
                  scene=None):
         self.calls.append((from_node.node_id, to_node.node_id, edge_class))
-        failed = self.fail_all or (to_node.node_id, edge_class) in \
+        failed = self.fail_all or edge_class in getattr(
+            self, "fail_classes", ()) or (to_node.node_id, edge_class) in \
             self.fail_dest
         if (not failed and self.fail_descend_x is not None
                 and to_node.region == "slot" and edge_class == "DESCEND"
                 and to_node.tcp_position[0] > self.fail_descend_x):
             failed = True
+        if (not failed and getattr(self, "fail_collision_x", None) is not None
+                and to_node.region == "slot" and edge_class == "DESCEND"
+                and to_node.tcp_position[0] > self.fail_collision_x):
+            self.collision_calls += 1
+            raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                "kind": "collision",
+                "edge_class": "DESCEND",
+            })
         if failed:
             raise RoutePlanningError(
                 "EDGE_BUILD_FAILED", {"pair": edge_class})
@@ -464,6 +474,33 @@ def _seed_miss_producer(slot1_seeds):
     producer.atlas_prior = atlas_prior
     producer.refine = refine
     return producer
+
+
+class TestAtlasCapture:
+    def test_unreachable_rows_keep_slot_pose_and_targets(self):
+        producer, _clock = build_producer()
+
+        def atlas_prior(_targets, _request):
+            return {"verdict": "unreachable", "seeds": []}
+
+        producer.atlas_prior = atlas_prior
+        request = _two_slot_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"] is False
+        rows = [row for row in result["rows"]
+                if row.get("reason") == "ATLAS_UNREACHABLE"]
+        assert len(rows) == 2
+        for row in rows:
+            assert row["candidate_id"]
+            assert len(row["slot_pose"]["position"]) == 3
+            assert row["targets"]
+            assert len(row["targets"][0][0]) == 3
+            assert len(row["targets"][0][1]) == 4
+            assert row["reachability"] == "unreachable"
+            assert row["seed_sources"] == []
 
 
 class TestAtlasSeedCheck:
@@ -860,6 +897,47 @@ class TestPlanPlaceRoute:
         assert result["rows"][0]["detail"]["edge_failures"]
         assert result["rows"][1]["reason"] == "OK"
 
+    def test_colliding_candidate_yields_to_the_next(self):
+        producer, _clock = build_producer()
+        request = make_request(slots=[
+            {"position": [0.20, -0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "blocked"},
+            {"position": [0.05, 0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "open"},
+        ])
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        # Candidate A sits at container x 0.20 and collides with a placed
+        # box. The search must not keep sampling that slot.
+        producer._builder.fail_collision_x = 0.10
+        result = producer.plan_place_route(request)
+        assert result["success"], [row.get("reason") for row in result["rows"]]
+        assert result["slot_index"] == 1
+        assert result["rows"][0]["reason"] == "CANDIDATE_COLLISION"
+        assert producer._builder.collision_calls == 1
+
+    def test_budget_exhaustion_records_untried_candidates(self):
+        producer, _clock = build_producer()
+        producer.budget_ns = 1
+        request = make_request(slots=[
+            {"position": [0.20, -0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "a"},
+            {"position": [0.05, 0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "b"},
+        ])
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["reason_code"] == "PLANNING_BUDGET_EXHAUSTED"
+        assert result["n_tried"] == 0
+        assert result["n_untried"] == 2
+
     def test_revalidation_stop_is_named(self):
         from luggage_planning.map_revalidation import (
             MapDecision, MapRevalidationDecision,
@@ -905,3 +983,98 @@ class TestLegRecords:
             for point in joint["points"]:
                 assert len(point["positions"]) == 6
                 assert len(point["velocities"]) == 6
+
+
+def _hop_pairs(producer, *, opening, transit_clearance_z):
+    """Run one plan and return the entry and retreat hops."""
+    import luggage_planning.reachable_graph as reachable
+
+    producer.opening_info = opening
+    producer.transit_clearance_z = transit_clearance_z
+    captured = {}
+    real = reachable.GraphRoutePlanner
+
+    class Capture(real):
+        def __init__(self, *args, **kwargs):
+            captured["entry_hops"] = kwargs.get("entry_hops")
+            captured["retreat_hops"] = kwargs.get("retreat_hops")
+            super().__init__(*args, **kwargs)
+
+    reachable.GraphRoutePlanner = Capture
+    try:
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+    finally:
+        reachable.GraphRoutePlanner = real
+    assert result["success"], result.get("rows")
+
+    def pairs(hops):
+        assert hops is not None
+        return [(hop.to_region, hop.edge_class, hop.load_state) for hop in hops]
+
+    return pairs(captured["entry_hops"]), pairs(captured["retreat_hops"])
+
+
+class TestReverseEgressTable:
+
+    def test_staging_portal_is_joint_and_return_starts_outside(self):
+        producer, _clock = build_producer()
+        entry, retreat = _hop_pairs(
+            producer,
+            opening={"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)},
+            transit_clearance_z=5.0)
+        assert entry == [
+            ("staging", "PORTAL_TRANSIT", "carrying"),
+            ("portal", "PORTAL_TRANSIT", "carrying"),
+            ("slot_approach", "TRAVERSE", "carrying"),
+            ("slot_upper", "INSERT", "carrying"),
+            ("slot", "DESCEND", "carrying"),
+        ]
+        assert retreat == [
+            ("slot_upper", "RETREAT", "unloaded"),
+            ("slot_approach", "RETREAT", "unloaded"),
+            ("portal", "RETREAT", "unloaded"),
+            ("staging", "RETURN", "unloaded"),
+            ("home", "RETURN", "unloaded"),
+        ]
+        assert "exit" not in [region for region, _cls, _load in retreat]
+
+    def test_opening_without_staging_returns_from_the_portal(self):
+        producer, _clock = build_producer()
+        entry, retreat = _hop_pairs(
+            producer,
+            opening={"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)},
+            transit_clearance_z=None)
+        assert entry == [
+            ("portal", "PORTAL_TRANSIT", "carrying"),
+            ("slot_approach", "TRAVERSE", "carrying"),
+            ("slot_upper", "INSERT", "carrying"),
+            ("slot", "DESCEND", "carrying"),
+        ]
+        assert retreat == [
+            ("slot_upper", "RETREAT", "unloaded"),
+            ("slot_approach", "RETREAT", "unloaded"),
+            ("portal", "RETREAT", "unloaded"),
+            ("home", "RETURN", "unloaded"),
+        ]
+        assert "exit" not in [region for region, _cls, _load in retreat]
+
+    def test_failed_reverse_hop_yields_and_does_not_resample(self):
+        producer, _clock = build_producer()
+        producer._builder.fail_classes = ("RETREAT",)
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["rows"][0]["reason"] == "EGRESS_INFEASIBLE"
+        descends = [call for call in producer._builder.calls
+                    if call[2] == "DESCEND"]
+        retreats = [call for call in producer._builder.calls
+                    if call[2] == "RETREAT"]
+        assert len(descends) == 1
+        assert len(retreats) == 1

@@ -682,13 +682,24 @@ class MoveItEdgeAdapter(object):
         excursion = _excursion(timed, distance)
         if excursion is not None and excursion["ratio"] > \
                 CARTESIAN_EXCURSION_RAD_PER_M:
-            self._record_failure(klass.value, "excursion_exceeded",
-                                 ratio=round(excursion["ratio"], 4))
-            raise RoutePlanningError("EDGE_BUILD_FAILED", {
+            motion = {
                 "kind": "excursion_exceeded",
-                "ratio": round(excursion["ratio"], 4),
+                "ratio": round(float(excursion["ratio"]), 4),
                 "worst_joint": excursion["worst_joint"],
-                "limit": CARTESIAN_EXCURSION_RAD_PER_M})
+                "limit": CARTESIAN_EXCURSION_RAD_PER_M,
+                "path_length_m": excursion.get("path_length_m"),
+                "end_delta_rad": excursion.get("end_delta_rad"),
+                "cumulative_rad": excursion.get("cumulative_rad"),
+                "max_step_rad": excursion.get("max_step_rad"),
+                "start_q": excursion.get("start_q"),
+                "end_q": excursion.get("end_q"),
+                "from_ik_family": str(getattr(from_node, "ik_family", "")),
+                "to_ik_family": str(getattr(to_node, "ik_family", "")),
+                "from_q": [round(float(v), 6) for v in from_node.q],
+                "to_q": [round(float(v), 6) for v in to_node.q],
+            }
+            self._record_failure(klass.value, "excursion_exceeded", **motion)
+            raise RoutePlanningError("EDGE_BUILD_FAILED", motion)
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="cartesian", ok=True,
             fraction=round(fraction, 6),
@@ -817,24 +828,14 @@ def _excursion(trajectory, path_len_m):
     "excursion" was exactly whole-turn flips)."""
     from luggage_planning.joint_path import max_joint_step
 
-    rows = trajectory.positions
-    if len(rows) < 2 or path_len_m <= 1e-9:
+    from luggage_planning.joint_path import joint_motion_report
+
+    report = joint_motion_report(trajectory.positions, path_len_m)
+    if report is None:
         return None
-
-    def _angular_step(a, b):
-        delta = abs(b - a) % (2.0 * math.pi)
-        return min(delta, 2.0 * math.pi - delta)
-
-    denominator = max(path_len_m, 0.05)
-    variations = [
-        sum(_angular_step(b[index], a[index])
-            for a, b in zip(rows, rows[1:]))
-        for index in range(len(rows[0]))]
-    worst = max(range(len(variations)), key=lambda i: variations[i])
-    return {
-        "worst_joint": JOINT_NAMES[worst],
-        "variation_rad": variations[worst],
-        "ratio": variations[worst] / denominator,
-        "wrist_margin_rad": abs(float(rows[0][4])) % math.pi,
-        "j6_rotation_rad": variations[5] if len(variations) > 5 else 0.0,
-    }
+    worst = int(report["worst_joint_index"])
+    report["worst_joint"] = JOINT_NAMES[worst]
+    report["wrist_margin_rad"] = abs(float(trajectory.positions[0][4])) % math.pi
+    report["j6_rotation_rad"] = float(report["cumulative_rad"][5]) \
+        if len(report["cumulative_rad"]) > 5 else 0.0
+    return report

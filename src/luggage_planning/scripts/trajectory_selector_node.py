@@ -26,6 +26,7 @@ from luggage_description.scene_tf_config_utils import (
     origin_in_world,
     resolve_scene_tf_config_path,
 )
+from luggage_planning.atlas_prior import prior_for_targets
 from luggage_planning.atlas_runtime import (
     certification_block_reason,
     compute_reachability_scene_hash,
@@ -424,55 +425,13 @@ class TrajectorySelectorNode(Node):
                 }
             if atlas is None or not targets:
                 return None
-            import math as _math
-
-            from st09_contracts.attachment import (
-                compose_transform,
-                invert_transform,
-            )
-
-            transform = request["container_transform"]
-            if isinstance(transform, dict):
-                translation = tuple(float(v) for v in
-                                    transform["translation"])
-                quaternion = tuple(float(v) for v in
-                                   transform["quaternion_xyzw"])
-            else:
-                translation = tuple(float(v) for v in transform[2])
-                quaternion = tuple(float(v) for v in transform[3])
-            inv_xyz, inv_quat = invert_transform(translation, quaternion)
-
-            statuses = []
-            seeds = []
             try:
-                for target in targets:
-                    # world TCP pose -> container frame, query at the
-                    # target's OWN yaw (the heading expansion already
-                    # enumerates the allowed physical rotations)
-                    position, quat = compose_transform(
-                        inv_xyz, inv_quat,
-                        [float(v) for v in target.position],
-                        [float(v) for v in target.quaternion_xyzw])
-                    yaw = _math.atan2(
-                        2.0 * (quat[3] * quat[2] + quat[0] * quat[1]),
-                        1.0 - 2.0 * (quat[1] ** 2 + quat[2] ** 2))
-                    result = atlas.query(
-                        float(position[0]), float(position[1]),
-                        float(position[2]), yaw)
-                    status = int(result.status)
-                    statuses.append(status)
-                    if status in (2, 3):
-                        for seed in (getattr(result, "contact_seeds",
-                                             None) or ()):
-                            seeds.append(tuple(float(v) for v in seed))
+                # World TCP -> container frame, then the shared status
+                # rule. Atlas-off never reaches this function.
+                return prior_for_targets(
+                    targets, request["container_transform"], atlas.query)
             except Exception:  # noqa: BLE001 - prior fails open
                 return {"verdict": "unknown", "seeds": []}
-            if statuses and all(status == 1 for status in statuses):
-                return {"verdict": "unreachable", "seeds": []}
-            verdict = ("reachable"
-                       if any(status in (2, 3) for status in statuses)
-                       else "unknown")
-            return {"verdict": verdict, "seeds": seeds}
 
         def validity_factory(*, scene_states, edges):
             adapter = MoveItStateValidityAdapter(

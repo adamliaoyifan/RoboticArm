@@ -34,6 +34,53 @@ def max_joint_step(left, right):
     return max(abs(a - b) for a, b in zip(wrapped, left))
 
 
+def _shortest_arc(left, right):
+    """Signed shortest step from ``left`` to ``right``, in (-pi, pi]."""
+    return (float(right) - float(left) + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def joint_motion_report(positions, path_length_m=None):
+    """Per-joint motion of one Cartesian joint trajectory.
+
+    ``end_delta_rad`` is the wrapped start-to-end change. ``cumulative_rad``
+    sums the absolute shortest step at every sample. ``max_step_rad`` is the
+    largest of those steps. The excursion ratio uses the same 0.05 m floor
+    as the Cartesian gate.
+    """
+    rows = [tuple(float(v) for v in row) for row in (positions or ())]
+    if len(rows) < 2:
+        return None
+    width = len(rows[0])
+    if any(len(row) != width for row in rows):
+        return None
+    end_delta = [_shortest_arc(rows[0][i], rows[-1][i]) for i in range(width)]
+    cumulative = [0.0] * width
+    max_step = [0.0] * width
+    for left, right in zip(rows, rows[1:]):
+        for index in range(width):
+            step = abs(_shortest_arc(left[index], right[index]))
+            cumulative[index] += step
+            if step > max_step[index]:
+                max_step[index] = step
+    worst = max(range(width), key=lambda index: cumulative[index])
+    report = {
+        "worst_joint_index": worst,
+        "end_delta_rad": [round(value, 6) for value in end_delta],
+        "cumulative_rad": [round(value, 6) for value in cumulative],
+        "max_step_rad": [round(value, 6) for value in max_step],
+        "n_points": len(rows),
+        "start_q": [round(value, 6) for value in rows[0]],
+        "end_q": [round(value, 6) for value in rows[-1]],
+    }
+    if path_length_m is not None and float(path_length_m) > 1e-9:
+        denominator = max(float(path_length_m), 0.05)
+        report["path_length_m"] = round(float(path_length_m), 6)
+        report["denominator_m"] = round(denominator, 6)
+        report["ratio"] = cumulative[worst] / denominator
+        report["variation_rad"] = cumulative[worst]
+    return report
+
+
 def densify(knots, continuity_rad, sample_rad=0.02):
     """Interpolate ``knots`` so consecutive samples stay within ``sample_rad``.
 

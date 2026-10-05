@@ -130,6 +130,28 @@ class TestCloudDecoding(unittest.TestCase):
         self.assertEqual(msg.point_step, 12)
         self.assertEqual(msg.row_step, 24)
         np.testing.assert_allclose(adapters.cloud_points_from_msg(msg), POINTS)
+        self.assertIsNone(adapters.source_from_cloud_msg(msg))
+
+    def test_cargo_source_round_trip_is_exact_stamp(self):
+        stamp = adapters.sec_to_stamp(12.5)
+        msg = adapters.cloud_msg_from_points(
+            POINTS, stamp, "optical", source="measure")
+        self.assertEqual(msg.point_step, 16)
+        np.testing.assert_allclose(adapters.cloud_points_from_msg(msg), POINTS)
+        self.assertEqual(adapters.source_from_cloud_msg(msg), "measure")
+        self.assertEqual(
+            adapters.label_cloud_source(len(POINTS), "measure"), "measure")
+        self.assertEqual(
+            adapters.label_cloud_source(len(POINTS), "hold_track"),
+            "hold_track")
+
+    def test_missing_source_does_not_become_measure(self):
+        self.assertEqual(
+            adapters.label_cloud_source(10, None), "source_unmatched")
+        self.assertEqual(adapters.label_cloud_source(0, None), "empty")
+        self.assertEqual(
+            adapters.label_cloud_source(10, "stats_snapshot"),
+            "source_unmatched")
 
     def test_camera_cloud_carries_data_frame(self):
         cloud = adapters.camera_cloud_from_msg(_make_cloud(POINTS), "camera_link")

@@ -487,7 +487,20 @@ def camera_info_msg_from_frame(frame, stamp):
     return out
 
 
-def cloud_msg_from_points(points, stamp, frame_id):
+# Exact-stamp cargo source. Carried on the cloud itself so a rate-limited
+# stats snapshot cannot relabel a different acquisition. Missing or unknown
+# codes are not a source; callers fail closed.
+CARGO_SOURCE_FIELD = "cargo_source"
+CARGO_SOURCE_CODES = {
+    "measure": 1,
+    "hold_track": 2,
+    "empty": 3,
+    "reject_clutter": 4,
+}
+_CARGO_SOURCE_FROM_CODE = {code: name for name, code in CARGO_SOURCE_CODES.items()}
+
+
+def cloud_msg_from_points(points, stamp, frame_id, source=None):
     pts = np.ascontiguousarray(
         np.asarray(points, dtype=np.float32).reshape(-1, 3))
     msg = PointCloud2()
@@ -501,10 +514,61 @@ def cloud_msg_from_points(points, stamp, frame_id):
     ]
     msg.is_bigendian = False
     msg.point_step = 12
-    msg.row_step = msg.point_step * msg.width
     msg.is_dense = True
-    msg.data = pts.tobytes()
+    payload = pts.tobytes()
+    if source is not None and int(pts.shape[0]) > 0:
+        code = CARGO_SOURCE_CODES.get(str(source))
+        if code is None:
+            raise ValueError("unknown cargo source %r" % (source,))
+        # One code per point, padded to 4 bytes so the step stays aligned.
+        raw = np.frombuffer(payload, dtype=np.uint8).reshape(-1, 12)
+        padded = np.zeros((raw.shape[0], 16), dtype=np.uint8)
+        padded[:, :12] = raw
+        padded[:, 12] = np.uint8(code)
+        payload = padded.tobytes()
+        msg.fields.append(PointField(
+            name=CARGO_SOURCE_FIELD, offset=12,
+            datatype=PointField.UINT8, count=1))
+        msg.point_step = 16
+    msg.row_step = msg.point_step * msg.width
+    msg.data = payload
     return msg
+
+
+def source_from_cloud_msg(msg):
+    """Cargo source stored on this cloud, or None when the field is absent.
+
+    None means the acquisition has no exact-stamp source. Callers must
+    fail closed; they must not substitute a later stats snapshot.
+    """
+    fields = {field.name: field for field in msg.fields}
+    field = fields.get(CARGO_SOURCE_FIELD)
+    if field is None or int(field.datatype) != int(PointField.UINT8):
+        return None
+    if int(field.count) != 1 or int(field.offset) < 0:
+        return None
+    if int(field.offset) >= int(msg.point_step):
+        return None
+    npoints = int(msg.width) * int(msg.height)
+    if npoints <= 0 or int(msg.point_step) <= 0:
+        return None
+    raw = np.frombuffer(msg.data, dtype=np.uint8)
+    if raw.size < int(msg.point_step):
+        return None
+    return _CARGO_SOURCE_FROM_CODE.get(int(raw[int(field.offset)]))
+
+
+def label_cloud_source(n_points, found):
+    """Source for one acquisition. ``found`` is ``source_from_cloud_msg``.
+
+    Empty clouds are ``empty``. A missing or unknown code is
+    ``source_unmatched`` and is not a measurement.
+    """
+    if int(n_points) <= 0:
+        return "empty"
+    if found in CARGO_SOURCE_CODES:
+        return found
+    return "source_unmatched"
 
 
 def suction_candidate_msg_from_record(record, stamp, frame_id):

@@ -343,6 +343,198 @@ class TestRouteSearchChains:
         assert all(abs(a - b) <= 1e-6 for a, b in zip(endpoint.q,
                                                       last_knot))
 
+    def test_endpoint_nodes_stay_out_of_region_destinations(self):
+        graph = _route_graph()
+        search, _builder, _budget = _search(graph)
+        approach = graph.nodes_by_region("slot_approach")[0]
+        shifted = tuple(float(v) + 0.2 for v in approach.q)
+        search.fk = lambda _q: ((0.11, 0.22, 0.33), (0.0, 0.0, 0.0, 1.0))
+        created = graph.register_node(
+            shifted, approach.tcp_position, approach.tcp_quaternion_xyzw,
+            "slot_approach", LoadState.CARRYING, "endpoint")
+        search._admit(created)
+        hop = RouteHop("slot_approach", "TRAVERSE", "carrying")
+        dest_ids = {node.node_id for node in search._destinations(hop, (), False)}
+        assert created.node_id not in dest_ids
+        assert approach.node_id in dest_ids
+
+    def test_empty_exit_stops_before_the_next_heading(self):
+        graph = _route_graph()
+        for node in list(graph.nodes_by_region("exit")):
+            graph._nodes.pop(node.node_id, None)
+        search, builder, _budget = _search(graph)
+        goals = [node for node in graph.nodes_by_region("slot")
+                 if node.load_state is LoadState.CARRYING]
+        start = [node for node in graph.nodes.values()
+                 if node.region == "home"
+                 and node.load_state is LoadState.CARRYING][0]
+        with pytest.raises(RoutePlanningError) as err:
+            search.best_full_route(start.node_id, goals)
+        assert err.value.detail["retreat_target_missing"] is True
+        assert err.value.detail["search_outcome"] == "RETREAT_TARGET_MISSING"
+        assert err.value.code == "NO_FEASIBLE_ROUTE"
+        descends = [call for call in builder.calls if call[2] == "DESCEND"]
+        assert len(descends) == 1
+        assert not any(call[2] == "RETREAT" for call in builder.calls)
+
+    def test_failed_retreat_yields_without_the_next_heading(self):
+        graph = _route_graph()
+        search, builder, _budget = _search(
+            graph, fail={("slot", "exit", "RETREAT"): True})
+        goals = [node for node in graph.nodes_by_region("slot")
+                 if node.load_state is LoadState.CARRYING]
+        assert len(goals) >= 2
+        start = [node for node in graph.nodes.values()
+                 if node.region == "home"
+                 and node.load_state is LoadState.CARRYING][0]
+        with pytest.raises(RoutePlanningError) as err:
+            search.best_full_route(start.node_id, goals)
+        assert err.value.detail["egress_infeasible"] is True
+        assert err.value.detail["search_outcome"] == "EGRESS_INFEASIBLE"
+        assert err.value.code == "NO_FEASIBLE_ROUTE"
+        descends = [call for call in builder.calls if call[2] == "DESCEND"]
+        assert len(descends) == 1
+
+    def test_staging_portal_transit_prefers_the_corridor_ladder(self):
+        graph = RouteGraph(static_identity="static-test")
+        staging = _node(graph, (0.1, -0.2, 0.8, -0.3, 1.2, 0.1), "staging",
+                        ik_family="anchor", tcp=(0.2, 0.0, 0.9))
+        anchor = _node(graph, (1.2, -0.2, 0.4, -0.2, 1.2, 1.2), "portal",
+                       ik_family="anchor", tcp=(0.4, 0.0, 0.7))
+        ladder = _node(graph, (0.4, -0.5, 0.9, -0.4, 1.3, 0.2), "portal",
+                       ik_family="ladder", tcp=(0.4, 0.0, 0.7))
+        _node(graph, (0.42, -0.48, 0.88, -0.38, 1.28, 0.22), "slot_upper",
+              ik_family="ladder", tcp=(0.5, 0.0, 0.55))
+        goal = _node(graph, (0.5, -0.55, 0.8, -0.3, 1.2, 0.3), "slot")
+        _node(graph, (0.45, -0.5, 0.85, -0.35, 1.25, 0.25), "slot_approach",
+              ik_family="ladder", tcp=(0.5, 0.0, 0.7))
+        search, builder, _budget = _search(graph)
+        hops = (
+            RouteHop("portal", "PORTAL_TRANSIT", "carrying"),
+            RouteHop("slot_approach", "TRAVERSE", "carrying"),
+        )
+        search.entry_chain(staging.node_id, (goal,), hops=hops)
+        assert builder.calls[0][1] == ladder.node_id
+        assert builder.calls[0][2] == "PORTAL_TRANSIT"
+        assert anchor.node_id != ladder.node_id
+
+    def test_insert_refines_from_the_frontier_heading_only(self):
+        from luggage_planning.reachable_graph import GraphRoutePlanner
+
+        graph = RouteGraph(static_identity="static-test")
+        approach_q = (0.20, -0.40, 0.80, -0.30, 1.20, 0.40)
+        flipped_q = tuple(approach_q[:5]) + (approach_q[5] + math.pi,)
+        approach = _node(graph, approach_q, "slot_approach",
+                         ik_family="endpoint", tcp=(0.50, 0.00, 0.70))
+        flipped = _node(graph, flipped_q, "slot_upper", ik_family="anchor",
+                        tcp=(0.50, 0.00, 0.55))
+        goal = _node(graph, flipped_q, "slot", ik_family="anchor",
+                     tcp=(0.50, 0.00, 0.40))
+        seen = {}
+
+        def refine(position, quaternion, seed):
+            if "seed" not in seen:
+                seen["quaternion"] = tuple(float(v) for v in quaternion)
+                seen["seed"] = tuple(float(v) for v in seed)
+            q = [float(v) for v in seed]
+            q[2] = 0.50 + float(position[2])
+            return q, {}
+
+        hops = (
+            RouteHop("slot_upper", "INSERT", "carrying"),
+            RouteHop("slot", "DESCEND", "carrying"),
+        )
+        builder = FakeEdgeBuilder(graph)
+        planner = GraphRoutePlanner(
+            graph, builder, home_node_id=approach.node_id,
+            refine=refine, region_poses={
+                "slot_upper": (0.50, 0.00, 0.55),
+                "slot": (0.50, 0.00, 0.40),
+            })
+        search = RouteSearch(
+            graph, builder, continuation=planner._frontier_continuation())
+        search.entry_chain(approach.node_id, (goal,), hops=hops)
+        assert seen["seed"] == approach_q
+        assert seen["quaternion"] == tuple(approach.tcp_quaternion_xyzw)
+        inserts = [call for call in builder.calls if call[2] == "INSERT"]
+        assert len(inserts) == 1
+        assert inserts[0][1] != flipped.node_id
+        assert graph.node(inserts[0][1]).ik_family == "frontier"
+
+    def test_home_portal_transit_keeps_registration_order(self):
+        graph = RouteGraph(static_identity="static-test")
+        home = _node(graph, Q_START, "home", ik_family="start",
+                     tcp=(0.2, 0.0, 0.4))
+        anchor = _node(graph, (1.2, -0.2, 0.4, -0.2, 1.2, 1.2), "portal",
+                       ik_family="anchor", tcp=(0.4, 0.0, 0.7))
+        ladder = _node(graph, (0.4, -0.5, 0.9, -0.4, 1.3, 0.2), "portal",
+                       ik_family="ladder", tcp=(0.4, 0.0, 0.7))
+        goal = _node(graph, Q_GOAL_F1, "slot")
+        _node(graph, (0.45, -0.5, 0.85, -0.35, 1.25, 0.25), "slot_approach")
+        search, builder, _budget = _search(graph)
+        hops = (
+            RouteHop("portal", "PORTAL_TRANSIT", "carrying"),
+            RouteHop("slot_approach", "TRAVERSE", "carrying"),
+        )
+        search.entry_chain(home.node_id, (goal,), hops=hops)
+        assert builder.calls[0][1] == anchor.node_id
+        assert ladder.node_id != anchor.node_id
+
+    def test_unloaded_retreat_uses_region_pose_fallback(self):
+        """Carrying corridor nodes are not unloaded destinations.
+
+        The retreat chain still completes: continuation refines each
+        anchor pose from the frontier and registers an unloaded node.
+        """
+        from luggage_planning.grid_path_search import hops_from_table
+        from luggage_planning.reachable_graph import GraphRoutePlanner
+
+        graph = RouteGraph(static_identity="static-test")
+        release = _node(graph, Q_GOAL_F1, "slot", LoadState.UNLOADED, "f1",
+                        tcp=(0.50, 0.00, 0.40))
+        _node(graph, Q_HOME, "home", LoadState.UNLOADED)
+        poses = {
+            "slot_upper": (0.50, 0.00, 0.55),
+            "slot_approach": (0.50, 0.00, 0.70),
+            "portal": (0.35, 0.00, 0.70),
+            "staging": (0.10, 0.00, 0.90),
+        }
+        for index, (region, tcp) in enumerate(poses.items()):
+            q = tuple(float(v) + 0.15 * (index + 1) for v in Q_GOAL_F1)
+            _node(graph, q, region, LoadState.CARRYING, "f1", tcp=tcp)
+
+        def refine(position, _quaternion, seed):
+            q = [float(v) for v in seed]
+            q[0] = 0.2 + 0.5 * float(position[0])
+            q[1] = -0.4 + float(position[2])
+            q[2] = 0.8
+            return q, {}
+
+        hops = hops_from_table((
+            ("slot_upper", "RETREAT"),
+            ("slot_approach", "RETREAT"),
+            ("portal", "RETREAT"),
+            ("staging", "RETREAT"),
+            ("home", "RETURN"),
+        ), "unloaded")
+        home = [node for node in graph.nodes.values()
+                if node.region == "home"
+                and str(node.load_state) == "unloaded"][0]
+        builder = FakeEdgeBuilder(graph)
+        planner = GraphRoutePlanner(
+            graph, builder, home_node_id=home.node_id,
+            retreat_hops=hops, refine=refine, region_poses=poses)
+        search = RouteSearch(
+            graph, builder, continuation=planner._frontier_continuation())
+        chain = search.retreat_chain(release.node_id, hops=hops)
+        assert [edge.attributes["edge_class"] for edge in chain.edges] == [
+            "RETREAT", "RETREAT", "RETREAT", "RETREAT", "RETURN"]
+        created = [node.region for node in graph.nodes.values()
+                   if node.ik_family == "frontier"
+                   and str(node.load_state) == "unloaded"]
+        assert created == ["slot_upper", "slot_approach", "portal", "staging"]
+        assert release.node_id == chain.node_ids[0]
+
 
 class TestYawIkEightClasses:
     """(a) each class with a positive and a negative case."""

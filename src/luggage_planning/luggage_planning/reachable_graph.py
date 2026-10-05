@@ -651,29 +651,34 @@ class GraphRoutePlanner(object):
         def solve(frontier, hop, destinations):
             if hop.edge_class not in ("INSERT", "DESCEND", "RETREAT"):
                 return ()
-            poses = []
-            for node in destinations:
-                pose = (tuple(node.tcp_position),
-                        tuple(node.tcp_quaternion_xyzw), node.region)
-                if pose not in poses:
-                    poses.append(pose)
-            planned = self.region_poses.get(hop.to_region)
-            if not poses and planned is not None:
-                poses.append((tuple(float(v) for v in planned),
-                              tuple(frontier.tcp_quaternion_xyzw),
-                              hop.to_region))
-            solved = []
-            for position, quaternion, region in poses:
-                q = self._refine_one(position, quaternion, frontier.q)
-                if q is None:
-                    continue
-                node = self._register(q, position, quaternion, region,
-                                      load_state(hop.load_state), "frontier")
-                if hop.edge_class == "DESCEND":
-                    self._register(q, position, quaternion, region,
-                                   load_state.UNLOADED, "frontier")
-                solved.append(node)
-            return solved
+            # The position is the region's planned pose. The heading is
+            # the frontier's, and the only seed is the frontier q. A
+            # destination quaternion from another goal or atlas seed
+            # would ask the short Cartesian hop to spin the wrist.
+            planned = (self.region_poses or {}).get(hop.to_region)
+            if planned is not None:
+                position = tuple(float(v) for v in planned)
+            elif destinations:
+                position = tuple(float(v) for v in destinations[0].tcp_position)
+            else:
+                return ()
+            quaternion = tuple(float(v) for v in frontier.tcp_quaternion_xyzw)
+            q = self._refine_one(position, quaternion, frontier.q)
+            if q is None:
+                return ()
+            from luggage_planning.grid_path_search import descend_pair_rank
+            # A Newton step that leaves the wrist/elbow branch is not a
+            # continuous successor. Do not hand that q to Cartesian.
+            if descend_pair_rank(frontier.q, q)[0] != 0:
+                return ()
+            node = self._register(
+                q, position, quaternion, hop.to_region,
+                load_state(hop.load_state), "frontier")
+            if hop.edge_class == "DESCEND":
+                self._register(
+                    q, position, quaternion, hop.to_region,
+                    load_state.UNLOADED, "frontier")
+            return (node,)
 
         return solve
 
@@ -737,14 +742,22 @@ class GraphRoutePlanner(object):
             raise RoutePlanningError("NO_FEASIBLE_ROUTE", {
                 "prior_gaps": list(self.graph.prior_gaps),
                 "detail": "no IK goals refined for the given targets",
+                "candidate_failure": "IK_UNAVAILABLE",
                 "search_outcome": "SEARCH_INCOMPLETE"})
         carrying, unloaded = self._scenes(attachment, candidate, snapshot)
         self._register_branch_ladders(goal_nodes)
         if self.scope is not None:
             self.scope.add(self.home_node_id)
+        if getattr(self, "trace", None) is not None:
+            self.trace.note_regions(self.graph, "after_ladders")
+        fk = None
+        if self.urdf is not None and self.tcp_path is not None:
+            fk = make_offline_fk(self.urdf, self.tcp_path)
         search = RouteSearch(self.graph, self.edge_builder, budget,
                              continuation=self._frontier_continuation(),
-                             scope=self.scope)
+                             scope=self.scope,
+                             trace=getattr(self, "trace", None),
+                             fk=fk)
         self.last_search = search
         entry, retreat, goal = search.best_full_route(
             self.home_node_id, goal_nodes,

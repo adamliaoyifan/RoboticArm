@@ -21,6 +21,9 @@ if GAZEBO_SRC not in sys.path:
 from luggage_gazebo.planning_request_capture import (  # noqa: E402
     audit_replay_bundle,
 )
+from luggage_planning.atlas_prior import (  # noqa: E402
+    replay_captured_candidates,
+)
 
 
 def _search(case_id):
@@ -67,6 +70,20 @@ def _search(case_id):
     return rows
 
 
+def _load_atlas_query(_document):
+    """Production atlas query. Atlas-off never calls it."""
+    from luggage_planning.reachability_atlas import ReachabilityAtlas
+
+    directory = os.path.join(
+        ROOT, "src", "luggage_planning", "data",
+        "reachability_atlas_deploy")
+    stem = "s20_container_collision_aware"
+    atlas = ReachabilityAtlas.load(
+        os.path.join(directory, stem + ".npz"),
+        os.path.join(directory, stem + ".yaml"))
+    return atlas.query
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture", required=True)
@@ -81,15 +98,19 @@ def main():
         print(json.dumps(report, indent=1))
         return 2
     if args.search:
-        case_id = document.get("matrix_case_id")
-        if not case_id:
-            report["search"] = {
-                "status": "not_replayable",
-                "missing": ["matrix_case_id"],
-            }
-            print(json.dumps(report, indent=1))
-            return 2
-        report["search"] = _search(case_id)
+        if document.get("candidates"):
+            report["atlas"] = replay_captured_candidates(
+                document, _load_atlas_query(document))
+        else:
+            case_id = document.get("matrix_case_id")
+            if not case_id:
+                report["search"] = {
+                    "status": "not_replayable",
+                    "missing": ["matrix_case_id"],
+                }
+                print(json.dumps(report, indent=1))
+                return 2
+            report["search"] = _search(case_id)
     print(json.dumps(report, indent=1))
     return 0
 

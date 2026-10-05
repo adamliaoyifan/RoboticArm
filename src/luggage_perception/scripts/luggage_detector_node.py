@@ -611,6 +611,8 @@ class LuggageDetector(Node):
         self._box_epoch_seen = False
         self._box_id = ""
         self._box_generation = 0
+        self._auth_reads = []
+        self._last_selected_stamp = None
         self._join = ExactStampJoin(
             maxlen=max(1, int(self.get_parameter("join_buffer_maxlen").value)))
         self._frame_window = LockedStampWindow(
@@ -1228,6 +1230,9 @@ class LuggageDetector(Node):
             self._gc_on_epoch()
             self._gc_post_epoch_deadline = time.monotonic() + 0.9
         self._box_generation = generation
+        if epoch_changed:
+            self._auth_reads = []
+            self._last_selected_stamp = None
         self._join.clear()
         self._frame_window.clear()
         with self._raw_lock:
@@ -1422,14 +1427,15 @@ class LuggageDetector(Node):
             self.get_logger().warning(msg)
             self._last_warn_ns = now
 
-    def _pca_source_label(self, n_points):
-        if int(n_points) <= 0:
-            return "empty"
-        stats = self._filter_stats or {}
-        source = str(stats.get("source") or "")
-        if source in ("measure", "hold_track", "empty"):
-            return source
-        return "measure"
+    def _pca_source_label(self, n_points, cloud_msg):
+        """Source of this cloud. ``stats_json`` is not a source.
+
+        The filter writes ``cargo_source`` on the cloud at the acquisition
+        stamp. A missing field fails closed as ``source_unmatched`` so a
+        rate-limited stats snapshot cannot relabel the frame.
+        """
+        found = adapters.source_from_cloud_msg(cloud_msg)
+        return adapters.label_cloud_source(n_points, found)
 
     def _geometry_ok(self):
         """Legacy helper: settled flag for diagnostics (None = absent)."""
@@ -1586,7 +1592,7 @@ class LuggageDetector(Node):
         pts_camera = pts_camera[np.isfinite(pts_camera).all(axis=1)]
         self._timing["read_ms"] = (time.monotonic() - _t0) * 1000.0
         n_points = int(len(pts_camera))
-        source = self._pca_source_label(n_points)
+        source = self._pca_source_label(n_points, cloud_msg)
         if n_points <= 0:
             return (empty_cargo_pca_fields(0), None,
                     self._support_fields_empty())
@@ -1919,9 +1925,11 @@ class LuggageDetector(Node):
         for attempt in range(attempts):
             hit = self._frame_window.latest()
             if hit is None:
+                self._last_selected_stamp = None
                 self._last_failure_reason = "DETECT_NO_CLOUD"
             else:
                 prev_stamp, frame = hit
+                self._last_selected_stamp = float(prev_stamp)
                 detected, confidence = self._frame_to_detect(frame)
                 if detected is not None:
                     if attempt:
@@ -1994,8 +2002,45 @@ class LuggageDetector(Node):
         self._warn_throttled("luggage_detector: %s" % detail)
         return None, fields["pca_confidence"]
 
+    def _frame_window_rows(self, selected_stamp):
+        """Every DetectionFrame currently available to latest()."""
+        rows = []
+        for stamp, frame in self._frame_window.snapshot():
+            gate = self._support_gate_by_key.get(
+                stamp_key(frame.header.stamp), "")
+            rows.append({
+                "stamp": float(stamp),
+                "generation": int(frame.generation),
+                "instance_id": str(frame.instance_id),
+                "pca_source": str(frame.pca_source),
+                "pca_valid": bool(frame.pca_valid),
+                "pca_reason": str(frame.pca_reason),
+                "n_cargo_points": int(frame.n_cargo_points),
+                "support_valid": bool(frame.support_valid),
+                "support_reason": str(frame.support_reason),
+                "support_gate": str(gate or ""),
+                "geometry_level": int(frame.geometry_level),
+                "selected": (
+                    selected_stamp is not None
+                    and abs(float(stamp) - float(selected_stamp)) < 1e-6),
+            })
+        return rows
+
+    def _note_auth_read(self, success, reason):
+        """Append this DetectLuggage read. Selection stays latest()."""
+        self._auth_reads.append({
+            "read_ros_stamp": self.get_clock().now().nanoseconds / 1e9,
+            "selected_stamp": self._last_selected_stamp,
+            "success": bool(success),
+            "reason": str(reason),
+            "window": self._frame_window_rows(self._last_selected_stamp),
+        })
+        if len(self._auth_reads) > 16:
+            del self._auth_reads[:-16]
+
     def _publish_diagnostics(self, source, success, confidence, reason,
                              detected=None):
+        self._note_auth_read(success, reason)
         now_sec = self.get_clock().now().nanoseconds / 1e9
         ctype = self.get_clock().clock_type
         clock_name = ctype.name if hasattr(ctype, "name") else str(ctype)
@@ -2020,6 +2065,8 @@ class LuggageDetector(Node):
             stats.get("last_cargo_n_points", stats.get("n_points", 0)) or 0)
         record["cargo_source"] = str(stats.get("source") or "")
         record["support_mode"] = self._support_mode
+        record["selected_stamp"] = self._last_selected_stamp
+        record["auth_reads"] = list(self._auth_reads)
         if detected is not None:
             record["detected"] = {
                 "id": detected.id,

@@ -8,6 +8,8 @@ replay command.
 
 from __future__ import division
 
+from luggage_planning.planning_capture import candidate_complete
+
 
 REQUIRED_FIELDS = (
     "request_id",
@@ -18,6 +20,8 @@ REQUIRED_FIELDS = (
     "map_source",
     "geometry_hash",
     "candidate_targets",
+    "candidates",
+    "map_snapshot",
     "atlas_identity",
 )
 
@@ -83,6 +87,7 @@ def build_planning_request(fields):
         "map_source": str(fields.get("map_source") or ""),
         "geometry_hash": str(fields.get("geometry_hash") or ""),
         "candidate_targets": list(fields.get("candidate_targets") or []),
+        "candidates": list(fields.get("candidates") or []),
         "atlas_identity": dict(fields.get("atlas_identity") or {}),
         "stage_timings": dict(fields.get("stage_timings") or {}),
     }
@@ -90,6 +95,26 @@ def build_planning_request(fields):
     if isinstance(snapshot, dict):
         document["map_snapshot"] = snapshot
     return document
+
+
+def _candidates_replayable(value):
+    if not isinstance(value, list) or not value:
+        return False
+    if not any(candidate_complete(item) for item in value):
+        return False
+    for item in value:
+        if candidate_complete(item):
+            continue
+        pose = (item.get("slot_pose") or {}) if isinstance(item, dict) else {}
+        if (isinstance(item, dict)
+                and item.get("reachability") == "not_synthesized"
+                and item.get("targets") == []
+                and isinstance(item.get("seed_sources"), list)
+                and isinstance(pose.get("position"), list)
+                and len(pose.get("position")) == 3):
+            continue
+        return False
+    return True
 
 
 def _present(document, name):
@@ -104,6 +129,10 @@ def _present(document, name):
         return isinstance(value, str) and bool(value)
     if name == "candidate_targets":
         return isinstance(value, list) and len(value) > 0
+    if name == "candidates":
+        return _candidates_replayable(value)
+    if name == "map_snapshot":
+        return isinstance(value, dict) and bool(value)
     if name == "atlas_identity":
         return isinstance(value, dict) and bool(value.get("identity"))
     return value not in (None, "", [], {})

@@ -76,6 +76,15 @@ A stack candidate is feasible when:
 There is no API to target a specific prior box. Stacking is an automatic
 candidate at XY cells whose `peak` is that box's top.
 
+Boxes on the same support surface keep a horizontal gap of
+`same_layer_clearance_m` (frozen at 0.05 m for this generation) between
+yawed footprints. Each footprint is grown by half that gap and the grown
+polygons must not intersect; a gap equal to the threshold passes.
+Wall and corridor margins stay on the hull and are not added again here.
+A box whose bottom rests on a placed box's top may cover that support
+parent; it still keeps the gap against every other box on its own layer,
+and positive-volume overlap is still rejected.
+
 ## Scoring (flatten first)
 
 Live score, defaults in `placement_solver._default_params`:

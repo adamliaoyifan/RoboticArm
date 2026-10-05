@@ -96,7 +96,17 @@ def _launch(context, *args, **kwargs):
         output="screen",
         parameters=[robot_description],
     )
-    return [publisher, rsp, move_group, rviz]
+    # Same URDF/SRDF move_group plans with. Plan-only certification
+    # calls /validate_route_v2; without this node a planned route dies
+    # as CERT_SERVICE_UNAVAILABLE.
+    validator = Node(
+        package="luggage_planning",
+        executable="validate_route_node",
+        name="validate_route_v2",
+        output="screen",
+        parameters=[robot_description, _semantic_description()],
+    )
+    return [publisher, rsp, move_group, validator, rviz]
 
 
 def generate_launch_description():

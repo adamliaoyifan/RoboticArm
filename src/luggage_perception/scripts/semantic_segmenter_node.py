@@ -257,6 +257,11 @@ class SemanticSegmenterNode(Node):
             stream_qos)
         self._stats_pub = self.create_publisher(
             String, self.get_parameter("output.stats").value, stats_qos)
+        # Per-frame mask identity. Not throttled: stats_json keeps one
+        # pending record, which drops the frames between publishes.
+        self._mask_trace_pub = self.create_publisher(
+            String, "~/mask_trace", QoSProfile(
+                depth=50, reliability=ReliabilityPolicy.RELIABLE))
 
         self.create_subscription(
             Image, self.get_parameter("input.color_image").value,
@@ -518,6 +523,7 @@ class SemanticSegmenterNode(Node):
         if out.instance_map is not None:
             self._instance_pub.publish(adapters.instance_mask_msg_from_array(
                 out.instance_map, stamp, out.frame_id))
+        self._publish_mask_trace(out)
         self._publish_yolo(out, stamp)
         t_yolo = time.perf_counter()
         self._node_stage_ms["yolo_publish"] = round((t_yolo - t_mask) * 1000.0, 2)
@@ -537,6 +543,28 @@ class SemanticSegmenterNode(Node):
         self._last_stats_pub = now
         self._pending_stats = None
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+
+    def _publish_mask_trace(self, out):
+        """Stamp, generation, and nonzero counts for one mask frame."""
+        label_map = getattr(out, "label_map", None)
+        instance_map = getattr(out, "instance_map", None)
+        record = {
+            "kind": "mask",
+            "stamp": float(getattr(out, "stamp", 0.0) or 0.0),
+            "generation": int(getattr(out, "generation", 0) or 0),
+            "instance_id": str(getattr(out, "instance_id", "") or ""),
+            "mask_nonzero": (
+                0 if label_map is None else int(np.count_nonzero(label_map))),
+            "instance_nonzero": (
+                None if instance_map is None
+                else int(np.count_nonzero(instance_map))),
+            "n_detections": int(len(getattr(out, "detections", None) or ())),
+        }
+        try:
+            self._mask_trace_pub.publish(String(
+                data=json.dumps(record, sort_keys=True)))
+        except Exception as exc:  # noqa: BLE001 - trace must not stop masks
+            self._warn_throttled("mask_trace publish failed: %s" % exc)
 
     def _publish_yolo(self, out, stamp):
         msg = YoloDetections()

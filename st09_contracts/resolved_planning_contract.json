@@ -74,6 +74,7 @@
     "arm_min_margin_m": {"value": 0.0, "meaning": "hard floor for the measured wrist/elbow clearance on top-K rows", "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
     "arm_radius_m": {"value": 0.08, "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
     "placement_top_clearance_m": {"value": 0.03, "meaning": "required free space above the placed box", "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params clearance_margin"},
+    "same_layer_clearance_m": {"value": 0.05, "meaning": "minimum boundary gap between oriented footprints on the same support surface; equality passes; a stacked box is exempt only against its support parent", "source": "src/luggage_packing/luggage_packing/placement_solver.py SAME_LAYER_CLEARANCE_M; docs/plans/st09_i_finish_execution_20261004.md 2026-10-05-v2"},
     "placement_support_tol_m": {"value": 0.05, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params support_tol"},
     "placement_min_support_ratio": {"value": 0.6, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params min_support_ratio"},
     "margin_naming_rule": "S1 refines these into separately named static-wall / cargo / support-contact margins with unified sources; C0 freezes the current numbers",

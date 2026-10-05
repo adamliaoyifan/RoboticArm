@@ -647,6 +647,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             build_planning_request,
             candidate_targets_from_rows,
         )
+        from luggage_planning.planning_capture import candidates_from_rows
 
         translation, quaternion = [], []
         if isinstance(container_transform, (list, tuple)) and len(
@@ -692,6 +693,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             "map_source": str(getattr(stats, "map_source", "") or ""),
             "geometry_hash": geometry_hash,
             "candidate_targets": candidate_targets_from_rows(rows),
+            "candidates": candidates_from_rows(rows),
             "atlas_identity": {
                 "identity": identity,
                 "enabled": bool(cfg.get("enabled")),

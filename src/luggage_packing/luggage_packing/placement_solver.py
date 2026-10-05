@@ -24,6 +24,7 @@ from luggage_packing.placement_legacy_v1 import v1_candidate_view
 
 
 REASON_OVERLAP = "overlap"
+REASON_SAME_LAYER_CLEARANCE = "same_layer_clearance"
 REASON_OUTSIDE_APERTURE = "outside_aperture"
 REASON_OUTSIDE_HULL = "outside_hull"
 REASON_CORRIDOR_BLOCKED = "corridor_blocked"
@@ -42,7 +43,8 @@ REASON_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
 # independent eval enumerator in ``place_only_fixture.enumerate_footprints``
 # so the product's own claim and the arbiter's verdict are comparable.
 CAPACITY_REASONS = frozenset((
-    REASON_OVERLAP, REASON_OUTSIDE_HULL, REASON_INSUFFICIENT_CLEARANCE))
+    REASON_OVERLAP, REASON_SAME_LAYER_CLEARANCE, REASON_OUTSIDE_HULL,
+    REASON_INSUFFICIENT_CLEARANCE))
 POLICY_REASONS = frozenset((
     REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
     REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT,
@@ -56,6 +58,7 @@ VERDICT_APERTURE_VIOLATION = "aperture_violation"
 VERDICT_SUPPORT_MISSING = "support_missing"
 VERDICT_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
 VERDICT_OVERLAP = "overlap"
+VERDICT_SAME_LAYER_CLEARANCE = "same_layer_clearance"
 VERDICT_TOP_CLEARANCE = "top_clearance"
 
 _REASON_TO_VERDICT = {
@@ -67,6 +70,7 @@ _REASON_TO_VERDICT = {
     REASON_INSUFFICIENT_SUPPORT: VERDICT_SUPPORT_MISSING,
     REASON_SUPPORT_TILT_UNSUPPORTED: VERDICT_SUPPORT_TILT_UNSUPPORTED,
     REASON_OVERLAP: VERDICT_OVERLAP,
+    REASON_SAME_LAYER_CLEARANCE: VERDICT_SAME_LAYER_CLEARANCE,
     REASON_INSUFFICIENT_CLEARANCE: VERDICT_TOP_CLEARANCE,
 }
 
@@ -135,10 +139,175 @@ def aabb_overlap(a, b, tolerance=1e-9):
     )
 
 
+# Frozen for this generation (2026-10-05 quick track / ST09-I v2).
+# Equality passes; a smaller oriented-footprint gap fails. A later
+# change needs a new generation. Wall and corridor margins are separate.
+SAME_LAYER_CLEARANCE_M = 0.05
+
+
+def _rect_corners(cx, cy, yaw, length, width):
+    """Corners of a yawed footprint. length follows yaw, width is across."""
+    cosine = math.cos(float(yaw))
+    sine = math.sin(float(yaw))
+    half_l = 0.5 * float(length)
+    half_w = 0.5 * float(width)
+    corners = []
+    for local_x, local_y in (
+            (half_l, half_w), (half_l, -half_w),
+            (-half_l, half_w), (-half_l, -half_w)):
+        corners.append((
+            float(cx) + cosine * local_x - sine * local_y,
+            float(cy) + sine * local_x + cosine * local_y,
+        ))
+    return corners
+
+
+def _polygon_overlaps(left, right, tolerance=1e-9):
+    """True when two convex polygons have positive area in common."""
+    def axes(corners):
+        out = []
+        count = len(corners)
+        for index in range(count):
+            x1, y1 = corners[index]
+            x2, y2 = corners[(index + 1) % count]
+            edge_x = x2 - x1
+            edge_y = y2 - y1
+            norm = math.hypot(edge_x, edge_y) or 1.0
+            out.append((-edge_y / norm, edge_x / norm))
+        return out
+
+    def project(corners, axis):
+        dots = [point[0] * axis[0] + point[1] * axis[1] for point in corners]
+        return min(dots), max(dots)
+
+    for axis in axes(left) + axes(right):
+        left_min, left_max = project(left, axis)
+        right_min, right_max = project(right, axis)
+        if left_max <= right_min + tolerance or right_max <= left_min + tolerance:
+            return False
+    return True
+
+
+def _candidate_footprint(candidate, floor_z):
+    """Yawed landed rectangle and vertical extent of one candidate."""
+    center = candidate.get("center_container")
+    if center is None:
+        box = candidate_aabb(candidate, 0.0, floor_z=floor_z)
+        return {
+            "cx": 0.5 * (box[0] + box[3]),
+            "cy": 0.5 * (box[1] + box[4]),
+            "yaw": 0.0,
+            "length": box[3] - box[0],
+            "width": box[4] - box[1],
+            "z_bottom": box[2],
+            "z_top": box[5],
+        }
+    size = candidate.get("size") or (0.0, 0.0, 0.0)
+    length = float(size[0])
+    width = float(size[1])
+    height = float(size[2]) if len(size) > 2 else 0.0
+    if "box_yaw" not in candidate:
+        footprint = candidate.get("footprint") or size[:2]
+        length = float(footprint[0])
+        width = float(footprint[1])
+        yaw = 0.0
+    else:
+        yaw = float(candidate.get("box_yaw") or 0.0)
+    cz = float(center[2]) - float(floor_z)
+    return {
+        "cx": float(center[0]),
+        "cy": float(center[1]),
+        "yaw": yaw,
+        "length": length,
+        "width": width,
+        "z_bottom": cz - 0.5 * height,
+        "z_top": cz + 0.5 * height,
+    }
+
+
+def _placed_footprint(placed, floor_z):
+    """A placed body is either an AABB tuple or an oriented record."""
+    if isinstance(placed, dict):
+        center = placed.get("center_xy") or placed.get("center") or (0.0, 0.0)
+        size = placed.get("size_lw") or placed.get("footprint") or (0.0, 0.0)
+        return {
+            "cx": float(center[0]),
+            "cy": float(center[1]),
+            "yaw": float(placed.get("yaw") or 0.0),
+            "length": float(size[0]),
+            "width": float(size[1]),
+            "z_bottom": float(placed.get("z_bottom", 0.0)) - float(floor_z),
+            "z_top": float(placed.get("z_top", 0.0)) - float(floor_z),
+        }
+    box = tuple(float(v) for v in placed)
+    return {
+        "cx": 0.5 * (box[0] + box[3]),
+        "cy": 0.5 * (box[1] + box[4]),
+        "yaw": 0.0,
+        "length": box[3] - box[0],
+        "width": box[4] - box[1],
+        "z_bottom": box[2],
+        "z_top": box[5],
+    }
+
+
+def _placed_aabb(placed, floor_z):
+    """Axis-aligned bound used only for the solid-penetration gate."""
+    if not isinstance(placed, dict):
+        return placed
+    foot = _placed_footprint(placed, floor_z)
+    corners = _rect_corners(
+        foot["cx"], foot["cy"], foot["yaw"], foot["length"], foot["width"])
+    xs = [point[0] for point in corners]
+    ys = [point[1] for point in corners]
+    return (min(xs), min(ys), foot["z_bottom"],
+            max(xs), max(ys), foot["z_top"])
+
+
+def _same_layer_reason(candidate, placed_aabbs, floor_z, clearance_m,
+                       support_tol):
+    """Boundary gap between footprints that share a support surface.
+
+    A box stacked on a placed support parent may cover that parent's
+    footprint. It still keeps this gap against every other body on its
+    own layer. Solid penetration stays the overlap gate.
+    """
+    if not placed_aabbs or clearance_m is None or float(clearance_m) <= 0.0:
+        return None
+    here = _candidate_footprint(candidate, floor_z)
+    here_rect = _rect_corners(
+        here["cx"], here["cy"], here["yaw"], here["length"], here["width"])
+    grown = _rect_corners(
+        here["cx"], here["cy"], here["yaw"],
+        here["length"] + float(clearance_m),
+        here["width"] + float(clearance_m))
+    tol = float(support_tol)
+    for placed in placed_aabbs:
+        other = _placed_footprint(placed, floor_z)
+        other_rect = _rect_corners(
+            other["cx"], other["cy"], other["yaw"],
+            other["length"], other["width"])
+        on_parent = (
+            abs(here["z_bottom"] - other["z_top"]) <= tol
+            and _polygon_overlaps(here_rect, other_rect))
+        if on_parent:
+            continue
+        same_layer = abs(here["z_bottom"] - other["z_bottom"]) <= tol
+        if not same_layer:
+            continue
+        other_grown = _rect_corners(
+            other["cx"], other["cy"], other["yaw"],
+            other["length"] + float(clearance_m),
+            other["width"] + float(clearance_m))
+        if _polygon_overlaps(grown, other_grown):
+            return REASON_SAME_LAYER_CLEARANCE
+    return None
+
+
 def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
         hull_contains=None, inner_size=None, smallest_size=None, hull=None,
-        floor_z=0.0):
+        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05):
     """Return ``(reason, capacity_ok)`` for one candidate.
 
     ``reason`` is ``None`` when every gate passes, otherwise the first reject
@@ -168,8 +337,14 @@ def placement_constraint_verdict(
                     break
             if outside_hull:
                 break
-    overlaps = any(aabb_overlap(box, placed) for placed in (placed_aabbs or []))
-    capacity_ok = not (outside_hull or overlaps)
+    overlaps = any(
+        aabb_overlap(box, _placed_aabb(placed, floor_z))
+        for placed in (placed_aabbs or []))
+    if same_layer_clearance_m is None:
+        same_layer_clearance_m = SAME_LAYER_CLEARANCE_M
+    layer_reason = _same_layer_reason(
+        candidate, placed_aabbs, floor_z, same_layer_clearance_m, support_tol)
+    capacity_ok = not (outside_hull or overlaps or layer_reason)
 
     if outside_aperture:
         return REASON_OUTSIDE_APERTURE, capacity_ok
@@ -177,6 +352,8 @@ def placement_constraint_verdict(
         return REASON_OUTSIDE_HULL, capacity_ok
     if overlaps:
         return REASON_OVERLAP, capacity_ok
+    if layer_reason:
+        return layer_reason, capacity_ok
     # The corridor sweep is the expensive gate; it only matters once the box
     # already fits, so it stays behind the cheap gates as before.
     if (inner_size is not None and smallest_size is not None):
@@ -191,18 +368,22 @@ def placement_constraint_verdict(
 def placement_constraint_reason(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
         hull_contains=None, inner_size=None, smallest_size=None, hull=None,
-        floor_z=0.0):
+        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05):
     """Return the first hard-constraint reject reason, or ``None``."""
     reason, _capacity_ok = placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=placed_aabbs, aperture_y=aperture_y,
         hull_contains=hull_contains, inner_size=inner_size,
-        smallest_size=smallest_size, hull=hull, floor_z=floor_z)
+        smallest_size=smallest_size, hull=hull, floor_z=floor_z,
+        same_layer_clearance_m=same_layer_clearance_m,
+        support_tol=support_tol)
     return reason
 
 
 def _default_params():
     return {
         "clearance_margin": 0.03,   # required free space above the placed box [m]
+        # Same-layer footprint gap. See SAME_LAYER_CLEARANCE_M.
+        "same_layer_clearance_m": None,
         "support_tol": 0.05,        # cells within this of the peak count as support [m]
         "min_support_ratio": 0.6,   # required contact ratio of the footprint
         "stride_cells": 1,          # grid stride for the sliding window

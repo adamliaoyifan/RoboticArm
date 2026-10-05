@@ -43,10 +43,12 @@ from st09_contracts.graph import LoadState, PlannedRoute
 from st09_contracts.planning import GeometryVerdict, PlacementCandidate
 
 from luggage_planning.grid_path_search import (
+    COMPLETE_ROUTE_RESERVE_S,
     DEFAULT_ENTRY_HOPS,
     ROUTE_TOTAL_WALL_S,
     SINGLE_NEW_EDGE_WALL_S,
     RoutePlanningError,
+    candidate_failure_reason,
     hops_from_table,
 )
 #: [ST09-I S5.7-4] ObservationRouteV2 guards.
@@ -298,6 +300,17 @@ def _yaw(quaternion_xyzw) -> float:
     qx, qy, qz, qw = (float(v) for v in quaternion_xyzw)
     return math.atan2(2.0 * (qw * qz + qx * qy),
                       1.0 - 2.0 * (qy * qy + qz * qz))
+
+
+def target_pairs(targets):
+    from luggage_planning.planning_capture import target_pairs as _pairs
+    return _pairs(targets)
+
+
+def capture_fields(slot, targets, reachability, seed_sources):
+    """Slot pose, TCP targets, reachability and seed labels for one row."""
+    from luggage_planning.planning_capture import capture_fields as _capture
+    return _capture(slot, targets, reachability, seed_sources)
 
 
 def candidate_from_slot(slot: Mapping, index: int) -> PlacementCandidate:
@@ -687,8 +700,13 @@ class RouteProducer(object):
             ("exit", plan.exit, LoadState.UNLOADED),
         ]
         if plan.staging is not None:
+            # Carrying staging is the joint target of home -> staging.
+            # The unloaded twin is the joint target of the free-space
+            # return; Cartesian retreat stops at the portal.
             anchor_rows.insert(0, ("staging", plan.staging,
                                    LoadState.CARRYING))
+            anchor_rows.insert(1, ("staging", plan.staging,
+                                   LoadState.UNLOADED))
         if not has_opening:
             # The collapsed portal shares the approach pose; registering
             # it would steal the approach node's (load, q) key.
@@ -767,29 +785,20 @@ class RouteProducer(object):
                         prior_candidate, attachment, request)
                 except (ContractViolation, TargetSynthesisError):
                     prior_targets = []
-                    rows.append({
-                        "slot_index": index,
-                        "candidate_id": prior_candidate.candidate_id,
-                        "depth_m": 0.0,
-                        "reason": "TARGET_SYNTHESIS_EMPTY",
-                    })
+                    rows.append(self._early_row(
+                        index, slot, prior_candidate, [],
+                        "TARGET_SYNTHESIS_EMPTY", "not_synthesized"))
                     continue
                 if not prior_targets:
-                    rows.append({
-                        "slot_index": index,
-                        "candidate_id": prior_candidate.candidate_id,
-                        "depth_m": 0.0,
-                        "reason": "TARGET_SYNTHESIS_EMPTY",
-                    })
+                    rows.append(self._early_row(
+                        index, slot, prior_candidate, [],
+                        "TARGET_SYNTHESIS_EMPTY", "not_synthesized"))
                     continue
                 prior = self.atlas_prior(prior_targets, request) or {}
                 if prior.get("verdict") == "unreachable":
-                    rows.append({
-                        "slot_index": index,
-                        "candidate_id": prior_candidate.candidate_id,
-                        "depth_m": 0.0,
-                        "reason": "ATLAS_UNREACHABLE",
-                    })
+                    rows.append(self._early_row(
+                        index, slot, prior_candidate, prior_targets,
+                        "ATLAS_UNREACHABLE", "unreachable"))
                     continue
                 seeds = list(prior.get("seeds") or [])
                 verdict = str(prior.get("verdict") or "unknown")
@@ -850,18 +859,20 @@ class RouteProducer(object):
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 rows.append(self._attempt_summary(ordered_slots, tried_indices))
                 return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
-            # [ST09-I P3 ordering contract] NO per-candidate slice:
-            # a measured COMPLETE route build costs ~6-10 s (staging
-            # OMPL transit dominates) — most of the frozen 10 s budget —
-            # so slicing to guarantee a second attempt starves the only
-            # viable one (live: 6 s and 4.6 s slices each killed a build
-            # that succeeds at ~7-9 s). Fairness against deep-attempt
-            # starvation comes from the EXECUTABLE_FIRST ordering (the
-            # first tried candidate is the cheapest, most robust one);
-            # if that attempt fails, PLANNING_BUDGET_EXHAUSTED is the
-            # honest named outcome. Budget growth or pre-validated
-            # persisted graphs are the levers for multi-attempt budgets.
-            candidate_budget_ns = int(remaining)
+            # A deterministic short-hop refusal ends this candidate.
+            # While another candidate is waiting, leave one complete
+            # route (COMPLETE_ROUTE_RESERVE_S) unspent so that refusal
+            # cannot consume the select. A single remaining candidate
+            # still receives the whole window.
+            waiting = {
+                entry[0] for entry in ordered_slots
+                if entry[0] not in tried_indices and entry[0] != index}
+            reserve_ns = int(COMPLETE_ROUTE_RESERVE_S * 1e9)
+            edge_ns = int(SINGLE_NEW_EDGE_WALL_S * 1e9)
+            if waiting and remaining - reserve_ns >= edge_ns:
+                candidate_budget_ns = int(remaining - reserve_ns)
+            else:
+                candidate_budget_ns = int(remaining)
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
             tried_indices.append(index)
             row = {
@@ -887,6 +898,9 @@ class RouteProducer(object):
                 self._close_row(rows, row)
                 last_reason = row["reason"]
                 continue
+            row.update(capture_fields(
+                slot, prior_targets, verdict,
+                ["atlas"] * len(atlas_seeds)))
             if atlas_seeds:
                 seed_check = self._atlas_seed_check(prior_targets, atlas_seeds)
                 if not seed_check["ok"]:
@@ -924,22 +938,36 @@ class RouteProducer(object):
                 has_staging = bool(
                     self.graph.nodes_by_region("staging"))
                 if has_staging:
-                    # Staging transit: an OMPL joint sweep to the high
-                    # free-space anchor (a single cartesian hop across
-                    # the workspace sits in the wrist-singularity family
-                    # and stops at fraction 0), then the deterministic
-                    # cartesian descent that enters the aperture.
+                    # Free space outside the portal may detour. Both
+                    # home -> staging and staging -> portal are joint
+                    # PORTAL_TRANSIT. The fixed corridor starts at the
+                    # portal: portal -> slot_approach stays TRAVERSE.
+                    # This is the region boundary, not a fallback for
+                    # every failed TRAVERSE.
                     entry_table = (
                         ("staging", "PORTAL_TRANSIT"),
-                        ("portal", "TRAVERSE"),
+                        ("portal", "PORTAL_TRANSIT"),
                     ) + tuple(hop for hop in entry_table
                               if hop[0] != "portal")
                 entry_hops = hops_from_table(entry_table, "carrying")
+                # Reverse egress stays Cartesian back to the portal.
+                # Outside the portal (staging, then home) the return is
+                # joint RETURN. The geometric exit is not a hop target.
+                retreat_regions = [
+                    region for region, _edge_class in reversed(
+                        entry_table[:-1])
+                    if region != "slot"] + ["home"]
+                retreat_table = tuple(
+                    (region, "RETURN" if region in ("staging", "home")
+                     else "RETREAT")
+                    for region in retreat_regions)
+                retreat_hops = hops_from_table(retreat_table, "unloaded")
                 planner = GraphRoutePlanner(
                     self.graph, self.edge_builder,
                     home_node_id=self.graph.node_for_q(
                         LoadState.CARRYING, start_q).node_id,
                     entry_hops=entry_hops,
+                    retreat_hops=retreat_hops,
                     t_frame_container=tuple(float(v) for v in
                                             request["container_transform"]
                                             ["translation"]),
@@ -965,6 +993,7 @@ class RouteProducer(object):
                             ("exit", plan.exit))
                         if position is not None},
                     scope_node_ids=scope_ids)
+                planner.trace = getattr(self, "search_trace", None)
                 targets = self._expand_targets(
                     candidate, attachment, request)
                 if not targets:
@@ -980,24 +1009,39 @@ class RouteProducer(object):
                 self._log("route: candidate %d planned %s"
                           % (index, route.route_id))
             except RoutePlanningError as exc:
-                import json as _json
-                row["targets"] = _json.dumps(
-                    [[list(t.position), list(t.quaternion_xyzw)]
-                     for t in targets], default=float)[:2000]
-                row["reason"] = exc.code
+                # Keep structured TCP targets. A truncated JSON string cannot
+                # be replayed and was mistaken for a missing candidate.
+                row["targets"] = target_pairs(targets)
+                missing_exit = bool((exc.detail or {}).get(
+                    "retreat_target_missing"))
+                egress_infeasible = bool((exc.detail or {}).get(
+                    "egress_infeasible"))
+                path_not_robust = bool((exc.detail or {}).get(
+                    "path_not_robust"))
+                if missing_exit:
+                    row["reason"] = "RETREAT_TARGET_MISSING"
+                elif egress_infeasible:
+                    row["reason"] = "EGRESS_INFEASIBLE"
+                elif path_not_robust:
+                    row["reason"] = "PATH_NOT_ROBUST"
+                else:
+                    row["reason"] = exc.code
                 row["detail"] = exc.detail
+                named_failure = candidate_failure_reason(exc.detail)
+                if named_failure:
+                    row["reason"] = named_failure
+                    if exc.detail is not None:
+                        exc.detail["candidate_failure"] = named_failure
                 row["ik_refine"] = list(getattr(self, "last_goal_refine", []) or [])
                 row["atlas"] = getattr(self, "last_atlas_diag", None)
                 self._close_row(rows, row)
-                last_reason = exc.code
-                # [ST09-I] bounded sampler retry: NO_FEASIBLE after an
-                # OMPL miss (a staging transit dying at -2 when the next
-                # draw resolves) is sampling luck, not geometry. Re-plan
-                # the SAME candidate with fresh draws inside the frozen
-                # budget; geometry refusals still refuse.
+                last_reason = row["reason"]
+                # One OMPL redraw after a sampler miss. A named candidate
+                # failure (IK, fraction, excursion, collision, missing
+                # exit) does not get that redraw.
                 remaining = self.budget_ns - (self._clock_ns() - started_ns)
                 route = None
-                if exc.code == "NO_FEASIBLE_ROUTE" \
+                if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure \
                         and cert_rebuilds_left > 0 and remaining > 0:
                     cert_rebuilds_left -= 1
                     self._log("route: sampler miss — re-planning "
@@ -1075,27 +1119,11 @@ class RouteProducer(object):
                     self._log("route: cert fail %s clearance=%s" % (
                         certification.reason.value,
                         certification.min_clearance_m))
-                # A certified collision after a clean OMPL build is a
-                # between-waypoint graze the sampler's own resolution
-                # missed (live: the mid360 mount grazing the container
-                # corner by 0.45 mm). OMPL is a sampler — re-plan the
-                # route with fresh sampling, bounded, inside the frozen
-                # budget. The certifier stays the only authority: a
-                # rebuild that still collides is still a refusal.
-                remaining = self.budget_ns - (self._clock_ns() - started_ns)
-                if reason == "CERT_COLLISION" and cert_rebuilds_left > 0 \
-                        and remaining > 0:
-                    cert_rebuilds_left -= 1
-                    self._log("route: cert collision — re-planning "
-                              "candidate %d" % index)
-                    try:
-                        route = planner.plan_route(
-                            snapshot, attachment, candidate, targets,
-                            budget_ns=int(remaining))
-                        row["route_id"] = route.route_id
-                        continue
-                    except RoutePlanningError:
-                        pass
+                # Collision, like a short Cartesian refusal, finishes
+                # this candidate. Another sample of the same slot does
+                # not clear a placed box or a swept payload.
+                if reason == "CERT_COLLISION":
+                    row["detail"] = {"candidate_failure": "CERT_COLLISION"}
                 row["reason"] = reason
                 self._close_row(rows, row)
                 last_reason = row["reason"]
@@ -1181,6 +1209,17 @@ class RouteProducer(object):
                 "stage_timings": self._stage_timings(started_ns),
             }
         rows.append(self._attempt_summary(ordered_slots, tried_indices))
+        # Geometry refusals of every candidate are one request outcome.
+        # Map admission and the other request-level codes stay named.
+        if last_reason in (
+                "NO_FEASIBLE_ROUTE", "EDGE_BUILD_FAILED",
+                "CANDIDATE_COLLISION", "SWEEP_COLLISION",
+                "CARTESIAN_FRACTION", "EXCURSION",
+                "BRANCH_DISCONTINUITY", "IK_UNAVAILABLE",
+                "EGRESS_INFEASIBLE", "RETREAT_TARGET_MISSING",
+                "PATH_NOT_ROBUST", "CERT_COLLISION",
+                "TARGET_SYNTHESIS_EMPTY"):
+            last_reason = "NO_FEASIBLE_ROUTE"
         failed = self._fail(last_reason, rows)
         failed["stage_timings"] = self._stage_timings(started_ns)
         return failed
@@ -2264,6 +2303,18 @@ class RouteProducer(object):
                 stages["revalidate"] += \
                     _reval_time.monotonic_ns() - _reval_t0
 
+    def _early_row(self, index, slot, candidate, targets, reason,
+                   reachability):
+        """A named refusal that still keeps the synthesized target."""
+        row = {
+            "slot_index": index,
+            "candidate_id": candidate.candidate_id,
+            "depth_m": 0.0,
+            "reason": reason,
+        }
+        row.update(capture_fields(slot, targets, reachability, []))
+        return row
+
     def _close_row(self, rows, row):
         """Stamp elapsed time, seed source, and recent Cartesian refusals."""
         started = row.pop("_started_ns", None)
@@ -2372,9 +2423,17 @@ class RouteProducer(object):
             if entry[0] not in tried and (
                 shallowest_tried is None or float(entry[3]) < shallowest_tried)]
         seeded_depths = [float(entry[3]) for entry in seeded]
+        order = []
+        for entry in ordered_slots:
+            if entry[0] not in order:
+                order.append(entry[0])
+        tried_set = set(tried_indices or [])
+        n_tried = sum(1 for slot_index in order if slot_index in tried_set)
         return {
             "reason": "ATTEMPT_SUMMARY",
-            "n_ordered": len(ordered_slots),
+            "n_ordered": len(order),
+            "n_tried": n_tried,
+            "n_untried": len(order) - n_tried,
             "n_seeded": len(seeded),
             "tried_slot_indices": list(tried_indices or []),
             "untried_seeded": sum(
@@ -2386,7 +2445,10 @@ class RouteProducer(object):
         }
 
     def _fail(self, reason, rows):
-        return {
+        summary = next((
+            row for row in reversed(rows or [])
+            if row.get("reason") == "ATTEMPT_SUMMARY"), None)
+        result = {
             "success": False,
             "reason_code": str(reason),
             "slot_index": -1,
@@ -2395,6 +2457,10 @@ class RouteProducer(object):
             "path_hash": "",
             "rows": rows,
         }
+        if summary is not None:
+            result["n_tried"] = int(summary.get("n_tried") or 0)
+            result["n_untried"] = int(summary.get("n_untried") or 0)
+        return result
 
 
 def _leg_record(name, trajectory, request_id, scene_revision, stamp_ns):

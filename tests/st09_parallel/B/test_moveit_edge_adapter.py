@@ -203,6 +203,19 @@ class TestSceneHelpers:
         short = _excursion(_Traj(), path_len_m=0.005)
         assert short["ratio"] == pytest.approx(1.0 / 0.05)  # floored denominator
 
+    def test_joint_motion_report_names_a_pi_wrist_flip(self):
+        from luggage_planning.joint_path import joint_motion_report
+
+        start = (0.1, -0.2, 0.8, -0.3, 1.2, 0.4)
+        # One sample moves joint 6 by pi. The other joints stay put.
+        end = (0.1, -0.2, 0.8, -0.3, 1.2, 0.4 + math.pi)
+        report = joint_motion_report((start, end), path_length_m=0.053)
+        assert report["worst_joint_index"] == 5
+        assert abs(report["end_delta_rad"][5]) == pytest.approx(math.pi, abs=1e-6)
+        assert report["cumulative_rad"][5] == pytest.approx(math.pi, abs=1e-6)
+        assert report["max_step_rad"][5] == pytest.approx(math.pi, abs=1e-6)
+        assert report["ratio"] == pytest.approx(math.pi / 0.053, abs=1e-6)
+
 
 # -- mock-graph layer ------------------------------------------------------
 

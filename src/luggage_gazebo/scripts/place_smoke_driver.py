@@ -1631,6 +1631,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         with open(os.path.join(dest, "vacuum_events.jsonl"), "w", encoding="utf-8") as handle:
             handle.write(json.dumps(events, sort_keys=True, default=str) + "\n")
         merged = {"scene.json": self._scene_snapshot()}
+        boundary = (getattr(trial, "extras", None) or {}).get(
+            "perception_boundary")
+        if boundary:
+            merged["perception_boundary.json"] = boundary
         if extra_files:
             merged.update(extra_files)
         if extra:
@@ -2218,6 +2222,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
+        self._join_trace.clear()
+        self._mask_trace.clear()
+        self._last_auth_diag = None
         goto_ok, goto_msg, _ = self._home_arm()
         if not goto_ok:
             trial.fail_code = self.home_arm_code()
@@ -2290,6 +2297,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None
         auth = self.detect_until_authorized()
         trial.extras["pick_authorization"] = auth.to_dict()
+        boundary = self.perception_boundary_document()
+        trial.extras["perception_boundary"] = boundary
+        trial.extras["perception_boundary_summary"] = (
+            boundary.get("classification") or {})
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
         if not auth.authorized:

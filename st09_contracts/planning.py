@@ -230,6 +230,7 @@ class GeometryVerdict(str, Enum):
     SUPPORT_MISSING = "support_missing"
     SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
     OVERLAP = "overlap"
+    SAME_LAYER_CLEARANCE = "same_layer_clearance"
     TOP_CLEARANCE = "top_clearance"
 
     def __str__(self) -> str:  # pragma: no cover - trivial

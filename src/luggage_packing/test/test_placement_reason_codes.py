@@ -44,7 +44,8 @@ def validator(placed_aabbs=None, aperture_y=None, inner_size=None,
         return placement_constraint_verdict(
             candidate, inner_h, placed_aabbs=placed_aabbs,
             aperture_y=aperture_y, inner_size=inner_size,
-            smallest_size=smallest_size)
+            smallest_size=smallest_size,
+            same_layer_clearance_m=0.0)
     return _validate
 
 

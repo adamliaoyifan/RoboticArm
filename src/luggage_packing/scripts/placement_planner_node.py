@@ -69,6 +69,7 @@ from luggage_packing.placement_reachability import make_atlas_annotate
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
+    SAME_LAYER_CLEARANCE_M,
     placement_constraint_verdict,
     candidate_prefix_note,
     ranked_feasible_candidates,
@@ -130,6 +131,8 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("allowed_yaws", [0.0, 1.5707963, 3.14159265,
                                                 -1.5707963])
         self.declare_parameter("clearance_margin", 0.03)
+        self.declare_parameter(
+            "same_layer_clearance_m", SAME_LAYER_CLEARANCE_M)
         self.declare_parameter("min_support_ratio", 0.6)
         self.declare_parameter("top_n", 2000)
         self.declare_parameter("aperture_margin", 0.0)
@@ -207,6 +210,8 @@ class PlacementPlannerNode(Node):
         self._params = {
             "clearance_margin": float(
                 self.get_parameter("clearance_margin").value),
+            "same_layer_clearance_m": float(
+                self.get_parameter("same_layer_clearance_m").value),
             "min_support_ratio": float(
                 self.get_parameter("min_support_ratio").value),
             "top_n": int(self.get_parameter("top_n").value),
@@ -825,6 +830,9 @@ class PlacementPlannerNode(Node):
             smallest_size=smallest_size,
             hull=hull,
             floor_z=self._floor_z,
+            same_layer_clearance_m=float(
+                self._params["same_layer_clearance_m"]),
+            support_tol=float(self._params.get("support_tol", 0.05)),
         )
 
     def _publish_last(self, payload):

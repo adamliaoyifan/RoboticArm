@@ -52,6 +52,10 @@ from luggage_perception.cargo_instance_tracker import (
 )
 from luggage_perception.luggage_box_estimator import voxel_downsample
 from luggage_perception.cargo_view_integration import untracked_xyz
+from luggage_perception.join_boundary_trace import (
+    JoinBoundaryTrace,
+    epochs_match,
+)
 from luggage_perception.semantic_point_filter import (
     CameraIntrinsics,
     DepthToColorExtrinsics,
@@ -151,6 +155,7 @@ class SemanticPointFilterNode(Node):
         self._tracker = CargoInstanceTracker(
             associate_radius_m=float(
                 self.get_parameter("associate_radius_m").value))
+        self._boundary = JoinBoundaryTrace(maxlen=128)
         self._lock = threading.RLock()
         # Sensor callbacks are exclusive so 307k-point joins cannot pile up
         # (Reentrant + MultiThreadedExecutor previously spawned ~70 threads
@@ -183,7 +188,7 @@ class SemanticPointFilterNode(Node):
         self._counts = {"depth": 0, "mask": 0, "instance": 0,
                         "joined": 0, "processed": 0, "no_intrinsics": 0,
                         "mask_decode_fail": 0, "depth_decode_fail": 0,
-                        "epoch_reset": 0, "tf_miss": 0,
+                        "epoch_reset": 0, "epoch_discard": 0, "tf_miss": 0,
                         "depth_waiting_for_mask": 0,
                         "mask_waiting_for_depth": 0,
                         "depth_buffer_evicted": 0,
@@ -227,6 +232,13 @@ class SemanticPointFilterNode(Node):
                 sensor_qos)
         self._stats_pub = self.create_publisher(
             String, self.get_parameter("output.stats").value, stats_qos)
+        # One compact record per epoch or processed join. Reliable so the
+        # eval driver can keep the authorization window; this is not the
+        # throttled stats blob.
+        trace_qos = QoSProfile(
+            depth=50, reliability=ReliabilityPolicy.RELIABLE)
+        self._trace_pub = self.create_publisher(
+            String, "~/join_trace", trace_qos)
 
         self.create_subscription(
             Image, self.get_parameter("input.depth_image").value,
@@ -360,6 +372,9 @@ class SemanticPointFilterNode(Node):
                 return
             self._counts["epoch_reset"] += 1
             self._join_stamps.note_epoch(generation, box_id)
+            epoch_event = self._boundary.note_epoch(
+                generation, box_id, self.get_clock().now().to_msg(),
+                depth_stamp=self._last_depth_stamp)
             stamp = self._last_depth_stamp
             if stamp is None:
                 stamp = self.get_clock().now().to_msg()
@@ -367,6 +382,7 @@ class SemanticPointFilterNode(Node):
                 [], stamp, self._last_depth_frame, n_points=0)
             # Epoch resets are rare; publish immediately, not on the timer.
             self._publish_stats_now()
+            self._emit_boundary(epoch_event)
 
     def _store(self, buffer_, key, msg, evict_counter):
         """Insert by exact (sec, nanosec) key at 15 entries / 1.0 second.
@@ -433,18 +449,18 @@ class SemanticPointFilterNode(Node):
         rot, trans = rt
         return transform_points(points_world, rot, trans)
 
-    def _publish_untracked(self, cargo, obstacle, stamp, frame_id):
-        """Label-filtered cloud before CargoInstanceTracker (OCC-1)."""
+    def _publish_untracked_cloud(self, xyz, stamp, frame_id):
+        """Publish the pre-tracker cloud. Counting happens before the fence."""
         if self._untracked_pub is None:
             return
-        xyz = untracked_xyz(cargo, obstacle, self._untracked_include_obstacle)
         self._untracked_pub.publish(adapters.cloud_msg_from_points(
             xyz, stamp, frame_id or self._last_depth_frame))
         with self._lock:
             self._counts["untracked_publish_count"] += 1
             self._counts["untracked_point_count"] = int(xyz.shape[0])
 
-    def _publish_cargo(self, points_xyz, stamp, frame_id, n_points=None):
+    def _publish_cargo(self, points_xyz, stamp, frame_id, n_points=None,
+                       source=None):
         # filter_depth already returns a contiguous float32 view into its
         # fixed-capacity buffer.  Preserve it through the normal measurement
         # path; promoting to float64 only for cloud_msg_from_points to convert
@@ -457,7 +473,7 @@ class SemanticPointFilterNode(Node):
             xyz = voxel_downsample(xyz, self._cargo_voxel_size)
         n = int(xyz.shape[0] if n_points is None else n_points)
         self._cargo_pub.publish(adapters.cloud_msg_from_points(
-            xyz, stamp, frame_id or self._last_depth_frame))
+            xyz, stamp, frame_id or self._last_depth_frame, source=source))
         with self._lock:
             self._join_stamps.note_join(
                 adapters.stamp_to_sec(stamp), n)
@@ -479,11 +495,20 @@ class SemanticPointFilterNode(Node):
         if key not in self._complete_join_keys():
             return None
         self._counts["joined"] += 1
+        # Snapshot the epoch before numpy runs outside this lock. A
+        # current_box reset during that work then shows up as a
+        # generation change on the committed join.
+        acquire = {
+            "generation": int(self._tracker.generation),
+            "instance_id": str(self._tracker.instance_id),
+            "source": str(self._tracker.source),
+        }
         return (
             self._depths.pop(key),
             self._masks.pop(key),
             self._instances.pop(key, None),
             self._filter,
+            acquire,
         )
 
     def _take_newest_join(self):
@@ -535,7 +560,8 @@ class SemanticPointFilterNode(Node):
         self._join_stamps.note_stale_drop(
             len(stale_depth) + len(stale_mask) + len(stale_instance))
 
-    def _process_joined(self, depth_msg, mask_msg, instance_msg, filt):
+    def _process_joined(self, depth_msg, mask_msg, instance_msg, filt,
+                        acquire=None):
         """Decode + numpy off the lock so current_box can reset the epoch."""
         start = time.monotonic()
         label_map = adapters.image_array_from_msg(mask_msg)
@@ -580,7 +606,13 @@ class SemanticPointFilterNode(Node):
 
         stamp = depth_msg.header.stamp
         frame_id = depth_msg.header.frame_id or self._last_depth_frame
-        self._publish_untracked(cargo, obstacle, stamp, frame_id)
+        mask_nonzero = int(np.count_nonzero(label_map))
+        instance_nonzero = (
+            None if instance_map is None
+            else int(np.count_nonzero(instance_map)))
+        untracked_cloud = untracked_xyz(
+            cargo, obstacle, self._untracked_include_obstacle)
+        untracked_points = int(untracked_cloud.shape[0])
         camera_pts = cargo
         world_pts = None
         tf_miss = False
@@ -592,11 +624,30 @@ class SemanticPointFilterNode(Node):
         yolo_instance_id = int(
             (filt.last_stats or {}).get("cargo_instance_id") or 0)
 
+        boundary_event = None
+        acquired = acquire or {}
+        discarded = False
         with self._lock:
             self._counts["processed"] += 1
             self._last_depth_stamp = stamp
             self._last_depth_frame = frame_id
-            if camera_pts.shape[0] and tf_miss:
+            pre_source = str(self._tracker.source)
+            tracked_before = int(self._tracker.n_points)
+            live_generation = int(self._tracker.generation)
+            live_instance = str(self._tracker.instance_id)
+            if not epochs_match(
+                    acquired.get("generation", 0),
+                    acquired.get("instance_id", ""),
+                    live_generation, live_instance):
+                # Numpy ran outside the lock. The box changed; drop this
+                # join instead of committing it under the new identity.
+                discarded = True
+                self._counts["epoch_discard"] += 1
+                source = "discarded_epoch"
+                frozen_empty = False
+                tracked = None
+                after_track = time.monotonic()
+            elif camera_pts.shape[0] and tf_miss:
                 self._counts["tf_miss"] += 1
                 source = self._tracker.note_tf_miss(
                     adapters.stamp_to_sec(stamp))
@@ -608,38 +659,71 @@ class SemanticPointFilterNode(Node):
                 source = self._tracker.observe(
                     adapters.stamp_to_sec(stamp), camera_pts,
                     yolo_instance_id=yolo_instance_id)
-            frozen_empty = (
-                self._tracker.generation > 0
-                and not self._tracker.instance_id)
-            tracked = self._tracker.points_world
-            # Only hold/reject paths use the tracked world cloud after the
-            # lock is released.  Copying it on every accepted measurement was
-            # an otherwise-unused variable-size allocation.
-            if source != SOURCE_MEASURE and tracked is not None:
-                tracked = tracked.copy()
-            elif source == SOURCE_MEASURE:
-                tracked = None
-            after_track = time.monotonic()
+            if not discarded:
+                frozen_empty = (
+                    self._tracker.generation > 0
+                    and not self._tracker.instance_id)
+                tracked = self._tracker.points_world
+                # Only hold/reject paths use the tracked world cloud after the
+                # lock is released.  Copying it on every accepted measurement was
+                # an otherwise-unused variable-size allocation.
+                if source != SOURCE_MEASURE and tracked is not None:
+                    tracked = tracked.copy()
+                elif source == SOURCE_MEASURE:
+                    tracked = None
+                after_track = time.monotonic()
+            boundary_event = self._boundary.note_join(
+                depth_stamp=stamp,
+                mask_stamp=mask_msg.header.stamp,
+                instance_stamp=(
+                    None if instance_msg is None else instance_msg.header.stamp),
+                mask_nonzero=mask_nonzero,
+                instance_nonzero=instance_nonzero,
+                cargo_instance_id=yolo_instance_id,
+                untracked_points=untracked_points,
+                measured_points=int(camera_pts.shape[0]),
+                tracked_points_before=tracked_before,
+                tracked_points=int(self._tracker.n_points),
+                pre_source=pre_source,
+                post_source=source,
+                acquire_generation=acquired.get("generation", 0),
+                acquire_instance_id=acquired.get("instance_id", ""),
+                commit_generation=int(self._tracker.generation),
+                commit_instance_id=str(self._tracker.instance_id),
+            )
+
+        if boundary_event is not None:
+            self._emit_boundary(boundary_event)
 
         before_publish = time.monotonic()
-        if source == SOURCE_MEASURE:
-            self._publish_cargo(camera_pts, stamp, frame_id)
+        if discarded:
+            pass
+        elif source == SOURCE_MEASURE:
+            self._publish_untracked_cloud(untracked_cloud, stamp, frame_id)
+            self._publish_cargo(
+                camera_pts, stamp, frame_id, source=source)
         elif frozen_empty or (source == SOURCE_EMPTY and camera_pts.shape[0] == 0):
-            self._publish_cargo([], stamp, frame_id, n_points=0)
+            self._publish_untracked_cloud(untracked_cloud, stamp, frame_id)
+            self._publish_cargo([], stamp, frame_id, n_points=0, source=source)
         elif source == SOURCE_EMPTY and camera_pts.shape[0]:
-            self._publish_cargo(camera_pts, stamp, frame_id)
+            self._publish_untracked_cloud(untracked_cloud, stamp, frame_id)
+            self._publish_cargo(camera_pts, stamp, frame_id, source=source)
         else:
+            self._publish_untracked_cloud(untracked_cloud, stamp, frame_id)
             cam = (
                 self._to_camera(tracked, frame_id, stamp)
                 if tracked is not None else None)
             if cam is not None:
-                self._publish_cargo(cam, stamp, frame_id)
+                self._publish_cargo(cam, stamp, frame_id, source=source)
             elif tracked is not None and len(tracked):
-                self._publish_cargo(tracked, stamp, self._world_frame)
+                self._publish_cargo(
+                    tracked, stamp, self._world_frame, source=source)
             else:
-                self._publish_cargo([], stamp, frame_id, n_points=0)
+                self._publish_cargo(
+                    [], stamp, frame_id, n_points=0, source=source)
 
-        if obstacle is not None and len(obstacle) and self._has_obstacle_subscribers():
+        if (not discarded and obstacle is not None and len(obstacle)
+                and self._has_obstacle_subscribers()):
             self._obstacle_pub.publish(adapters.cloud_msg_from_points(
                 obstacle, stamp, frame_id))
             with self._lock:
@@ -700,7 +784,17 @@ class SemanticPointFilterNode(Node):
             record["executor_lag_sec"] = float(now_sec) - float(last)
         else:
             record["executor_lag_sec"] = None
+        record["epoch_stamp"] = self._boundary.epoch_stamp
+        record["epoch_generation"] = int(self._boundary.epoch_generation)
+        record["join_trace_tail"] = self._boundary.snapshot()[-4:]
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+
+    def _emit_boundary(self, event):
+        try:
+            self._trace_pub.publish(String(
+                data=json.dumps(event, sort_keys=True)))
+        except Exception as exc:  # noqa: BLE001 - trace must not stop the join
+            self._warn_throttled("join_trace publish failed: %s" % exc)
 
     def _has_obstacle_subscribers(self):
         try:

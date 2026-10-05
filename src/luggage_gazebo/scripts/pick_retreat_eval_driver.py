@@ -69,6 +69,7 @@ from luggage_planning.pick_authorization import (
 from luggage_planning.pickup_collision import pickup_collision_aabb
 from luggage_planning.ros_clock_wait import wait_event
 from luggage_perception.cargo_instance_tracker import parse_current_box_payload
+from luggage_perception.join_boundary_trace import classify_hold_boundary
 from luggage_perception.detect_overlay import rotation_from_quaternion
 from luggage_perception.eval.detection_accuracy import (
     BoxObservation,
@@ -444,6 +445,9 @@ class PickRetreatEvalDriver(Node):
         self._filter_stats = {"payload": None}
         self._seg_stats_buf = _JsonStampBuffer(maxlen=30)
         self._filter_stats_buf = _JsonStampBuffer(maxlen=30)
+        self._join_trace = collections.deque(maxlen=256)
+        self._mask_trace = collections.deque(maxlen=256)
+        self._last_auth_diag = None
         self._current_box_topic = {"payload": None}
         self._size_eval = {"payload": None}
         self._camera_info = None
@@ -497,6 +501,16 @@ class PickRetreatEvalDriver(Node):
         self.create_subscription(
             String, "/semantic_point_filter/stats_json",
             self._on_filter_stats, latch, callback_group=self._group)
+        trace_qos = QoSProfile(
+            depth=100, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.VOLATILE,
+            history=HistoryPolicy.KEEP_LAST)
+        self.create_subscription(
+            String, "/semantic_point_filter/join_trace",
+            self._on_join_trace, trace_qos, callback_group=self._group)
+        self.create_subscription(
+            String, "/semantic_segmenter/mask_trace",
+            self._on_mask_trace, trace_qos, callback_group=self._group)
         self.create_subscription(
             String, "/luggage/current_box",
             lambda m: self._current_box_topic.__setitem__("payload", m.data),
@@ -761,6 +775,16 @@ class PickRetreatEvalDriver(Node):
         parsed = _parse_json(msg.data)
         if parsed is not None:
             self._seg_stats_buf.push(parsed.get("stamp"), parsed)
+
+    def _on_join_trace(self, msg):
+        parsed = _parse_json(msg.data)
+        if isinstance(parsed, dict):
+            self._join_trace.append(parsed)
+
+    def _on_mask_trace(self, msg):
+        parsed = _parse_json(msg.data)
+        if isinstance(parsed, dict):
+            self._mask_trace.append(parsed)
 
     def _on_filter_stats(self, msg):
         self._filter_stats["payload"] = msg.data
@@ -1630,8 +1654,58 @@ class PickRetreatEvalDriver(Node):
                 return False, None, detect.message or "MEASURED_NONE"
             return True, detect.luggage[0], detect.message or ""
 
-        return run_authorization_loop(
+        result = run_authorization_loop(
             _once, time.sleep, time.monotonic, self._auth_policy())
+        self._last_auth_diag = self._wait_auth_reads(result.attempts)
+        return result
+
+    def _wait_auth_reads(self, attempts, timeout=0.5):
+        """Latest diagnostics once this detect loop's reads have arrived."""
+        needed = int(attempts or 0)
+        deadline = time.time() + float(timeout)
+        latest = None
+        while True:
+            latest = _parse_json(self._diag.get("payload"))
+            reads = (latest or {}).get("auth_reads") or []
+            if needed <= 0 or len(reads) >= needed or time.time() >= deadline:
+                return latest
+            time.sleep(0.02)
+
+    def _detection_frame_rows(self):
+        rows = []
+        for key, msg in sorted(self._detection_frames.snapshot().items()):
+            rows.append({
+                "stamp": stamp_sec_from_key(key),
+                "generation": int(msg.generation),
+                "instance_id": str(msg.instance_id),
+                "pca_source": str(msg.pca_source),
+                "pca_valid": bool(msg.pca_valid),
+                "pca_reason": str(msg.pca_reason),
+                "n_cargo_points": int(msg.n_cargo_points),
+                "support_valid": bool(msg.support_valid),
+                "support_reason": str(msg.support_reason),
+                "geometry_level": int(msg.geometry_level),
+            })
+        return rows
+
+    def perception_boundary_document(self):
+        """Join, mask, and authorization-window records for this pick."""
+        join_trace = list(self._join_trace)
+        mask_trace = list(self._mask_trace)
+        diag = self._last_auth_diag
+        if not isinstance(diag, dict):
+            diag = _parse_json(self._diag.get("payload"))
+        reads = (diag or {}).get("auth_reads") or []
+        return {
+            "current_box": _parse_json(
+                self._current_box_topic.get("payload")),
+            "join_trace": join_trace,
+            "mask_trace": mask_trace,
+            "detection_frames": self._detection_frame_rows(),
+            "diagnostics": diag,
+            "classification": classify_hold_boundary(
+                join_trace, auth_reads=reads, mask_trace=mask_trace),
+        }
 
     def sync_pickup_geometry(self, pick_msg, timeout=5.0):
         """Backfill measured geometry onto the current box instance (CAS).
