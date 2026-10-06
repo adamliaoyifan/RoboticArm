@@ -67,6 +67,13 @@ NAMED_POSE_ALREADY_THERE_RAD = 0.02
 #: re-declared planning-side (mirrors the driver's declared margin) so
 #: luggage_planning never imports eval scripts.
 APERTURE_ESCAPE_MARGIN_M = 0.10
+#: Near-opening is two 5 cm placement columns closer to the aperture than
+#: the shallowest atlas-reachable slot in the same request. The adjacent
+#: column stays with the reachable band. With no reachable slot, the band
+#: is the shallowest 0.30 m of this request.
+NEAR_OPENING_COLUMNS = 2
+PLACEMENT_COLUMN_M = 0.05
+NEAR_OPENING_FALLBACK_SPAN_M = 0.30
 
 _CAMERA_TCP_CACHE = {}
 
@@ -255,6 +262,54 @@ def _defer_reachable(ordered_slots, entry):
             ordered_slots.insert(pos, entry)
             return
     ordered_slots.append(entry)
+
+
+def _soft_sampled_unreachable(prior):
+    """Status 1 that is not a high-confidence interior reject.
+
+    ``hard_reject_safe`` on any target keeps this false: that candidate
+    is either a real unreachable verdict or not a soft miss.
+    """
+    queries = list((prior or {}).get("queries") or [])
+    if any(bool(item.get("hard_reject_safe")) for item in queries):
+        return False
+    return any(int(item.get("status") or 0) == 1 for item in queries)
+
+
+def near_opening_cut(depths_by_verdict):
+    """Depth at or below which a slot is in the near-opening band."""
+    grouped = depths_by_verdict or {}
+    reachable = list(grouped.get("reachable") or [])
+    if reachable:
+        return (min(float(depth) for depth in reachable)
+                - NEAR_OPENING_COLUMNS * PLACEMENT_COLUMN_M)
+    known = [float(depth) for values in grouped.values() for depth in values]
+    if not known:
+        return 0.0
+    return min(known) + NEAR_OPENING_FALLBACK_SPAN_M
+
+
+def attempt_tier(verdict, depth, near_cut, soft_unreachable, has_seeds):
+    """Sort key prefix for one admitted slot.
+
+    0 seeded reachable, 1 reachable, 2 marginal, 3 near-opening status 1,
+    4 near-opening unknown, 5 other status 1, 6 other unknown.
+    """
+    near = float(depth) <= float(near_cut) + 1e-6
+    name = str(verdict or "unknown")
+    if name == "reachable" and has_seeds:
+        return 0
+    if name == "reachable":
+        return 1
+    if name == "marginal":
+        return 2
+    if near and soft_unreachable:
+        return 3
+    if near:
+        return 4
+    if soft_unreachable:
+        return 5
+    return 6
 
 
 def _opening_depth(slot, inward, opening_point):
@@ -919,21 +974,23 @@ class RouteProducer(object):
         purge = getattr(self.graph, "clear_request_scoped", None)
         if callable(purge):
             purge()
-        # Frozen admission order for this generation:
-        #   trust gate
+        # Admission order:
+        #   hard_reject_safe unreachable is the only pre-route atlas drop
         #   -> reachable seeded
         #   -> reachable unseeded
-        #   -> reachable seed-miss deferred (inserted while planning)
         #   -> marginal
-        #   -> unknown, and only when the atlas admission is not strict
-        # Inside a tier, EXECUTABLE_FIRST_ORDER is unchanged:
-        # opening distance, then more seeds, then placement index.
-        # Placement score is recorded and is not part of that key.
+        #   -> near-opening status 1 (sampled, not hard_reject_safe)
+        #   -> near-opening unknown
+        #   -> other status 1
+        #   -> other unknown
+        # hash_policy is atlas identity, not this order. An unknown cell
+        # stays eligible for online IK. Inside a tier,
+        # EXECUTABLE_FIRST_ORDER is unchanged: opening distance, then more
+        # seeds, then placement index. Placement score is recorded only.
         ordered_slots = []
         slot_notes = {}
         if self.atlas_prior is not None:
-            seeded_order, reachable_order = [], []
-            marginal_order, unknown_order = [], []
+            admitted = []
             inward = self._inward_normal()
             opening_point = (self.opening_info or {}).get("point")
             scores = list(request.get("slot_scores") or [])
@@ -988,40 +1045,47 @@ class RouteProducer(object):
                           "ATLAS_UNREACHABLE", "unreachable")
                     continue
                 seeds = list(prior.get("seeds") or [])
-                entry = (index, slot, seeds, _opening_depth(
-                    slot, inward, opening_point), verdict)
-                if verdict == "reachable" and seeds:
-                    seeded_order.append(entry)
-                elif verdict == "reachable":
-                    reachable_order.append(entry)
-                elif verdict == "marginal":
-                    marginal_order.append(entry)
-                elif str(prior.get("admission") or "") == "strict":
-                    _drop(index, slot, prior_candidate, prior_targets,
-                          "ATLAS_UNKNOWN_STRICT", "unknown")
-                else:
-                    unknown_order.append(entry)
+                depth = _opening_depth(slot, inward, opening_point)
+                admitted.append((
+                    index, slot, seeds, depth, verdict,
+                    _soft_sampled_unreachable(prior)))
+            depths = {}
+            for _index, _slot, _seeds, depth, verdict, _soft in admitted:
+                depths.setdefault(verdict, []).append(depth)
+            near_cut = near_opening_cut(depths)
+
+            def _depth_key(entry):
+                index, _slot, seeds, depth, _verdict, _soft = entry
+                return (float(depth), -len(seeds), -float(index))
+
+            buckets = {}
+            for entry in admitted:
+                index, _slot, seeds, depth, verdict, soft = entry
+                tier = attempt_tier(
+                    verdict, depth, near_cut, soft, bool(seeds))
+                buckets.setdefault(tier, []).append(entry)
+            ordered_slots = []
+            tier_counts = []
+            for tier in range(7):
+                group = buckets.get(tier) or []
+                if EXECUTABLE_FIRST_ORDER:
+                    group.sort(key=_depth_key)
+                ordered_slots.extend(
+                    (index, slot, seeds, depth, verdict)
+                    for index, slot, seeds, depth, verdict, _soft in group)
+                tier_counts.append(len(group))
             # Opening distance ascending, then more atlas seeds, then
             # the shallower end of placement's list. The key is already
             # deterministic (placement index is unique in one request),
             # so placement score stays a recorded field.
-            def _depth_key(entry):
-                _index, _slot, seeds, depth, _verdict = entry
-                return (float(depth), -len(seeds), -float(_index))
-
-            if EXECUTABLE_FIRST_ORDER:
-                seeded_order.sort(key=_depth_key)
-                reachable_order.sort(key=_depth_key)
-                marginal_order.sort(key=_depth_key)
-                unknown_order.sort(key=_depth_key)
-            ordered_slots = (seeded_order + reachable_order
-                             + marginal_order + unknown_order)
             self._log("route: atlas order seeded=%d reachable=%d "
-                      "marginal=%d unknown=%d dropped=%d "
-                      "executable_first=%s" % (
-                          len(seeded_order), len(reachable_order),
-                          len(marginal_order), len(unknown_order),
-                          len(rows), EXECUTABLE_FIRST_ORDER))
+                      "marginal=%d near_status1=%d near_unknown=%d "
+                      "other_status1=%d other_unknown=%d dropped=%d "
+                      "near_cut=%.3f executable_first=%s" % (
+                          tier_counts[0], tier_counts[1], tier_counts[2],
+                          tier_counts[3], tier_counts[4], tier_counts[5],
+                          tier_counts[6], len(rows), near_cut,
+                          EXECUTABLE_FIRST_ORDER))
             if not ordered_slots:
                 return self._fail("NO_FEASIBLE_ROUTE", rows)
         else:
@@ -1524,7 +1588,7 @@ class RouteProducer(object):
         the measured record to still exist as a VALID record whose
         digest equals the certificate's attachment digest — an
         incarnation change never silently re-authorizes the old
-        certificate. The 60 s acquisition->PLANNING-use window
+        certificate. The run's acquisition->PLANNING-use window
         is deliberately NOT re-applied here: it bounds select/verify
         (where expire_stale already ran); execution minutes later is
         not a fresh acquisition. Payload LOSS mid-route is a live
@@ -3046,16 +3110,19 @@ def attachment_invalidation_evidence(snapshot, *, now_ns, records_before,
                                      records_after, generation,
                                      invalidation_reason="",
                                      request_box_id="",
-                                     request_generation=0):
+                                     request_generation=0,
+                                     stale_window_ns=None):
     """Selector row: why the frozen attach was or was not still live."""
     from st09_contracts.attachment import ATTACHMENT_MAX_AGE_NS
     stamp = None if snapshot is None else int(snapshot["record_stamp_ns"])
     age = None if stamp is None else int(now_ns) - stamp
+    if stale_window_ns is None:
+        stale_window_ns = ATTACHMENT_MAX_AGE_NS
     return {
         "record_stamp_ns": stamp,
         "now_stamp_ns": int(now_ns),
         "age_ns": age,
-        "stale_window_ns": int(ATTACHMENT_MAX_AGE_NS),
+        "stale_window_ns": int(stale_window_ns),
         "box_id": "" if snapshot is None else str(snapshot["box_id"]),
         "generation": None if generation is None else int(generation),
         "attachment_digest": (
@@ -3119,12 +3186,14 @@ def admit_attachment_for_route(provider, request, now_ns):
     if after_record is not None:
         invalidation = str(
             getattr(after_record, "invalidation_reason", "") or "")
+    window = getattr(provider, "max_age_ns", None)
     evidence = attachment_invalidation_evidence(
         snapshot, now_ns=now_ns, records_before=before,
         records_after=after, generation=generation,
         invalidation_reason=invalidation,
         request_box_id=str(request.get("box_id") or ""),
-        request_generation=int(request.get("generation") or 0))
+        request_generation=int(request.get("generation") or 0),
+        stale_window_ns=window)
     if invalidation == Reason.STAMP_INVALID.value:
         evidence["reason"] = Reason.STAMP_INVALID.value
         return None, Reason.STAMP_INVALID.value, evidence

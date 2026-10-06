@@ -83,11 +83,20 @@ class MeasuredAttachmentProvider:
 
     def __init__(self, scene_revision: str, calibration_id: str,
                  tcp_frame: str = "suction_contact_frame",
-                 box_frame: str = "world"):
+                 box_frame: str = "world",
+                 max_age_ns: Optional[int] = None):
         self._scene_revision = str(scene_revision)
         self._calibration_id = str(calibration_id)
         self._tcp_frame = str(tcp_frame)
         self._box_frame = str(box_frame)
+        if max_age_ns is None:
+            self._max_age_ns = int(ATTACHMENT_MAX_AGE_NS)
+        elif isinstance(max_age_ns, bool) or not isinstance(max_age_ns, int) \
+                or max_age_ns < 1:
+            raise ValueError(
+                "max_age_ns must be a positive int, got %r" % (max_age_ns,))
+        else:
+            self._max_age_ns = int(max_age_ns)
         self._records: Dict[str, AttachmentRecord] = {}
         self._incarnations: Dict[str, int] = {}
         self._generations: Dict[str, int] = {}
@@ -102,6 +111,11 @@ class MeasuredAttachmentProvider:
 
     def record_for(self, request_id: str) -> Optional[AttachmentRecord]:
         return self._records.get(str(request_id))
+
+    @property
+    def max_age_ns(self) -> int:
+        """Acquisition window for this run: 60 s times the box count."""
+        return self._max_age_ns
 
     def live_count(self) -> int:
         return sum(
@@ -133,7 +147,10 @@ class MeasuredAttachmentProvider:
         return record
 
     def expire_stale(self, request_id: str, now_ns: int) -> None:
-        """Apply the 60 s acquisition->use window.
+        """Apply this run's acquisition->use window.
+
+        The default window is 60 s, one box. A run of n boxes uses
+        n times that, the same number as its route budget.
 
         A zero acquisition stamp is not a live measurement. It is
         invalidated as ``STAMP_INVALID`` instead of being aged from the
@@ -148,7 +165,7 @@ class MeasuredAttachmentProvider:
         age = now_ns - stamp
         if stamp <= 0:
             reason = Reason.STAMP_INVALID
-        elif age > ATTACHMENT_MAX_AGE_NS:
+        elif age > self._max_age_ns:
             reason = Reason.ATTACHMENT_EXPIRED
         else:
             return
@@ -157,7 +174,7 @@ class MeasuredAttachmentProvider:
             "record_stamp_ns": stamp,
             "now_stamp_ns": now_ns,
             "age_ns": age,
-            "stale_window_ns": ATTACHMENT_MAX_AGE_NS,
+            "stale_window_ns": self._max_age_ns,
             "box_id": str(record.box_id),
             "generation": self.generation_for(request_id),
             "attachment_digest": record.digest(),

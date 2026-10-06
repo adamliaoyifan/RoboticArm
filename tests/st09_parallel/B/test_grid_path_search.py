@@ -30,6 +30,8 @@ from luggage_planning.grid_path_search import (  # noqa: E402
     MAX_EDGE_REPAIR_ATTEMPTS,
     RETREAT_MIN_SHARE,
     ROUTE_TOTAL_WALL_S,
+    route_budget_ns,
+    route_budget_s,
     SINGLE_NEW_EDGE_WALL_S,
     RouteBudget,
     RouteBudgetPolicy,
@@ -191,6 +193,11 @@ class TestContractValuePins:
             .read_text())
         budgets = contract["planning_budgets"]
         assert ROUTE_TOTAL_WALL_S == budgets["route_total_wall_s"]["value"]
+        assert route_budget_s(1) == 60.0
+        assert route_budget_s(3) == 180.0
+        assert route_budget_ns(3) == 180_000_000_000
+        with pytest.raises(ValueError):
+            route_budget_s(0)
         assert SINGLE_NEW_EDGE_WALL_S == \
             budgets["single_new_moveit_edge_wall_s"]["value"]
         assert MAX_EDGE_REPAIR_ATTEMPTS == \

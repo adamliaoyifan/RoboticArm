@@ -89,6 +89,8 @@ def _default_launch_values():
         "atlas_enabled": "",
         # trajectory_selector route planner: graph or lattice.
         "corridor_planner": "graph",
+        # Route budget is 60 s times this count.
+        "box_count": "1",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -971,6 +973,7 @@ def _launch_setup(context):
                 # POSE_FILE_MISSING without it — never a default).
                 "robot_poses_config": poses_path,
                 "corridor_planner": str(cfg["corridor_planner"]),
+                "box_count": int(cfg["box_count"]),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
@@ -1266,6 +1269,11 @@ def generate_launch_description():
                 "corridor_planner",
                 "trajectory_selector route planner: graph (hop search) or "
                 "lattice (corridor lattice, MoveIt joint transit/return).",
+            ),
+            profile_arg(
+                "box_count",
+                "Route budget scale: 60 s times this box count "
+                "(1 box 60 s, 3 boxes 180 s).",
             ),
             profile_arg(
                 "frame_runtime",

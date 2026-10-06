@@ -162,6 +162,20 @@ class TestReattachAndSlip(object):
         assert [str(n.reason) for n in provider.invalidations] == [
             Reason.ATTACHMENT_EXPIRED.value]
 
+    def test_three_box_window_is_three_times_one_box(self):
+        provider = MeasuredAttachmentProvider(
+            "scene", "cal", max_age_ns=180_000_000_000)
+        record(provider)
+        provider.expire_stale("req-1", STAMP + 60_000_000_001)
+        assert provider.latest_record("req-1")
+        provider.expire_stale("req-1", STAMP + 180_000_000_001)
+        try:
+            provider.latest_record("req-1")
+            raised = False
+        except ContractViolation:
+            raised = True
+        assert raised
+
 
 class TestNegatives(object):
     def test_wrong_time_tf_is_refused(self):

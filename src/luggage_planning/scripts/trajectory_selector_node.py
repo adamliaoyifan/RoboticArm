@@ -151,6 +151,9 @@ class TrajectorySelectorNode(Node):
         # graph: GraphRoutePlanner hop search. lattice: corridor lattice
         # for portal..slot..portal, MoveIt joint transit/return only.
         self.declare_parameter("corridor_planner", "graph")
+        # Route wall budget is 60 s times this count (1 box 60 s,
+        # 3 boxes 180 s). Default 1 keeps a single select at 60 s.
+        self.declare_parameter("box_count", 1)
         self.declare_parameter("frame_scene_revision", "")
         # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
         # the service refuses POSE_FILE_MISSING — never a default).
@@ -443,8 +446,9 @@ class TrajectorySelectorNode(Node):
                     targets, request["container_transform"], atlas.query)
             except Exception:  # noqa: BLE001 - prior fails open
                 return {"verdict": "unknown", "seeds": []}
-            policy = str((self._atlas_cfg or {}).get("hash_policy") or "")
-            prior["admission"] = "strict" if policy == "strict" else "open"
+            # hash_policy is the atlas identity check at load time. It
+            # does not forbid online IK where the atlas has no confident
+            # interior reject. hard_reject_safe is that reject.
             return prior
 
         def validity_factory(*, scene_states, edges):
@@ -460,6 +464,14 @@ class TrajectorySelectorNode(Node):
             return LatticeStateChecker(
                 self, scene_client, scene_states, start_q)
 
+        from luggage_planning.grid_path_search import route_budget_ns
+
+        box_count = int(self.get_parameter("box_count").value or 1)
+        budget_ns = route_budget_ns(box_count)
+        self.get_logger().info(
+            "route budget %.0fs for %d box(es)" % (
+                budget_ns / 1e9, box_count))
+
         self._route_producer = RouteProducer(
             graph=RouteGraph(static_identity="st09-i-route:%s" %
                              self._scene_tf_hash),
@@ -470,7 +482,9 @@ class TrajectorySelectorNode(Node):
             attachment_provider=MeasuredAttachmentProvider(
                 str(self.get_parameter("frame_scene_revision").value
                     or "scene-runtime"), "route-selector",
-                tcp_frame="suction_contact_frame", box_frame="box"),
+                tcp_frame="suction_contact_frame", box_frame="box",
+                max_age_ns=budget_ns),
+            budget_ns=budget_ns,
             revalidator=MapRevalidator(revalidation_policy),
             latest_snapshot_fn=latest_snapshot,
             fk=fk, refine=refine, urdf=urdf, tcp_path=tcp_path,

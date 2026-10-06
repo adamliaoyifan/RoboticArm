@@ -114,6 +114,7 @@ ros2 launch luggage_gazebo sim_world.launch.py \
   semantic_model_name:="${M3_YOLO_WEIGHTS}" \
   atlas_runtime_config:="$ATLAS_RUNTIME_CONFIG" \
   corridor_planner:=lattice \
+  box_count:="$N" \
   sequence_ids:="$SEQUENCE" \
   > "$LAUNCH_LOG" 2>&1 &
 LAUNCH_PID=$!

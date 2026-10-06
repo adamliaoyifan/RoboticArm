@@ -150,9 +150,12 @@ that fails the same check.
 ### Atlas is a prior for route search
 
 The `atlas_unreachable` slot reject above is the only hard use of the
-atlas. Inside place-route search the atlas ranks and seeds; it does not
-decide feasibility. An atlas miss, a failed atlas seed, or a sampled-cell
-IK failure is not proof that the continuous configuration space has no
+atlas. `hash_policy: strict` only checks that the loaded artifact matches
+this robot and scene. A matching atlas still does not reject unknown or
+low-confidence unreachable cells before a route is built. Inside
+place-route search the atlas ranks and seeds; it does not decide
+feasibility. An atlas miss, a failed atlas seed, or a sampled-cell IK
+failure is not proof that the continuous configuration space has no
 route; online IK, collision checking and certification decide.
 
 Route search (`grid_path_search` / `route_producer`) is state-conditioned:

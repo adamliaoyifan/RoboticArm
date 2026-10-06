@@ -19,9 +19,28 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-ROUTE_TOTAL_WALL_S = 60.0
+#: One box. A run of n boxes uses ``route_budget_s(n)`` = n times this.
+ROUTE_BUDGET_PER_BOX_S = 60.0
+ROUTE_TOTAL_WALL_S = ROUTE_BUDGET_PER_BOX_S
 SINGLE_NEW_EDGE_WALL_S = 2.0
 MAX_EDGE_REPAIR_ATTEMPTS = 4
+
+
+def route_budget_s(box_count):
+    """Wall budget for a run of ``box_count`` boxes.
+
+    One box is 60 s. Three boxes are 180 s. The budget is the per-box
+    unit times the box count, not a fixed 60 s for every run.
+    """
+    if isinstance(box_count, bool) or not isinstance(box_count, int) \
+            or box_count < 1:
+        raise ValueError(
+            "box_count must be a positive int, got %r" % (box_count,))
+    return ROUTE_BUDGET_PER_BOX_S * box_count
+
+
+def route_budget_ns(box_count):
+    return int(route_budget_s(box_count) * 1_000_000_000)
 
 #: B-defined dev policy (not frozen): fraction of the total wall reserved
 #: for the post-release retreat chain so a full entry never starves exit.

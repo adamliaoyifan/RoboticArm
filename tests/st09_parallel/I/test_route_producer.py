@@ -48,9 +48,12 @@ from luggage_planning.atlas_prior import (  # noqa: E402
 )
 from luggage_planning.route_producer import (  # noqa: E402
     RouteProducer,
+    _soft_sampled_unreachable,
     admit_attachment_for_route,
+    attempt_tier,
     candidate_from_slot,
     leg_records,
+    near_opening_cut,
     register_attach_from_request,
     route_missing_parts,
     surface_map_from_contract,
@@ -1213,11 +1216,18 @@ class TestTieredRouteAdmission:
             assert built == []
         assert "staging" not in names
 
-    def test_strict_unknown_is_not_a_selected_slot(self):
+    def test_unknown_is_planned_even_when_hash_policy_is_strict(self):
         producer, _clock = build_producer()
 
         def only_unknown(_targets, _request):
-            return {"verdict": "unknown", "seeds": [], "admission": "strict"}
+            return {
+                "verdict": "unknown", "seeds": [], "admission": "strict",
+                "queries": [{
+                    "status": 0, "hard_reject_safe": False,
+                    "query_xyz": [0.2, -0.1, 0.24], "query_yaw": 0.0,
+                    "cell": [0, 0, 0, 0],
+                }],
+            }
 
         producer.atlas_prior = only_unknown
         request = make_request()
@@ -1226,10 +1236,191 @@ class TestTieredRouteAdmission:
             box_wdh=request["box_wdh"])
         calls_before = len(producer._builder.calls)
         result = producer.plan_place_route(request)
+        assert result["success"], result.get("rows")
+        assert result["rows"][0]["reason"] != "ATLAS_UNKNOWN_STRICT"
+        assert int(result["rows"][0]["route_build_count"]) >= 1
+        assert len(producer._builder.calls) > calls_before
+
+    def test_near_opening_status1_precedes_deep_unknown(self):
+        producer, _clock = build_producer()
+        # opening_info.normal points outward. Negating it makes depth
+        # increase with +x, away from an opening on the negative-x face.
+        producer.opening_info = {
+            "point": [0.0, 0.0, 0.0], "normal": [-1.0, 0.0, 0.0]}
+        producer.edge_builder.fail_all = True
+        # Depth is slot x. Shallowest reachable is 0.80, so the near cut
+        # is 0.70. 0.40 and 0.55 are near; 0.90 and 1.10 are not.
+        specs = [
+            (0.05, "hard", "unreachable", 1, True),
+            (0.80, "reachable", "reachable", 3, False),
+            (0.20, "marginal", "marginal", 2, False),
+            (0.40, "near1", "unknown", 1, False),
+            (0.55, "near0", "unknown", 0, False),
+            (0.90, "far1", "unknown", 1, False),
+            (1.10, "far0", "unknown", 0, False),
+        ]
+
+        def prior(targets, _request):
+            x = float(targets[0].position[0])
+            row = min(specs, key=lambda item: abs(item[0] - x))
+            _x, _name, verdict, status, hard = row
+            seeds = [GOOD_SEED] if verdict == "reachable" else []
+            return {
+                "verdict": verdict,
+                "seeds": seeds,
+                "admission": "strict",
+                "queries": [{
+                    "status": status,
+                    "hard_reject_safe": hard,
+                    "query_xyz": [round(x, 6), -0.1, 0.24],
+                    "query_yaw": 0.0,
+                    "cell": [0, 0, 0, 0],
+                }],
+            }
+
+        producer.atlas_prior = prior
+        slots = [{
+            "position": [x, -0.10, 0.14],
+            "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+            "request_id": name,
+        } for x, name, _verdict, _status, _hard in specs]
+        request = make_request(slots=slots)
+        request["slot_scores"] = [0.0] * len(slots)
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
         assert result["success"] is False
-        assert result["rows"][0]["reason"] == "ATLAS_UNKNOWN_STRICT"
-        assert result["rows"][0]["route_build_count"] == 0
-        assert len(producer._builder.calls) == calls_before
+        dropped = [
+            row["candidate_id"] for row in result["rows"]
+            if row.get("reason") == "ATLAS_UNREACHABLE"]
+        assert dropped == ["hard"]
+        built = [
+            row["candidate_id"] for row in result["rows"]
+            if int(row.get("route_build_count") or 0) > 0]
+        assert built == ["reachable", "marginal", "near1", "near0", "far1", "far0"]
+        assert abs(near_opening_cut({"reachable": [0.80]}) - 0.70) < 1e-9
+        assert attempt_tier("unknown", 0.40, 0.70, True, False) == 3
+        assert attempt_tier("unknown", 1.10, 0.70, False, False) == 6
+
+    def test_frozen_221_and_704_stay_near_opening_status1(self):
+        # Frozen atlas queries from g3_online_n3_carryon3 box_00.
+        # 221 is status (1, 0); 704 is status (1, 1). Neither query is
+        # hard_reject_safe. A reachable cell at the 656 depth puts the
+        # near cut on these opening-side depths.
+        frozen = {
+            "s221": [
+                {"status": 1, "hard_reject_safe": False,
+                 "query_xyz": [-0.095, -0.235, 0.827199],
+                 "query_yaw": 0.0, "cell": [4, 4, 2, 0]},
+                {"status": 0, "hard_reject_safe": False,
+                 "query_xyz": [-0.095, -0.235, 0.827199],
+                 "query_yaw": 3.141593, "cell": [4, 5, 2, 2]},
+            ],
+            "s704": [
+                {"status": 1, "hard_reject_safe": False,
+                 "query_xyz": [-0.095, -0.285, 0.827199],
+                 "query_yaw": 1.570796, "cell": [4, 4, 2, 1]},
+                {"status": 1, "hard_reject_safe": False,
+                 "query_xyz": [-0.095, -0.285, 0.827199],
+                 "query_yaw": -1.570796, "cell": [4, 4, 2, 3]},
+            ],
+        }
+        priors = {}
+        for name, queries in frozen.items():
+            prior = prior_from_statuses(
+                [item["status"] for item in queries], [],
+                [item["hard_reject_safe"] for item in queries])
+            prior["queries"] = queries
+            prior["admission"] = "strict"
+            priors[name] = prior
+            assert prior["verdict"] != "unreachable"
+            assert _soft_sampled_unreachable(prior)
+        near_cut = near_opening_cut({"reachable": [0.005]})
+        assert abs(near_cut - (-0.095)) < 1e-9
+        assert attempt_tier(
+            priors["s221"]["verdict"], -0.095, near_cut, True, False) == 3
+        assert attempt_tier(
+            priors["s704"]["verdict"], -0.095, near_cut, True, False) == 3
+
+        producer, _clock = build_producer()
+        producer.opening_info = {
+            "point": [0.0, 0.0, 0.0], "normal": [-1.0, 0.0, 0.0]}
+        producer.edge_builder.fail_all = True
+
+        def atlas_prior(targets, _request):
+            y = float(targets[0].position[1])
+            x = float(targets[0].position[0])
+            if abs(y - 0.015) < 0.005:
+                return {
+                    "verdict": "reachable", "seeds": [GOOD_SEED],
+                    "admission": "strict",
+                    "queries": [{
+                        "status": 3, "hard_reject_safe": False,
+                        "query_xyz": [0.005, 0.015, 0.827199],
+                        "query_yaw": 1.570796, "cell": [5, 6, 2, 1],
+                    }],
+                }
+            if abs(y - (-0.235)) < 0.005:
+                return priors["s221"]
+            if abs(y - (-0.285)) < 0.005:
+                return priors["s704"]
+            if x > 0.2:
+                return {
+                    "verdict": "unknown", "seeds": [], "admission": "strict",
+                    "queries": [{
+                        "status": 0, "hard_reject_safe": False,
+                        "query_xyz": [0.40, 0.0, 0.827199],
+                        "query_yaw": 0.0, "cell": [0, 0, 0, 0],
+                    }],
+                }
+            return {
+                "verdict": "unreachable", "seeds": [], "admission": "strict",
+                "queries": [{
+                    "status": 1, "hard_reject_safe": True,
+                    "query_xyz": [x, 0.0, 0.827199],
+                    "query_yaw": 0.0, "cell": [0, 0, 0, 0],
+                }],
+            }
+
+        producer.atlas_prior = atlas_prior
+        slots = [
+            {"position": [-0.095, -0.235, 0.654],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "s221"},
+            {"position": [0.02, -0.10, 0.654],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "hard"},
+            {"position": [-0.095, -0.285, 0.654],
+             "quaternion_xyzw": [0.0, 0.0, 0.7071067811865476,
+                                 0.7071067811865476],
+             "request_id": "s704"},
+            {"position": [0.005, 0.015, 0.654],
+             "quaternion_xyzw": [0.0, 0.0, 0.7071067811865476,
+                                 0.7071067811865476],
+             "request_id": "reachable"},
+            {"position": [0.40, 0.0, 0.654],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "deep"},
+        ]
+        request = make_request(slots=slots)
+        request["slot_scores"] = [0.0] * len(slots)
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"] is False
+        dropped = [
+            row["candidate_id"] for row in result["rows"]
+            if row.get("reason") == "ATLAS_UNREACHABLE"]
+        assert dropped == ["hard"]
+        built = [
+            row["candidate_id"] for row in result["rows"]
+            if int(row.get("route_build_count") or 0) > 0]
+        assert built[0] == "reachable"
+        assert built.index("s221") < built.index("deep")
+        assert built.index("s704") < built.index("deep")
+        assert "hard" not in built
 
     def test_route_completeness_names_the_missing_part(self):
         producer, _clock = build_producer()
