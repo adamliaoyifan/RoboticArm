@@ -1378,3 +1378,162 @@ class TestSelectPlacePathV2Admission:
         assert by_index[0]["route_build_count"] == 0
         assert by_index[4]["reason"] not in ("", "OK")
         assert by_index[4]["route_build_count"] >= 1
+
+
+class TestCandidateBoundaryCapture:
+    def test_cartesian_rows_do_not_share_failures(self):
+        producer, _clock = build_producer()
+
+        class Log(object):
+            def __init__(self):
+                self.failures = []
+                self.dumps = []
+                self.scenes = []
+
+            def edge_failure_log(self):
+                return list(self.failures)
+
+            def request_dumps(self):
+                return list(self.dumps)
+
+            def scene_dumps(self):
+                return list(self.scenes)
+
+            def planner_parameters(self):
+                return {
+                    "planner_id": "RRTConnect",
+                    "ompl_rng_seed": "unfixed",
+                }
+
+        log = Log()
+        producer.edge_builder = log
+        log.failures.append({
+            "reason": "fraction_below_min", "edge_class": "TRAVERSE",
+            "from_q": [0.0], "to_q": [1.0]})
+        log.dumps.append({
+            "edge_class": "TRAVERSE", "from_q": [0.0], "to_q": [1.0],
+            "fraction": 0.6})
+        first = {"_failure_at": 0, "_dump_at": 0, "_scene_at": 0}
+        producer._close_row([], first)
+        log.failures.append({
+            "reason": "fraction_below_min", "edge_class": "TRAVERSE",
+            "from_q": [2.0], "to_q": [3.0]})
+        log.dumps.append({
+            "edge_class": "TRAVERSE", "from_q": [2.0], "to_q": [3.0],
+            "fraction": 0.2})
+        second = {"_failure_at": 1, "_dump_at": 1, "_scene_at": 0}
+        producer._close_row([], second)
+        assert first["cartesian"][0]["from_q"] == [0.0]
+        assert second["cartesian"][0]["from_q"] == [2.0]
+        assert second["cartesian"][0]["to_q"] != first["cartesian"][0]["to_q"]
+        assert first["first_edge"]["to_q"] == [1.0]
+        assert second["first_edge"]["from_q"] == [2.0]
+        assert first["planner_parameters"]["ompl_rng_seed"] == "unfixed"
+
+    def test_refine_attempt_records_the_joint_solution(self):
+        producer, _clock = build_producer()
+        seeds = producer._goal_seed_fn(
+            (0.1, 0.2, 0.3, 0.4, 0.5, 0.6),
+            atlas_seeds=[(0.2, 0.2, 0.2, 0.2, 0.2, 0.2)])
+
+        class Target(object):
+            position = (0.4, 0.0, 0.5)
+            quaternion_xyzw = (0.0, 0.0, 0.0, 1.0)
+
+        assert seeds(Target())
+        attempt = producer.last_goal_refine[0]["attempts"][0]
+        assert attempt["seed"] == "atlas"
+        assert attempt["q"] is not None and len(attempt["q"]) == 6
+        assert attempt["seed_q"] == [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
+        assert attempt["wrapped_delta"] is not None
+        assert producer.last_goal_refine[0]["atlas_seeds"] == [
+            [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]]
+
+
+class _LatticeUrdf(object):
+    def joint_limits(self):
+        return [(-6.0, 6.0)] * 6
+
+
+class _ClearChecker(object):
+    def __init__(self):
+        self.states = []
+        self.stats = {"service_calls": 0}
+
+    def validate(self, states):
+        self.states.extend(states)
+        self.stats["service_calls"] += 1
+        return {state: True for state in states}
+
+
+def _lattice_producer(checker):
+    clock = FakeClock()
+    graph = RouteGraph(static_identity="static-i")
+    builder = FakeEdgeBuilder()
+    producer = RouteProducer(
+        graph=graph, edge_builder=builder,
+        certifier=TrajectoryCertifier(),
+        validity_adapter_factory=static_factory_for(),
+        attachment_provider=make_provider(clock),
+        revalidator=MapRevalidator(RevalidationPolicy()),
+        fk=fake_fk, refine=fake_refine, urdf=_LatticeUrdf(),
+        clock_ns=clock, corridor_planner="lattice",
+        lattice_checker_factory=lambda scene_states, start_q: checker)
+    return producer, builder, clock
+
+
+class TestLatticeCorridorPlanner:
+
+    def test_lattice_route_is_certified_and_complete(self):
+        checker = _ClearChecker()
+        producer, builder, _clock = _lattice_producer(checker)
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result["rows"]
+        classes = [edge.attributes["edge_class"] for edge in result["edges"]]
+        assert classes == ["PORTAL_TRANSIT", "TRAVERSE", "INSERT", "DESCEND",
+                           "RETREAT", "RETREAT", "RETREAT", "RETURN"]
+        planners = [edge.attributes.get("planner")
+                    for edge in result["edges"]]
+        assert planners[1:-1] == ["corridor_lattice"] * 6
+        assert [call[2] for call in builder.calls] == [
+            "PORTAL_TRANSIT", "RETURN"]
+        assert result["certification"].passed
+        assert len(result["legs"]) == len(result["edges"])
+        assert checker.states
+        selected = [row for row in result["rows"] if row.get("reason") == "OK"]
+        assert selected[0]["lattice"]["service_calls"] >= 1
+
+    def test_lattice_without_a_chain_names_the_row(self):
+        class _Blocked(_ClearChecker):
+            def validate(self, states):
+                super().validate(states)
+                return {state: state[1] != "carrying" for state in states}
+
+        producer, builder, _clock = _lattice_producer(_Blocked())
+        request = make_request()
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert not result["success"]
+        assert result["reason_code"] == "NO_FEASIBLE_ROUTE"
+        reasons = [row.get("reason") for row in result["rows"]]
+        assert "LATTICE_NO_CHAIN" in reasons
+        assert builder.calls == []
+
+    def test_lattice_requires_its_collaborators(self):
+        import pytest
+
+        with pytest.raises(ValueError):
+            RouteProducer(
+                graph=RouteGraph(static_identity="static-i"),
+                edge_builder=FakeEdgeBuilder(),
+                certifier=TrajectoryCertifier(),
+                validity_adapter_factory=static_factory_for(),
+                attachment_provider=make_provider(None),
+                fk=fake_fk, refine=fake_refine,
+                corridor_planner="lattice")

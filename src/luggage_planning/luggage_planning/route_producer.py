@@ -448,6 +448,66 @@ def anchor_plan(contact_world: Sequence[float], container_quaternion,
         slot=slot, exit=exit_pose, depth_m=float(depth), staging=staging)
 
 
+#: Diagnostic corridor expansion. Each variant changes one anchor family.
+#: Slot XY stays on the contact vertical, so the final descend stays
+#: along container +Z. These are not the frozen single-anchor plan.
+PORTAL_HEIGHT_OFFSETS_M = (0.10, 0.20)
+APPROACH_LATERAL_OFFSETS_M = (-0.08, 0.08)
+
+
+def _shift_point(point, direction, distance):
+    return tuple(
+        float(point[i]) + float(direction[i]) * float(distance)
+        for i in range(3))
+
+
+def corridor_anchor_variants(plan, container_quaternion):
+    """Baseline anchors plus one-change portal, approach, and upper poses.
+
+    Portal heights move only the portal along container +Z. Approach
+    laterals move the portal and the approach together, so the outside
+    segment stays parallel to the opening normal. Slot-upper heights
+    stay on the slot's vertical. The slot pose is never moved.
+    """
+    quaternion = tuple(float(v) for v in container_quaternion)
+    up = rotate_vector(quaternion, (0.0, 0.0, 1.0))
+    lateral = rotate_vector(quaternion, (0.0, 1.0, 0.0))
+    base = {
+        "portal": tuple(float(v) for v in plan.portal),
+        "slot_approach": tuple(float(v) for v in plan.slot_approach),
+        "slot_upper": tuple(float(v) for v in plan.slot_upper),
+        "slot": tuple(float(v) for v in plan.slot),
+    }
+    rows = [("baseline", dict(base))]
+    for height in PORTAL_HEIGHT_OFFSETS_M:
+        anchors = dict(base)
+        anchors["portal"] = _shift_point(base["portal"], up, height)
+        rows.append(("portal_height_%+.2f" % height, anchors))
+    for offset in APPROACH_LATERAL_OFFSETS_M:
+        anchors = dict(base)
+        anchors["portal"] = _shift_point(base["portal"], lateral, offset)
+        anchors["slot_approach"] = _shift_point(
+            base["slot_approach"], lateral, offset)
+        rows.append(("approach_lateral_%+.2f" % offset, anchors))
+    slot = base["slot"]
+    upper = base["slot_upper"]
+    approach = base["slot_approach"]
+    lower = tuple(0.5 * (slot[i] + upper[i]) for i in range(3))
+    if (math.dist(lower, upper) > 0.02 and math.dist(lower, slot) > 0.02):
+        anchors = dict(base)
+        anchors["slot_upper"] = lower
+        rows.append(("slot_upper_lower", anchors))
+    upper_height = sum((upper[i] - slot[i]) * up[i] for i in range(3))
+    approach_height = sum(
+        (approach[i] - slot[i]) * up[i] for i in range(3))
+    higher = 0.5 * (upper_height + approach_height)
+    if higher > upper_height + 0.02:
+        anchors = dict(base)
+        anchors["slot_upper"] = _shift_point(slot, up, higher)
+        rows.append(("slot_upper_higher", anchors))
+    return tuple(rows)
+
+
 class RouteProducer(object):
     """Compose snapshot + attachment + route + certification for select.
 
@@ -470,7 +530,8 @@ class RouteProducer(object):
                  transit_clearance_z=None, log=None,
                  atlas_prior=None, vacuum_state_fn=None,
                  site_poses_fn=None, scene_config=None,
-                 scene_revision_binding=""):
+                 scene_revision_binding="", corridor_planner="graph",
+                 lattice_checker_factory=None):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
         self.graph = graph
@@ -525,6 +586,23 @@ class RouteProducer(object):
         #: node's own scene-identity binding the request must match.
         self.scene_config = scene_config
         self.scene_revision_binding = str(scene_revision_binding or "")
+        #: ``graph``: GraphRoutePlanner hop search. ``lattice``: the
+        #: corridor lattice plans portal..slot..portal, MoveIt plans only
+        #: the joint transit and return (lattice_route.py). The lattice
+        #: needs ``lattice_checker_factory(scene_states=, start_q=)``
+        #: returning an object with ``validate(states)``, and ``urdf``.
+        self.corridor_planner = str(corridor_planner or "graph")
+        if self.corridor_planner not in ("graph", "lattice"):
+            raise ValueError(
+                "corridor_planner must be graph or lattice, got %r"
+                % corridor_planner)
+        if self.corridor_planner == "lattice" and (
+                lattice_checker_factory is None or urdf is None
+                or refine is None):
+            raise ValueError(
+                "corridor_planner=lattice needs lattice_checker_factory, "
+                "urdf and refine")
+        self.lattice_checker_factory = lattice_checker_factory
         #: World Z the carried payload bottom must stay above during
         #: open-air transit (the pedestal top). None disables the staging
         #: anchor — the entry table then keeps its single-hop transit.
@@ -735,6 +813,78 @@ class RouteProducer(object):
             seeded.append(region)
         return candidate, box_target, plan, seeded, node_ids
 
+    def _lattice_planner(self, candidate, plan, scope_ids, start_q,
+                         atlas_seeds, attachment, snapshot, request,
+                         orientation):
+        """LatticeRoutePlanner over this candidate's anchor plan.
+
+        Collision checks and MoveIt joint edges use the certification
+        ``SceneState`` per load (``edge_scene_states``), so the lattice,
+        the edge builder and the certifier see one obstacle set.
+        Staging solutions are the scoped staging anchors, carrying for the
+        transit and unloaded for the return.
+        """
+        from luggage_planning.lattice_route import LatticeRoutePlanner
+
+        class _LoadEdge(object):
+            def __init__(self, load):
+                self.edge_id = "lattice-%s" % load
+                self.load_state = load
+
+        states = self.edge_scene_states(
+            None, [_LoadEdge("carrying"), _LoadEdge("unloaded")],
+            snapshot, attachment, candidate, request)
+        scene_states = {
+            "carrying": states["lattice-carrying"],
+            "unloaded": states["lattice-unloaded"],
+        }
+
+        def staging(load):
+            return [
+                node.q for node in self.graph.nodes_by_region("staging")
+                if str(node.load_state) == load
+                and node.node_id in scope_ids]
+
+        parameters = getattr(self.edge_builder, "planner_parameters", None)
+        parameters = parameters() if callable(parameters) else {}
+        portal = plan.portal if (self.opening_info or {}).get("point") \
+            is not None else plan.slot_approach
+        transform = request["container_transform"]
+        anchors = {
+            "portal": portal,
+            "slot_approach": plan.slot_approach,
+            "slot_upper": plan.slot_upper,
+            "slot": plan.slot,
+        }
+        anchor_sets = None
+        if getattr(self, "lattice_anchor_variants", False):
+            varied = plan
+            if portal != tuple(float(v) for v in plan.portal):
+                varied = dataclasses.replace(plan, portal=tuple(portal))
+            anchor_sets = corridor_anchor_variants(
+                varied, transform["quaternion_xyzw"])
+        return LatticeRoutePlanner(
+            self.graph, self.edge_builder,
+            home_q=start_q,
+            anchors=anchors,
+            orientation=orientation,
+            joint_limits=self.urdf.joint_limits(),
+            refine=self.refine, fk=self.fk,
+            checker_factory=self.lattice_checker_factory,
+            check_scene_states=scene_states,
+            build_scene_states=scene_states,
+            t_frame_container=transform["translation"],
+            q_frame_container=transform["quaternion_xyzw"],
+            staging_q=staging("carrying"),
+            staging_unloaded_q=staging("unloaded"),
+            atlas_seeds=atlas_seeds,
+            candidate_id=candidate.candidate_id,
+            velocity_scaling=parameters.get("velocity_scaling"),
+            acceleration_scaling=parameters.get("acceleration_scaling"),
+            log=self._log,
+            wrist_margin=getattr(self, "lattice_wrist_margin_rad", None),
+            anchor_sets=anchor_sets)
+
     def _inward_normal(self):
         info = self.opening_info or {}
         normal = info.get("normal")
@@ -926,7 +1076,14 @@ class RouteProducer(object):
                 "scene_tf_hash": note.get("scene_tf_hash") or "",
                 "urdf_hash": note.get("urdf_hash") or "",
                 "query_offset": list(note.get("query_offset") or []),
+                "start_joints": [round(float(v), 6) for v in start_q],
+                "atlas_seed_q": [
+                    [round(float(v), 6) for v in seed]
+                    for seed in atlas_seeds],
                 "_started_ns": self._clock_ns(),
+                "_failure_at": self._builder_len("edge_failure_log"),
+                "_dump_at": self._builder_len("request_dumps"),
+                "_scene_at": self._builder_len("scene_dumps"),
                 "reason": "",
             }
             # [ST09-I P3] the dev 1.35 m base-radius prior is REMOVED:
@@ -975,6 +1132,7 @@ class RouteProducer(object):
                 [round(v, 3) for v in start_q]))
             row["candidate_id"] = candidate.candidate_id
             row["depth_m"] = candidate.depth_m
+            row["_scope_ids"] = scope_ids
             try:
                 # Without an opening datum the portal collapses onto the
                 # approach anchor, so the portal hop is dropped rather
@@ -1011,37 +1169,43 @@ class RouteProducer(object):
                      else "RETREAT")
                     for region in retreat_regions)
                 retreat_hops = hops_from_table(retreat_table, "unloaded")
-                planner = GraphRoutePlanner(
-                    self.graph, self.edge_builder,
-                    home_node_id=self.graph.node_for_q(
-                        LoadState.CARRYING, start_q).node_id,
-                    entry_hops=entry_hops,
-                    retreat_hops=retreat_hops,
-                    t_frame_container=tuple(float(v) for v in
-                                            request["container_transform"]
-                                            ["translation"]),
-                    q_frame_container=tuple(float(v) for v in
-                                            request["container_transform"]
-                                            ["quaternion_xyzw"]),
-                    refine=self.refine, urdf=self.urdf,
-                    goal_seeds=self._goal_seed_fn(
-                        start_q,
-                        anchor_qs=[
-                            node.q for node in
-                            self.graph.nodes_by_region("slot_upper")
-                            if str(node.load_state) == "carrying"
-                            and node.node_id in scope_ids],
-                        atlas_seeds=atlas_seeds),
-                    tcp_path=self.tcp_path,
-                    region_poses={
-                        region: position for region, position in (
-                            ("staging", plan.staging),
-                            ("portal", plan.portal),
-                            ("slot_approach", plan.slot_approach),
-                            ("slot_upper", plan.slot_upper),
-                            ("exit", plan.exit))
-                        if position is not None},
-                    scope_node_ids=scope_ids)
+                if self.corridor_planner == "lattice":
+                    planner = self._lattice_planner(
+                        candidate, plan, scope_ids, start_q, atlas_seeds,
+                        attachment, snapshot, request,
+                        prior_targets[0].quaternion_xyzw)
+                else:
+                    planner = GraphRoutePlanner(
+                        self.graph, self.edge_builder,
+                        home_node_id=self.graph.node_for_q(
+                            LoadState.CARRYING, start_q).node_id,
+                        entry_hops=entry_hops,
+                        retreat_hops=retreat_hops,
+                        t_frame_container=tuple(float(v) for v in
+                                                request["container_transform"]
+                                                ["translation"]),
+                        q_frame_container=tuple(float(v) for v in
+                                                request["container_transform"]
+                                                ["quaternion_xyzw"]),
+                        refine=self.refine, urdf=self.urdf,
+                        goal_seeds=self._goal_seed_fn(
+                            start_q,
+                            anchor_qs=[
+                                node.q for node in
+                                self.graph.nodes_by_region("slot_upper")
+                                if str(node.load_state) == "carrying"
+                                and node.node_id in scope_ids],
+                            atlas_seeds=atlas_seeds),
+                        tcp_path=self.tcp_path,
+                        region_poses={
+                            region: position for region, position in (
+                                ("staging", plan.staging),
+                                ("portal", plan.portal),
+                                ("slot_approach", plan.slot_approach),
+                                ("slot_upper", plan.slot_upper),
+                                ("exit", plan.exit))
+                            if position is not None},
+                        scope_node_ids=scope_ids)
                 planner.trace = getattr(self, "search_trace", None)
                 targets = self._expand_targets(
                     candidate, attachment, request)
@@ -1146,6 +1310,8 @@ class RouteProducer(object):
             self.last_budget_snapshot = planner.last_budget_snapshot
 
             row["route_id"] = route.route_id
+            if self.corridor_planner == "lattice":
+                row["lattice"] = dict(getattr(planner, "last_stats", {}))
             while True:
                 edges = tuple(
                     self.graph.edges[edge_id] for edge_id in
@@ -1273,9 +1439,14 @@ class RouteProducer(object):
                 "stage_timings": self._stage_timings(started_ns),
             }
         rows.append(self._attempt_summary(ordered_slots, tried_indices))
+        if last_reason == "LATTICE_OVER_BUDGET":
+            last_reason = "PLANNING_BUDGET_EXHAUSTED"
         # Geometry refusals of every candidate are one request outcome.
         # Map admission and the other request-level codes stay named.
         if last_reason in (
+                "LATTICE_NO_CHAIN", "LATTICE_LAYER_EMPTY",
+                "LATTICE_COLLISION_SERVICE",
+        ) or last_reason in (
                 "NO_FEASIBLE_ROUTE", "EDGE_BUILD_FAILED",
                 "CANDIDATE_COLLISION", "SWEEP_COLLISION",
                 "CARTESIAN_FRACTION", "EXCURSION",
@@ -2193,6 +2364,10 @@ class RouteProducer(object):
         self.last_goal_refine = []
 
         def goal_seeds(target):
+            from luggage_planning.grid_path_search import (
+                _wrap_rad,
+                descend_pair_rank,
+            )
             seeds = []
             attempts = []
             for label, seed in anchors + alternatives:
@@ -2203,12 +2378,24 @@ class RouteProducer(object):
                     q, info = self._refine_to(
                         target.position, target.quaternion_xyzw, seed)
                 info = info if isinstance(info, dict) else {}
+                wrapped = None
+                tier = None
+                if q is not None and len(seed) == len(q):
+                    wrapped = [
+                        round(_wrap_rad(float(b) - float(a)), 6)
+                        for a, b in zip(seed, q)]
+                    tier = int(descend_pair_rank(seed, q)[0])
                 attempts.append({
                     "seed": label,
+                    "seed_q": [round(float(v), 6) for v in seed],
+                    "q": None if q is None else [
+                        round(float(v), 6) for v in q],
                     "ok": q is not None,
                     "solved_by": info.get("solved_by"),
                     "pos_err_m": info.get("pos_err_m"),
                     "rot_err_rad": info.get("rot_err_rad"),
+                    "branch_tier": tier,
+                    "wrapped_delta": wrapped,
                 })
                 if q is not None:
                     seeds.append(GoalSeed(
@@ -2219,6 +2406,9 @@ class RouteProducer(object):
                     [float(v) for v in target.position],
                     [float(v) for v in target.quaternion_xyzw]],
                 "atlas_seed_count": len(atlas_seeds or []),
+                "atlas_seeds": [
+                    [round(float(v), 6) for v in seed_q]
+                    for seed_q in (atlas_seeds or [])],
                 "attempts": attempts,
             })
             return seeds
@@ -2380,8 +2570,36 @@ class RouteProducer(object):
         row.update(capture_fields(slot, targets, reachability, []))
         return row
 
+    def _builder_len(self, name):
+        fn = getattr(getattr(self, "edge_builder", None), name, None)
+        if not callable(fn):
+            return 0
+        try:
+            return len(fn())
+        except Exception:  # noqa: BLE001 - evidence only
+            return 0
+
+    def _scoped_anchors(self, scope_ids):
+        """Joint solutions registered for this candidate, not earlier ones."""
+        anchors = []
+        nodes = getattr(getattr(self, "graph", None), "nodes", None) or {}
+        for node in nodes.values():
+            if scope_ids is not None and node.node_id not in scope_ids:
+                continue
+            anchors.append({
+                "region": str(node.region),
+                "load_state": str(node.load_state),
+                "family": str(getattr(node, "ik_family", "") or ""),
+                "q": [round(float(v), 6) for v in node.q],
+            })
+        return anchors
+
     def _close_row(self, rows, row):
-        """Stamp elapsed time, seed source, and recent Cartesian refusals."""
+        """Stamp elapsed time, this candidate's edges, and its anchors.
+
+        Cartesian refusals are taken from the failure log entries appended
+        after this row started. A later candidate must not inherit them.
+        """
         started = row.pop("_started_ns", None)
         if started is not None:
             row["elapsed_ms"] = round(
@@ -2394,14 +2612,35 @@ class RouteProducer(object):
                         sources.append(attempt.get("seed"))
             if sources:
                 row["seed_source"] = sources
-        log = getattr(getattr(self, "edge_builder", None),
-                      "edge_failure_log", None)
-        if callable(log) and "cartesian" not in row:
+        failure_at = row.pop("_failure_at", None)
+        dump_at = row.pop("_dump_at", None)
+        scene_at = row.pop("_scene_at", None)
+        scope_ids = row.pop("_scope_ids", None)
+        builder = getattr(self, "edge_builder", None)
+        log = getattr(builder, "edge_failure_log", None)
+        if callable(log) and "cartesian" not in row and failure_at is not None:
             cartesian = [
-                item for item in log()
+                item for item in log()[int(failure_at):]
                 if item.get("reason") == "fraction_below_min"]
             if cartesian:
-                row["cartesian"] = cartesian[-4:]
+                row["cartesian"] = cartesian
+        dumps = getattr(builder, "request_dumps", None)
+        if callable(dumps) and dump_at is not None:
+            edges = list(dumps()[int(dump_at):])
+            if edges and "edges" not in row:
+                row["edges"] = edges
+            if edges and "first_edge" not in row:
+                row["first_edge"] = edges[0]
+        scenes = getattr(builder, "scene_dumps", None)
+        if callable(scenes) and scene_at is not None:
+            scene_rows = list(scenes()[int(scene_at):])
+            if scene_rows:
+                row["scene"] = scene_rows
+        params = getattr(builder, "planner_parameters", None)
+        if callable(params) and "planner_parameters" not in row:
+            row["planner_parameters"] = params()
+        if scope_ids is not None and "anchors" not in row:
+            row["anchors"] = self._scoped_anchors(scope_ids)
         rows.append(row)
         return row
 

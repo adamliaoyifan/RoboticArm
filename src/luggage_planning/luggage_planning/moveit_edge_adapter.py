@@ -333,6 +333,25 @@ class MoveItEdgeAdapter(object):
     def edge_failure_log(self):
         return list(self._failure_log)
 
+    def planner_parameters(self):
+        """Parameters that select a joint or Cartesian edge.
+
+        ``ompl_rng_seed`` is ``unfixed``: RRTConnect has no seed in the
+        planning request or in ``ompl_planning.yaml``. Cartesian edges do
+        not use that generator.
+        """
+        return {
+            "planner_id": self._planner_id,
+            "allowed_planning_time_s": self._allowed_planning_time,
+            "num_planning_attempts": self._num_planning_attempts,
+            "cartesian_max_step_m": self._cartesian_max_step,
+            "jump_threshold": self._jump_threshold,
+            "avoid_collisions": self._avoid_collisions,
+            "velocity_scaling": self._velocity_scaling,
+            "acceleration_scaling": self._acceleration_scaling,
+            "ompl_rng_seed": "unfixed",
+        }
+
     def outcomes(self):
         return list(self._outcomes)
 
@@ -375,6 +394,8 @@ class MoveItEdgeAdapter(object):
         retreat edges detach it. Released and placed boxes are world
         objects in the planning frame.
         """
+        import hashlib
+
         marker = json.dumps({
             "load_state": scene.load_state,
             "payload": vars(scene.payload) if scene.payload else None,
@@ -382,6 +403,7 @@ class MoveItEdgeAdapter(object):
             if scene.released_box else None,
             "placed": [vars(box) for box in scene.placed_boxes],
         }, sort_keys=True, default=str)
+        scene_digest = hashlib.sha256(marker.encode("utf-8")).hexdigest()
         if marker == self._scene_state_applied:
             return
         started = time.monotonic()
@@ -429,6 +451,13 @@ class MoveItEdgeAdapter(object):
         self._scene_dumps.append({
             "load_state": scene.load_state,
             "world_boxes": len(world_boxes),
+            "scene_digest": scene_digest,
+            "payload_wdh": (
+                [float(v) for v in scene.payload.dimensions_wdh]
+                if scene.payload is not None else None),
+            "payload_translation": (
+                [float(v) for v in scene.payload.t_tcp_box_translation]
+                if scene.payload is not None else None),
             "wall_s": round(time.monotonic() - started, 6),
         })
 
@@ -567,6 +596,8 @@ class MoveItEdgeAdapter(object):
             "planner": "joint", "edge_class": klass.value,
             "planner_id": self._planner_id,
             "from": from_node.node_id, "to": to_node.node_id,
+            "from_q": [round(float(v), 6) for v in from_node.q],
+            "to_q": [round(float(v), 6) for v in to_node.q],
             "error_code": int(result.error_code.val) if result else -1})
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
@@ -636,7 +667,14 @@ class MoveItEdgeAdapter(object):
         self._request_dumps.append({
             "planner": "cartesian", "edge_class": klass.value,
             "from": from_node.node_id, "to": to_node.node_id,
+            "from_q": [round(float(v), 6) for v in from_node.q],
+            "to_q": [round(float(v), 6) for v in to_node.q],
+            "from_position": [round(float(v), 6) for v in from_node.tcp_position],
+            "to_position": [round(float(v), 6) for v in to_node.tcp_position],
             "waypoints": len(poses),
+            "max_step_m": self._cartesian_max_step,
+            "jump_threshold": self._jump_threshold,
+            "avoid_collisions": self._avoid_collisions,
             "fraction": round(float(response.fraction), 6)
             if response else None})
         if response is None or not response.solution.joint_trajectory.points:

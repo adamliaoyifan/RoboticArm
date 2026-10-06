@@ -87,6 +87,8 @@ def _default_launch_values():
         # atlas_enabled forces the whole chain on/off.
         "atlas_runtime_config": "",
         "atlas_enabled": "",
+        # trajectory_selector route planner: graph or lattice.
+        "corridor_planner": "graph",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -968,6 +970,7 @@ def _launch_setup(context):
                 # SIM schema document; the service refuses
                 # POSE_FILE_MISSING without it — never a default).
                 "robot_poses_config": poses_path,
+                "corridor_planner": str(cfg["corridor_planner"]),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
@@ -1258,6 +1261,11 @@ def generate_launch_description():
                 "atlas_enabled",
                 "Force the atlas chain on/off for placement and motion "
                 "(empty = yaml default).",
+            ),
+            profile_arg(
+                "corridor_planner",
+                "trajectory_selector route planner: graph (hop search) or "
+                "lattice (corridor lattice, MoveIt joint transit/return).",
             ),
             profile_arg(
                 "frame_runtime",

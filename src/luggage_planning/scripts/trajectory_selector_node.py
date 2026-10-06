@@ -148,6 +148,9 @@ class TrajectorySelectorNode(Node):
             callback_group=self._service_group)
         # ST09-I: the unified route producer (off = legacy selection).
         self.declare_parameter("route_planning", True)
+        # graph: GraphRoutePlanner hop search. lattice: corridor lattice
+        # for portal..slot..portal, MoveIt joint transit/return only.
+        self.declare_parameter("corridor_planner", "graph")
         self.declare_parameter("frame_scene_revision", "")
         # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
         # the service refuses POSE_FILE_MISSING — never a default).
@@ -451,6 +454,12 @@ class TrajectorySelectorNode(Node):
             adapter.load_edges(edges, scene_states=scene_states)
             return adapter
 
+        def lattice_checker_factory(*, scene_states, start_q):
+            from luggage_planning.lattice_route import LatticeStateChecker
+
+            return LatticeStateChecker(
+                self, scene_client, scene_states, start_q)
+
         self._route_producer = RouteProducer(
             graph=RouteGraph(static_identity="st09-i-route:%s" %
                              self._scene_tf_hash),
@@ -491,7 +500,10 @@ class TrajectorySelectorNode(Node):
             # [ST09-I S5.7-6 §2] EnsureCycleStartV2 adjudication inputs.
             scene_config=self._scene,
             scene_revision_binding=str(
-                self.get_parameter("frame_scene_revision").value or ""))
+                self.get_parameter("frame_scene_revision").value or ""),
+            corridor_planner=str(
+                self.get_parameter("corridor_planner").value or "graph"),
+            lattice_checker_factory=lattice_checker_factory)
         return self._route_producer
 
     def _verify_selected(self, request, response):
