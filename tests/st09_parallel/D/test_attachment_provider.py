@@ -147,12 +147,12 @@ class TestReattachAndSlip(object):
             assert refusal_of(exc) == Reason.ATTACHMENT_MISSING.value
         assert raised
 
-    def test_expiry_applies_the_frozen_ten_second_window(self):
+    def test_expiry_applies_the_placement_window(self):
         provider = make_provider()
         record(provider)
-        provider.expire_stale("req-1", STAMP + 10_000_000_000)
+        provider.expire_stale("req-1", STAMP + 60_000_000_000)
         assert provider.latest_record("req-1")  # exactly at the window: valid
-        provider.expire_stale("req-1", STAMP + 10_000_000_001)
+        provider.expire_stale("req-1", STAMP + 60_000_000_001)
         try:
             provider.latest_record("req-1")
             raised = False

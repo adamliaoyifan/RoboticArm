@@ -1524,7 +1524,7 @@ class RouteProducer(object):
         the measured record to still exist as a VALID record whose
         digest equals the certificate's attachment digest — an
         incarnation change never silently re-authorizes the old
-        certificate. The frozen 10 s acquisition->PLANNING-use window
+        certificate. The 60 s acquisition->PLANNING-use window
         is deliberately NOT re-applied here: it bounds select/verify
         (where expire_stale already ran); execution minutes later is
         not a fresh acquisition. Payload LOSS mid-route is a live

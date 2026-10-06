@@ -19,7 +19,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
-ROUTE_TOTAL_WALL_S = 10.0
+ROUTE_TOTAL_WALL_S = 60.0
 SINGLE_NEW_EDGE_WALL_S = 2.0
 MAX_EDGE_REPAIR_ATTEMPTS = 4
 

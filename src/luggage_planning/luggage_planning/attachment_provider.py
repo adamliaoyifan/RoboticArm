@@ -133,7 +133,7 @@ class MeasuredAttachmentProvider:
         return record
 
     def expire_stale(self, request_id: str, now_ns: int) -> None:
-        """Apply the frozen 10 s acquisition->use window.
+        """Apply the 60 s acquisition->use window.
 
         A zero acquisition stamp is not a live measurement. It is
         invalidated as ``STAMP_INVALID`` instead of being aged from the

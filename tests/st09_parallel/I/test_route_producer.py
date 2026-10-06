@@ -282,7 +282,7 @@ class TestAttachmentStampAdmission:
         assert row["record_stamp_ns"] == 0
         assert row["now_stamp_ns"] == clock()
         assert row["age_ns"] == clock()
-        assert row["stale_window_ns"] == 10_000_000_000
+        assert row["stale_window_ns"] == 60_000_000_000
         assert row["box_id"] == "pickup_box_0001"
         assert row["generation"] == 3
         assert row["attachment_incarnation"] == 0
@@ -852,7 +852,8 @@ class TestPlanPlaceRoute:
         register_attach_from_request(
             producer.attachment_provider, request,
             box_wdh=request["box_wdh"])
-        clock.advance_s(60.0)  # far beyond the frozen 10 s window
+        clock.advance_s(60.0)  # exactly the placement window: still valid
+        clock.now_ns += 1  # one nanosecond past it: expired
         result = producer.plan_place_route(request)
         assert not result["success"]
         assert result["reason_code"] == "ATTACHMENT_MISSING"

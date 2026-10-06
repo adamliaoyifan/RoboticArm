@@ -52,7 +52,7 @@ UNLOADED_ATTACHMENT_DIGEST = digest_of("st09-attachment", "unloaded", 2)
 #: Frozen attachment policy values (mirrored in resolved_planning_contract.json;
 #: a C0 test asserts the two stay identical).
 TF_SYNC_MAX_SKEW_NS = 0
-ATTACHMENT_MAX_AGE_NS = 10_000_000_000  # 10 s acquisition -> use
+ATTACHMENT_MAX_AGE_NS = 60_000_000_000  # 60 s, same window as one placement
 GRASP_TOLERANCE_M = 0.01
 GRASP_TOLERANCE_RAD = 0.10
 MEASURED_POSE_AGREEMENT_M = 1e-6

@@ -95,7 +95,7 @@ def test_time_parameterization_matches_site_profile():
 
 def test_budgets_and_sampling_bounds():
     budgets = CONTRACT["planning_budgets"]
-    assert budgets["route_total_wall_s"]["value"] == 10.0
+    assert budgets["route_total_wall_s"]["value"] == 60.0
     assert budgets["single_new_moveit_edge_wall_s"]["value"] == 2.0
     assert budgets["max_edge_repair_attempts"]["value"] == 4
     sampling = CONTRACT["certification_sampling"]

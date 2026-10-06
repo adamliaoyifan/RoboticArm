@@ -445,6 +445,10 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         inner_size = list(container_usable_dimensions(self._scene_config))
         for _attempt in range(attempts):
             try:
+                # The producer stops the route at route_total_wall_s (60).
+                # The client has to stay up long enough to receive that
+                # result; the old 30 s default returned "timeout" while
+                # the selector was still inside its budget.
                 selection = self._typed.select_place_path(
                     request_id=request_id, box_wdh=box_wdh,
                     slots=slot_messages, slot_scores=scores,
@@ -458,7 +462,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                     container_transform=container_transform,
                     excluded_ids=excluded,
                     box_id=box_id,
-                    generation=generation)
+                    generation=generation,
+                    timeout_sec=90.0)
             except ContractError as error:
                 trial.fail_code = trial.fail_code or error.code
                 trial.extras["selector_error"] = "%s: %s" % (
