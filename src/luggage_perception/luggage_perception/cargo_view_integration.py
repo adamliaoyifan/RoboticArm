@@ -471,6 +471,9 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
     for ix in range(int(surface_map["nx"])):
         for iy in range(int(surface_map["ny"])):
             state = str(states[ix][iy])
+            # Unknown stays unknown: it is omitted, not converted to free.
+            # The snapshot therefore does not declare a complete occupancy
+            # domain, and an empty listing is not a full container.
             if state == "unknown":
                 continue
             cells_i.append(ix)

@@ -82,7 +82,10 @@ def _context(attachment=None, snapshot=None, edges=None, adapter=None, now_ns=2_
 
 
 def _full_blocked(snapshot):
-    return dataclasses.replace(snapshot, cell_states=tuple("occupied" for _ in snapshot.cell_states))
+    return dataclasses.replace(
+        snapshot,
+        cell_states=tuple("occupied" for _ in snapshot.cell_states),
+        occupancy_domain_complete=True)
 
 
 def _map_request(latest, *, cells=((1, 1),), in_flight=False, now_ns=2_100_000_000,

@@ -133,6 +133,99 @@ def test_stale_restart_and_start_joint_mismatch_fail_closed():
     assert MapRevalidator().revalidate(_request(latest, start=False)).reason is Reason.CERT_JOINT_DISCONTINUITY
 
 
+def _empty_sparse(source, stamp_ns, placed=0, observed=False):
+    return dataclasses.replace(
+        _identity(stamp_ns, source, placed=placed, observed=observed),
+        cells_i=(), cells_j=(), cell_states=(),
+        occupancy_domain_complete=False)
+
+
+def test_empty_static_snapshot_is_not_a_full_container():
+    latest = _empty_sparse("static_empty", 0)
+    decision = MapRevalidator().revalidate(
+        _request(latest, cells=(), now_ns=40_000_000_000))
+    assert decision.decision is MapDecision.CONTINUE
+    assert decision.reason is Reason.OK
+    occupancy = decision.detail["occupancy"]
+    assert occupancy["known_cell_count"] == 0
+    assert occupancy["occupied_count"] == 0
+    assert occupancy["unknown_omitted"] is True
+    assert occupancy["map_source"] == "static_empty"
+    assert occupancy["why_allowed"] == "empty_sparse_snapshot"
+    assert occupancy["why_refused"] == ""
+
+
+def test_static_empty_after_place_is_not_an_empty_set_full_map():
+    latest = _empty_sparse("static_empty", 0, placed=1)
+    decision = MapRevalidator().revalidate(
+        _request(latest, cells=(), now_ns=40_000_000_000))
+    assert decision.decision is not MapDecision.CONTINUE
+    assert decision.reason is Reason.MAP_STALE
+    assert decision.reason is not Reason.MAP_FULLY_BLOCKED
+
+
+def test_empty_measured_snapshot_follows_the_stamp_contract():
+    missing = _empty_sparse("measured", 0, observed=True)
+    refused = MapRevalidator().revalidate(
+        _request(missing, cells=(), now_ns=40_000_000_000))
+    assert refused.reason is Reason.MAP_STALE
+    assert refused.reason is not Reason.MAP_FULLY_BLOCKED
+    fresh = _empty_sparse("measured", 39_000_000_000, observed=True)
+    admitted = MapRevalidator().revalidate(
+        _request(fresh, cells=(), now_ns=40_000_000_000))
+    assert admitted.decision is MapDecision.CONTINUE
+    assert admitted.reason is Reason.OK
+
+
+def test_empty_release_integrated_snapshot_follows_the_stamp_contract():
+    missing = _empty_sparse("release_integrated", 0, placed=1)
+    refused = MapRevalidator().revalidate(
+        _request(missing, cells=(), now_ns=40_000_000_000))
+    assert refused.reason is Reason.MAP_STALE
+    assert refused.reason is not Reason.MAP_FULLY_BLOCKED
+    fresh = _empty_sparse("release_integrated", 39_000_000_000, placed=1)
+    admitted = MapRevalidator().revalidate(
+        _request(fresh, cells=(), now_ns=40_000_000_000))
+    assert admitted.decision is MapDecision.CONTINUE
+    assert admitted.reason is Reason.OK
+
+
+def test_complete_domain_of_occupied_cells_is_fully_blocked():
+    dense = make_snapshot(
+        map_revision=3, observed_free=[(1, 1)],
+        acquisition_stamp_ns=2_050_000_000)
+    latest = dataclasses.replace(
+        dense,
+        cell_states=tuple("occupied" for _ in dense.cell_states),
+        occupancy_domain_complete=True,
+        map_source="measured")
+    decision = MapRevalidator().revalidate(
+        _request(latest, cells=()))
+    assert decision.reason is Reason.MAP_FULLY_BLOCKED
+    occupancy = decision.detail["occupancy"]
+    assert occupancy["known_cell_count"] > 0
+    assert occupancy["occupied_count"] == occupancy["known_cell_count"]
+    assert occupancy["unknown_omitted"] is False
+    assert occupancy["why_refused"] == "known_domain_fully_occupied"
+
+
+def test_sparse_occupied_cells_do_not_fill_the_container():
+    latest = dataclasses.replace(
+        make_snapshot(map_revision=3, acquisition_stamp_ns=2_050_000_000),
+        map_source="measured",
+        cells_i=(14,), cells_j=(5,), cell_states=("occupied",),
+        occupancy_domain_complete=False)
+    decision = MapRevalidator().revalidate(
+        _request(latest, cells=()))
+    assert decision.decision is MapDecision.CONTINUE
+    assert decision.reason is not Reason.MAP_FULLY_BLOCKED
+    occupancy = decision.detail["occupancy"]
+    assert occupancy["occupied_count"] == occupancy["known_cell_count"] == 1
+    assert occupancy["unknown_omitted"] is True
+    assert occupancy["why_allowed"] == \
+        "known_cells_occupied_domain_incomplete"
+
+
 def test_controlled_stop_allows_only_cancel_and_hold_business_delta_zero():
     before = EffectCounters(plan_calls=1, execute_calls=1, attach_calls=1)
     policy = StopPolicy(deadline_ns=250)

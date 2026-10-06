@@ -68,6 +68,11 @@ class PlanningSnapshot:
     #: True after a settled cargo view has been integrated. ``static_empty``
     #: is then no longer a legal identity.
     cargo_observed: bool = False
+    #: True only when ``cell_states`` is the whole decision domain.
+    #: A sparse snapshot that omitted unknown cells is not a full
+    #: container, even if every listed cell is occupied. Excluded from
+    #: digest(): it is an admission declaration, not map content.
+    occupancy_domain_complete: bool = False
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))
@@ -89,6 +94,10 @@ class PlanningSnapshot:
         if not isinstance(self.cargo_observed, bool):
             raise ContractViolation(
                 "cargo_observed: bool required (%r)" % self.cargo_observed)
+        if not isinstance(self.occupancy_domain_complete, bool):
+            raise ContractViolation(
+                "occupancy_domain_complete: bool required (%r)"
+                % self.occupancy_domain_complete)
         object.__setattr__(self, "resolution_m", finite(self.resolution_m, "resolution_m"))
         if self.resolution_m <= 0.0:
             raise ContractViolation("resolution_m: non-positive (%r)" % self.resolution_m)
@@ -137,6 +146,7 @@ class PlanningSnapshot:
             "map_source": self.map_source,
             "placed_count": self.placed_count,
             "cargo_observed": self.cargo_observed,
+            "occupancy_domain_complete": self.occupancy_domain_complete,
             "commit_revision": self.commit_revision,
             "occupancy_digest": self.occupancy_digest,
             "resolution_m": self.resolution_m,

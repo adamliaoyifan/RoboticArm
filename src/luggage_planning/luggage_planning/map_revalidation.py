@@ -94,6 +94,56 @@ def freshness_verdict(snapshot, now_ns, max_age_ns):
     return verdict
 
 
+def _occupancy_admission(snapshot, reason):
+    """Counts the revalidator actually compared, plus why.
+
+    Unknown cells omitted from a sparse snapshot are not free and are
+    not evidence that the container is full. ``why_allowed`` /
+    ``why_refused`` here are the occupancy verdict, separate from the
+    freshness strings.
+    """
+    counts = snapshot.occupancy_counts()
+    known = int(snapshot.cell_count)
+    occupied = int(counts.get("occupied", 0))
+    domain_complete = bool(snapshot.occupancy_domain_complete)
+    unknown_omitted = not domain_complete
+    if reason is Reason.MAP_FULLY_BLOCKED:
+        why_refused = "known_domain_fully_occupied"
+        why_allowed = ""
+    elif known == 0:
+        why_refused = ""
+        why_allowed = "empty_sparse_snapshot"
+    elif occupied == known and unknown_omitted:
+        why_refused = ""
+        why_allowed = "known_cells_occupied_domain_incomplete"
+    else:
+        why_refused = ""
+        why_allowed = "known_domain_not_fully_occupied"
+    return {
+        "known_cell_count": known,
+        "occupied_count": occupied,
+        "unknown_omitted": unknown_omitted,
+        "map_source": str(snapshot.map_source or ""),
+        "occupancy_domain_complete": domain_complete,
+        "why_allowed": why_allowed,
+        "why_refused": why_refused,
+    }
+
+
+def _known_domain_fully_occupied(snapshot) -> bool:
+    """True only for a declared complete domain that is entirely occupied.
+
+    ``cell_count == 0`` is an empty sparse snapshot (unknown omitted),
+    not a full container. Listed cells that are all occupied still do
+    not fill the container when unknown cells were left out.
+    """
+    if not snapshot.occupancy_domain_complete:
+        return False
+    known = snapshot.cell_count
+    occupied = snapshot.occupancy_counts()["occupied"]
+    return known > 0 and occupied == known
+
+
 class MapRevalidator:
     """Decide whether a fresh map can continue, must replan, or must stop."""
 
@@ -132,7 +182,7 @@ class MapRevalidator:
             return Reason.MAP_RESTART
         if not freshness["allowed"]:
             return Reason.MAP_STALE
-        if latest.occupancy_counts()["occupied"] == latest.cell_count:
+        if _known_domain_fully_occupied(latest):
             return Reason.MAP_FULLY_BLOCKED
         return Reason.OK
 
@@ -158,6 +208,7 @@ class MapRevalidator:
             detail={
                 "policy": "st09-c-map-revalidation",
                 "freshness": dict(freshness),
+                "occupancy": _occupancy_admission(snapshot, reason),
             },
         )
 
