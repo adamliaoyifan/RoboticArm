@@ -451,10 +451,16 @@ class WaypointGeneratorNode(Node):
         A failed certification is a NAMED refusal — never a degraded
         execution of uncertified legs.
         """
+        from luggage_description.scene_tf_config_utils import (
+            container_inner_floor_z,
+            origin_in_world,
+        )
+        from luggage_description.scene_tf_publisher import rpy_to_quaternion
         from luggage_planning.grid_path_search import RoutePlanningError
         from luggage_planning.moveit_edge_adapter import (
+            OccupancyColumnError,
             SceneState,
-            scene_boxes_from_snapshot,
+            occupancy_boxes_from_surface,
         )
         from luggage_planning.moveit_state_validity import (
             MoveItStateValidityAdapter,
@@ -466,13 +472,40 @@ class WaypointGeneratorNode(Node):
             raise RoutePlanningError(
                 "PICK_CERT_SNAPSHOT_UNAVAILABLE",
                 {"leg": "pick", "reason": "latest map unavailable"})
+        surface = dict(self._cargo_surface or {})
+        origin, rpy = origin_in_world(self._scene_config)
+        try:
+            placed = occupancy_boxes_from_surface(
+                {
+                    "state": surface.get("state") or [],
+                    "origin_xy_container": (
+                        surface.get("origin_xy_container")
+                        or surface.get("origin_local")),
+                    "resolution_m": (
+                        surface.get("resolution_m")
+                        or surface.get("resolution")),
+                    "floor_z_container": container_inner_floor_z(
+                        self._scene_config),
+                    "height_above_floor": (
+                        surface.get("height_above_floor")
+                        or surface.get("height")),
+                },
+                {
+                    "translation": [float(v) for v in origin],
+                    "quaternion_xyzw": [
+                        float(v) for v in rpy_to_quaternion(rpy)],
+                })
+        except OccupancyColumnError as exc:
+            raise RoutePlanningError(
+                "PICK_CERT_SNAPSHOT_UNAVAILABLE",
+                {"leg": "pick", "reason": str(exc)})
         adapter = MoveItStateValidityAdapter(
             self, fk=stack["fk"], scene_client=stack["scene_client"],
             log=lambda message: self.get_logger().info(message))
         scene_states = {
             str(edge.edge_id): SceneState(
                 load_state="unloaded", payload=None, released_box=None,
-                placed_boxes=scene_boxes_from_snapshot(snapshot))
+                placed_boxes=placed)
             for edge in edges
         }
         adapter.load_edges(edges, scene_states=scene_states)
