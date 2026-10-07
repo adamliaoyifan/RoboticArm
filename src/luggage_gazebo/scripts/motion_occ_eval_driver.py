@@ -223,6 +223,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         del slot, slot_meta
         if not self._commit_mode:
             return True
+        from luggage_msgs.srv import GetCargoMapStats
         record = getattr(self, "_frame_slot_record", None)
         box_wdh = getattr(self, "_frame_box_wdh", None)
         if self._typed is None or record is None or not box_wdh:
