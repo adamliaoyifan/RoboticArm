@@ -313,6 +313,38 @@ def test_three_box_unified_judge_requires_physical_gates():
     assert extract_acceptance(disguise, frozen)["status"] != "pass"
 
 
+def _committed(evidence, confirmed, sensor_cells=0):
+    """Mark every case as a ledger-committed box with the given outcome."""
+    for case in evidence["cases"]:
+        case["measured"]["sensor_occupied_cells"] = sensor_cells
+        case["measured"]["map_confirmation"] = {
+            "mode": "commit_confirmed", "confirmed": confirmed,
+            "cleared": [1] if confirmed else [], "evidence_points": {"1": 9},
+        }
+    return evidence
+
+
+def test_committed_box_is_judged_on_confirmation_not_sensor_cells():
+    frozen = _m3_frozen()
+    confirmed = extract_acceptance(_committed(_m3_evidence(), True), frozen)
+    assert confirmed["status"] == "pass"
+    unconfirmed = extract_acceptance(_committed(_m3_evidence(), False), frozen)
+    assert unconfirmed["status"] == "fail"
+    assert "case[0]:MAP_CONFIRMATION_REQUIRED" in unconfirmed["failures"]
+    assert not any("NO_SENSOR_OCCUPANCY" in item
+                   for item in unconfirmed["failures"])
+
+
+def test_uncommitted_box_still_needs_a_sensor_cell():
+    frozen = _m3_frozen()
+    evidence = _m3_evidence()
+    for case in evidence["cases"]:
+        case["measured"]["sensor_occupied_cells"] = 0
+    result = extract_acceptance(evidence, frozen)
+    assert result["status"] == "fail"
+    assert "case[0]:NO_SENSOR_OCCUPANCY" in result["failures"]
+
+
 def test_three_box_raw_stamps_reported_not_rewritten():
     frozen = _m3_frozen()
     evidence = _m3_evidence()

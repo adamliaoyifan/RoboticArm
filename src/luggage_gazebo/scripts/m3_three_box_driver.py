@@ -638,6 +638,7 @@ class M3ThreeBoxDriver(MotionOccDriver):
                 "floor_through_candidates": integrate.get("floor_through"),
                 "selection_map": getattr(self, "_m3_selection_map", None),
                 "retreat_start": trial.extras.get("retreat_start"),
+                **self._m3_map_confirmation(integrate, trial),
             },
             "gt_reference": self._m3_gt_reference(verify, integrate, gt),
             "release_gt": gt,
@@ -646,6 +647,27 @@ class M3ThreeBoxDriver(MotionOccDriver):
                                getattr(self, "_timeline", None) or []],
         }
         self._m3_cases.append(case)
+
+    def _m3_map_confirmation(self, integrate, trial):
+        """Mapper confirmation evidence when the box was committed.
+
+        Empty without ``--commit-placed-box``: the box is then measured by the
+        integration alone and acceptance keeps the sensor-cell rules.
+        """
+        if not self._commit_mode:
+            return {}
+        settle = dict(integrate.get("last_settle") or {})
+        cleared = list(settle.get("cleared") or [])
+        return {"map_confirmation": {
+            "mode": "commit_confirmed",
+            "confirmed": bool(
+                integrate.get("occupancy_confirmed") and cleared),
+            "cleared": cleared,
+            "evidence_points": dict(settle.get("evidence_points") or {}),
+            "min_evidence_points": settle.get("min_evidence_points"),
+            "pending_changes": list(integrate.get("pending_changes") or []),
+            "cargo_map_commit": trial.extras.get("cargo_map_commit"),
+        }}
 
     def _m3_gt_reference(self, verify, integrate, gt):
         """gt_reference ONLY from measured artifacts (verify + sensors).
@@ -777,11 +799,15 @@ def parse_args(argv=None):
     argv = list(argv or [])
     local = argparse.ArgumentParser(add_help=False)
     local.add_argument("--m3-sequence", default=DEFAULT_SEQUENCE)
+    # Commit each released box to the mapper ledger, then confirm it by
+    # evidence (pairs with the mapper's require_confirmed_map).
+    local.add_argument("--commit-placed-box", action="store_true")
     local_ns, remaining = local.parse_known_args(argv)
     if "--n" not in remaining:
         remaining.extend(["--n", "3"])
     args = parse_occ_args(remaining)
     args.m3_sequence = str(local_ns.m3_sequence or DEFAULT_SEQUENCE)
+    args.commit_placed_box = bool(local_ns.commit_placed_box)
     return args
 
 

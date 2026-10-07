@@ -1040,6 +1040,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
         return resp
 
+    def _commit_to_cargo_map(self, trial, slot, slot_meta):
+        """Commit the released box to the cargo-map ledger.
+
+        The base driver measures the box with the integration itself and
+        leaves the ledger alone; drivers that exercise the commit path
+        override this and return False on a refused commit.
+        """
+        del trial, slot, slot_meta
+        return True
+
     def _set_place_touch(self, allowed):
         request = SetBool.Request()
         request.data = bool(allowed)
@@ -2081,6 +2091,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             resp = self.call_srv(self._add_placed, add, timeout=10.0)
             trial.extras["add_placed"] = resp.message if resp else "timeout"
             if resp is None or not resp.success:
+                return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
+            if not self._commit_to_cargo_map(trial, slot, slot_meta):
                 return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
             self._set_place_touch(False)
 

@@ -214,7 +214,14 @@ def extract_acceptance(evidence, frozen):
                     or type(retreat.get("max_delta")) not in (int, float)
                     or retreat["max_delta"] > RETREAT_START_TOLERANCE_RAD):
                 failures.append(prefix + ":RETREAT_START_UNVERIFIED")
-        if type(measured.get("sensor_occupied_cells")) is int and measured["sensor_occupied_cells"] < 1:
+        confirmation = measured.get("map_confirmation")
+        if isinstance(confirmation, dict):
+            # Committed box: its footprint cells are geometry, so a sensor
+            # cell there is not expected. The mapper's confirmation is the
+            # observation.
+            if confirmation.get("confirmed") is not True:
+                failures.append(prefix + ":MAP_CONFIRMATION_REQUIRED")
+        elif type(measured.get("sensor_occupied_cells")) is int and measured["sensor_occupied_cells"] < 1:
             failures.append(prefix + ":NO_SENSOR_OCCUPANCY")
         if type(measured.get("floor_through_candidates")) is int and measured["floor_through_candidates"] != 0:
             failures.append(prefix + ":FLOOR_THROUGH")

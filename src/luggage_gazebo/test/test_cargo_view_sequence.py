@@ -213,3 +213,37 @@ class TestMapConfirmationRecord(unittest.TestCase):
         self.assertEqual(record["reason_code"], MAP_CONFIRMATION_REQUIRED)
         trace["occupancy_confirmed"] = True
         self.assertTrue(view_stop(trace))
+
+
+class TestCommitModeViewStop(unittest.TestCase):
+    """A committed box has geometry cells, so only the mapper's settle counts."""
+
+    BASE = {"success": True, "expected_map_revision": 2,
+            "resulting_map_revision": 3, "commit_mode": True,
+            "occupancy_confirmed": True, "footprint_hits": 0,
+            "last_settle": {"cleared": [1], "evidence_points": {"1": 7}}}
+
+    def test_stops_on_cleared_record_without_a_footprint_sensor_cell(self):
+        self.assertTrue(view_stop(dict(self.BASE)))
+
+    def test_view_that_cleared_nothing_does_not_stop(self):
+        trace = dict(self.BASE, last_settle={"cleared": [], "evidence_points": {}})
+        self.assertFalse(view_stop(trace))
+
+    def test_pending_records_left_do_not_stop(self):
+        self.assertFalse(view_stop(dict(self.BASE, occupancy_confirmed=False)))
+
+    def test_footprint_hits_do_not_rescue_an_unconfirmed_commit_view(self):
+        trace = dict(self.BASE, footprint_hits=50,
+                     last_settle={"cleared": [], "evidence_points": {}})
+        self.assertFalse(view_stop(trace))
+
+    def test_revision_must_advance(self):
+        self.assertFalse(view_stop(dict(self.BASE, resulting_map_revision=2)))
+
+    def test_default_mode_keeps_the_footprint_rule(self):
+        trace = {"success": True, "expected_map_revision": 1,
+                 "resulting_map_revision": 2, "footprint_hits": 0}
+        self.assertFalse(view_stop(trace))
+        trace["footprint_hits"] = 3
+        self.assertTrue(view_stop(trace))

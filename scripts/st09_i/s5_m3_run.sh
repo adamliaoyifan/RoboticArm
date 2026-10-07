@@ -223,6 +223,12 @@ if [[ "$layout_rc" -ne 0 ]]; then
 fi
 
 # -- driver under the hard deadline ---------------------------------------
+# The mapper gate and the driver's commit go together: with the gate on, each
+# released box is committed to the mapper ledger and confirmed by evidence.
+COMMIT_ARGS=()
+if [[ "${M3_REQUIRE_CONFIRMED_MAP:-false}" == "true" ]]; then
+  COMMIT_ARGS=(--commit-placed-box)
+fi
 DRIVER_RC=255
 DEADLINE_HIT=0
 start_s=$SECONDS
@@ -233,6 +239,7 @@ python3 "$WS/install-st09/luggage_gazebo/lib/luggage_gazebo/m3_three_box_driver.
   --frame-runtime --frame-peer motion_occ_driver \
   --observe-pose pickup_observe_sim \
   --payload vacuum --place-probe on --goto-timeout 60 --geometry-timeout 90 \
+  "${COMMIT_ARGS[@]}" \
   > "$OUT/driver.log" 2>&1 &
 DRIVER_PID=$!
 log driver_start ", \"driver_pid\": $DRIVER_PID, \"deadline_sec\": $DEADLINE_SEC"

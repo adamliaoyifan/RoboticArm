@@ -210,6 +210,42 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 _SurfaceV2, "/luggage/cargo_map/surface_v2",
                 self._on_surface_v2, transient, callback_group=self._group)
 
+    def _commit_to_cargo_map(self, trial, slot, slot_meta):
+        """Commit the released box to the mapper ledger (``--commit-placed-box``).
+
+        Uses the admitted slot record (container_link) and the box size the
+        placement was planned with, at the mapper's current revision and
+        geometry hash. With the mapper's ``require_confirmed_map`` on this
+        records a ``box_placed`` change that only a later settled view of the
+        box can clear. Without the flag the base behaviour holds: the box is
+        measured by the integration alone and nothing is committed.
+        """
+        del slot, slot_meta
+        if not self._commit_mode:
+            return True
+        record = getattr(self, "_frame_slot_record", None)
+        box_wdh = getattr(self, "_frame_box_wdh", None)
+        if self._typed is None or record is None or not box_wdh:
+            trial.extras["cargo_map_commit"] = "context missing"
+            return False
+        stats = self.call_srv(self._stats, GetCargoMapStats.Request(),
+                              timeout=5.0)
+        if stats is None or not stats.success:
+            trial.extras["cargo_map_commit"] = "stats unavailable"
+            return False
+        try:
+            add = self._typed.add_placed_box(
+                slot=record, size_wdh=list(box_wdh),
+                measured_source="verify_placed_box",
+                expected_map_revision=int(stats.map_revision),
+                geometry_hash=str(stats.geometry_hash or ""))
+        except Exception as error:  # noqa: BLE001 - contract refusal is a result
+            trial.extras["cargo_map_commit"] = "rejected: %s" % error
+            return False
+        trial.extras["cargo_map_commit"] = (
+            add.message if add is not None else "timeout")
+        return bool(add is not None and add.success)
+
     def _on_surface_v2(self, msg):
         self._surface_v2_msg = msg
 
@@ -378,6 +414,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             or str(surface_msg.geometry_hash or "") or "")
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]
+        # What the release commit needs later (see _commit_to_cargo_map).
+        self._frame_box_wdh = list(box_wdh)
         request_id = self._frame_request_id("place")
         try:
             placement = self._typed.compute_placement(

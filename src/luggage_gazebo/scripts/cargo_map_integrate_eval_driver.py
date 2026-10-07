@@ -154,6 +154,10 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         super().__init__(args)
         self._out = str(args.out)
         self._surface_2d = None
+        # The released box is committed to the mapper ledger (geometry cells),
+        # so the mapper's evidence-point confirmation, not a sensor cell in the
+        # footprint, observes it. See cargo_view_sequence.view_stop.
+        self._commit_mode = bool(getattr(args, "commit_placed_box", False))
         self._untracked = {"msg": None, "recv": None}
         self._gt_aabbs = []
         self._t1 = []
@@ -902,6 +906,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         # The mapper's published pending state after this integration.
         t1["occupancy_confirmed"] = bool(
             (surface or {}).get("occupancy_confirmed", True))
+        t1["commit_mode"] = bool(self._commit_mode)
         # Evidence for the confirmation decision: the mapper's own last
         # settle record (evidence_points, tokens cleared) and what is
         # still pending.
@@ -1323,7 +1328,11 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 row for row in self._gt_aabbs if row.get("index") != trial.index]
             self._gt_aabbs.append({
                 "index": trial.index, "aabb": aabb, "coverage": coverage})
-        patch = occupied_sensor_aabb(surface) if surface else None
+        # The occupied patch is the newly placed box's footprint. The AABB of
+        # every sensor cell spans the free gap once two boxes are in the map
+        # (run01 2026-10-07: 49 flagged, 43 over free floor).
+        patch = aabb if aabb is not None else (
+            occupied_sensor_aabb(surface) if surface else None)
         through, solver = floor_through_count(
             surface, BOX_SYNTHETIC, patch) if surface else (0, {})
         self._dump_json(dump, "solver_replay_%s.json" % view, solver)
@@ -1365,6 +1374,15 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             return t1
         trial.extras["integrate_ok"] = True
         if not record:
+            return t1
+        if self._commit_mode:
+            # Committed box: footprint cells are geometry, so sensor coverage,
+            # occupancy height and footprint hits do not apply. The mapper's
+            # confirmation (last_settle.cleared) decides, in _accept_view.
+            # A floor-through candidate still means the solver does not see
+            # the committed box.
+            if through:
+                trial.fail_code = trial.fail_code or "FLOOR_THROUGH"
             return t1
         if coverage >= COVERAGE_MIN and not through:
             if trial.fail_code in ("COVERAGE_LOW", "FLOOR_THROUGH"):

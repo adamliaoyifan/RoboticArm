@@ -248,23 +248,40 @@ def next_expected_revision(prev_response, stats_revision):
 
 
 def view_stop(trace):
-    """True when this view put at least one sensor cell in the footprint.
+    """True when this view observed the released box.
 
-    When the mapper publishes a pending state (``occupancy_confirmed``
-    in the trace) the view must also have cleared it: the mapper's own
-    confirmation, which reads the view's points, outranks the cumulative
-    footprint count. Absent the field (gate off) the earlier rule holds.
+    Two modes, told apart by the trace's ``commit_mode`` field:
+
+    * default (box measured by the integration itself, no ledger commit): the
+      view put at least one sensor cell in the footprint. When the mapper
+      publishes a pending state (``occupancy_confirmed`` in the trace) the view
+      must also have cleared it.
+    * ``commit_mode`` (the box was committed to the mapper ledger at release):
+      the footprint cells are geometry, so a sensor cell there is not expected.
+      The mapper's own confirmation is the only evidence: the view cleared at
+      least one pending record (``last_settle.cleared``) and nothing is left
+      pending. ``footprint_hits`` is not consulted.
+
+    Absent ``occupancy_confirmed`` (gate off) the default rule holds.
     """
     info = trace or {}
     try:
-        hits = int(info.get("footprint_hits") or 0)
         before = int(info.get("expected_map_revision"))
         after = int(info.get("resulting_map_revision"))
     except (TypeError, ValueError):
         return False
+    advanced = bool(info.get("success")) and after > before
+    if info.get("commit_mode"):
+        cleared = (info.get("last_settle") or {}).get("cleared") or []
+        return (advanced and bool(info.get("occupancy_confirmed", False))
+                and len(cleared) > 0)
+    try:
+        hits = int(info.get("footprint_hits") or 0)
+    except (TypeError, ValueError):
+        return False
     if not bool(info.get("occupancy_confirmed", True)):
         return False
-    return bool(info.get("success")) and hits >= 1 and after > before
+    return advanced and hits >= 1
 
 
 #: One name for "the released box was never observed", shared with the
