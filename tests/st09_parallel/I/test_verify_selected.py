@@ -73,7 +73,8 @@ class _Producer(object):
     _live_vacuum_holds = RouteProducer._live_vacuum_holds
     transition_admission_phase = RouteProducer.transition_admission_phase
 
-    def _revalidate(self, route, snapshot, edges):
+    def _revalidate(self, route, snapshot, edges, allow_unconfirmed=False):
+        self.revalidate_allow_unconfirmed = allow_unconfirmed
         return self._stub_revalidation
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
@@ -258,6 +259,26 @@ def _admission(producer, *, digest="hash-1", cert="cert-1", revision=5,
         route_digest=digest, certification_id=cert,
         admission_map_revision=revision, scene_revision=scene,
         leg_digest=leg_digest, leg_load_state=leg_load_state)
+
+
+def test_execution_admission_pending_change_only_for_purposeful_unloaded():
+    """Observation / named-pose selections (they carry a purpose and no
+    attachment) may run while a change is pending; others stay strict."""
+    strict = _live_producer()
+    assert _admission(strict)[0] is True
+    assert strict.revalidate_allow_unconfirmed is False
+
+    observation = _live_producer()
+    observation.last_selection["purpose"] = "named_pose:pickup_observe_sim"
+    observation.last_selection["attachment"] = None
+    assert _admission(observation)[0] is True
+    assert observation.revalidate_allow_unconfirmed is True
+
+    carrying = _live_producer()
+    carrying.last_selection["purpose"] = "named_pose:x"
+    carrying.last_selection["attachment"] = object()
+    assert _admission(carrying)[0] is True
+    assert carrying.revalidate_allow_unconfirmed is False
 
 
 def test_execution_admission_unknown_covers_peer_restart():

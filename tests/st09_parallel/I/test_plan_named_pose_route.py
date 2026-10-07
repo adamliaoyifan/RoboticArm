@@ -72,7 +72,8 @@ class _Producer(object):
         # Recorded budget: _stage_timings reports it, never a default.
         self.budget_ns = 60_000_000_000
 
-    def _revalidate(self, route, snapshot, edges):
+    def _revalidate(self, route, snapshot, edges, allow_unconfirmed=False):
+        self.revalidate_allow_unconfirmed = allow_unconfirmed
         return self._stub_revalidation
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
@@ -236,6 +237,8 @@ def test_pass_path_returns_certified_unloaded_legs():
     assert result["already_there"] is False
     assert producer._certify_load_state is LoadState.UNLOADED
     assert producer._certify_attachment is None
+    # An unloaded observation move is admitted while a change is pending.
+    assert producer.revalidate_allow_unconfirmed is True
     route = result["route"]
     assert route.attachment_digest == UNLOADED_ATTACHMENT_DIGEST
     assert len(result["legs"]) == 1

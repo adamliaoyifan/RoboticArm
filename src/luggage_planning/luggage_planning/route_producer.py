@@ -2071,8 +2071,15 @@ class RouteProducer(object):
             return False, "MAP_RESTART", {
                 "planned": int(snapshot.map_revision),
                 "admission": admission_map_revision}
+        # Only the unloaded observation / named-pose selections carry a
+        # ``purpose``; they may run while an occupancy change is pending
+        # (the move itself confirms it). Placement and retreat selections
+        # have no purpose and stay strict.
+        unloaded_observation = bool(selection.get("purpose")) \
+            and selection.get("attachment") is None
         revalidation = self._revalidate(
-            selection["route"], snapshot, selection["edges"])
+            selection["route"], snapshot, selection["edges"],
+            allow_unconfirmed=unloaded_observation)
         if revalidation is None:
             return False, "MAP_REVALIDATION_UNAVAILABLE", {}
         from st09_contracts.certification import MapDecision
@@ -2192,7 +2199,10 @@ class RouteProducer(object):
                     edge_digests=(edge.digest(),),
                     trajectory_digest=edge.trajectory.digest(),
                     planning_revision="observation")
-                revalidation = self._revalidate(route, snapshot, edges)
+                # Unloaded observation move: it is what confirms a pending
+                # occupancy change, so a pending change does not refuse it.
+                revalidation = self._revalidate(
+                    route, snapshot, edges, allow_unconfirmed=True)
                 if revalidation is None:
                     row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
                     self._close_row(rows, row)
@@ -2404,7 +2414,10 @@ class RouteProducer(object):
                 edge_digests=(edge.digest(),),
                 trajectory_digest=edge.trajectory.digest(),
                 planning_revision="named_pose")
-            revalidation = self._revalidate(route, snapshot, edges)
+            # Unloaded named-pose move (observation poses included): same
+            # rule as plan_observation_route.
+            revalidation = self._revalidate(
+                route, snapshot, edges, allow_unconfirmed=True)
             if revalidation is None:
                 row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
                 rows.append(row)
@@ -2698,7 +2711,7 @@ class RouteProducer(object):
             return None, "CERTIFICATION_TIMEOUT"
         return result, None
 
-    def _revalidate(self, route, snapshot, edges):
+    def _revalidate(self, route, snapshot, edges, allow_unconfirmed=False):
         if self.revalidator is None:
             return None
         import time as _reval_time
@@ -2722,7 +2735,8 @@ class RouteProducer(object):
             return self.revalidator.revalidate(RevalidationInput(
                 route=route, planned_snapshot=snapshot,
                 latest_snapshot=latest, edges=edges,
-                now_ns=now_ns, in_flight=False))
+                now_ns=now_ns, in_flight=False,
+                allow_unconfirmed=allow_unconfirmed))
         finally:
             stages = getattr(self, "_stage_ns", None)
             if stages is not None:

@@ -565,7 +565,11 @@ class CargoVolumeMapperNode(Node):
         """A placed box leaves the static-empty identity.
 
         ``require_confirmed_map`` on: a new commit records a pending change
-        with the box footprint and never writes a stamp. Off: a new commit
+        with the box footprint. It never refreshes an existing sensor
+        stamp; it only labels a map that has no stamp yet (``<= 0``) with
+        the commit clock, because the revalidator refuses a stamp <= 0 for
+        every route, and the pending change - not the stamp - is what
+        keeps placement closed until observation confirms. Off: a new commit
         stamps the node clock and a duplicate commit keeps the existing
         release stamp.
         """
@@ -578,6 +582,8 @@ class CargoVolumeMapperNode(Node):
         if self._require_confirmed_map:
             if committed_now:
                 self._pending.record("box_placed", now_ns, footprint)
+                if int(self._last_acquisition_ns) <= 0:
+                    self._last_acquisition_ns = int(stamp)
             return
         if committed_now or int(self._last_acquisition_ns) <= 0 \
                 or previous_source != MAP_RELEASE_INTEGRATED:

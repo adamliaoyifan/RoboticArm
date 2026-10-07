@@ -168,6 +168,41 @@ def test_change_event_requires_reconfirmation():
     assert decision.detail["freshness"]["change_event"] == "box_placed"
 
 
+def _pending(stamp_ns=39_000_000_000, source="release_integrated", placed=1):
+    return dataclasses.replace(
+        _identity(stamp_ns, source, placed=placed),
+        occupancy_confirmed=False, change_event="box_placed")
+
+
+def test_unloaded_observation_route_runs_while_a_change_is_pending():
+    """The move to the observation pose is what confirms the change."""
+    request = dataclasses.replace(
+        _request(_pending(), now_ns=40_000_000_000), allow_unconfirmed=True)
+    decision = MapRevalidator().revalidate(request)
+    assert decision.decision is MapDecision.CONTINUE
+    freshness = decision.detail["freshness"]
+    assert freshness["why_allowed"] == "unconfirmed_unloaded_observation"
+    assert freshness["occupancy_confirmed"] is False
+
+
+def test_pending_change_still_refuses_every_other_route():
+    decision = MapRevalidator().revalidate(
+        _request(_pending(), now_ns=40_000_000_000))
+    assert decision.reason is Reason.MAP_CONFIRMATION_REQUIRED
+
+
+def test_unloaded_admission_does_not_waive_the_stamp_or_source_rules():
+    no_stamp = dataclasses.replace(
+        _request(_pending(stamp_ns=0), now_ns=40_000_000_000),
+        allow_unconfirmed=True)
+    assert MapRevalidator().revalidate(no_stamp).reason is Reason.MAP_STALE
+    static_after_place = dataclasses.replace(
+        _request(_pending(stamp_ns=0, source="static_empty", placed=1),
+                 now_ns=40_000_000_000), allow_unconfirmed=True)
+    assert MapRevalidator().revalidate(
+        static_after_place).reason is Reason.MAP_STALE
+
+
 def test_release_integrated_stamp_inside_the_window_continues():
     latest = _identity(39_000_000_000, "release_integrated", placed=1)
     decision = MapRevalidator().revalidate(

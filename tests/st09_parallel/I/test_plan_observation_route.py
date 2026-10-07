@@ -76,7 +76,8 @@ class _Producer(object):
     def _refine_to(self, position, orientation, seed):
         return self._refine_result, {}
 
-    def _revalidate(self, route, snapshot, edges):
+    def _revalidate(self, route, snapshot, edges, allow_unconfirmed=False):
+        self.revalidate_allow_unconfirmed = allow_unconfirmed
         return self._stub_revalidation
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
@@ -178,6 +179,7 @@ def test_pass_path_binds_unloaded_admission_and_selection():
     # no attachment record.
     assert producer._certify_load_state is LoadState.UNLOADED
     assert producer._certify_attachment is None
+    assert producer.revalidate_allow_unconfirmed is True
     route = result["route"]
     assert route.attachment_digest == UNLOADED_ATTACHMENT_DIGEST
     # Selection bookkeeping lets verify_selected re-verify by digest.

@@ -34,15 +34,21 @@ class RevalidationInput:
     in_flight: bool = False
     runtime_lease_valid: bool = True
     start_joints_match: bool = True
+    #: An unloaded observation move may run while an occupancy change is
+    #: unconfirmed: the move to the observation pose is what confirms it.
+    #: Placement and every loaded route keep this False.
+    allow_unconfirmed: bool = False
 
 
-def freshness_verdict(snapshot, now_ns, max_age_ns):
+def freshness_verdict(snapshot, now_ns, max_age_ns, allow_unconfirmed=False):
     """Whether this map identity may admit a route.
 
     A confirmed occupancy snapshot stays valid until a change event or
     a contradictory observation. The acquisition stamp stays the real
     sensor time and is recorded as ``age_ns``. Age past
-    ``max_age_ns`` does not refuse that snapshot. ``static_empty`` is
+    ``max_age_ns`` does not refuse that snapshot. ``allow_unconfirmed``
+    admits an unconfirmed snapshot for an unloaded observation route only;
+    the stamp and source rules above still apply. ``static_empty`` is
     the configured empty container. Stamp 0 is legal only while nothing
     has been placed and no cargo view has been integrated.
     """
@@ -88,6 +94,10 @@ def freshness_verdict(snapshot, now_ns, max_age_ns):
     verdict["age_exceeds_window"] = age > int(max_age_ns)
     verdict["freshness_policy"] = "confirmed_occupancy"
     if not confirmed:
+        if allow_unconfirmed:
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "unconfirmed_unloaded_observation"
+            return verdict
         verdict["why_refused"] = "occupancy_change_unconfirmed"
         return verdict
     verdict["allowed"] = True
@@ -165,7 +175,8 @@ class MapRevalidator:
     def revalidate(self, request: RevalidationInput) -> MapRevalidationDecision:
         latest = request.latest_snapshot
         freshness = freshness_verdict(
-            latest, request.now_ns, self.policy.max_snapshot_age_ns)
+            latest, request.now_ns, self.policy.max_snapshot_age_ns,
+            allow_unconfirmed=request.allow_unconfirmed)
         reason = self._preflight_reason(request, freshness)
         if reason is not Reason.OK:
             decision = MapDecision.STOP if request.in_flight else MapDecision.FAULT
