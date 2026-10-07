@@ -369,3 +369,32 @@ class TestRotatedRectAabb(unittest.TestCase):
             expected = (0.5, 0.3) if abs(yaw) == math.pi else (0.3, 0.5)
             self.assertAlmostEqual(box[2] - box[0], expected[0], places=6)
             self.assertAlmostEqual(box[3] - box[1], expected[1], places=6)
+
+
+class TestFloorThroughOverlapTolerance(unittest.TestCase):
+    """Edge-touching candidates are not floor-through; real overlaps are."""
+
+    def test_sliver_below_tolerance_is_not_counted_but_deep_overlap_is(self):
+        from unittest import mock
+        import luggage_perception.cargo_view_integration as module
+        candidates = [
+            # touches the patch from below by 0.7 mm
+            {"feasible": True, "center_local": [0.0, -0.4350, -0.615],
+             "footprint": [0.55, 0.4]},
+            # sits 10 cm inside the patch
+            {"feasible": True, "center_local": [0.0, -0.3357, -0.615],
+             "footprint": [0.55, 0.4]},
+        ]
+        surface = {"inner_size": [1.5, 2.0, 1.48]}
+        patch = (-0.2, -0.2357, 0.2, 0.26)
+        with mock.patch("luggage_packing.placement_solver.solve_placement",
+                        return_value={"candidates": candidates,
+                                      "success": True}):
+            strict, _ = module.floor_through_count(
+                surface, [0.55, 0.4, 0.25], patch)
+            tolerant, info = module.floor_through_count(
+                surface, [0.55, 0.4, 0.25], patch, overlap_tol_m=0.025)
+        self.assertEqual(strict, 2)
+        self.assertEqual(tolerant, 1)
+        self.assertGreater(info["max_overlap_m"], 0.09)
+        self.assertEqual(info["overlap_tol_m"], 0.025)

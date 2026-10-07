@@ -519,10 +519,23 @@ def rotated_rect_aabb(center_xy, width, depth, yaw):
     )
 
 
-def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05):
+def _aabb_xy_overlap_depth(first, second):
+    """Smaller of the x and y overlap depths (metres); <= 0 means disjoint."""
+    return min(
+        min(first[2], second[2]) - max(first[0], second[0]),
+        min(first[3], second[3]) - max(first[1], second[1]))
+
+
+def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05,
+                        overlap_tol_m=0.0):
     """Count feasible floor candidates whose footprint overlaps ``occupied_xy``.
 
-    ``occupied_xy`` is ``(xmin, ymin, xmax, ymax)``. Uses live
+    ``occupied_xy`` is ``(xmin, ymin, xmax, ymax)``. A candidate counts only
+    when it overlaps by MORE than ``overlap_tol_m`` in both axes: candidate
+    edges sit on grid-cell boundaries while the reference edge is a measured
+    metric position, so a sliver below the grid quantisation (callers pass
+    half a cell) is a candidate touching the box, not going through it.
+    The deepest overlap seen is reported as ``max_overlap_m``. Uses live
     ``solve_placement`` so the occupancy-used proof does not call the
     production service with synthetic GT.
     """
@@ -535,6 +548,7 @@ def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05):
         surface, box_size, allowed_yaws=[0.0],
         params={"top_n": 400, "keep_rejected": 80})
     count = 0
+    max_overlap = 0.0
     for cand in result.get("candidates") or ():
         if not cand.get("feasible"):
             continue
@@ -549,9 +563,14 @@ def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05):
             float(local[0]) - half_l, float(local[1]) - half_w,
             float(local[0]) + half_l, float(local[1]) + half_w,
         )
-        if _aabb_xy_overlap(cand_xy, occupied_xy):
+        depth = _aabb_xy_overlap_depth(cand_xy, occupied_xy)
+        max_overlap = max(max_overlap, depth)
+        if depth > float(overlap_tol_m) and _aabb_xy_overlap(
+                cand_xy, occupied_xy):
             count += 1
     return count, {
+        "overlap_tol_m": float(overlap_tol_m),
+        "max_overlap_m": round(max_overlap, 6),
         "success": bool(result.get("success")),
         "n_feasible": sum(
             1 for c in (result.get("candidates") or ()) if c.get("feasible")),
