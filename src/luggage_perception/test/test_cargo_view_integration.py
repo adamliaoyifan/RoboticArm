@@ -344,3 +344,28 @@ class TestContainerPoseMoved(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRotatedRectAabb(unittest.TestCase):
+    """Reference footprint of a box that is turned inside the container."""
+
+    def test_axis_aligned_keeps_width_along_x(self):
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        box = rotated_rect_aabb((1.0, 2.0), 0.5, 0.3, 0.0)
+        self.assertEqual([round(v, 6) for v in box], [0.75, 1.85, 1.25, 2.15])
+
+    def test_quarter_turn_swaps_extents(self):
+        import math
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        box = rotated_rect_aabb((0.0, 0.0), 0.495, 0.361, math.pi / 2)
+        self.assertAlmostEqual(box[2] - box[0], 0.361, places=6)
+        self.assertAlmostEqual(box[3] - box[1], 0.495, places=6)
+
+    def test_half_turn_and_negative_quarter_turn_match_unturned_extents(self):
+        import math
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        for yaw in (math.pi, -math.pi / 2):
+            box = rotated_rect_aabb((0.0, 0.0), 0.5, 0.3, yaw)
+            expected = (0.5, 0.3) if abs(yaw) == math.pi else (0.3, 0.5)
+            self.assertAlmostEqual(box[2] - box[0], expected[0], places=6)
+            self.assertAlmostEqual(box[3] - box[1], expected[1], places=6)

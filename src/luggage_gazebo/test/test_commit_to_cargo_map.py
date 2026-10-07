@@ -42,7 +42,8 @@ class FakeTyped:
         self.calls.append(kwargs)
         if self._raises:
             raise self._raises
-        return types.SimpleNamespace(success=self._success, message="committed 1 boxes")
+        return types.SimpleNamespace(success=self._success, message="committed 1 boxes",
+                                     resulting_map_revision=5)
 
 
 @unittest.skipIf(_load_driver_module() is None, "ROS driver deps unavailable")
@@ -80,6 +81,8 @@ class TestCommitToCargoMap(unittest.TestCase):
         self.assertEqual(call["measured_source"], "verify_placed_box")
         self.assertEqual(call["size_wdh"], [0.5, 0.4, 0.3])
         self.assertEqual(trial.extras["cargo_map_commit"], "committed 1 boxes")
+        self.assertEqual(trial.extras["cargo_map_commit_revisions"],
+                         {"expected": 4, "resulting": 5})
 
     def test_refused_commit_fails_the_case(self):
         driver = self._driver(typed=FakeTyped(success=False))

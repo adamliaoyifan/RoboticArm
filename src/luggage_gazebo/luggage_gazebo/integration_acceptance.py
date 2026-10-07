@@ -197,11 +197,31 @@ def extract_acceptance(evidence, frozen):
             if type(measured.get(key)) is not int or measured[key] < 0:
                 missing.append(prefix + ".measured." + key)
         before, after = measured.get("input_map_revision"), measured.get("output_map_revision")
-        if type(before) is int and type(after) is int:
+        confirmation = measured.get("map_confirmation")
+        # Commit mode: the box is committed to the map between the previous
+        # box's output and this box's integration input, so the chain joins
+        # THROUGH the commit: previous output == revision the commit saw,
+        # commit result == this case's integration input.
+        commit = (confirmation.get("commit_revisions")
+                  if isinstance(confirmation, dict) else None)
+        join_revision = before
+        if isinstance(confirmation, dict):
+            expected = (commit or {}).get("expected")
+            resulting = (commit or {}).get("resulting")
+            if type(expected) is not int or type(resulting) is not int:
+                missing.append(prefix + ".measured.map_confirmation.commit_revisions")
+            elif type(before) is int and type(after) is int:
+                join_revision = expected
+                if (after <= before or resulting <= expected or before != resulting
+                        or previous_revision is not None
+                        and expected != previous_revision):
+                    failures.append(prefix + ":STALE_MAP_REVISION")
+                previous_revision = after
+        elif type(before) is int and type(after) is int:
             if after <= before or previous_revision is not None and before != previous_revision:
                 failures.append(prefix + ":STALE_MAP_REVISION")
             previous_revision = after
-        case_revisions.append((before, after))
+        case_revisions.append((join_revision, after))
         if strict_revisions:
             if index >= 1:
                 source = (measured.get("selection_map") or {}).get("map_source")
@@ -214,7 +234,6 @@ def extract_acceptance(evidence, frozen):
                     or type(retreat.get("max_delta")) not in (int, float)
                     or retreat["max_delta"] > RETREAT_START_TOLERANCE_RAD):
                 failures.append(prefix + ":RETREAT_START_UNVERIFIED")
-        confirmation = measured.get("map_confirmation")
         if isinstance(confirmation, dict):
             # Committed box: its footprint cells are geometry, so a sensor
             # cell there is not expected. The mapper's confirmation is the
@@ -240,8 +259,21 @@ def extract_acceptance(evidence, frozen):
         if (type(denominator) is not int or denominator <= 0 or type(numerator) is not int
                 or numerator < 0 or numerator > denominator):
             missing.append(prefix + ".gt_reference.positive_footprint_denominator")
-        elif numerator / denominator < 0.40:
+        elif numerator / denominator < 0.40 and not isinstance(confirmation, dict):
             failures.append(prefix + ":GT_SENSOR_COVERAGE")
+        if isinstance(confirmation, dict):
+            # Committed footprint cells are geometry, so sensor coverage of
+            # them is not the observation; the per-view evidence points the
+            # mapper counted inside the committed box are.
+            points = confirmation.get("evidence_points")
+            minimum = confirmation.get("min_evidence_points")
+            cleared = confirmation.get("cleared") or []
+            if type(minimum) is not int or not isinstance(points, dict):
+                missing.append(prefix + ".measured.map_confirmation.evidence_points")
+            elif confirmation.get("confirmed") is True and not all(
+                    type(points.get(str(item))) is int
+                    and points[str(item)] >= minimum for item in cleared):
+                failures.append(prefix + ":MAP_EVIDENCE_POINTS")
         # -- per-event revision identity (never one disguised revision) --
         inputs = [event.get("input_map_revision") for event in events]
         outputs = [event.get("output_map_revision") for event in events

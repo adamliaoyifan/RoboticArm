@@ -245,6 +245,14 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             return False
         trial.extras["cargo_map_commit"] = (
             add.message if add is not None else "timeout")
+        resulting = getattr(add, "resulting_map_revision", None)
+        if resulting is not None:
+            # Structured, so acceptance can join the revision chain through
+            # the commit instead of parsing the message.
+            trial.extras["cargo_map_commit_revisions"] = {
+                "expected": int(stats.map_revision),
+                "resulting": int(resulting),
+            }
         return bool(add is not None and add.success)
 
     def _on_surface_v2(self, msg):

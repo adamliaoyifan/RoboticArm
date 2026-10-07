@@ -314,13 +314,37 @@ def test_three_box_unified_judge_requires_physical_gates():
 
 
 def _committed(evidence, confirmed, sensor_cells=0):
-    """Mark every case as a ledger-committed box with the given outcome."""
-    for case in evidence["cases"]:
-        case["measured"]["sensor_occupied_cells"] = sensor_cells
-        case["measured"]["map_confirmation"] = {
+    """Mark every case as a ledger-committed box with the given outcome.
+
+    Each box is committed between the previous box's output revision and its
+    own integration input, so every revision after a commit moves up by one.
+    """
+    previous_after = None
+    for index, case in enumerate(evidence["cases"]):
+        measured = case["measured"]
+        expected = (measured["input_map_revision"]
+                    if previous_after is None else previous_after)
+        before = expected + 1
+        after = before + 1
+        measured["input_map_revision"] = before
+        measured["output_map_revision"] = after
+        for event in case["events"]:
+            if event.get("input_map_revision") is not None:
+                event["input_map_revision"] = before
+            if event.get("output_map_revision") is not None:
+                event["output_map_revision"] = after
+        measured["sensor_occupied_cells"] = sensor_cells
+        measured["map_confirmation"] = {
             "mode": "commit_confirmed", "confirmed": confirmed,
-            "cleared": [1] if confirmed else [], "evidence_points": {"1": 9},
+            "cleared": [index + 1] if confirmed else [],
+            "evidence_points": {str(index + 1): 9}, "min_evidence_points": 3,
+            "commit_revisions": {"expected": expected, "resulting": before},
         }
+        previous_after = after
+    for position, row in enumerate(evidence["handoffs"]):
+        revision = evidence["cases"][position]["measured"]["output_map_revision"]
+        row["from_revision"] = revision
+        row["to_revision"] = revision
     return evidence
 
 
@@ -333,6 +357,45 @@ def test_committed_box_is_judged_on_confirmation_not_sensor_cells():
     assert "case[0]:MAP_CONFIRMATION_REQUIRED" in unconfirmed["failures"]
     assert not any("NO_SENSOR_OCCUPANCY" in item
                    for item in unconfirmed["failures"])
+
+
+def test_committed_chain_joins_through_the_commit_not_the_raw_output():
+    frozen = _m3_frozen()
+    evidence = _committed(_m3_evidence(), True)
+    first, second = evidence["cases"][0]["measured"], evidence["cases"][1]["measured"]
+    # The next box's integration input is NOT the previous output: the
+    # commit sits between them.
+    assert second["input_map_revision"] != first["output_map_revision"]
+    assert extract_acceptance(evidence, frozen)["status"] == "pass"
+
+    broken = _committed(_m3_evidence(), True)
+    broken["cases"][1]["measured"]["map_confirmation"]["commit_revisions"][
+        "expected"] += 1
+    result = extract_acceptance(broken, frozen)
+    assert "case[1]:STALE_MAP_REVISION" in result["failures"]
+
+    skipped = _committed(_m3_evidence(), True)
+    skipped["cases"][2]["measured"]["input_map_revision"] += 1
+    assert "case[2]:STALE_MAP_REVISION" in extract_acceptance(
+        skipped, frozen)["failures"]
+
+
+def test_committed_box_needs_enough_evidence_points_not_sensor_coverage():
+    frozen = _m3_frozen()
+    evidence = _committed(_m3_evidence(), True)
+    for case in evidence["cases"]:
+        case["gt_reference"]["footprint_sensor_cells"] = 0
+    assert extract_acceptance(evidence, frozen)["status"] == "pass"
+
+    thin = _committed(_m3_evidence(), True)
+    thin["cases"][0]["measured"]["map_confirmation"]["evidence_points"] = {"1": 2}
+    assert "case[0]:MAP_EVIDENCE_POINTS" in extract_acceptance(
+        thin, frozen)["failures"]
+
+    uncommitted = _m3_evidence()
+    uncommitted["cases"][0]["gt_reference"]["footprint_sensor_cells"] = 0
+    assert "case[0]:GT_SENSOR_COVERAGE" in extract_acceptance(
+        uncommitted, frozen)["failures"]
 
 
 def test_uncommitted_box_still_needs_a_sensor_cell():

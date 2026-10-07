@@ -500,6 +500,25 @@ def _aabb_xy_overlap(a, b, tolerance=1e-9):
     )
 
 
+def rotated_rect_aabb(center_xy, width, depth, yaw):
+    """XY AABB ``(xmin, ymin, xmax, ymax)`` of a ``width`` x ``depth`` box.
+
+    ``width`` lies along the box's own x axis and ``yaw`` is the box's
+    heading in the SAME frame as ``center_xy``. A box turned a quarter
+    turn swaps the extents; ignoring ``yaw`` mis-sizes the reference
+    footprint of every box that is not axis-aligned to the container.
+    """
+    import math
+
+    cos_yaw, sin_yaw = abs(math.cos(yaw)), abs(math.sin(yaw))
+    half_x = 0.5 * (cos_yaw * float(width) + sin_yaw * float(depth))
+    half_y = 0.5 * (sin_yaw * float(width) + cos_yaw * float(depth))
+    return (
+        float(center_xy[0]) - half_x, float(center_xy[1]) - half_y,
+        float(center_xy[0]) + half_x, float(center_xy[1]) + half_y,
+    )
+
+
 def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05):
     """Count feasible floor candidates whose footprint overlaps ``occupied_xy``.
 

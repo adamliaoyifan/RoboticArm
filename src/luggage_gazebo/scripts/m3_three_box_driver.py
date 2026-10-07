@@ -667,6 +667,8 @@ class M3ThreeBoxDriver(MotionOccDriver):
             "min_evidence_points": settle.get("min_evidence_points"),
             "pending_changes": list(integrate.get("pending_changes") or []),
             "cargo_map_commit": trial.extras.get("cargo_map_commit"),
+            "commit_revisions": dict(
+                trial.extras.get("cargo_map_commit_revisions") or {}),
         }}
 
     def _m3_gt_reference(self, verify, integrate, gt):

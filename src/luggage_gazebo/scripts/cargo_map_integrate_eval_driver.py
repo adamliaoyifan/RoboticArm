@@ -81,6 +81,7 @@ from luggage_perception.cargo_view_integration import (
     footprint_sensor_height,
     occupancy_height_matches,
     occupied_sensor_aabb,
+    rotated_rect_aabb,
     optical_axis_angle_rad,
     stamp_to_sec,
 )
@@ -1406,12 +1407,18 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         world_xyz = [float(ign_pose[0]), float(ign_pose[1]), float(ign_pose[2])]
         base = xyz_world_to_base_link(self._scene_config, world_xyz)
         local = _point_in_container_link(base, self._scene_config)
-        half_w = 0.5 * float(pick_msg.width)
-        half_d = 0.5 * float(pick_msg.depth)
-        return (
-            local[0] - half_w, local[1] - half_d,
-            local[0] + half_w, local[1] + half_d,
-        )
+        # Box heading in the container frame: carry the world heading
+        # through the same world->container chain as the centre, so a box
+        # turned relative to the container is not given axis-aligned extents.
+        world_yaw = float(ign_pose[5]) if len(ign_pose) >= 6 else 0.0
+        ahead = xyz_world_to_base_link(self._scene_config, [
+            world_xyz[0] + math.cos(world_yaw),
+            world_xyz[1] + math.sin(world_yaw), world_xyz[2]])
+        ahead_local = _point_in_container_link(ahead, self._scene_config)
+        local_yaw = math.atan2(
+            ahead_local[1] - local[1], ahead_local[0] - local[0])
+        return rotated_rect_aabb(
+            local, float(pick_msg.width), float(pick_msg.depth), local_yaw)
 
     def _dump_json(self, folder, name, payload):
         os.makedirs(folder, exist_ok=True)
