@@ -122,6 +122,7 @@ ros2 launch luggage_gazebo sim_world.launch.py \
   corridor_planner:=lattice \
   box_count:="$N" \
   sequence_ids:="$SEQUENCE" \
+  require_confirmed_map:="${M3_REQUIRE_CONFIRMED_MAP:-false}" \
   > "$LAUNCH_LOG" 2>&1 &
 LAUNCH_PID=$!
 log stack_start ", \"launch_pid\": $LAUNCH_PID"
@@ -203,6 +204,22 @@ if [[ "$seg_ready" -ne 1 ]]; then
   sleep 5
   bash "$WS/scripts/st09_i/kill_stack.sh" || true
   exit 3
+fi
+
+# -- layout gate: the live container TF must be the deployment scene's ----
+# (the driver gets the same file via --scene-tf-config). A mismatch costs
+# no case: stop before the driver starts.
+layout_json=$(python3 "$WS/scripts/st09_i/check_live_layout.py" --scene "$M3_SCENE_TF" --timeout 30)
+layout_rc=$?
+echo "$layout_json" > "$OUT/live_layout.json"
+log layout_check ", \"rc\": $layout_rc, \"require_confirmed_map\": \"${M3_REQUIRE_CONFIRMED_MAP:-false}\""
+if [[ "$layout_rc" -ne 0 ]]; then
+  echo "live container layout differs from $M3_SCENE_TF: $layout_json" >&2
+  stop_bag
+  kill -INT "$LAUNCH_PID" 2>/dev/null || true
+  sleep 5
+  bash "$WS/scripts/st09_i/kill_stack.sh" || true
+  exit 5
 fi
 
 # -- driver under the hard deadline ---------------------------------------

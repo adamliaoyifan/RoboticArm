@@ -220,12 +220,21 @@ def watch_budget(proc, out, stop):
         time.sleep(2)
 
 
-def run_driver(args, env, out, deadline_s):
+def driver_command(args, out, scene_path):
+    """Command line for the eval driver.
+
+    ``scene_path`` is the scene file the stack was launched with. The driver
+    resolves its own container layout, scene hash and atlas config from
+    ``--scene-tf-config``; without it the driver falls back to the simulation
+    default ``scene_tf.yaml`` (container at (1.5, 0, 0)) while the stack runs
+    the deployment layout (container at (-1.5, 0.6, 0), yaw pi).
+    """
     command = [
         "ros2", "run", "luggage_gazebo", "motion_occ_eval_driver.py",
         "--frame-runtime", "--frame-peer", "motion_occ_driver",
         "--payload", "vacuum", "--goto-timeout", "60",
         "--observe-pose", OBSERVE_POSE,
+        "--scene-tf-config", str(scene_path),
         "--out", str(out),
     ]
     if args.fault:
@@ -233,6 +242,11 @@ def run_driver(args, env, out, deadline_s):
                         "--rehearsal", str(out)])
     else:
         command.extend(["--rehearsal", str(out), "--n", "2"])
+    return command
+
+
+def run_driver(args, env, out, deadline_s, scene_path):
+    command = driver_command(args, out, scene_path)
     log_path = out / "driver.log"
     with log_path.open("w", encoding="utf-8") as handle:
         completed = subprocess.run(
@@ -331,7 +345,8 @@ def main(argv=None):
         watcher = threading.Thread(
             target=watch_budget, args=(bag, args.out, stop), daemon=True)
         watcher.start()
-        code = run_driver(args, env, args.out, remaining(started) - 30)
+        code = run_driver(args, env, args.out, remaining(started) - 30,
+                          binding["scene_path"])
         stop["flag"] = True
         record["driver_exit"] = code
         record["bag_stopped_for_budget"] = stop.get("reason") == "budget"

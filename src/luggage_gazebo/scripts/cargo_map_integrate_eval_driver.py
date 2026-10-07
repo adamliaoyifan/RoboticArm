@@ -902,6 +902,13 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         # The mapper's published pending state after this integration.
         t1["occupancy_confirmed"] = bool(
             (surface or {}).get("occupancy_confirmed", True))
+        # Evidence for the confirmation decision: the mapper's own last
+        # settle record (evidence_points, tokens cleared) and what is
+        # still pending.
+        t1["last_settle"] = dict((surface or {}).get("last_settle") or {})
+        t1["pending_changes"] = list(
+            (surface or {}).get("pending_changes") or [])
+        t1["change_token"] = (surface or {}).get("change_token")
         t1["integrated"] = "resulting_map_revision" in t1
         gate_diag = (gate or {}).get("diag") or {}
         message = str(t1.get("message") or "")
