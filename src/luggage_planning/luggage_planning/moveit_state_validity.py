@@ -232,14 +232,15 @@ class FrozenSceneComposer(object):
     the touch-link ACM entries LEAK, letting the arm sweep through the
     released box undetected):
 
-    * base world: the live scene VERBATIM (container mesh, pedestal,
-      placed boxes) minus planning-phase artifacts, with the live ACM
-      (SRDF adjacent-pair defaults preserved, runtime payload entries
-      stripped) plus the DECLARED structure allowances;
-    * carrying scene: + the payload attached through the ONE shared
-      link-relative construction, suction-interface touch links only;
-    * post-release scene: + the released box as a PLAIN world object
-      (fresh ACM-neutral obstacle the arm must respect).
+    * base world: the live static scene (container mesh, pedestal,
+      already-placed bodies) minus anything an edge build inserts
+      (snapshot columns, the released box, the attached payload).
+      Those artifacts are not part of the request scene;
+    * carrying and unloaded scenes both add the request occupancy
+      columns from ``SceneState.placed_boxes``;
+    * carrying also attaches the payload; unloaded also adds the
+      released box as a world object. Edge-build order cannot change
+      either scene.
     """
 
     def __init__(self, scene_client, *, log=None):
@@ -276,31 +277,20 @@ class FrozenSceneComposer(object):
                 continue
             payload = getattr(state, "payload", None)
             released = getattr(state, "released_box", None)
-            if payload is None and released is None:
-                indices[key] = 0  # the plain base scene
+            placed = tuple(getattr(state, "placed_boxes", ()) or ())
+            if payload is None and released is None and not placed:
+                indices[key] = 0
                 continue
             scene = self._copy_scene(base)
+            for box in placed:
+                _append_world_box(scene, box)
+            if released is not None:
+                _append_world_box(scene, released)
+                scene.name = "st09-cert-frozen:%s" % str(released.object_id)
             if payload is not None:
                 attach = _attach_payload_scene(payload)
                 scene.robot_state.attached_collision_objects = \
                     attach.robot_state.attached_collision_objects
-            if released is not None:
-                from moveit_msgs.msg import CollisionObject
-
-                from luggage_planning.planning_scene_client import (
-                    build_collision_object,
-                )
-
-                scene.world.collision_objects.append(
-                    build_collision_object(
-                        str(released.object_id), list(released.center),
-                        list(getattr(released, "quaternion_xyzw",
-                                     (0.0, 0.0, 0.0, 1.0))),
-                        list(released.size_whd), "world",
-                        CollisionObject.ADD))
-                scene.name = "st09-cert-frozen:%s" % str(
-                    released.object_id)
-            if payload is not None:
                 scene.name = "st09-cert-frozen:carrying"
             scenes.append(scene)
             indices[key] = len(scenes) - 1
@@ -310,14 +300,18 @@ class FrozenSceneComposer(object):
     def _state_key(state):
         payload = getattr(state, "payload", None)
         released = getattr(state, "released_box", None)
+        placed = tuple(
+            (str(box.object_id), tuple(box.center), tuple(box.size_whd),
+             tuple(box.quaternion_xyzw))
+            for box in (getattr(state, "placed_boxes", ()) or ()))
         if payload is not None:
             return ("carrying", tuple(payload.t_tcp_box_translation),
                     tuple(payload.t_tcp_box_quaternion_xyzw),
-                    tuple(payload.dimensions_wdh))
+                    tuple(payload.dimensions_wdh), placed)
         if released is not None:
             return ("released", str(released.object_id),
-                    tuple(released.center), tuple(released.size_whd))
-        return ("base",)
+                    tuple(released.center), tuple(released.size_whd), placed)
+        return ("base", placed)
 
     def _base_scene(self, live, start_q):
         from moveit_msgs.msg import PlanningScene
@@ -362,8 +356,7 @@ class FrozenSceneComposer(object):
             AllowedCollisionMatrix
 
         names = [str(name) for name in live_acm.entry_names]
-        strip = {PAYLOAD_OBJECT_ID, "b-payload", "pickup_box"}
-        keep = [name for name in names if name not in strip]
+        keep = [name for name in names if not _is_planning_artifact(name)]
         allowed = self._allowed_sets(live_acm)
         # internal symmetric matrix over `keep`, then the declared
         # structure pairs, then one clean emission
@@ -412,8 +405,20 @@ PLANNING_ARTIFACT_IDS = ("route-released-box", "cert-payload",
 
 
 def _is_planning_artifact(object_id):
-    return (object_id in PLANNING_ARTIFACT_IDS
-            or object_id.startswith("released-"))
+    text = str(object_id)
+    return (text in PLANNING_ARTIFACT_IDS
+            or text.startswith("released-")
+            or text.startswith("snapshot-cell-"))
+
+
+def _append_world_box(scene, box):
+    from moveit_msgs.msg import CollisionObject
+    from luggage_planning.planning_scene_client import build_collision_object
+
+    scene.world.collision_objects.append(build_collision_object(
+        str(box.object_id), list(box.center),
+        list(getattr(box, "quaternion_xyzw", (0.0, 0.0, 0.0, 1.0))),
+        list(box.size_whd), "world", CollisionObject.ADD))
 
 
 def _attach_payload_scene(payload):
@@ -435,6 +440,47 @@ def _copy_collision_object(obj):
     from rclpy.serialization import deserialize_message, serialize_message
 
     return deserialize_message(serialize_message(obj), CollisionObject)
+
+
+def _scene_inventory(scenes):
+    """Object, triangle, ACM and octomap identity of each frozen scene."""
+    import hashlib
+
+    inventory = []
+    for index, scene in enumerate(scenes or []):
+        objects = []
+        attached = [
+            item.object for item in
+            scene.robot_state.attached_collision_objects]
+        for obj in list(scene.world.collision_objects) + attached:
+            triangles = sum(len(mesh.triangles) for mesh in obj.meshes)
+            objects.append({
+                "id": str(obj.id),
+                "triangles": int(triangles),
+                "primitives": len(obj.primitives),
+            })
+        acm = scene.allowed_collision_matrix
+        rows = [
+            [bool(flag) for flag in entry.enabled]
+            for entry in acm.entry_values]
+        payload = json.dumps({
+            "names": [str(name) for name in acm.entry_names],
+            "values": rows,
+        }, sort_keys=True)
+        data = b""
+        octomap = getattr(scene.world, "octomap", None)
+        if octomap is not None:
+            data = getattr(getattr(octomap, "octomap", None), "data", b"") \
+                or b""
+        inventory.append({
+            "index": index,
+            "objects": objects,
+            "acm_digest": hashlib.sha256(
+                payload.encode("utf-8")).hexdigest(),
+            "acm_names": len(acm.entry_names),
+            "octomap_bytes": len(data),
+        })
+    return inventory
 
 
 # ------------------------------------------------------------ the adapter
@@ -551,6 +597,102 @@ class MoveItStateValidityAdapter(MoveItValidityAdapter):
 
     # -- internals ---------------------------------------------------------
 
+    def _capture_dir(self):
+        path = os.environ.get("ST09_I_CERT_CAPTURE_DIR") or ""
+        if not path:
+            return ""
+        os.makedirs(path, exist_ok=True)
+        return path
+
+    def _capture_request(self, request):
+        """Persist the exact ValidateRouteV2 request before the call."""
+        import base64
+
+        from rclpy.serialization import serialize_message
+
+        dump_path = os.environ.get("ST09_I_DUMP_CERT")
+        if dump_path:
+            with open(dump_path, "w", encoding="utf-8") as handle:
+                json.dump({
+                    "scenes": [base64.b64encode(
+                        serialize_message(scene)).decode()
+                        for scene in request.load_state_scenes],
+                    "legs": [base64.b64encode(
+                        serialize_message(leg)).decode()
+                        for leg in request.legs],
+                }, handle)
+        directory = self._capture_dir()
+        if not directory:
+            self._pending_capture = None
+            return
+        # Each certify() builds a new adapter, so the counter has to live
+        # in the directory. Otherwise every route overwrites request 0.
+        index = 0
+        for name in os.listdir(directory):
+            if not (name.startswith("cert_request_") and name.endswith(".json")):
+                continue
+            stem = name[len("cert_request_"):-len(".json")]
+            if stem.isdigit():
+                index = max(index, int(stem) + 1)
+        document = {
+            "index": index,
+            "request_id": str(request.request_id),
+            "budget_s": float(request.budget_s),
+            "distance_stride": int(request.distance_stride),
+            "scene_digest": str(request.scene_digest),
+            "scenes": _scene_inventory(request.load_state_scenes),
+            "legs": [{
+                "edge_id": str(leg.edge_id),
+                "edge_class": str(leg.edge_class),
+                "carrying": bool(leg.carrying),
+                "load_state_index": int(leg.load_state_index),
+                "n_samples": int(leg.n_samples),
+                "waypoints": len(leg.knots.points),
+            } for leg in request.legs],
+            "request_b64": base64.b64encode(
+                serialize_message(request)).decode(),
+        }
+        for name in ("cert_request_%d.json" % index, "cert_request.json"):
+            with open(os.path.join(directory, name), "w",
+                      encoding="utf-8") as handle:
+                json.dump(document, handle)
+                handle.write("\n")
+        self._pending_capture = index
+
+    def _capture_response(self, response):
+        directory = self._capture_dir()
+        index = getattr(self, "_pending_capture", None)
+        if not directory or index is None:
+            return
+        document = {
+            "index": index,
+            "result": int(response.result),
+            "detail": str(response.detail),
+            "all_valid": bool(response.all_valid),
+            "model_sha256": str(response.model_sha256),
+            "scene_digest": str(response.scene_digest),
+            "service_time_ns": int(response.service_time_ns),
+            "legs": [{
+                "edge": str(leg.edge_id),
+                "valid": bool(leg.valid),
+                "reason": str(leg.reason),
+                "n_samples": int(leg.n_samples),
+                "first_invalid": int(leg.first_invalid_sample),
+                "leg_time_ns": int(leg.leg_time_ns),
+                "collision_time_ns": int(getattr(
+                    leg, "collision_time_ns", 0) or 0),
+                "distance_time_ns": int(getattr(
+                    leg, "distance_time_ns", 0) or 0),
+                "distance_queries": int(getattr(
+                    leg, "distance_queries", 0) or 0),
+            } for leg in response.leg_results],
+        }
+        for name in ("cert_response_%d.json" % index, "cert_response.json"):
+            with open(os.path.join(directory, name), "w",
+                      encoding="utf-8") as handle:
+                json.dump(document, handle, indent=1)
+                handle.write("\n")
+
     def _ensure_client(self):
         if self._client is None:
             from luggage_msgs.srv import ValidateRouteV2
@@ -599,21 +741,7 @@ class MoveItStateValidityAdapter(MoveItValidityAdapter):
             request.legs.append(self._leg_message(edge))
 
         event = threading.Event()
-        dump_path = os.environ.get("ST09_I_DUMP_CERT")
-        if dump_path:
-            import base64
-
-            from rclpy.serialization import serialize_message
-
-            with open(dump_path, "w", encoding="utf-8") as handle:
-                json.dump({
-                    "scenes": [base64.b64encode(
-                        serialize_message(scene)).decode()
-                        for scene in scenes],
-                    "legs": [base64.b64encode(
-                        serialize_message(leg)).decode()
-                        for leg in request.legs],
-                }, handle)
+        self._capture_request(request)
         future = self._client.call_async(request)
         future.add_done_callback(lambda _f: event.set())
         if not event.wait(timeout=self._service_timeout_s):
@@ -621,6 +749,7 @@ class MoveItStateValidityAdapter(MoveItValidityAdapter):
                 "CERT_SERVICE_TIMEOUT: %s no answer within %.1f s"
                 % (SERVICE_NAME, self._service_timeout_s))
         response = future.result()
+        self._capture_response(response)
         self._absorb(response, request, ordered)
 
     def _leg_message(self, edge):
@@ -675,6 +804,7 @@ class MoveItStateValidityAdapter(MoveItValidityAdapter):
             raise ContractViolation(
                 "CERT_ECHO_MISMATCH: service answered a different "
                 "route/scene digest")
+        requested = {str(leg.edge_id): leg for leg in request.legs}
         self.requests.append({
             "kind": "validate_route", "result": int(response.result),
             "detail": str(response.detail),
@@ -682,13 +812,23 @@ class MoveItStateValidityAdapter(MoveItValidityAdapter):
             "model_sha256": str(response.model_sha256),
             "scene_digest": self._scene_digest_value,
             "support_object_id": self.support_object_id,
+            "scenes": _scene_inventory(request.load_state_scenes),
             "legs": [{
                 "edge": str(leg.edge_id), "valid": bool(leg.valid),
                 "reason": str(leg.reason),
                 "detail": str(leg.detail),
                 "n_samples": int(leg.n_samples),
+                "waypoints": len(
+                    requested[str(leg.edge_id)].knots.points)
+                if str(leg.edge_id) in requested else 0,
                 "first_invalid": int(leg.first_invalid_sample),
                 "leg_time_ns": int(leg.leg_time_ns),
+                "collision_time_ns": int(getattr(
+                    leg, "collision_time_ns", 0) or 0),
+                "distance_time_ns": int(getattr(
+                    leg, "distance_time_ns", 0) or 0),
+                "distance_queries": int(getattr(
+                    leg, "distance_queries", 0) or 0),
                 "contacts": [{
                     "body_1": str(c.body_1), "body_2": str(c.body_2),
                     "depth": float(c.depth)}

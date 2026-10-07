@@ -130,12 +130,13 @@ class PayloadSpec:
 
 @dataclass(frozen=True)
 class SceneState:
-    """What the planning scene must hold while one edge is planned.
+    """What one edge must be planned and certified against.
 
-    ``load_state`` selects the carrying/unloaded scene; ``payload`` is
-    required when carrying and attached at the measured transform;
-    ``released_box`` (the just-placed box at its actual heading) and
-    ``placed_boxes`` are world obstacles for the unloaded retreat.
+    ``placed_boxes`` is the request's existing cargo. Carrying and
+    unloaded edges share that set. Release changes only the current
+    payload: attached while carrying, a world box (``released_box``)
+    after release. Edge building may still touch the live scene; the
+    certifier rebuilds both load states from this record.
     """
 
     load_state: str  # "carrying" | "unloaded"
@@ -145,13 +146,22 @@ class SceneState:
     attach_touch_links: Tuple[str, ...] = ()
 
 
+class OccupancyColumnError(ValueError):
+    """Occupied cargo could not be turned into a world column.
+
+    The name is the first token of the message (``OCCUPANCY_FLOOR_MISSING``,
+    ``OCCUPANCY_FRAME_MISSING``, ``OCCUPANCY_HEIGHT_MISSING``).
+    """
+
+
 def scene_boxes_from_snapshot(snapshot, *, inflate_m=0.05,
                               cell_height_m=0.30) -> Tuple[BoxSpec, ...]:
-    """Coarse prior obstacles from snapshot OCCUPIED cells.
+    """Legacy coarse boxes in the snapshot's own XY numbers.
 
-    A dev approximation for graph-side scene diffs: each occupied surface
-    cell becomes one box. The released box and the attached payload are
-    modelled exactly elsewhere; this never turns UNKNOWN into free.
+    This slab is not the cargo-map column. ``cell_height_m`` is a fixed
+    stand-in, and the centers stay in the container-local grid. Route
+    certification uses ``occupancy_boxes_from_surface`` instead, which
+    requires the container-link floor and the world transform.
     """
     boxes = []
     for position, (cell_i, cell_j) in enumerate(
@@ -165,6 +175,90 @@ def scene_boxes_from_snapshot(snapshot, *, inflate_m=0.05,
             object_id="snapshot-cell-%d-%d" % (int(cell_i), int(cell_j)),
             center=(center_x, center_y, 0.5 * cell_height_m),
             size_whd=(size, size, float(cell_height_m))))
+    return tuple(boxes)
+
+
+def _column_height_above_floor(surface, row, column):
+    """Measured column top above the inner floor, or None when absent."""
+    if "height_above_floor" in surface:
+        value = surface["height_above_floor"][row][column]
+        return None if value is None else float(value)
+    if "surface_z_container" in surface and "floor_z_container" in surface:
+        top = surface["surface_z_container"][row][column]
+        if top is None:
+            return None
+        return float(top) - float(surface["floor_z_container"])
+    if "height" in surface and "floor_z_container" in surface:
+        # Legacy ``height`` is already above the inner floor. It is only
+        # usable together with the container-link floor, never with the
+        # legacy ``floor_z: 0`` datum.
+        return float(surface["height"][row][column])
+    return None
+
+
+def occupancy_boxes_from_surface(surface, container_transform, *,
+                                 inflate_m=0.05) -> Tuple[BoxSpec, ...]:
+    """World-frame columns for cells the surface marks occupied.
+
+    The grid XY is container-local. The column runs from
+    ``floor_z_container`` up to that floor plus ``height_above_floor``
+    (the map's top, not a fixed 0.30 m slab). ``container_transform``
+    is world ← container_link. The returned centers are in world, so a
+    later ``frame_id=world`` insert is the transformed pose.
+
+    An occupied cell with no positive column top, or a grid that has
+    occupied cells but no container-link floor or no world transform,
+    fails closed. It does not invent a 0–0.30 m box.
+    """
+    from st09_contracts.attachment import compose_transform
+
+    state = (surface or {}).get("state") or []
+    occupied = [
+        (row, column)
+        for row, cells in enumerate(state)
+        for column, name in enumerate(cells)
+        if str(name) == "occupied"]
+    if not occupied:
+        return ()
+    if not container_transform:
+        raise OccupancyColumnError(
+            "OCCUPANCY_FRAME_MISSING: occupied cells have no "
+            "container_transform")
+    if "floor_z_container" not in (surface or {}):
+        raise OccupancyColumnError(
+            "OCCUPANCY_FLOOR_MISSING: occupied cells have no "
+            "floor_z_container")
+    origin = (surface.get("origin_xy_container")
+              or surface.get("origin_local"))
+    if not origin or len(origin) < 2:
+        raise OccupancyColumnError(
+            "OCCUPANCY_FRAME_MISSING: occupied cells have no "
+            "origin_xy_container")
+    resolution = float(surface.get("resolution_m")
+                       or surface.get("resolution"))
+    floor = float(surface["floor_z_container"])
+    translation = tuple(float(v) for v in container_transform["translation"])
+    quaternion = tuple(
+        float(v) for v in container_transform["quaternion_xyzw"])
+    lateral = resolution + 2.0 * float(inflate_m)
+    boxes = []
+    for row, column in occupied:
+        height = _column_height_above_floor(surface, row, column)
+        if height is None or height <= 0.0:
+            raise OccupancyColumnError(
+                "OCCUPANCY_HEIGHT_MISSING: occupied cell %d,%d has no "
+                "positive height_above_floor" % (row, column))
+        local = (
+            float(origin[0]) + (row + 0.5) * resolution,
+            float(origin[1]) + (column + 0.5) * resolution,
+            floor + 0.5 * height)
+        world, world_q = compose_transform(
+            translation, quaternion, local, (0.0, 0.0, 0.0, 1.0))
+        boxes.append(BoxSpec(
+            object_id="snapshot-cell-%d-%d" % (row, column),
+            center=tuple(float(v) for v in world),
+            size_whd=(lateral, lateral, height),
+            quaternion_xyzw=tuple(float(v) for v in world_q)))
     return tuple(boxes)
 
 

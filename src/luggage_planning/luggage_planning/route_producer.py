@@ -150,9 +150,25 @@ LEG_NAMES = {
 #: Frozen route wall budget for one select request, nanoseconds.
 ROUTE_TOTAL_WALL_NS = int(ROUTE_TOTAL_WALL_S * 1_000_000_000)
 
-#: Frozen certifier wall budget (resolved_planning_contract.json
+#: Frozen certifier budget (resolved_planning_contract.json
 #: planning_budgets.certification_timeout_s, defined_by_c0).
+#: This is ValidateRouteV2 service time for one whole-route request,
+#: from callback entry through the last leg. Edge construction is
+#: outside the clock. Wall time is the fallback only when the service
+#: did not report service_time_ns.
 CERTIFICATION_TIMEOUT_S = 2.0
+
+
+def certification_exceeded(service_s, wall_s,
+                           budget_s=CERTIFICATION_TIMEOUT_S):
+    """True when this certify call spent the frozen 2 s budget.
+
+    ``service_s`` is the service's own clock. ``wall_s`` includes scene
+    composition and must not reject a route the service accepted.
+    """
+    if service_s is None:
+        return float(wall_s) > float(budget_s)
+    return float(service_s) > float(budget_s)
 
 #: Budget share reserved for the certification + revalidation tail so a
 #: route planned at t=9.9s cannot enter certification without time left.
@@ -2480,19 +2496,19 @@ class RouteProducer(object):
 
     def edge_scene_states(self, route, edges, snapshot, attachment,
                           candidate, request):
-        """Per-edge B ``SceneState`` for certification.
+        """Per-edge scene for planning and certification.
 
-        Entry edges run carrying the measured payload; retreat edges run
-        unloaded with the just-released box (at the candidate's world
-        rest pose) and the snapshot's occupied cells as obstacles.
-        UNKNOWN never becomes free — the boxes are the same coarse
-        priors the edge builder planned against.
+        Both load states carry the request's occupied columns, transformed
+        into the world frame. Carrying attaches the measured payload.
+        Unloaded replaces that attachment with the just-released box.
+        The columns are not read back from the live scene, so the order
+        of edge builds cannot change them.
         """
         from luggage_planning.moveit_edge_adapter import (
             BoxSpec,
             PayloadSpec,
             SceneState,
-            scene_boxes_from_snapshot,
+            occupancy_boxes_from_surface,
         )
         from st09_contracts.attachment import compose_transform
 
@@ -2510,9 +2526,8 @@ class RouteProducer(object):
                 t_tcp_box_quaternion_xyzw=tuple(
                     float(v) for v in attachment.t_tcp_box_quaternion_xyzw))
         released = None
-        container_transform = (request or {}).get("container_transform") \
-            if candidate is not None else None
-        if container_transform:
+        container_transform = (request or {}).get("container_transform")
+        if container_transform and candidate is not None:
             released_center, released_quaternion = compose_transform(
                 tuple(float(v) for v in
                       container_transform["translation"]),
@@ -2528,6 +2543,8 @@ class RouteProducer(object):
                     float(v) for v in attachment.dimensions_wdh),
                 quaternion_xyzw=tuple(
                     float(v) for v in released_quaternion))
+        occupancy = occupancy_boxes_from_surface(
+            (request or {}).get("surface") or {}, container_transform)
         states = {}
         for edge in edges:
             carrying = str(getattr(edge, "load_state", "")
@@ -2536,8 +2553,7 @@ class RouteProducer(object):
                 load_state="carrying" if carrying else "unloaded",
                 payload=payload if carrying else None,
                 released_box=None if carrying else released,
-                placed_boxes=() if carrying else scene_boxes_from_snapshot(
-                    snapshot))
+                placed_boxes=occupancy)
         return states
 
     def _certify(self, route, snapshot, attachment, edges, candidate,
@@ -2586,12 +2602,18 @@ class RouteProducer(object):
                 exc, traceback.format_exc(limit=4).replace("\n", " | ")))
             return None, "CERT_SERVICE_EXCEPTION"
         elapsed = (self._clock_ns() - started_ns) / 1e9
+        service_s = None
+        reported = getattr(adapter, "requests", None) or []
+        last = reported[-1] if reported else None
+        if isinstance(last, dict) and last.get("kind") == "validate_route" \
+                and last.get("service_time_ns") is not None:
+            service_s = int(last["service_time_ns"]) / 1e9
         stages = getattr(self, "_stage_ns", None)
         if stages is not None:
             stages["certify"] += self._clock_ns() - started_ns
-        self._log("route: certify wall %.3fs edges=%d" % (
-            elapsed, len(edges)))
-        if elapsed > CERTIFICATION_TIMEOUT_S:
+        self._log("route: certify wall %.3fs service %.3fs edges=%d" % (
+            elapsed, -1.0 if service_s is None else service_s, len(edges)))
+        if certification_exceeded(service_s, elapsed):
             return None, "CERTIFICATION_TIMEOUT"
         return result, None
 
