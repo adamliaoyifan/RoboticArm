@@ -526,28 +526,61 @@ def _aabb_xy_overlap_depth(first, second):
         min(first[3], second[3]) - max(first[1], second[1]))
 
 
-def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05,
-                        overlap_tol_m=0.0):
-    """Count feasible floor candidates whose footprint overlaps ``occupied_xy``.
+def overlap_contains_full_cell(candidate_xy, occupied_xy, origin_xy,
+                               resolution_m):
+    """True when the overlap covers one complete occupancy cell.
 
-    ``occupied_xy`` is ``(xmin, ymin, xmax, ymax)``. A candidate counts only
-    when it overlaps by MORE than ``overlap_tol_m`` in both axes: candidate
-    edges sit on grid-cell boundaries while the reference edge is a measured
-    metric position, so a sliver below the grid quantisation (callers pass
-    half a cell) is a candidate touching the box, not going through it.
-    The deepest overlap seen is reported as ``max_overlap_m``. Uses live
-    ``solve_placement`` so the occupancy-used proof does not call the
+    Candidate edges lie on the occupancy grid. The reference edge is a
+    measured position, so a candidate that stops on the grid line just
+    outside that edge overlaps by the off-grid fraction. That fraction is
+    shorter than one cell and contains no cell. At the live 0.05 m grid one
+    cell is 50 mm and half a cell is 25 mm; 25 mm is not this bound, because
+    a 30 mm fraction still contains no cell while a one-cell step does.
+    """
+    import math
+
+    resolution = float(resolution_m)
+    if resolution <= 0.0:
+        return False
+    lo_x = max(float(candidate_xy[0]), float(occupied_xy[0]))
+    hi_x = min(float(candidate_xy[2]), float(occupied_xy[2]))
+    lo_y = max(float(candidate_xy[1]), float(occupied_xy[1]))
+    hi_y = min(float(candidate_xy[3]), float(occupied_xy[3]))
+    if hi_x - lo_x < resolution - 1e-9 or hi_y - lo_y < resolution - 1e-9:
+        return False
+    origin_x, origin_y = float(origin_xy[0]), float(origin_xy[1])
+    i0 = math.ceil((lo_x - origin_x) / resolution - 1e-9)
+    i1 = math.floor((hi_x - origin_x) / resolution + 1e-9) - 1
+    j0 = math.ceil((lo_y - origin_y) / resolution - 1e-9)
+    j1 = math.floor((hi_y - origin_y) / resolution + 1e-9) - 1
+    return i0 <= i1 and j0 <= j1
+
+
+def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05):
+    """Count feasible floor candidates that cover a full cell of ``occupied_xy``.
+
+    ``occupied_xy`` is ``(xmin, ymin, xmax, ymax)``. A metric sliver is
+    recorded in ``max_overlap_m`` and ``n_boundary_slivers`` and is not
+    counted: see ``overlap_contains_full_cell``. Without a grid origin the
+    sliver exception is unavailable, so any metric overlap counts. Uses
+    live ``solve_placement`` so the occupancy-used proof does not call the
     production service with synthetic GT.
     """
     from luggage_packing.placement_solver import solve_placement
 
     if occupied_xy is None:
         return 0, {"message": "no occupied patch"}
+    resolution = float(surface.get("resolution") or 0.0)
+    origin = surface.get("origin_local")
+    has_grid = (
+        resolution > 0.0
+        and isinstance(origin, (list, tuple)) and len(origin) >= 2)
     inner_h = float((surface.get("inner_size") or [0, 0, 1.5])[2])
     result = solve_placement(
         surface, box_size, allowed_yaws=[0.0],
         params={"top_n": 400, "keep_rejected": 80})
     count = 0
+    slivers = 0
     max_overlap = 0.0
     for cand in result.get("candidates") or ():
         if not cand.get("feasible"):
@@ -565,12 +598,20 @@ def floor_through_count(surface, box_size, occupied_xy, peak_tol=0.05,
         )
         depth = _aabb_xy_overlap_depth(cand_xy, occupied_xy)
         max_overlap = max(max_overlap, depth)
-        if depth > float(overlap_tol_m) and _aabb_xy_overlap(
-                cand_xy, occupied_xy):
-            count += 1
+        if depth <= 1e-9 or not _aabb_xy_overlap(cand_xy, occupied_xy):
+            continue
+        if has_grid and not overlap_contains_full_cell(
+                cand_xy, occupied_xy, origin, resolution):
+            slivers += 1
+            continue
+        count += 1
     return count, {
-        "overlap_tol_m": float(overlap_tol_m),
+        "rule": "full_occupancy_cell" if has_grid else "metric_overlap_no_grid",
+        "resolution_m": resolution,
+        "full_cell_m": resolution,
+        "half_cell_m": 0.5 * resolution,
         "max_overlap_m": round(max_overlap, 6),
+        "n_boundary_slivers": slivers,
         "success": bool(result.get("success")),
         "n_feasible": sum(
             1 for c in (result.get("candidates") or ()) if c.get("feasible")),

@@ -191,11 +191,27 @@ def test_pending_change_still_refuses_every_other_route():
     assert decision.reason is Reason.MAP_CONFIRMATION_REQUIRED
 
 
-def test_unloaded_admission_does_not_waive_the_stamp_or_source_rules():
-    no_stamp = dataclasses.replace(
+def test_unloaded_observation_does_not_require_a_forged_acquisition_stamp():
+    """Commit time lives on the pending change. Stamp 0 stays 'no acquisition'."""
+    request = dataclasses.replace(
         _request(_pending(stamp_ns=0), now_ns=40_000_000_000),
         allow_unconfirmed=True)
-    assert MapRevalidator().revalidate(no_stamp).reason is Reason.MAP_STALE
+    decision = MapRevalidator().revalidate(request)
+    assert decision.decision is MapDecision.CONTINUE
+    freshness = decision.detail["freshness"]
+    assert freshness["why_allowed"] == "unloaded_observation_before_acquisition"
+    assert freshness["last_acquisition_stamp_ns"] == 0
+    assert freshness["acquisition_stamp_present"] is False
+
+
+def test_missing_acquisition_stamp_still_refuses_placement_and_other_sources():
+    assert MapRevalidator().revalidate(
+        _request(_pending(stamp_ns=0), now_ns=40_000_000_000)
+    ).reason is Reason.MAP_STALE
+    measured = dataclasses.replace(
+        _request(_pending(stamp_ns=0, source="measured"),
+                 now_ns=40_000_000_000), allow_unconfirmed=True)
+    assert MapRevalidator().revalidate(measured).reason is Reason.MAP_STALE
     static_after_place = dataclasses.replace(
         _request(_pending(stamp_ns=0, source="static_empty", placed=1),
                  now_ns=40_000_000_000), allow_unconfirmed=True)

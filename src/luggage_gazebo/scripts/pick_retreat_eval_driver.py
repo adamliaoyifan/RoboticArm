@@ -196,6 +196,14 @@ def observation_from_detected(msg):
     )
 
 
+def _detection_frame_size(frame):
+    """WDH stored on this frame, or None when the frame has no PCA box."""
+    box = getattr(frame, "box", None)
+    if box is None or not bool(getattr(frame, "pca_valid", False)):
+        return None
+    return [float(box.width), float(box.depth), float(box.height)]
+
+
 def detection_frame_as_dict(msg):
     """Compact DetectionFrame for trial.json (no ROS types)."""
     if msg is None:
@@ -228,6 +236,7 @@ def detection_frame_as_dict(msg):
         "pca_valid": bool(msg.pca_valid),
         "pca_reason": str(msg.pca_reason),
         "pca_source": str(msg.pca_source),
+        "size_wdh": _detection_frame_size(msg),
         "pca_confidence": float(msg.pca_confidence),
         "n_cargo_points": int(msg.n_cargo_points),
         "centroid": [
@@ -1688,6 +1697,7 @@ class PickRetreatEvalDriver(Node):
                 "support_valid": bool(msg.support_valid),
                 "support_reason": str(msg.support_reason),
                 "geometry_level": int(msg.geometry_level),
+                "size_wdh": _detection_frame_size(msg),
             })
         return rows
 

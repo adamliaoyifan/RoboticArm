@@ -19,6 +19,7 @@ from luggage_planning.pick_authorization import (
     WAIT_FOR_FULL_3D,
     AuthorizationConfig,
     PickAuthorizationPolicy,
+    authorized_pick_boundary,
     is_continuity_hold,
     pick_authorized,
     run_authorization_loop,
@@ -289,6 +290,44 @@ class TestHoldTrackWait(unittest.TestCase):
         self.assertEqual(result.hold_track_skipped, 0)
         self.assertIsNotNone(result.first_measure_latency_sec)
         self.assertEqual(result.last_gate, "measure")
+
+
+class TestAuthorizedPickBoundary(unittest.TestCase):
+    def test_records_agreement_without_replacing_size(self):
+        record = authorized_pick_boundary(
+            {"stamp_sec": 130.285, "size_wdh": [1.256, 0.415, 0.277],
+             "pca_source": ""},
+            authorized=True,
+            detect_reason="support=ok",
+            observation_gate_name="measure",
+            selected_frame={
+                "stamp": 130.285, "pca_source": "measure", "selected": True,
+                "size_wdh": [1.256, 0.415, 0.277],
+            },
+            scene_size=[1.256, 0.415, 0.277],
+        )
+        self.assertTrue(record["scene_size_matches_pick"])
+        self.assertTrue(record["selected_frame_size_matches_pick"])
+        self.assertTrue(record["selected_frame_stamp_matches_pick"])
+        self.assertEqual(record["selected_frame"]["pca_source"], "measure")
+        self.assertFalse(record["authorizing_message_has_pca_source"])
+        self.assertEqual(record["pick"]["size_wdh"][0], 1.256)
+
+    def test_names_a_different_frame_when_the_window_row_disagrees(self):
+        record = authorized_pick_boundary(
+            {"stamp_sec": 130.285, "size_wdh": [0.64, 0.40, 0.28],
+             "pca_source": ""},
+            authorized=True, detect_reason="", observation_gate_name="measure",
+            selected_frame={
+                "stamp": 129.691, "pca_source": "hold_track",
+                "size_wdh": [1.256, 0.415, 0.277],
+            },
+            scene_size=[0.64, 0.40, 0.28],
+        )
+        self.assertFalse(record["selected_frame_stamp_matches_pick"])
+        self.assertFalse(record["selected_frame_size_matches_pick"])
+        self.assertTrue(record["scene_size_matches_pick"])
+        self.assertEqual(record["selected_frame"]["pca_source"], "hold_track")
 
 
 if __name__ == "__main__":

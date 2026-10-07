@@ -2232,6 +2232,47 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
         return result
 
+    def _authorized_pick_record(self, auth):
+        """Stamp, source and size of the sample that authorized this pick.
+
+        The scene AABB is computed from that same message. The selected
+        detector-window row carries its own size, so a later read can see
+        whether authorization, the window row and the scene box agree.
+        """
+        from luggage_planning.pick_authorization import (
+            authorized_pick_boundary,
+            observation_gate,
+        )
+        from luggage_planning.pickup_collision import pickup_collision_aabb
+
+        pick = auth.box
+        fields = {}
+        scene_size = None
+        gate = ""
+        if pick is not None:
+            fields = _pick_detection_record(pick)
+            stamp = pick.header.stamp
+            fields["stamp_sec"] = (
+                float(stamp.sec) + 1e-9 * float(stamp.nanosec))
+            fields["pca_source"] = str(getattr(pick, "pca_source", "") or "")
+            gate = observation_gate(pick, auth.detect_reason)
+            try:
+                _xyz, _quat, scene_size = pickup_collision_aabb(pick)
+            except ValueError as exc:
+                fields["scene_aabb_error"] = str(exc)
+        selected = None
+        diag = self._last_auth_diag
+        if isinstance(diag, dict):
+            for read in diag.get("auth_reads") or []:
+                for row in read.get("window") or []:
+                    if row.get("selected"):
+                        selected = row
+        return authorized_pick_boundary(
+            fields, authorized=bool(auth.authorized),
+            detect_reason=auth.detect_reason,
+            observation_gate_name=gate, selected_frame=selected,
+            scene_size=scene_size)
+
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
         self._join_trace.clear()
@@ -2309,6 +2350,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None
         auth = self.detect_until_authorized()
         trial.extras["pick_authorization"] = auth.to_dict()
+        trial.extras["authorized_pick"] = self._authorized_pick_record(auth)
         boundary = self.perception_boundary_document()
         trial.extras["perception_boundary"] = boundary
         trial.extras["perception_boundary_summary"] = (

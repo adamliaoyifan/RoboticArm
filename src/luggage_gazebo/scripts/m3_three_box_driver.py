@@ -636,6 +636,12 @@ class M3ThreeBoxDriver(MotionOccDriver):
                 "output_map_revision": output_revision,
                 "sensor_occupied_cells": integrate.get("n_sensor_occupied"),
                 "floor_through_candidates": integrate.get("floor_through"),
+                "floor_through_rule": integrate.get("floor_through_rule"),
+                "floor_through_max_overlap_m": integrate.get(
+                    "floor_through_max_overlap_m"),
+                "floor_through_slivers": integrate.get("floor_through_slivers"),
+                "floor_through_full_cell_m": integrate.get(
+                    "floor_through_full_cell_m"),
                 "selection_map": getattr(self, "_m3_selection_map", None),
                 "retreat_start": trial.extras.get("retreat_start"),
                 **self._m3_map_confirmation(integrate, trial),

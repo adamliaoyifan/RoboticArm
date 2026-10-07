@@ -222,6 +222,14 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
     return points.dot(rot.T) + trans, None
 
 
+def _detection_frame_size(frame):
+    """WDH stored on this frame, or None when the frame has no PCA box."""
+    box = getattr(frame, "box", None)
+    if box is None or not bool(getattr(frame, "pca_valid", False)):
+        return None
+    return [float(box.width), float(box.depth), float(box.height)]
+
+
 def _fmt_metric(value):
     if isinstance(value, float):
         return "%.3f" % value
@@ -2020,6 +2028,7 @@ class LuggageDetector(Node):
                 "support_reason": str(frame.support_reason),
                 "support_gate": str(gate or ""),
                 "geometry_level": int(frame.geometry_level),
+                "size_wdh": _detection_frame_size(frame),
                 "selected": (
                     selected_stamp is not None
                     and abs(float(stamp) - float(selected_stamp)) < 1e-6),

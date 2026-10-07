@@ -51,10 +51,10 @@ class TestAdoptReleaseCommitStamp(unittest.TestCase):
         cls.adopt = staticmethod(
             cls.mod.CargoVolumeMapperNode._adopt_release)
 
-    def test_gate_on_first_commit_labels_unstamped_map_and_stays_pending(self):
+    def test_gate_on_first_commit_keeps_stamp_absent_and_records_commit_clock(self):
         fake = _fake(self.mod, stamp=0)
         self.adopt(fake, True, "footprint")
-        self.assertEqual(fake._last_acquisition_ns, 7_000_000_000)
+        self.assertEqual(fake._last_acquisition_ns, 0)
         self.assertEqual(fake._map_source, self.mod.MAP_RELEASE_INTEGRATED)
         self.assertEqual(
             fake._pending.recorded, [("box_placed", 7_000_000_000, "footprint")])

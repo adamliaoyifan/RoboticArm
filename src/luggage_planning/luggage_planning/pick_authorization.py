@@ -183,6 +183,52 @@ def is_fresh_measure(detect_ok, box, detect_reason=""):
     return bool(getattr(box, "height_valid", False))
 
 
+def authorized_pick_boundary(pick_fields, *, authorized, detect_reason,
+                             observation_gate_name, selected_frame,
+                             scene_size):
+    """Join the authorizing sample to the size that entered the scene.
+
+    ``pick_fields`` is the detection authorization returned. ``selected_frame``
+    is the detector window row marked selected, including that frame's own
+    ``size_wdh`` and ``pca_source``. ``scene_size`` is the AABB taken from
+    the same message. This records whether those three agree. It does not
+    decide why a size is wrong, and it does not replace a size with a catalog
+    value.
+    """
+    size = [float(value) for value in (pick_fields.get("size_wdh") or [])]
+    scene = [float(value) for value in (scene_size or [])]
+    frame = dict(selected_frame or {})
+    frame_size = frame.get("size_wdh")
+    stamp = pick_fields.get("stamp_sec")
+    frame_stamp = frame.get("stamp")
+
+    def _same(left, right):
+        if not isinstance(left, list) or not isinstance(right, list):
+            return None
+        if len(left) != 3 or len(right) != 3:
+            return None
+        return all(abs(float(left[i]) - float(right[i])) <= 1e-6
+                   for i in range(3))
+
+    stamp_matches = None
+    if stamp is not None and frame_stamp is not None:
+        stamp_matches = abs(float(stamp) - float(frame_stamp)) < 1e-3
+    return {
+        "authorized": bool(authorized),
+        "detect_reason": str(detect_reason or ""),
+        "observation_gate": str(observation_gate_name or ""),
+        "pick": dict(pick_fields),
+        "selected_frame": frame,
+        "scene_size_wdh": scene,
+        "scene_size_matches_pick": _same(size, scene),
+        "selected_frame_size_matches_pick": _same(
+            size, list(frame_size) if isinstance(frame_size, list) else None),
+        "selected_frame_stamp_matches_pick": stamp_matches,
+        "authorizing_message_has_pca_source": bool(
+            pick_fields.get("pca_source")),
+    }
+
+
 def pick_authorized(box, detect_reason=""):
     """True only for a measured top plus measured support plane.
 

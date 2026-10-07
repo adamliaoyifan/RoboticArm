@@ -111,6 +111,7 @@ def extract_acceptance(evidence, frozen):
         missing.append("%d cases" % box_count)
         cases = []
     previous_revision = None
+    coverage_not_applied = []
     seen_requests = set()
     seen_box_ids = set()
     case_revisions = []
@@ -262,9 +263,10 @@ def extract_acceptance(evidence, frozen):
         elif numerator / denominator < 0.40 and not isinstance(confirmation, dict):
             failures.append(prefix + ":GT_SENSOR_COVERAGE")
         if isinstance(confirmation, dict):
-            # Committed footprint cells are geometry, so sensor coverage of
-            # them is not the observation; the per-view evidence points the
-            # mapper counted inside the committed box are.
+            # Evidence points show the view saw the committed box. They do
+            # not measure sensor coverage of its footprint, so a commit-mode
+            # pass does not apply GT_SENSOR_COVERAGE.
+            coverage_not_applied.append(prefix + ":GT_SENSOR_COVERAGE")
             points = confirmation.get("evidence_points")
             minimum = confirmation.get("min_evidence_points")
             cleared = confirmation.get("cleared") or []
@@ -325,6 +327,9 @@ def extract_acceptance(evidence, frozen):
     return {"status": "not_evaluated" if missing else "fail" if failures else "pass",
             "missing": missing, "failures": failures, "sample_count": len(cases),
             "box_count": box_count, "revision_handoff_count": len(handoffs),
+            "sensor_coverage_gate": (
+                "not_applied_commit_mode" if coverage_not_applied else "applied"),
+            "sensor_coverage_not_applied": coverage_not_applied,
             "claim": "finite %d-box coverage; no population reliability claim" % box_count,
     }
 

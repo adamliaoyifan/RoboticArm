@@ -47,10 +47,13 @@ def freshness_verdict(snapshot, now_ns, max_age_ns, allow_unconfirmed=False):
     a contradictory observation. The acquisition stamp stays the real
     sensor time and is recorded as ``age_ns``. Age past
     ``max_age_ns`` does not refuse that snapshot. ``allow_unconfirmed``
-    admits an unconfirmed snapshot for an unloaded observation route only;
-    the stamp and source rules above still apply. ``static_empty`` is
-    the configured empty container. Stamp 0 is legal only while nothing
-    has been placed and no cargo view has been integrated.
+    admits an unconfirmed snapshot for an unloaded observation route only.
+    Stamp 0 stays "no sensor acquisition": an unloaded observation of a
+    ``release_integrated`` commit may run before any view exists, and that
+    admission does not write or require a stamp. Every other route still
+    refuses stamp <= 0. ``static_empty`` is the configured empty container
+    and is legal only while nothing has been placed and no cargo view has
+    been integrated.
     """
     source = str(getattr(snapshot, "map_source", "") or "")
     placed = int(getattr(snapshot, "placed_count", 0) or 0)
@@ -86,7 +89,14 @@ def freshness_verdict(snapshot, now_ns, max_age_ns, allow_unconfirmed=False):
         verdict["why_refused"] = "unknown_map_source"
         return verdict
     verdict["freshness_policy"] = "acquisition_stamp"
+    verdict["acquisition_stamp_present"] = stamp > 0
     if stamp <= 0:
+        if (allow_unconfirmed and source == "release_integrated"
+                and placed > 0):
+            verdict["freshness_policy"] = "commit_without_acquisition"
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "unloaded_observation_before_acquisition"
+            return verdict
         verdict["why_refused"] = "acquisition_stamp_required"
         return verdict
     age = int(now_ns) - stamp

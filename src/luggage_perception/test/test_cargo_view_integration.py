@@ -371,30 +371,50 @@ class TestRotatedRectAabb(unittest.TestCase):
             self.assertAlmostEqual(box[3] - box[1], expected[1], places=6)
 
 
-class TestFloorThroughOverlapTolerance(unittest.TestCase):
-    """Edge-touching candidates are not floor-through; real overlaps are."""
+class TestFloorThroughFullCell(unittest.TestCase):
+    """A grid sliver is not a cell. One full cell is, including past 25 mm."""
 
-    def test_sliver_below_tolerance_is_not_counted_but_deep_overlap_is(self):
+    def test_thirty_millimetres_contains_no_cell(self):
+        from luggage_perception.cargo_view_integration import (
+            overlap_contains_full_cell,
+        )
+        reference = (-0.10, -0.030, 0.10, 0.20)
+        sliver_30mm = (-0.10, -0.40, 0.10, 0.0)
+        one_cell = (-0.10, -0.40, 0.10, 0.05)
+        self.assertFalse(overlap_contains_full_cell(
+            sliver_30mm, reference, (0.0, 0.0), 0.05))
+        self.assertTrue(overlap_contains_full_cell(
+            one_cell, reference, (0.0, 0.0), 0.05))
+
+    def test_fraction_is_not_a_cell_and_one_cell_is(self):
         from unittest import mock
         import luggage_perception.cargo_view_integration as module
+        # Footprint 0.40 in y. Patch ymin is 30 mm below y=0.
+        # center_y=-0.2293 ends 0.7 mm into the patch.
+        # center_y=-0.20 ends on y=0, 30 mm into the patch, no full cell.
+        # center_y=-0.15 ends on y=0.05, one full cell.
         candidates = [
-            # touches the patch from below by 0.7 mm
-            {"feasible": True, "center_local": [0.0, -0.4350, -0.615],
+            {"feasible": True, "center_local": [0.0, -0.2293, -0.615],
              "footprint": [0.55, 0.4]},
-            # sits 10 cm inside the patch
-            {"feasible": True, "center_local": [0.0, -0.3357, -0.615],
+            {"feasible": True, "center_local": [0.0, -0.20, -0.615],
+             "footprint": [0.55, 0.4]},
+            {"feasible": True, "center_local": [0.0, -0.15, -0.615],
              "footprint": [0.55, 0.4]},
         ]
-        surface = {"inner_size": [1.5, 2.0, 1.48]}
-        patch = (-0.2, -0.2357, 0.2, 0.26)
+        surface = {
+            "inner_size": [1.5, 2.0, 1.48],
+            "resolution": 0.05,
+            "origin_local": [0.0, 0.0],
+        }
+        patch = (-0.10, -0.030, 0.10, 0.20)
         with mock.patch("luggage_packing.placement_solver.solve_placement",
                         return_value={"candidates": candidates,
                                       "success": True}):
-            strict, _ = module.floor_through_count(
+            count, info = module.floor_through_count(
                 surface, [0.55, 0.4, 0.25], patch)
-            tolerant, info = module.floor_through_count(
-                surface, [0.55, 0.4, 0.25], patch, overlap_tol_m=0.025)
-        self.assertEqual(strict, 2)
-        self.assertEqual(tolerant, 1)
-        self.assertGreater(info["max_overlap_m"], 0.09)
-        self.assertEqual(info["overlap_tol_m"], 0.025)
+        self.assertEqual(count, 1, info)
+        self.assertEqual(info["n_boundary_slivers"], 2)
+        self.assertEqual(info["rule"], "full_occupancy_cell")
+        self.assertEqual(info["full_cell_m"], 0.05)
+        self.assertEqual(info["half_cell_m"], 0.025)
+        self.assertGreater(info["max_overlap_m"], 0.05)

@@ -1334,16 +1334,17 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         # (run01 2026-10-07: 49 flagged, 43 over free floor).
         patch = aabb if aabb is not None else (
             occupied_sensor_aabb(surface) if surface else None)
-        # The reference box edge is a measured position; candidate edges lie
-        # on grid-cell boundaries. Overlap below half a cell is quantisation.
-        cell_tol = (0.5 * float(surface.get("resolution") or 0.0)
-                    if surface and aabb is not None else 0.0)
+        # Count a candidate only when the overlap contains a whole occupancy
+        # cell. A measured edge just past a grid line is a sliver, not a cell.
         through, solver = floor_through_count(
-            surface, BOX_SYNTHETIC, patch, overlap_tol_m=cell_tol,
-        ) if surface else (0, {})
+            surface, BOX_SYNTHETIC, patch) if surface else (0, {})
         self._dump_json(dump, "solver_replay_%s.json" % view, solver)
         t1["coverage"] = coverage
         t1["floor_through"] = through
+        t1["floor_through_rule"] = solver.get("rule")
+        t1["floor_through_max_overlap_m"] = solver.get("max_overlap_m")
+        t1["floor_through_slivers"] = solver.get("n_boundary_slivers")
+        t1["floor_through_full_cell_m"] = solver.get("full_cell_m")
         t1["n_sensor_occupied"] = self._sensor_occupied_count(surface)
         t1["hit_cells"] = int(hit)
         t1["total_cells"] = int(total)

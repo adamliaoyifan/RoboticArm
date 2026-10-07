@@ -391,6 +391,10 @@ def test_committed_box_needs_enough_evidence_points_not_sensor_coverage():
     thin["cases"][0]["measured"]["map_confirmation"]["evidence_points"] = {"1": 2}
     assert "case[0]:MAP_EVIDENCE_POINTS" in extract_acceptance(
         thin, frozen)["failures"]
+    passed = extract_acceptance(evidence, frozen)
+    assert passed["sensor_coverage_gate"] == "not_applied_commit_mode"
+    assert "case[0]:GT_SENSOR_COVERAGE" in passed["sensor_coverage_not_applied"]
+    assert "case[0]:GT_SENSOR_COVERAGE" not in passed["failures"]
 
     uncommitted = _m3_evidence()
     uncommitted["cases"][0]["gt_reference"]["footprint_sensor_cells"] = 0
