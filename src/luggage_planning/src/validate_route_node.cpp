@@ -117,6 +117,10 @@ public:
     }
     model_ = std::make_shared<moveit::core::RobotModel>(urdf, srdf);
     model_sha256_ = sha256_hex(urdf_xml + srdf_xml);
+    // Diagnostic switch. Production launches leave this true. An offline
+    // A/B sets it false to separate distanceRobot from collision cost.
+    // It is not a second certification budget.
+    measure_distance_ = declare_parameter<bool>("measure_distance", true);
     service_ = create_service<ValidateRouteV2>(
         "/validate_route_v2",
         [this](const std::shared_ptr<ValidateRouteV2::Request> request,
@@ -300,6 +304,16 @@ private:
     result.edge_id = leg.edge_id;
     result.n_samples = leg.n_samples;
     result.valid = false;
+    int64_t collision_ns = 0;
+    int64_t distance_ns = 0;
+    uint32_t distance_queries = 0;
+    auto finish_leg = [&]() -> RouteLegResultV2 {
+      result.leg_time_ns = static_cast<double>(elapsed_ns(leg_start));
+      result.collision_time_ns = static_cast<double>(collision_ns);
+      result.distance_time_ns = static_cast<double>(distance_ns);
+      result.distance_queries = distance_queries;
+      return result;
+    };
     const size_t n_joints = names.size();
     const size_t n_samples = leg.n_samples;
 
@@ -323,7 +337,7 @@ private:
         result.detail = "sample " + std::to_string(i + 1);
         result.first_invalid_sample = static_cast<uint32_t>(i + 1);
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
       const double dt = leg.sample_times_ns[i + 1] -
                         leg.sample_times_ns[i];
@@ -333,7 +347,7 @@ private:
         result.detail = "dt " + std::to_string(dt) + " ns over bound";
         result.first_invalid_sample = static_cast<uint32_t>(i + 1);
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
     }
 
@@ -348,7 +362,7 @@ private:
         result.reason = "TIME_NOT_MONOTONIC";
         result.detail = "knot " + std::to_string(k);
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
       if (point.velocities.size() == n_joints) {
         for (size_t j = 0; j < n_joints; ++j) {
@@ -358,7 +372,7 @@ private:
             result.reason = "VELOCITY_LIMIT";
             result.detail = names[j] + " knot " + std::to_string(k);
             result.leg_time_ns = elapsed_ns(leg_start);
-            return result;
+            return finish_leg();
           }
         }
       }
@@ -370,7 +384,7 @@ private:
             result.reason = "ACCELERATION_LIMIT";
             result.detail = names[j] + " knot " + std::to_string(k);
             result.leg_time_ns = elapsed_ns(leg_start);
-            return result;
+            return finish_leg();
           }
         }
       }
@@ -388,7 +402,7 @@ private:
                         " (t=" + std::to_string(knot_ns) +
                         " ns) not sampled";
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
       for (size_t j = 0; j < n_joints; ++j) {
         const double sample_value =
@@ -402,7 +416,7 @@ private:
           result.first_invalid_sample =
               static_cast<uint32_t>(sample_cursor);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
       }
     }
@@ -423,7 +437,7 @@ private:
         result.reason = "MODEL_MISMATCH";
         result.detail = "tcp link " + leg.tcp_link + " unknown";
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
     }
     Eigen::Vector3d previous_tcp;
@@ -437,7 +451,7 @@ private:
                         std::to_string(elapsed_s(start)) + " s";
         result.first_invalid_sample = static_cast<uint32_t>(i);
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
       const double *row = &leg.sample_positions_flat[i * n_joints];
       for (size_t j = 0; j < n_joints; ++j) {
@@ -449,7 +463,7 @@ private:
                           " value " + std::to_string(row[j]);
           result.first_invalid_sample = static_cast<uint32_t>(i);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
       }
       try {
@@ -460,7 +474,7 @@ private:
                         error.what();
         result.first_invalid_sample = static_cast<uint32_t>(i);
         result.leg_time_ns = elapsed_ns(leg_start);
-        return result;
+        return finish_leg();
       }
       state.update();
 
@@ -477,7 +491,7 @@ private:
                           std::to_string(i);
           result.first_invalid_sample = static_cast<uint32_t>(i);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
         previous_tcp = transform.translation();
         have_previous_tcp = true;
@@ -500,7 +514,7 @@ private:
                           std::to_string(i);
           result.first_invalid_sample = static_cast<uint32_t>(i);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
         if (leg.tcp_orientation_tol_rad > 0.0) {
           Eigen::Quaterniond actual(tcp_frame->linear());
@@ -518,7 +532,7 @@ private:
                             std::to_string(i);
             result.first_invalid_sample = static_cast<uint32_t>(i);
             result.leg_time_ns = elapsed_ns(leg_start);
-            return result;
+            return finish_leg();
           }
         }
       }
@@ -528,7 +542,9 @@ private:
       collision_request.contacts = false;
       collision_request.verbose = false;
       collision_detection::CollisionResult collision_result;
+      const auto collision_started = std::chrono::steady_clock::now();
       scene->checkCollision(collision_request, collision_result, state);
+      collision_ns += elapsed_ns(collision_started);
       if (collision_result.collision) {
         collision_detection::CollisionRequest contact_request;
         contact_request.contacts = true;
@@ -536,7 +552,9 @@ private:
         contact_request.max_contacts_per_pair = 8;
         contact_request.verbose = false;
         collision_detection::CollisionResult contact_result;
+        const auto contact_started = std::chrono::steady_clock::now();
         scene->checkCollision(contact_request, contact_result, state);
+        collision_ns += elapsed_ns(contact_started);
         bool forbidden = false;
         for (const auto &item : contact_result.contacts) {
           for (const auto &contact : item.second) {
@@ -563,7 +581,7 @@ private:
           result.detail = bodies + "at sample " + std::to_string(i);
           result.first_invalid_sample = static_cast<uint32_t>(i);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
       }
 
@@ -573,7 +591,7 @@ private:
                                   ? request->distance_stride
                                   : 1u;
       result.min_distance_m[i] = std::numeric_limits<double>::quiet_NaN();
-      if (i % stride == 0) {
+      if (measure_distance_ && i % stride == 0) {
         collision_detection::DistanceRequest distance_request;
         distance_request.enable_nearest_points = false;
         distance_request.type =
@@ -581,17 +599,22 @@ private:
         distance_request.acm = &distance_acm;
         distance_request.verbose = false;
         collision_detection::DistanceResult distance_result;
+        const auto distance_started = std::chrono::steady_clock::now();
         try {
           scene->getCollisionEnv()->distanceRobot(distance_request,
                                                   distance_result, state);
+          distance_ns += elapsed_ns(distance_started);
+          distance_queries += 1;
           result.min_distance_m[i] =
               distance_result.minimum_distance.distance;
         } catch (const std::exception &error) {
+          distance_ns += elapsed_ns(distance_started);
+          distance_queries += 1;
           result.reason = "MODEL_MISMATCH";
           result.detail = std::string("distance: ") + error.what();
           result.first_invalid_sample = static_cast<uint32_t>(i);
           result.leg_time_ns = elapsed_ns(leg_start);
-          return result;
+          return finish_leg();
         }
       }
     }
@@ -599,7 +622,7 @@ private:
     result.valid = true;
     result.first_invalid_sample = static_cast<uint32_t>(n_samples);
     result.leg_time_ns = elapsed_ns(leg_start);
-    return result;
+    return finish_leg();
   }
 
   static double elapsed_s(
@@ -623,6 +646,7 @@ private:
 
   moveit::core::RobotModelPtr model_;
   std::string model_sha256_;
+  bool measure_distance_{true};
   rclcpp::Service<ValidateRouteV2>::SharedPtr service_;
 };
 

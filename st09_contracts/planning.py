@@ -73,6 +73,18 @@ class PlanningSnapshot:
     #: container, even if every listed cell is occupied. Excluded from
     #: digest(): it is an admission declaration, not map content.
     occupancy_domain_complete: bool = False
+    #: Occupied-cell heights. ``geometry_hash`` is the container hull and
+    #: ``occupancy_digest`` is cell state only, so two maps can share a
+    #: revision and a hull hash while column tops differ. Empty means
+    #: the source grid had no heights. Excluded from digest().
+    column_height_digest: str = ""
+    #: False after a cargo change that has not been checked by an
+    #: observation. Age does not clear it. Excluded from digest().
+    occupancy_confirmed: bool = True
+    #: ``box_placed``, ``box_removed``, ``box_disturbed``,
+    #: ``cargo_edited``, or ``container_pose_changed``. Empty when the
+    #: snapshot is still the confirmed one. Excluded from digest().
+    change_event: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))
@@ -147,6 +159,9 @@ class PlanningSnapshot:
             "placed_count": self.placed_count,
             "cargo_observed": self.cargo_observed,
             "occupancy_domain_complete": self.occupancy_domain_complete,
+            "column_height_digest": self.column_height_digest,
+            "occupancy_confirmed": self.occupancy_confirmed,
+            "change_event": self.change_event,
             "commit_revision": self.commit_revision,
             "occupancy_digest": self.occupancy_digest,
             "resolution_m": self.resolution_m,

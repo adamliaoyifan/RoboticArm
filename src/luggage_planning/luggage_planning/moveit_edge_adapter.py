@@ -33,6 +33,7 @@ from __future__ import division
 
 import json
 import math
+import os
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -651,6 +652,155 @@ class MoveItEdgeAdapter(object):
             attributes=attributes)
         return edge
 
+    def _portal_submission_scene(self):
+        """Scene as MoveGroup is about to see it. Not a later query."""
+        from moveit_msgs.msg import PlanningSceneComponents
+
+        parts = (
+            PlanningSceneComponents.WORLD_OBJECT_NAMES
+            | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
+            | PlanningSceneComponents.ROBOT_STATE
+            | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
+            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
+        return self._scene.get_scene(parts, timeout=3.0)
+
+    def _keep_portal_failure(self, from_node, to_node, code, scene_msg,
+                             constraints):
+        """Keep the first PORTAL_TRANSIT failure of each goal signature.
+
+        ``scene_msg`` was read before the MoveGroup call. A scene read
+        after the call is recorded separately and is not that snapshot.
+        """
+        directory = os.environ.get("ST09_PORTAL_CAPTURE_DIR") or ""
+        if not directory or scene_msg is None:
+            return
+        os.makedirs(directory, exist_ok=True)
+        goal_q = tuple(round(float(v), 3) for v in to_node.q)
+        signature = "%s:%s" % (int(code), ",".join("%.3f" % v for v in goal_q))
+        seen = getattr(self, "_portal_signatures", None)
+        if seen is None:
+            seen = set()
+            self._portal_signatures = seen
+        if signature in seen or len(seen) >= 4:
+            return
+        seen.add(signature)
+        from luggage_planning.planning_scene_client import (
+            summarize_planning_scene,
+        )
+
+        summary = summarize_planning_scene(scene_msg)
+        acm = scene_msg.allowed_collision_matrix
+        enabled = 0
+        names = [str(name) for name in acm.entry_names]
+        for index, name in enumerate(names):
+            if index >= len(acm.entry_values):
+                break
+            enabled += sum(1 for flag in acm.entry_values[index].enabled if flag)
+        validity = self._goal_on_submission_scene(scene_msg, to_node.q)
+        document = {
+            "when": "before_move_group_call",
+            "edge_class": "PORTAL_TRANSIT",
+            "error_code": int(code),
+            "signature": signature,
+            "start_q": [float(v) for v in from_node.q],
+            "goal_q": [float(v) for v in to_node.q],
+            "goal_constraints": [{
+                "joint_name": str(item.joint_name),
+                "position": float(item.position),
+                "tolerance_above": float(item.tolerance_above),
+                "tolerance_below": float(item.tolerance_below),
+            } for item in constraints.joint_constraints],
+            "world_object_ids": summary.get("world_object_ids"),
+            "world_objects": summary.get("world_objects"),
+            "attached": summary.get("attached"),
+            "acm": {
+                "n_names": len(names),
+                "n_enabled_flags": enabled,
+            },
+            "validity_on_submission_scene": validity,
+        }
+        path = os.path.join(
+            directory, "portal_%02d.json" % (len(seen) - 1))
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(document, handle, indent=1, default=str)
+            handle.write("\n")
+
+    def _goal_on_submission_scene(self, scene_msg, goal_q):
+        """Validate the goal joints against the pre-call scene copy."""
+        from luggage_msgs.msg import RouteLegV2
+        from luggage_msgs.srv import ValidateRouteV2
+        from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+        import threading
+
+        if not hasattr(self, "_validity_client"):
+            self._validity_client = self._node.create_client(
+                ValidateRouteV2, "/validate_route_v2")
+        client = self._validity_client
+        if not client.wait_for_service(timeout_sec=3.0):
+            return {"status": "not_evaluated", "reason": "service_unavailable"}
+        from luggage_planning.moveit_state_validity import (
+            FrozenSceneComposer,
+        )
+        from luggage_planning.planning_scene_client import acm_pair_allowed
+
+        raw_allowed = acm_pair_allowed(
+            scene_msg.allowed_collision_matrix,
+            "elfin_base", "robot_pedestal")
+        # The certifier's frozen scene allows this one bolted pair.
+        # Judge the pre-call copy under that same matrix. This does not
+        # read the scene again after the call.
+        scene_msg.allowed_collision_matrix = (
+            FrozenSceneComposer._composed_acm(
+                FrozenSceneComposer, scene_msg.allowed_collision_matrix))
+        scene_msg.is_diff = False
+        request = ValidateRouteV2.Request()
+        request.request_id = "portal-goal"
+        request.route_digest = "portal-goal"
+        request.scene_digest = "portal-goal"
+        request.load_state_scenes = [scene_msg]
+        request.max_sample_dt_ns = 0.0
+        request.distance_stride = 1000
+        request.budget_s = 2.0
+        request.joint_velocity_limits = [0.0] * len(JOINT_NAMES)
+        leg = RouteLegV2()
+        leg.edge_id = "portal-goal"
+        leg.edge_class = "PORTAL_TRANSIT"
+        leg.carrying = True
+        leg.load_state_index = 0
+        leg.joint_names = list(JOINT_NAMES)
+        leg.n_samples = 1
+        leg.sample_times_ns = [0.0]
+        leg.sample_positions_flat = [float(v) for v in goal_q]
+        knots = JointTrajectory()
+        knots.joint_names = list(JOINT_NAMES)
+        point = JointTrajectoryPoint()
+        point.positions = [float(v) for v in goal_q]
+        knots.points = [point]
+        leg.knots = knots
+        request.legs = [leg]
+        done = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: done.set())
+        if not done.wait(8.0):
+            return {"status": "not_evaluated", "reason": "timeout"}
+        response = future.result()
+        if response is None or not response.leg_results:
+            return {"status": "not_evaluated", "reason": "empty",
+                    "service_detail": "" if response is None else str(
+                        response.detail)}
+        result = response.leg_results[0]
+        return {
+            "status": "queried",
+            "valid": bool(result.valid),
+            "reason": str(result.reason),
+            "detail": str(result.detail),
+            "acm_rule": "certifier_composed",
+            "structure_pair_allowed_before_compose": raw_allowed,
+            "contacts": [
+                {"body_1": str(item.body_1), "body_2": str(item.body_2)}
+                for item in list(result.contacts)[:8]],
+        }
+
     # -- planners -----------------------------------------------------------
 
     def _plan_joint(self, from_node, to_node, klass):
@@ -681,6 +831,10 @@ class MoveItEdgeAdapter(object):
             joint.weight = 1.0
             constraints.joint_constraints.append(joint)
         goal.request.goal_constraints.append(constraints)
+        submission_scene = None
+        if klass == EdgeClass.PORTAL_TRANSIT and os.environ.get(
+                "ST09_PORTAL_CAPTURE_DIR"):
+            submission_scene = self._portal_submission_scene()
         self._call_counts["move_group"] += 1
         began = time.monotonic()
         result = self._send_action_goal(goal)
@@ -710,12 +864,14 @@ class MoveItEdgeAdapter(object):
                         int(result.error_code.val) if result else -1))
             except Exception:  # noqa: BLE001 - diagnostics only
                 pass
-            self._record_failure(klass.value, "moveit_error",
-                                 error_code=int(result.error_code.val)
-                                 if result else -1)
+            code = int(result.error_code.val) if result else -1
+            self._record_failure(klass.value, "moveit_error", error_code=code)
+            if klass == EdgeClass.PORTAL_TRANSIT:
+                self._keep_portal_failure(
+                    from_node, to_node, code, submission_scene, constraints)
             raise RoutePlanningError("EDGE_BUILD_FAILED", {
                 "kind": "moveit_error",
-                "error_code": int(result.error_code.val) if result else -1})
+                "error_code": code})
         timed = self._retime(joint_trajectory)
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="joint", ok=True,

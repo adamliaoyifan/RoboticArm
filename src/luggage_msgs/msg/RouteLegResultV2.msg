@@ -19,3 +19,9 @@ luggage_msgs/RouteContact[] contacts
 # judgement), across samples where the pair touches.
 luggage_msgs/RouteContact[] support_contacts
 float64 leg_time_ns
+# Time spent in checkCollision for this leg, nanoseconds.
+float64 collision_time_ns
+# Time spent in distanceRobot for this leg, nanoseconds.
+float64 distance_time_ns
+# distanceRobot calls made for this leg.
+uint32 distance_queries

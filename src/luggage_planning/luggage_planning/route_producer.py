@@ -357,7 +357,7 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
     state = surface["state"]
     rows = len(state)
     columns = len(state[0]) if rows else 0
-    return {
+    result = {
         "frame": str(surface.get("frame_id") or "container_local"),
         "resolution": float(surface["resolution_m"]),
         "origin_local": [float(v) for v in surface["origin_xy_container"]],
@@ -373,7 +373,15 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
         "geometry_hash": str(request["geometry_hash"]),
         "map_revision": int(request["map_revision"]),
         "inner_size": [float(v) for v in request["inner_size"]],
+        "occupancy_confirmed": bool(surface.get("occupancy_confirmed", True)),
+        "change_event": str(surface.get("change_event") or ""),
     }
+    heights = surface.get("height_above_floor")
+    if heights is None:
+        heights = surface.get("height")
+    if heights is not None:
+        result["height_above_floor"] = heights
+    return result
 
 
 def _yaw(quaternion_xyzw) -> float:
@@ -577,6 +585,25 @@ def corridor_anchor_variants(plan, container_quaternion):
         anchors["slot_upper"] = _shift_point(slot, up, higher)
         rows.append(("slot_upper_higher", anchors))
     return tuple(rows)
+
+
+def _same_admitted_map(admitted, latest):
+    """True when latest is still the snapshot frozen at admission.
+
+    A different stamp or a different column-height digest is a new
+    observation and is judged on the live clock.
+    """
+    if int(getattr(admitted, "acquisition_stamp_ns", 0) or 0) != int(
+            getattr(latest, "acquisition_stamp_ns", 0) or 0):
+        return False
+    if int(getattr(admitted, "map_revision", 0) or 0) != int(
+            getattr(latest, "map_revision", 0) or 0):
+        return False
+    left = str(getattr(admitted, "column_height_digest", "") or "")
+    right = str(getattr(latest, "column_height_digest", "") or "")
+    if left and right and left != right:
+        return False
+    return True
 
 
 class RouteProducer(object):
@@ -984,6 +1011,33 @@ class RouteProducer(object):
             request, self._clock_ns())
         if attachment is None:
             return self._fail_attachment(attachment_reason, rows)
+        # A confirmed occupancy snapshot stays admitted for the whole
+        # route budget. Return, pickup spawn, grasp, and planning time
+        # are not invalidation events, and age is not one either.
+        self._admitted_snapshot = snapshot
+        self._admission_now_ns = self._clock_ns()
+        # Entry refuses only a pending change, before any candidate. The
+        # request's surface message carries the mapper's pending state but
+        # not its map source, placed count or acquisition stamp, so every
+        # other freshness verdict stays with the per-candidate revalidation,
+        # which reads the authoritative ``latest_snapshot_fn``.
+        if not snapshot.occupancy_confirmed:
+            from st09_contracts.reasons import Reason
+
+            reason = str(Reason.MAP_CONFIRMATION_REQUIRED)
+            rows.append({
+                "reason": reason,
+                "map_admission": {
+                    "occupancy_confirmed": False,
+                    "change_event": str(snapshot.change_event or ""),
+                    "why_refused": "occupancy_change_unconfirmed",
+                    "allowed": False,
+                },
+                "elapsed_ms": 0.0,
+            })
+            failed = self._fail(reason, rows)
+            failed["stage_timings"] = self._stage_timings(started_ns, rows)
+            return failed
 
         start_q = tuple(float(v) for v in request["start_joints"])
         last_reason = "NO_FEASIBLE_ROUTE"
@@ -1463,8 +1517,21 @@ class RouteProducer(object):
                             row["map_admission"] = self._map_admission(
                                 refreshed)
                         self._close_row(rows, row)
-                        last_reason = row["reason"]
-                        continue
+                        rows.append(self._attempt_summary(
+                            ordered_slots, tried_indices))
+                        failed = self._fail("MAP_STALE_REPEATED", rows)
+                        failed["stage_timings"] = self._stage_timings(
+                            started_ns, rows)
+                        return failed
+                elif reason == "MAP_CONFIRMATION_REQUIRED":
+                    row["reason"] = reason
+                    self._close_row(rows, row)
+                    rows.append(self._attempt_summary(
+                        ordered_slots, tried_indices))
+                    failed = self._fail(reason, rows)
+                    failed["stage_timings"] = self._stage_timings(
+                        started_ns, rows)
+                    return failed
                 else:
                     row["reason"] = reason
                     self._close_row(rows, row)
@@ -1516,7 +1583,7 @@ class RouteProducer(object):
                 "graph_digest": self.graph.digest(),
                 "budget_snapshot": self.last_budget_snapshot,
                 "elapsed_s": (self._clock_ns() - started_ns) / 1e9,
-                "stage_timings": self._stage_timings(started_ns),
+                "stage_timings": self._stage_timings(started_ns, rows),
             }
         rows.append(self._attempt_summary(ordered_slots, tried_indices))
         if last_reason == "LATTICE_OVER_BUDGET":
@@ -1537,10 +1604,10 @@ class RouteProducer(object):
                 "TARGET_SYNTHESIS_EMPTY"):
             last_reason = "NO_FEASIBLE_ROUTE"
         failed = self._fail(last_reason, rows)
-        failed["stage_timings"] = self._stage_timings(started_ns)
+        failed["stage_timings"] = self._stage_timings(started_ns, rows)
         return failed
 
-    def _stage_timings(self, started_ns):
+    def _stage_timings(self, started_ns, rows=None):
         """[ST09-I S5.7-6] Frozen-budget attribution (ms, rounded).
 
         Certification and map revalidation are measured directly; the
@@ -1551,13 +1618,27 @@ class RouteProducer(object):
         total_ns = self._clock_ns() - started_ns
         stages = getattr(self, "_stage_ns", None) \
             or {"certify": 0, "revalidate": 0}
+        by_reason = {}
+        for row in rows or []:
+            reason = str(row.get("reason") or "")
+            if not reason or reason == "ATTEMPT_SUMMARY":
+                continue
+            by_reason[reason] = round(
+                by_reason.get(reason, 0.0)
+                + float(row.get("elapsed_ms") or 0.0), 1)
+        total_ms = round(total_ns / 1e6, 1)
+        accounted_ms = round(sum(by_reason.values()), 1)
         return {
-            "total_ms": round(total_ns / 1e6, 1),
+            "total_ms": total_ms,
+            "budget_ms": round(self.budget_ns / 1e6, 1),
             "search_ms": round(max(
                 0, total_ns - stages["certify"]
                 - stages["revalidate"]) / 1e6, 1),
             "certify_ms": round(stages["certify"] / 1e6, 1),
             "revalidate_ms": round(stages["revalidate"] / 1e6, 1),
+            "by_reason_ms": by_reason,
+            "accounted_ms": accounted_ms,
+            "outside_rows_ms": round(max(0.0, total_ms - accounted_ms), 1),
         }
 
     def _promote_selection(self, selection):
@@ -2633,11 +2714,15 @@ class RouteProducer(object):
                 return None  # named MAP_REVALIDATION_UNAVAILABLE upstream
             latest = fetched
         self.last_latest_snapshot = latest
+        now_ns = self._clock_ns()
+        admitted = getattr(self, "_admitted_snapshot", None)
+        if admitted is not None and _same_admitted_map(admitted, latest):
+            now_ns = int(getattr(self, "_admission_now_ns", now_ns))
         try:
             return self.revalidator.revalidate(RevalidationInput(
                 route=route, planned_snapshot=snapshot,
                 latest_snapshot=latest, edges=edges,
-                now_ns=self._clock_ns(), in_flight=False))
+                now_ns=now_ns, in_flight=False))
         finally:
             stages = getattr(self, "_stage_ns", None)
             if stages is not None:
@@ -2755,6 +2840,8 @@ class RouteProducer(object):
             "freshness_policy": str(freshness.get("freshness_policy") or ""),
             "why_allowed": str(freshness.get("why_allowed") or ""),
             "why_refused": str(freshness.get("why_refused") or ""),
+            "age_exceeds_window": bool(freshness.get("age_exceeds_window")),
+            "change_event": str(freshness.get("change_event") or ""),
         }
 
     def _map_refusal(self, snapshot, revalidation, route, edges, request):

@@ -52,6 +52,12 @@ set -u
 # src-tree provenance and every peer's readiness gate rejects it
 # (WRONG_OVERLAY, live in smoke03/smoke04).
 export ROS_DOMAIN_ID=7 ROS_LOCALHOST_ONLY=1
+# Opt-in: ST09_I_CERT_CAPTURE=1 writes each ValidateRouteV2 request and
+# response under the run directory. The selector inherits the directory.
+if [[ "${ST09_I_CERT_CAPTURE:-0}" == "1" ]]; then
+  export ST09_I_CERT_CAPTURE_DIR="$OUT/cert_capture"
+  mkdir -p "$ST09_I_CERT_CAPTURE_DIR"
+fi
 # [ST09-I S5.7-6] semantic assets resolve from the INSTALL overlay
 # (colcon-installed package share) — formal runs must not depend on the
 # main workspace, the source tree, or the user cache. The launch's own

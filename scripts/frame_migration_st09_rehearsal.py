@@ -86,6 +86,7 @@ def launch_params(binding):
         "gui:=false use_rviz:=false "
         "use_semantic:=true use_motion:=true use_vacuum:=true "
         "use_cargo_map:=true use_packing:=true "
+        "require_confirmed_map:=true "
         "visual_kind:=mesh size_mode:=catalog "
         "sequence_ids:=carryon,standard "
         "semantic_require_backend:=bbox_fill "

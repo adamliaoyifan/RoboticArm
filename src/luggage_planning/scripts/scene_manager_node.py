@@ -212,6 +212,14 @@ class SceneManagerNode(Node):
                     (length, width, height), frame_id=self._world_frame)
                 if not ok:
                     return False, "pedestal apply: %s" % message
+                from luggage_planning.moveit_state_validity import (
+                    DECLARED_STRUCTURE_PAIRS,
+                )
+
+                ok, message = self._scene.set_acm_pairs(
+                    DECLARED_STRUCTURE_PAIRS, True)
+                if not ok:
+                    return False, "pedestal structure acm: %s" % message
             return True, "static scene synced (%s, %d triangles)" % (
                 obj_id, len(mesh_msg.triangles))
 

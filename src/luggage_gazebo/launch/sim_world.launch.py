@@ -78,6 +78,7 @@ def _default_launch_values():
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
+        "require_confirmed_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
@@ -1049,6 +1050,8 @@ def _launch_setup(context):
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
+                "require_confirmed_map": _as_bool(
+                    cfg["require_confirmed_map"]),
                 **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_cargo_map"])),
@@ -1134,6 +1137,10 @@ def generate_launch_description():
                 "use_cargo_map",
                 "Start cargo_volume_mapper (geometry-commit "
                 "occupancy grid + surface_2d)."),
+            profile_arg(
+                "require_confirmed_map",
+                "A placed box leaves the cargo map pending until an "
+                "integrated view confirms it (two-box rehearsal profile)."),
             profile_arg(
                 "use_packing",
                 "Start placement_planner (ComputePlacement with "

@@ -11,6 +11,7 @@ from luggage_gazebo.planning_request_capture import (  # noqa: E402
     audit_replay_bundle,
     build_planning_request,
     candidate_targets_from_rows,
+    input_slots_from_messages,
 )
 from luggage_planning.atlas_prior import (  # noqa: E402
     replay_captured_candidates,
@@ -140,3 +141,31 @@ def test_targets_come_from_selector_rows():
     }]
     targets = candidate_targets_from_rows(rows)
     assert targets == [[[1.0, 2.0, 3.0], [0.0, 1.0, 0.0, 0.0]]]
+
+
+class _Vec(object):
+    def __init__(self, *values):
+        self.x, self.y, self.z = values[:3]
+        self.w = values[3] if len(values) > 3 else 1.0
+
+
+class _Pose(object):
+    def __init__(self):
+        self.position = _Vec(0.1, -0.2, 0.3)
+        self.orientation = _Vec(0.0, 0.0, 0.0, 1.0)
+
+
+class _Slot(object):
+    place_pose = _Pose()
+
+
+def test_untried_slots_stay_on_the_request():
+    slots = input_slots_from_messages([_Slot(), _Slot()])
+    document = build_planning_request({
+        "request_id": "req-1",
+        "input_slots": slots,
+        "candidates": [],
+    })
+    assert len(document["input_slots"]) == 2
+    assert document["input_slots"][1]["index"] == 1
+    assert document["candidates"] == []

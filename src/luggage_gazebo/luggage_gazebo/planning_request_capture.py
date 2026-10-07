@@ -45,6 +45,43 @@ def _transform(value):
     return {"translation": translation, "quaternion_xyzw": quaternion}
 
 
+def input_slots_from_messages(slots):
+    """Every placement candidate the select was given, tried or not.
+
+    Attempt rows stay a separate record. A slot the search never reached
+    is still part of the request.
+    """
+    records = []
+    for index, slot in enumerate(slots or []):
+        pose = getattr(slot, "place_pose", None)
+        if pose is None and isinstance(slot, dict):
+            pose = slot.get("place_pose") or slot.get("slot_pose")
+        if pose is None:
+            continue
+        if isinstance(pose, dict):
+            position = pose.get("position")
+            quaternion = pose.get("quaternion_xyzw") or pose.get(
+                "orientation")
+        else:
+            position = getattr(pose, "position", None)
+            quaternion = getattr(pose, "orientation", None)
+        if position is None or quaternion is None:
+            continue
+        if hasattr(position, "x"):
+            position = [position.x, position.y, position.z]
+        if hasattr(quaternion, "x"):
+            quaternion = [
+                quaternion.x, quaternion.y, quaternion.z, quaternion.w]
+        if len(position) != 3 or len(quaternion) != 4:
+            continue
+        records.append({
+            "index": index,
+            "position": [float(v) for v in position],
+            "quaternion_xyzw": [float(v) for v in quaternion],
+        })
+    return records
+
+
 def candidate_targets_from_rows(rows):
     """World TCP targets already stored on selector rows."""
     targets = []
@@ -88,6 +125,7 @@ def build_planning_request(fields):
         "geometry_hash": str(fields.get("geometry_hash") or ""),
         "candidate_targets": list(fields.get("candidate_targets") or []),
         "candidates": list(fields.get("candidates") or []),
+        "input_slots": list(fields.get("input_slots") or []),
         "atlas_identity": dict(fields.get("atlas_identity") or {}),
         "stage_timings": dict(fields.get("stage_timings") or {}),
     }

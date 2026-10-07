@@ -35,6 +35,35 @@ def _request(latest, *, in_flight=False, now_ns=2_100_000_000, runtime=True, sta
     )
 
 
+def test_same_revision_with_different_column_heights_conflicts():
+    latest = dataclasses.replace(
+        make_snapshot(map_revision=2, observed_free=[(1, 1)],
+                      acquisition_stamp_ns=2_000_000_000),
+        column_height_digest="height-b")
+    request = _request(latest, now_ns=2_100_000_000)
+    planned = dataclasses.replace(
+        request.planned_snapshot, column_height_digest="height-a")
+    request = dataclasses.replace(
+        request, planned_snapshot=planned, latest_snapshot=latest)
+    decision = MapRevalidator().revalidate(request)
+    assert decision.reason is Reason.MAP_HASH_CONFLICT
+    assert decision.reason is not Reason.MAP_GEOMETRY_HASH_MISMATCH
+
+
+def test_matching_column_heights_stay_admissible():
+    latest = dataclasses.replace(
+        make_snapshot(map_revision=2, observed_free=[(1, 1)],
+                      acquisition_stamp_ns=2_000_000_000),
+        column_height_digest="height-a")
+    request = _request(latest, now_ns=2_100_000_000)
+    planned = dataclasses.replace(
+        request.planned_snapshot, column_height_digest="height-a")
+    request = dataclasses.replace(
+        request, planned_snapshot=planned, latest_snapshot=latest)
+    decision = MapRevalidator().revalidate(request)
+    assert decision.reason is Reason.OK
+
+
 def test_unrelated_update_continues_after_revalidation():
     latest = make_snapshot(map_revision=3, observed_free=[(1, 1), (5, 5)], acquisition_stamp_ns=2_050_000_000)
     decision = MapRevalidator().revalidate(_request(latest))
@@ -112,7 +141,31 @@ def test_stamp_inside_the_window_continues():
         _request(latest, now_ns=40_000_000_000))
     assert decision.decision is MapDecision.CONTINUE
     assert decision.detail["freshness"]["why_allowed"] == \
-        "measured_within_window"
+        "confirmed_occupancy"
+
+
+def test_confirmed_map_remains_valid_after_the_age_window():
+    latest = _identity(1_000_000_000, "measured", observed=True)
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.decision is MapDecision.CONTINUE
+    assert decision.reason is Reason.OK
+    freshness = decision.detail["freshness"]
+    assert freshness["age_exceeds_window"] is True
+    assert freshness["last_acquisition_stamp_ns"] == 1_000_000_000
+    assert freshness["why_allowed"] == "confirmed_occupancy"
+
+
+def test_change_event_requires_reconfirmation():
+    latest = dataclasses.replace(
+        _identity(39_000_000_000, "measured", observed=True),
+        occupancy_confirmed=False, change_event="box_placed")
+    decision = MapRevalidator().revalidate(
+        _request(latest, now_ns=40_000_000_000))
+    assert decision.reason is Reason.MAP_CONFIRMATION_REQUIRED
+    assert decision.detail["freshness"]["why_refused"] == \
+        "occupancy_change_unconfirmed"
+    assert decision.detail["freshness"]["change_event"] == "box_placed"
 
 
 def test_release_integrated_stamp_inside_the_window_continues():
@@ -125,9 +178,11 @@ def test_release_integrated_stamp_inside_the_window_continues():
 
 
 def test_stale_restart_and_start_joint_mismatch_fail_closed():
-    stale = make_snapshot(map_revision=3, observed_free=[(1, 1)], acquisition_stamp_ns=1)
-    assert MapRevalidator().revalidate(_request(stale, now_ns=4_000_000_000)).reason is Reason.MAP_STALE
-    restart = make_snapshot(map_revision=1, observed_free=[(1, 1)], acquisition_stamp_ns=2_050_000_000)
+    old = make_snapshot(map_revision=3, observed_free=[(1, 1)], acquisition_stamp_ns=1)
+    assert MapRevalidator().revalidate(
+        _request(old, now_ns=4_000_000_000)).reason is Reason.OK
+    restart = make_snapshot(map_revision=1, observed_free=[(1, 1)],
+                            acquisition_stamp_ns=2_050_000_000)
     assert MapRevalidator().revalidate(_request(restart)).reason is Reason.MAP_RESTART
     latest = make_snapshot(map_revision=3, observed_free=[(1, 1)], acquisition_stamp_ns=2_050_000_000)
     assert MapRevalidator().revalidate(_request(latest, start=False)).reason is Reason.CERT_JOINT_DISCONTINUITY

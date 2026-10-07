@@ -47,6 +47,7 @@ from luggage_description.scene_tf_config_utils import (
 )
 from luggage_gazebo.cargo_view_sequence import (
     BLENDS,
+    MAP_CONFIRMATION_REQUIRED,
     RIM_MARGIN_M,
     box_corners,
     footprint_sensor_hits,
@@ -54,6 +55,7 @@ from luggage_gazebo.cargo_view_sequence import (
     next_expected_revision,
     observation_target,
     rank_observation_aims,
+    map_confirmation_record,
     view_policy_record,
     view_stop,
 )
@@ -234,12 +236,12 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             return
         final = dict(final)
         final["views"] = traces
-        if not view_stop(final):
-            trial.fail_code = trial.fail_code or (
-                final.get("empty_reason")
-                or final.get("reason_code")
-                or final.get("drop_reason")
-                or "VIEW_EMPTY")
+        confirmation = map_confirmation_record(final)
+        trial.extras["map_confirmation"] = confirmation
+        if not confirmation["confirmed"]:
+            # Bounded re-acquisition (aim, then look-back) is exhausted and
+            # the released box was never observed: stop before the next box.
+            trial.fail_code = trial.fail_code or confirmation["reason_code"]
         self._t1.append(final)
         trial.extras["integrate"] = final
         trial.extras["coverage"] = final.get("coverage")
@@ -897,6 +899,9 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         center, size, yaw = self._placed_box_container(slot, pick_msg)
         hits = footprint_sensor_hits(surface or {}, center, size, yaw)
         t1["footprint_hits"] = int(hits)
+        # The mapper's published pending state after this integration.
+        t1["occupancy_confirmed"] = bool(
+            (surface or {}).get("occupancy_confirmed", True))
         t1["integrated"] = "resulting_map_revision" in t1
         gate_diag = (gate or {}).get("diag") or {}
         message = str(t1.get("message") or "")
@@ -1437,7 +1442,8 @@ def _write_suite(out, records, driver, extra):
                       "reference.json", "solver_replay.json")
     for rec in records:
         folder = os.path.join(dumps, "box_%02d_integrate" % rec.index)
-        if rec.fail_code in ("VIEW_EMPTY", "INTEGRATE_TIMEOUT"):
+        if rec.fail_code in (
+                "VIEW_EMPTY", "INTEGRATE_TIMEOUT", MAP_CONFIRMATION_REQUIRED):
             complete = complete and os.path.isfile(os.path.join(
                 folder, "t1_trace.json"))
             continue

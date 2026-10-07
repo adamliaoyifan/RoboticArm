@@ -169,6 +169,33 @@ Response: valid | 具名拒绝（DIGEST_MISMATCH / START_STATE_MISMATCH /
 **任何情况下不得在选择时旧 snapshot 上回退**。证据与测试名须写明此语义
 （如 `test_map_status_unavailable_refuses_without_stale_fallback`）。
 
+**选择预算与地图有效性（2026-10-07）**：已确认的占用快照在相关变化发生前一直有效。返回、在取件台生成下一箱、抓取和规划都不是失效事件，规划耗时也不是。采集时间戳保留真实传感器时间；年龄仍记录，但不再单独拒绝这份快照。
+
+失效并需要重新确认的事件是：箱子放入、取出、被碰动，人工修改货物，容器位姿变化。新观测发现占用变化时更新地图，并用版本、柱高和受影响的路线段复核旧路线。传感器暂时没有新帧，不使已确认的占用失效。执行前检查看地图版本、内容和这些变化事件，不要求无条件再拍一帧。
+
+第一箱释放、停稳并完成整合之后，那份快照可以直接规划第二箱。
+
+**待确认位与确认转换（`require_confirmed_map`，默认关闭）**：放置、取出、碰动、容器位姿变化只做一件事——给 mapper 的 `PendingConfirmation` 追加一条带单调 token、变化时刻（节点时钟）和（放箱时的）足迹的记录。surface 上的 `occupancy_confirmed` 就是"没有待确认记录"。放置提交不写采集时间戳，采集时间戳永远是上一次整合的真实传感器时间。
+
+**确认合同的范围：目前只支持"放箱"。** 一条放箱记录只能被同时满足下列条件的一次整合清除（`luggage_perception/occupancy_confirmation.py`，转换在 mapper 内、整合提交的同一临界区完成，不是事后补救）：
+
+- 该整合开始时已存在这条记录（`token <= token_at_start`）。整合进行中新放了箱子，新记录保持待确认。
+- 帧的采集时间严格晚于变化时刻，且请求为 `settled`。
+- 这次整合自己观测到的点（不是累积地图）中，至少 `MIN_EVIDENCE_POINTS` 个落在已提交箱体的上半部（XY 外扩 0.03 m，Z 到顶面 +0.03 m）。累积地图里的旧传感器格、叠放时下面那只箱子的顶面都不是新箱的证据。
+- 整合失败（无点、无深度）不改变待确认状态；没有检测到新箱子不等于观察到该区域为空。
+
+这只证明新箱在已提交位姿上存在，不测量它的完整几何；几何仍是提交账本里的记录。`last_settle`（每次整合的 token、帧时间、各记录的证据点数）随 surface 发布，进证据包。
+
+**不支持确认的事件**：取出、碰动、人工修改货物、容器位姿变化没有观察规则（需要对受影响区域的"观测为空"证据）。它们被记录并保持待确认（`confirmable=false`），保守地阻止下一箱，只有 reset 或回到静态空箱才清除。不应声称这些事件已完整支持。
+
+驱动的 `view_stop` 现在还要求 mapper 发布的 `occupancy_confirmed` 为真；累积地图的 `footprint_sensor_hits` 只是证据包里的诊断量，不是确认来源（它会把足迹所在列里的旧传感器格算作命中）。其他消费者读 surface 的 `occupancy_confirmed` / `change_token` / `pending_changes`。
+
+- 开关关闭时（默认），提交仍按原样盖节点时钟、不置待确认。这只说明启用路径具备新合同，不说明 `place_only`、`pack`、`place_smoke`、编排器等链路已被修复。两箱演练配置（`require_confirmed_map:=true`）才打开。
+- 退出和返回沿释放前已认证的释放后场景（`SceneState.released_box`）运行，不读这个位。
+- 下一箱的入口门读这个位：待确认则返回 `MAP_CONFIRMATION_REQUIRED`，不搜候选；revalidator 缺少 `policy` 是接线错误，不会被跳过。
+- 带来源和误差界的几何提交目前不是地图来源（`mark_placed_box` 只记 `measured_source` 与 0.05 m 容差），若引入是独立的确认合同。
+- 局限：证据点阈值与外扩余量尚未在线标定，首次两箱排练用 `last_settle` 检查实际点数。`GetCargoMapStats` 没有确认字段，消费者须读 surface。
+
 ## 5b. 执行窗口闭环（admission generation）——S6 前必须
 
 §5 证明了"认证 A、执行 A"；**尚未证明"执行 A 时认证仍有效"**。driver

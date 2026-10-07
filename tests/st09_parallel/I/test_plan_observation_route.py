@@ -70,6 +70,8 @@ class _Producer(object):
         self._stub_certification = certification
         self.latest_snapshot_fn = lambda: snapshot
         self.last_selection = None
+        # Recorded budget: _stage_timings reports it, never a default.
+        self.budget_ns = 60_000_000_000
 
     def _refine_to(self, position, orientation, seed):
         return self._refine_result, {}

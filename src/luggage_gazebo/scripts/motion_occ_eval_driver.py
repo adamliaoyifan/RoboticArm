@@ -432,11 +432,18 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         probe_ok = True
         probe_reason = ""
 
+        from luggage_gazebo.planning_request_capture import (
+            input_slots_from_messages,
+        )
+
+        input_slots = input_slots_from_messages(slot_messages)
+
         def _request_doc(current, rows):
             return self._planning_request_document(
                 rows, request_id, box_wdh, start_joints, grasp,
                 container_transform, surface_msg, stats, geometry_hash,
-                self._stage_timings_from_selection(current))
+                self._stage_timings_from_selection(current),
+                input_slots=input_slots)
 
         attempts = max(1, min(5, len(slot_messages)))
         start_joints = (_joint_positions(
@@ -486,7 +493,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 if invalidation is not None:
                     trial.extras["attachment_invalidation"] = invalidation
                 self._dump_selector(
-                    trial, [], rows, None, trial.extras["selector_error"],
+                    trial, input_slots, rows, None,
+                    trial.extras["selector_error"],
                     (self._surface_from_selection(selection)
                      if selection is not None else {}),
                     probe=probe_stats,
@@ -514,7 +522,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 "winner_slot": None, "probe": probe_stats,
                 "excluded": excluded}
             probe_rows = self._rows_from_selection(selection)
-            self._dump_selector(trial, [], probe_rows, None, probe_reason,
+            self._dump_selector(
+                trial, input_slots, probe_rows, None, probe_reason,
                 self._surface_from_selection(selection), probe=probe_stats,
                 planning_request=_request_doc(selection, probe_rows))
             return None, None
@@ -569,7 +578,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
         slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
         winner_rows = self._rows_from_selection(selection)
-        self._dump_selector(trial, [], winner_rows,
+        self._dump_selector(trial, input_slots, winner_rows,
                             self._selected_path,
                             "", self._surface_from_selection(selection),
                             probe=probe_stats,
@@ -648,10 +657,11 @@ class MotionOccDriver(CargoMapIntegrateDriver):
     def _planning_request_document(self, rows, request_id, box_wdh,
                                    start_joints, grasp, container_transform,
                                    surface_msg, stats, geometry_hash,
-                                   stage_timings):
+                                   stage_timings, input_slots=None):
         from luggage_gazebo.planning_request_capture import (
             build_planning_request,
             candidate_targets_from_rows,
+            input_slots_from_messages,
         )
         from luggage_planning.planning_capture import candidates_from_rows
 
@@ -700,6 +710,7 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             "geometry_hash": geometry_hash,
             "candidate_targets": candidate_targets_from_rows(rows),
             "candidates": candidates_from_rows(rows),
+            "input_slots": list(input_slots or []),
             "atlas_identity": {
                 "identity": identity,
                 "enabled": bool(cfg.get("enabled")),

@@ -90,6 +90,7 @@ from luggage_perception.cargo_view_integration import (
     stamp_to_sec,
     validate_integrate_request,
 )
+from luggage_perception.occupancy_confirmation import PendingConfirmation
 
 
 #: Declared measured-commit provenance vocabulary for AddPlacedBoxV2 (F19).
@@ -125,6 +126,12 @@ class CargoVolumeMapperNode(Node):
         self.declare_parameter("freshness_window_sec", 0.20)
         self.declare_parameter("max_raycast_points", 2000)
         self.declare_parameter("integrate_min_z_above_floor", 0.05)
+        # Opt-in: a release/removal/pose change leaves the map pending until
+        # an IntegrateCargoView confirms it. Off keeps the earlier commit
+        # behaviour for flows that never integrate a view.
+        self.declare_parameter("require_confirmed_map", False)
+        self._require_confirmed_map = bool(
+            self.get_parameter("require_confirmed_map").value)
         # ST04 F06/F19: v2 surface publication and ledger services are
         # enabled only by an explicit scene revision; unset leaves the node
         # byte-identical to its v1 behavior.
@@ -173,6 +180,8 @@ class CargoVolumeMapperNode(Node):
         self._last_acquisition_ns = 0
         self._map_source = MAP_STATIC_EMPTY
         self._cargo_observed = False
+        self._pending = PendingConfirmation(self._require_confirmed_map)
+        self._pose_at_confirm = None
 
         self._tf_buffer = Buffer()
         self._tf_node = Node(
@@ -373,6 +382,9 @@ class CargoVolumeMapperNode(Node):
             return self._fail_integrate(
                 response, reason, reason, stats)
 
+        # The integration answers only for changes it began after: a box
+        # placed while this view is being integrated stays pending.
+        token_at_start = self._pending.begin()
         with self._lock:
             records = list(self._clouds.values())
             integrated = set(self._integrated)
@@ -414,6 +426,10 @@ class CargoVolumeMapperNode(Node):
             self._last_acquisition_ns = int(stamp_ns)
             self._map_source = source
             self._cargo_observed = True
+            self._pending.settle(
+                token_at_start, stamp_ns, result["observed_points"],
+                bool(request.settled))
+            self._pose_at_confirm = dict(self._world_from_container)
         self._publish_all()
         stats = self._mapper.stats()
         response.schema_version = SCHEMA_VERSION
@@ -455,7 +471,8 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
-        self._adopt_release(committed_now=bool(added))
+        self._adopt_release(
+            committed_now=bool(added), footprint=(center, size, yaw_c))
         self._publish_all()
         response.success = True
         response.message = "%s %d boxes (rev %d)" % (
@@ -504,6 +521,8 @@ class CargoVolumeMapperNode(Node):
             self._last_acquisition_ns = 0
             self._map_source = MAP_STATIC_EMPTY
             self._cargo_observed = False
+            self._pending.clear()
+            self._pose_at_confirm = None
         self._publish_all()
         response.success = True
         response.message = "reset"
@@ -542,23 +561,31 @@ class CargoVolumeMapperNode(Node):
         stamp = self.get_clock().now().to_msg()
         return int(stamp.sec) * 1_000_000_000 + int(stamp.nanosec)
 
-    def _adopt_release(self, committed_now):
+    def _adopt_release(self, committed_now, footprint):
         """A placed box leaves the static-empty identity.
 
-        A new commit stamps the node clock. A duplicate commit keeps an
-        existing release stamp so it does not look freshly acquired.
+        ``require_confirmed_map`` on: a new commit records a pending change
+        with the box footprint and never writes a stamp. Off: a new commit
+        stamps the node clock and a duplicate commit keeps the existing
+        release stamp.
         """
         if len(self._mapper.commit_ledger()) <= 0:
             return
-        stamp, source = release_identity(self._node_clock_ns())
-        refresh = bool(committed_now) or int(self._last_acquisition_ns) <= 0 \
-            or self._map_source != MAP_RELEASE_INTEGRATED
+        previous_source = self._map_source
+        now_ns = self._node_clock_ns()
+        stamp, source = release_identity(now_ns)
         self._map_source = source
-        if refresh:
+        if self._require_confirmed_map:
+            if committed_now:
+                self._pending.record("box_placed", now_ns, footprint)
+            return
+        if committed_now or int(self._last_acquisition_ns) <= 0 \
+                or previous_source != MAP_RELEASE_INTEGRATED:
             self._last_acquisition_ns = int(stamp)
 
     def _adopt_after_removal(self):
         placed = len(self._mapper.commit_ledger())
+        self._pending.record("box_removed", self._node_clock_ns())
         if placed > 0:
             self._map_source = MAP_RELEASE_INTEGRATED
             return
@@ -567,6 +594,30 @@ class CargoVolumeMapperNode(Node):
             return
         self._map_source = MAP_STATIC_EMPTY
         self._last_acquisition_ns = 0
+        self._pending.clear()
+
+    def update_container_pose(self, pose):
+        """Invalidate when the container itself has moved since confirmation."""
+        from luggage_perception.cargo_view_integration import (
+            container_pose_moved,
+        )
+
+        if container_pose_moved(self._pose_at_confirm, pose):
+            self._pending.record(
+                "container_pose_changed", self._node_clock_ns())
+        self._world_from_container = {
+            "translation": list(pose.get("translation") or []),
+            "rotation_rpy": list(pose.get("rotation_rpy") or []),
+        }
+
+    def note_occupancy_event(self, event):
+        """Record a cargo change that the mapper did not observe itself.
+
+        ``box_disturbed`` and ``cargo_edited`` have no automatic detector.
+        Callers that see them use this. Return, pickup spawn, grasp, and
+        planning are ignored.
+        """
+        self._pending.record(event, self._node_clock_ns())
 
     def _publish_all(self):
         surface = self._mapper.surface_map_2d()
@@ -574,6 +625,7 @@ class CargoVolumeMapperNode(Node):
         surface["map_source"] = str(self._map_source)
         surface["placed_count"] = len(self._mapper.commit_ledger())
         surface["cargo_observed"] = bool(self._cargo_observed)
+        surface.update(self._pending.surface_fields())
         self._surface_pub.publish(String(data=json.dumps(
             surface, sort_keys=True)))
         self._ledger_pub.publish(String(data=json.dumps({
@@ -687,7 +739,8 @@ class CargoVolumeMapperNode(Node):
             response.success = False
             response.message = "mark failed: %s" % exc
             return response
-        self._adopt_release(committed_now=bool(added))
+        self._adopt_release(
+            committed_now=bool(added), footprint=(center, size, yaw_c))
         self._publish_all()
         response.success = True
         response.message = "%s %d boxes (rev %d)" % (

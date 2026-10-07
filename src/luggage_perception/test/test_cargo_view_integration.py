@@ -327,5 +327,20 @@ class TestMapIdentity(unittest.TestCase):
         self.assertEqual(source, MAP_RELEASE_INTEGRATED)
 
 
+class TestContainerPoseMoved(unittest.TestCase):
+
+    def test_small_drift_is_not_a_change_and_a_shift_is(self):
+        from luggage_perception.cargo_view_integration import (
+            container_pose_moved,
+        )
+
+        self.assertFalse(container_pose_moved(
+            {"translation": [0, 0, 0], "rotation_rpy": [0, 0, 0]},
+            {"translation": [0.001, 0, 0], "rotation_rpy": [0, 0, 0]}))
+        self.assertTrue(container_pose_moved(
+            {"translation": [-1.5, 0.6, 0], "rotation_rpy": [0, 0, 3.14]},
+            {"translation": [-1.4, 0.6, 0], "rotation_rpy": [0, 0, 3.14]}))
+
+
 if __name__ == "__main__":
     unittest.main()

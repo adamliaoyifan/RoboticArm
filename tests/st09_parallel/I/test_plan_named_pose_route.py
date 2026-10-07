@@ -69,6 +69,8 @@ class _Producer(object):
         self.latest_snapshot_fn = lambda: snapshot
         self.site_poses_fn = (lambda: site) if site is not None else None
         self.last_selection = None
+        # Recorded budget: _stage_timings reports it, never a default.
+        self.budget_ns = 60_000_000_000
 
     def _revalidate(self, route, snapshot, edges):
         return self._stub_revalidation

@@ -195,6 +195,14 @@ def _sync_world(node, scene_config, scene_json):
             (length, width, height), frame_id="world")
         if not _applied(ok):
             raise RuntimeError("pedestal apply failed: %r" % (ok,))
+        from luggage_planning.moveit_state_validity import (
+            DECLARED_STRUCTURE_PAIRS,
+        )
+
+        allowed, message = client.set_acm_pairs(
+            DECLARED_STRUCTURE_PAIRS, True)
+        if not allowed:
+            raise RuntimeError("pedestal structure acm failed: %s" % message)
     for obj in scene_json.get("world_objects") or []:
         if obj.get("type") != "box" or obj.get("id") == "robot_pedestal":
             continue

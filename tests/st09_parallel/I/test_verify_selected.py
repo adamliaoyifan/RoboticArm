@@ -56,6 +56,8 @@ class _Producer(object):
     def __init__(self, selection, revalidation=None, certification=None):
         self.last_selection = selection
         self.superseded_admissions = {}
+        # Recorded budget: _stage_timings reports it, never a default.
+        self.budget_ns = 60_000_000_000
         self._stub_revalidation = revalidation
         self._stub_certification = certification
         # [ST09-I S5.7-6] fresh attached vacuum feed (fake _clock_ns

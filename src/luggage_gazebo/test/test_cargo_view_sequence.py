@@ -6,10 +6,12 @@ import unittest
 
 from luggage_gazebo.cargo_view_sequence import (
     BLENDS,
+    MAP_CONFIRMATION_REQUIRED,
     EYE_RAISES_M,
     aim_candidates,
     footprint_sensor_hits,
     lookback_eye,
+    map_confirmation_record,
     next_expected_revision,
     policy_hash,
     view_policy_record,
@@ -175,3 +177,39 @@ class TestObservationPolicy(unittest.TestCase):
         self.assertEqual(record["max_observation_views"], 2)
         self.assertTrue(record["in_frame_prediction"])
         self.assertIn("slot_world", record["target"])
+
+
+class TestMapConfirmationRecord(unittest.TestCase):
+
+    def test_footprint_hit_with_advanced_revision_confirms(self):
+        record = map_confirmation_record({
+            "success": True, "footprint_hits": 4,
+            "expected_map_revision": 7, "resulting_map_revision": 8})
+        self.assertTrue(record["confirmed"])
+        self.assertEqual(record["reason_code"], "")
+
+    def test_no_detection_is_not_an_observation_of_empty(self):
+        record = map_confirmation_record({
+            "success": True, "footprint_hits": 0,
+            "expected_map_revision": 7, "resulting_map_revision": 8,
+            "empty_reason": "NO_DEPTH"})
+        self.assertFalse(record["confirmed"])
+        self.assertEqual(record["reason_code"], MAP_CONFIRMATION_REQUIRED)
+        self.assertEqual(record["view_reason"], "NO_DEPTH")
+
+    def test_missing_trace_stays_pending(self):
+        record = map_confirmation_record(None)
+        self.assertFalse(record["confirmed"])
+        self.assertEqual(record["view_reason"], "VIEW_EMPTY")
+
+    def test_mapper_pending_state_outranks_the_cumulative_footprint_count(self):
+        trace = {
+            "success": True, "footprint_hits": 5,
+            "expected_map_revision": 7, "resulting_map_revision": 8,
+            "occupancy_confirmed": False}
+        self.assertFalse(view_stop(trace))
+        record = map_confirmation_record(trace)
+        self.assertFalse(record["confirmed"])
+        self.assertEqual(record["reason_code"], MAP_CONFIRMATION_REQUIRED)
+        trace["occupancy_confirmed"] = True
+        self.assertTrue(view_stop(trace))

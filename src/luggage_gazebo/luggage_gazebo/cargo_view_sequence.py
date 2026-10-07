@@ -9,9 +9,10 @@ import math
 
 from luggage_perception.cargo_instance_tracker import rotation_from_xyzw
 from luggage_perception.cargo_view_diagnosis import project_box_corners
-from luggage_perception.cargo_view_integration import (
+from luggage_perception.cargo_view_integration import (  # noqa: F401
     box_point_mask,
     cell_xy_container,
+    footprint_sensor_hits,
 )
 from luggage_planning.container_aim_utils import look_at_quaternion
 
@@ -246,40 +247,14 @@ def next_expected_revision(prev_response, stats_revision):
     return int(stats_revision)
 
 
-def footprint_sensor_hits(surface, center, size, yaw):
-    """Sensor-occupied cells whose centers lie in the planned box footprint.
-
-    Z is the box center, so the test is the oriented XY footprint. Cells of
-    an earlier box outside this footprint are not counted.
-    """
-    if not surface:
-        return 0
-    nx = int(surface.get("nx") or 0)
-    ny = int(surface.get("ny") or 0)
-    state = surface.get("state") or []
-    confidence = surface.get("confidence") or []
-    points = []
-    cz = float(center[2])
-    for ix in range(nx):
-        if ix >= len(state):
-            continue
-        for iy in range(ny):
-            if iy >= len(state[ix]):
-                continue
-            if (state[ix][iy] != "occupied"
-                    or iy >= len(confidence[ix])
-                    or confidence[ix][iy] != "sensor"):
-                continue
-            x, y = cell_xy_container(surface, ix, iy)
-            points.append((x, y, cz))
-    if not points:
-        return 0
-    mask = box_point_mask(points, center, size, yaw=yaw, margin=0.0)
-    return int(sum(1 for flag in mask if flag))
-
-
 def view_stop(trace):
-    """True when this view put at least one sensor cell in the footprint."""
+    """True when this view put at least one sensor cell in the footprint.
+
+    When the mapper publishes a pending state (``occupancy_confirmed``
+    in the trace) the view must also have cleared it: the mapper's own
+    confirmation, which reads the view's points, outranks the cumulative
+    footprint count. Absent the field (gate off) the earlier rule holds.
+    """
     info = trace or {}
     try:
         hits = int(info.get("footprint_hits") or 0)
@@ -287,7 +262,40 @@ def view_stop(trace):
         after = int(info.get("resulting_map_revision"))
     except (TypeError, ValueError):
         return False
+    if not bool(info.get("occupancy_confirmed", True)):
+        return False
     return bool(info.get("success")) and hits >= 1 and after > before
+
+
+#: One name for "the released box was never observed", shared with the
+#: planner's entry gate (``st09_contracts.reasons.Reason``).
+MAP_CONFIRMATION_REQUIRED = "MAP_CONFIRMATION_REQUIRED"
+
+
+def map_confirmation_record(final_trace):
+    """Did the bounded post-place views observe the released box?
+
+    This is the driver's stop rule. The mapper's ``PendingConfirmation``
+    owns the pending bit; the trace carries its published state.
+
+    Confirmed only when the final view stopped on a footprint hit with an
+    integrated, revision-advancing result. No detection is not an
+    observation that the region is empty, so the map stays pending and
+    the driver stops before the next box. ``view_reason`` keeps the
+    integrator's own reason for the evidence bundle.
+    """
+    trace = final_trace or {}
+    confirmed = view_stop(trace)
+    view_reason = ""
+    if not confirmed:
+        view_reason = str(
+            trace.get("empty_reason") or trace.get("reason_code")
+            or trace.get("drop_reason") or "VIEW_EMPTY")
+    return {
+        "confirmed": bool(confirmed),
+        "reason_code": "" if confirmed else MAP_CONFIRMATION_REQUIRED,
+        "view_reason": view_reason,
+    }
 
 
 def view_policy_record():

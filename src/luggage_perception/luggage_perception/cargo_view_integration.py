@@ -122,6 +122,102 @@ def select_fresh_record(
     return best, None
 
 
+OCCUPANCY_CHANGE_EVENTS = (
+    "box_placed",
+    "box_removed",
+    "box_disturbed",
+    "cargo_edited",
+    "container_pose_changed",
+)
+#: Motion around the container does not edit the cargo that was integrated.
+NON_INVALIDATING_EVENTS = (
+    "return",
+    "pickup_spawn",
+    "grasp",
+    "planning",
+)
+
+
+def footprint_sensor_hits(surface, center, size, yaw):
+    """Sensor-occupied cells whose centers lie in the planned box footprint.
+
+    Z is the box center, so the test is the oriented XY footprint. Cells of
+    an earlier box outside this footprint are not counted.
+
+    This reads the accumulated map, so an old sensor cell inside the
+    footprint counts. It is a diagnostic for the evidence bundle only;
+    confirmation uses ``new_box_evidence_points`` on the view's own points.
+    """
+    if not surface:
+        return 0
+    nx = int(surface.get("nx") or 0)
+    ny = int(surface.get("ny") or 0)
+    state = surface.get("state") or []
+    confidence = surface.get("confidence") or []
+    points = []
+    cz = float(center[2])
+    for ix in range(nx):
+        if ix >= len(state):
+            continue
+        for iy in range(ny):
+            if iy >= len(state[ix]):
+                continue
+            if (state[ix][iy] != "occupied"
+                    or iy >= len(confidence[ix])
+                    or confidence[ix][iy] != "sensor"):
+                continue
+            x, y = cell_xy_container(surface, ix, iy)
+            points.append((x, y, cz))
+    if not points:
+        return 0
+    mask = box_point_mask(points, center, size, yaw=yaw, margin=0.0)
+    return int(sum(1 for flag in mask if flag))
+
+
+#: A placed box is evidenced by points of the integrating view that lie on
+#: its upper half. XY slack covers the 0.05 m commit tolerance's inner
+#: half; Z slack covers top-face noise. Points of a box underneath sit
+#: below the new box's centre plane, so stacking cannot borrow them.
+EVIDENCE_XY_MARGIN_M = 0.03
+EVIDENCE_Z_MARGIN_M = 0.03
+MIN_EVIDENCE_POINTS = 3
+
+
+def new_box_evidence_points(points, center, size, yaw):
+    """Count of this view's points on the upper half of a placed box.
+
+    ``points`` are the points the integration itself observed (container
+    frame), never the accumulated map. This is evidence that the new box
+    is present at its committed pose, not a measurement of its full
+    geometry; geometry stays the committed ledger record.
+    """
+    # Z range [centre, top + margin]: the upper half only.
+    upper = 0.5 * float(size[2]) + EVIDENCE_Z_MARGIN_M
+    sub_center = (float(center[0]), float(center[1]),
+                  float(center[2]) + 0.5 * upper)
+    sub_size = (float(size[0]) + 2.0 * EVIDENCE_XY_MARGIN_M,
+                float(size[1]) + 2.0 * EVIDENCE_XY_MARGIN_M,
+                upper)
+    mask = box_point_mask(points, sub_center, sub_size, yaw=yaw, margin=0.0)
+    return int(sum(1 for flag in mask if flag))
+
+
+def container_pose_moved(before, after, tol_m=0.01, tol_rad=0.02):
+    """True when the container pose differs enough to need reconfirmation."""
+    if not before or not after:
+        return False
+    translation = [
+        abs(float(a) - float(b))
+        for a, b in zip(before.get("translation") or [],
+                        after.get("translation") or [])]
+    rotation = [
+        abs(float(a) - float(b))
+        for a, b in zip(before.get("rotation_rpy") or [],
+                        after.get("rotation_rpy") or [])]
+    return any(delta > float(tol_m) for delta in translation) or any(
+        delta > float(tol_rad) for delta in rotation)
+
+
 def finite_points(points):
     """Nx3 float array with non-finite rows dropped. Empty input -> (0, 3)."""
     import numpy as np
@@ -174,6 +270,9 @@ def apply_integrate(mapper, points, origin, voxel_size=None):
         "latency_sec": time.monotonic() - t0,
         "revision_before": before,
         "revision_after": after,
+        # What this view itself observed; confirmation reads this, never
+        # the accumulated map.
+        "observed_points": kept,
     }
 
 
@@ -192,6 +291,33 @@ def _column_height_grid(surface):
     if "height_above_floor" in (surface or {}):
         return surface.get("height_above_floor") or []
     return (surface or {}).get("height") or []
+
+
+def _column_height_digest(surface, cells_i, cells_j, cell_states):
+    """Digest of occupied column tops. Empty when the grid has no heights.
+
+    A partial grid is also empty: a digest that silently drops cells
+    would make two different maps look identical.
+    """
+    from st09_contracts._base import digest_of
+
+    heights = _column_height_grid(surface)
+    if not heights:
+        return ""
+    triples = []
+    for index, state in enumerate(cell_states):
+        if str(state) != "occupied":
+            continue
+        row = int(cells_i[index])
+        column = int(cells_j[index])
+        try:
+            value = float(heights[row][column])
+        except (IndexError, TypeError, ValueError):
+            return ""
+        triples.append((row, column, round(value, 6)))
+    if not triples:
+        return ""
+    return digest_of(tuple(triples))
 
 
 def footprint_sensor_height(surface, aabb_xy):
@@ -497,11 +623,16 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
         commit_revision=int(surface_map.get("commit_revision", 1)),
         occupancy_digest=digest_of(tuple(cells_i), tuple(cells_j),
                                    tuple(cell_states)),
+        column_height_digest=_column_height_digest(
+            surface_map, cells_i, cells_j, cell_states),
         resolution_m=resolution,
         origin_xy=(origin_x, origin_y),
         cells_i=tuple(cells_i),
         cells_j=tuple(cells_j),
         cell_states=tuple(cell_states),
+        occupancy_confirmed=bool(
+            surface_map.get("occupancy_confirmed", True)),
+        change_event=str(surface_map.get("change_event") or ""),
     )
 
 
@@ -609,6 +740,8 @@ def integrate_view_with_report(snapshot, requirement, view_payload):
         cells_i=cells_i,
         cells_j=cells_j,
         cell_states=cell_states,
+        occupancy_confirmed=True,
+        change_event="",
     )
 
     required = set(requirement.missing_cells) if requirement is not None \

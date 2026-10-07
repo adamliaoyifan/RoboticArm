@@ -267,7 +267,8 @@ def _reject(response, error):
     return response
 
 
-def fill_select_response_route(message, response, producer):
+def fill_select_response_route(message, response, producer,
+                               surface_validity=None):
     """Route-mode select: the producer's certified legs are the answer.
 
     The request is admitted exactly as in the legacy path; the measured
@@ -279,6 +280,11 @@ def fill_select_response_route(message, response, producer):
 
     try:
         request = request_dict(message)
+        if surface_validity:
+            request["surface"]["occupancy_confirmed"] = bool(
+                surface_validity.get("occupancy_confirmed", True))
+            request["surface"]["change_event"] = str(
+                surface_validity.get("change_event") or "")
         generation = int(request.get("generation") or 0)
         register_attach_from_request(
             producer.attachment_provider, request,

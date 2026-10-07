@@ -158,6 +158,13 @@ feasibility. An atlas miss, a failed atlas seed, or a sampled-cell IK
 failure is not proof that the continuous configuration space has no
 route; online IK, collision checking and certification decide.
 
+Certification of one whole route is one `ValidateRouteV2` request.
+`CERT_BUDGET_S` is 2 seconds of service time, measured from callback
+entry through the last leg. Edge construction is outside that clock.
+The selector's wall clock includes scene composition and must not
+reject a route whose `service_time_ns` is inside the budget. A service
+that does not answer is still bounded by the 5 second client timeout.
+
 Route search (`grid_path_search` / `route_producer`) is state-conditioned:
 
 - Every hop is solved from the **actual frontier joint state** (the real

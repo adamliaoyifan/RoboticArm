@@ -26,7 +26,6 @@ from luggage_description.scene_tf_config_utils import (
     origin_in_world,
     resolve_scene_tf_config_path,
 )
-from luggage_planning.atlas_prior import prior_for_targets
 from luggage_planning.atlas_runtime import (
     certification_block_reason,
     compute_reachability_scene_hash,
@@ -284,240 +283,52 @@ class TrajectorySelectorNode(Node):
             {"error": "v1 selection removed; use select_place_path_v2"})
         return response
 
-    def _route_producer_or_none(self):
-        """Build the unified route producer once, on first use.
+    def _fetch_cargo_map_stats(self):
+        """Cargo-map stats for admission, or None when the service fails.
 
-        All collaborators are the accepted components: B's graph/edge
-        builder, C's certifier/revalidator via the real MoveIt validity
-        adapter, D's measured provider, and the offline URDF/IK stack.
+        Stamp, source, placed count, observation, revision, and geometry
+        hash come from ``/cargo_map/get_stats``. A missing piece fails
+        revalidation closed.
         """
+        import threading
+
+        from luggage_msgs.srv import GetCargoMapStats
+
+        if not hasattr(self, "_stats_client"):
+            self._stats_client = self.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats")
+        if not self._stats_client.wait_for_service(timeout_sec=1.0):
+            return None
+        event = threading.Event()
+        future = self._stats_client.call_async(GetCargoMapStats.Request())
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout=2.0) or not future.done():
+            return None
+        stats = future.result()
+        if stats is None or not stats.success:
+            return None
+        return {
+            "success": True,
+            "last_acquisition_stamp_ns": int(stats.last_acquisition_stamp_ns),
+            "map_source": str(getattr(stats, "map_source", "") or ""),
+            "placed_count": int(getattr(stats, "placed_count", 0) or 0),
+            "cargo_observed": bool(getattr(stats, "cargo_observed", False)),
+            "map_revision": int(stats.map_revision),
+            "geometry_hash": str(stats.geometry_hash),
+        }
+
+    def _route_producer_or_none(self):
+        """Build the unified route producer once, on first use."""
         if self._route_producer is not None:
             return self._route_producer
-        from luggage_description.scene_tf_config_utils import (
-            container_opening_normal_in_world,
-            container_opening_target_point_in_world,
-            pedestal_dimensions,
-            pedestal_enabled,
+        from luggage_planning.route_producer_factory import (
+            build_production_route_producer,
         )
-        from luggage_planning.attachment_provider import (
-            MeasuredAttachmentProvider,
-        )
-        from luggage_planning.map_revalidation import MapRevalidator
-        from luggage_planning.moveit_edge_adapter import MoveItEdgeAdapter
-        from luggage_planning.moveit_state_validity import (
-            MoveItStateValidityAdapter,
-        )
-        from luggage_planning.offline_ik import load_urdf, refine_to_pose
-        from luggage_planning.planning_scene_client import PlanningSceneClient
-        from luggage_planning.reachable_graph import (
-            RouteGraph,
-            make_offline_fk,
-        )
-        from luggage_planning.route_producer import RouteProducer
-        from luggage_planning.route_producer import (
-            certification_policy_from_contract,
-            revalidation_policy_from_contract,
-        )
-        from luggage_planning.trajectory_certifier import TrajectoryCertifier
-        import json as _json
 
-        try:
-            from ament_index_python.packages import get_package_share_directory
-
-            contract_path = os.path.join(
-                get_package_share_directory("st09_contracts"),
-                "resolved_planning_contract.json")
-            with open(contract_path, encoding="utf-8") as handle:
-                contract_document = _json.load(handle)
-            cert_policy = certification_policy_from_contract(
-                contract_document)
-            revalidation_policy = revalidation_policy_from_contract(
-                contract_document)
-        except Exception:  # noqa: BLE001 - fail closed to C defaults
-            self.get_logger().error(
-                "route: resolved contract unavailable; refusing to plan")
-            return None
-
-        urdf = load_urdf(scene_tf_config=self._scene_tf_path)
-        # path_to returns the JOINT sequence to the TCP link (tcp() FK
-        # walks joints; the link name itself is not a joint).
-        tcp_path = urdf.path_to("suction_contact_frame")
-        fk = make_offline_fk(urdf, tcp_path)
-        scene_client = PlanningSceneClient(self)
-
-        def latest_snapshot():
-            """Fresh mapper state at admission time — never the planned
-            snapshot. Stats supply map_source, placed_count, whether a
-            cargo view was integrated, and the acquisition stamp. Stamp
-            0 is legal only for static_empty with no placed boxes and
-            no observation. The grid is the latched v1 surface. Any
-            unavailable piece fails the revalidation closed."""
-            import threading
-
-            from luggage_msgs.srv import GetCargoMapStats
-            from luggage_perception.cargo_view_integration import (
-                planning_snapshot_from_surface,
-            )
-
-            surface = dict(self._surface or {})
-            if not surface:
-                return None
-            if not hasattr(self, "_stats_client"):
-                self._stats_client = self.create_client(
-                    GetCargoMapStats, "/cargo_map/get_stats")
-            if not self._stats_client.wait_for_service(timeout_sec=1.0):
-                return None
-            event = threading.Event()
-            future = self._stats_client.call_async(
-                GetCargoMapStats.Request())
-            future.add_done_callback(lambda _f: event.set())
-            if not event.wait(timeout=2.0) or not future.done():
-                return None
-            stats = future.result()
-            if not stats.success:
-                return None
-            surface.update({
-                "acquisition_stamp_ns": int(
-                    stats.last_acquisition_stamp_ns),
-                "map_source": str(getattr(stats, "map_source", "") or ""),
-                "placed_count": int(getattr(stats, "placed_count", 0) or 0),
-                "cargo_observed": bool(
-                    getattr(stats, "cargo_observed", False)),
-                "map_revision": int(stats.map_revision),
-                # same fallback the planned snapshot uses (the v1 dict
-                # carries no separate commit ledger revision)
-                "commit_revision": int(stats.map_revision),
-                "geometry_hash": str(stats.geometry_hash),
-            })
-            return planning_snapshot_from_surface(
-                surface,
-                scene_revision=str(
-                    self.get_parameter("frame_scene_revision").value or ""),
-                request_id="latest-snapshot")
-
-        def refine(position, quaternion, seed):
-            return refine_to_pose(urdf, tcp_path, position, quaternion,
-                                  seed, pos_tol=2e-3, rot_tol=2e-2)
-
-        def atlas_prior(targets, request):
-            """[ST09-I P3] data-driven reachability prior (empty-load
-            atlas: arm truth without payload-envelope conservatism).
-
-            Queries the REAL TCP targets — the ones
-            ``_expand_targets`` synthesized through the measured
-            attachment (T_world_box x inverse(T_tcp_box): grasp yaw
-            deviation, eccentric XY, and the actual tool rotation are
-            all composed in) — never the raw slot box pose. Status
-            codes: 3 REACHABLE / 2 MARGINAL / 1 UNREACHABLE / 0
-            UNKNOWN. A candidate is reported unreachable ONLY when
-            EVERY allowed TCP target queries as sampled-unreachable;
-            any miss stays unknown — atlas miss is unknown, never
-            unreachable. Reachable targets return their contact seeds
-            (the atlas' own sampled solutions) for the goal IK, which
-            re-refines every seed onto the exact real target and FK
-            verifies. MoveIt and certification stay the authority for
-            every leg that actually runs.
-            """
-            atlas, diag = self._runtime_atlas()
-            producer = getattr(self, "_route_producer", None)
-            if producer is not None:
-                diag = diag or {}
-                producer.last_atlas_diag = {
-                    "loaded": bool(diag.get("loaded")),
-                    "reason": diag.get("reason"),
-                    "hash_message": diag.get("hash_message"),
-                    "scene_tf_ok": diag.get("scene_tf_ok"),
-                    "urdf_ok": diag.get("urdf_ok"),
-                    "scene_tf_hash": self._scene_tf_hash,
-                    "urdf_hash": (
-                        self._urdf_identity.hash
-                        if self._urdf_identity.ready else ""),
-                    "query_offset": [
-                        float(v) for v in (
-                            self._atlas_cfg.get("query_offset") or [])],
-                }
-            if atlas is None or not targets:
-                return None
-            try:
-                # World TCP -> container frame, then the shared status
-                # rule. The configured query_offset is recorded and is
-                # not added here: this query is the synthesized TCP.
-                prior = prior_for_targets(
-                    targets, request["container_transform"], atlas.query)
-            except Exception:  # noqa: BLE001 - prior fails open
-                return {"verdict": "unknown", "seeds": []}
-            # hash_policy is the atlas identity check at load time. It
-            # does not forbid online IK where the atlas has no confident
-            # interior reject. hard_reject_safe is that reject.
-            return prior
-
-        def validity_factory(*, scene_states, edges):
-            adapter = MoveItStateValidityAdapter(
-                self, fk=fk, scene_client=scene_client,
-                log=lambda message: self.get_logger().info(message))
-            adapter.load_edges(edges, scene_states=scene_states)
-            return adapter
-
-        def lattice_checker_factory(*, scene_states, start_q):
-            from luggage_planning.lattice_route import LatticeStateChecker
-
-            return LatticeStateChecker(
-                self, scene_client, scene_states, start_q)
-
-        from luggage_planning.grid_path_search import route_budget_ns
-
-        box_count = int(self.get_parameter("box_count").value or 1)
-        budget_ns = route_budget_ns(box_count)
-        self.get_logger().info(
-            "route budget %.0fs for %d box(es)" % (
-                budget_ns / 1e9, box_count))
-
-        self._route_producer = RouteProducer(
-            graph=RouteGraph(static_identity="st09-i-route:%s" %
-                             self._scene_tf_hash),
-            edge_builder=MoveItEdgeAdapter(self, scene_client=scene_client),
-            certifier=TrajectoryCertifier(),
-            cert_policy=cert_policy,
-            validity_adapter_factory=validity_factory,
-            attachment_provider=MeasuredAttachmentProvider(
-                str(self.get_parameter("frame_scene_revision").value
-                    or "scene-runtime"), "route-selector",
-                tcp_frame="suction_contact_frame", box_frame="box",
-                max_age_ns=budget_ns),
-            budget_ns=budget_ns,
-            revalidator=MapRevalidator(revalidation_policy),
-            latest_snapshot_fn=latest_snapshot,
-            fk=fk, refine=refine, urdf=urdf, tcp_path=tcp_path,
-            clock_ns=lambda: self.get_clock().now().nanoseconds,
-            log=lambda message: self.get_logger().info(message),
-            opening_info={
-                "point": container_opening_target_point_in_world(self._scene),
-                "normal": container_opening_normal_in_world(self._scene),
-            },
-            # [ST09-I loop] the pedestal top is the open-air transit
-            # floor: with it the route seeds a high staging anchor so
-            # the carried payload never drags across the pedestal.
-            transit_clearance_z=(
-                pedestal_dimensions(self._scene)[2]
-                if pedestal_enabled(self._scene) else None),
-            atlas_prior=atlas_prior,
-            # [ST09-I S5.7-6] carrying admission window: the producer
-            # reads the latched authoritative vacuum state (None until
-            # the first message arrives — fail-closed upstream).
-            vacuum_state_fn=lambda: (
-                dict(self._vacuum_state)
-                if getattr(self, "_vacuum_state", None) is not None
-                else None),
-            # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (None
-            # when unconfigured — the producer refuses by name).
-            site_poses_fn=self._site_poses,
-            # [ST09-I S5.7-6 §2] EnsureCycleStartV2 adjudication inputs.
-            scene_config=self._scene,
-            scene_revision_binding=str(
-                self.get_parameter("frame_scene_revision").value or ""),
-            corridor_planner=str(
-                self.get_parameter("corridor_planner").value or "graph"),
-            lattice_checker_factory=lattice_checker_factory)
+        self._route_producer = build_production_route_producer(
+            self, self._scene_tf_path,
+            lambda: self._surface,
+            self._fetch_cargo_map_stats)
         return self._route_producer
 
     def _verify_selected(self, request, response):
@@ -881,8 +692,14 @@ class TrajectorySelectorNode(Node):
             return response
         from luggage_planning.place_service import fill_select_response_route
         try:
+            latched = getattr(self, "_surface", None) or {}
             response = fill_select_response_route(
-                request, response, producer=producer)
+                request, response, producer=producer,
+                surface_validity={
+                    "occupancy_confirmed": latched.get(
+                        "occupancy_confirmed", True),
+                    "change_event": latched.get("change_event") or "",
+                })
         except Exception as error:  # noqa: BLE001 - service boundary
             # A refused request carries its own named reason; an
             # UNEXPECTED exception must still never kill the node (an

@@ -51,6 +51,7 @@ from luggage_planning.route_producer import (  # noqa: E402
     _soft_sampled_unreachable,
     admit_attachment_for_route,
     attempt_tier,
+    certification_exceeded,
     candidate_from_slot,
     leg_records,
     near_opening_cut,
@@ -239,6 +240,27 @@ class TestSurfaceBridge:
         assert surface_map["state"] == [["free", "free"], ["free", "free"]]
         assert surface_map["geometry_hash"] == "geo-1"
         assert surface_map["map_revision"] == 1
+
+    def test_column_height_changes_are_a_different_digest(self):
+        from luggage_perception.cargo_view_integration import (
+            planning_snapshot_from_surface,
+        )
+
+        request = make_request()
+        request["surface"]["state"] = [
+            ["occupied", "free"], ["free", "free"]]
+        request["surface"]["height"] = [[0.25, 0.0], [0.0, 0.0]]
+        low = planning_snapshot_from_surface(
+            surface_map_from_contract(request["surface"], request),
+            scene_revision="scene-1", request_id="req-i-1")
+        request["surface"]["height"] = [[0.30, 0.0], [0.0, 0.0]]
+        high = planning_snapshot_from_surface(
+            surface_map_from_contract(request["surface"], request),
+            scene_revision="scene-1", request_id="req-i-1")
+        assert low.column_height_digest
+        assert low.column_height_digest != high.column_height_digest
+        assert low.occupancy_digest == high.occupancy_digest
+        assert low.geometry_hash == high.geometry_hash
 
 
 class TestRegisterAttach:
@@ -672,6 +694,28 @@ class TestMapStaleRefresh:
         assert result["rows"][-1]["reason"] == "ATTEMPT_SUMMARY"
         assert result["rows"][-1]["tried_slot_indices"] == [0]
 
+    def test_repeated_stale_does_not_try_the_next_slot(self):
+        producer, _clock = build_producer()
+        rev, state = self._rev(["stale", "stale"])
+        producer.revalidator = rev
+        request = make_request(slots=[
+            {"position": [0.20, -0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "cand-0"},
+            {"position": [0.30, -0.10, 0.14],
+             "quaternion_xyzw": [0.0, 0.0, 0.0, 1.0],
+             "request_id": "cand-1"},
+        ])
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["reason_code"] == "MAP_STALE_REPEATED"
+        assert state["n"] == 2
+        summary = result["rows"][-1]
+        assert summary["n_tried"] == 1
+        assert summary["tried_slot_indices"] == [0]
+
 
 def _live_snapshot(request, stamp_ns, source, placed=0, observed=False):
     import dataclasses
@@ -722,7 +766,7 @@ class TestAcquisitionStampAdmission:
         assert refusal["map_source"] == "release_integrated"
         assert refusal["placed_count"] == 1
         assert refusal["last_acquisition_stamp_ns"] == 0
-        assert refusal["freshness_policy"] == "acquisition_age"
+        assert refusal["freshness_policy"] == "acquisition_stamp"
         assert refusal["why_allowed"] == ""
         assert refusal["why_refused"] == "acquisition_stamp_required"
         assert refusal["legs"]
@@ -742,7 +786,7 @@ class TestAcquisitionStampAdmission:
         assert state["n"] == 2
         assert result["rows"][0]["map_refresh"] == "fresh_snapshot_accepted"
         admission = result["rows"][0]["map_admission"]
-        assert admission["why_allowed"] == "release_integrated_within_window"
+        assert admission["why_allowed"] == "confirmed_occupancy"
         assert admission["placed_count"] == 1
 
     def test_static_empty_first_box_is_admitted(self):
@@ -788,7 +832,7 @@ class TestAcquisitionStampAdmission:
         assert result["success"], result["rows"]
         assert state["n"] == 1
         assert result["rows"][0]["map_admission"]["why_allowed"] == \
-            "measured_within_window"
+            "confirmed_occupancy"
 
 
 class TestPlanPlaceRoute:
@@ -860,6 +904,144 @@ class TestPlanPlaceRoute:
         result = producer.plan_place_route(request)
         assert not result["success"]
         assert result["reason_code"] == "ATTACHMENT_MISSING"
+
+    def test_age_after_integration_does_not_block_search(self):
+        producer, clock = build_producer()
+        request = make_request(stamp_s=1000.0)
+        request["surface"]["map_source"] = "measured"
+        request["surface"]["cargo_observed"] = True
+        request["surface"]["occupancy_confirmed"] = True
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        clock.advance_s(30.0)
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("reason_code")
+        assert result["rows"][0]["map_admission"]["why_allowed"] == \
+            "confirmed_occupancy"
+        assert result["rows"][0]["map_admission"]["age_exceeds_window"] is True
+        assert result["rows"][0]["map_admission"][
+            "last_acquisition_stamp_ns"] == 1_000_000_000_000
+
+    def test_entry_does_not_judge_identity_the_request_surface_lacks(self):
+        """The request surface has no map source or stamp of its own.
+
+        Whole-chain regression: the entry gate once judged the message
+        snapshot (source "", stamp 0) and refused a map the authoritative
+        snapshot admits.
+        """
+        from luggage_perception.cargo_view_integration import (
+            planning_snapshot_from_surface,
+        )
+
+        producer, _clock = build_producer()
+        request = make_request(stamp_s=1000.0)
+        request["surface"]["stamp_ns"] = 0
+        request["surface"].pop("map_source", None)
+        authoritative = planning_snapshot_from_surface(
+            surface_map_from_contract(dict(
+                request["surface"], stamp_ns=1_000_000_000_000,
+                map_source="measured", cargo_observed=True), request),
+            scene_revision=request["scene_revision"],
+            request_id=request["request_id"])
+        producer.latest_snapshot_fn = lambda: authoritative
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("reason_code")
+
+    def test_change_event_blocks_search_until_reconfirmed(self):
+        producer, _clock = build_producer()
+        request = make_request(stamp_s=1000.0)
+        request["surface"]["map_source"] = "measured"
+        request["surface"]["cargo_observed"] = True
+        request["surface"]["occupancy_confirmed"] = False
+        request["surface"]["change_event"] = "box_placed"
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["reason_code"] == "MAP_CONFIRMATION_REQUIRED"
+        assert producer.edge_builder.calls == []
+        assert result["rows"][0]["map_admission"]["change_event"] == \
+            "box_placed"
+
+    def test_entry_gate_follows_the_mappers_published_pending_state(self):
+        """The refusal reads the real mapper surface fields end to end."""
+        from luggage_perception.occupancy_confirmation import (
+            PendingConfirmation,
+        )
+
+        pending = PendingConfirmation(True)
+        change_ns = 1_000_000_000_000
+        pending.record("box_placed", change_ns, (
+            [0.0, 0.0, 0.1], [0.2, 0.2, 0.2], 0.0))
+
+        def request_with(fields):
+            request = make_request(stamp_s=1000.0)
+            request["surface"]["map_source"] = "measured"
+            request["surface"]["cargo_observed"] = True
+            request["surface"].update(fields)
+            return request
+
+        producer, clock = build_producer()
+        request = request_with(pending.surface_fields())
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        refused = producer.plan_place_route(request)
+        assert refused["reason_code"] == "MAP_CONFIRMATION_REQUIRED"
+        assert producer.edge_builder.calls == []
+
+        # A view that does not observe the box leaves the published state
+        # pending; the refusal stands.
+        elsewhere = [[0.4 + 0.02 * i, 0.3, 0.1] for i in range(6)]
+        assert pending.settle(
+            pending.begin(), change_ns + 1, elsewhere, True) == []
+        assert request_with(pending.surface_fields())["surface"][
+            "occupancy_confirmed"] is False
+
+        # A settled post-change view with points on the box confirms it,
+        # and the map stays valid however long planning then takes.
+        on_box = [[0.02 * i - 0.05, 0.0, 0.18] for i in range(6)]
+        assert pending.settle(
+            pending.begin(), change_ns + 2, on_box, True)
+        producer, clock = build_producer()
+        request = request_with(pending.surface_fields())
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        clock.advance_s(30.0)
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("reason_code")
+
+    def test_search_time_does_not_age_the_admitted_snapshot(self):
+        from luggage_perception.cargo_view_integration import (
+            planning_snapshot_from_surface,
+        )
+
+        producer, clock = build_producer()
+        producer.revalidator = MapRevalidator(
+            RevalidationPolicy(max_snapshot_age_ns=10_000_000_000))
+        request = make_request(stamp_s=1000.0)
+        request["surface"]["map_source"] = "measured"
+        request["surface"]["cargo_observed"] = True
+        snapshot = planning_snapshot_from_surface(
+            surface_map_from_contract(request["surface"], request),
+            scene_revision=request["scene_revision"],
+            request_id=request["request_id"])
+
+        def latest():
+            clock.advance_s(30.0)
+            return snapshot
+
+        producer.latest_snapshot_fn = latest
+        register_attach_from_request(
+            producer.attachment_provider, request,
+            box_wdh=request["box_wdh"])
+        result = producer.plan_place_route(request)
+        assert result["success"], result.get("reason_code")
 
     def test_budget_exhaustion_never_bin_full(self):
         producer, clock = build_producer()
@@ -1421,6 +1603,12 @@ class TestTieredRouteAdmission:
         assert built.index("s221") < built.index("deep")
         assert built.index("s704") < built.index("deep")
         assert "hard" not in built
+
+    def test_cert_budget_is_service_time_when_the_service_reports_it(self):
+        assert certification_exceeded(0.53, 2.4) is False
+        assert certification_exceeded(2.1, 2.1) is True
+        assert certification_exceeded(None, 2.4) is True
+        assert certification_exceeded(None, 0.4) is False
 
     def test_route_completeness_names_the_missing_part(self):
         producer, _clock = build_producer()
