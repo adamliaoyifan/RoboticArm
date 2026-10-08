@@ -40,6 +40,11 @@ pose {
 """
 
 
+def test_stamp_does_not_read_sec_out_of_nsec():
+    text = "header {\n  stamp {\n    nsec: 990000000\n  }\n}\n"
+    assert cap._header_stamp(text) == 0.99
+
+
 def test_contact_parser_keeps_pairs_depth_and_force():
     rows = cap.parse_contacts(CONTACT)
     assert len(rows) == 2

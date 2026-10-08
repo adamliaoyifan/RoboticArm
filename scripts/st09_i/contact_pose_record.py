@@ -123,8 +123,24 @@ def main(argv=None):
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
+    def poll_pose():
+        # One message at a time. A streaming subscriber of pose/info reads
+        # every model at the broadcaster rate and starved the semantic
+        # prewarm echo on contact_capture01 (no stats for 100 attempts,
+        # and the pose file held a single snapshot).
+        while not stop.is_set():
+            try:
+                proc = subprocess.run(
+                    ["ign", "topic", "-e", "-t", args.pose_topic, "--num", "1"],
+                    capture_output=True, text=True, timeout=3, check=False)
+            except subprocess.TimeoutExpired:
+                continue
+            if proc.stdout:
+                on_pose(proc.stdout)
+            time.sleep(0.05)
+
     threads = [
-        threading.Thread(target=pump, args=(args.pose_topic, on_pose), daemon=True),
+        threading.Thread(target=poll_pose, daemon=True),
         threading.Thread(target=pump, args=(args.contact_topic, on_contact), daemon=True),
     ]
     # pump appends its process to ``children``; patch it closed over above.

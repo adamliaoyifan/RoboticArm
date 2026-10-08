@@ -50,8 +50,11 @@ def brace_blocks(text, name):
 
 def _num(body, key):
     import re
+    # ``nsec`` contains the letters ``sec``; the key must not match inside it.
+    # A missing field is the protobuf default 0 (gz omits sec when it is 0).
     match = re.search(
-        r"%s:\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)" % key, body)
+        r"(?<![A-Za-z_])%s:\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)" % key,
+        body)
     return float(match.group(1)) if match else 0.0
 
 
