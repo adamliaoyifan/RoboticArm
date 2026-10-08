@@ -2332,6 +2332,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 "ELFIN_CONTACT_STATUS", ""),
             now=time.time(),
         )
+        token = os.environ.get("ELFIN_GZ_STRIP_PANEL_COLLISION", "").strip()
+        if token:
+            from luggage_description.gazebo_spawn_collision import (
+                panel_collision_absent)
+            strip_ok, strip_detail = panel_collision_absent(
+                os.environ.get("ELFIN_ROBOT_URDF", "/tmp/elfin_s20_gazebo.urdf"),
+                token)
+            detail["strip"] = strip_detail
+            ready = ready and strip_ok
         trial.extras["contact_capture_gate"] = detail
         extras["contact_capture_gate.json"] = json.dumps(detail)
         if ready:

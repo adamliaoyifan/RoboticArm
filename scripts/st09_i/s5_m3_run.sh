@@ -113,6 +113,11 @@ if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" ]]; then
   export ELFIN_CONTACT_STATUS="$OUT/contact_capture/recorder_status.json"
   export ELFIN_ST09_SCRIPTS="$WS/scripts/st09_i"
 fi
+# One collision, Gazebo spawn file only. Unset means the full panel stays.
+if [[ -n "${M3_STRIP_PANEL_COLLISION:-}" ]]; then
+  export ELFIN_GZ_STRIP_PANEL_COLLISION="$M3_STRIP_PANEL_COLLISION"
+  echo "{\"strip_mesh\": \"$M3_STRIP_PANEL_COLLISION\"}" > "$OUT/panel_strip.json"
+fi
 if [[ "$residuals" -ne 0 ]]; then
   echo "residual sim/bridge processes ($residuals); refusing to launch" >&2
   exit 1

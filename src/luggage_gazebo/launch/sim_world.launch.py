@@ -462,6 +462,19 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
         ]
         + list(initial_joint_args),
     )
+    # Diagnostic only. MoveIt and the frame identity use the unstripped
+    # expansion above. This file is what `ros_gz_sim create` spawns.
+    strip_token = os.environ.get("ELFIN_GZ_STRIP_PANEL_COLLISION", "").strip()
+    if strip_token:
+        from luggage_description.gazebo_spawn_collision import (
+            strip_link_collision_mesh)
+        urdf_xml, removed = strip_link_collision_mesh(
+            urdf_xml, "suction_panel", strip_token)
+        if removed != 1:
+            raise RuntimeError(
+                "ELFIN_GZ_STRIP_PANEL_COLLISION=%s removed %d suction "
+                "collisions; expected 1, so Gazebo was not started"
+                % (strip_token, removed))
     urdf_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "elfin_s20_gazebo.urdf")
     with open(urdf_file, "w", encoding="utf-8") as handle:
         handle.write(urdf_xml)
