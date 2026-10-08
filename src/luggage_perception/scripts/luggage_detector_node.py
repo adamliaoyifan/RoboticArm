@@ -1749,9 +1749,30 @@ class LuggageDetector(Node):
             msg.box = box
         return msg
 
+    def _instance_positive_pixels(self, key):
+        """Positive instance-mask pixels at ``key``, or None if that stamp
+        has no mask. An all-zero mask is 0, not a missing mask.
+        """
+        with self._raw_lock:
+            msg = self._instance_mask_buffer.get(key)
+        if msg is None:
+            return None
+        arr = adapters.mono16_array_from_msg(msg)
+        if arr is None:
+            return None
+        return int(np.count_nonzero(arr))
+
     def _emit_joined(self, yolo_msg, cloud_msg):
         fields, box, support = self._pca_from_cloud_msg(
             cloud_msg, yolo_msg=yolo_msg)
+        from luggage_perception.target_association import (
+            target_association_ambiguous)
+        n_det = len(getattr(yolo_msg, "detections", None) or ())
+        inst_px = self._instance_positive_pixels(
+            stamp_key(cloud_msg.header.stamp))
+        if target_association_ambiguous(n_det, inst_px):
+            fields = dict(fields)
+            fields["pca_reason"] = "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"
         if not fields["pca_valid"]:
             reason = fields["pca_reason"]
             if reason in (
@@ -1919,6 +1940,11 @@ class LuggageDetector(Node):
         if not frame.pca_valid:
             self._last_failure_reason = str(
                 frame.pca_reason or "DETECT_ESTIMATION_FAILED")
+            return None, float(frame.pca_confidence)
+        if str(frame.pca_reason) == "DETECT_TARGET_ASSOCIATION_AMBIGUOUS":
+            # Support may already be ok. This frame is still not a pick.
+            # latest() does not walk back to an older row.
+            self._last_failure_reason = "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"
             return None, float(frame.pca_confidence)
         if self._acquisition_unsettled(frame.header.stamp):
             self._last_failure_reason = "geometry_not_settled"

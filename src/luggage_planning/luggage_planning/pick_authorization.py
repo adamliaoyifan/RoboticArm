@@ -39,6 +39,9 @@ WAIT_FOR_FULL_3D = "WAIT_FOR_FULL_3D"
 
 HOLD_TRACK_GATE = "hold_track"
 HOLD_TRACK_SUPPORT = "DETECT_SUPPORT_STAMP_MISMATCH"
+# Same string as luggage_perception.target_association. An unbound
+# multi-detection measure is not a pick, even when support passed.
+DETECT_TARGET_ASSOCIATION_AMBIGUOUS = "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"
 
 # The wait is the elapsed window. Samples are one detect plus one per
 # wait period, so the attempt cap must not close the window early:
@@ -229,13 +232,24 @@ def authorized_pick_boundary(pick_fields, *, authorized, detect_reason,
     }
 
 
+def is_target_association_ambiguous(box, detect_reason=""):
+    """The reason is carried on this sample, not borrowed from another frame."""
+    if DETECT_TARGET_ASSOCIATION_AMBIGUOUS in str(detect_reason or ""):
+        return True
+    return str(getattr(box, "pca_reason", "") or "") == (
+        DETECT_TARGET_ASSOCIATION_AMBIGUOUS)
+
+
 def pick_authorized(box, detect_reason=""):
     """True only for a measured top plus measured support plane.
 
     Continuity output never qualifies, even if height fields were copied
-    forward from an older measure.
+    forward from an older measure. An unbound multi-detection measure does
+    not qualify either: support passing does not make that cloud one suitcase.
     """
     if box is None or is_continuity_hold(box, detect_reason):
+        return False
+    if is_target_association_ambiguous(box, detect_reason):
         return False
     return (
         bool(getattr(box, "top_surface_valid", False))

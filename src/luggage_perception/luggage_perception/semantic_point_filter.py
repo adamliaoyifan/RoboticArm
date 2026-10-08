@@ -478,10 +478,13 @@ class SemanticPointFilter:
         cargo_sel = _sel(self.cargo_labels) & ~excl
         inst_arr = None
         primary_id = None
+        unbound_seed = None
         if instance_map is not None:
             inst_arr = np.asarray(instance_map)
             primary_id = primary_cargo_instance_id(inst_arr, cargo_sel)
-            if primary_id is not None:
+            if primary_id is None:
+                unbound_seed = cargo_sel.copy()
+            else:
                 cargo_sel = cargo_sel & (inst_arr == primary_id)
         blocked = excl | (label_arr == _LABEL_ROBOT_ARM) \
             | (label_arr == _LABEL_CONTAINER_WALL)
@@ -551,6 +554,18 @@ class SemanticPointFilter:
                 cargo_pts = points
             else:
                 obstacle_pts = points
+        self._unbound_seed_points = None
+        if unbound_seed is not None and np.any(unbound_seed):
+            published = np.array(cargo_pts, copy=True)
+            vu, uu = np.nonzero(unbound_seed)
+            if stride > 1 and uu.size:
+                vu = vu[::stride]
+                uu = uu[::stride]
+            if uu.size:
+                seed_pts, _ = deproject_selected(
+                    depth, uu, vu, intr, out=scratch["cargo"])
+                self._unbound_seed_points = np.array(seed_pts, copy=True)
+            cargo_pts = published
         raw_px = int((cargo_sel | obstacle_sel).sum())
         self._last_stats = {
             "raw_count": raw_px,

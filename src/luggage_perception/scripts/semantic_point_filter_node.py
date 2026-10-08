@@ -27,6 +27,7 @@ hardware.
 from __future__ import division
 
 import json
+import os
 import threading
 import time
 
@@ -40,7 +41,10 @@ from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
 
+from luggage_msgs.msg import YoloDetections
 from luggage_perception import ros_message_adapters as adapters
+from luggage_perception.ambiguity_capture import (
+    AmbiguityCapture, selected_detection_index)
 from luggage_perception.cargo_instance_tracker import (
     SOURCE_EMPTY,
     SOURCE_MEASURE,
@@ -255,6 +259,12 @@ class SemanticPointFilterNode(Node):
         self.create_subscription(
             String, self.get_parameter("current_box_topic").value,
             self._on_current_box, stats_qos, callback_group=self._box_group)
+        self._ambiguity = AmbiguityCapture(os.environ.get(
+            "ELFIN_AMBIGUITY_CAPTURE", "/tmp/elfin_ambiguity_capture"))
+        self.create_subscription(
+            YoloDetections, "/luggage/semantic/yolo_detections",
+            self._on_yolo_for_ambiguity, sensor_qos,
+            callback_group=self._group)
 
         if self._stats_publish_interval_sec > 0.0:
             # PF-R9 B5: serialize stats off the sensor-callback path.
@@ -264,6 +274,19 @@ class SemanticPointFilterNode(Node):
         self.get_logger().info(
             "semantic_point_filter ready (extrinsics=%s, cargo_labels=%s)"
             % (self.get_parameter("extrinsics_source").value, self._cargo_labels))
+
+    def _on_yolo_for_ambiguity(self, msg):
+        """Same-stamp boxes. A later frame is a different key and cannot complete this one."""
+        dets = [{
+            "label": int(det.label),
+            "prompt": str(det.prompt),
+            "confidence": float(det.confidence),
+            "bbox": [int(v) for v in det.bbox],
+        } for det in msg.detections]
+        stamp_ns = (int(msg.header.stamp.sec) * 1000000000
+                    + int(msg.header.stamp.nanosec))
+        self._ambiguity.note_detections(
+            stamp_ns, dets, selected_detection_index(dets))
 
     def _on_stats_timer(self):
         if not self._stats_dirty:
@@ -620,6 +643,38 @@ class SemanticPointFilterNode(Node):
         if camera_pts.shape[0]:
             world_pts = self._to_world(camera_pts, frame_id, stamp)
             tf_miss = world_pts is None
+        if (instance_map is not None and instance_nonzero == 0
+                and camera_pts.shape[0]):
+            seed = getattr(filt, "_unbound_seed_points", None)
+            rt = self._lookup_rt(self._world_frame, frame_id, stamp)
+            tf = {}
+            if rt is not None:
+                rot, trans = rt
+                tf = {
+                    "rotation_row_major": [
+                        float(v) for row in np.asarray(rot) for v in row],
+                    "translation": [float(v) for v in trans],
+                }
+            self._ambiguity.note_measurement(
+                int(stamp.sec) * 1000000000 + int(stamp.nanosec), {
+                    "depth": np.array(depth, copy=True),
+                    "label_map": np.array(label_map, copy=True),
+                    "instance_map": np.array(instance_map, copy=True),
+                    "cargo_before": None if seed is None else np.array(
+                        seed, copy=True),
+                    "cargo_after": np.array(camera_pts, copy=True),
+                    "epoch": {
+                        "generation": int((acquire or {}).get(
+                            "generation", 0) or 0),
+                        "instance_id": str((acquire or {}).get(
+                            "instance_id", "") or ""),
+                    },
+                    "tf": tf,
+                    "frames": {
+                        "camera": frame_id,
+                        "world": self._world_frame,
+                    },
+                })
         after_tf = time.monotonic()
         yolo_instance_id = int(
             (filt.last_stats or {}).get("cargo_instance_id") or 0)

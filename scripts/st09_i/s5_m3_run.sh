@@ -100,6 +100,7 @@ mkdir -p "$OUT"
 bash "$WS/scripts/st09_i/kill_stack.sh" || true
 residuals=$(pgrep -af 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/parameter_bridge|clock_bridge|camera_bridge' 2>/dev/null | grep -v -e 'bash -c' -e 's5_m3_run.sh' | wc -l | tr -d ' ')
 log clean_room ", \"residual_processes\": $residuals"
+export ELFIN_AMBIGUITY_CAPTURE="$OUT/ambiguity"
 if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" ]]; then
   # Observation paths only. Set before launch so the spawner writes the
   # contact sensor into the carry SDF and the vacuum node logs set_pose.

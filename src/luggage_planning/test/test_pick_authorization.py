@@ -60,6 +60,43 @@ def _unstable_reason():
 
 class TestPickAuthorized(unittest.TestCase):
 
+    def test_unbound_measure_does_not_authorize_even_when_support_passed(self):
+        box = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+            pca_source="measure",
+            pca_reason="DETECT_TARGET_ASSOCIATION_AMBIGUOUS")
+        self.assertFalse(pick_authorized(
+            box, "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"))
+
+    def test_later_bound_frame_authorizes_inside_the_same_window(self):
+        # The wide frame would have passed support. It is refused. The next
+        # call is a different frame that is bound and support-valid. The
+        # earlier unstable 0.630 m frame is not offered to the loop.
+        samples = [
+            (False, None, "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"),
+            (True, _box(
+                height_valid=True,
+                height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+                pca_source="measure"), _measure_ok_reason()),
+        ]
+        clock = {"t": 0.0}
+
+        def detect():
+            return samples.pop(0)
+
+        def sleep(dt):
+            clock["t"] += float(dt)
+
+        result = run_authorization_loop(
+            detect, sleep, lambda: clock["t"],
+            policy=PickAuthorizationPolicy(AuthorizationConfig(
+                max_elapsed_sec=5.0, wait_period_sec=0.5, max_attempts=11)))
+        self.assertTrue(result.authorized)
+        self.assertEqual(result.attempts, 2)
+        self.assertEqual(result.trace[0]["action"], WAIT)
+        self.assertLess(result.decision.elapsed_sec, 5.0)
+
     def test_measured_support_authorizes(self):
         self.assertTrue(pick_authorized(_box(
             height_valid=True,
