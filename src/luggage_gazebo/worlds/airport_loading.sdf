@@ -64,6 +64,11 @@
     </plugin>
     <plugin filename="ignition-gazebo-user-commands-system"
             name="ignition::gazebo::systems::UserCommands"/>
+    <!-- Observation only: publishes contact-sensor data and writes no
+         force. With no contact sensor in the world it does nothing.
+         Source read: gz-sim ign-gazebo6 systems/contact/Contact.cc. -->
+    <plugin filename="ignition-gazebo-contact-system"
+            name="ignition::gazebo::systems::Contact"/>
     <plugin filename="ignition-gazebo-scene-broadcaster-system"
             name="ignition::gazebo::systems::SceneBroadcaster"/>
     <!-- Sensors system with GPU rendering: required by the D435 rgbd_camera

@@ -16,7 +16,10 @@ pose is computed from the locked offset.
 
 from __future__ import division
 
+import json
 import math
+import os
+import time
 
 
 def compose_pose(panel_xyz, panel_quat, offset_xyz, offset_quat):
@@ -271,11 +274,39 @@ class SimVacuumBackend(VacuumBackend):
                 xyz, quat = compose_pose(
                     panel_xyz, panel_quat, self._offset_xyz, self._offset_quat)
             ok, msg = self._gz.set_model_pose(self._model_name, xyz, quat)
+            self._write_follow_trace(
+                panel_xyz, panel_quat, xyz, quat, bool(ok), msg)
             if not ok:
                 return False, msg
         except Exception as exc:  # noqa: BLE001
             return False, "follow error: %s" % exc
         return True, ""
+
+    def _write_follow_trace(self, panel_xyz, panel_quat, box_xyz, box_quat,
+                            ok, message):
+        """Append one set_pose tick when ``ELFIN_FOLLOW_TRACE`` is set.
+
+        Observation only. A write failure must not change the follow.
+        """
+        path = os.environ.get("ELFIN_FOLLOW_TRACE", "").strip()
+        if not path:
+            return
+        try:
+            row = {
+                "wall": time.time(),
+                "mono": time.monotonic(),
+                "model": self._model_name,
+                "ok": bool(ok),
+                "message": str(message or ""),
+                "panel_xyz": [float(v) for v in panel_xyz],
+                "panel_quat": [float(v) for v in panel_quat],
+                "box_xyz": [float(v) for v in box_xyz],
+                "box_quat": [float(v) for v in box_quat],
+            }
+            with open(path, "a", encoding="utf-8") as handle:
+                handle.write(json.dumps(row) + "\n")
+        except (OSError, TypeError, ValueError):
+            return
 
     def _unlock_follow(self):
         """Stop kinematic follow immediately. Scene detach is separate."""

@@ -2200,8 +2200,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return False, "missing physics identity", release
         try:
             mass_kg = float(mass)
+            topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
             sdf = pickup_visual_sdf(
-                model, size, mass_kg, visual, static=False)
+                model, size, mass_kg, visual, static=False,
+                contact_topic=topic)
+            release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
+            if release_dump:
+                with open(release_dump, "w", encoding="utf-8") as handle:
+                    handle.write(sdf)
         except (TypeError, ValueError) as exc:
             return False, str(exc), release
         if release is None or len(release) < 6:
@@ -2291,6 +2297,47 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._dump_place(trial, extra=extra)
         return trial
 
+    def _contact_capture_gate(self, trial, extras):
+        """Refuse the first certified leg until contact capture is live.
+
+        Active only when ``M3_CONTACT_CAPTURE=1``. The check is content:
+        the spawned box SDF is the static carry model and carries the
+        contact sensor, the follow trace is being written now, pose/info
+        is being recorded, and the contact topic has a publisher. An empty
+        contact log is not treated as ready or as proof of no contact.
+        """
+        if os.environ.get("M3_CONTACT_CAPTURE", "") != "1":
+            return None
+        script_dir = os.environ.get("ELFIN_ST09_SCRIPTS", "")
+        if script_dir and script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+        import contact_capture
+        topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip()
+        info = ""
+        if topic:
+            try:
+                proc = subprocess.run(
+                    ["ign", "topic", "-i", "-t", topic],
+                    capture_output=True, text=True, timeout=8.0, check=False)
+                info = (proc.stdout or "") + (proc.stderr or "")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                info = "ign topic failed: %s" % exc
+        ready, detail = contact_capture.capture_ready(
+            follow_trace=os.environ.get("ELFIN_FOLLOW_TRACE", ""),
+            topic_info=info,
+            box_sdf_path=os.environ.get("ELFIN_BOX_SDF_DUMP", ""),
+            robot_urdf_path=os.environ.get(
+                "ELFIN_ROBOT_URDF", "/tmp/elfin_s20_gazebo.urdf"),
+            recorder_status_path=os.environ.get(
+                "ELFIN_CONTACT_STATUS", ""),
+            now=time.time(),
+        )
+        trial.extras["contact_capture_gate"] = detail
+        extras["contact_capture_gate.json"] = json.dumps(detail)
+        if ready:
+            return None
+        return self._abort(trial, "CONTACT_CAPTURE_NOT_READY", True, extra=extras)
+
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
         self._last_submitted_leg = None
@@ -2333,6 +2380,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.segments_planned = len(segments)
             trial.extras["build"] = "certified route (%d legs)" % len(route_v2)
             self._set_state("SEQUENCE_BUILT", note="certified route")
+            blocked = self._contact_capture_gate(trial, extras)
+            if blocked is not None:
+                return blocked
         elif self._typed is not None or True:
             # The build endpoint no longer produces place legs.
             return self._abort(trial, "PLANNING_ROUTE_REQUIRED", True,

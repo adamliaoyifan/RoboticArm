@@ -406,7 +406,7 @@ def _mesh_geometry_xml(uri, scale):
 
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR,
-                      static=True):
+                      static=True, contact_topic=None):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -439,13 +439,14 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         visual_kind="mesh",
         static=bool(static),
         use_mesh_material=True,
+        contact_topic=contact_topic,
     )
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
                  static=False, collision_uri_override=None,
-                 use_mesh_material=False):
+                 use_mesh_material=False, contact_topic=None):
     """SDF at the link origin.
 
     Default mesh mode shares one STL URI for visual and collision.
@@ -481,7 +482,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
             "          <diffuse>%s</diffuse>\n"
             "        </material>\n" % (ambient, diffuse)
         )
-    return """<?xml version="1.0"?>
+    xml = """<?xml version="1.0"?>
 <sdf version="1.6">
   <!-- Suitcase %s visual+collision %.3f x %.3f x %.3f m, %.2f kg -->
   <model name="%s">
@@ -518,6 +519,24 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         material_xml,
         collision_geom,
     )
+    topic = str(contact_topic or "").strip()
+    if topic:
+        # Observation sensor on the existing collision. It does not add a
+        # collision and does not change friction. gz Contact publishes only
+        # when this collision has contacts, so an empty log is not itself
+        # proof that nothing touched.
+        sensor = (
+            "      <sensor name=\"box_contact\" type=\"contact\">\n"
+            "        <always_on>1</always_on>\n"
+            "        <update_rate>50</update_rate>\n"
+            "        <contact>\n"
+            "          <collision>body_collision</collision>\n"
+            "          <topic>%s</topic>\n"
+            "        </contact>\n"
+            "      </sensor>\n" % topic)
+        xml = xml.replace(
+            "    </link>\n  </model>", sensor + "    </link>\n  </model>", 1)
+    return xml
 
 
 def _model_config_xml(name, description):

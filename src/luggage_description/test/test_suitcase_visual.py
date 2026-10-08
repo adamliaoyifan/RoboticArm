@@ -78,6 +78,7 @@ class TestSuitcaseSdf(unittest.TestCase):
         self.assertEqual(col_scale, size)
         self.assertIsNone(root.find(".//collision/geometry/box"))
         self.assertIsNone(root.find(".//model/static"))
+        self.assertIsNone(root.find(".//sensor"))
 
     def test_box_visual_kind_is_rejected(self):
         """Untextured primitive-box visuals were removed (YOLO-World

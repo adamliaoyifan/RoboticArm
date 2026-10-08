@@ -581,11 +581,26 @@ class PickupBoxSpawner(Node):
         return entry, size, mass, True, "gen"
 
     def _box_sdf(self, model_name, size, mass_kg, visual_id):
-        """Inline SDF. Mesh references a pre-scaled model:// URI."""
-        return pickup_visual_sdf(
+        """Inline SDF. Mesh references a pre-scaled model:// URI.
+
+        ``ELFIN_BOX_CONTACT_TOPIC`` adds an observation contact sensor on the
+        existing collision (default unset: the SDF is unchanged).
+        ``ELFIN_BOX_SDF_DUMP`` saves the exact text that is spawned.
+        """
+        topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
+        sdf = pickup_visual_sdf(
             model_name, size, mass_kg, visual_id,
             visual_kind=self._visual_kind,
+            contact_topic=topic,
         )
+        dump = os.environ.get("ELFIN_BOX_SDF_DUMP", "").strip()
+        if dump:
+            parent = os.path.dirname(dump)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(dump, "w", encoding="utf-8") as handle:
+                handle.write(sdf)
+        return sdf
 
     def _gt_size(self, size, visual_id):
         """Size written to GetCurrentBox: the mesh's observable geometry.

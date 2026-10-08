@@ -100,6 +100,19 @@ mkdir -p "$OUT"
 bash "$WS/scripts/st09_i/kill_stack.sh" || true
 residuals=$(pgrep -af 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/parameter_bridge|clock_bridge|camera_bridge' 2>/dev/null | grep -v -e 'bash -c' -e 's5_m3_run.sh' | wc -l | tr -d ' ')
 log clean_room ", \"residual_processes\": $residuals"
+if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" ]]; then
+  # Observation paths only. Set before launch so the spawner writes the
+  # contact sensor into the carry SDF and the vacuum node logs set_pose.
+  mkdir -p "$OUT/collision_models" "$OUT/contact_capture"
+  : > "$OUT/follow_trace.jsonl"
+  export ELFIN_BOX_CONTACT_TOPIC=/pickup_box_contact
+  export ELFIN_FOLLOW_TRACE="$OUT/follow_trace.jsonl"
+  export ELFIN_BOX_SDF_DUMP="$OUT/collision_models/pickup_box.sdf"
+  export ELFIN_BOX_RELEASE_SDF="$OUT/collision_models/pickup_box_release.sdf"
+  export ELFIN_ROBOT_URDF=/tmp/elfin_s20_gazebo.urdf
+  export ELFIN_CONTACT_STATUS="$OUT/contact_capture/recorder_status.json"
+  export ELFIN_ST09_SCRIPTS="$WS/scripts/st09_i"
+fi
 if [[ "$residuals" -ne 0 ]]; then
   echo "residual sim/bridge processes ($residuals); refusing to launch" >&2
   exit 1
@@ -126,6 +139,14 @@ ros2 launch luggage_gazebo sim_world.launch.py \
   > "$LAUNCH_LOG" 2>&1 &
 LAUNCH_PID=$!
 log stack_start ", \"launch_pid\": $LAUNCH_PID"
+CONTACT_PID=""
+if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" ]]; then
+  python3 "$WS/scripts/st09_i/contact_pose_record.py" \
+    --out-dir "$OUT/contact_capture" \
+    > "$OUT/contact_capture/recorder.log" 2>&1 &
+  CONTACT_PID=$!
+  log contact_record_start ", \"pid\": $CONTACT_PID"
+fi
 
 # -- bag: light topics plus 3 s copies of the fat sensor streams ----------
 # Full-rate color/depth/mask exceeded 1 GiB in 51 s. The throttle keeps a
@@ -152,6 +173,12 @@ if [[ "$RECORD_BAG" -eq 1 ]]; then
 fi
 
 stop_bag() {
+  if [[ -n "${CONTACT_PID:-}" ]]; then
+    kill -INT "$CONTACT_PID" 2>/dev/null || true
+    wait "$CONTACT_PID" 2>/dev/null || true
+    CONTACT_PID=""
+    log contact_record_stop ""
+  fi
   if [[ -n "$BAG_PID" ]]; then
     kill -INT "$BAG_PID" 2>/dev/null || true
     sleep 2
@@ -332,5 +359,8 @@ if [[ "$RECORD_BAG" -eq 1 ]]; then
   fi
 fi
 
+if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" && -f /tmp/elfin_s20_gazebo.urdf ]]; then
+  cp /tmp/elfin_s20_gazebo.urdf "$OUT/collision_models/robot.urdf"
+fi
 log end ", \"driver_rc\": $DRIVER_RC"
 exit "$DRIVER_RC"
