@@ -222,6 +222,8 @@ def classify_pair(name_a, name_b, box_token="pickup_box"):
         return "not_box"
     if "suction_panel" in other or "suction_contact" in other:
         return "suction_interface"
+    if "container" in other or "pedestal" in other or "ground" in other:
+        return "container"
     robot = ("elfin_link", "elfin_base", "camera", "mid360", "livox", "eef_")
     if any(tok in other for tok in robot):
         return "robot_body"

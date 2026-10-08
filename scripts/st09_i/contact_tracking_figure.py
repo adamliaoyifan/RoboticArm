@@ -20,7 +20,8 @@ def render(result, bag, contacts, follow, path):
     ax = axes[0]
     ax.plot(ct, err, color=INK, lw=1.2, label="|joint2 reference - actual|")
     ax.axhline(0.03, color=INK2, lw=0.8, ls="--", label="0.03 rad")
-    colors = {"suction_interface": AQUA, "robot_body": CRIT, "other": BLUE}
+    colors = {"suction_interface": AQUA, "robot_body": CRIT,
+              "container": BLUE, "other": INK2}
     for klass, color in colors.items():
         ts = [c["stamp"] for c in contacts if c.get("klass") == klass]
         if not ts:

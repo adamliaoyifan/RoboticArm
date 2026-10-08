@@ -73,7 +73,7 @@ def summarize_windows(windows, joint2_t, joint2_err, contacts, follow):
         err = joint2_err[m]
         under = joint2_t[m][err > UNDERTRACK_RAD] if m.any() else np.array([])
         classes = {}
-        for klass in ("suction_interface", "robot_body", "other"):
+        for klass in ("suction_interface", "robot_body", "container", "other"):
             ev = [c["stamp"] for c in contacts
                   if c["klass"] == klass and t0 <= c["stamp"] <= t1]
             classes[klass] = {
@@ -125,6 +125,8 @@ def main(argv=None):
     cpath = run / "contact_capture" / "contacts.jsonl"
     if cpath.is_file():
         contacts = [json.loads(l) for l in cpath.read_text().splitlines() if l.strip()]
+        for row in contacts:
+            row["klass"] = cap.classify_pair(row.get("a", ""), row.get("b", ""))
     poses = []
     ppath = run / "contact_capture" / "poses.jsonl"
     if ppath.is_file():
@@ -191,7 +193,12 @@ def main(argv=None):
     }
     # Follow error against recorded box pose, where both exist.
     if follow and poses:
-        box_poses = [p for p in poses if "pickup_box" in p["name"]]
+        # The ``_visual`` entity stays at the origin; only the model
+        # pose is where set_pose put the box.
+        box_poses = [p for p in poses
+                     if p["name"].startswith("pickup_box")
+                     and not p["name"].endswith("_visual")
+                     and "::" not in p["name"]]
         if box_poses:
             bt = np.array([p["stamp"] for p in box_poses])
             bq = np.array([p["xyz"] for p in box_poses])

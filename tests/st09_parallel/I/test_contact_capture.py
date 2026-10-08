@@ -54,6 +54,9 @@ def test_contact_parser_keeps_pairs_depth_and_force():
     assert abs(rows[0]["force_n"] - 5.0) < 1e-9
     assert cap.classify_pair(rows[0]["a"], rows[0]["b"]) == "suction_interface"
     assert cap.classify_pair(rows[1]["a"], rows[1]["b"]) == "robot_body"
+    assert cap.classify_pair(
+        "pickup_box::body", "airport_container_real::container_link::collision_mesh"
+    ) == "container"
     assert cap.classify_pair("ground", "pedestal") == "not_box"
 
 
