@@ -302,6 +302,7 @@ def _bare_stream(model="pickup_box_0001_carryon"):
     stream._pose_blocks = 0
     stream._stdout_lines = 0
     stream._parse_failures = 0
+    stream._unparsed_text = ""
     stream._seen_names = []
     stream._stderr_tail = ""
     stream._proc = None
@@ -355,6 +356,19 @@ class TestGtStreamEmptyRecord(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual(record["gap"], "stale_sample")
         self.assertGreater(record["latest_age_s"], 0.5)
+
+    def test_omitted_zero_axis_still_parses(self):
+        stream = _bare_stream()
+        stream._file = __import__("io").StringIO()
+        stream._accept(
+            'pose {\nname: "pickup_box_0001_carryon"\nid: 49\n'
+            'position {\nx: 1\nz: 0.785\n}\norientation {\nw: 1\n}\n}',
+            None)
+        record = stream.failure_record()
+        self.assertEqual(record["parse_failures"], 0)
+        self.assertEqual(record["sample_count"], 1)
+        self.assertEqual(stream._samples[-1]["xyz"], [1.0, 0.0, 0.785])
+        self.assertEqual(stream._samples[-1]["quat_xyzw"][3], 1.0)
 
     def test_fresh_sample_passes_the_release_gate(self):
         stream = _bare_stream()

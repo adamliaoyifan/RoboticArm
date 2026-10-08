@@ -159,6 +159,7 @@ class GtReleaseStream(object):
         self._pose_blocks = 0
         self._stdout_lines = 0
         self._parse_failures = 0
+        self._unparsed_text = ""
         self._seen_names = []
         self._stderr_tail = ""
         self._file = open(self.path, "w", encoding="utf-8")
@@ -233,12 +234,17 @@ class GtReleaseStream(object):
             return
         pos_m = re.search(r"position\s*\{([^}]*)\}", text)
         ori_m = re.search(r"orientation\s*\{([^}]*)\}", text)
-        pos = dict(_GZ_FIELD.findall(pos_m.group(1))) if pos_m else {}
-        ori = dict(_GZ_FIELD.findall(ori_m.group(1))) if ori_m else {}
-        if not all(key in pos for key in ("x", "y", "z")) or "w" not in ori:
+        # Ignition omits zero components. A missing axis is 0, not a
+        # parse failure. Failure is a named pose with no position or
+        # orientation group at all.
+        if pos_m is None or ori_m is None:
             with self._lock:
                 self._parse_failures += 1
+                if not self._unparsed_text:
+                    self._unparsed_text = text[:1500]
             return
+        pos = dict(_GZ_FIELD.findall(pos_m.group(1)))
+        ori = dict(_GZ_FIELD.findall(ori_m.group(1)))
         sample = {
             "sim_stamp_ns": stamp_ns,
             "recv_ns": time.monotonic_ns(),
@@ -313,6 +319,7 @@ class GtReleaseStream(object):
             lines = int(getattr(self, "_stdout_lines", 0))
             parses = int(getattr(self, "_parse_failures", 0))
             samples = len(self._samples)
+            unparsed = str(getattr(self, "_unparsed_text", "") or "")
         record = {
             "model": self.model,
             "positive": samples > 0,
@@ -324,6 +331,7 @@ class GtReleaseStream(object):
             "seen_names": names,
             "ign_returncode": returncode,
             "stderr_tail": str(getattr(self, "_stderr_tail", "") or ""),
+            "unparsed_text": unparsed,
         }
         record["gap"] = classify_gt_gap(record)
         return record

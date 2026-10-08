@@ -86,6 +86,7 @@ def main():
         "seen_names": record.get("seen_names"),
         "ign_returncode": record.get("ign_returncode"),
         "stderr_tail": record.get("stderr_tail"),
+        "unparsed_text": record.get("unparsed_text"),
         "jsonl": jsonl,
     }
     with open(os.path.join(args.out, "gt_stream_probe.json"), "w",
