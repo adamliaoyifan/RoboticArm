@@ -233,7 +233,10 @@ if [[ "${M3_CAPTURE_PREFLIGHT:-0}" == "1" ]]; then
   rec_ok=1
   if [[ "$RECORD_BAG" -eq 1 ]]; then
     for topic in /elfin_arm_controller/controller_state /joint_states; do
-      timeout 15 ros2 topic info -v "$topic" 2>/dev/null | grep -q rosbag2_recorder || rec_ok=0
+      # Capture first: `ros2 ... | grep -q` under pipefail reports failure
+      # (SIGPIPE) even when the recorder IS subscribed.
+      topic_info=$(timeout 15 ros2 topic info -v "$topic" 2>/dev/null || true)
+      grep -q rosbag2_recorder <<<"$topic_info" || rec_ok=0
     done
   fi
   log capture_preflight ", \"rc\": $pre_rc, \"bag_subscribed\": $rec_ok"
