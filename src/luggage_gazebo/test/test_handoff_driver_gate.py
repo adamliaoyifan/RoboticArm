@@ -376,20 +376,20 @@ class TestHandoffGate(unittest.TestCase):
         self.assertTrue(ok1, code1)
         self.feeder = _Feeder(driver, lambda t: list(TARGET)).start()
 
+        from control_msgs.msg import JointTrajectoryControllerState
+        from trajectory_msgs.msg import JointTrajectoryPoint
+
         def publish():
             for k in range(40):
-                msg = type("State", (), {})()
+                # Real message type: field names are the humble ones.
+                msg = JointTrajectoryControllerState()
                 msg.joint_names = list(CANONICAL_ARM_JOINTS)
-                point = type("P", (), {})()
-                point.positions = list(TARGET)
-                err = type("P", (), {})()
-                err.positions = [0.0] * 6
-                msg.reference = point
-                msg.feedback = point
-                msg.error = err
-                msg.output = point
-                msg.header = type("H", (), {})()
-                msg.header.stamp = type("S", (), {})()
+                for field, values in (
+                        ("reference", TARGET), ("feedback", TARGET),
+                        ("error", [0.0] * 6), ("output", TARGET)):
+                    point = JointTrajectoryPoint()
+                    point.positions = list(values)
+                    setattr(msg, field, point)
                 msg.header.stamp.sec = 50
                 msg.header.stamp.nanosec = k * 1000000
                 driver._on_controller_state(msg)
@@ -406,6 +406,18 @@ class TestHandoffGate(unittest.TestCase):
         self.assertEqual(window["rows"][0]["reference"], [
             round(value, 6) for value in TARGET])
         self.assertEqual(window["rows"][0]["error"], [0.0] * 6)
+
+
+class TestControllerStateTopic(unittest.TestCase):
+    def test_topic_is_the_one_with_a_live_publisher(self):
+        # /S20/elfin_arm_controller/controller_state has no publisher
+        # (handoff_verify01); the bag records the same topic the driver
+        # subscribes to.
+        from luggage_gazebo.capture_budget import bag_topics
+        self.assertEqual(
+            PlaceSmokeDriver.CONTROLLER_STATE_TOPIC,
+            "/elfin_arm_controller/controller_state")
+        self.assertIn(PlaceSmokeDriver.CONTROLLER_STATE_TOPIC, bag_topics())
 
 
 class TestJointStateVelocityIngestion(unittest.TestCase):

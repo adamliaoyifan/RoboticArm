@@ -8,6 +8,10 @@ The original full-rate bag is left in place; this module does not delete it.
 """
 from __future__ import annotations
 
+# Publisher verified live 2026-10-08 (handoff_verify01): this topic has one
+# publisher; the controller-manager-namespaced /S20/... name has none.
+CONTROLLER_STATE_TOPIC = "/elfin_arm_controller/controller_state"
+
 RUN_BUDGET_BYTES = 1024 ** 3
 SESSION_WORST_S = 1200.0
 THROTTLE_PERIOD_S = 3.0
@@ -18,10 +22,10 @@ SAMPLE_DURATION_S = 51175718448 / 1e9
 SAMPLE_PAYLOAD = {
     "/clock": (572832, 47736),
     "/joint_states": (1507952, 4772),
-    # ESTIMATE, not measured: 50 Hz state_publish_rate, ~900 B per message
-    # (reference/feedback/error/output points for six joints). Replace with
-    # the measured size after the first run that records this topic.
-    "/S20/elfin_arm_controller/controller_state": (2303100, 2559),
+    # 50 Hz measured on the live topic. Size is a serialised six-joint
+    # message (744 B) plus header, rounded up to 900 B; the bag has not yet
+    # recorded this topic, so replace with the measured size afterwards.
+    CONTROLLER_STATE_TOPIC: (2303100, 2559),
     "/luggage/cargo_map/surface_2d": (63560, 1),
     "/luggage/cargo_map/surface_v2": (49492, 1),
     "/luggage/current_box": (424, 4),
@@ -58,7 +62,7 @@ LIGHT_TOPICS = (
     "/joint_states",
     # Handoff evidence: controller reference vs measured, across the window
     # between one leg's success result and the next leg's submission.
-    "/S20/elfin_arm_controller/controller_state",
+    CONTROLLER_STATE_TOPIC,
     "/vacuum/state",
     "/vacuum/events_json",
     "/luggage/current_box",

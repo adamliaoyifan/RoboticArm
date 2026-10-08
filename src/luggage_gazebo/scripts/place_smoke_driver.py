@@ -71,6 +71,7 @@ from luggage_planning.motion_boundary import (
 from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
+from luggage_gazebo.capture_budget import CONTROLLER_STATE_TOPIC
 from luggage_gazebo.handoff_settle import (
     HandoffPolicy,
     await_handoff,
@@ -1223,7 +1224,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
     # Leg-to-leg handoff: controller success is not arrival.
     # See luggage_gazebo/handoff_settle.py for the contract and Run08.
 
-    CONTROLLER_STATE_TOPIC = "/S20/elfin_arm_controller/controller_state"
+    # Live publisher verified 2026-10-08 (handoff_verify01). The namespaced
+    # /S20/... name has no publisher. Measured on an idle arm, ``feedback``
+    # equals ``reference`` (open_loop_control), so measured joint position
+    # comes from /joint_states, not from this message.
+    CONTROLLER_STATE_TOPIC = CONTROLLER_STATE_TOPIC
     # Controller reference/feedback is kept this long for handoff capture.
     _CONTROLLER_STATE_HORIZON_SEC = 30.0
     # Success-path handoff evidence keeps at most this many controller rows.
