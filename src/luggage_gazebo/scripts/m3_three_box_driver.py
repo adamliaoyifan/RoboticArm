@@ -84,17 +84,59 @@ _MARK_STAGES = {
 }
 
 #: release-window GT constants (declared, recorded, not tuned silently).
-GT_PRE_ROLL_S = 0.5          # stream starts this early before vacuum-off
-GT_DURATION_S = 12.0         # covers respawn + settle budget + drift wait
-GT_POSITIVE_TIMEOUT_S = 2.0  # a pre-release sample must appear by here
+GT_FRESH_S = 0.5             # newest sample must be this recent at detach
+GT_PRE_ROLL_S = GT_FRESH_S   # kept name: freshness, not a late subscribe
+GT_DURATION_S = 12.0         # analysis window around release, not process life
+GT_SUBSCRIBE_S = 600.0       # ign echo cap; stop() ends it at settle
+GT_POSITIVE_TIMEOUT_S = 2.0  # path check once the model id is known
 GT_SPEED_WINDOW_S = 0.15     # central-difference window for velocities
 GT_MIN_DT_S = 1e-3           # skip numerically degenerate sample gaps
 GT_GAP_S = 0.10              # missing interval that marks the respawn gap
 GT_POLL_TOL_M = 0.005        # stream vs poll cross-check bound
 
+GT_GAPS = (
+    "process_exited",
+    "no_messages",
+    "model_not_found",
+    "parse_failed",
+    "stale_sample",
+)
+
 _GZ_NAME = re.compile(r'name:\s*"([^"]+)"')
 _GZ_FIELD = re.compile(
     r"(x|y|z|w):\s*([-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)")
+
+
+def classify_gt_gap(record):
+    """One gap name for an empty or unusable pre-release stream.
+
+    Raw counters stay on the record. A dead process with no stdout is
+    ``process_exited``. Silence from a live process is ``no_messages``.
+    Parsed poses that never name the target are ``model_not_found``.
+    A named target that does not become a sample is ``parse_failed``.
+    ``stale_sample`` is applied by the release gate, not here.
+    """
+    if int(record.get("sample_count") or 0) > 0:
+        return ""
+    lines = int(record.get("stdout_lines") or 0)
+    blocks = int(record.get("pose_blocks") or 0)
+    names = list(record.get("seen_names") or [])
+    model = str(record.get("model") or "")
+    parses = int(record.get("parse_failures") or 0)
+    exited = record.get("ign_returncode") is not None
+    if exited and lines == 0 and blocks == 0:
+        return "process_exited"
+    if lines == 0 and blocks == 0:
+        return "no_messages"
+    if model and model in names:
+        return "parse_failed"
+    if parses > 0 and not names:
+        return "parse_failed"
+    if blocks > 0 or names:
+        return "model_not_found"
+    if exited:
+        return "process_exited"
+    return "no_messages"
 
 
 class GtReleaseStream(object):
@@ -109,20 +151,28 @@ class GtReleaseStream(object):
     """
 
     def __init__(self, model, jsonl_path, world="airport_loading",
-                 duration_s=GT_DURATION_S, max_samples=8000):
+                 duration_s=GT_SUBSCRIBE_S, max_samples=8000):
         self.model = str(model)
         self.path = str(jsonl_path)
         self._samples = collections.deque(maxlen=int(max_samples))
         self._lock = threading.Lock()
+        self._pose_blocks = 0
+        self._stdout_lines = 0
+        self._parse_failures = 0
+        self._seen_names = []
+        self._stderr_tail = ""
         self._file = open(self.path, "w", encoding="utf-8")
         self._proc = subprocess.Popen(
             [_ign_model_bin(), "topic", "-e", "-t",
              "/world/%s/pose/info" % world, "-d", str(int(duration_s))],
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             text=True, bufsize=1)
         self._alive = True
         self._thread = threading.Thread(target=self._read, daemon=True)
+        self._err_thread = threading.Thread(
+            target=self._read_stderr, daemon=True)
         self._thread.start()
+        self._err_thread.start()
 
     # -- reader ---------------------------------------------------------
 
@@ -134,6 +184,8 @@ class GtReleaseStream(object):
         for line in self._proc.stdout:
             if not self._alive:
                 break
+            with self._lock:
+                self._stdout_lines += 1
             text = line.strip()
             if depth == 0:
                 if text.startswith("pose"):
@@ -159,16 +211,34 @@ class GtReleaseStream(object):
                 depth = 0
                 block = []
 
+    def _read_stderr(self):
+        chunks = []
+        stream = self._proc.stderr
+        if stream is None:
+            return
+        for line in stream:
+            chunks.append(line)
+            if sum(len(item) for item in chunks) > 4000:
+                chunks = chunks[-20:]
+        self._stderr_tail = "".join(chunks)[-2000:]
+
     def _accept(self, text, stamp_ns):
         named = _GZ_NAME.search(text)
-        if named is None or named.group(1) != self.model:
+        name = named.group(1) if named is not None else ""
+        with self._lock:
+            self._pose_blocks += 1
+            if name and name not in self._seen_names and len(self._seen_names) < 16:
+                self._seen_names.append(name)
+        if not name or name != self.model:
             return
         pos_m = re.search(r"position\s*\{([^}]*)\}", text)
         ori_m = re.search(r"orientation\s*\{([^}]*)\}", text)
-        if pos_m is None or ori_m is None:
+        pos = dict(_GZ_FIELD.findall(pos_m.group(1))) if pos_m else {}
+        ori = dict(_GZ_FIELD.findall(ori_m.group(1))) if ori_m else {}
+        if not all(key in pos for key in ("x", "y", "z")) or "w" not in ori:
+            with self._lock:
+                self._parse_failures += 1
             return
-        pos = dict(_GZ_FIELD.findall(pos_m.group(1)))
-        ori = dict(_GZ_FIELD.findall(ori_m.group(1)))
         sample = {
             "sim_stamp_ns": stamp_ns,
             "recv_ns": time.monotonic_ns(),
@@ -191,7 +261,11 @@ class GtReleaseStream(object):
     # -- control --------------------------------------------------------
 
     def positive(self, timeout_s=GT_POSITIVE_TIMEOUT_S):
-        """Wait for at least one target sample (pre-release health)."""
+        """Wait until the target model has been parsed at least once.
+
+        This confirms the subscription. It does not accept that sample
+        as the pre-release observation.
+        """
         deadline = time.monotonic() + float(timeout_s)
         while time.monotonic() < deadline:
             with self._lock:
@@ -200,6 +274,59 @@ class GtReleaseStream(object):
             time.sleep(0.02)
         with self._lock:
             return bool(self._samples)
+
+    def latest_age_s(self):
+        now = time.monotonic_ns()
+        with self._lock:
+            if not self._samples:
+                return None
+            latest = int(self._samples[-1]["recv_ns"])
+        return (now - latest) / 1e9
+
+    def release_gate(self, fresh_s=GT_FRESH_S):
+        """A pre-release sample must be newer than ``fresh_s``.
+
+        An earlier sample that only proved the path is not a substitute.
+        Returns ``(ok, record)``. The record's ``gap`` is empty on success.
+        """
+        age = self.latest_age_s()
+        record = self.failure_record()
+        record["latest_age_s"] = age
+        if age is not None and age <= float(fresh_s):
+            record["positive"] = True
+            record["gap"] = ""
+            return True, record
+        if age is not None:
+            record["gap"] = "stale_sample"
+            record["positive"] = False
+        return False, record
+
+    def failure_record(self):
+        """Why a pre-release sample never arrived. Does not invent poses."""
+        returncode = None
+        proc = getattr(self, "_proc", None)
+        if proc is not None and proc.poll() is not None:
+            returncode = proc.returncode
+        with self._lock:
+            blocks = int(getattr(self, "_pose_blocks", 0))
+            names = list(getattr(self, "_seen_names", []))
+            lines = int(getattr(self, "_stdout_lines", 0))
+            parses = int(getattr(self, "_parse_failures", 0))
+            samples = len(self._samples)
+        record = {
+            "model": self.model,
+            "positive": samples > 0,
+            "jsonl": self.path,
+            "pose_blocks": blocks,
+            "stdout_lines": lines,
+            "parse_failures": parses,
+            "sample_count": samples,
+            "seen_names": names,
+            "ign_returncode": returncode,
+            "stderr_tail": str(getattr(self, "_stderr_tail", "") or ""),
+        }
+        record["gap"] = classify_gt_gap(record)
+        return record
 
     def stop(self):
         if not self._alive:
@@ -214,6 +341,9 @@ class GtReleaseStream(object):
             except OSError:
                 pass
         self._thread.join(timeout=2.0)
+        err_thread = getattr(self, "_err_thread", None)
+        if err_thread is not None:
+            err_thread.join(timeout=2.0)
         try:
             self._file.close()
         except OSError:
@@ -415,31 +545,100 @@ class M3ThreeBoxDriver(MotionOccDriver):
         enable = bool(enable)
         if (not enable) and getattr(self._args, "use_vacuum", False) \
                 and not self._args.plan_only and self._box_model:
-            # Release instant: the GT stream must be live and healthy
-            # BEFORE vacuum-off — a missing pre-release sample is a named
-            # failure, never backfilled after the fact.
-            if not self._m3_start_gt_stream():
-                return False, "GT_STREAM_NO_PRE_SAMPLE"
+            # The subscription is already open. Detach still needs a
+            # sample received inside GT_FRESH_S. An older path-check
+            # sample is not that sample, and vacuum-off is not sent.
+            ok, reason = self._m3_require_fresh_gt()
+            if not ok:
+                return False, reason
+            self._m3_gt_release_ns = time.monotonic_ns()
             self._m3_note("release")
         return super().vacuum_command(enable, pick_msg=pick_msg)
 
-    def _m3_start_gt_stream(self):
-        path = os.path.join(
+    def _gt_jsonl_path(self):
+        return os.path.join(
             self._args.dump_dir, "box_%02d_release_gt.jsonl"
             % int(getattr(self, "_m3_trial_index", 0) or 0))
-        stream = GtReleaseStream(self._box_model, path)
-        if not stream.positive():
+
+    def _stop_gt_stream(self):
+        stream = self._m3_gt_stream
+        self._m3_gt_stream = None
+        if stream is not None:
             stream.stop()
-            trial_index = getattr(self, "_m3_trial_index", 0)
-            _atomic_json(os.path.join(
-                self._args.dump_dir, "box_%02d_release_gt_empty.json"
-                % int(trial_index or 0)), {
-                    "model": self._box_model, "positive": False,
-                    "jsonl": path})
-            return False
+
+    def _write_gt_gap(self, stream, record=None):
+        if record is None:
+            record = stream.failure_record()
+        else:
+            record = dict(record)
+        record["model"] = str(self._box_model or record.get("model") or "")
+        if not record.get("gap"):
+            record["gap"] = classify_gt_gap(record)
+        stream.stop()
+        trial_index = getattr(self, "_m3_trial_index", 0)
+        _atomic_json(os.path.join(
+            self._args.dump_dir, "box_%02d_release_gt_empty.json"
+            % int(trial_index or 0)), record)
+        if self._m3_gt_stream is stream:
+            self._m3_gt_stream = None
+        return record
+
+    def _m3_open_gt_stream(self):
+        """Subscribe as soon as the model id exists. Does not mean fresh."""
+        if self._m3_gt_stream is not None:
+            return self._m3_gt_stream
+        stream = GtReleaseStream(self._box_model, self._gt_jsonl_path())
         self._m3_gt_stream = stream
-        self._m3_gt_release_ns = time.monotonic_ns()
-        return True
+        return stream
+
+    def _m3_confirm_gt_path(self, trial):
+        """Prove subscribe/parse/write before any place motion."""
+        self._stop_gt_stream()
+        model = str(getattr(self, "_box_model", "") or "")
+        if not model:
+            trial.fail_code = "GT_STREAM_NO_PRE_SAMPLE"
+            trial.extras["gt_stream"] = {
+                "gap": "no_messages", "model": "", "sample_count": 0}
+            return False
+        stream = self._m3_open_gt_stream()
+        if stream.positive():
+            trial.extras["gt_stream"] = {
+                "gap": "",
+                "model": model,
+                "path_ready": True,
+                "sample_count": stream.failure_record()["sample_count"],
+            }
+            return True
+        record = self._write_gt_gap(stream)
+        trial.fail_code = "GT_STREAM_NO_PRE_SAMPLE"
+        trial.extras["gt_stream"] = record
+        return False
+
+    def _m3_require_fresh_gt(self):
+        stream = self._m3_gt_stream
+        if stream is None:
+            stream = self._m3_open_gt_stream()
+            if not stream.positive():
+                record = self._write_gt_gap(stream)
+                return False, "GT_STREAM_NO_PRE_SAMPLE:%s" % record["gap"]
+        ok, record = stream.release_gate()
+        if ok:
+            return True, ""
+        gap = str(record.get("gap") or "no_messages")
+        self._write_gt_gap(stream, record)
+        if gap == "stale_sample":
+            return False, "GT_STREAM_STALE"
+        return False, "GT_STREAM_NO_PRE_SAMPLE:%s" % gap
+
+    def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
+        if (getattr(self._args, "use_vacuum", False)
+                and not self._args.plan_only):
+            if not self._m3_confirm_gt_path(trial):
+                trial.place_state = self._place_state or "CARRY_READY"
+                self._dump_place(trial)
+                return trial
+        return super().run_place_from_carry(
+            pick_msg, trial, slot, slot_meta)
 
     def _poses_after_settle(self):
         result = super()._poses_after_settle()
@@ -507,18 +706,21 @@ class M3ThreeBoxDriver(MotionOccDriver):
         self._m3_selection_map = None
         self._m3_trial_index = index
         self._m3_request_id = "m3-box-%02d" % (int(index) + 1)
-        trial = super().run_trial(
-            index, slot=slot, slot_meta=slot_meta,
-            already_spawned=already_spawned, keep_placed=keep_placed)
         try:
-            self._m3_close_trial(trial)
-        except Exception as error:  # noqa: BLE001 - evidence boundary
-            import traceback
+            trial = super().run_trial(
+                index, slot=slot, slot_meta=slot_meta,
+                already_spawned=already_spawned, keep_placed=keep_placed)
+            try:
+                self._m3_close_trial(trial)
+            except Exception as error:  # noqa: BLE001 - evidence boundary
+                import traceback
 
-            trial.extras["m3_close_error"] = "%r %s" % (
-                error, traceback.format_exc(limit=3).replace("\n", " | "))
-        self._m3_rewrite_evidence()
-        return trial
+                trial.extras["m3_close_error"] = "%r %s" % (
+                    error, traceback.format_exc(limit=3).replace("\n", " | "))
+            self._m3_rewrite_evidence()
+            return trial
+        finally:
+            self._stop_gt_stream()
 
     def _m3_close_trial(self, trial):
         if self._m3_gt is not None:

@@ -20,7 +20,11 @@ from luggage_gazebo.integration_acceptance import (  # noqa: E402
     extract_acceptance,
 )
 from luggage_gazebo.place_metrics import PlaceTrial  # noqa: E402
-from m3_three_box_driver import M3ThreeBoxDriver  # noqa: E402
+from m3_three_box_driver import (  # noqa: E402
+    GtReleaseStream,
+    M3ThreeBoxDriver,
+    classify_gt_gap,
+)
 
 
 class _Notes(object):
@@ -287,6 +291,80 @@ class TestSingleBoxAcceptanceFixture(unittest.TestCase):
         verdict = extract_acceptance(evidence, frozen)
         self.assertIn("case[0]:EVENT_CAUSAL_ORDER", verdict["failures"])
         self.assertNotEqual(verdict["status"], "pass")
+
+
+def _bare_stream(model="pickup_box_0001_carryon"):
+    stream = GtReleaseStream.__new__(GtReleaseStream)
+    stream.model = model
+    stream.path = "/tmp/unused-release-gt.jsonl"
+    stream._samples = __import__("collections").deque()
+    stream._lock = __import__("threading").Lock()
+    stream._pose_blocks = 0
+    stream._stdout_lines = 0
+    stream._parse_failures = 0
+    stream._seen_names = []
+    stream._stderr_tail = ""
+    stream._proc = None
+    return stream
+
+
+class TestGtStreamEmptyRecord(unittest.TestCase):
+    def test_other_model_names_are_model_not_found(self):
+        stream = _bare_stream()
+        stream._stderr_tail = "topic not advertised"
+        stream._accept(
+            'pose {\n  name: "container"\n  position { x: 0 y: 0 z: 0 }\n'
+            '  orientation { x: 0 y: 0 z: 0 w: 1 }\n}',
+            None)
+        record = stream.failure_record()
+        self.assertEqual(record["gap"], "model_not_found")
+        self.assertEqual(record["pose_blocks"], 1)
+        self.assertEqual(record["seen_names"], ["container"])
+        self.assertEqual(record["stderr_tail"], "topic not advertised")
+        self.assertEqual(record["sample_count"], 0)
+
+    def test_named_target_without_position_is_parse_failed(self):
+        stream = _bare_stream()
+        stream._accept('pose {\n  name: "pickup_box_0001_carryon"\n}', None)
+        record = stream.failure_record()
+        self.assertEqual(record["gap"], "parse_failed")
+        self.assertEqual(record["parse_failures"], 1)
+        self.assertEqual(record["sample_count"], 0)
+
+    def test_silent_live_process_is_no_messages(self):
+        self.assertEqual(classify_gt_gap({
+            "sample_count": 0, "stdout_lines": 0, "pose_blocks": 0,
+            "seen_names": [], "model": "pickup_box_0001_carryon",
+            "parse_failures": 0, "ign_returncode": None,
+        }), "no_messages")
+
+    def test_dead_process_with_no_stdout_is_process_exited(self):
+        self.assertEqual(classify_gt_gap({
+            "sample_count": 0, "stdout_lines": 0, "pose_blocks": 0,
+            "seen_names": [], "model": "pickup_box_0001_carryon",
+            "parse_failures": 0, "ign_returncode": 1,
+        }), "process_exited")
+
+    def test_old_sample_does_not_pass_the_release_gate(self):
+        stream = _bare_stream()
+        stream._samples.append({
+            "recv_ns": __import__("time").monotonic_ns() - 2_000_000_000,
+            "xyz": [0.0, 0.0, 0.0],
+        })
+        ok, record = stream.release_gate(fresh_s=0.5)
+        self.assertFalse(ok)
+        self.assertEqual(record["gap"], "stale_sample")
+        self.assertGreater(record["latest_age_s"], 0.5)
+
+    def test_fresh_sample_passes_the_release_gate(self):
+        stream = _bare_stream()
+        stream._samples.append({
+            "recv_ns": __import__("time").monotonic_ns(),
+            "xyz": [0.0, 0.0, 0.0],
+        })
+        ok, record = stream.release_gate(fresh_s=0.5)
+        self.assertTrue(ok)
+        self.assertEqual(record["gap"], "")
 
 
 if __name__ == "__main__":
