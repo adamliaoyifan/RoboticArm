@@ -208,6 +208,21 @@ class TestDelayedConvergence(unittest.TestCase):
         self.assertIn("position_still_moving", verdict["reasons"])
 
 
+class TestOscillationWithZeroNetDisplacement(unittest.TestCase):
+    def test_back_and_forth_inside_tolerance_is_not_stable(self):
+        # +-0.006 rad at 10 Hz: the arm is inside the 0.01 rad gate, the
+        # reported velocity says still, and over each 0.3 s window (three
+        # whole periods) the NET displacement is zero. Span, not net
+        # displacement, must refuse it.
+        clock = FakeTime()
+        feed = Feed(clock, lambda t: offset(
+            1, 0.006 * math.sin(2.0 * math.pi * 10.0 * t)))
+        record = run(feed, clock)
+        self.assertEqual(record["status"], "timeout")
+        self.assertIn("position_still_moving",
+                      record["last_verdict"]["reasons"])
+
+
 class TestRefusals(unittest.TestCase):
     def _assert_timeout(self, record, clock):
         self.assertEqual(record["status"], "timeout")

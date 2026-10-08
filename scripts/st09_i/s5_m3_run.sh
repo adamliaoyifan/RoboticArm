@@ -222,6 +222,31 @@ if [[ "$layout_rc" -ne 0 ]]; then
   exit 5
 fi
 
+# -- capture preflight (opt-in: M3_CAPTURE_PREFLIGHT=1) ---------------------
+# Refuse to enter motion unless controller_state (reference, feedback, six
+# joint names) and /joint_states are both really arriving, and the bag is
+# subscribed to both. Content, not topic existence. Failing here costs no case.
+if [[ "${M3_CAPTURE_PREFLIGHT:-0}" == "1" ]]; then
+  pre_json=$(python3 "$WS/scripts/st09_i/capture_preflight.py" --window-sec 3 --timeout-sec 30)
+  pre_rc=$?
+  echo "$pre_json" > "$OUT/capture_preflight.json"
+  rec_ok=1
+  if [[ "$RECORD_BAG" -eq 1 ]]; then
+    for topic in /elfin_arm_controller/controller_state /joint_states; do
+      timeout 15 ros2 topic info -v "$topic" 2>/dev/null | grep -q rosbag2_recorder || rec_ok=0
+    done
+  fi
+  log capture_preflight ", \"rc\": $pre_rc, \"bag_subscribed\": $rec_ok"
+  if [[ "$pre_rc" -ne 0 || "$rec_ok" -ne 1 ]]; then
+    echo "capture preflight failed (rc=$pre_rc bag_subscribed=$rec_ok): $pre_json" >&2
+    stop_bag
+    kill -INT "$LAUNCH_PID" 2>/dev/null || true
+    sleep 5
+    bash "$WS/scripts/st09_i/kill_stack.sh" || true
+    exit 6
+  fi
+fi
+
 # -- driver under the hard deadline ---------------------------------------
 # The mapper gate and the driver's commit go together: with the gate on, each
 # released box is committed to the mapper ledger and confirmed by evidence.
@@ -232,6 +257,9 @@ fi
 DRIVER_RC=255
 DEADLINE_HIT=0
 start_s=$SECONDS
+# Diagnostic only: on SIGABRT at exit (rc 134 seen once) the Python stack of
+# the aborting thread is printed to driver.log.
+export PYTHONFAULTHANDLER=1
 python3 "$WS/install-st09/luggage_gazebo/lib/luggage_gazebo/m3_three_box_driver.py" \
   --out "$OUT" --n "$N" --m3-sequence "$SEQUENCE" \
   --scene-tf-config "$M3_SCENE_TF" \
@@ -261,6 +289,17 @@ done
 wait "$DRIVER_PID" 2>/dev/null
 DRIVER_RC=$?
 log driver_end ", \"rc\": $DRIVER_RC, \"deadline\": $DEADLINE_HIT, \"elapsed_s\": $((SECONDS - start_s))"
+# A driver that finished its work but died on a signal is NOT a normal exit.
+# Keep what is needed to diagnose it if it recurs.
+if (( DRIVER_RC >= 128 )); then
+  log driver_abnormal_exit ", \"rc\": $DRIVER_RC, \"signal\": $((DRIVER_RC - 128))"
+  {
+    echo "{\"rc\": $DRIVER_RC, \"signal\": $((DRIVER_RC - 128)),"
+    echo " \"core_pattern\": \"$(cat /proc/sys/kernel/core_pattern 2>/dev/null)\","
+    echo " \"ulimit_core\": \"$(ulimit -c)\","
+    echo " \"driver_log_tail\": $(tail -n 60 "$OUT/driver.log" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))')}"
+  } > "$OUT/driver_exit_diagnostics.json"
+fi
 
 stop_bag
 

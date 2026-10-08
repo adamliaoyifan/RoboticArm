@@ -29,6 +29,7 @@ from place_smoke_driver import (  # noqa: E402
     CANONICAL_ARM_JOINTS,
     QP_START_TOLERANCE_RAD,
     PlaceSmokeDriver,
+    trajectory_dump,
 )
 
 TARGET = [-2.218311, -1.212007, 1.87346, -2.237272, -1.567003, -0.64752]
@@ -103,6 +104,7 @@ class _Driver(object):
     _handoff_admission_reason = PlaceSmokeDriver._handoff_admission_reason
     _controller_state_window = PlaceSmokeDriver._controller_state_window
     _on_controller_state = PlaceSmokeDriver._on_controller_state
+    _record_submitted_leg = PlaceSmokeDriver._record_submitted_leg
     _controller_point = staticmethod(PlaceSmokeDriver._controller_point)
     _on_joint_state = PlaceSmokeDriver._on_joint_state
     _peek_leg_load_state = PlaceSmokeDriver._peek_leg_load_state
@@ -406,6 +408,60 @@ class TestHandoffGate(unittest.TestCase):
         self.assertEqual(window["rows"][0]["reference"], [
             round(value, 6) for value in TARGET])
         self.assertEqual(window["rows"][0]["error"], [0.0] * 6)
+
+
+class TestSubmittedTrajectoryCapture(unittest.TestCase):
+    """The V2 path writes no boundary dump; this is the only record."""
+
+    def _message_leg(self):
+        from luggage_msgs.msg import MotionSegmentV2
+        from trajectory_msgs.msg import JointTrajectoryPoint
+
+        segment = MotionSegmentV2()
+        segment.name = "transit"
+        trajectory = segment.joint_trajectory.trajectory
+        trajectory.joint_names = list(CANONICAL_ARM_JOINTS)
+        for k in range(5):
+            point = JointTrajectoryPoint()
+            point.positions = [0.1 * k] * 6
+            point.velocities = [0.01 * k] * 6
+            point.time_from_start.sec = k
+            point.time_from_start.nanosec = 250000000
+            trajectory.points.append(point)
+        return segment
+
+    def test_message_form_keeps_every_point_with_time_parameters(self):
+        dump = trajectory_dump(self._message_leg())
+        self.assertEqual(dump["n_points"], 5)
+        self.assertFalse(dump["truncated"])
+        self.assertEqual(dump["joint_names"], list(CANONICAL_ARM_JOINTS))
+        self.assertEqual([p["t"] for p in dump["points"]],
+                         [0.25, 1.25, 2.25, 3.25, 4.25])
+        self.assertEqual(dump["points"][2]["q"], [0.2] * 6)
+        self.assertEqual(dump["points"][2]["v"], [0.02] * 6)
+
+    def test_absent_trajectory_is_none_not_empty(self):
+        self.assertIsNone(trajectory_dump(None))
+        leg = _Leg("x", TARGET, TARGET)
+        leg.joint_trajectory = None
+        self.assertIsNone(trajectory_dump(leg))
+
+    def test_truncation_is_marked(self):
+        dump = trajectory_dump(self._message_leg(), max_points=3)
+        self.assertTrue(dump["truncated"])
+        self.assertEqual(len(dump["points"]), 3)
+        self.assertEqual(dump["n_points"], 5)
+
+    def test_each_executed_leg_is_recorded_with_times(self):
+        driver = _Driver(_two_legs())
+        trial = PlaceTrial(index=0)
+        ok, code, _ = driver._execute_segment(_segment("transit"), trial)
+        self.assertTrue(ok, code)
+        row = trial.extras["submitted_legs"][0]
+        self.assertEqual(row["name"], "transit")
+        self.assertTrue(row["ok"])
+        self.assertLessEqual(row["submit_wall"], row["result_wall"])
+        self.assertEqual(row["trajectory"]["n_points"], 2)
 
 
 class TestControllerStateTopic(unittest.TestCase):

@@ -332,6 +332,57 @@ def trajectory_endpoint(segment, which):
     return names, [float(value) for value in point.positions]
 
 
+def trajectory_dump(segment, max_points=5000):
+    """Lossless submitted-trajectory record: names and every timed point.
+
+    Capture only. ``t`` is ``time_from_start`` in seconds; ``q`` and ``v``
+    are the point's positions and velocities (``v`` None when absent).
+    Returns None when the segment carries no timed trajectory. A trajectory
+    longer than ``max_points`` is cut and marked ``truncated``.
+    """
+    if segment is None:
+        return None
+    if isinstance(segment, dict):
+        joint = segment.get("joint_trajectory")
+    else:
+        joint = getattr(segment, "joint_trajectory", None)
+    if joint is None:
+        return None
+    if isinstance(joint, dict):
+        names = list(joint.get("joint_names") or [])
+        raw = list(joint.get("points") or [])
+    else:
+        trajectory = getattr(joint, "trajectory", None)
+        if trajectory is None:
+            return None
+        names = list(trajectory.joint_names)
+        raw = list(trajectory.points)
+    points = []
+    for point in raw[:int(max_points)]:
+        if isinstance(point, dict):
+            q = point.get("positions")
+            v = point.get("velocities")
+            t = point.get("time_from_start", point.get("t"))
+            if isinstance(t, dict):
+                t = float(t.get("sec", 0)) + 1e-9 * float(t.get("nanosec", 0))
+        else:
+            q = point.positions
+            v = point.velocities
+            stamp = point.time_from_start
+            t = float(stamp.sec) + 1e-9 * float(stamp.nanosec)
+        points.append({
+            "t": None if t is None else round(float(t), 6),
+            "q": None if q is None else [float(x) for x in q],
+            "v": [float(x) for x in v] if v else None,
+        })
+    return {
+        "joint_names": [str(n) for n in names],
+        "n_points": len(raw),
+        "truncated": len(raw) > int(max_points),
+        "points": points,
+    }
+
+
 def _round_joints(values):
     if values is None:
         return None
@@ -1337,6 +1388,26 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "result_sim_stamp": float(self.ros_now_sec()),
         }
 
+    def _record_submitted_leg(self, trial, motion_segment, name, ok, message,
+                              submit_times):
+        """Capture only: the exact submitted trajectory and action times.
+
+        The PlanMotionV2 path writes no boundary dump, so this is the only
+        record of the time-parameterised trajectory handed to the controller.
+        Controller-level accept/success times come from the controller log
+        and are aligned to these by wall clock.
+        """
+        trial.extras.setdefault("submitted_legs", []).append({
+            "name": str(name),
+            "ok": bool(ok),
+            "message": str(message or ""),
+            "submit_wall": submit_times.get("submit_wall"),
+            "submit_sim_stamp": submit_times.get("submit_sim_stamp"),
+            "result_wall": time.time(),
+            "result_sim_stamp": float(self.ros_now_sec()),
+            "trajectory": trajectory_dump(motion_segment),
+        })
+
     def _handoff_samples_reader(self, since_mono):
         """``read_samples`` closure: new ring rows received after ``since``."""
         cursor = {"stamp": None}
@@ -1636,6 +1707,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # and the controller commit cancels mid-wait (the
                 # adapter refuses by name and waits for the cancel
                 # receipt — no detach, no map commit, no recovery).
+                submit_times = {
+                    "submit_wall": time.time(),
+                    "submit_mono": time.monotonic(),
+                    "submit_sim_stamp": float(self.ros_now_sec()),
+                }
                 ok, message, result = self._typed.plan_motion(
                     motion_segment, self._args.plan_timeout,
                     name="PlanMotionV2:%s" % name,
@@ -1645,6 +1721,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                         if leg_admission.get("load_state") == "carrying"
                         else None))
                 self._note_leg_submitted(motion_segment, name, ok)
+                self._record_submitted_leg(
+                    trial, motion_segment, name, ok, message, submit_times)
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to
