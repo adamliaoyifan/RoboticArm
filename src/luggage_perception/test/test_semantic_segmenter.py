@@ -18,6 +18,7 @@ from luggage_perception.semantic_segmenter import (  # noqa: E402
     StubSegmenter,
     apply_self_body_mask,
     apply_wrist_self_body,
+    assign_temporal_hold_instance,
     backend_matches_require,
     bbox_mask_overlap,
     build_segmenter,
@@ -881,3 +882,195 @@ class TestOfflineClipVendor(unittest.TestCase):
         # (download_root), never a ~/.cache/clip symlink.
         self.assertTrue(getattr(
             clip.load, "_luggage_clip_vendor_load", False))
+
+
+class TestTemporalHoldInstance(unittest.TestCase):
+    """Replay of pickup observe stamps 4.752 s and 4.885 s."""
+
+    BOX = (215, 99, 435, 243)
+
+    def _labels(self):
+        labels = np.zeros((360, 640), dtype=np.uint8)
+        x1, y1, x2, y2 = self.BOX
+        labels[y1:y2, x1:x2] = LABEL_CARGO
+        # Arm pixels that entered the unbound cloud, outside the suitcase box.
+        labels[73:231, 602:640] = LABEL_CARGO
+        return labels
+
+    def test_hold_fills_an_empty_instance_only_inside_its_bbox(self):
+        labels = self._labels()
+        inst = np.zeros(labels.shape, dtype=np.uint16)
+        live = {
+            "label": LABEL_CARGO, "prompt": "box", "confidence": 0.25,
+            "bbox": list(self.BOX), "accepted": False,
+        }
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "confidence": 0.5,
+            "bbox": list(self.BOX), "held": True, "accepted": True,
+        }
+        _labels, dets, out = assign_temporal_hold_instance(
+            labels, [live, hold], inst)
+        self.assertGreater(int(out[99:243, 215:435].min()), 0)
+        self.assertEqual(int(out[73:231, 602:640].max()), 0)
+        self.assertEqual(len(set(out[out > 0].tolist())), 1)
+        self.assertEqual(dets[1]["instance_id"], int(out[120, 300]))
+
+    def test_two_live_boxes_are_not_merged_by_overlap(self):
+        labels = np.zeros((40, 80), dtype=np.uint8)
+        inst = np.zeros(labels.shape, dtype=np.uint16)
+        labels[5:20, 5:25] = LABEL_CARGO
+        labels[5:20, 30:55] = LABEL_CARGO
+        inst[5:20, 5:25] = 1
+        inst[5:20, 30:55] = 2
+        # The boxes overlap in y and nearly in x. No hold, so ids stay.
+        dets = [
+            {"label": LABEL_CARGO, "prompt": "box", "bbox": [5, 5, 25, 20],
+             "instance_id": 1},
+            {"label": LABEL_CARGO, "prompt": "box", "bbox": [22, 5, 55, 20],
+             "instance_id": 2},
+        ]
+        _labels, kept, out = assign_temporal_hold_instance(labels, dets, inst)
+        self.assertEqual(int(out[10, 10]), 1)
+        self.assertEqual(int(out[10, 40]), 2)
+        self.assertEqual(kept[0]["instance_id"], 1)
+        self.assertEqual(kept[1]["instance_id"], 2)
+
+    def test_hold_does_not_copy_one_box_id_onto_another(self):
+        labels = np.zeros((40, 90), dtype=np.uint8)
+        inst = np.zeros(labels.shape, dtype=np.uint16)
+        labels[5:20, 5:25] = LABEL_CARGO
+        labels[5:20, 60:80] = LABEL_CARGO
+        inst[5:20, 5:25] = 1
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "bbox": [5, 5, 25, 20], "accepted": True,
+        }
+        other = {
+            "label": LABEL_CARGO, "prompt": "box", "bbox": [60, 5, 80, 20],
+            "instance_id": 2,
+        }
+        inst[5:20, 60:80] = 2
+        _labels, dets, out = assign_temporal_hold_instance(
+            labels, [hold, other], inst)
+        self.assertEqual(int(out[10, 10]), 1)
+        self.assertEqual(int(out[10, 70]), 2)
+        self.assertEqual(dets[0]["instance_id"], 1)
+
+    def test_bound_hold_drops_arm_pixels_from_the_cargo_selection(self):
+        from luggage_perception.semantic_point_filter import (
+            primary_cargo_instance_id)
+        labels = self._labels()
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "bbox": list(self.BOX), "accepted": True,
+        }
+        _labels, _dets, bound = assign_temporal_hold_instance(
+            labels, [hold], np.zeros(labels.shape, dtype=np.uint16))
+        arm = np.zeros(labels.shape, dtype=bool)
+        arm[73:231, 602:640] = True
+        self.assertTrue(np.all(bound[arm] == 0))
+        pid = primary_cargo_instance_id(bound, labels == LABEL_CARGO)
+        self.assertEqual(pid, int(bound[120, 300]))
+        selected = (labels == LABEL_CARGO) & (bound == pid)
+        self.assertFalse(selected[arm].any())
+        self.assertGreater(int(selected.sum()), 0)
+
+    def test_background_inside_the_hold_rectangle_stays_unlabeled(self):
+        labels = np.zeros((30, 40), dtype=np.uint8)
+        labels[8:12, 8:12] = LABEL_CARGO
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "bbox": [2, 2, 28, 20], "accepted": True,
+            "instance_source": "temporal_hold",
+            "source_stamp": 4.752,
+            "target_id": "pickup_box_0001_standard",
+        }
+        _labels, dets, out = assign_temporal_hold_instance(
+            labels, [hold], np.zeros(labels.shape, dtype=np.uint16))
+        self.assertEqual(int(out[3, 3]), 0)
+        self.assertGreater(int(out[10, 10]), 0)
+        self.assertEqual(dets[0]["instance_source"], "temporal_hold")
+        self.assertEqual(dets[0]["source_stamp"], 4.752)
+        self.assertEqual(dets[0]["target_id"], "pickup_box_0001_standard")
+
+    def test_live_box_and_its_hold_share_one_id(self):
+        labels = self._labels()
+        inst = np.zeros(labels.shape, dtype=np.uint16)
+        x1, y1, x2, y2 = self.BOX
+        inst[y1:y2, x1:x2] = 1
+        live = {
+            "label": LABEL_CARGO, "prompt": "box", "bbox": list(self.BOX),
+            "instance_id": 1, "accepted": True,
+        }
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "bbox": list(self.BOX), "accepted": True,
+        }
+        _labels, dets, out = assign_temporal_hold_instance(
+            labels, [live, hold], inst)
+        self.assertEqual(int(out[120, 300]), 1)
+        self.assertEqual(dets[0]["instance_id"], 1)
+        self.assertEqual(dets[1]["instance_id"], 1)
+        self.assertEqual(len(set(out[out > 0].tolist())), 1)
+
+    def test_new_hold_id_does_not_collide_with_an_existing_id(self):
+        labels = np.zeros((20, 40), dtype=np.uint8)
+        inst = np.zeros(labels.shape, dtype=np.uint16)
+        labels[2:8, 2:8] = LABEL_CARGO
+        inst[2:8, 2:8] = 3
+        labels[2:8, 20:30] = LABEL_CARGO
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "bbox": [20, 2, 30, 8], "accepted": True,
+        }
+        _labels, dets, out = assign_temporal_hold_instance(labels, [hold], inst)
+        self.assertEqual(int(out[4, 4]), 3)
+        self.assertEqual(int(out[4, 24]), 4)
+        self.assertEqual(dets[0]["instance_id"], 4)
+
+    def test_gate_hold_keeps_the_previous_measure_identity(self):
+        from luggage_perception.detection_temporal_gate import (
+            DetectionTemporalGate)
+        gate = DetectionTemporalGate(
+            window_size=3, min_frames=2, min_positive_ratio=0.5)
+        labels = np.zeros((20, 20), dtype=np.uint8)
+        labels[2:10, 2:10] = LABEL_CARGO
+        det = {
+            "label": LABEL_CARGO, "prompt": "box", "bbox": [2, 2, 10, 10],
+            "accepted": True, "confidence": 0.9,
+        }
+        rgb = np.zeros((20, 20, 3), dtype=np.uint8)
+        gate.apply(labels, [det], rgb, stamp=4.752,
+                   target_id="pickup_box_0001_standard")
+        gate.apply(labels, [det], rgb, stamp=4.800,
+                   target_id="pickup_box_0001_standard")
+        _out, dets, stats = gate.apply(
+            np.zeros_like(labels), [], rgb, stamp=4.885,
+            target_id="pickup_box_0001_standard")
+        self.assertTrue(stats["held"])
+        hold = [item for item in dets if item.get("held")][0]
+        self.assertEqual(hold["instance_source"], "temporal_hold")
+        self.assertEqual(hold["source_stamp"], 4.800)
+        self.assertEqual(hold["target_id"], "pickup_box_0001_standard")
+
+    def test_hold_only_frame_is_continuity_not_a_new_measure(self):
+        from luggage_perception.semantic_segmenter import (
+            observation_source_for_detections)
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "instance_id": 7, "instance_source": "temporal_hold",
+        }
+        self.assertEqual(
+            observation_source_for_detections([hold], "measure"), "hold_track")
+        live = {"label": LABEL_CARGO, "prompt": "box", "bbox": list(self.BOX)}
+        self.assertEqual(
+            observation_source_for_detections([live, hold], "measure"),
+            "measure")
+
+    def test_current_bottom_band_does_not_cover_the_arm_pixels(self):
+        from luggage_perception.semantic_segmenter import row_band_mask
+        # self_body_row_start_frac 0.85 on a 360-row frame starts at y=306.
+        # The extra points project to y 73-230, x 602-639.
+        band = row_band_mask((360, 640), 0.85)
+        self.assertFalse(band[73:231, 602:640].any())
+        self.assertTrue(band[320:, :].any())

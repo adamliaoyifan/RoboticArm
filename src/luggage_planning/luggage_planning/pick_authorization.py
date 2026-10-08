@@ -283,6 +283,14 @@ class PickAuthorizationPolicy:
             scored = int(scored_attempts)
         if pick_authorized(box, detect_reason):
             return AuthorizationDecision(AUTHORIZE, "ok", n, elapsed)
+        if is_target_association_ambiguous(box, detect_reason):
+            # Support may already be ok. Wait inside the existing window.
+            # Exhaustion stops under this name, not as missing geometry.
+            if self._budget_left(scored, elapsed):
+                return AuthorizationDecision(
+                    WAIT, DETECT_TARGET_ASSOCIATION_AMBIGUOUS, n, elapsed)
+            return AuthorizationDecision(
+                TERMINAL, DETECT_TARGET_ASSOCIATION_AMBIGUOUS, n, elapsed)
         if (box is not None
                 and not is_continuity_hold(box, detect_reason)
                 and _height_source(box) in _FORBIDDEN_SOURCES):

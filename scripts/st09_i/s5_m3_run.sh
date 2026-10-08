@@ -296,6 +296,12 @@ start_s=$SECONDS
 # Diagnostic only: on SIGABRT at exit (rc 134 seen once) the Python stack of
 # the aborting thread is printed to driver.log.
 export PYTHONFAULTHANDLER=1
+if [[ "${M3_OBSERVE_ONLY:-0}" == "1" ]]; then
+  # Pickup observation only. The watcher spawns one box and does not grasp.
+  python3 "$WS/scripts/st09_i/pickup_observe_capture.py" \
+    --out "$OUT" --timeout-sec "${M3_OBSERVE_TIMEOUT_SEC:-90}" \
+    > "$OUT/driver.log" 2>&1 &
+else
 python3 "$WS/install-st09/luggage_gazebo/lib/luggage_gazebo/m3_three_box_driver.py" \
   --out "$OUT" --n "$N" --m3-sequence "$SEQUENCE" \
   --scene-tf-config "$M3_SCENE_TF" \
@@ -305,6 +311,7 @@ python3 "$WS/install-st09/luggage_gazebo/lib/luggage_gazebo/m3_three_box_driver.
   --payload vacuum --place-probe on --goto-timeout 60 --geometry-timeout 90 \
   "${COMMIT_ARGS[@]}" \
   > "$OUT/driver.log" 2>&1 &
+fi
 DRIVER_PID=$!
 log driver_start ", \"driver_pid\": $DRIVER_PID, \"deadline_sec\": $DEADLINE_SEC"
 

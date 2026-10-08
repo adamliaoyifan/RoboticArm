@@ -716,6 +716,85 @@ def apply_self_body_mask(label_map, detections, body_mask,
     return out, kept, inst, n_self
 
 
+def assign_temporal_hold_instance(label_map, detections, instance_map,
+                                  cargo_label=LABEL_CARGO):
+    """Give a temporal hold an instance id without merging live boxes.
+
+    ``temporal_hold`` is the gate's continuation of one previous target.
+    It paints cargo labels and, when that region has no instance id, one
+    new id on the hold bbox only. A live detection keeps its own id.
+    Overlap between two live boxes does not copy an id from one to the
+    other.
+    """
+    labels = np.asarray(label_map)
+    dets = [dict(det) for det in (detections or ())]
+    if instance_map is None:
+        inst = np.zeros(labels.shape[:2], dtype=np.uint16)
+    else:
+        inst = np.array(instance_map, copy=True)
+    holds = [
+        det for det in dets
+        if det.get("held") or det.get("prompt") == "temporal_hold"]
+    if not holds:
+        return labels, dets, inst
+    next_id = int(inst.max()) + 1 if inst.size else 1
+    if next_id < 1:
+        next_id = 1
+    height, width = inst.shape[:2]
+    for det in holds:
+        box = det.get("bbox") or ()
+        if len(box) < 4:
+            continue
+        x1, y1, x2, y2 = (int(v) for v in box[:4])
+        x1, x2 = max(0, min(width, x1)), max(0, min(width, x2))
+        y1, y2 = max(0, min(height, y1)), max(0, min(height, y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        patch = inst[y1:y2, x1:x2]
+        positive = patch[patch > 0]
+        if positive.size:
+            det["instance_id"] = int(np.bincount(positive.ravel()).argmax())
+            continue
+        inst_id = next_id
+        next_id += 1
+        cargo = labels[y1:y2, x1:x2] == int(cargo_label)
+        # Background inside the rectangle stays unlabeled. The id separates
+        # cargo pixels; it does not turn the rectangle into a box.
+        if not cargo.any():
+            det["instance_source"] = "temporal_hold"
+            continue
+        region = inst[y1:y2, x1:x2]
+        region[cargo] = inst_id
+        det["instance_id"] = inst_id
+        det["instance_source"] = "temporal_hold"
+    return labels, dets, inst
+
+
+def observation_source_for_detections(detections, cloud_source,
+                                      cargo_label=LABEL_CARGO):
+    """A hold-only frame stays continuity, even if this depth was just read.
+
+    The synthesized instance id separates points. It is not a new measure.
+    A live cargo detection keeps ``cloud_source``.
+    """
+    cargo = []
+    for det in detections or ():
+        if isinstance(det, dict):
+            label = int(det.get("label", -1))
+            held = bool(det.get("held") or det.get("prompt") == "temporal_hold")
+        else:
+            label = int(getattr(det, "label", -1))
+            held = bool(
+                getattr(det, "held", False)
+                or getattr(det, "prompt", "") == "temporal_hold")
+        if label != int(cargo_label):
+            continue
+        cargo.append(held)
+    if cargo and all(cargo):
+        return "hold_track"
+    return cloud_source
+
+
 def row_band_mask(shape, row_start_frac):
     """Bottom row-band as HxW bool. All-False when frac is outside (0, 1)."""
     height, width = int(shape[0]), int(shape[1])
@@ -899,14 +978,21 @@ class SemanticSegmenter:
         t_temporal = self._time.perf_counter() if t_after_seg is not None else None
         if self.temporal_gate is not None:
             label_map, detections, tstats = self.temporal_gate.apply(
-                label_map, detections, rgb_uint8)
+                label_map, detections, rgb_uint8,
+                stamp=stamp, target_id=instance_id)
             stats["temporal"] = dict(tstats)
             stats["held"] = bool(tstats.get("held"))
-            if tstats.get("held") and n_self:
+            if tstats.get("held") and n_self and body is not None:
                 # A held bbox may reach into the panel; never hand the arm
                 # back to the cargo cloud.
                 label_map = np.array(label_map, copy=True)
                 label_map[body] = LABEL_ROBOT_ARM
+            label_map, detections, instance_map = (
+                assign_temporal_hold_instance(
+                    label_map, detections, instance_map))
+            if body is not None and instance_map is not None:
+                instance_map = np.array(instance_map, copy=True)
+                instance_map[np.asarray(body, dtype=bool)] = 0
         t_counts = self._time.perf_counter() if t_after_seg is not None else None
         stats["detections"] = compact_detections(detections)
         stats["label_counts"] = {

@@ -33,7 +33,9 @@ def _box(**fields):
         height_source=fields.get(
             "height_source", HEIGHT_SOURCE_UNAVAILABLE),
     )
-    for name in ("support_gate", "support_reason", "pca_source", "source"):
+    for name in (
+            "support_gate", "support_reason", "pca_source", "pca_reason",
+            "source"):
         if name in fields:
             setattr(box, name, fields[name])
     return box
@@ -59,6 +61,32 @@ def _unstable_reason():
 
 
 class TestPickAuthorized(unittest.TestCase):
+
+    def test_hold_only_measure_does_not_authorize_with_a_synthesized_id(self):
+        # Fresh depth and a passing support check are not a new observation
+        # when the only detection is a temporal hold. The instance id only
+        # separates points.
+        from luggage_perception.semantic_segmenter import (
+            LABEL_CARGO, observation_source_for_detections)
+        hold = {
+            "label": LABEL_CARGO, "prompt": "temporal_hold", "held": True,
+            "instance_id": 7, "instance_source": "temporal_hold",
+            "source_stamp": 4.752,
+            "target_id": "pickup_box_0001_standard",
+        }
+        source = observation_source_for_detections([hold], "measure")
+        self.assertEqual(source, "hold_track")
+        box = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+            pca_source=source,
+            support_reason="ok",
+            support_gate="n/a")
+        reason = (
+            "perception estimate (conf=1.00, height_valid=True, "
+            "support=ok, gate=n/a, source=hold_track)")
+        self.assertTrue(is_continuity_hold(box, reason))
+        self.assertFalse(pick_authorized(box, reason))
 
     def test_unbound_measure_does_not_authorize_even_when_support_passed(self):
         box = _box(
@@ -95,7 +123,35 @@ class TestPickAuthorized(unittest.TestCase):
         self.assertTrue(result.authorized)
         self.assertEqual(result.attempts, 2)
         self.assertEqual(result.trace[0]["action"], WAIT)
+        self.assertEqual(
+            result.trace[0]["reason"], "DETECT_TARGET_ASSOCIATION_AMBIGUOUS")
         self.assertLess(result.decision.elapsed_sec, 5.0)
+
+    def test_window_exhaustion_stops_under_the_association_name(self):
+        # Every sample is support-valid and still unbound. The loop must
+        # not authorize, and the stop reason stays the association name.
+        clock = {"t": 0.0}
+        box = _box(
+            height_valid=True,
+            height_source=HEIGHT_SOURCE_MEASURED_SUPPORT,
+            pca_source="measure",
+            pca_reason="DETECT_TARGET_ASSOCIATION_AMBIGUOUS")
+
+        def detect():
+            return True, box, _measure_ok_reason()
+
+        def sleep(dt):
+            clock["t"] += float(dt)
+
+        result = run_authorization_loop(
+            detect, sleep, lambda: clock["t"],
+            policy=PickAuthorizationPolicy(AuthorizationConfig(
+                max_elapsed_sec=5.0, wait_period_sec=0.5, max_attempts=40)))
+        self.assertFalse(result.authorized)
+        self.assertEqual(result.decision.action, TERMINAL)
+        self.assertEqual(
+            result.decision.reason, "DETECT_TARGET_ASSOCIATION_AMBIGUOUS")
+        self.assertGreaterEqual(result.decision.elapsed_sec, 5.0)
 
     def test_measured_support_authorizes(self):
         self.assertTrue(pick_authorized(_box(
