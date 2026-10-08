@@ -186,10 +186,13 @@ class SimVacuumBackend(VacuumBackend):
     only the kinematic follow offset.
     """
 
-    def __init__(self, gz_client, scene, follow_rate_hz=30.0):
+    def __init__(self, gz_client, scene, follow_rate_hz=30.0, carry_filter=None):
         self._gz = gz_client
         self._scene = scene
         self.follow_rate_hz = float(follow_rate_hz)
+        # ``carry_filter(True)`` excludes p04 from the carried box only.
+        # None in unit tests, which have no Gazebo. The sim node always sets it.
+        self._carry_filter = carry_filter
         self._attached = False
         self._model_name = None
         self._offset_xyz = None
@@ -229,6 +232,9 @@ class SimVacuumBackend(VacuumBackend):
             if not scene_ok:
                 self.last_error = scene_msg
                 return False, "VACUUM_BACKEND_ERROR: scene %s" % scene_msg
+            filtered, filter_msg = self._enable_p04_filter()
+            if not filtered:
+                return False, filter_msg
             self._attached = True
             return True, "attached measured %s" % self._model_name
         try:
@@ -246,9 +252,30 @@ class SimVacuumBackend(VacuumBackend):
         except Exception as exc:  # noqa: BLE001 - backend boundary
             self.last_error = str(exc)
             return False, "VACUUM_BACKEND_ERROR: %s" % exc
+        filtered, filter_msg = self._enable_p04_filter()
+        if not filtered:
+            return False, filter_msg
         self._attached = True
         return True, "attached %s (follow %.1f Hz)" % (
             self._model_name, self.follow_rate_hz)
+
+    def _enable_p04_filter(self):
+        if self._carry_filter is None:
+            return True, ""
+        try:
+            ok, msg = self._carry_filter(True)
+        except Exception as exc:  # noqa: BLE001 - backend boundary
+            ok, msg = False, str(exc)
+        if ok:
+            return True, msg
+        try:
+            self._scene.detach_and_remove(self._model_name)
+        except Exception:  # noqa: BLE001
+            pass
+        self._planning_relation = None
+        self._physical_relation = None
+        self.last_error = msg
+        return False, "P04_CARRY_FILTER: %s" % msg
 
     def follow_step(self, panel_xyz, panel_quat):
         """One follow tick: recompute the box pose and push it to gz.

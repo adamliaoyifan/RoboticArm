@@ -367,5 +367,8 @@ fi
 if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" && -f /tmp/elfin_s20_gazebo.urdf ]]; then
   cp /tmp/elfin_s20_gazebo.urdf "$OUT/collision_models/robot.urdf"
 fi
+if [[ "${M3_CONTACT_CAPTURE:-0}" == "1" && -f /tmp/elfin_s20_gazebo.sdf ]]; then
+  cp /tmp/elfin_s20_gazebo.sdf "$OUT/collision_models/robot.sdf"
+fi
 log end ", \"driver_rc\": $DRIVER_RC"
 exit "$DRIVER_RC"

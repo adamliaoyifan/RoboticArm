@@ -20,6 +20,7 @@ goals still use FollowJointTrajectory; Cartesian / pose targets go through
 """
 
 import os
+import subprocess
 
 import yaml
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
@@ -475,9 +476,30 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
                 "ELFIN_GZ_STRIP_PANEL_COLLISION=%s removed %d suction "
                 "collisions; expected 1, so Gazebo was not started"
                 % (strip_token, removed))
-    urdf_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "elfin_s20_gazebo.urdf")
+    tmp = os.environ.get("TMPDIR", "/tmp")
+    urdf_file = os.path.join(tmp, "elfin_s20_gazebo.urdf")
     with open(urdf_file, "w", encoding="utf-8") as handle:
         handle.write(urdf_xml)
+    # p04's mask is applied on the converted SDF, not via a link-wide
+    # <gazebo> blob: that blob is copied onto every collision of the link.
+    converted = subprocess.run(
+        ["ign", "sdf", "-p", urdf_file],
+        capture_output=True, text=True, timeout=30, check=False)
+    if converted.returncode != 0 or not converted.stdout.strip():
+        raise RuntimeError(
+            "ign sdf -p failed (%s): %s" % (
+                converted.returncode, (converted.stderr or "")[:400]))
+    from luggage_description.gazebo_spawn_collision import (
+        P04_MASK, set_collision_bitmask_for_mesh)
+    sdf_xml, masked = set_collision_bitmask_for_mesh(
+        converted.stdout, "p04.stl", P04_MASK)
+    if masked != 1 and not strip_token:
+        raise RuntimeError(
+            "p04 collide_bitmask was set on %d collisions; expected 1, "
+            "so Gazebo was not started" % masked)
+    sdf_file = os.path.join(tmp, "elfin_s20_gazebo.sdf")
+    with open(sdf_file, "w", encoding="utf-8") as handle:
+        handle.write(sdf_xml)
 
     return Node(
         package="ros_gz_sim",
@@ -485,7 +507,7 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
         output="screen",
         arguments=[
             "-world", WORLD_NAME,
-            "-file", urdf_file,
+            "-file", sdf_file,
             "-name", "S20",
             "-x", "0",
             "-y", "0",

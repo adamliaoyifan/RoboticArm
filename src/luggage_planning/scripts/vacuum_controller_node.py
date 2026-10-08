@@ -103,6 +103,29 @@ class GzSetPoseClient(object):
         return True, ""
 
 
+class _CarryFilterClient(object):
+    """Ask the spawner to respawn the carried box with the p04 mask excluded."""
+
+    def __init__(self, node, group):
+        self._client = node.create_client(
+            SetBool, "/pickup_box_spawner/set_p04_carry_filter",
+            callback_group=group)
+
+    def __call__(self, enabled):
+        if not self._client.wait_for_service(timeout_sec=5.0):
+            return False, "set_p04_carry_filter unavailable"
+        event = threading.Event()
+        future = self._client.call_async(SetBool.Request(data=bool(enabled)))
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout=15.0):
+            return False, "set_p04_carry_filter timeout"
+        response = future.result()
+        if response is None or not response.success:
+            message = "" if response is None else response.message
+            return False, message or "set_p04_carry_filter rejected"
+        return True, response.message
+
+
 class ExecutorVacuumIo(object):
     """实机代码 (site / real-cell). Not part of the Gazebo simulation stack.
 
@@ -256,10 +279,12 @@ class VacuumControllerNode(Node):
             scene = PlanningSceneClient(self, callback_group=group)
             gz_client = GzSetPoseClient(
                 self, group, str(self.get_parameter("world").value))
+            carry_filter = _CarryFilterClient(self, group)
             self._backend = SimVacuumBackend(
                 gz_client, scene,
                 follow_rate_hz=float(
-                    self.get_parameter("follow_rate_hz").value))
+                    self.get_parameter("follow_rate_hz").value),
+                carry_filter=carry_filter)
 
         self._vacuum_on = False
         self._last_fail_reason = ""

@@ -2201,9 +2201,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         try:
             mass_kg = float(mass)
             topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
+            from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
             sdf = pickup_visual_sdf(
                 model, size, mass_kg, visual, static=False,
-                contact_topic=topic)
+                contact_topic=topic, collide_bitmask=BOX_FULL_MASK)
             release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:

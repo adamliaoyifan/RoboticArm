@@ -14,6 +14,7 @@ same vertex scale, ``Z_UP``, and a diffuse texture pointing at the copied
 from __future__ import division
 
 import json
+from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
 import math
 import os
 import re
@@ -406,7 +407,8 @@ def _mesh_geometry_xml(uri, scale):
 
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR,
-                      static=True, contact_topic=None):
+                      static=True, contact_topic=None,
+                      collide_bitmask=None):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -440,13 +442,15 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         static=bool(static),
         use_mesh_material=True,
         contact_topic=contact_topic,
+        collide_bitmask=collide_bitmask,
     )
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
                  static=False, collision_uri_override=None,
-                 use_mesh_material=False, contact_topic=None):
+                 use_mesh_material=False, contact_topic=None,
+                 collide_bitmask=None):
     """SDF at the link origin.
 
     Default mesh mode shares one STL URI for visual and collision.
@@ -505,6 +509,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
 %s
         </geometry>
         <surface>
+          <contact><collide_bitmask>%d</collide_bitmask></contact>
           <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
         </surface>
       </collision>
@@ -518,6 +523,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         geometry,
         material_xml,
         collision_geom,
+        BOX_FULL_MASK if collide_bitmask is None else int(collide_bitmask),
     )
     topic = str(contact_topic or "").strip()
     if topic:
