@@ -18,6 +18,10 @@ SAMPLE_DURATION_S = 51175718448 / 1e9
 SAMPLE_PAYLOAD = {
     "/clock": (572832, 47736),
     "/joint_states": (1507952, 4772),
+    # ESTIMATE, not measured: 50 Hz state_publish_rate, ~900 B per message
+    # (reference/feedback/error/output points for six joints). Replace with
+    # the measured size after the first run that records this topic.
+    "/S20/elfin_arm_controller/controller_state": (2303100, 2559),
     "/luggage/cargo_map/surface_2d": (63560, 1),
     "/luggage/cargo_map/surface_v2": (49492, 1),
     "/luggage/current_box": (424, 4),
@@ -52,6 +56,9 @@ LIGHT_TOPICS = (
     "/clock",
     "/tf",
     "/joint_states",
+    # Handoff evidence: controller reference vs measured, across the window
+    # between one leg's success result and the next leg's submission.
+    "/S20/elfin_arm_controller/controller_state",
     "/vacuum/state",
     "/vacuum/events_json",
     "/luggage/current_box",

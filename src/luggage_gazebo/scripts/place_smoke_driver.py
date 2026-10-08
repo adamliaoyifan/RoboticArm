@@ -41,6 +41,7 @@ from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
 from luggage_msgs.srv import (
     AddPlacedBox,
     BuildMotionSequence,
+    CheckExecutionAdmission,
     ClearCurrentBox,
     DetectLuggage,
     GetCurrentBox,
@@ -70,6 +71,11 @@ from luggage_planning.motion_boundary import (
 from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
+from luggage_gazebo.handoff_settle import (
+    HandoffPolicy,
+    await_handoff,
+    summarize_for_extras,
+)
 from luggage_gazebo.place_metrics import (
     SETTLE_BUDGET_SEC,
     SETTLE_MOVE_M,
@@ -549,6 +555,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._segment_exec_t0 = None
         self._segment_exec_name = None
+        self._handoff_policy = HandoffPolicy()
+        self._last_submitted_leg = None
+        self._handoff_failure_record = None
+        self._controller_state_ring = deque()
+        self._controller_state_count = 0
+        self._admission_check_client = None
         self._last_pick_detection = None
         self._home_arm_state = {}
         self._exit_yaw = {}
@@ -560,6 +572,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10,
             callback_group=self._group)
+        self._subscribe_controller_state()
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
         self._add_placed = self.create_client(
@@ -1206,6 +1219,270 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "position": [float(value) for value in (record.get("position") or [])],
         }
 
+    # ------------------------------------------------------------------
+    # Leg-to-leg handoff: controller success is not arrival.
+    # See luggage_gazebo/handoff_settle.py for the contract and Run08.
+
+    CONTROLLER_STATE_TOPIC = "/S20/elfin_arm_controller/controller_state"
+    # Controller reference/feedback is kept this long for handoff capture.
+    _CONTROLLER_STATE_HORIZON_SEC = 30.0
+    # Success-path handoff evidence keeps at most this many controller rows.
+    _CONTROLLER_STATE_SUCCESS_ROWS = 30
+    _HANDOFF_ADMISSION_POLL_SEC = 1.0
+    _HANDOFF_ADMISSION_TIMEOUT_SEC = 1.0
+
+    def _subscribe_controller_state(self):
+        """Record controller reference/feedback/error for the handoff window.
+
+        Optional: a missing message type or topic is recorded explicitly as
+        ``unavailable`` in the handoff evidence, never silently skipped.
+        """
+        try:
+            from control_msgs.msg import JointTrajectoryControllerState
+        except ImportError:
+            self._controller_state_import_error = "control_msgs unavailable"
+            return
+        self._controller_state_import_error = ""
+        self.create_subscription(
+            JointTrajectoryControllerState, self.CONTROLLER_STATE_TOPIC,
+            self._on_controller_state,
+            QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT),
+            callback_group=self._group)
+
+    @staticmethod
+    def _controller_point(point, names):
+        if point is None:
+            return None
+        positions = canonical_joint_positions(
+            names, list(getattr(point, "positions", []) or []))
+        return positions
+
+    def _on_controller_state(self, msg):
+        names = list(msg.joint_names)
+        # humble: reference/feedback/error. foxy: desired/actual/error.
+        reference = getattr(msg, "reference", None)
+        if reference is None or not list(getattr(reference, "positions", [])):
+            reference = getattr(msg, "desired", None)
+        feedback = getattr(msg, "feedback", None)
+        if feedback is None or not list(getattr(feedback, "positions", [])):
+            feedback = getattr(msg, "actual", None)
+        row = {
+            "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
+            "rx_mono": time.monotonic(),
+            "reference": self._controller_point(reference, names),
+            "feedback": self._controller_point(feedback, names),
+            "error": self._controller_point(
+                getattr(msg, "error", None), names),
+            "output": self._controller_point(
+                getattr(msg, "output", None), names),
+        }
+        self._controller_state_count += 1
+        self._controller_state_ring.append(row)
+        cutoff = row["rx_mono"] - self._CONTROLLER_STATE_HORIZON_SEC
+        while (self._controller_state_ring
+               and self._controller_state_ring[0]["rx_mono"] < cutoff):
+            self._controller_state_ring.popleft()
+
+    def _controller_state_window(self, since_mono, until_mono, max_rows=None):
+        rows = []
+        for row in list(self._controller_state_ring):
+            if since_mono <= row["rx_mono"] <= until_mono:
+                rows.append({
+                    "stamp": row["stamp"],
+                    "reference": _round_joints(row["reference"]),
+                    "feedback": _round_joints(row["feedback"]),
+                    "error": _round_joints(row["error"]),
+                    "output": _round_joints(row["output"]),
+                })
+        if max_rows is not None and len(rows) > max_rows:
+            step = max(1, len(rows) // int(max_rows))
+            picked = rows[::step]
+            if picked[-1] is not rows[-1]:
+                picked.append(rows[-1])
+            rows = picked
+        return {
+            "topic": self.CONTROLLER_STATE_TOPIC,
+            "available": bool(rows),
+            "messages_total": int(self._controller_state_count),
+            "unavailable_reason": (
+                "" if rows else (
+                    getattr(self, "_controller_state_import_error", "")
+                    or "no controller_state message in the handoff window")),
+            "rows": rows,
+        }
+
+    def _note_leg_submitted(self, motion_segment, name, ok):
+        """Remember the leg that was actually submitted and its result time.
+
+        The endpoint comes from the typed segment handed to the controller
+        path, not from the certified route plan, so the next leg is compared
+        against what was really submitted.
+        """
+        if not ok:
+            self._last_submitted_leg = None
+            return
+        names, last = trajectory_endpoint(motion_segment, "last")
+        _first_names, first = trajectory_endpoint(motion_segment, "first")
+        self._last_submitted_leg = {
+            "name": str(name),
+            "joint_names": list(names) if names is not None else None,
+            "last_knot": None if last is None else list(last),
+            "first_knot": None if first is None else list(first),
+            "result_mono": time.monotonic(),
+            "result_sim_stamp": float(self.ros_now_sec()),
+        }
+
+    def _handoff_samples_reader(self, since_mono):
+        """``read_samples`` closure: new ring rows received after ``since``."""
+        cursor = {"stamp": None}
+
+        def read():
+            try:
+                rows = list(self._joint_ring)
+            except RuntimeError:  # ring mutated while copying; retry later
+                return []
+            fresh = []
+            for row in rows:
+                rx = row.get("rx_mono")
+                if rx is None or rx < since_mono:
+                    continue
+                stamp = float(row.get("stamp") or 0.0)
+                if cursor["stamp"] is not None and stamp <= cursor["stamp"]:
+                    continue
+                fresh.append((row, rx))
+            if fresh:
+                cursor["stamp"] = float(fresh[-1][0].get("stamp") or 0.0)
+            return fresh
+
+        return read
+
+    def _handoff_admission_reason(self, motion_segment, leg_admission):
+        """Revocation reason while waiting, or None. Fail-closed."""
+        if not leg_admission:
+            return None
+        client = self._admission_check_client
+        if client is None:
+            client = self.create_client(
+                CheckExecutionAdmission,
+                "/trajectory_selector/check_execution_admission",
+                callback_group=getattr(self, "_group", None))
+            self._admission_check_client = client
+        request = CheckExecutionAdmission.Request()
+        request.route_digest = str(leg_admission.get("route_digest", "") or "")
+        request.certification_id = str(
+            leg_admission.get("certification_id", "") or "")
+        request.admission_map_revision = int(
+            leg_admission.get("admission_map_revision", 0) or 0)
+        request.scene_revision = str(
+            getattr(motion_segment, "scene_revision", "") or "")
+        request.leg_digest = str(leg_admission.get("leg_digest", "") or "")
+        request.leg_load_state = str(leg_admission.get("load_state", "") or "")
+        response = self.call_srv(
+            client, request, timeout=self._HANDOFF_ADMISSION_TIMEOUT_SEC)
+        if response is None:
+            return "HANDOFF_ADMISSION_CHECK_UNAVAILABLE"
+        if not bool(response.live):
+            return "HANDOFF_ADMISSION_%s" % str(
+                response.reason_code or "REVOKED")
+        return None
+
+    def _await_leg_handoff(self, motion_segment, name, leg_admission, trial):
+        """Gate the submission of ``name`` on the previous leg's arrival.
+
+        Returns ``(ok, code)``. ``ok`` False means the leg must not be
+        submitted: ``HANDOFF_ENDPOINT_MISMATCH`` (structural),
+        ``HANDOFF_SETTLE_TIMEOUT`` (bounded wait expired), or the abort
+        reason (cancellation, vacuum loss, admission revoked). No motion is
+        commanded here and the executor start gate is unchanged.
+        """
+        previous = self._last_submitted_leg
+        if previous is None:
+            return True, ""
+        evidence = {
+            "previous_leg": previous.get("name"),
+            "next_leg": str(name),
+            "previous_result_sim_stamp": previous.get("result_sim_stamp"),
+        }
+        if previous.get("name") == "descend" and str(name) == "retreat":
+            # Retreat has its own detach-aware start contract.
+            evidence["status"] = "skipped"
+            evidence["reason"] = "retreat_owns_descend_handoff"
+            trial.extras.setdefault("handoffs", []).append(evidence)
+            return True, ""
+        next_names, next_first = trajectory_endpoint(motion_segment, "first")
+        if previous.get("last_knot") is None or next_first is None:
+            # No timed endpoint on one side: nothing to wait for. Recorded
+            # so a missing contract is visible, not silently passed.
+            evidence["status"] = "skipped"
+            evidence["reason"] = "no_timed_endpoint"
+            evidence["previous_last_knot_present"] = (
+                previous.get("last_knot") is not None)
+            evidence["next_first_knot_present"] = next_first is not None
+            trial.extras.setdefault("handoffs", []).append(evidence)
+            return True, ""
+
+        carrying = (leg_admission or {}).get("load_state") == "carrying"
+        wait_begun = {"mono": time.monotonic(), "polled": None}
+
+        def should_abort():
+            if not rclpy.ok():
+                return "HANDOFF_CANCELLED"
+            if carrying:
+                holds, reason = self._carrying_vacuum_holds()
+                if not holds:
+                    return reason
+            now = time.monotonic()
+            last = wait_begun["polled"]
+            if last is None:
+                last = wait_begun["mono"]
+            if now - last >= self._HANDOFF_ADMISSION_POLL_SEC:
+                wait_begun["polled"] = now
+                return self._handoff_admission_reason(
+                    motion_segment, leg_admission)
+            return None
+
+        record = await_handoff(
+            self._handoff_policy,
+            (previous.get("joint_names"), previous.get("last_knot")),
+            (next_names, next_first),
+            read_samples=self._handoff_samples_reader(
+                float(previous["result_mono"])),
+            now_mono=time.monotonic,
+            sleep=time.sleep,
+            started_mono=float(previous["result_mono"]),
+            should_abort=should_abort)
+        record.update(evidence)
+        record["action_result"] = {
+            "previous_leg_success": True,
+            "result_mono": previous.get("result_mono"),
+            "result_sim_stamp": previous.get("result_sim_stamp"),
+        }
+        window = self._controller_state_window(
+            float(previous["result_mono"]) - 0.5, time.monotonic(),
+            max_rows=(
+                self._CONTROLLER_STATE_SUCCESS_ROWS
+                if record.get("status") == "ready" else None))
+        record["controller_state"] = window
+        self.get_logger().info(
+            "handoff %s->%s status=%s waited=%.3fs samples=%d" % (
+                previous.get("name"), name, record.get("status"),
+                float(record.get("waited_sec") or 0.0),
+                len(record.get("samples") or [])))
+        if record.get("status") == "ready":
+            trial.extras.setdefault("handoffs", []).append(
+                summarize_for_extras(record))
+            return True, ""
+        self._handoff_failure_record = record
+        trial.extras.setdefault("handoffs", []).append({
+            "previous_leg": evidence["previous_leg"],
+            "next_leg": evidence["next_leg"],
+            "status": record.get("status"),
+            "code": record.get("code"),
+            "waited_sec": record.get("waited_sec"),
+            "detail": "full record in handoff.json",
+        })
+        return False, str(record.get("code") or "HANDOFF_SETTLE_TIMEOUT")
+
     def _await_retreat_start_contract(self, retreat_seg, detach_request_stamp,
                                       detach_response_stamp,
                                       joints_before_detach,
@@ -1340,6 +1617,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     holds, lost_reason = self._carrying_vacuum_holds()
                     if not holds:
                         return False, lost_reason, None
+                # Controller success is not arrival (Run08): the previous
+                # leg's submitted endpoint must be continuous with this
+                # leg's first knot, and the measured joints must have
+                # arrived, before this leg is submitted. No motion is
+                # commanded and the executor start gate is unchanged.
+                handoff_ok, handoff_code = self._await_leg_handoff(
+                    motion_segment, name, leg_admission, trial)
+                if not handoff_ok:
+                    return False, handoff_code, None
                 # [ST09-I S5.7-6] during-leg poll for carrying legs:
                 # payload loss between the pre-submission check above
                 # and the controller commit cancels mid-wait (the
@@ -1353,6 +1639,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                         (lambda: not self._carrying_vacuum_holds()[0])
                         if leg_admission.get("load_state") == "carrying"
                         else None))
+                self._note_leg_submitted(motion_segment, name, ok)
             else:
                 # [ST09-I S5.7] every executed leg pairs with a certified
                 # route leg; the driver-side place_exit fall-through to
@@ -1540,14 +1827,26 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         # message without the full name set keeps raw order (and its
         # evidence trail) exactly as before.
         wanted = ["elfin_joint%d" % i for i in range(1, 7)]
+        # Reported velocity, aligned by name like the positions. None when
+        # the message carries no velocity for every joint: a missing field
+        # is never zero (handoff_settle treats None as "not stable").
+        velocity = None
+        raw_velocity = [float(v) for v in msg.velocity]
+        if len(raw_velocity) == len(names) and names:
+            velocity = raw_velocity
         if names and positions and all(name in names for name in wanted):
             index = {name: pos for name, pos in zip(names, positions)}
+            if velocity is not None:
+                velocity_index = dict(zip(names, velocity))
+                velocity = [velocity_index[name] for name in wanted]
             positions = [index[name] for name in wanted]
             names = list(wanted)
         record = {
             "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
             "name": names,
             "position": positions,
+            "velocity": velocity,
+            "rx_mono": time.monotonic(),
         }
         self._last_joint_state = record
         self._joint_ring.append(record)
@@ -1891,6 +2190,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def _abort(self, trial, code, carrying, extra=None):
         trial.fail_code = code
+        pending_handoff = getattr(self, "_handoff_failure_record", None)
+        if pending_handoff is not None:
+            extra = dict(extra or {})
+            extra["handoff.json"] = pending_handoff
+            self._handoff_failure_record = None
         if carrying:
             self._set_state("ABORT_CARRYING", guard=code)
         else:
@@ -1906,6 +2210,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
+        self._last_submitted_leg = None
+        self._handoff_failure_record = None
         self._payload_detached = False
         self._follow_skipped0 = self._follow_skipped()
         extras = {"slot.json": slot_meta}
