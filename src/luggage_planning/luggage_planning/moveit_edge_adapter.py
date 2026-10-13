@@ -675,15 +675,35 @@ class MoveItEdgeAdapter(object):
         if not directory or scene_msg is None:
             return
         os.makedirs(directory, exist_ok=True)
+        # Dedup on the EXACT goal (full-precision hash), not on the 3-decimal
+        # log rounding, so two different requests are never merged. The
+        # 3-decimal signature is kept only to count log-visible groups.
+        import hashlib
+        exact_goal = [float(v) for v in to_node.q]
+        exact_sha = hashlib.sha256(
+            json.dumps([int(code), exact_goal, [float(v) for v in from_node.q]]
+                       ).encode("utf-8")).hexdigest()
         goal_q = tuple(round(float(v), 3) for v in to_node.q)
         signature = "%s:%s" % (int(code), ",".join("%.3f" % v for v in goal_q))
         seen = getattr(self, "_portal_signatures", None)
         if seen is None:
             seen = set()
             self._portal_signatures = seen
-        if signature in seen or len(seen) >= 4:
+        counts = getattr(self, "_portal_occurrences", None)
+        if counts is None:
+            counts = {}
+            self._portal_occurrences = counts
+        entry = counts.setdefault(exact_sha, {
+            "exact_sha256": exact_sha, "signature_3dp": signature,
+            "occurrences": 0})
+        entry["occurrences"] += 1
+        with open(os.path.join(directory, "capture_index.json"), "w",
+                  encoding="utf-8") as handle:
+            json.dump({"max_kept": 8, "entries": list(counts.values())},
+                      handle, indent=1)
+        if exact_sha in seen or len(seen) >= 8:
             return
-        seen.add(signature)
+        seen.add(exact_sha)
         from luggage_planning.planning_scene_client import (
             summarize_planning_scene,
         )
@@ -696,12 +716,20 @@ class MoveItEdgeAdapter(object):
             if index >= len(acm.entry_values):
                 break
             enabled += sum(1 for flag in acm.entry_values[index].enabled if flag)
+        # _goal_on_submission_scene composes the ACM IN PLACE on scene_msg.
+        # Freeze the pre-call bytes and matrix first so the record is the
+        # scene MoveGroup was given, not the certifier's composed copy.
+        from rclpy.serialization import serialize_message
+        raw_scene = bytes(serialize_message(scene_msg))
+        acm_matrix = [[bool(f) for f in row.enabled]
+                      for row in acm.entry_values]
         validity = self._goal_on_submission_scene(scene_msg, to_node.q)
         document = {
             "when": "before_move_group_call",
             "edge_class": "PORTAL_TRANSIT",
             "error_code": int(code),
             "signature": signature,
+            "exact_sha256": exact_sha,
             "start_q": [float(v) for v in from_node.q],
             "goal_q": [float(v) for v in to_node.q],
             "goal_constraints": [{
@@ -716,11 +744,17 @@ class MoveItEdgeAdapter(object):
             "acm": {
                 "n_names": len(names),
                 "n_enabled_flags": enabled,
+                "entry_names": names,
+                "matrix": acm_matrix,
             },
+            "scene_bin": "portal_%02d.scene.bin" % (len(seen) - 1),
             "validity_on_submission_scene": validity,
         }
         path = os.path.join(
             directory, "portal_%02d.json" % (len(seen) - 1))
+        # Lossless pre-call scene (the summary above is not a replay input).
+        with open(os.path.join(directory, document["scene_bin"]), "wb") as raw:
+            raw.write(raw_scene)
         with open(path, "w", encoding="utf-8") as handle:
             json.dump(document, handle, indent=1, default=str)
             handle.write("\n")

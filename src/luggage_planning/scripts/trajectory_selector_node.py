@@ -667,6 +667,10 @@ class TrajectorySelectorNode(Node):
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
+        from luggage_planning.boundary_capture import capture_service_request
+        capture_service_request(
+            request, os.environ.get("ST09_SELECT_REQUEST_CAPTURE_DIR", ""),
+            "select_place_path_v2")
         if getattr(self, "_frame_runtime", None) is not None:
             from luggage_description.frame_contracts import ContractError
             try:
