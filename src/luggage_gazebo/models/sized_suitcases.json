@@ -1,6 +1,7 @@
 {
   "suitcase_loafbrr_large": {
     "catalog_id": "large",
+    "collision_uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
     "mass_kg": 23.0,
     "measure_size": [
       0.6612416505813599,
@@ -14,10 +15,12 @@
     ],
     "tier": "large",
     "uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr"
+    "visual_id": "suitcase_loafbrr",
+    "visual_uri": "model://suitcase_loafbrr_large/meshes/suitcase.dae"
   },
   "suitcase_loafbrr_medium": {
     "catalog_id": "standard",
+    "collision_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
     "mass_kg": 15.0,
     "measure_size": [
       0.620204508304596,
@@ -31,10 +34,12 @@
     ],
     "tier": "medium",
     "uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr"
+    "visual_id": "suitcase_loafbrr",
+    "visual_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.dae"
   },
   "suitcase_loafbrr_small": {
     "catalog_id": "carryon",
+    "collision_uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
     "mass_kg": 8.0,
     "measure_size": [
       0.4873035401105881,
@@ -48,10 +53,12 @@
     ],
     "tier": "small",
     "uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
-    "visual_id": "suitcase_loafbrr"
+    "visual_id": "suitcase_loafbrr",
+    "visual_uri": "model://suitcase_loafbrr_small/meshes/suitcase.dae"
   },
   "suitcase_vintage_large": {
     "catalog_id": "large",
+    "collision_uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
     "mass_kg": 23.0,
     "measure_size": [
       0.6069081127643585,
@@ -65,10 +72,12 @@
     ],
     "tier": "large",
     "uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage"
+    "visual_id": "suitcase_vintage",
+    "visual_uri": "model://suitcase_vintage_large/meshes/suitcase.dae"
   },
   "suitcase_vintage_medium": {
     "catalog_id": "standard",
+    "collision_uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
     "mass_kg": 15.0,
     "measure_size": [
       0.6552294790744781,
@@ -82,10 +91,12 @@
     ],
     "tier": "medium",
     "uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage"
+    "visual_id": "suitcase_vintage",
+    "visual_uri": "model://suitcase_vintage_medium/meshes/suitcase.dae"
   },
   "suitcase_vintage_small": {
     "catalog_id": "carryon",
+    "collision_uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
     "mass_kg": 8.0,
     "measure_size": [
       0.5148231685161591,
@@ -99,6 +110,7 @@
     ],
     "tier": "small",
     "uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
-    "visual_id": "suitcase_vintage"
+    "visual_id": "suitcase_vintage",
+    "visual_uri": "model://suitcase_vintage_small/meshes/suitcase.dae"
   }
 }

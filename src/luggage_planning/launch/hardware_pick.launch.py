@@ -28,6 +28,7 @@ from launch.actions import (
     IncludeLaunchDescription,
     LogInfo,
     OpaqueFunction,
+    SetLaunchConfiguration,
 )
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
@@ -74,6 +75,189 @@ def _preprocessor_node(context, *args, **kwargs):
                 },
             ],
         )
+    ]
+
+
+def _frame_runtime_params(context):
+    """ST09 F21 identity/peer parameters for the hardware-plan-only chain.
+
+    The identity is measured at launch resolution (scene bytes, expanded
+    URDF, final SRDF, resolved atlas files). Fails closed on a partial
+    enablement; off (default) leaves the graph byte-identical.
+    """
+    if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
+        return {}
+    off = [name for name in ("start_planning", "start_scene")
+           if not _bool_text(LaunchConfiguration(name).perform(context))]
+    if off:
+        raise RuntimeError(
+            "frame_runtime requires the plan/scene chain; disabled here: %s "
+            "(no mixed-v2 enablement)" % ", ".join(off))
+    import json
+    from luggage_description.runtime_graph import (
+        HARDWARE_STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
+    from luggage_description.runtime_identity import build_identity
+    from luggage_planning.atlas_runtime import (
+        load_atlas_runtime_for_scene, resolve_atlas_files)
+    from luggage_description.xacro_robot_with_scene_base import expand_and_patch
+    scene = LaunchConfiguration("scene_tf_config").perform(context)
+    driver = str(
+        LaunchConfiguration("frame_driver_peer").perform(context)
+        or "hardware_pick_driver")
+    peers = resolve_peers(driver, stack=HARDWARE_STACK_PEERS)
+    xacro_path = os.path.join(
+        get_package_share_directory("luggage_description"),
+        "urdf", "elfin_s20_with_camera.urdf.xacro")
+    # Same expansion the robot_description Command performs (hardware
+    # plugin defaults; no gz arguments on the real cell).
+    urdf_xml, _pose = expand_and_patch(xacro_path, config_path=scene,
+                                       xacro_args=[])
+    atlas_cfg = str(
+        LaunchConfiguration("atlas_runtime_config").perform(context) or "")
+    identity = build_identity(
+        scene_tf_config=scene,
+        calibration_revision=str(
+            LaunchConfiguration("frame_calibration_revision").perform(context)
+            or "d555_site"),
+        urdf_text=urdf_xml,
+        srdf_text=_semantic_srdf()["robot_description_semantic"],
+        tool_link="suction_contact_frame",
+        atlas_files=resolve_atlas_files(
+            load_atlas_runtime_for_scene(scene, atlas_cfg or None)),
+        endpoints=identity_endpoints(endpoint_registry(peers)))
+    return {
+        "frame_runtime": True,
+        "frame_identity_json": json.dumps(identity, sort_keys=True),
+        "frame_peers": ",".join(peers),
+        "frame_scene_revision": identity["scene_revision"],
+    }
+
+
+def _frame_nodes(context, *args, **kwargs):
+    """Planning-chain nodes with the frame runtime parameters attached."""
+    frame = _frame_runtime_params(context)
+    return [
+        Node(
+            package="luggage_planning",
+            executable="scene_manager_node.py",
+            name="scene_manager",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "world_frame": "world",
+                "pickup_object_id": "pickup_box",
+                "auto_sync": True,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="waypoint_generator_node.py",
+            name="waypoint_generator",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "world_frame": "world",
+                "place_slot_frame": "elfin_base_link",
+                "use_perception_approach": False,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="motion_planner_node.py",
+            name="motion_planner",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "scene_tf_config": LaunchConfiguration("scene_tf_config"),
+                "atlas_runtime_config": LaunchConfiguration(
+                    "atlas_runtime_config"),
+                "robot_poses_config": LaunchConfiguration("robot_poses_config"),
+                "default_observe_pose": LaunchConfiguration("observe_pose_name"),
+                "named_pose_duration": 8.0,
+                "named_pose_max_vel": 1.0,
+                "velocity_scaling": 0.6,
+                "acceleration_scaling": 0.6,
+                "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+        Node(
+            package="luggage_planning",
+            executable="vacuum_controller_node.py",
+            name="vacuum_controller",
+            output="screen",
+            parameters=[{
+                "use_sim_time": False,
+                "backend": "hardware",
+                "seal_timeout_sec": 8.0,
+                "follow_rate_hz": 10.0,
+                **frame,
+            }],
+            condition=start_planning_of(context),
+        ),
+    ]
+
+
+def start_planning_of(context):
+    from launch.conditions import IfCondition
+    return IfCondition(LaunchConfiguration("start_planning"))
+
+
+def _deploy_profile_gate(context, *args, **kwargs):
+    """ST09-PD: fail-closed deploy asset resolution at launch time.
+
+    Empty arguments must select the installed deploy scene and
+    atlas_runtime_deploy.yaml, never a simulation asset. Missing,
+    ambiguous, sim-named, or hash-mismatched assets raise here so the
+    hardware chain never starts on the wrong cell identity. The
+    atlas/manifest identity checks run with the planning chain; a
+    detect-only bringup still resolves the scene and config strictly.
+    """
+    from luggage_planning.deploy_profile import resolve_deploy_profile
+
+    scene = LaunchConfiguration("scene_tf_config").perform(context)
+    atlas_cfg = str(
+        LaunchConfiguration("atlas_runtime_config").perform(context) or "")
+    record = resolve_deploy_profile(
+        scene, atlas_cfg,
+        check_atlas=_bool_text(
+            LaunchConfiguration("start_planning").perform(context)))
+    if "atlas_npz" not in record:
+        return [
+            LogInfo(msg=(
+                "[hardware_pick] deploy profile: scene=%s atlas_cfg=%s "
+                "(atlas identity not checked: start_planning=false)"
+                % (record["scene_tf_path"], record["atlas_runtime_config"]))),
+            SetLaunchConfiguration(
+                "deploy_scene_resolved", record["scene_tf_path"]),
+            SetLaunchConfiguration(
+                "deploy_atlas_config_resolved",
+                record["atlas_runtime_config"]),
+        ]
+    return [
+        LogInfo(msg=(
+            "[hardware_pick] deploy profile: scene=%s atlas_cfg=%s "
+            "atlas=%s meta=%s urdf=%s manifest=%s scene_hash=%s urdf_hash=%s"
+            % (record["scene_tf_path"], record["atlas_runtime_config"],
+               record["atlas_npz"], record["atlas_meta"], record["urdf_path"],
+               record.get("manifest_path", "-"), record["scene_tf_hash"],
+               record["urdf_hash"]))),
+        SetLaunchConfiguration(
+            "deploy_scene_resolved", record["scene_tf_path"]),
+        SetLaunchConfiguration(
+            "deploy_atlas_config_resolved", record["atlas_runtime_config"]),
+        SetLaunchConfiguration("deploy_atlas_npz", record["atlas_npz"]),
+        SetLaunchConfiguration("deploy_atlas_meta", record["atlas_meta"]),
+        SetLaunchConfiguration("deploy_urdf", record["urdf_path"]),
+        SetLaunchConfiguration(
+            "deploy_manifest", record.get("manifest_path", "")),
     ]
 
 
@@ -174,15 +358,20 @@ def _move_group(context, *args, **kwargs):
     ]
 
 
-def generate_launch_description():
+def _launch_description():
     desc_share = get_package_share_directory("luggage_description")
     perc_share = get_package_share_directory("luggage_perception")
     exec_share = get_package_share_directory("elfin_trajectory_executor")
-    default_scene = os.path.join(desc_share, "config", "scene_tf.yaml")
-    if not os.path.isfile(default_scene):
-        default_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
-    poses = os.path.join(desc_share, "config", "robot_poses.site.yaml")
+    planning_share = get_package_share_directory("luggage_planning")
+    # ST09-PD: empty arguments select the installed deploy assets. Never
+    # fall back to scene_tf.yaml[.example] -- that silent sim reuse is
+    # exactly what the deploy profile gate rejects.
+    default_scene = os.path.join(desc_share, "config", "scene_tf_deploy.yaml")
+    default_atlas_cfg = os.path.join(
+        planning_share, "config", "atlas_runtime_deploy.yaml")
+    poses = os.path.join(desc_share, "config", "robot_poses.deploy.yaml")
     sim_poses = os.path.join(desc_share, "config", "robot_poses.yaml.example")
+    sim_scene = os.path.join(desc_share, "config", "scene_tf.yaml.example")
     live_pp = os.path.join(perc_share, "config", "preprocessor_d555_live.yaml")
     semantic = os.path.join(perc_share, "config", "semantic_segmenter.yaml")
     site_pp = os.path.join(perc_share, "config", "preprocessor_d555_site.yaml")
@@ -194,13 +383,33 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
-            DeclareLaunchArgument("scene_tf_config", default_value=default_scene),
+            DeclareLaunchArgument(
+                "scene_tf_config",
+                default_value=default_scene,
+                description=(
+                    "Deploy scene file. The default is the installed "
+                    "scene_tf_deploy.yaml; %s and scene_tf.yaml are "
+                    "simulation assets and are rejected on this cell."
+                    % os.path.basename(sim_scene)
+                ),
+            ),
+            DeclareLaunchArgument(
+                "atlas_runtime_config",
+                default_value=default_atlas_cfg,
+                description=(
+                    "Reachability-atlas runtime YAML. Default is the "
+                    "installed atlas_runtime_deploy.yaml (hash_policy "
+                    "strict); atlas_runtime.yaml is the simulation cell "
+                    "and is rejected on this cell."
+                ),
+            ),
             DeclareLaunchArgument(
                 "robot_poses_config",
                 default_value=poses,
                 description=(
-                    "Named joint poses for GoToRobotPose. Default is "
-                    "robot_poses.site.yaml (observe_pose=current). "
+                    "Site pose file for GoToRobotPose. Default is "
+                    "robot_poses.deploy.yaml (all entries valid:false, "
+                    "observe_pose=current until the cell is measured). "
                     "Do not pass %s on this cell; those pickup_observe "
                     "joints are simulation." % sim_poses
                 ),
@@ -319,6 +528,10 @@ def generate_launch_description():
                     "(no sim pickup_observe swing)."
                 )
             ),
+            # ST09-PD: resolve the deploy profile before any node starts;
+            # a missing/ambiguous/sim-named/hash-mismatched asset fails
+            # the whole launch instead of starting on the wrong cell.
+            OpaqueFunction(function=_deploy_profile_gate),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(exec_share, "launch", "jazzy_real.launch.py")
@@ -428,64 +641,30 @@ def generate_launch_description():
                 }],
                 condition=start_perception,
             ),
-            Node(
-                package="luggage_planning",
-                executable="scene_manager_node.py",
-                name="scene_manager",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
-                    "world_frame": "world",
-                    "pickup_object_id": "pickup_box",
-                    "auto_sync": True,
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_runtime",
+                default_value="false",
+                description=(
+                    "ST09: typed v2 runtime chain on the plan/scene nodes "
+                    "(identity heartbeats + readiness gating)."
+                ),
             ),
-            Node(
-                package="luggage_planning",
-                executable="waypoint_generator_node.py",
-                name="waypoint_generator",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "scene_tf_config": LaunchConfiguration("scene_tf_config"),
-                    "world_frame": "world",
-                    "place_slot_frame": "elfin_base_link",
-                    "use_perception_approach": False,
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_calibration_revision",
+                default_value="d555_site",
+                description="Calibration identity label for the runtime identity.",
             ),
-            Node(
-                package="luggage_planning",
-                executable="motion_planner_node.py",
-                name="motion_planner",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "robot_poses_config": LaunchConfiguration("robot_poses_config"),
-                    "default_observe_pose": LaunchConfiguration("observe_pose_name"),
-                    "named_pose_duration": 8.0,
-                    "named_pose_max_vel": 1.0,
-                    "velocity_scaling": 0.6,
-                    "acceleration_scaling": 0.6,
-                    "fjt_action": "/elfin_arm_controller/follow_joint_trajectory",
-                }],
-                condition=start_planning,
+            DeclareLaunchArgument(
+                "frame_driver_peer",
+                default_value="hardware_pick_driver",
+                description="Driver node name joining the v2 graph as client.",
             ),
-            Node(
-                package="luggage_planning",
-                executable="vacuum_controller_node.py",
-                name="vacuum_controller",
-                output="screen",
-                parameters=[{
-                    "use_sim_time": False,
-                    "backend": "hardware",
-                    "seal_timeout_sec": 8.0,
-                    "follow_rate_hz": 10.0,
-                }],
-                condition=start_planning,
-            ),
+            OpaqueFunction(function=_frame_nodes),
             OpaqueFunction(function=_move_group),
         ]
     )
+
+
+def generate_launch_description():
+    from luggage_description.launch_profile import with_profile
+    return with_profile(_launch_description())

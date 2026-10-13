@@ -1,0 +1,301 @@
+[INFO] [launch]: All log files can be found below /home/adamliao/.ros/log/2026-09-30-10-48-09-005431-adamliao-X870-EAGLE-WIFI7-2015708
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [ign gazebo-1]: process started with pid [2015725]
+[INFO] [parameter_bridge-2]: process started with pid [2015728]
+[INFO] [parameter_bridge-3]: process started with pid [2015730]
+[INFO] [depth_image_republisher.py-4]: process started with pid [2015732]
+[INFO] [camera_info_alias.py-5]: process started with pid [2015734]
+[INFO] [sensor_preprocessor_node.py-6]: process started with pid [2015736]
+[INFO] [parameter_bridge-7]: process started with pid [2015738]
+[INFO] [pickup_box_spawner_node.py-8]: process started with pid [2015740]
+[INFO] [scene_viz_node.py-9]: process started with pid [2015742]
+[INFO] [luggage_detector_node.py-10]: process started with pid [2015744]
+[INFO] [scene_manager_node.py-11]: process started with pid [2015746]
+[INFO] [waypoint_generator_node.py-12]: process started with pid [2015748]
+[INFO] [motion_planner_node.py-13]: process started with pid [2015750]
+[INFO] [trajectory_selector_node.py-14]: process started with pid [2015752]
+[INFO] [container_tf_publisher-15]: process started with pid [2015754]
+[INFO] [robot_state_publisher-16]: process started with pid [2015756]
+[INFO] [create-17]: process started with pid [2015768]
+[INFO] [create-18]: process started with pid [2015770]
+[INFO] [create-19]: process started with pid [2015776]
+[INFO] [spawner-20]: process started with pid [2015781]
+[robot_state_publisher-16] [INFO] [1790736489.785099947] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-16] [INFO] [1790736489.785171293] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-16] [INFO] [1790736489.785177544] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-16] [INFO] [1790736489.785181181] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-16] [INFO] [1790736489.785184427] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-16] [INFO] [1790736489.785187163] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-16] [INFO] [1790736489.785189928] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-16] [INFO] [1790736489.785192753] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-16] [INFO] [1790736489.785195398] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-16] [INFO] [1790736489.785198033] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-16] [INFO] [1790736489.785200979] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-16] [INFO] [1790736489.785204055] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-16] [INFO] [1790736489.785206670] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-16] [INFO] [1790736489.785209275] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-16] [INFO] [1790736489.785211910] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-16] [INFO] [1790736489.785214635] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-16] [INFO] [1790736489.785217400] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-16] [INFO] [1790736489.785219925] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-16] [INFO] [1790736489.785222470] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-16] [INFO] [1790736489.785224974] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-16] [INFO] [1790736489.785227479] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-16] [INFO] [1790736489.785230054] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-16] [INFO] [1790736489.785232539] [robot_state_publisher]: got segment world
+[parameter_bridge-3] [INFO] [1790736489.785877321] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/image (gz.msgs.Image) -> /d435/image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-2] [INFO] [1790736489.786551338] [clock_bridge]: Creating GZ->ROS Bridge: [/clock (gz.msgs.Clock) -> /clock (rosgraph_msgs/msg/Clock)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1790736489.786808956] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/depth_image (gz.msgs.Image) -> /d435/depth_image (sensor_msgs/msg/Image)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1790736489.787000680] [camera_bridge]: Creating GZ->ROS Bridge: [/d435/camera_info (gz.msgs.CameraInfo) -> /d435/camera_info (sensor_msgs/msg/CameraInfo)] (Lazy 0)
+[parameter_bridge-3] [INFO] [1790736489.787241115] [camera_bridge]: Creating GZ->ROS Bridge: [/livox/scan/points (gz.msgs.PointCloudPacked) -> /livox/scan/points (sensor_msgs/msg/PointCloud2)] (Lazy 0)
+[spawner-20] [INFO] [1790736490.060023843] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[sensor_preprocessor_node.py-6] [INFO] [1790736490.106657921] [sensor_preprocessor]: sensor_preprocessor ready (depth-primary): frame=camera_depth_optical_frame pair_tolerance=0.000s wait_deadline=0.060s maxlen=15/1.0s compressed=False input_qos=reliable camera_info_shared=True
+[sensor_preprocessor_node.py-6] [WARN] [1790736490.106874091] [sensor_preprocessor]: camera_info_shared: /camera/depth/camera_info describes both colour and aligned depth; observations are flagged info_aliased
+[pickup_box_spawner_node.py-8] [INFO] [1790736490.110859344] [pickup_box_spawner]: pickup_box_spawner ready (visual_kind=mesh size_mode=catalog)
+[container_tf_publisher-15] [INFO] [1790736490.112362142] [container_tf_publisher]: Static TF from /tmp/elfin-frame-migration-st06/install/luggage_description/share/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-15] [INFO] [1790736490.112613639] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412
+[luggage_detector_node.py-10] [WARN] [1790736490.122589607] [luggage_detector]: scene_tf_config is ignored on DetectLuggage (catalog/scene_tf is spawn-only)
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] >>> [rcutils|error_handling.c:108] rcutils_set_error_state()
+[luggage_detector_node.py-10] This error state is being overwritten:
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10]   'create_subscription() called for existing topic name rt/luggage/preprocessed/camera/depth/image with incompatible type sensor_msgs::msg::dds_::Image_, at ./src/subscription.cpp:146, at ./src/rcl/subscription.c:109'
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] with this new error message:
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10]   'invalid allocator, at ./src/rcl/subscription.c:219'
+[luggage_detector_node.py-10] 
+[luggage_detector_node.py-10] rcutils_reset_error() should be called after error handling to avoid this.
+[luggage_detector_node.py-10] <<<
+[luggage_detector_node.py-10] invalid allocator, at ./src/rcl/subscription.c:219
+[trajectory_selector_node.py-14] [INFO] [1790736490.128734944] [trajectory_selector]: trajectory_selector up
+[scene_viz_node.py-9] [INFO] [1790736490.132228927] [scene_viz]: scene_viz ready (container=airport_container_real)
+[scene_manager_node.py-11] [INFO] [1790736490.137946744] [scene_manager]: scene_manager ready
+[luggage_detector_node.py-10] Traceback (most recent call last):
+[luggage_detector_node.py-10]   File "/tmp/elfin-frame-migration-st06/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2245, in <module>
+[luggage_detector_node.py-10]     main()
+[luggage_detector_node.py-10]   File "/tmp/elfin-frame-migration-st06/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 2225, in main
+[luggage_detector_node.py-10]     node = LuggageDetector()
+[luggage_detector_node.py-10]   File "/tmp/elfin-frame-migration-st06/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py", line 663, in __init__
+[luggage_detector_node.py-10]     self.create_subscription(
+[luggage_detector_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/node.py", line 1376, in create_subscription
+[luggage_detector_node.py-10]     subscription_object = _rclpy.Subscription(
+[luggage_detector_node.py-10] rclpy._rclpy_pybind11.RCLError: Failed to create subscription: invalid allocator, at ./src/rcl/subscription.c:219
+[waypoint_generator_node.py-12] [INFO] [1790736490.154361546] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[ERROR] [luggage_detector_node.py-10]: process has died [pid 2015744, exit code 1, cmd '/tmp/elfin-frame-migration-st06/install/luggage_perception/lib/luggage_perception/luggage_detector_node.py --ros-args --params-file /tmp/launch_params_v2ab87ux'].
+[create-17] [INFO] [1790736490.303331696] [ros_gz_sim]: Requested creation of entity.
+[create-17] [INFO] [1790736490.303407710] [ros_gz_sim]: OK creation of entity.
+[motion_planner_node.py-13] [INFO] [1790736490.316627806] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[create-18] [INFO] [1790736490.403480903] [ros_gz_sim]: Requested creation of entity.
+[create-18] [INFO] [1790736490.403576374] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-17]: process has finished cleanly [pid 2015768]
+[INFO] [launch.user]: spawn_robot: create S20
+[INFO] [create-21]: process started with pid [2016345]
+[create-19] [INFO] [1790736490.503570277] [ros_gz_sim]: Requested creation of entity.
+[create-19] [INFO] [1790736490.503679905] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-18]: process has finished cleanly [pid 2015770]
+[INFO] [create-19]: process has finished cleanly [pid 2015776]
+[create-21] [INFO] [1790736490.629750812] [ros_gz_sim]: Requested creation of entity.
+[create-21] [INFO] [1790736490.629829421] [ros_gz_sim]: OK creation of entity.
+[INFO] [create-21]: process has finished cleanly [pid 2016345]
+[INFO] [wait_controller_manager-22]: process started with pid [2016363]
+[wait_controller_manager-22] wait_controller_manager: ok /controller_manager/list_controllers after 0.25s
+[INFO] [wait_controller_manager-22]: process has finished cleanly [pid 2016363]
+[ign gazebo-1] [INFO] [1790736492.016893246] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_state_publisher
+[ign gazebo-1] [INFO] [1790736492.016915879] [GazeboSimROS2ControlPlugin]: robot_param_node is robot_description
+[ign gazebo-1] [ERROR] [1790736492.864271131] [gz_ros2_control]: robot_state_publisher service not available, waiting again...
+[ign gazebo-1] [INFO] [1790736493.024052692] [gz_ros2_control]: connected to service!! robot_state_publisher asking for robot_description
+[ign gazebo-1] [INFO] [1790736493.105362672] [gz_ros2_control]: Received URDF from param server
+[ign gazebo-1] [INFO] [1790736493.106310359] [gz_ros2_control]: [gz_ros2_control] Fixed joint ['world_base'] (Entity='90') is skipped.
+[ign gazebo-1] [INFO] [1790736493.109103563] [gz_ros2_control]: The position_proportional_gain has been set to: 0.1
+[ign gazebo-1] [INFO] [1790736493.109172113] [gz_ros2_control]: Loading joint: elfin_joint1
+[ign gazebo-1] [INFO] [1790736493.109179837] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109185127] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109192271] [gz_ros2_control]: 			 found initial value: 3.570200
+[ign gazebo-1] [INFO] [1790736493.109200156] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109203722] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109207239] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109218611] [gz_ros2_control]: Loading joint: elfin_joint2
+[ign gazebo-1] [INFO] [1790736493.109221396] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109224642] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109227618] [gz_ros2_control]: 			 found initial value: -1.326300
+[ign gazebo-1] [INFO] [1790736493.109230503] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109233248] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109235823] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109242115] [gz_ros2_control]: Loading joint: elfin_joint3
+[ign gazebo-1] [INFO] [1790736493.109244870] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109246924] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109250050] [gz_ros2_control]: 			 found initial value: -1.096500
+[ign gazebo-1] [INFO] [1790736493.109252565] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109254429] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109256763] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109261983] [gz_ros2_control]: Loading joint: elfin_joint4
+[ign gazebo-1] [INFO] [1790736493.109264067] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109265830] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109268415] [gz_ros2_control]: 			 found initial value: 3.956400
+[ign gazebo-1] [INFO] [1790736493.109271451] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109274146] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109277502] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109282842] [gz_ros2_control]: Loading joint: elfin_joint5
+[ign gazebo-1] [INFO] [1790736493.109285858] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109288824] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109292160] [gz_ros2_control]: 			 found initial value: 1.623400
+[ign gazebo-1] [INFO] [1790736493.109294485] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109296318] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109298161] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109302850] [gz_ros2_control]: Loading joint: elfin_joint6
+[ign gazebo-1] [INFO] [1790736493.109304964] [gz_ros2_control]: 	State:
+[ign gazebo-1] [INFO] [1790736493.109306748] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109308491] [gz_ros2_control]: 			 found initial value: 0.452200
+[ign gazebo-1] [INFO] [1790736493.109311477] [gz_ros2_control]: 		 velocity
+[ign gazebo-1] [INFO] [1790736493.109313951] [gz_ros2_control]: 	Command:
+[ign gazebo-1] [INFO] [1790736493.109316606] [gz_ros2_control]: 		 position
+[ign gazebo-1] [INFO] [1790736493.109406617] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1790736493.109446623] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1790736493.109472091] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1790736493.109474616] [gz_ros2_control]: System Successfully configured!
+[ign gazebo-1] [INFO] [1790736493.109479846] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1790736493.109484004] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ign gazebo-1] [INFO] [1790736493.109487530] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ign gazebo-1] [INFO] [1790736493.109490516] [gz_ros2_control]: Loading controller_manager
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mIgnition Gazebo Server v[0m[1;32m6.18.0[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading SDF world file[[0m[1;32m/tmp/elfin-frame-migration-st06/install/luggage_gazebo/share/luggage_gazebo/worlds/airport_loading.sdf[0m[1;32m].[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing entity system service on [[0m[1;32m/[0m[1;32mentity/system/add[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mCreate service on [[0m[1;32m/world/airport_loading/create[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mRemove service on [[0m[1;32m/world/airport_loading/remove[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPose service on [[0m[1;32m/world/airport_loading/set_pose_vector[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLight configuration service on [[0m[1;32m/world/airport_loading/light_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPhysics service on [[0m[1;32m/world/airport_loading/set_physics[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mSphericalCoordinates service on [[0m[1;32m/world/airport_loading/set_spherical_coordinates[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mEnable collision service on [[0m[1;32m/world/airport_loading/enable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mDisable collision service on [[0m[1;32m/world/airport_loading/disable_collision[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/visual_config[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mMaterial service on [[0m[1;32m/world/airport_loading/wheel_slip[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoaded level [[0m[1;32m3[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world controls on [[0m[1;32m/world/airport_loading[0m[1;32m/control], [[0m[1;32m/world/airport_loading[0m[1;32m/control/state] and [[0m[1;32m/world/airport_loading[0m[1;32m/playback/control][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing GUI information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgui/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mWorld [[0m[1;32mairport_loading[0m[1;32m] initialized with [[0m[1;32m1ms[0m[1;32m] physics profile.[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world SDF generation service on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mgenerate_world_sdf[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing world names on [[0m[1;32m/gazebo/worlds[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path add service on [[0m[1;32m/gazebo/resource_paths/add[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path get service on [[0m[1;32m/gazebo/resource_paths/get[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource path resolve service on [[0m[1;32m/gazebo/resource_paths/resolve[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mResource paths published on [[0m[1;32m/gazebo/resource_paths[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServer control service on [[0m[1;32m/server_control[0m[1;32m].[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /stats, adding root stats topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mFound no publishers on /clock, adding root clock topic[0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mLoading plugin [[0m[1;32mignition-rendering-ogre2[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing scene information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing graph information on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mscene/graph[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mServing full state (async) on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mstate_async[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [WARN] [1790736493.275792436] [gz_ros2_control]:  Desired controller update period (0.01 s) is slower than the gazebo simulation period (0.001 s).
+[ign gazebo-1] [INFO] [1790736493.314847018] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[spawner-20] [INFO] [1790736493.330582772] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ign gazebo-1] [INFO] [1790736493.331020001] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ign gazebo-1] [INFO] [1790736493.331099491] [joint_state_broadcaster]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[ign gazebo-1] libEGL warning: egl: failed to create dri2 screen
+[spawner-20] [INFO] [1790736493.698318469] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[INFO] [spawner-20]: process has finished cleanly [pid 2015781]
+[INFO] [spawner-23]: process started with pid [2016565]
+[ign gazebo-1] [INFO] [1790736495.059607892] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ign gazebo-1] [WARN] [1790736495.065589339] [elfin_arm_controller]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-23] [INFO] [1790736495.080226732] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ign gazebo-1] [INFO] [1790736495.080903225] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ign gazebo-1] [INFO] [1790736495.081017351] [elfin_arm_controller]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ign gazebo-1] [INFO] [1790736495.081030416] [elfin_arm_controller]: Command interfaces are [position] and state interfaces are [position velocity].
+[ign gazebo-1] [INFO] [1790736495.081046897] [elfin_arm_controller]: Using 'splines' interpolation method.
+[ign gazebo-1] [INFO] [1790736495.081658967] [elfin_arm_controller]: Controller state will be published at 50.00 Hz.
+[ign gazebo-1] [INFO] [1790736495.082616943] [elfin_arm_controller]: Action status changes will be monitored at 20.00 Hz.
+[spawner-23] [INFO] [1790736495.114378782] [spawner_elfin_arm_controller]: [92mConfigured and activated [1melfin_arm_controller[0m
+[INFO] [spawner-23]: process has finished cleanly [pid 2016565]
+[INFO] [observe_pose_hold.py-24]: process started with pid [2016708]
+[INFO] [move_group-25]: process started with pid [2016710]
+[move_group-25] [INFO] [1790736495.299432553] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0 seconds
+[move_group-25] [INFO] [1790736495.299483710] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-25] [INFO] [1790736495.299489171] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-25] [INFO] [1790736495.749195710] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-25] [INFO] [1790736495.749312531] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-25] [INFO] [1790736495.749789796] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-25] [INFO] [1790736495.750027126] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-25] [INFO] [1790736495.750035862] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-25] [INFO] [1790736495.750169075] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-25] [INFO] [1790736495.750174956] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-25] [INFO] [1790736495.750303820] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-25] [INFO] [1790736495.750430210] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-25] [WARN] [1790736495.750760886] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-25] [ERROR] [1790736495.750769262] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[ign gazebo-1] [INFO] [1790736496.287376669] [elfin_arm_controller]: Received new action goal
+[ign gazebo-1] [INFO] [1790736496.287447794] [elfin_arm_controller]: Accepted new action goal
+[move_group-25] [INFO] [1790736496.496824164] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'ompl'
+[move_group-25] [INFO] [1790736496.502085256] [moveit.ros_planning.planning_pipeline]: Using planning interface 'OMPL'
+[move_group-25] [INFO] [1790736496.503280842] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.path_tolerance' was not set. Using default value: 0.100000
+[move_group-25] [INFO] [1790736496.503292203] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.resample_dt' was not set. Using default value: 0.100000
+[move_group-25] [INFO] [1790736496.503294608] [moveit_ros.add_time_optimal_parameterization]: Param 'ompl.min_angle_change' was not set. Using default value: 0.001000
+[move_group-25] [INFO] [1790736496.503303365] [moveit_ros.fix_workspace_bounds]: Param 'ompl.default_workspace_bounds' was not set. Using default value: 10.000000
+[move_group-25] [INFO] [1790736496.503310648] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_bounds_error' was set to 0.100000
+[move_group-25] [INFO] [1790736496.503312883] [moveit_ros.fix_start_state_bounds]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-25] [INFO] [1790736496.503317411] [moveit_ros.fix_start_state_collision]: Param 'ompl.start_state_max_dt' was not set. Using default value: 0.500000
+[move_group-25] [INFO] [1790736496.503320577] [moveit_ros.fix_start_state_collision]: Param 'ompl.jiggle_fraction' was set to 0.050000
+[move_group-25] [INFO] [1790736496.503322661] [moveit_ros.fix_start_state_collision]: Param 'ompl.max_sampling_attempts' was not set. Using default value: 100
+[move_group-25] [INFO] [1790736496.503327470] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Add Time Optimal Parameterization'
+[move_group-25] [INFO] [1790736496.503329264] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Resolve constraint frames to robot links'
+[move_group-25] [INFO] [1790736496.503330426] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Workspace Bounds'
+[move_group-25] [INFO] [1790736496.503331668] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Bounds'
+[move_group-25] [INFO] [1790736496.503332680] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State In Collision'
+[move_group-25] [INFO] [1790736496.503333682] [moveit.ros_planning.planning_pipeline]: Using planning request adapter 'Fix Start State Path Constraints'
+[move_group-25] [WARN] [1790736496.505428202] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[move_group-25] [INFO] [1790736496.512774676] [moveit.plugins.moveit_simple_controller_manager]: Added FollowJointTrajectory controller for elfin_arm_controller
+[move_group-25] [INFO] [1790736496.512859637] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-25] [INFO] [1790736496.512869115] [moveit.plugins.moveit_simple_controller_manager]: Returned 1 controllers in list
+[move_group-25] [INFO] [1790736496.513066048] [moveit_ros.trajectory_execution_manager]: Trajectory execution is not managing controllers
+[move_group-25] [INFO] [1790736496.513072791] [move_group.move_group]: MoveGroup debug mode is ON
+[move_group-25] [INFO] [1790736496.520609486] [move_group.move_group]: 
+[move_group-25] 
+[move_group-25] ********************************************************
+[move_group-25] * MoveGroup using: 
+[move_group-25] *     - ApplyPlanningSceneService
+[move_group-25] *     - ClearOctomapService
+[move_group-25] *     - CartesianPathService
+[move_group-25] *     - ExecuteTrajectoryAction
+[move_group-25] *     - GetPlanningSceneService
+[move_group-25] *     - KinematicsService
+[move_group-25] *     - MoveAction
+[move_group-25] *     - MotionPlanService
+[move_group-25] *     - QueryPlannersService
+[move_group-25] *     - StateValidationService
+[move_group-25] ********************************************************
+[move_group-25] 
+[move_group-25] [INFO] [1790736496.520637819] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context using planning plugin ompl_interface/OMPLPlanner
+[move_group-25] [INFO] [1790736496.520642348] [moveit_move_group_capabilities_base.move_group_context]: MoveGroup context initialization complete
+[move_group-25] [96mLoading 'move_group/ApplyPlanningSceneService'...
+[move_group-25] [0m[96mLoading 'move_group/ClearOctomapService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupCartesianPathService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupExecuteTrajectoryAction'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupGetPlanningSceneService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupKinematicsService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupMoveAction'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupPlanService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupQueryPlannersService'...
+[move_group-25] [0m[96mLoading 'move_group/MoveGroupStateValidationService'...
+[move_group-25] [0m[92m
+[move_group-25] You can start planning now!
+[move_group-25] 
+[ign gazebo-1] [INFO] [1790736496.796805833] [elfin_arm_controller]: Goal reached, success!
+[observe_pose_hold.py-24] [INFO] [1790736496.898152921] [observe_pose_hold]: Held pose 'observe' error_code=0
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing scene information on [[0m[1;32m/world/airport_loading/scene/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing entity deletions on [[0m[1;32m/world/airport_loading/scene/deletion[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing state changes on [[0m[1;32m/world/airport_loading/state[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mpose/info[0m[1;32m][0m[1;32m[0m
+[ign gazebo-1] [1;32m[Msg] [0m[1;32mPublishing dynamic pose messages on [[0m[1;32m/world/airport_loading[0m[1;32m/[0m[1;32mdynamic_pose/info[0m[1;32m][0m[1;32m[0m
+[INFO] [observe_pose_hold.py-24]: process has finished cleanly [pid 2016708]
+[move_group-25] [WARN] [1790736497.118137869] [moveit_planning_scene.planning_scene]: Tried to remove world object 'airport_container_real', but it does not exist in this scene.
+[move_group-25] [WARN] [1790736497.151993978] [moveit_planning_scene.planning_scene]: Tried to remove world object 'robot_pedestal', but it does not exist in this scene.
+[scene_manager_node.py-11] [INFO] [1790736497.154389057] [scene_manager]: auto sync_static_scene: static scene synced (airport_container_real, 8000 triangles)
+[move_group-25] [ERROR] [1790736511.869417823] [moveit_robot_state.robot_state]: Attached body 'atlas_payload' not found
+[move_group-25] [WARN] [1790736511.869471314] [moveit_planning_scene.planning_scene]: Tried to remove world object 'atlas_payload', but it does not exist in this scene.
+[move_group-25] [WARN] [1790736511.969549086] [move_group.rclcpp]: failed to send response to /apply_planning_scene (timeout): client will not receive response, at ./src/rmw_response.cpp:154, at ./src/rcl/service.c:314
+[move_group-25] [ERROR] [1790736754.645751834] [moveit_robot_state.robot_state]: Attached body 'atlas_payload' not found
+[move_group-25] [WARN] [1790736754.645791249] [moveit_planning_scene.planning_scene]: Tried to remove world object 'atlas_payload', but it does not exist in this scene.

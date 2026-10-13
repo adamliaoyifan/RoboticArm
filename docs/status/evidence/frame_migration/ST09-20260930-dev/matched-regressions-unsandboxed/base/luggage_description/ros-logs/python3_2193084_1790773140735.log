@@ -1,0 +1,2 @@
+[INFO] [1790773140.792326434] [container_tf_publisher]: Static TF from /tmp/elfin-frame-migration-st08/src/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[INFO] [1790773140.792511887] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412

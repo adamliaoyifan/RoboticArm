@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Offline reachability atlas builder.
 
-Pre-computes a (x,y,z,yaw) reachability grid by calling /compute_ik for
-each cell, with optional container-collision awareness. Saves results
-to .npz + .yaml for runtime loading.
+Pre-computes a (x,y,z,yaw) reachability grid. Pose IK is
+offline_ik.refine_to_pose and requires tool-down
+(``tool_down_tolerance`` 0; suction normal along base -Z). Collision is
+/check_state_validity on the full robot model, so suction_panel,
+eef_mount_adapter, the D555 box, and the Mid-360 housing all reject a
+cell when they intersect the container.
+Saves results to .npz + .yaml for runtime loading.
 
 Usage:
     rosrun luggage_planning reachability_atlas_builder.py \
@@ -32,152 +36,65 @@ import os
 import sys
 import time
 import hashlib
-from collections import deque
 
 import numpy as np
 import yaml
 
+_PKG_ROOT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), ".."))
+if _PKG_ROOT not in sys.path:
+    sys.path.insert(0, _PKG_ROOT)
+
+from luggage_planning.reachability_wavefront import (  # noqa: E402
+    BRANCH_INTERNAL_LIFT,
+    BRANCH_NONE,
+    BRANCH_VERTICAL,
+    MARGINAL as _MARGINAL,
+    INTERFERENCE_TOOL_Z,
+    MIN_LIFT,
+    NOMINAL_LIFT_CLEARANCE,
+    contact_below_interference,
+    REACHABLE as _REACHABLE,
+    SAFE_TOOL_Z,
+    UNKNOWN as _UNKNOWN,
+    UNREACHABLE as _UNREACHABLE,
+    adaptive_lift_clearance,
+    classify_cell,
+    deterministic_wavefront,
+    grid_neighbors,
+    joint_interpolation_samples,
+    select_distinct_branches,
+)
+from luggage_planning.atlas_frame_contracts import (  # noqa: E402
+    DIRECTED_YAW_BINS,
+    atlas_contract_record,
+    container_yaw_offset,
+    geometry_hash as _contract_geometry_hash,
+    payload_hash as _contract_payload_hash,
+    tool_target_in_base,
+)
+
 try:  # Keep the pure wavefront helpers importable without a ROS installation.
     import rospy
     import rospkg
-    from geometry_msgs.msg import Pose, PoseStamped, Point, Quaternion
-    from moveit_msgs.msg import PositionIKRequest, RobotState
-    from moveit_msgs.srv import (
-        GetPositionIK,
-        GetStateValidity,
-        GetStateValidityRequest,
-    )
+    from geometry_msgs.msg import PoseStamped
+    from moveit_msgs.msg import RobotState
+    from moveit_msgs.srv import GetStateValidity
     from sensor_msgs.msg import JointState
+    try:
+        from moveit_msgs.srv import GetStateValidityRequest
+    except ImportError:  # ROS 2: the request type lives on the service class.
+        GetStateValidityRequest = GetStateValidity.Request
 except ImportError:  # pragma: no cover - exercised by the no-ROS unit tests.
     rospy = None
     rospkg = None
 
 
-UNKNOWN = np.uint8(0)
-UNREACHABLE = np.uint8(1)
-MARGINAL = np.uint8(2)
-REACHABLE = np.uint8(3)
+UNKNOWN = np.uint8(_UNKNOWN)
+UNREACHABLE = np.uint8(_UNREACHABLE)
+MARGINAL = np.uint8(_MARGINAL)
+REACHABLE = np.uint8(_REACHABLE)
 
-
-def grid_neighbors(cell, shape):
-    """Return deterministic 6-connected spatial neighbors."""
-    ix, iy, iz = cell
-    nx, ny, nz = shape
-    result = []
-    for axis in range(3):
-        for delta in (-1, 1):
-            candidate = [ix, iy, iz]
-            candidate[axis] += delta
-            if (0 <= candidate[0] < nx and
-                    0 <= candidate[1] < ny and
-                    0 <= candidate[2] < nz):
-                result.append(tuple(candidate))
-    return tuple(sorted(result))
-
-
-def opening_boundary_cells(shape, opening_axis, opening_sign):
-    """Return sorted grid cells touching the configured opening face."""
-    boundary_index = shape[opening_axis] - 1 if opening_sign > 0 else 0
-    cells = []
-    for ix in range(shape[0]):
-        for iy in range(shape[1]):
-            for iz in range(shape[2]):
-                cell = (ix, iy, iz)
-                if cell[opening_axis] == boundary_index:
-                    cells.append(cell)
-    return tuple(sorted(cells))
-
-
-def deterministic_wavefront(shape, opening_axis, opening_sign, can_expand):
-    """Traverse only cells connected to a successful opening boundary.
-
-    ``can_expand(cell, connected_predecessors, is_anchor)`` performs the
-    application-specific work and returns true when the cell may expand the
-    frontier.  The queue and predecessor order are stable across runs.
-    """
-    anchors = opening_boundary_cells(shape, opening_axis, opening_sign)
-    anchor_set = set(anchors)
-    queue = deque(anchors)
-    queued = set(anchors)
-    connected = set()
-    order = []
-    while queue:
-        cell = queue.popleft()
-        queued.discard(cell)
-        predecessors = tuple(
-            neighbor for neighbor in grid_neighbors(cell, shape)
-            if neighbor in connected
-        )
-        if can_expand(cell, predecessors, cell in anchor_set):
-            if cell not in connected:
-                connected.add(cell)
-                order.append(cell)
-                for neighbor in grid_neighbors(cell, shape):
-                    if neighbor not in connected and neighbor not in queued:
-                        queue.append(neighbor)
-                        queued.add(neighbor)
-    return tuple(order)
-
-
-def joint_interpolation_samples(start, goal, max_step):
-    """Return deterministic interior samples for a local joint segment."""
-    if len(start) != len(goal) or max_step <= 0.0:
-        raise ValueError("joint vectors must match and max_step must be positive")
-    max_delta = max(abs(float(b) - float(a)) for a, b in zip(start, goal))
-    segments = max(1, int(math.ceil(max_delta / max_step)))
-    samples = [
-        tuple(float(a) + (float(b) - float(a)) * step / segments
-              for a, b in zip(start, goal))
-        for step in range(1, segments + 1)
-    ]
-    samples[-1] = tuple(float(value) for value in goal)
-    return tuple(samples)
-
-
-def joint_branch_distance(left, right):
-    """Maximum per-joint distance, accounting for equivalent 2*pi wraps."""
-    distances = []
-    for a, b in zip(left, right):
-        delta = float(a) - float(b)
-        distances.append(abs(
-            (delta + math.pi) % (2.0 * math.pi) - math.pi))
-    return max(distances) if distances else 0.0
-
-
-def select_distinct_branches(branches, limit, threshold):
-    """Sort, deduplicate, and bound branch dictionaries deterministically."""
-    ranked = sorted(
-        branches,
-        key=lambda branch: (
-            -float(branch["margin"]),
-            tuple(round(float(v), 10) for v in branch["transit"]),
-            tuple(round(float(v), 10) for v in branch["contact"]),
-        ),
-    )
-    selected = []
-    for branch in ranked:
-        duplicate = any(
-            joint_branch_distance(branch["transit"], prior["transit"]) < threshold
-            and joint_branch_distance(branch["contact"], prior["contact"]) < threshold
-            for prior in selected
-        )
-        if not duplicate:
-            selected.append(branch)
-        if len(selected) >= limit:
-            break
-    return selected
-
-
-def classify_cell(branches, indeterminate=False, marginal_margin=0.10):
-    """Classify one cell conservatively from connected branch evidence."""
-    if not branches:
-        return UNKNOWN if indeterminate else UNREACHABLE
-    if indeterminate or any(
-            branch.get("repair", False) or
-            float(branch["margin"]) < marginal_margin
-            for branch in branches):
-        return MARGINAL
-    return REACHABLE
 
 DEFAULT_JOINT_NAMES = [
     "elfin_joint1", "elfin_joint2", "elfin_joint3",
@@ -299,27 +216,48 @@ class ReachabilityAtlasBuilder:
     def __init__(self):
         if rospy is None:
             raise RuntimeError("ReachabilityAtlasBuilder requires ROS Python packages")
-        desc_scripts = os.path.join(
-            rospkg.RosPack().get_path("luggage_description"), "scripts")
-        if desc_scripts not in sys.path:
-            sys.path.insert(0, desc_scripts)
-        from scene_tf_config_utils import (  # pylint: disable=import-outside-toplevel
-            container_in_base_link,
-            container_inner_ceiling_z,
-            container_inner_dimensions,
-            container_inner_floor_z,
-            container_opening_side,
-            load_scene_tf_config,
-            resolve_scene_tf_config_path,
-        )
+        try:
+            from luggage_description.scene_tf_config_utils import (  # pylint: disable=import-outside-toplevel
+                container_in_base_link,
+                container_inner_ceiling_z,
+                container_inner_dimensions,
+                container_inner_floor_z,
+                container_opening_side,
+                load_scene_tf_config,
+                resolve_scene_tf_config_path,
+            )
+        except ImportError:
+            desc_scripts = os.path.join(
+                rospkg.RosPack().get_path("luggage_description"), "scripts")
+            if desc_scripts not in sys.path:
+                sys.path.insert(0, desc_scripts)
+            from scene_tf_config_utils import (  # pylint: disable=import-outside-toplevel
+                container_in_base_link,
+                container_inner_ceiling_z,
+                container_inner_dimensions,
+                container_inner_floor_z,
+                container_opening_side,
+                load_scene_tf_config,
+                resolve_scene_tf_config_path,
+            )
         self._resolve_scene_tf_config_path = resolve_scene_tf_config_path
-        self._scene_config = load_scene_tf_config(
-            rospy.get_param("~scene_tf_config", resolve_scene_tf_config_path())
-        )
+        self._scene_tf_path = rospy.get_param(
+            "~scene_tf_config", resolve_scene_tf_config_path())
+        self._scene_config = load_scene_tf_config(self._scene_tf_path)
         self._resolution = float(rospy.get_param("~resolution_xyz", 0.15))
+        # ST06/F14: DIRECTED container-frame concrete-tool bins with 2pi
+        # period (0 and pi are distinct branches). The legacy [0, pi/2]
+        # pi-folded sampling is v1; it is not relabelled, it is rebuilt.
         self._yaw_bins = [float(y) for y in rospy.get_param(
-            "~yaw_bins", [0.0, math.pi / 2])]
-        self._transit_clearance = float(rospy.get_param("~transit_clearance", 0.30))
+            "~yaw_bins", list(DIRECTED_YAW_BINS))]
+        # Nominal same-column lift. High contacts shrink it via
+        # adaptive_lift_clearance so the carry stays at or below safe_tool_z.
+        self._transit_clearance = float(rospy.get_param(
+            "~transit_clearance", NOMINAL_LIFT_CLEARANCE))
+        self._safe_tool_z = float(rospy.get_param("~safe_tool_z", SAFE_TOOL_Z))
+        self._min_lift = float(rospy.get_param("~min_lift", MIN_LIFT))
+        self._offline_urdf = None
+        self._tcp_path = None
         floor_z = container_inner_floor_z(self._scene_config)
         ceiling_z = container_inner_ceiling_z(self._scene_config)
         # Z coordinate of the sampling region's bottom in container_link. The
@@ -354,11 +292,13 @@ class ReachabilityAtlasBuilder:
             "~marginal_joint_margin", 0.10))
         self._neighbor_threshold = float(rospy.get_param(
             "~neighbor_confidence_threshold", 0.50))
-        self._output_dir = rospy.get_param(
-            "~output_dir",
-            os.path.join(rospkg.RosPack().get_path("luggage_planning"),
-                         "data", "reachability_atlas"),
-        )
+        # The default is computed before get_param so a Humble host without
+        # rospkg still starts when ~output_dir is set. RosPack() inside the
+        # call would run even when the parameter is present.
+        default_output = os.path.normpath(os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "..", "data", "reachability_atlas"))
+        self._output_dir = rospy.get_param("~output_dir", default_output)
         # Atlas filename prefix. Empty -> derive from /robot_name
         # (elfin_s30_with_camera -> "s30") so S20/S30 atlases coexist as
         # s20_container_*.npz / s30_container_*.npz instead of overwriting.
@@ -396,31 +336,25 @@ class ReachabilityAtlasBuilder:
         self._container_xyz = [float(v) for v in base_xyz]
         self._container_rpy = [float(v) for v in base_rpy]
         self._container_R = _rpy_to_matrix(self._container_rpy)
+        # ST06: the yaw bins are container-frame directed tool yaws; IK
+        # still solves in base_link, so the mapping needs the constant Z
+        # offset of the (horizontal) container in base_link.
+        self._container_yaw_offset = container_yaw_offset(self._container_rpy)
         self._opening_axis, self._opening_sign = container_opening_side(
             self._scene_config)
 
         # Fixed seeds are used only for opening anchors and branch repair.
         self._fixed_seeds = self._load_fixed_seeds()
 
-        # IK service.
-        ik_service = rospy.get_param("~ik_service", "/compute_ik")
-        rospy.loginfo("Waiting for IK service %s ...", ik_service)
-        rospy.wait_for_service(ik_service, timeout=60.0)
-        self._ik = rospy.ServiceProxy(ik_service, GetPositionIK)
-        rospy.loginfo("IK service ready.")
-
+        # Pose solving is offline and deterministic. Collision stays on
+        # check_state_validity; without it every solved cell is UNKNOWN.
         validity_service = rospy.get_param(
             "~state_validity_service", "/check_state_validity")
-        self._state_validity = None
-        try:
-            rospy.wait_for_service(validity_service, timeout=2.0)
-            self._state_validity = rospy.ServiceProxy(
-                validity_service, GetStateValidity)
-            rospy.loginfo("State validity service ready.")
-        except rospy.ROSException:
-            rospy.logwarn(
-                "%s unavailable: interpolation-dependent cells will be UNKNOWN.",
-                validity_service)
+        rospy.loginfo("Waiting for state validity service %s ...", validity_service)
+        rospy.wait_for_service(validity_service, timeout=60.0)
+        self._state_validity = rospy.ServiceProxy(
+            validity_service, GetStateValidity)
+        rospy.loginfo("State validity service ready.")
 
         # Tool-down quaternion (suction +Z -> base -Z).
         self._tool_down = (1.0, 0.0, 0.0, 0.0)
@@ -448,6 +382,11 @@ class ReachabilityAtlasBuilder:
             [0.0, -1.57, 1.57, 0.0, 1.57, 0.0],
             [0.0, -1.20, -1.20, 0.0, 1.57, 0.0],
             [0.0, -1.57, 1.57, math.pi, 1.57, 0.0],
+            # Local refine cannot jump from j1≈0 into these families.
+            # Side-reach covers the +Y interior; the last seed is the
+            # opening-column pose at iz4 that the j1≈0 seeds miss.
+            [1.80, -0.70, 1.66, -2.54, -1.57, 0.22],
+            [0.59, 0.14, -1.37, -0.34, -1.57, -0.98],
         ]
         for raw in defaults:
             if len(raw) != len(DEFAULT_JOINT_NAMES):
@@ -461,58 +400,66 @@ class ReachabilityAtlasBuilder:
         return tuple(seeds)
 
     def _construct_base_pose(self, x, y, z, yaw):
-        """Construct suction_contact_frame target pose in base_link."""
-        # Position: container_link (x,y,z) -> base_link.
-        local_pos = (x, y, z)
-        base_pos = (
-            self._container_xyz[0] + self._container_R[0][0] * x + self._container_R[0][1] * y + self._container_R[0][2] * z,
-            self._container_xyz[1] + self._container_R[1][0] * x + self._container_R[1][1] * y + self._container_R[1][2] * z,
-            self._container_xyz[2] + self._container_R[2][0] * x + self._container_R[2][1] * y + self._container_R[2][2] * z,
-        )
-        # Orientation is defined entirely in base_link and exactly matches
-        # placement_motion_filter_node._tool_down_quaternion().  Container
-        # roll/pitch/yaw must not tilt the suction normal away from base -Z.
-        base_yaw_quat = (
-            0.0, 0.0, math.sin(yaw * 0.5), math.cos(yaw * 0.5))
-        base_quat = _quat_multiply(base_yaw_quat, self._tool_down)
-        return base_pos, base_quat
+        """Construct suction_contact_frame target pose in base_link.
+
+        ``yaw`` is the DIRECTED container-frame tool yaw (ST06/F14); it is
+        mapped through the scene-config container rotation before composing
+        the base-frame tool-down rotation, exactly as
+        ``atlas_frame_contracts.tool_target_in_base`` defines the advertised
+        target. Container roll/pitch must not tilt the suction normal away
+        from base -Z (enforced by ``container_yaw_offset`` at init).
+        """
+        return tool_target_in_base(
+            x, y, z, yaw, self._container_xyz, self._container_rpy,
+            self._tool_down)
+
+    def _ensure_offline_ik(self):
+        """Load the deterministic FK/IK model once per build."""
+        if self._offline_urdf is not None:
+            return
+        from luggage_planning.offline_ik import load_urdf
+        self._offline_urdf = load_urdf(scene_tf_config=self._scene_tf_path)
+        # load_urdf keeps the world_base joint, so a full path is in world.
+        # Cell targets are elfin_base_link. Start at the first arm joint so
+        # FK matches _construct_base_pose.
+        full_path = self._offline_urdf.path_to(self._ik_link)
+        arm = DEFAULT_JOINT_NAMES[0]
+        if arm not in full_path:
+            raise RuntimeError(
+                "URDF path to %s does not contain %s: %s" % (
+                    self._ik_link, arm, full_path))
+        self._tcp_path = full_path[full_path.index(arm):]
+        if len(self._tcp_path) < len(DEFAULT_JOINT_NAMES):
+            raise RuntimeError(
+                "URDF path to %s is incomplete: %s" % (
+                    self._ik_link, self._tcp_path))
 
     def _solve_ik(self, pos, quat, seed):
-        """Call /compute_ik with an explicit seed and return the joint solution.
+        """Refine ``seed`` onto the pose, then require a validity check.
 
-        ``None`` means a deterministic IK miss.  Service failures are raised so
-        the caller can classify the cell UNKNOWN instead of inventing a
-        negative reachability result.
+        ``None`` is a deterministic kinematic or collision miss. A validity
+        service failure is raised so the caller marks the cell UNKNOWN
+        instead of recording a colliding pose as unreachable or reachable.
+        ``refine_to_pose`` does not see the PlanningScene.
         """
-        req = PositionIKRequest()
-        req.group_name = self._ik_group
-        req.ik_link_name = self._ik_link
-        req.pose_stamped = PoseStamped()
-        req.pose_stamped.header.frame_id = self._base_frame
-        req.pose_stamped.header.stamp = rospy.Time(0)
-        req.pose_stamped.pose = Pose(
-            position=Point(x=pos[0], y=pos[1], z=pos[2]),
-            orientation=Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3]),
-        )
-        req.avoid_collisions = self._avoid_collisions
-        req.timeout = rospy.Duration(self._ik_timeout)
         if seed is None or len(seed) != len(DEFAULT_JOINT_NAMES):
             raise ValueError("IK seed must contain exactly six joints")
-        req.robot_state = RobotState(joint_state=JointState(
-            name=list(DEFAULT_JOINT_NAMES),
-            position=list(seed),
-        ))
-        try:
-            resp = self._ik(req)
-        except rospy.ServiceException as exc:
-            raise RuntimeError("compute_ik service failed: %s" % exc)
-        if resp.error_code.val != resp.error_code.SUCCESS:
+        self._ensure_offline_ik()
+        from luggage_planning.offline_ik import refine_to_pose
+        joints, _info = refine_to_pose(
+            self._offline_urdf, self._tcp_path, pos, quat, seed)
+        if joints is None:
             return None
-        sol = resp.solution.joint_state
-        joint_map = dict(zip(sol.name, sol.position))
-        if any(name not in joint_map for name in DEFAULT_JOINT_NAMES):
-            raise RuntimeError("compute_ik returned an incomplete joint state")
-        return tuple(float(joint_map[name]) for name in DEFAULT_JOINT_NAMES)
+        if self._state_validity is None:
+            raise RuntimeError(
+                "check_state_validity unavailable; refusing an unchecked IK solution")
+        valid = self._state_is_valid(joints)
+        if valid is None:
+            raise RuntimeError(
+                "check_state_validity failed; cell stays UNKNOWN")
+        if not valid:
+            return None
+        return tuple(float(v) for v in joints)
 
     def _solve_ik_transit_with_tolerance(self, pos, base_quat, seed):
         """Transit IK with tool-down tolerance (E1-B/E5).
@@ -564,6 +511,8 @@ class ReachabilityAtlasBuilder:
             name=list(DEFAULT_JOINT_NAMES),
             position=list(joints),
         ))
+        # A full state would drop the attached payload. A diff keeps it.
+        req.robot_state.is_diff = True
         try:
             return bool(self._state_validity(req).valid)
         except rospy.ServiceException as exc:
@@ -589,16 +538,33 @@ class ReachabilityAtlasBuilder:
         yaw = self._yaw_bins[iyaw]
         return x, y, z, yaw
 
-    def _try_branch(self, ix, iy, iz, iyaw, transit_seed,
-                    predecessor=None, repair=False):
-        """Solve transit then contact on one continuous physical branch."""
+    def _make_branch(self, transit, contact, repair, kind, lift,
+                     transit_target):
+        target = tuple(float(v) for v in transit_target)
+        return {
+            "transit": tuple(float(v) for v in transit),
+            "contact": tuple(float(v) for v in contact),
+            "margin": min(
+                self._joint_margin(transit), self._joint_margin(contact)),
+            "repair": bool(repair),
+            "kind": int(kind),
+            "lift_clearance": float(lift),
+            # Container-frame pose this transit seed was solved against.
+            # Vertical branches store this cell's (x, y, z + lift). Internal
+            # branches copy the predecessor's already-recorded target. Never
+            # recompute it from the joints being stored.
+            "transit_target": target,
+        }
+
+    def _try_vertical(self, ix, iy, iz, iyaw, transit_seed, clearance,
+                      predecessor=None, repair=False):
+        """Same-column carry at ``z + clearance``, then down to contact."""
         x, y, z, yaw = self._cell_target(ix, iy, iz, iyaw)
+        if not contact_below_interference(z, INTERFERENCE_TOOL_Z):
+            return None, False, False, False
         contact_pos, contact_quat = self._construct_base_pose(x, y, z, yaw)
-        transit_z = z + self._transit_clearance
-        # Deliberately solve the real target even when it is above the nominal
-        # container height.  Above-container transit is never auto-accepted.
         transit_pos, transit_quat = self._construct_base_pose(
-            x, y, transit_z, yaw)
+            x, y, z + clearance, yaw)
         transit = self._solve_ik_transit_with_tolerance(
             transit_pos, transit_quat, transit_seed)
         if transit is None:
@@ -613,14 +579,41 @@ class ReachabilityAtlasBuilder:
         insertion = self._segment_is_valid(transit, contact)
         if insertion is not True:
             return None, True, True, insertion is None
-        branch = {
-            "transit": transit,
-            "contact": contact,
-            "margin": min(
-                self._joint_margin(transit), self._joint_margin(contact)),
-            "repair": bool(repair),
-        }
-        return branch, True, True, False
+        return (
+            self._make_branch(
+                transit, contact, repair, BRANCH_VERTICAL, clearance,
+                (x, y, z + float(clearance))),
+            True, True, False)
+
+    def _try_internal(self, ix, iy, iz, iyaw, predecessor, repair=False,
+                      predecessor_target=None):
+        """Rise from the predecessor's safe carry straight to this contact.
+
+        The stored transit seed stays the predecessor carry so the next cell
+        is not warm-started from a pose against the lid. Its advertised
+        target is the predecessor branch's recorded geometric target, copied
+        as-is.
+        """
+        x, y, z, yaw = self._cell_target(ix, iy, iz, iyaw)
+        if not contact_below_interference(z, INTERFERENCE_TOOL_Z):
+            return None, False, False, False
+        if predecessor_target is None:
+            return None, False, False, False
+        target = tuple(float(v) for v in predecessor_target)
+        if len(target) != 3 or not all(math.isfinite(v) for v in target):
+            return None, False, False, False
+        contact_pos, contact_quat = self._construct_base_pose(x, y, z, yaw)
+        contact = self._solve_ik(contact_pos, contact_quat, predecessor)
+        if contact is None:
+            return None, False, False, False
+        segment = self._segment_is_valid(predecessor, contact)
+        if segment is not True:
+            return None, False, True, segment is None
+        return (
+            self._make_branch(
+                predecessor, contact, repair, BRANCH_INTERNAL_LIFT, 0.0,
+                target),
+            False, True, False)
 
     def compute(self):
         """Compute atlas data without saving or scene sync.
@@ -663,7 +656,7 @@ class ReachabilityAtlasBuilder:
 
         Enables payload-aware atlas builds for per-box-size reachability
         sampling. The box is attached to ``~payload_attach_link`` (default the
-        IK link) so /compute_ik collision checks reflect the carried load.
+        IK link) so state-validity checks reflect the carried load.
         No-op when ``~payload_enabled`` is false (empty-load atlas).
         """
         if not self._payload_enabled:
@@ -674,6 +667,10 @@ class ReachabilityAtlasBuilder:
                 self._payload_shape)
             return
         if not self._init_moveit_commander():
+            if not self._attach_payload_rclpy():
+                if getattr(self, "_rclpy_node", None) is not None:
+                    raise RuntimeError(
+                        "payload requested but the planning scene attach failed")
             return
         try:
             scene = self._mc_scene
@@ -694,6 +691,43 @@ class ReachabilityAtlasBuilder:
                 self._payload_offset, self._payload_touch_links)
         except Exception as exc:
             rospy.logerr("Failed to attach payload (building empty-load): %s", exc)
+            if getattr(self, "_rclpy_node", None) is not None:
+                raise
+
+    def _attach_payload_rclpy(self):
+        """Attach the payload through ApplyPlanningScene when MoveIt Commander is absent."""
+        node = getattr(self, "_rclpy_node", None)
+        if node is None or not self._payload_enabled:
+            return False
+        import rclpy
+        from moveit_msgs.srv import ApplyPlanningScene
+        from luggage_planning.planning_scene_client import build_attach_scene
+        client = node.create_client(ApplyPlanningScene, "/apply_planning_scene")
+        if not client.wait_for_service(timeout_sec=30.0):
+            rospy.logerr("apply_planning_scene unavailable; payload not attached")
+            return False
+        scene = build_attach_scene(
+            self._payload_id,
+            [float(v) for v in self._payload_offset],
+            (0.0, 0.0, 0.0, 1.0),
+            [float(v) for v in self._payload_size],
+            self._payload_attach_link,
+            touch_links=self._payload_touch_links,
+            frame_id=self._payload_attach_link,
+        )
+        request = ApplyPlanningScene.Request()
+        request.scene = scene
+        future = client.call_async(request)
+        rclpy.spin_until_future_complete(node, future, timeout_sec=15.0)
+        result = future.result()
+        if result is None or not result.success:
+            rospy.logerr("payload apply failed: %s", future.exception())
+            return False
+        rospy.sleep(1.0)
+        rospy.loginfo(
+            "Payload attached via ApplyPlanningScene: size=%s link=%s offset=%s",
+            self._payload_size, self._payload_attach_link, self._payload_offset)
+        return True
 
     def build(self):
         """Build the full atlas and save to files."""
@@ -711,7 +745,9 @@ class ReachabilityAtlasBuilder:
                 "baseline; ignoring max_workers=%d.", self._max_workers)
 
         # Optionally sync scene for collision-aware IK.
-        if self._avoid_collisions and not getattr(self, '_compute_only', False):
+        if (self._avoid_collisions
+                and not getattr(self, '_compute_only', False)
+                and not getattr(self, '_scene_already_synced', False)):
             try:
                 from std_srvs.srv import Trigger
                 sync = rospy.ServiceProxy("/scene_manager/sync_static_scene", Trigger)
@@ -736,6 +772,17 @@ class ReachabilityAtlasBuilder:
         contact_seeds = np.full(
             shape4 + (self._max_branches, 6), np.nan, dtype=np.float64)
         transit_seeds = np.full_like(contact_seeds, np.nan)
+        # ST06: per-branch lift the transit seed was solved at (vertical
+        # branches) or NaN (internal branches carry the predecessor pose),
+        # plus the container-frame target recorded when that branch was
+        # solved. Internal branches copy the predecessor's target; they do
+        # not store FK of the joints being certified.
+        transit_lift = np.full(
+            shape4 + (self._max_branches,), np.nan, dtype=np.float32)
+        transit_target = np.full(
+            shape4 + (self._max_branches, 3), np.nan, dtype=np.float32)
+        lift_clearance = np.full(shape4, np.nan, dtype=np.float32)
+        branch_kind = np.zeros(shape4, dtype=np.uint8)
         solution_count = np.zeros(shape4, dtype=np.uint8)
         joint_margin = np.zeros(shape4, dtype=np.float32)
         manipulability = np.zeros((nx, ny, nz, nyaw), dtype=np.float32)
@@ -753,10 +800,15 @@ class ReachabilityAtlasBuilder:
 
             def _expand(cell, predecessors, is_anchor):
                 ix, iy, iz = cell
+                _x, _y, contact_z, _yaw = self._cell_target(ix, iy, iz, iyaw)
+                clearance = adaptive_lift_clearance(
+                    contact_z, self._transit_clearance,
+                    self._safe_tool_z, self._min_lift)
                 candidates = []
                 indeterminate = cell in indeterminate_cells
                 any_transit = bool(transit_ik[ix, iy, iz, iyaw])
                 any_contact = bool(contact_ik[ix, iy, iz, iyaw])
+                internal_tried = set()
 
                 propagated = []
                 for predecessor_cell in predecessors:
@@ -771,31 +823,60 @@ class ReachabilityAtlasBuilder:
                             predecessor_branch["transit"],
                             predecessor_branch["transit"],
                             False,
+                            predecessor_branch["transit_target"],
                         ))
 
                 attempts = []
                 if is_anchor:
-                    attempts.extend((seed, None, False)
+                    attempts.extend((seed, None, False, None)
                                     for seed in self._fixed_seeds)
                 attempts.extend(propagated)
 
-                def _run(attempt_list):
+                def _consume(result):
                     nonlocal indeterminate, any_transit, any_contact
-                    for seed, predecessor, repair in attempt_list:
-                        try:
-                            branch, transit_ok, contact_ok, unknown = (
-                                self._try_branch(
-                                    ix, iy, iz, iyaw, seed,
+                    branch, transit_ok, contact_ok, unknown = result
+                    any_transit = any_transit or transit_ok
+                    any_contact = any_contact or contact_ok
+                    indeterminate = indeterminate or unknown
+                    if branch is not None:
+                        candidates.append(branch)
+
+                def _call(fn):
+                    try:
+                        return fn()
+                    except RuntimeError as exc:
+                        rospy.logwarn_throttle(5.0, "%s", exc)
+                        return None, False, False, True
+
+                def _run(attempt_list):
+                    for seed, predecessor, repair, predecessor_target in (
+                            attempt_list):
+                        if clearance is not None:
+                            result = _call(
+                                lambda seed=seed, predecessor=predecessor,
+                                repair=repair: self._try_vertical(
+                                    ix, iy, iz, iyaw, seed, clearance,
                                     predecessor=predecessor, repair=repair))
-                        except RuntimeError as exc:
-                            rospy.logwarn_throttle(5.0, "%s", exc)
-                            branch, transit_ok, contact_ok, unknown = (
-                                None, False, False, True)
-                        any_transit = any_transit or transit_ok
-                        any_contact = any_contact or contact_ok
-                        indeterminate = indeterminate or unknown
-                        if branch is not None:
-                            candidates.append(branch)
+                            _consume(result)
+                            if result[0] is not None:
+                                continue
+                        # Opening anchors are not climbed from a lower cell.
+                        # The wavefront enters the layer through an interior
+                        # neighbor of a lower, already connected cell.
+                        # A vertical success above keeps this cell's own
+                        # (x, y, z + clearance) target, not the predecessor's.
+                        if is_anchor or predecessor is None:
+                            continue
+                        pred_key = tuple(float(v) for v in predecessor)
+                        if pred_key in internal_tried:
+                            continue
+                        internal_tried.add(pred_key)
+                        _consume(_call(
+                            lambda predecessor=predecessor, repair=repair,
+                            predecessor_target=predecessor_target:
+                            self._try_internal(
+                                ix, iy, iz, iyaw, predecessor, repair=repair,
+                                predecessor_target=predecessor_target)))
 
                 _run(attempts)
                 # Fixed seeds are a repair mechanism only after connected
@@ -805,7 +886,8 @@ class ReachabilityAtlasBuilder:
                     for predecessor_cell in predecessors:
                         for predecessor_branch in branch_map[predecessor_cell]:
                             repairs.extend(
-                                (seed, predecessor_branch["transit"], True)
+                                (seed, predecessor_branch["transit"], True,
+                                 predecessor_branch["transit_target"])
                                 for seed in self._fixed_seeds)
                     _run(repairs)
 
@@ -817,6 +899,14 @@ class ReachabilityAtlasBuilder:
                     indeterminate_cells.add(cell)
                 status[ix, iy, iz, iyaw] = classify_cell(
                     selected, indeterminate, self._marginal_margin)
+                if selected:
+                    lift_clearance[ix, iy, iz, iyaw] = (
+                        selected[0]["lift_clearance"])
+                    branch_kind[ix, iy, iz, iyaw] = selected[0]["kind"]
+                else:
+                    branch_kind[ix, iy, iz, iyaw] = BRANCH_NONE
+                    lift_clearance[ix, iy, iz, iyaw] = (
+                        clearance if clearance is not None else 0.0)
                 if not selected:
                     return False
 
@@ -829,6 +919,11 @@ class ReachabilityAtlasBuilder:
                         branch["transit"])
                     contact_seeds[ix, iy, iz, iyaw, branch_index] = (
                         branch["contact"])
+                    transit_lift[ix, iy, iz, iyaw, branch_index] = (
+                        branch["lift_clearance"]
+                        if branch["kind"] == BRANCH_VERTICAL else np.nan)
+                    transit_target[ix, iy, iz, iyaw, branch_index] = (
+                        branch["transit_target"])
                 return True
 
             deterministic_wavefront(
@@ -887,8 +982,15 @@ class ReachabilityAtlasBuilder:
         deterministic_hash.update(str(
             [self._payload_enabled, self._payload_size, self._payload_shape,
              self._payload_offset, self._payload_attach_link]).encode())
+        deterministic_hash.update(np.nan_to_num(lift_clearance, nan=-1.0).tobytes())
+        deterministic_hash.update(branch_kind.tobytes())
+        deterministic_hash.update(np.nan_to_num(
+            transit_lift, nan=-1.0).tobytes())
+        deterministic_hash.update(np.nan_to_num(
+            transit_target, nan=0.0).tobytes())
         deterministic_hash.update(str(
-            [self._tool_down_tolerance, self._transit_clearance]).encode())
+            [self._tool_down_tolerance, self._transit_clearance,
+             self._safe_tool_z, self._min_lift, "adaptive_v3"]).encode())
         payload_section = {
             "enabled": self._payload_enabled,
             "shape": self._payload_shape if self._payload_enabled else None,
@@ -897,9 +999,29 @@ class ReachabilityAtlasBuilder:
             "offset": list(self._payload_offset) if self._payload_enabled else None,
             "touch_links": list(self._payload_touch_links) if self._payload_enabled else None,
         }
+        # ST06/F14 v2 contract block. The identity hashes reproduce from the
+        # artifact's own geometry/payload sections, so an existing v1 NPZ
+        # cannot be relabelled as v2 by stamping metadata onto it.
+        scene_tf_hash = _file_hash(scene_tf_path)
+        from luggage_planning.atlas_runtime import (
+            compute_reachability_scene_hash,
+        )
+        reachability_scene_hash = compute_reachability_scene_hash(
+            scene_tf_path)
+        urdf_hash = hashlib.md5(urdf.encode()).hexdigest()
+        contract = atlas_contract_record(
+            self._yaw_bins,
+            scene_tf_hash,
+            urdf_hash,
+            _contract_geometry_hash(
+                [self._inner_l, self._inner_w, self._inner_h],
+                self._floor_z, self._ceiling_z, opening_side),
+            _contract_payload_hash(payload_section),
+        )
         meta = {
-            "atlas_version": "2.0",
-            "schema_version": 2,
+            "atlas_version": "3.0",
+            "schema_version": 3,
+            "contract": contract,
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
             "computation_time_sec": round(elapsed, 2),
             "mode": mode,
@@ -914,21 +1036,23 @@ class ReachabilityAtlasBuilder:
                     "~hard_reject_interior_fraction", 0.10)),
             },
             "builder": {
-                "algorithm": "opening_connected_wavefront_v2",
+                "algorithm": "opening_connected_wavefront_v3",
                 "serial_deterministic": True,
                 "max_branches": self._max_branches,
                 "branch_distance": self._branch_distance,
                 "joint_interpolation_step": self._joint_interp_step,
                 "state_validity_available": self._state_validity is not None,
                 "seed_policy": "fixed_anchor_connected_warm_start_repair_v1",
+                "ik_solver": "offline_ik.refine_to_pose",
                 "deterministic_fingerprint": deterministic_hash.hexdigest(),
                 "tool_down_tolerance": self._tool_down_tolerance,
                 "transit_clearance": self._transit_clearance,
             },
             "dependencies": {
                 "robot_model": rospy.get_param("/robot_name", "elfin_s20_with_camera"),
-                "scene_tf_hash": _file_hash(scene_tf_path),
-                "urdf_hash": hashlib.md5(urdf.encode()).hexdigest(),
+                "scene_tf_hash": scene_tf_hash,
+                "reachability_scene_hash": reachability_scene_hash,
+                "urdf_hash": urdf_hash,
                 "ik_link": self._ik_link,
                 "ik_group": self._ik_group,
             },
@@ -939,7 +1063,14 @@ class ReachabilityAtlasBuilder:
                 "origin": [-self._inner_l * 0.5, -self._inner_w * 0.5, self._z_min_offset],
                 "size": [nx, ny, nz],
                 "yaw_bins": self._yaw_bins,
+                "yaw_semantics": "directed_container_2pi",
                 "transit_clearance": self._transit_clearance,
+                "lift_policy": {
+                    "nominal": self._transit_clearance,
+                    "safe_tool_z": self._safe_tool_z,
+                    "min_lift": self._min_lift,
+                    "frame": "container_link",
+                },
             },
             "container": {
                 "inner_dimensions": [self._inner_l, self._inner_w, self._inner_h],
@@ -973,6 +1104,10 @@ class ReachabilityAtlasBuilder:
             "transit_ik": transit_ik,
             "contact_seeds": contact_seeds,
             "transit_seeds": transit_seeds,
+            "transit_lift": transit_lift,
+            "transit_target": transit_target,
+            "lift_clearance": lift_clearance,
+            "branch_kind": branch_kind,
             "solution_count": solution_count,
             "joint_margin": joint_margin,
             "manipulability": manipulability,

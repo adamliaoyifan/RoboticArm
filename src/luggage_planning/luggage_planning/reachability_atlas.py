@@ -68,6 +68,12 @@ class ReachabilityAtlas:
             meta: dict with grid definition and metadata.
         """
         self._meta = dict(meta)
+        # ST06/F14: a v2+ artifact carries the directed-concrete-tool
+        # contract block (validated by frame_contracts.validate_atlas at
+        # build time). Its presence switches the query layer to DIRECTED
+        # 2pi semantics; v1/v2 artifacts keep the pi-folded behavior.
+        contract = meta.get("contract")
+        self._contract = dict(contract) if isinstance(contract, dict) else None
         grid = meta["grid"]
         self._resolution = float(grid["resolution_xyz"])
         self._origin = [float(v) for v in grid["origin"]]
@@ -175,6 +181,36 @@ class ReachabilityAtlas:
         self._neighbor_confidence = self._grid_array(
             data.get("neighbor_confidence"),
             "neighbor_confidence", np.float32, 0.0)
+        # v3 sampling record. Absent on older atlases; omitted from save then.
+        self._lift_clearance = None
+        self._branch_kind = None
+        if "lift_clearance" in data:
+            self._lift_clearance = self._grid_array(
+                data.get("lift_clearance"), "lift_clearance", np.float32, np.nan)
+        if "branch_kind" in data:
+            self._branch_kind = self._grid_array(
+                data.get("branch_kind"), "branch_kind", np.uint8, 0)
+        # ST06 per-branch transit provenance: the lift each vertical
+        # transit seed was solved at, and the exact container-frame target
+        # of EVERY transit seed (internal branches carry their predecessor
+        # carry target). v3 artifacts must round-trip both; the FK
+        # certifier fails closed when a seeded row lacks a target.
+        self._transit_lift = None
+        self._transit_target = None
+        if "transit_lift" in data:
+            lift = np.asarray(data["transit_lift"], dtype=np.float32)
+            if lift.shape != self._shape + (self._nseed,):
+                raise ValueError(
+                    "transit_lift must have shape %r + (nseed,), got %r" % (
+                        self._shape, lift.shape))
+            self._transit_lift = lift
+        if "transit_target" in data:
+            target = np.asarray(data["transit_target"], dtype=np.float32)
+            if target.shape != self._shape + (self._nseed, 3):
+                raise ValueError(
+                    "transit_target must have shape %r + (nseed, 3), got %r"
+                    % (self._shape, target.shape))
+            self._transit_target = target
 
         # Kept for callers that used the v1 private member.
         self._seeds = (
@@ -194,8 +230,7 @@ class ReachabilityAtlas:
     def save(self, npz_path, meta_path):
         """Save schema v2 plus v1 compatibility arrays."""
         os.makedirs(os.path.dirname(npz_path) or ".", exist_ok=True)
-        np.savez_compressed(
-            npz_path,
+        payload = dict(
             status=self._status,
             opening_connected=self._opening_connected,
             reachable=self._reachable,
@@ -209,10 +244,23 @@ class ReachabilityAtlas:
             joint_margin=self._joint_margin,
             manipulability=self._manipulability,
         )
+        if self._lift_clearance is not None:
+            payload["lift_clearance"] = self._lift_clearance
+        if self._branch_kind is not None:
+            payload["branch_kind"] = self._branch_kind
+        if self._transit_lift is not None:
+            payload["transit_lift"] = self._transit_lift
+        if self._transit_target is not None:
+            payload["transit_target"] = self._transit_target
+        np.savez_compressed(npz_path, **payload)
         os.makedirs(os.path.dirname(meta_path) or ".", exist_ok=True)
         saved_meta = dict(self._meta)
-        saved_meta["atlas_version"] = "2.0"
-        saved_meta["schema_version"] = 2
+        if self._contract is not None:
+            saved_meta["atlas_version"] = "3.0"
+            saved_meta["schema_version"] = 3
+        else:
+            saved_meta["atlas_version"] = "2.0"
+            saved_meta["schema_version"] = 2
         with open(meta_path, "w", encoding="utf-8") as f:
             yaml.safe_dump(
                 saved_meta, f, default_flow_style=False, sort_keys=False)
@@ -397,11 +445,44 @@ class ReachabilityAtlas:
         Returns:
             (reachable: bool, seed_joints: list[float] or None)
         """
-        # Infinite yaw tolerance preserves the v1 nearest-bin behavior.
-        result = self.query(x, y, z, yaw, yaw_tolerance=float("inf"))
+        # Infinite yaw tolerance preserves the v1 nearest-bin behavior. On a
+        # directed artifact both pi-equivalent branches are consulted: the
+        # tool yaw and its pi twin are distinct concrete poses, and the
+        # pi-symmetric question "is this grasp reachable from either side"
+        # is answered here rather than by folding the artifact.
+        result, _all_hard = self.query_pi_equivalents(
+            x, y, z, yaw, float("inf"))
         reachable = result.status in (MARGINAL, REACHABLE)
         seed = result.contact_seeds[0] if result.contact_seeds else None
         return reachable, seed
+
+    def query_pi_equivalents(self, x, y, z, yaw, yaw_tolerance=None):
+        """Best directed verdict over the yaw and its pi twin.
+
+        Returns ``(best_result, all_hard_reject)``. A v1 artifact (no
+        contract block) answers with the single folded query and its own
+        ``hard_reject_safe``. On a directed artifact the two pi-equivalent
+        grasps are distinct concrete branches: the best verdict prefers a
+        reachable status, then a seeded one, then the higher status (ties
+        keep the named yaw's branch), and ``all_hard_reject`` is true only
+        when BOTH branches are confidently unreachable interior cells -- a
+        failed branch never certifies its pi twin unreachable.
+        """
+        first = self.query(x, y, z, yaw, yaw_tolerance=yaw_tolerance)
+        if self._contract is None:
+            return first, bool(first.hard_reject_safe)
+        second = self.query(x, y, z, float(yaw) + math.pi,
+                            yaw_tolerance=yaw_tolerance)
+
+        def rank(result):
+            return (
+                1 if result.status in (MARGINAL, REACHABLE) else 0,
+                1 if (result.contact_seeds or result.transit_seeds) else 0,
+                int(result.status),
+            )
+
+        best = first if rank(first) >= rank(second) else second
+        return best, bool(first.hard_reject_safe and second.hard_reject_safe)
 
     def is_marginal(self, x, y, z, yaw=0.0, threshold=0.1):
         """Check if a cell is marginal by status or joint-limit margin."""
@@ -434,7 +515,7 @@ class ReachabilityAtlas:
             y = cand.get(y_key, 0.0)
             z = cand.get(z_key, 0.0)
             yaw = cand.get(yaw_key, 0.0)
-            result = self.query(x, y, z, yaw, yaw_tolerance=float("inf"))
+            result = self.query_pi_equivalents(x, y, z, yaw, float("inf"))[0]
             ok = result.status in (MARGINAL, REACHABLE)
             seed = result.contact_seeds[0] if result.contact_seeds else None
             cand["atlas_reachable"] = ok
@@ -473,16 +554,16 @@ class ReachabilityAtlas:
         """
         accepted, rejected = [], []
         for cand in candidates:
-            result = self.query(
+            result, all_hard_reject = self.query_pi_equivalents(
                 cand.get(x_key, 0.0), cand.get(y_key, 0.0),
                 cand.get(z_key, 0.0), cand.get(yaw_key, 0.0))
             cand["atlas_status"] = result.status
             cand["atlas_status_name"] = STATUS_NAMES[result.status]
-            cand["atlas_hard_reject_safe"] = result.hard_reject_safe
+            cand["atlas_hard_reject_safe"] = all_hard_reject
             cand["contact_atlas_seeds"] = result.contact_seeds
             cand["transit_atlas_seeds"] = result.transit_seeds
             cand["reachability_prior"] = result.score
-            if result.hard_reject_safe:
+            if all_hard_reject:
                 rejected.append(cand)
             else:
                 accepted.append(cand)
@@ -495,6 +576,26 @@ class ReachabilityAtlas:
         return self._meta
 
     @property
+    def contract_record(self):
+        """v2 directed-contract block, or None on a pi-folded v1 artifact."""
+        return dict(self._contract) if self._contract is not None else None
+
+    @property
+    def directed(self):
+        """True when the artifact stores directed 2pi concrete-tool bins."""
+        return self._contract is not None
+
+    @property
+    def transit_lift(self):
+        """Per-branch vertical transit lift (float32 grid + nseed) or None."""
+        return None if self._transit_lift is None else self._transit_lift
+
+    @property
+    def transit_target(self):
+        """Exact container-frame transit target per branch (grid+nseed,3)."""
+        return None if self._transit_target is None else self._transit_target
+
+    @property
     def yaw_bins(self):
         return list(self._yaw_bins)
 
@@ -505,6 +606,16 @@ class ReachabilityAtlas:
     @property
     def grid_size(self):
         return (self._nx, self._ny, self._nz, self._nyaw)
+
+    @property
+    def status(self):
+        """Status grid ``(nx, ny, nz, nyaw)``. Treat as read-only.
+
+        Exposed for query-layer neighbourhood reasoning (atlas_runtime
+        QuerySemantics): a cell verdict must not stand when a neighbouring
+        cell contradicts it.
+        """
+        return self._status
 
     def stats(self):
         """Return atlas statistics."""

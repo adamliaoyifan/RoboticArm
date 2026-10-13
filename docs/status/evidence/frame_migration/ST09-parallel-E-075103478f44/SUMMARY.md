@@ -1,7 +1,7 @@
-# ST09-E Generation 2 Evidence
+# ST09-E Generation 3 Evidence
 
 - base_revision: `075103478f442383457d4335766c881a87e82355`
-- task: `FRAME-MIGRATION-20260929 / ST09-E / generation 2`
+- task: `FRAME-MIGRATION-20260929 / ST09-E / generation 3 lineage repair`
 - evidence_status: pass for ST09-E offline tooling acceptance
 
 ## Reports
@@ -15,10 +15,15 @@
 
 ## Commands
 
-- `python3 -m pytest tests/st09_parallel/E -q`: pass, 10 tests.
-- `python3 -m pytest tests/st09_parallel/C tests/st09_parallel/E -q`: pass, 29 tests.
+- `python3 -m pytest tests/st09_parallel/E -q`: pass, 11 tests.
+- `python3 -m pytest tests/st09_parallel/C tests/st09_parallel/E -q`: pass, 30 tests.
+- `python3 -m pytest tests/st09_parallel/E/test_evidence_runner.py::test_replay_shell_entrypoint_refuses_live_domain -q`: pass.
 - `bash scripts/check_agent_contract.sh`: pass.
 - `python3 scripts/check_frame_contracts.py --mode migration --output /tmp/st09-e2-frame-contracts-log`: exit 1 with existing pending frame-contract migration state; recorded under `frame_contracts_migration/` and not counted as ST09-E2 success.
+
+## Lineage
+
+This evidence was refreshed in a clean worktree rooted at `075103478f442383457d4335766c881a87e82355`. The replay shell entrypoint `scripts/frame_migration_st09_replay.sh` is retained from that base and covered by the focused live-domain refusal test.
 
 ## Residual
 

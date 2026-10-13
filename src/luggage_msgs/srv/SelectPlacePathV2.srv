@@ -1,0 +1,42 @@
+# F13: container-frame slots, grasp, and start TCP in; world TCP poses out.
+# v1 SelectPlacePath is unchanged.
+string request_id
+float64[3] box_wdh
+luggage_msgs/PoseContractV2[] slots
+float64[] slot_scores
+luggage_msgs/SurfaceContractV2 surface
+float64[3] inner_size
+string geometry_hash
+uint64 map_revision
+luggage_msgs/PoseContractV2 start_tcp
+float64[] start_joints
+# Grasp transport: reference is the source frame (suction_contact_frame),
+# orientation_semantics is the target frame (box), pose is the box-frame offset.
+luggage_msgs/PoseContractV2 grasp
+string container_source_frame
+string container_target_frame
+float64[3] container_translation
+float64[4] container_quaternion_xyzw
+int64 container_stamp_ns
+bool container_stamp_is_null
+string[] excluded_ids
+# Attach identity frozen with the grasp. Empty box_id and generation 0
+# mean "not claimed"; a claim that disagrees with the frozen record is
+# ATTACHMENT_REQUEST_MISMATCH.
+string box_id
+uint64 generation
+---
+bool success
+string reason_code
+int32 slot_index
+string selection_id
+string path_source
+string path_hash
+luggage_msgs/MotionSegment[] carry_segments
+luggage_msgs/PoseContractV2[] waypoint_poses
+luggage_msgs/MotionSegmentV2[] motion_segments
+string rows_json
+# [ST09-I S5.7-6] frozen-budget attribution: how the select wall time
+# split across graph/edge search, certification, and map revalidation
+# (JSON object of floats in ms).
+string stage_timings_json

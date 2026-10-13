@@ -1,0 +1,38 @@
+........................................................................ [  9%]
+........................................................................ [ 18%]
+............................................................... [ 26%]
+........................................................................ [ 35%]
+........................................................................ [ 44%]
+........................................................................ [ 53%]
+.................................................................... [ 61%]
+.............................................................. [ 69%]
+........................................................................ [ 78%]
+.................................................................... [ 87%]
+....................................................................F... [ 96%]
+...........................                                              [100%]
+=================================== FAILURES ===================================
+_________ CartesianJointTravelTest.test_j6_carry_unwind_is_not_refused _________
+
+self = <test_wrist_policy.CartesianJointTravelTest testMethod=test_j6_carry_unwind_is_not_refused>
+
+    def test_j6_carry_unwind_is_not_refused(self):
+        """Rehearsal-21: 18 rad of j6 over a 2.8 m portal carry is yaw, not unwind."""
+        executor = _policy_executor()
+        executor._fk_xyz = lambda *args, **kwargs: (0.0, 0.0, 0.0)
+        start = [0.0] * 6
+        end = [0.0, 0.0, 0.0, 0.0, 0.0, 18.298]
+        response = _cartesian_response([start, end])
+        segment = _segment("transit")
+        segment.target_pose = Pose(
+            position=Point(x=2.785, y=0.0, z=0.0),
+            orientation=Quaternion(x=1.0, y=0.0, z=0.0, w=0.0))
+        _fraction, plan = executor._judge_cartesian_response(
+            segment, [segment.target_pose], response, 1.0)
+        self.assertFalse(getattr(plan, "excursion_rejected", False))
+>       self.assertIs(plan, response)
+E       AssertionError: <luggage_planning.motion_executor._SingularityRejectedPlan object at 0x778472b85570> is not namespace(fraction=1.0, solution=namespace(joint_trajectory=namespace(joint_names=['elfin_joint1', 'elfin_joint2', 'elfin_joint3', 'elfin_joint4', 'elfin_joint5', 'elfin_joint6'], points=[<test_wrist_policy._Point object at 0x778472b854b0>, <test_wrist_policy._Point object at 0x778472b855a0>])))
+
+src/luggage_planning/test/test_wrist_policy.py:185: AssertionError
+=========================== short test summary info ============================
+FAILED src/luggage_planning/test/test_wrist_policy.py::CartesianJointTravelTest::test_j6_carry_unwind_is_not_refused
+1 failed, 791 passed, 171 subtests passed in 2.23s

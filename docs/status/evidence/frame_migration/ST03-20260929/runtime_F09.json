@@ -1,0 +1,23 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_planning/test -p test_frame_migration_pick.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "352a6372c58cf69cf191368c0e17226717b0cd990f92864dbecaf88cf0e8e7f1",
+  "interface_id": "F09",
+  "kind": "runtime_boundary",
+  "observations": [
+    "64 matrix cases: actual box-to-tool grasp transform stored with the explicit suction target link and observation identity; translation equals the lateral contact offset in box axes",
+    "approach snapshot reproduces the substrate tool target exactly; v1 MotionSegment publication byte-identical",
+    "review repair R5: the approach snapshot owns deep-copied pose/grasp; retries return independent copies (mutation of source or retry target can no longer rewrite the snapshot); hardware driver now supplies the scene revision",
+    "repair2 P2-d: DetectionView carries the exact integer-nanosecond stamp from the DetectedLuggage header (the float stamp stays the documented lossy transport form), so the hardware retry snapshot keeps epoch nanoseconds; P1-c admission-before-plan also applies to the pick entry"
+  ],
+  "sample_count": 94,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_planning/luggage_planning/pick_frame_contracts.py": "0e0e5238182562e6f20a3567c8c02d20c162e3378ed3c4f4fdd6213ab6bdd596",
+    "src/luggage_planning/luggage_planning/suction_pick_session.py": "10f0f91da74348512d1659220e5f2f45d045c26b7d8f29a795c76b3c9c2e2a8b",
+    "src/luggage_planning/luggage_planning/waypoint_generator.py": "6020341ceabd5d824a9157e3763947b524012c507ee5cb32ac1f6026afdb8200",
+    "src/luggage_planning/scripts/hardware_pick_driver.py": "7df9ffc0d615ef81af50729221c0e06543ff93f7d66aed93212df6b79b5b2b69"
+  },
+  "status": "pass"
+}

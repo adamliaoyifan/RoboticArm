@@ -1,0 +1,26 @@
+[
+ {
+  "stamp_ns": 2000000000,
+  "map_revision": 2,
+  "outcome": "partial_coverage",
+  "digest": "414549efc11e2eff"
+ },
+ {
+  "stamp_ns": 3000000000,
+  "map_revision": 3,
+  "outcome": "partial_coverage",
+  "digest": "521ebcc959b5e5a9"
+ },
+ {
+  "stamp_ns": 4000000000,
+  "map_revision": 4,
+  "outcome": "partial_coverage",
+  "digest": "d2848f843db50231"
+ },
+ {
+  "stamp_ns": 4000000000,
+  "map_revision": 4,
+  "outcome": "duplicate",
+  "unchanged": true
+ }
+]

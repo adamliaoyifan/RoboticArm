@@ -1,0 +1,27 @@
+{
+ "command": "python3 -m pytest -q src/luggage_description/test/test_runtime_readiness.py src/luggage_description/test/test_runtime_identity_wire.py src/luggage_planning/test/test_st09_release.py src/luggage_planning/test/test_st09_typed_build.py src/luggage_planning/test/test_frame_migration_execution.py src/luggage_planning/test/test_frame_migration_selector.py src/luggage_gazebo/test/test_frame_migration_tools.py --tb=short",
+ "contract_version": 2,
+ "interface_contract_sha256": "1203604645a61f880e6be579c485cd79be5c136e4e06e744b75c9df931d6f306",
+ "interface_id": "F18",
+ "kind": "runtime_boundary",
+ "limits": "Boundary-level regression only; production graph adoption (F21) and ST09 release remain open.",
+ "observations": [
+  "Boundary suite green after ST09 g4 node admission wiring: 192 boundary samples, handler gates fail closed with zero effects; v1 byte-equivalence tests unchanged.",
+  "g4 additions: shared NodeRuntime publishes RuntimeIdentityV2 and gates node effects on peer readiness; no handler change when frame_runtime is off."
+ ],
+ "prior_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F18.json",
+ "sample_count": 192,
+ "source_sha256": {
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+  "src/luggage_msgs/srv/VacuumCommandV2.srv": "59bd58ea85d340548c134358ee1ea5c0e91b6618e8bf25a1a93fb99ef74ea40f",
+  "src/luggage_planning/luggage_planning/attachment_frame_adapters.py": "3164ce90fb286560f012e1361c7de330caff4fabffecb7b57e83a230a59d64b0",
+  "src/luggage_planning/luggage_planning/attachment_frame_contracts.py": "0db45a8790f976ac4a79a32258ca7a4afe25f0ad3b36f4fbdf64e03dfe7a949b",
+  "src/luggage_planning/luggage_planning/planning_scene_client.py": "6426a54a09af0b5e2868b9ff074b9d77d783d26c2593a5c3d15a1aa3126488f3",
+  "src/luggage_planning/luggage_planning/vacuum_attach_utils.py": "4fe3bc1454270e317a9ed2495b2de46edd9e63fa60ddeee0000b5e9441af1678",
+  "src/luggage_planning/luggage_planning/vacuum_backend.py": "286efb8bb9e29034a7734424e5d2a8b023e8384fa6a983f220ea2c8dbde50566",
+  "src/luggage_planning/scripts/vacuum_controller_node.py": "6678acc43f764baacad4a47672b569e3200bad1203b587765567cfc6932909df"
+ },
+ "status": "pass",
+ "test_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/boundary-suite.log"
+}

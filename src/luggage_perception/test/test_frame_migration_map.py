@@ -1,0 +1,778 @@
+"""ST04 cargo map / measured commit acceptance (F06/F19/F20) on real types.
+
+Runs after building/sourcing the isolated install; no ROS nodes, no TF.
+FRAME_MIGRATION_CASE_LOG selects an append-only JSONL evidence file.
+"""
+
+import copy
+from contextlib import contextmanager
+import itertools
+import json
+import math
+import os
+from pathlib import Path
+import time
+import traceback
+import unittest
+
+from rclpy.serialization import serialize_message, deserialize_message
+
+from luggage_description.frame_contracts import ContractError
+from luggage_description.frame_diagnostics import (
+    BoundaryContext, BoundaryContractError,
+)
+from luggage_perception.cargo_volume_mapper import (
+    SOURCE_NONE, SOURCE_SENSOR, CargoVolumeMapper, normalize_ledger_slot,
+)
+from luggage_perception.voxel_log_odds import FREE, OCCUPIED, UNKNOWN
+from luggage_perception.frame_message_adapters import (
+    measured_surface_to_message, measured_surface_from_message,
+)
+from luggage_planning.occupancy_place_paths import (
+    OccupancyMismatch, OccupancySnapshot,
+)
+
+
+SCENE = 'scene-calibration-17'
+INNER = (1.00, 0.60, 0.80)
+RES = 0.05
+WDH = (0.80, 0.50, 0.32)
+
+
+def wire(message):
+    return deserialize_message(serialize_message(message), type(message))
+
+
+def json_safe(value):
+    if isinstance(value, float) and not math.isfinite(value):
+        return repr(value)
+    if isinstance(value, dict):
+        return {str(k): json_safe(v) for k, v in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [json_safe(v) for v in value]
+    return value
+
+
+@contextmanager
+def case(case_id, inputs):
+    row = dict(case_id=case_id, input=copy.deepcopy(inputs), status='pass',
+               observations={})
+    started = time.monotonic()
+    try:
+        yield row['observations']
+    except BaseException:
+        row.update(status='fail', traceback=traceback.format_exc())
+        raise
+    finally:
+        row['elapsed_seconds'] = time.monotonic() - started
+        output = os.environ.get('FRAME_MIGRATION_CASE_LOG')
+        if output:
+            with Path(output).open('a', encoding='utf-8') as handle:
+                handle.write(json.dumps(json_safe(row), allow_nan=False,
+                                        sort_keys=True) + '\n')
+                handle.flush()
+                os.fsync(handle.fileno())
+        print('CASE', case_id, row['status'], flush=True)
+
+
+def make_mapper(floor):
+    return CargoVolumeMapper(
+        INNER, (0.0, 0.0, floor + 0.5 * INNER[2]), 0.0, resolution=RES)
+
+
+def surface_context(record, interface='F06'):
+    return BoundaryContext(
+        interface, 'cargo_volume_mapper', 'surface_v2_subscribers',
+        record['request_id'], SCENE, 'container_link', '', 'scene',
+        geometry_hash=record['geometry_hash'],
+        map_revision=record['map_revision'])
+
+
+def commit_v2(mapper, floor, support, yaw, center_xy=(0.05, -0.03),
+              measured_source='verify_placed_box'):
+    """Commit one non-square box through the v2 container-frame path."""
+    center = [center_xy[0], center_xy[1], floor + support + 0.5 * WDH[2]]
+    normalized, yaw_c, size = normalize_ledger_slot(
+        center, yaw, list(WDH), source_frame='container_link')
+    assert normalized == center and yaw_c == yaw
+    assert mapper.mark_placed_box(normalized, size, yaw=yaw_c,
+                                  measured_source=measured_source)
+    return center, yaw_c
+
+
+def exact_occupied_columns(center, size, yaw, mapper_center):
+    """Independent oracle: cells with positive-area footprint intersection.
+
+    Implements the declared half-open rule with its own polygon math
+    (clipping each half-open cell against the four footprint edges).
+    """
+    nx = int(math.ceil(INNER[0] / RES))
+    ny = int(math.ceil(INNER[1] / RES))
+    columns = set()
+    for ix in range(nx):
+        for iy in range(ny):
+            if footprint_cell_intersection(
+                    center, size, yaw, ix, iy, mapper_center) > 1e-12:
+                columns.add((ix, iy))
+    return columns
+
+
+def exact_top_height(center, size, mapper_center):
+    """Independent z-quantization oracle for the committed box top."""
+    z_local_max = (center[2] + 0.5 * size[2] - mapper_center[2]
+                   + 0.5 * INNER[2])
+    iz = min(int(math.ceil(z_local_max / RES)) - 1,
+             int(math.ceil(INNER[2] / RES)) - 1)
+    return min((iz + 1) * RES, INNER[2])
+
+
+def _clip_polygon(polygon, origin, normal):
+    """Sutherland-Hodgman clip against one half-plane (>=0 inside)."""
+    out = []
+    for index, point in enumerate(polygon):
+        current = ((point[0] - origin[0]) * normal[0]
+                   + (point[1] - origin[1]) * normal[1])
+        previous = polygon[index - 1]
+        prev = ((previous[0] - origin[0]) * normal[0]
+                + (previous[1] - origin[1]) * normal[1])
+        inside_c, inside_p = current >= -1e-12, prev >= -1e-12
+        if inside_c != inside_p:
+            t = prev / (prev - current)
+            out.append((previous[0] + t * (point[0] - previous[0]),
+                        previous[1] + t * (point[1] - previous[1])))
+        if inside_c:
+            out.append(point)
+    return out
+
+
+def polygon_area(polygon):
+    if len(polygon) < 3:
+        return 0.0
+    total = 0.0
+    for index, point in enumerate(polygon):
+        nxt = polygon[(index + 1) % len(polygon)]
+        total += point[0] * nxt[1] - nxt[0] * point[1]
+    return abs(total) / 2.0
+
+
+def footprint_cell_intersection(center, size, yaw, ix, iy, mapper_center):
+    """Area of the oriented footprint inside one half-open grid cell."""
+    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+    corners = []
+    for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+        lx, ly = 0.5 * sx * size[0], 0.5 * sy * size[1]
+        corners.append((center[0] + cos_y * lx - sin_y * ly - mapper_center[0],
+                        center[1] + sin_y * lx + cos_y * ly - mapper_center[1]))
+    xmin = -0.5 * INNER[0] + ix * RES
+    ymin = -0.5 * INNER[1] + iy * RES
+    cell = [(xmin, ymin), (xmin + RES, ymin),
+            (xmin + RES, ymin + RES), (xmin, ymin + RES)]
+    polygon = cell
+    for index in range(4):
+        a, b = corners[index], corners[(index + 1) % 4]
+        edge = (b[0] - a[0], b[1] - a[1])
+        normal = (-edge[1], edge[0])  # inward for CCW footprint
+        polygon = _clip_polygon(polygon, a, normal)
+        if not polygon:
+            return 0.0
+    return polygon_area(polygon)
+
+
+class FrameMigrationMap(unittest.TestCase):
+    def assert_close(self, actual, expected, tolerance=1e-9):
+        self.assertLessEqual(abs(actual - expected), tolerance)
+
+    def reject(self, name, expected, payload, operation):
+        effects = []
+        with case('negative/' + name, payload) as observed:
+            try:
+                result = operation()
+                effects.append(result)  # The only downstream dispatch point.
+            except ContractError as error:
+                observed.update(expected_code=expected, actual_code=error.code,
+                                diagnostic=getattr(error, 'diagnostic',
+                                                   error.as_dict()),
+                                downstream_effects=len(effects))
+                self.assertEqual(error.code, expected)
+                self.assertEqual(effects, [])
+            else:
+                self.fail('unexpected accept: ' + name)
+
+    def mismatch(self, name, payload, operation):
+        effects = []
+        with case('adapter/' + name, payload) as observed:
+            try:
+                effects.append(operation())
+            except OccupancyMismatch as error:
+                observed.update(reason=str(error), downstream_effects=0)
+                self.assertIn('PLACE_PATH_INFEASIBLE', str(error))
+                self.assertEqual(effects, [])
+            else:
+                self.fail('unexpected accept: ' + name)
+
+    def test_64_surface_matrix_cases(self):
+        # Grasp offsets are inapplicable to the map boundary (named so in
+        # the plan revision); the fifth factor is the commit position, so
+        # the common matrix keeps 4*2*2*2*2 = 64 cases.
+        matrix = itertools.product(
+            (0., math.pi / 2, math.pi, math.atan2(4, 3)),
+            ((0., 0., 0.), (1.5, -.4, .2)), (.53, .71), (0., .30),
+            ((0.05, -0.03), (-0.18, 0.12)))
+        count = 0
+        nx = int(math.ceil(INNER[0] / RES))
+        ny = int(math.ceil(INNER[1] / RES))
+        for index, (yaw, translation, floor, support, xy) in enumerate(matrix):
+            fixture = dict(yaw=yaw, translation=translation, floor=floor,
+                           support=support, commit_xy=list(xy), wdh=list(WDH))
+            with self.subTest(index=index), \
+                    case('surface/%02d' % index, fixture) as observed:
+                mapper = make_mapper(floor)
+                center, yaw_c = commit_v2(mapper, floor, support, yaw,
+                                          center_xy=xy)
+                # v2 record + real serialization roundtrip.
+                record = mapper.surface_contract_v2(
+                    SCENE, 'matrix-%02d' % index)
+                ctx = surface_context(record)
+                encoded = measured_surface_to_message(record, ctx)
+                decoded = measured_surface_from_message(wire(encoded), ctx)
+                self.assertEqual(decoded['map_revision'],
+                                 record['map_revision'])
+                self.assertEqual(decoded['geometry_hash'],
+                                 record['geometry_hash'])
+                observed.update(stage='serialized',
+                                surface_wire_hex=serialize_message(
+                                    encoded).hex()[:512])
+                # Dual datum: v2 container-origin vs v1 floor-relative.
+                legacy = mapper.surface_map_2d()
+                self.assertEqual(legacy['map_revision'],
+                                 record['map_revision'])
+                floor_v2 = record['floor_z_container']
+                self.assert_close(floor_v2,
+                                  floor + 0.0)  # container floor == scene floor
+                for ix in range(nx):
+                    for iy in range(ny):
+                        state_v1 = legacy['state'][ix][iy]
+                        state_v2 = record['state'][ix][iy]
+                        self.assertEqual(state_v1, state_v2,
+                                         (ix, iy, state_v1, state_v2))
+                        if state_v2 == 'unknown':
+                            self.assertIsNone(
+                                record['surface_z_container'][ix][iy])
+                            self.assertIsNone(
+                                record['height_above_floor'][ix][iy])
+                            self.assertEqual(
+                                record['confidence'][ix][iy], 'unknown')
+                        else:
+                            z = record['surface_z_container'][ix][iy]
+                            self.assert_close(
+                                z - floor_v2, legacy['height'][ix][iy])
+                            self.assert_close(
+                                record['height_above_floor'][ix][iy],
+                                legacy['height'][ix][iy])
+                            if state_v2 == 'occupied':
+                                self.assertEqual(
+                                    record['confidence'][ix][iy],
+                                    'verified_geometry')
+                # Raster oracle: the occupied set equals the exact
+                # positive-area cell intersection under the declared
+                # half-open rule, per cell (never only an array sum).
+                occupied_columns = {
+                    (ix, iy)
+                    for ix in range(nx) for iy in range(ny)
+                    if record['state'][ix][iy] == 'occupied'}
+                expected_columns = exact_occupied_columns(
+                    center, WDH, yaw_c, mapper.center)
+                self.assertEqual(occupied_columns, expected_columns,
+                                 'exact-intersection mismatch')
+                expected_top = exact_top_height(center, WDH, mapper.center)
+                for ix, iy in occupied_columns:
+                    self.assert_close(
+                        legacy['height'][ix][iy], expected_top)
+                    self.assert_close(
+                        record['surface_z_container'][ix][iy],
+                        floor_v2 + expected_top)
+                observed.update(stage='oracles', cells=len(occupied_columns),
+                                expected_top=expected_top)
+                count += 1
+        self.assertEqual(count, 64)
+
+    def test_ledger_lifecycle_and_normalization(self):
+        with case('ledger/idempotent-and-provenance', {}) as observed:
+            mapper = make_mapper(.53)
+            center, yaw = commit_v2(mapper, .53, 0., 0.0)
+            revision = mapper._revision
+            # Duplicate v2 commit is idempotent: no revision bump.
+            self.assertFalse(mapper.mark_placed_box(
+                center, list(WDH), yaw=yaw, measured_source='verify'))
+            self.assertEqual(mapper._revision, revision)
+            ledger = mapper.commit_ledger()
+            self.assertEqual(len(ledger), 1)
+            self.assertEqual(ledger[0]['measured_source'], 'verify_placed_box')
+            observed.update(revision=revision)
+        with case('ledger/remove-preserves-sensor', {}) as observed:
+            mapper = make_mapper(.53)
+            # Independent sensor observation far from the committed box.
+            sensor_local = (-0.40, 0.20, .53 + 0.10)
+            mapper.mark_occupied_world(
+                sensor_local[0], sensor_local[1], sensor_local[2],
+                source=SOURCE_SENSOR)
+            center, yaw = commit_v2(mapper, .53, 0., 0.0,
+                                    center_xy=(0.05, -0.03))
+            before = mapper.surface_map_2d()
+            sensor_cell = (
+                int(math.floor((sensor_local[0] + 0.5 * INNER[0]) / RES)),
+                int(math.floor((sensor_local[1] + 0.5 * INNER[1]) / RES)))
+            self.assertEqual(before['state'][sensor_cell[0]][sensor_cell[1]],
+                             'occupied')
+            mapper.unmark_placed_box(center, list(WDH), yaw=yaw)
+            after = mapper.surface_map_2d()
+            # The sensor column survives removal; the box cells go unknown.
+            self.assertEqual(after['state'][sensor_cell[0]][sensor_cell[1]],
+                             'occupied')
+            box_cell = (
+                int(math.floor((0.05 + 0.5 * INNER[0]) / RES)),
+                int(math.floor((-0.03 + 0.5 * INNER[1]) / RES)))
+            self.assertEqual(after['state'][box_cell[0]][box_cell[1]],
+                             'unknown')
+            observed.update(sensor_cell=sensor_cell, box_cell=box_cell)
+        with case('ledger/v1-v2-equivalence', {}) as observed:
+            # The declared v1 shim (world pose) and the v2 container path
+            # produce identical voxels and one revision semantics.
+            container = dict(translation=(1.5, -0.4, 0.2), yaw=0.3)
+            world_center = (0.8, 0.1, .53 + .30 + 0.16)
+            world_yaw = 0.9
+            c1, y1, s1 = normalize_ledger_slot(
+                world_center, world_yaw, list(WDH), source_frame='world',
+                container_yaw=container['yaw'],
+                container_translation=container['translation'])
+            c2, y2, s2 = normalize_ledger_slot(
+                c1, y1, list(WDH), source_frame='container_link')
+            self.assertEqual(c1, c2)
+            self.assert_close(y1, y2)
+            m1, m2 = make_mapper(.53), make_mapper(.53)
+            m1.mark_placed_box(c1, s1, yaw=y1)
+            m2.mark_placed_box(c2, s2, yaw=y2)
+            self.assertEqual(m1.surface_map_2d(), m2.surface_map_2d())
+            observed.update(container_center=c1)
+
+    def test_v2_surface_ingest_adapter(self):
+        mapper = make_mapper(.53)
+        commit_v2(mapper, .53, .30, math.atan2(4, 3))
+        record = mapper.surface_contract_v2(SCENE, 'ingest-1')
+        legacy = mapper.surface_map_2d()
+        hull = mapper._hull
+        with case('ingest/v2-equals-legacy', {'revision':
+                                              record['map_revision']}) as o:
+            snapshot = OccupancySnapshot.from_surface_2d(
+                record, inner_size=list(INNER),
+                geometry_descriptor=hull.descriptor(), inflate_m=0.0)
+            reference = OccupancySnapshot.from_surface_2d(
+                legacy, inflate_m=0.0)
+            self.assertEqual(snapshot.obstacle, reference.obstacle)
+            self.assertEqual(snapshot.map_revision, reference.map_revision)
+            # Datum shift round-trips within the declared 1e-9 tolerance.
+            self.assertEqual(len(snapshot.column_top),
+                             len(reference.column_top))
+            worst = 0.0
+            for row_a, row_b in zip(snapshot.column_top,
+                                    reference.column_top):
+                for a, b in zip(row_a, row_b):
+                    worst = max(worst, abs(a - b))
+                    self.assert_close(a, b)
+            self.assertLessEqual(worst, 1e-9)
+            o.update(cells=snapshot.nx * snapshot.ny, worst_top_delta=worst)
+        # Adapter failures: declared, fail-closed, zero effects.
+        self.mismatch('v2-missing-inner-size', {'kind': 'surface'},
+                      lambda: OccupancySnapshot.from_surface_2d(record))
+        self.mismatch(
+            'v2-missing-descriptor', {'kind': 'surface'},
+            lambda: OccupancySnapshot.from_surface_2d(
+                record, inner_size=list(INNER)))
+        wrong_datum = dict(record, height_datum='floor_relative')
+        self.mismatch(
+            'v2-wrong-datum', {'height_datum': 'floor_relative'},
+            lambda: OccupancySnapshot.from_surface_2d(
+                wrong_datum, inner_size=list(INNER),
+                geometry_descriptor=hull.descriptor()))
+        wrong_frame = dict(record, frame_id='world')
+        self.mismatch(
+            'v2-wrong-frame', {'frame_id': 'world'},
+            lambda: OccupancySnapshot.from_surface_2d(
+                wrong_frame, inner_size=list(INNER),
+                geometry_descriptor=hull.descriptor()))
+        null_bad = copy.deepcopy(record)
+        null_bad['state'][0][0] = 'occupied'
+        self.mismatch(
+            'v2-null-top-with-occupied-state', {},
+            lambda: OccupancySnapshot.from_surface_2d(
+                null_bad, inner_size=list(INNER),
+                geometry_descriptor=hull.descriptor()))
+        legacy_missing = copy.deepcopy(legacy)
+        del legacy_missing['floor_z']
+        self.mismatch(
+            'legacy-missing-floor-z', {},
+            lambda: OccupancySnapshot.from_surface_2d(legacy_missing))
+        legacy_missing_center = copy.deepcopy(legacy)
+        del legacy_missing_center['center_base']
+        self.mismatch(
+            'legacy-missing-center-base', {},
+            lambda: OccupancySnapshot.from_surface_2d(legacy_missing_center))
+        foreign = copy.deepcopy(legacy)
+        foreign['frame'] = 'elfin_base_link'
+        self.mismatch('legacy-foreign-frame', {'frame': 'elfin_base_link'},
+                      lambda: OccupancySnapshot.from_surface_2d(foreign))
+        ambiguous = {'height': [[0.0]], 'state': [['free']]}
+        self.mismatch('ambiguous-schema', {},
+                      lambda: OccupancySnapshot.from_surface_2d(ambiguous))
+
+    def test_surface_record_negatives(self):
+        mapper = make_mapper(.53)
+        commit_v2(mapper, .53, .30, 0.0)
+        record = mapper.surface_contract_v2(SCENE, 'neg-1')
+        ctx = surface_context(record)
+        for name, key, value, code in [
+            ('wrong-frame', 'frame_id', 'world', 'FRAME_CONTRACT_MISMATCH'),
+            ('missing-identity', 'request_id', '', 'MISSING_IDENTITY'),
+            ('stale-scene', 'scene_revision', 'stale',
+             'CALIBRATION_REVISION_MISMATCH'),
+            ('stale-map', 'map_revision', record['map_revision'] - 1,
+             'MAP_REVISION_MISMATCH'),
+            ('wrong-hull', 'geometry_hash', 'wrong-hull',
+             'GEOMETRY_IDENTITY_MISMATCH'),
+            ('wrong-version', 'contract_version', 1,
+             'CONTRACT_VERSION_MISMATCH'),
+            ('wrong-units', 'length_unit', 'mm', 'UNIT_MISMATCH'),
+            ('wrong-datum', 'height_datum', 'floor_relative',
+             'HEIGHT_DATUM_MISMATCH'),
+        ]:
+            data = copy.deepcopy(record)
+            data[key] = value
+            if key == 'map_revision':
+                # The context expectation stays at the true revision so the
+                # record's own stale map revision is what fires.
+                context = BoundaryContext(
+                    'F06', 'cargo_volume_mapper', 'surface_v2_subscribers',
+                    record['request_id'], SCENE, 'container_link', '',
+                    'scene', geometry_hash=record['geometry_hash'],
+                    map_revision=record['map_revision'])
+            else:
+                context = ctx
+            with self.subTest(name=name):
+                self.reject(name, code, {key: value},
+                            lambda: measured_surface_to_message(data,
+                                                                context))
+        unknown_value = copy.deepcopy(record)
+        ix = next(i for i, row in enumerate(record['state'])
+                  if 'unknown' in row)
+        iy = record['state'][ix].index('unknown')
+        unknown_value['surface_z_container'][ix][iy] = \
+            record['floor_z_container']
+        self.reject('unknown-surface-has-value', 'UNKNOWN_SURFACE_HAS_VALUE',
+                    {'cell': [ix, iy]},
+                    lambda: measured_surface_to_message(unknown_value, ctx))
+        unverified = copy.deepcopy(record)
+        ix2 = next(i for i, row in enumerate(record['confidence'])
+                   if 'verified_geometry' in row)
+        iy2 = record['confidence'][ix2].index('verified_geometry')
+        unverified['confidence'][ix2][iy2] = 'planned'
+        self.reject('unverified-surface', 'UNVERIFIED_SURFACE',
+                    {'cell': [ix2, iy2]},
+                    lambda: measured_surface_to_message(unverified, ctx))
+        bounds = copy.deepcopy(record)
+        bounds['ceiling_z_container'] = bounds['floor_z_container']
+        self.reject('height-bounds', 'INVALID_HEIGHT_BOUNDS',
+                    {'ceiling': 'floor'},
+                    lambda: measured_surface_to_message(bounds, ctx))
+
+    def test_f20_unknown_not_promoted(self):
+        with case('integrate/unknown-not-promoted', {}) as observed:
+            mapper = make_mapper(.53)
+            before = mapper.surface_contract_v2(SCENE, 'f20-1')
+            unknown_before = sum(
+                1 for row in before['state'] for cell in row
+                if cell == 'unknown')
+            # A placed-and-removed box returns unknown cells, never free.
+            center, yaw = commit_v2(mapper, .53, 0., 0.0)
+            mapper.unmark_placed_box(center, list(WDH), yaw=yaw)
+            after = mapper.surface_contract_v2(SCENE, 'f20-2')
+            free_after = sum(1 for row in after['state'] for cell in row
+                             if cell == 'free')
+            self.assertEqual(free_after, 0)
+            observed.update(unknown_before=unknown_before,
+                            free_after=free_after)
+
+    def test_review_sensor_evidence_survives_geometry_removal(self):
+        # R3 regression: sensor evidence and committed geometry retract
+        # independently. The overlapping orderings (sensor after the
+        # commit, sensor before the commit) both keep the sensor's word;
+        # a cell only geometry ever touched still clears to unknown.
+        center = [0.0, 0.0, .53 + 0.5 * WDH[2]]
+        with case('review/sensor-after-geometry-overlap', {}) as observed:
+            mapper = make_mapper(.53)
+            self.assertTrue(mapper.mark_placed_box(
+                center, list(WDH), measured_source='verify_placed_box'))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            mapper.mark_occupied_world(*center, source=SOURCE_SENSOR,
+                                       label=42, instance_id=3)
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 2, 42))
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 42))
+            observed.update(voxel=list(voxel))
+        with case('review/sensor-before-geometry-overlap', {}) as observed:
+            mapper = make_mapper(.53)
+            mapper.mark_occupied_world(*center, source=SOURCE_SENSOR,
+                                       label=7, instance_id=1)
+            self.assertTrue(mapper.mark_placed_box(center, list(WDH)))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 7))
+            observed.update(voxel=list(voxel))
+        with case('review/remaining-box-and-sensor', {}) as observed:
+            # Two boxes overlapping one voxel that also carries a sensor
+            # observation: removing either box keeps the cell occupied
+            # (the other box and/or the sensor own it); removing both
+            # still leaves the sensor's word.
+            mapper = make_mapper(.53)
+            first = [0.0, 0.0, .53 + 0.5 * WDH[2]]
+            # Distinct for the ledger matcher (offset > 0.05 m tolerance)
+            # but overlapping in footprint cells.
+            second = [0.12, 0.0, .53 + 0.5 * WDH[2]]
+            mapper.mark_placed_box(first, list(WDH),
+                                   measured_source='verify_placed_box')
+            mapper.mark_placed_box(second, list(WDH),
+                                   measured_source='verify_placed_box')
+            mapper.mark_occupied_world(*first, source=SOURCE_SENSOR,
+                                       label=9)
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*first))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(first, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual(mapper._grid[idx], 2)
+            self.assertTrue(mapper.unmark_placed_box(second, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (2, 1, 9))
+            observed.update(voxel=list(voxel))
+        with case('review/pure-geometry-cell-clears', {}) as observed:
+            mapper = make_mapper(.53)
+            self.assertTrue(mapper.mark_placed_box(center, list(WDH)))
+            voxel = mapper._local_to_voxel(*mapper._world_to_local(*center))
+            idx = mapper._index(*voxel)
+            self.assertTrue(mapper.unmark_placed_box(center, list(WDH),
+                                                     yaw=0.0))
+            self.assertEqual((mapper._grid[idx], mapper._source[idx],
+                              mapper._labels[idx]), (0, 0, 0))
+            observed.update(voxel=list(voxel))
+
+    def test_review2_sensor_control_equivalence(self):
+        # P1-b regression (property): the committed-geometry overlay is
+        # invisible to the sensor's own evidence. For every hit/miss
+        # sequence, interleaving a box commit + removal anywhere must
+        # leave the voxel exactly where the no-geometry control ends —
+        # value, source, label and (no) lock.
+        point = (0.0, 0.0, .53 + 0.5 * WDH[2])
+        box = ([0.0, 0.0, point[2]], [0.2, 0.2, 0.2])
+
+        def fresh():
+            return make_mapper(.53)
+
+        def idx_of(mapper):
+            return mapper._index(*mapper._local_to_voxel(
+                *mapper._world_to_local(*point)))
+
+        def apply(mapper, ops, label=42):
+            for op in ops:
+                if op == 'h':
+                    mapper.mark_occupied_world(
+                        *point, source=SOURCE_SENSOR, label=label,
+                        instance_id=3)
+                else:
+                    mapper.mark_free_world(*point)
+
+        def snapshot(mapper, idx):
+            return (mapper._grid[idx], mapper._source[idx],
+                    mapper._labels[idx],
+                    mapper._occupancy.geometry_locked[idx])
+
+        sequences = [
+            ('h',), ('h', 'm'), ('h', 'm', 'm', 'm'),
+            ('h',) + ('m',) * 25, ('h', 'h') + ('m',) * 5,
+            ('h', 'm', 'h'), ('m',), ('m', 'm', 'm'), ('m', 'h'),
+            ('m',) + ('h',) * 3,
+        ]
+        failures = []
+        for sequence in sequences:
+            with self.subTest(sequence=sequence), \
+                    case('review2/sensor-control-equivalence/'
+                         + ''.join(sequence),
+                         {'sequence': list(sequence)}) as observed:
+                control = fresh()
+                apply(control, sequence)
+                expected = snapshot(control, idx_of(control))
+                # A: hits before the commit, the rest after the removal.
+                split = sequence.count('h')
+                variant_a = fresh()
+                apply(variant_a, sequence[:split])
+                self.assertTrue(variant_a.mark_placed_box(
+                    *box, measured_source='verify_placed_box'))
+                self.assertTrue(variant_a.unmark_placed_box(
+                    box[0], box[1], yaw=0.0))
+                apply(variant_a, sequence[split:])
+                got_a = snapshot(variant_a, idx_of(variant_a))
+                # B: the remainder runs DURING coverage; removal last.
+                variant_b = fresh()
+                apply(variant_b, sequence[:split])
+                self.assertTrue(variant_b.mark_placed_box(
+                    *box, measured_source='verify_placed_box'))
+                apply(variant_b, sequence[split:])
+                self.assertTrue(variant_b.unmark_placed_box(
+                    box[0], box[1], yaw=0.0))
+                got_b = snapshot(variant_b, idx_of(variant_b))
+                observed.update(expected=list(expected), variant_a=list(got_a),
+                                variant_b=list(got_b))
+                if not (expected == got_a == got_b):
+                    failures.append(sequence)
+                    self.assertEqual((expected, got_a, got_b),
+                                     (expected, expected, expected))
+        # The reviewer's exact counterexample is the 25-miss row: FREE,
+        # unlocked, no label — identical to the control.
+        review = fresh()
+        apply(review, ('h',))
+        review.mark_placed_box(*box, measured_source='verify_placed_box')
+        review.unmark_placed_box(box[0], box[1], yaw=0.0)
+        apply(review, ('m',) * 25)
+        with case('review2/sensor-control-equivalence/reviewer-case',
+                  {'sequence': ['h', 'commit', 'remove'] + ['m'] * 25}):
+            self.assertEqual(snapshot(review, idx_of(review)),
+                             (FREE, SOURCE_NONE, 0, False))
+        # Pure geometry still clears to unknown with the lock released.
+        pure = fresh()
+        pure.mark_placed_box(*box)
+        pure.unmark_placed_box(box[0], box[1], yaw=0.0)
+        with case('review2/sensor-control-equivalence/pure-geometry', {}):
+            self.assertEqual(snapshot(pure, idx_of(pure)),
+                             (UNKNOWN, SOURCE_NONE, 0, False))
+        # Two overlapping boxes: removing one leaves the other covering
+        # (still locked); removing both restores the sensor's word.
+        both = fresh()
+        both.mark_occupied_world(*point, source=SOURCE_SENSOR, label=9)
+        both.mark_placed_box([0.0, 0.0, point[2]], [0.2, 0.2, 0.2],
+                             measured_source='verify_placed_box')
+        both.mark_placed_box([0.12, 0.0, point[2]], [0.2, 0.2, 0.2],
+                             measured_source='verify_placed_box')
+        with case('review2/sensor-control-equivalence/overlapping-boxes',
+                  {}) as observed:
+            self.assertTrue(both.unmark_placed_box(
+                [0.0, 0.0, point[2]], [0.2, 0.2, 0.2], yaw=0.0))
+            mid = snapshot(both, idx_of(both))
+            self.assertEqual(mid[0], OCCUPIED)
+            self.assertIs(mid[3], True)
+            self.assertTrue(both.unmark_placed_box(
+                [0.12, 0.0, point[2]], [0.2, 0.2, 0.2], yaw=0.0))
+            self.assertEqual(snapshot(both, idx_of(both)),
+                             (OCCUPIED, SOURCE_SENSOR, 9, False))
+            observed.update(after_first=list(mid))
+        self.assertEqual(failures, [])
+
+    def test_review_v2_commit_provenance_gate(self):
+        # R2 regression, callback level: the v2 ledger is measured-commit
+        # only. An absent hull identity or an unmeasured provenance
+        # ("planned") must fail before any map mutation — nothing enters
+        # the ledger and nothing is relabelled verified_geometry.
+        import runpy
+        import types as types_module
+        from luggage_description.ros_frame_bindings.poses import pose_to_message
+        from luggage_msgs.srv import AddPlacedBoxV2
+
+        module = runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'cargo_volume_mapper_node.py'))
+        MapperNode = module['CargoVolumeMapperNode']
+        slot = dict(
+            contract_version=2, kind='pose', frame_id='container_link',
+            length_unit='m', stamp_ns=1, time_basis='scene',
+            scene_revision=SCENE, request_id='prov-1',
+            reference='box_center', orientation_semantics='box_axis_pi',
+            position=[0.0, 0.0, .53 + 0.5 * WDH[2]],
+            quaternion_xyzw=[0., 0., 0., 1.])
+        context = BoundaryContext(
+            'F19', 'v2_client', 'cargo_volume_mapper_node', 'prov-1',
+            SCENE, 'container_link', 'box_center', 'scene')
+
+        def make_node(mapper):
+            published = []
+            node = types_module.SimpleNamespace(
+                _mapper=mapper, _geometry_hash=mapper.geometry_hash,
+                _frame_scene_revision=SCENE,
+                _publish_all=lambda: published.append(True))
+            for name in ('_decode_slot_v2', '_ledger_guard', '_on_add_v2'):
+                setattr(node, name, types_module.MethodType(
+                    getattr(MapperNode, name), node))
+            return node, published
+
+        cases = [
+            ('planned-no-hull', 'planned', ''),
+            ('planned-with-hull', 'planned', 'hash'),
+            ('measured-no-hull', 'verify_placed_box', ''),
+        ]
+        for name, measured_source, hash_kind in cases:
+            with self.subTest(name=name), \
+                    case('review/v2-commit-gate/' + name,
+                         {'measured_source': measured_source,
+                          'hash': hash_kind}) as observed:
+                mapper = make_mapper(.53)
+                node, published = make_node(mapper)
+                request = AddPlacedBoxV2.Request()
+                request.slot_pose = pose_to_message(slot, 'slot', context)
+                request.size_wdh = list(WDH)
+                request.measured_source = measured_source
+                request.geometry_hash = (
+                    mapper.geometry_hash if hash_kind == 'hash' else '')
+                request.expected_map_revision = mapper._revision
+                revision_before = mapper._revision
+                response = MapperNode._on_add_v2(
+                    node, request, AddPlacedBoxV2.Response())
+                self.assertFalse(response.success, response.message)
+                self.assertEqual(mapper._revision, revision_before)
+                self.assertEqual(mapper.commit_ledger(), [])
+                self.assertEqual(published, [])
+                confidences = {
+                    value for row in mapper.surface_contract_v2(
+                        SCENE, 'prov-check')['confidence'] for value in row}
+                self.assertNotIn('verified_geometry', confidences)
+                observed.update(message=response.message)
+        # The declared measured provenance still commits and is the only
+        # path that may relabel geometry as verified.
+        with case('review/v2-commit-gate/measured-commit',
+                  {'measured_source': 'verify_placed_box'}) as observed:
+            mapper = make_mapper(.53)
+            node, published = make_node(mapper)
+            request = AddPlacedBoxV2.Request()
+            request.slot_pose = pose_to_message(slot, 'slot', context)
+            request.size_wdh = list(WDH)
+            request.measured_source = 'verify_placed_box'
+            request.geometry_hash = mapper.geometry_hash
+            request.expected_map_revision = mapper._revision
+            response = MapperNode._on_add_v2(
+                node, request, AddPlacedBoxV2.Response())
+            self.assertTrue(response.success, response.message)
+            self.assertEqual(published, [True])
+            ledger = mapper.commit_ledger()
+            self.assertEqual(ledger[0]['measured_source'],
+                             'verify_placed_box')
+            confidences = {
+                value for row in mapper.surface_contract_v2(
+                    SCENE, 'prov-ok')['confidence'] for value in row}
+            self.assertIn('verified_geometry', confidences)
+            observed.update(revision=mapper._revision)
+
+
+if __name__ == '__main__':
+    unittest.main()

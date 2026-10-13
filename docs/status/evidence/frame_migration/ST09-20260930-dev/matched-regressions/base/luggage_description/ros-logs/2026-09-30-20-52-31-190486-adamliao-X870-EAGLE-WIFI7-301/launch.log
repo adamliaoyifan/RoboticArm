@@ -1,0 +1,5 @@
+1790772751.1908629 [INFO] [launch]: All log files can be found below /tmp/elfin-st09-g3/docs/status/evidence/frame_migration/ST09-20260930-dev/matched-regressions/base/luggage_description/ros-logs/2026-09-30-20-52-31-190486-adamliao-X870-EAGLE-WIFI7-301
+1790772751.1909213 [INFO] [launch]: Default logging verbosity is set to INFO
+1790772751.3251879 [INFO] [container_tf_publisher-1]: process started with pid [314]
+1790772751.3253369 [INFO] [robot_state_publisher-2]: process started with pid [316]
+1790772751.3253932 [INFO] [zero_joint_state_publisher-3]: process started with pid [318]

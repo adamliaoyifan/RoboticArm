@@ -65,6 +65,23 @@ def _pose_msg(xyz, quat):
     return pose
 
 
+def build_collision_object_v2(box_id, xyz, quat, box_size, frame_id="world"):
+    """World collision box from an admitted pose. ``frame_id`` is explicit."""
+    return build_collision_object(
+        box_id, xyz, quat, box_size, frame_id, CollisionObject.ADD)
+
+
+def build_add_scene_v2(box_id, xyz, quat, box_size, frame_id="world"):
+    return build_add_scene(box_id, xyz, quat, box_size, frame_id=frame_id)
+
+
+def build_attach_scene_v2(box_id, xyz, quat, box_size, link_name,
+                          touch_links=DEFAULT_TOUCH_LINKS, frame_id="world"):
+    return build_attach_scene(
+        box_id, xyz, quat, box_size, link_name,
+        touch_links=touch_links, frame_id=frame_id)
+
+
 def build_add_scene(box_id, xyz, quat, box_size, frame_id="world"):
     """Collision-only PlanningScene diff adding the box."""
     scene = PlanningScene()
@@ -200,22 +217,100 @@ def mesh_msg_from_arrays(vertices, faces):
     return msg
 
 
+# Permanent auto-sync failures. MoveIt apply errors stay retryable.
+PERMANENT_STATIC_SYNC_PREFIXES = (
+    "stl load failed:",
+    "container mesh: ",
+    "scene_tf load failed:",
+)
+
+
+def static_sync_failure_is_permanent(message):
+    """True when retrying auto-sync cannot make this load succeed."""
+    return str(message or "").startswith(PERMANENT_STATIC_SYNC_PREFIXES)
+
+
+def _stl_is_binary(data):
+    """Binary STL is 84 + n*50 bytes. ASCII may start with ``solid``."""
+    import struct
+    if len(data) < 84:
+        return False
+    n_tri = struct.unpack_from("<I", data, 80)[0]
+    if n_tri <= 0:
+        return False
+    expected = 84 + n_tri * 50
+    if len(data) == expected:
+        return True
+    head = data.lstrip()[:5].lower()
+    if head == b"solid" and b"facet" in data[:2048].lower():
+        return False
+    return expected <= len(data) < expected + 256
+
+
+def _read_stl_arrays(path):
+    """Vertices (N,3) and triangle indices (M,3) from a binary or ASCII STL."""
+    import struct
+    import numpy as np
+    with open(path, "rb") as handle:
+        data = handle.read()
+    if len(data) < 84:
+        raise ValueError("STL %s is too small (%d bytes)" % (path, len(data)))
+    if _stl_is_binary(data):
+        n_tri = struct.unpack_from("<I", data, 80)[0]
+        dtype = np.dtype([
+            ("normal", "<f4", (3,)),
+            ("v0", "<f4", (3,)),
+            ("v1", "<f4", (3,)),
+            ("v2", "<f4", (3,)),
+            ("attr", "<u2"),
+        ])
+        records = np.frombuffer(data, dtype=dtype, count=int(n_tri), offset=84)
+        vertices = np.empty((int(n_tri) * 3, 3), dtype=np.float64)
+        vertices[0::3] = records["v0"]
+        vertices[1::3] = records["v1"]
+        vertices[2::3] = records["v2"]
+        faces = np.arange(int(n_tri) * 3, dtype=np.int64).reshape(int(n_tri), 3)
+        return vertices, faces
+    text = data.decode("utf-8", "replace")
+    vertices = []
+    for line in text.splitlines():
+        parts = line.split()
+        if len(parts) >= 4 and parts[0].lower() == "vertex":
+            vertices.append((float(parts[1]), float(parts[2]), float(parts[3])))
+    if len(vertices) < 3 or len(vertices) % 3:
+        raise ValueError(
+            "STL %s is neither a binary mesh nor an ASCII facet list" % path)
+    n_tri = len(vertices) // 3
+    return (
+        np.asarray(vertices, dtype=np.float64),
+        np.arange(n_tri * 3, dtype=np.int64).reshape(n_tri, 3),
+    )
+
+
 def load_stl_mesh_msg(path, max_faces=0):
-    """Load an STL into shape_msgs/Mesh. Optional quadric decimation."""
-    import trimesh
-    mesh = trimesh.load(path, force="mesh")
-    if mesh is None:
-        raise FileNotFoundError("trimesh failed to load %s" % path)
-    if not hasattr(mesh, "faces"):
-        raise ValueError("STL %s did not produce a triangular mesh" % path)
-    n_faces = int(len(mesh.faces))
+    """Load an STL into shape_msgs/Mesh.
+
+    The default path does not import trimesh. Quadric decimation
+    (``max_faces`` > 0 and the file is larger) still requires it.
+    """
+    vertices, faces = _read_stl_arrays(path)
+    if len(faces) == 0:
+        raise ValueError("STL %s produced no triangles" % path)
     limit = int(max_faces)
-    if limit > 0 and n_faces > limit:
+    if limit > 0 and len(faces) > limit:
+        try:
+            import trimesh
+        except ImportError as exc:
+            raise ImportError(
+                "mesh_max_faces=%d needs python3-trimesh to decimate %s (%s)"
+                % (limit, path, exc)) from exc
+        mesh = trimesh.Trimesh(vertices=vertices, faces=faces, process=False)
         try:
             mesh = mesh.simplify_quadric_decimation(limit)
         except TypeError:
             mesh = mesh.simplify_quadric_decimation(face_count=limit)
-    return mesh_msg_from_arrays(mesh.vertices, mesh.faces)
+        vertices, faces = mesh.vertices, mesh.faces
+    return mesh_msg_from_arrays(vertices, faces)
 
 
 def build_mesh_collision_object(obj_id, xyz, quat, mesh_msg,
@@ -231,8 +326,44 @@ def build_mesh_collision_object(obj_id, xyz, quat, mesh_msg,
 
 
 def build_attach_scene(box_id, xyz, quat, box_size, link_name,
-                       touch_links=DEFAULT_TOUCH_LINKS, frame_id="world"):
-    """Attach the (already added) box to ``link_name`` with an ACM entry."""
+                       touch_links=DEFAULT_TOUCH_LINKS, frame_id=None,
+                       pose_semantics="link_relative"):
+    """Attach the box to ``link_name`` — ONE shared construction.
+
+    Two semantics, both explicit:
+
+    * ``link_relative`` (default): the attach pose is the placement of
+      the box ON the tool (a measured grasp is exactly ``T_tcp_box``),
+      so the object frame defaults to ``link_name`` and a nonzero pose
+      in any other frame is REFUSED. A link-relative pose expressed in
+      the planning frame silently parks the box near the world origin —
+      the [ST09-I] frame bug that turned every carrying certification
+      sample into a collision; the guard keeps it from coming back.
+    * ``move_world_object``: attach by id — MoveIt moves the box from
+      the world scene onto the link and the pose fields are inert, so
+      canonical zeros in the world frame are transmitted and the pose
+      arguments are ignored.
+
+    Every attach in the stack (pick, edge builder, certifier, hardware
+    payload) goes through this one construction.
+    """
+    if pose_semantics == "move_world_object":
+        frame_id = "world"
+        xyz = (0.0, 0.0, 0.0)
+        quat = (0.0, 0.0, 0.0, 1.0)
+    else:
+        if frame_id is None:
+            frame_id = link_name
+        pose_is_meaningful = (
+            sum(abs(float(v)) for v in xyz) > 1e-9
+            or abs(float(quat[3]) - 1.0) > 1e-9
+            or abs(float(quat[0]) + 1.0) > 1e-9
+            or abs(float(quat[1])) > 1e-9 or abs(float(quat[2])) > 1e-9)
+        if pose_is_meaningful and frame_id != link_name:
+            raise ValueError(
+                "ATTACH_FRAME_MISMATCH: a nonzero attach pose must be "
+                "expressed in the link frame (frame_id=%r, link=%r)"
+                % (frame_id, link_name))
     scene = PlanningScene()
     scene.is_diff = True
     attached = AttachedCollisionObject()
@@ -333,6 +464,10 @@ class PlanningSceneClient(object):
     def wait_ready(self, timeout_sec=30.0):
         return self._client.wait_for_service(timeout_sec=timeout_sec)
 
+    def apply_diff(self, scene, timeout=10.0):
+        """Public raw ApplyPlanningScene (ST09-I certification scenes)."""
+        return self._apply(scene, timeout=timeout)
+
     def _apply(self, scene, timeout=10.0):
         if not self._client.wait_for_service(timeout_sec=timeout):
             return False, "apply_planning_scene unavailable"
@@ -375,20 +510,73 @@ class PlanningSceneClient(object):
 
     def add_pickup_box(self, xyz, quat, box_size, frame_id="world",
                        box_id=BOX_OBJECT_ID):
-        return self._apply(
+        ok, message = self._apply(
             build_add_scene(box_id, xyz, quat, box_size, frame_id))
+        if not ok:
+            return ok, message
+        # The pickup box exists to be grasped by the cup: while it is
+        # still a WORLD object the panel assembly must be allowed to
+        # touch it, or the pick descent's collision-aware generation
+        # stops at first cup-box contact (observed live: attach leg
+        # fraction 0.59). The ROS 1 scene_manager seeded exactly these
+        # pairs; attach later re-expresses them as touch_links.
+        acm_ok, acm_message = self.set_acm_pairs(
+            [(link, box_id) for link in DEFAULT_TOUCH_LINKS], True)
+        if not acm_ok:
+            return False, "pickup box acm: %s" % acm_message
+        return ok, message
 
     def attach_pickup_box(self, model_name, xyz, quat, box_size,
                           link_name=DEFAULT_ATTACH_LINK, frame_id="world",
                           box_id=BOX_OBJECT_ID):
-        del model_name  # object id is fixed; model name kept for logs
+        """Attach by id: MoveIt moves the pre-added world box onto the
+        link; the pose arguments are inert (canonical zeros go on the
+        wire). Callers wanting a created-object attach use
+        ``build_attach_scene`` with link-relative semantics."""
+        del model_name, xyz, quat, frame_id  # inert under move semantics
         return self._apply(
-            build_attach_scene(box_id, xyz, quat, box_size, link_name,
-                               frame_id=frame_id))
+            build_attach_scene(box_id, (0.0, 0.0, 0.0),
+                               (0.0, 0.0, 0.0, 1.0), box_size, link_name,
+                               pose_semantics="move_world_object"))
 
     def detach_and_remove(self, model_name=None, box_id=BOX_OBJECT_ID):
         del model_name
-        return self._apply(build_detach_scene(box_id))
+        ok, message = self._apply(build_detach_scene(box_id))
+        if ok:
+            return ok, message
+        # Idempotent release: an object POSITIVELY observed as neither
+        # attached nor in the world is already released — move_group
+        # rejects the diff otherwise (live: the route planner removed
+        # the live payload before the vacuum's own detach applied). The
+        # check fails closed: an unreadable scene surfaces the original
+        # apply failure instead of masking it.
+        try:
+            from moveit_msgs.msg import PlanningSceneComponents
+
+            scene = self.get_scene(
+                PlanningSceneComponents.WORLD_OBJECT_NAMES
+                | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS)
+        except Exception:  # noqa: BLE001 - unreadable check fails closed
+            scene = None
+        if scene is not None:
+            ids = {str(obj.id) for obj in
+                   scene.world.collision_objects}
+            ids.update(str(obj.object.id) for obj in
+                       scene.robot_state.attached_collision_objects)
+            if str(box_id) not in ids:
+                return True, "already released"
+        return ok, message
+
+    def add_collision_object(self, collision_object, timeout=10.0):
+        scene = PlanningScene()
+        scene.is_diff = True
+        scene.world.collision_objects = [collision_object]
+        return self._apply(scene, timeout=timeout)
+
+    def add_collision_box_v2(self, obj_id, xyz, quat, box_size,
+                             frame_id="world", timeout=10.0):
+        return self.add_collision_object(build_collision_object_v2(
+            obj_id, xyz, quat, box_size, frame_id=frame_id), timeout=timeout)
 
     def add_collision_box(self, obj_id, xyz, quat, box_size,
                           frame_id="world", timeout=10.0):

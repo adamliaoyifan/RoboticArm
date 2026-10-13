@@ -1,0 +1,182 @@
+{
+  "schema": "st09.regression-comparison/1",
+  "packages": {
+    "luggage_description": {
+      "base": {
+        "summary": "187 passed, 1 warning, 59 subtests passed in 2.05s",
+        "failures": [],
+        "collected_node_count": 187
+      },
+      "candidate": {
+        "summary": "201 passed, 1 warning, 59 subtests passed in 2.75s",
+        "failures": [],
+        "collected_node_count": 201
+      },
+      "added_nodes": [
+        "src/luggage_description/test/test_runtime_identity_wire.py::test_heartbeat_runs_with_paused_sim_clock",
+        "src/luggage_description/test/test_runtime_identity_wire.py::test_wire_preserves_local_identity",
+        "src/luggage_description/test/test_runtime_readiness.py::test_explicit_shared_tf_providers",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[artifact-STALE_PROCESS_ARTIFACT]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[client-ENDPOINT_CLIENT_MISMATCH]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[digest-PEER_IDENTITY_MISMATCH]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[duplicate-DUPLICATE_PROVIDER]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[overlay-WRONG_OVERLAY]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[provider-ENDPOINT_PROVIDER_MISMATCH]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[restart-PEER_RESTART]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_faults_have_zero_effects[type-ENDPOINT_TYPE_MISMATCH]",
+        "src/luggage_description/test/test_runtime_readiness.py::test_manifest_unknown_and_local_hash",
+        "src/luggage_description/test/test_runtime_readiness.py::test_mutable_heartbeats_and_explicit_readmission",
+        "src/luggage_description/test/test_runtime_readiness.py::test_standard_interface_registry"
+      ],
+      "removed_nodes": []
+    },
+    "luggage_planning": {
+      "base": {
+        "summary": "690 passed, 171 subtests passed in 2.07s",
+        "failures": [],
+        "collected_node_count": 690
+      },
+      "candidate": {
+        "summary": "768 passed, 171 subtests passed in 2.14s",
+        "failures": [],
+        "collected_node_count": 768
+      },
+      "added_nodes": [
+        "src/luggage_planning/test/test_st09_release.py::test_release_measured_transform_retains_stamp",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[attach_stamp]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[attachment]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[box]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[generation]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[quaternion]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[relation]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[request]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[scene]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[stamp]",
+        "src/luggage_planning/test/test_st09_release.py::test_release_refusal_preserves_attachment[tool]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.53-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0-0.71-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.53-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0-0.3-0.71-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.53-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0-0.71-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.53-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin0-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin0-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin0-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin0-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin1-0.9272952180016122]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin1-0]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin1-1.5707963267948966]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_generated_leg_cdr_preserves_pose_and_policy[0.1-0.3-0.71-origin1-3.141592653589793]",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_pick_build_typed_output",
+        "src/luggage_planning/test/test_st09_typed_build.py::test_place_build_typed_output",
+        "src/luggage_planning/test/test_trajectory_selector.py::test_requested_probe_cannot_be_bypassed_by_grid_seeds"
+      ],
+      "removed_nodes": []
+    },
+    "luggage_gazebo": {
+      "base": {
+        "summary": "1 failed, 167 passed, 3 skipped, 1 warning in 6.32s",
+        "failures": [
+          "src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_occupancy_marks_center_box"
+        ],
+        "collected_node_count": 171
+      },
+      "candidate": {
+        "summary": "180 passed, 3 skipped, 1 warning, 144 subtests passed in 9.48s",
+        "failures": [],
+        "collected_node_count": 183
+      },
+      "added_nodes": [
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_64_geometry_cases_dump_replay_markers",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_dump_negatives_and_no_overwrite",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_explicit_legacy_unknowns_and_datum",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::IntegrationExtractor::test_latency_requires_observations",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::IntegrationExtractor::test_missing_stale_threshold_and_truncated",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_fault_codes_and_zero_effects",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_readiness_effects_and_restart",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_real_launch_profile_resolution",
+        "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_resolution_precedence_and_unknown",
+        "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_service_down_at_selection_returns_rejecting_probe",
+        "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_unavailable_probe_rejects_row",
+        "src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_container_mapper_is_invariant_under_scene_pose_64_cases",
+        "src/luggage_gazebo/test/test_st09_verification_outcome.py::test_checker_incomplete_is_not_an_execution_failure",
+        "src/luggage_gazebo/test/test_st09_verification_outcome.py::test_incomplete_does_not_mask_assertion_failure"
+      ],
+      "removed_nodes": [
+        "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_fail_open_leaves_row_untouched",
+        "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_service_down_at_selection_returns_no_probe_fn"
+      ]
+    },
+    "luggage_packing": {
+      "base": {
+        "summary": "1 failed, 127 passed, 81 subtests passed in 5.18s",
+        "failures": [
+          "src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash"
+        ],
+        "collected_node_count": 128
+      },
+      "candidate": {
+        "summary": "1 failed, 127 passed, 81 subtests passed in 5.19s",
+        "failures": [
+          "src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash"
+        ],
+        "collected_node_count": 128
+      },
+      "added_nodes": [],
+      "removed_nodes": []
+    }
+  },
+  "allowed_candidate_failure": true,
+  "candidate_regressions_pass_except_allowed_failure": true,
+  "limits": "Source-package regression comparison with matching path rules and complete installs. Not production graph/rehearsal certification. Base GT dump test failure retained visibly."
+}

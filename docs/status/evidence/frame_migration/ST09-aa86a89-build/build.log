@@ -1,0 +1,38 @@
+Starting >>> elfin_control
+Finished <<< elfin_control [0.38s]
+Starting >>> elfin_description
+Finished <<< elfin_description [0.38s]
+Starting >>> luggage_msgs
+Finished <<< luggage_msgs [12.9s]
+Starting >>> pymoveit2
+Finished <<< pymoveit2 [0.60s]
+Starting >>> elfin_moveit_config
+Finished <<< elfin_moveit_config [0.38s]
+Starting >>> luggage_description
+Finished <<< luggage_description [0.67s]
+Starting >>> elfin_trajectory_executor
+/home/adamliao/.local/lib/python3.10/site-packages/setuptools/_distutils/dist.py:287: UserWarning: Unknown distribution option: 'tests_require'
+  warnings.warn(msg)
+--- stderr: elfin_trajectory_executor
+/home/adamliao/.local/lib/python3.10/site-packages/setuptools/_distutils/dist.py:287: UserWarning: Unknown distribution option: 'tests_require'
+  warnings.warn(msg)
+---
+Finished <<< elfin_trajectory_executor [0.43s]
+Starting >>> luggage_packing
+Finished <<< luggage_packing [0.66s]
+Starting >>> luggage_perception
+--- stderr: luggage_perception
+CMake Warning at CMakeLists.txt:27 (message):
+  yolov8s-world.pt missing; run scripts/download_yolo_world.sh before
+  semantic bringup
+
+
+---
+Finished <<< luggage_perception [0.75s]
+Starting >>> luggage_planning
+Finished <<< luggage_planning [0.72s]
+Starting >>> luggage_gazebo
+Finished <<< luggage_gazebo [1.32s]
+
+Summary: 11 packages finished [19.3s]
+  2 packages had stderr output: elfin_trajectory_executor luggage_perception

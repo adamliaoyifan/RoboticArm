@@ -1,0 +1,482 @@
+[INFO] [launch]: All log files can be found below docs/status/evidence/frame_migration/ST09-g4-graph/roslog/2026-10-01-10-52-26-795880-adamliao-X870-EAGLE-WIFI7-2593820
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [container_tf_publisher-1]: process started with pid [2593831]
+[INFO] [robot_state_publisher-2]: process started with pid [2593833]
+[INFO] [ros2_control_node-3]: process started with pid [2593835]
+[INFO] [spawner-4]: process started with pid [2593837]
+[INFO] [move_group-5]: process started with pid [2593839]
+[INFO] [scene_manager_node.py-6]: process started with pid [2593841]
+[INFO] [waypoint_generator_node.py-7]: process started with pid [2593843]
+[INFO] [trajectory_selector_node.py-8]: process started with pid [2593845]
+[INFO] [motion_planner_node.py-9]: process started with pid [2593847]
+[INFO] [cargo_volume_mapper_node.py-10]: process started with pid [2593849]
+[INFO] [placement_planner_node.py-11]: process started with pid [2593851]
+[INFO] [vacuum_controller_node.py-12]: process started with pid [2593853]
+[INFO] [spawner-13]: process started with pid [2593855]
+[ros2_control_node-3] [WARN] [1790823146.941039324] [controller_manager]: [Deprecated] Passing the robot description parameter directly to the control_manager node is deprecated. Use '~/robot_description' topic from 'robot_state_publisher' instead.
+[ros2_control_node-3] [INFO] [1790823146.941212122] [resource_manager]: Loading hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823146.941457639] [resource_manager]: Initialize hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823146.941493758] [resource_manager]: Successful initialization of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823146.941523174] [resource_manager]: 'configure' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823146.941526821] [resource_manager]: Successful 'configure' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823146.941529616] [resource_manager]: 'activate' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823146.941531730] [resource_manager]: Successful 'activate' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823146.942850628] [controller_manager]: update rate is 100 Hz
+[ros2_control_node-3] [INFO] [1790823146.942864454] [controller_manager]: Spawning controller_manager RT thread with scheduler priority: 50
+[ros2_control_node-3] [WARN] [1790823146.942912225] [controller_manager]: Could not enable FIFO RT scheduling policy: with error number <1>(Operation not permitted). See [https://control.ros.org/master/doc/ros2_control/controller_manager/doc/userdoc.html] for details on how to enable realtime scheduling.
+[move_group-5] [WARN] [1790823146.947771855] [move_group.move_group]: Falling back to using the the move_group node namespace (deprecated behavior).
+[robot_state_publisher-2] [INFO] [1790823146.954215777] [robot_state_publisher]: got segment camera_color_frame
+[robot_state_publisher-2] [INFO] [1790823146.954305297] [robot_state_publisher]: got segment camera_color_optical_frame
+[robot_state_publisher-2] [INFO] [1790823146.954309445] [robot_state_publisher]: got segment camera_depth_frame
+[robot_state_publisher-2] [INFO] [1790823146.954312090] [robot_state_publisher]: got segment camera_depth_optical_frame
+[robot_state_publisher-2] [INFO] [1790823146.954314675] [robot_state_publisher]: got segment camera_link
+[robot_state_publisher-2] [INFO] [1790823146.954317110] [robot_state_publisher]: got segment d555_link
+[robot_state_publisher-2] [INFO] [1790823146.954319564] [robot_state_publisher]: got segment eef_mount_adapter
+[robot_state_publisher-2] [INFO] [1790823146.954321869] [robot_state_publisher]: got segment elfin_base
+[robot_state_publisher-2] [INFO] [1790823146.954324153] [robot_state_publisher]: got segment elfin_base_link
+[robot_state_publisher-2] [INFO] [1790823146.954326447] [robot_state_publisher]: got segment elfin_dummy_gripper
+[robot_state_publisher-2] [INFO] [1790823146.954328712] [robot_state_publisher]: got segment elfin_end_link
+[robot_state_publisher-2] [INFO] [1790823146.954330916] [robot_state_publisher]: got segment elfin_link1
+[robot_state_publisher-2] [INFO] [1790823146.954333120] [robot_state_publisher]: got segment elfin_link2
+[robot_state_publisher-2] [INFO] [1790823146.954335424] [robot_state_publisher]: got segment elfin_link3
+[robot_state_publisher-2] [INFO] [1790823146.954337999] [robot_state_publisher]: got segment elfin_link4
+[robot_state_publisher-2] [INFO] [1790823146.954340193] [robot_state_publisher]: got segment elfin_link5
+[robot_state_publisher-2] [INFO] [1790823146.954342478] [robot_state_publisher]: got segment elfin_link6
+[robot_state_publisher-2] [INFO] [1790823146.954344662] [robot_state_publisher]: got segment livox_frame
+[robot_state_publisher-2] [INFO] [1790823146.954346816] [robot_state_publisher]: got segment livox_imu_frame
+[robot_state_publisher-2] [INFO] [1790823146.954349060] [robot_state_publisher]: got segment mid360_mount_frame
+[robot_state_publisher-2] [INFO] [1790823146.954351264] [robot_state_publisher]: got segment suction_contact_frame
+[robot_state_publisher-2] [INFO] [1790823146.954353879] [robot_state_publisher]: got segment suction_panel
+[robot_state_publisher-2] [INFO] [1790823146.954356174] [robot_state_publisher]: got segment world
+[move_group-5] [INFO] [1790823146.968408893] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.0201696 seconds
+[move_group-5] [INFO] [1790823146.968432387] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[move_group-5] [INFO] [1790823146.968437146] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[move_group-5] [WARN] [1790823147.199477470] [moveit_ros.robot_model_loader]: No kinematics plugins defined. Fill and load kinematics.yaml!
+[spawner-4] [INFO] [1790823147.205976967] [spawner_joint_state_broadcaster]: waiting for service /controller_manager/list_controllers to become available...
+[ros2_control_node-3] [INFO] [1790823147.233903665] [controller_manager]: Loading controller 'elfin_arm_controller'
+[ros2_control_node-3] [WARN] [1790823147.237035740] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[ros2_control_node-3] [WARN] [1790823147.248137679] [controller_manager]: [Deprecated]: "allow_nonzero_velocity_at_trajectory_end" is set to true. The default behavior will change to false.
+[spawner-13] [INFO] [1790823147.262226356] [spawner_elfin_arm_controller]: [94mLoaded [1melfin_arm_controller[0m
+[ros2_control_node-3] [INFO] [1790823147.263769510] [controller_manager]: Configuring controller 'elfin_arm_controller'
+[ros2_control_node-3] [WARN] [1790823147.264315708] [controller_manager]: 'joints' parameter is empty.
+[ros2_control_node-3] [INFO] [1790823147.264325667] [controller_manager]: No specific joint names are used for command interfaces. Using 'joints' parameter.
+[ros2_control_node-3] [ERROR] [1790823147.264329434] [controller_manager]: 'command_interfaces' parameter is empty.
+[ros2_control_node-3] [ERROR] [1790823147.264359211] [controller_manager]: After configuring, controller 'elfin_arm_controller' is in state 'unconfigured' , expected inactive.
+[spawner-13] [ERROR] [1790823147.264663620] [spawner_elfin_arm_controller]: [91mFailed to configure controller[0m
+[placement_planner_node.py-11] [INFO] [1790823147.284466982] [placement_planner]: atlas runtime gate on (dir=reachability_atlas, hash_policy=strict, w=0.3, hard_reject=True)
+[placement_planner_node.py-11] [INFO] [1790823147.294253039] [placement_planner]: placement_planner ready (aperture_y=(-0.928, 0.398), corridor=request_box, geometry_hash=cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856)
+[waypoint_generator_node.py-7] [INFO] [1790823147.300971743] [waypoint_generator]: waypoint_generator ready (clearances {'pre_grasp': 0.3, 'approach': 0.25, 'attach': 0.0, 'pick_retreat': 0.35, 'pre_grasp_min': 0.2, 'approach_min': 0.08}, place_slot_frame=elfin_base_link)
+[container_tf_publisher-1] [INFO] [1790823147.304509450] [container_tf_publisher]: Static TF from /tmp/elfin-st09-g3/install/g4/luggage_description/share/luggage_description/config/scene_tf.yaml.example (5 transforms): world->pedestal_link, world->pickup_platform_link, pickup_platform_link->pickup_platform_top, world->container_link, container_link->container_opening_frame
+[container_tf_publisher-1] [INFO] [1790823147.304704100] [container_tf_publisher]: task ROI (this node only): center=[-0.0, -1.5, 0.41] dims=[1.49, 1.97, 1.48] yaw=-1.5708 opening=[-0.27, -0.755, 0.44] aperture=1.326x1.412
+[trajectory_selector_node.py-8] [INFO] [1790823147.336873114] [trajectory_selector]: trajectory_selector up
+[scene_manager_node.py-6] [INFO] [1790823147.370009577] [scene_manager]: scene_manager ready
+[vacuum_controller_node.py-12] [INFO] [1790823147.372761679] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+[ERROR] [spawner-13]: process has died [pid 2593855, exit code 1, cmd '/opt/ros/humble/lib/controller_manager/spawner elfin_arm_controller --controller-manager /controller_manager --controller-manager-timeout 60 --ros-args'].
+[ros2_control_node-3] [INFO] [1790823147.457639520] [controller_manager]: Loading controller 'joint_state_broadcaster'
+[ros2_control_node-3] [WARN] [1790823147.458161843] [rcl.logging_rosout]: Publisher already registered for provided node name. If this is due to multiple nodes with the same name then all logs for that logger name will go out over the existing publisher. As soon as any node with that name is destructed it will unregister the publisher, preventing any further logs for that name from being published on the rosout topic.
+[spawner-4] [INFO] [1790823147.463640469] [spawner_joint_state_broadcaster]: [94mLoaded [1mjoint_state_broadcaster[0m
+[ros2_control_node-3] [INFO] [1790823147.464168163] [controller_manager]: Configuring controller 'joint_state_broadcaster'
+[ros2_control_node-3] [INFO] [1790823147.464209051] [controller_manager]: 'joints' or 'interfaces' parameter is empty. All available state interfaces will be published
+[spawner-4] [INFO] [1790823147.493570727] [spawner_joint_state_broadcaster]: [92mConfigured and activated [1mjoint_state_broadcaster[0m
+[motion_planner_node.py-9] [INFO] [1790823147.499564012] [motion_planner]: motion_planner up (move_group probed on first PlanMotion)
+[move_group-5] [INFO] [1790823147.580933131] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[move_group-5] [INFO] [1790823147.581968490] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[move_group-5] [INFO] [1790823147.583845458] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[move_group-5] [INFO] [1790823147.584344547] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[move_group-5] [INFO] [1790823147.584427675] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[move_group-5] [INFO] [1790823147.584594943] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[move_group-5] [INFO] [1790823147.584601496] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[move_group-5] [INFO] [1790823147.584737935] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[move_group-5] [INFO] [1790823147.584857833] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[move_group-5] [WARN] [1790823147.585069786] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[move_group-5] [ERROR] [1790823147.585076940] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[INFO] [spawner-4]: process has finished cleanly [pid 2593837]
+[cargo_volume_mapper_node.py-10] [INFO] [1790823147.761768879] [cargo_volume_mapper]: cargo_volume_mapper ready (inner 1.49x1.97x1.48 m, res 0.05, geometry_hash cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856, cloud=/luggage/semantic/cargo_points_untracked)
+[move_group-5] [INFO] [1790823148.329831887] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'move_group'
+[move_group-5] [INFO] [1790823148.330382514] [moveit.ros_planning.planning_pipeline]: Multiple planning plugins available. You should specify the '~planning_plugin' parameter. Using 'chomp_interface/CHOMPPlanner' for now.
+[move_group-5] [INFO] [1790823148.331301391] [moveit.ros_planning.planning_pipeline]: Using planning interface 'CHOMP'
+[move_group-5] [FATAL] [1790823148.332881656] [moveit_ros.trajectory_execution_manager]: Parameter '~moveit_controller_manager' not specified. This is needed to identify the plugin to use for interacting with controllers. No paths can be executed.
+[move_group-5] [ERROR] [1790823148.332896204] [moveit_ros.trajectory_execution_manager]: Failed to reload controllers: `controller_manager_` does not exist.
+[move_group-5] Stack trace (most recent call last):
+[move_group-5] #9    Object "", at 0xffffffffffffffff, in 
+[move_group-5] #8    Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x579e0ae83724, in 
+[move_group-5] #7    Source "../csu/libc-start.c", line 392, in __libc_start_main_impl [0x77fc64829e3f]
+[move_group-5] #6    Source "../sysdeps/nptl/libc_start_call_main.h", line 58, in __libc_start_call_main [0x77fc64829d8f]
+[move_group-5] #5    Object "/opt/ros/humble/lib/moveit_ros_move_group/move_group", at 0x579e0ae822c2, in 
+[move_group-5] #4    Object "/opt/ros/humble/lib/libmoveit_cpp.so.2.5.9", at 0x77fc654ec636, in moveit_cpp::MoveItCpp::MoveItCpp(std::shared_ptr<rclcpp::Node> const&, moveit_cpp::MoveItCpp::Options const&)
+[move_group-5] #3    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x77fc64a7b955, in trajectory_execution_manager::TrajectoryExecutionManager::TrajectoryExecutionManager(std::shared_ptr<rclcpp::Node> const&, std::shared_ptr<moveit::core::RobotModel const> const&, std::shared_ptr<planning_scene_monitor::CurrentStateMonitor> const&)
+[move_group-5] #2    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x77fc64a7a4c2, in trajectory_execution_manager::TrajectoryExecutionManager::initialize()
+[move_group-5] #1    Object "/opt/ros/humble/lib/libmoveit_trajectory_execution_manager.so.2.5.9", at 0x77fc64a914fe, in 
+[move_group-5] #0    Object "/usr/lib/x86_64-linux-gnu/libstdc++.so.6.0.30", at 0x77fc64d4eba4, in std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >::compare(char const*) const
+[move_group-5] Segmentation fault (Address not mapped to object [0x348])
+[WARNING] [launch]: user interrupted with ctrl-c (SIGINT)
+[INFO] [vacuum_controller_node.py-12]: sending signal 'SIGINT' to process[vacuum_controller_node.py-12]
+[INFO] [placement_planner_node.py-11]: sending signal 'SIGINT' to process[placement_planner_node.py-11]
+[INFO] [cargo_volume_mapper_node.py-10]: sending signal 'SIGINT' to process[cargo_volume_mapper_node.py-10]
+[INFO] [motion_planner_node.py-9]: sending signal 'SIGINT' to process[motion_planner_node.py-9]
+[INFO] [trajectory_selector_node.py-8]: sending signal 'SIGINT' to process[trajectory_selector_node.py-8]
+[INFO] [waypoint_generator_node.py-7]: sending signal 'SIGINT' to process[waypoint_generator_node.py-7]
+[INFO] [scene_manager_node.py-6]: sending signal 'SIGINT' to process[scene_manager_node.py-6]
+[INFO] [move_group-5]: sending signal 'SIGINT' to process[move_group-5]
+[INFO] [ros2_control_node-3]: sending signal 'SIGINT' to process[ros2_control_node-3]
+[INFO] [robot_state_publisher-2]: sending signal 'SIGINT' to process[robot_state_publisher-2]
+[INFO] [container_tf_publisher-1]: sending signal 'SIGINT' to process[container_tf_publisher-1]
+[ros2_control_node-3] [INFO] [1790823149.014384316] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[ros2_control_node-3] [INFO] [1790823149.014440192] [controller_manager]: Shutdown request received....
+[ros2_control_node-3] [INFO] [1790823149.014488384] [controller_manager]: Shutting down all controllers in the controller manager.
+[ros2_control_node-3] [INFO] [1790823149.014505246] [controller_manager]: Deactivating controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823149.014533890] [controller_manager]: Shutting down controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823149.014553538] [controller_manager]: Shutting down controller 'controller_manager'
+[ros2_control_node-3] [INFO] [1790823149.014577623] [resource_manager]: 'deactivate' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823149.014583364] [resource_manager]: Successful 'deactivate' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823149.014585879] [resource_manager]: 'shutdown' hardware 'ElfinSystem' 
+[ros2_control_node-3] [INFO] [1790823149.014588935] [resource_manager]: Successful 'shutdown' of hardware 'ElfinSystem'
+[ros2_control_node-3] [INFO] [1790823149.014591650] [controller_manager]: Shutting down the controller manager.
+[robot_state_publisher-2] [INFO] [1790823149.014385708] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[vacuum_controller_node.py-12] Traceback (most recent call last):
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 604, in <module>
+[vacuum_controller_node.py-12]     main()
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 600, in main
+[vacuum_controller_node.py-12]     rclpy.shutdown()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[vacuum_controller_node.py-12]     _shutdown(context=context)
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[vacuum_controller_node.py-12]     return context.shutdown()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[vacuum_controller_node.py-12]     self.__context.shutdown()
+[vacuum_controller_node.py-12] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[vacuum_controller_node.py-12] Error in sys.excepthook:
+[vacuum_controller_node.py-12] Traceback (most recent call last):
+[vacuum_controller_node.py-12]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 55, in apport_excepthook
+[vacuum_controller_node.py-12]     import apt_pkg
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap>", line 1002, in _find_and_load_unlocked
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap>", line 945, in _find_spec
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap_external>", line 1439, in find_spec
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap_external>", line 1411, in _get_spec
+[vacuum_controller_node.py-12]   File "<frozen importlib._bootstrap_external>", line 1576, in find_spec
+[vacuum_controller_node.py-12] KeyboardInterrupt
+[vacuum_controller_node.py-12] 
+[vacuum_controller_node.py-12] Original exception was:
+[vacuum_controller_node.py-12] Traceback (most recent call last):
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 604, in <module>
+[vacuum_controller_node.py-12]     main()
+[vacuum_controller_node.py-12]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py", line 600, in main
+[vacuum_controller_node.py-12]     rclpy.shutdown()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[vacuum_controller_node.py-12]     _shutdown(context=context)
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[vacuum_controller_node.py-12]     return context.shutdown()
+[vacuum_controller_node.py-12]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[vacuum_controller_node.py-12]     self.__context.shutdown()
+[vacuum_controller_node.py-12] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[placement_planner_node.py-11] Traceback (most recent call last):
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1017, in <module>
+[placement_planner_node.py-11]     main()
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1013, in main
+[placement_planner_node.py-11]     rclpy.shutdown()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[placement_planner_node.py-11]     _shutdown(context=context)
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[placement_planner_node.py-11]     return context.shutdown()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[placement_planner_node.py-11]     self.__context.shutdown()
+[placement_planner_node.py-11] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[placement_planner_node.py-11] Error in sys.excepthook:
+[placement_planner_node.py-11] Traceback (most recent call last):
+[placement_planner_node.py-11]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[placement_planner_node.py-11]     from apport.fileutils import likely_packaged, get_recent_crashes
+[placement_planner_node.py-11]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[placement_planner_node.py-11]     from apport.report import Report
+[placement_planner_node.py-11]   File "/usr/lib/python3/dist-packages/apport/report.py", line 16, in <module>
+[placement_planner_node.py-11]     from xml.parsers.expat import ExpatError
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap_external>", line 975, in get_code
+[placement_planner_node.py-11]   File "<frozen importlib._bootstrap_external>", line 1073, in get_data
+[placement_planner_node.py-11] KeyboardInterrupt
+[placement_planner_node.py-11] 
+[placement_planner_node.py-11] Original exception was:
+[placement_planner_node.py-11] Traceback (most recent call last):
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1017, in <module>
+[placement_planner_node.py-11]     main()
+[placement_planner_node.py-11]   File "/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py", line 1013, in main
+[placement_planner_node.py-11]     rclpy.shutdown()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[placement_planner_node.py-11]     _shutdown(context=context)
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[placement_planner_node.py-11]     return context.shutdown()
+[placement_planner_node.py-11]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[placement_planner_node.py-11]     self.__context.shutdown()
+[placement_planner_node.py-11] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[cargo_volume_mapper_node.py-10] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 691, in <module>
+[cargo_volume_mapper_node.py-10]     main()
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 687, in main
+[cargo_volume_mapper_node.py-10]     rclpy.shutdown()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[cargo_volume_mapper_node.py-10]     _shutdown(context=context)
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[cargo_volume_mapper_node.py-10]     return context.shutdown()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[cargo_volume_mapper_node.py-10]     self.__context.shutdown()
+[cargo_volume_mapper_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[cargo_volume_mapper_node.py-10] Error in sys.excepthook:
+[cargo_volume_mapper_node.py-10] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-10]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[cargo_volume_mapper_node.py-10]     from apport.fileutils import likely_packaged, get_recent_crashes
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap>", line 1002, in _find_and_load_unlocked
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap>", line 945, in _find_spec
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap_external>", line 1439, in find_spec
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap_external>", line 1411, in _get_spec
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap_external>", line 1544, in find_spec
+[cargo_volume_mapper_node.py-10]   File "<frozen importlib._bootstrap_external>", line 147, in _path_stat
+[cargo_volume_mapper_node.py-10] KeyboardInterrupt
+[cargo_volume_mapper_node.py-10] 
+[cargo_volume_mapper_node.py-10] Original exception was:
+[cargo_volume_mapper_node.py-10] Traceback (most recent call last):
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 691, in <module>
+[cargo_volume_mapper_node.py-10]     main()
+[cargo_volume_mapper_node.py-10]   File "/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py", line 687, in main
+[cargo_volume_mapper_node.py-10]     rclpy.shutdown()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[cargo_volume_mapper_node.py-10]     _shutdown(context=context)
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[cargo_volume_mapper_node.py-10]     return context.shutdown()
+[cargo_volume_mapper_node.py-10]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[cargo_volume_mapper_node.py-10]     self.__context.shutdown()
+[cargo_volume_mapper_node.py-10] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[motion_planner_node.py-9] Traceback (most recent call last):
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1287, in <module>
+[motion_planner_node.py-9]     main()
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1283, in main
+[motion_planner_node.py-9]     rclpy.shutdown()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[motion_planner_node.py-9]     _shutdown(context=context)
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[motion_planner_node.py-9]     return context.shutdown()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[motion_planner_node.py-9]     self.__context.shutdown()
+[motion_planner_node.py-9] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[motion_planner_node.py-9] Error in sys.excepthook:
+[motion_planner_node.py-9] Traceback (most recent call last):
+[motion_planner_node.py-9]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[motion_planner_node.py-9]     from apport.fileutils import likely_packaged, get_recent_crashes
+[motion_planner_node.py-9]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[motion_planner_node.py-9]     from apport.report import Report
+[motion_planner_node.py-9]   File "/usr/lib/python3/dist-packages/apport/report.py", line 15, in <module>
+[motion_planner_node.py-9]     import xml.dom, xml.dom.minidom
+[motion_planner_node.py-9]   File "/usr/lib/python3.10/xml/dom/__init__.py", line 18, in <module>
+[motion_planner_node.py-9]     class Node:
+[motion_planner_node.py-9] KeyboardInterrupt
+[motion_planner_node.py-9] 
+[motion_planner_node.py-9] Original exception was:
+[motion_planner_node.py-9] Traceback (most recent call last):
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1287, in <module>
+[motion_planner_node.py-9]     main()
+[motion_planner_node.py-9]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py", line 1283, in main
+[motion_planner_node.py-9]     rclpy.shutdown()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[motion_planner_node.py-9]     _shutdown(context=context)
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[motion_planner_node.py-9]     return context.shutdown()
+[motion_planner_node.py-9]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[motion_planner_node.py-9]     self.__context.shutdown()
+[motion_planner_node.py-9] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [robot_state_publisher-2]: process has died [pid 2593833, exit code -2, cmd '/opt/ros/humble/lib/robot_state_publisher/robot_state_publisher --ros-args -r __node:=robot_state_publisher --params-file /tmp/launch_params_4cuyl6gr'].
+[ERROR] [ros2_control_node-3]: process has died [pid 2593835, exit code -2, cmd '/opt/ros/humble/lib/controller_manager/ros2_control_node --ros-args -r __node:=controller_manager --params-file /tmp/launch_params__x0mhy37 --params-file /tmp/elfin-st09-g3/install/g4/elfin_control/share/elfin_control/config/elfin_controllers.yaml -r ~/robot_description:=/robot_description'].
+[trajectory_selector_node.py-8] Traceback (most recent call last):
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 327, in <module>
+[trajectory_selector_node.py-8]     main()
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 323, in main
+[trajectory_selector_node.py-8]     rclpy.shutdown()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[trajectory_selector_node.py-8]     _shutdown(context=context)
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[trajectory_selector_node.py-8]     return context.shutdown()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[trajectory_selector_node.py-8]     self.__context.shutdown()
+[trajectory_selector_node.py-8] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[trajectory_selector_node.py-8] Error in sys.excepthook:
+[trajectory_selector_node.py-8] Traceback (most recent call last):
+[trajectory_selector_node.py-8]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[trajectory_selector_node.py-8]     from apport.fileutils import likely_packaged, get_recent_crashes
+[trajectory_selector_node.py-8]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[trajectory_selector_node.py-8]     from apport.report import Report
+[trajectory_selector_node.py-8]   File "/usr/lib/python3/dist-packages/apport/report.py", line 21, in <module>
+[trajectory_selector_node.py-8]     from urllib.request import urlopen
+[trajectory_selector_node.py-8]   File "/usr/lib/python3.10/urllib/request.py", line 88, in <module>
+[trajectory_selector_node.py-8]     import http.client
+[trajectory_selector_node.py-8]   File "/usr/lib/python3.10/http/__init__.py", line 6, in <module>
+[trajectory_selector_node.py-8]     class HTTPStatus(IntEnum):
+[trajectory_selector_node.py-8]   File "/usr/lib/python3.10/enum.py", line 289, in __new__
+[trajectory_selector_node.py-8]     enum_member = __new__(enum_class, *args)
+[trajectory_selector_node.py-8] KeyboardInterrupt
+[trajectory_selector_node.py-8] 
+[trajectory_selector_node.py-8] Original exception was:
+[trajectory_selector_node.py-8] Traceback (most recent call last):
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 327, in <module>
+[trajectory_selector_node.py-8]     main()
+[trajectory_selector_node.py-8]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py", line 323, in main
+[trajectory_selector_node.py-8]     rclpy.shutdown()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[trajectory_selector_node.py-8]     _shutdown(context=context)
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[trajectory_selector_node.py-8]     return context.shutdown()
+[trajectory_selector_node.py-8]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[trajectory_selector_node.py-8]     self.__context.shutdown()
+[trajectory_selector_node.py-8] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[waypoint_generator_node.py-7] Traceback (most recent call last):
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 563, in <module>
+[waypoint_generator_node.py-7]     main()
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 559, in main
+[waypoint_generator_node.py-7]     rclpy.shutdown()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[waypoint_generator_node.py-7]     _shutdown(context=context)
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[waypoint_generator_node.py-7]     return context.shutdown()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[waypoint_generator_node.py-7]     self.__context.shutdown()
+[waypoint_generator_node.py-7] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[waypoint_generator_node.py-7] Error in sys.excepthook:
+[waypoint_generator_node.py-7] Traceback (most recent call last):
+[waypoint_generator_node.py-7]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[waypoint_generator_node.py-7]     from apport.fileutils import likely_packaged, get_recent_crashes
+[waypoint_generator_node.py-7]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[waypoint_generator_node.py-7]     from apport.report import Report
+[waypoint_generator_node.py-7]   File "/usr/lib/python3/dist-packages/apport/report.py", line 15, in <module>
+[waypoint_generator_node.py-7]     import xml.dom, xml.dom.minidom
+[waypoint_generator_node.py-7]   File "/usr/lib/python3.10/xml/dom/minidom.py", line 23, in <module>
+[waypoint_generator_node.py-7]     from xml.dom.xmlbuilder import DOMImplementationLS, DocumentLS
+[waypoint_generator_node.py-7]   File "/usr/lib/python3.10/xml/dom/xmlbuilder.py", line 6, in <module>
+[waypoint_generator_node.py-7]     from xml.dom.NodeFilter import NodeFilter
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[scene_manager_node.py-6] Traceback (most recent call last):
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 320, in <module>
+[scene_manager_node.py-6]     main()
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 316, in main
+[scene_manager_node.py-6]     rclpy.shutdown()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_manager_node.py-6]     _shutdown(context=context)
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_manager_node.py-6]     return context.shutdown()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_manager_node.py-6]     self.__context.shutdown()
+[scene_manager_node.py-6] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[scene_manager_node.py-6] Error in sys.excepthook:
+[scene_manager_node.py-6] Traceback (most recent call last):
+[scene_manager_node.py-6]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[scene_manager_node.py-6]     from apport.fileutils import likely_packaged, get_recent_crashes
+[scene_manager_node.py-6]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[scene_manager_node.py-6]     from apport.report import Report
+[scene_manager_node.py-6]   File "/usr/lib/python3/dist-packages/apport/report.py", line 21, in <module>
+[scene_manager_node.py-6]     from urllib.request import urlopen
+[scene_manager_node.py-6]   File "/usr/lib/python3.10/urllib/request.py", line 88, in <module>
+[scene_manager_node.py-6]     import http.client
+[scene_manager_node.py-6]   File "/usr/lib/python3.10/http/client.py", line 71, in <module>
+[scene_manager_node.py-6]     import email.parser
+[scene_manager_node.py-6]   File "/usr/lib/python3.10/email/parser.py", line 12, in <module>
+[scene_manager_node.py-6]     from email.feedparser import FeedParser, BytesFeedParser
+[scene_manager_node.py-6]   File "/usr/lib/python3.10/email/feedparser.py", line 27, in <module>
+[scene_manager_node.py-6]     from email._policybase import compat32
+[scene_manager_node.py-6]   File "/usr/lib/python3.10/email/_policybase.py", line 7, in <module>
+[scene_manager_node.py-6]     from email import header
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap_external>", line 1012, in get_code
+[scene_manager_node.py-6]   File "<frozen importlib._bootstrap_external>", line 672, in _compile_bytecode
+[scene_manager_node.py-6] KeyboardInterrupt
+[scene_manager_node.py-6] 
+[scene_manager_node.py-6] Original exception was:
+[scene_manager_node.py-6] Traceback (most recent call last):
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 320, in <module>
+[scene_manager_node.py-6]     main()
+[scene_manager_node.py-6]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py", line 316, in main
+[scene_manager_node.py-6]     rclpy.shutdown()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[scene_manager_node.py-6]     _shutdown(context=context)
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[scene_manager_node.py-6]     return context.shutdown()
+[scene_manager_node.py-6]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[scene_manager_node.py-6]     self.__context.shutdown()
+[scene_manager_node.py-6] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap_external>", line 1000, in get_code
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap_external>", line 637, in _validate_timestamp_pyc
+[waypoint_generator_node.py-7]   File "<frozen importlib._bootstrap_external>", line 84, in _unpack_uint32
+[waypoint_generator_node.py-7] KeyboardInterrupt
+[waypoint_generator_node.py-7] 
+[waypoint_generator_node.py-7] Original exception was:
+[waypoint_generator_node.py-7] Traceback (most recent call last):
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 563, in <module>
+[waypoint_generator_node.py-7]     main()
+[waypoint_generator_node.py-7]   File "/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py", line 559, in main
+[waypoint_generator_node.py-7]     rclpy.shutdown()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[waypoint_generator_node.py-7]     _shutdown(context=context)
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[waypoint_generator_node.py-7]     return context.shutdown()
+[waypoint_generator_node.py-7]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[waypoint_generator_node.py-7]     self.__context.shutdown()
+[waypoint_generator_node.py-7] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[container_tf_publisher-1] Traceback (most recent call last):
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher", line 5, in <module>
+[container_tf_publisher-1]     main()
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py", line 184, in main
+[container_tf_publisher-1]     rclpy.shutdown()
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[container_tf_publisher-1]     _shutdown(context=context)
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[container_tf_publisher-1]     return context.shutdown()
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[container_tf_publisher-1]     self.__context.shutdown()
+[container_tf_publisher-1] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[container_tf_publisher-1] Error in sys.excepthook:
+[container_tf_publisher-1] Traceback (most recent call last):
+[container_tf_publisher-1]   File "/usr/lib/python3/dist-packages/apport_python_hook.py", line 72, in apport_excepthook
+[container_tf_publisher-1]     from apport.fileutils import likely_packaged, get_recent_crashes
+[container_tf_publisher-1]   File "/usr/lib/python3/dist-packages/apport/__init__.py", line 5, in <module>
+[container_tf_publisher-1]     from apport.report import Report
+[container_tf_publisher-1]   File "/usr/lib/python3/dist-packages/apport/report.py", line 21, in <module>
+[container_tf_publisher-1]     from urllib.request import urlopen
+[container_tf_publisher-1]   File "/usr/lib/python3.10/urllib/request.py", line 88, in <module>
+[container_tf_publisher-1]     import http.client
+[container_tf_publisher-1]   File "/usr/lib/python3.10/http/client.py", line 1424, in <module>
+[container_tf_publisher-1]     import ssl
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap_external>", line 879, in exec_module
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap_external>", line 1012, in get_code
+[container_tf_publisher-1]   File "<frozen importlib._bootstrap_external>", line 672, in _compile_bytecode
+[container_tf_publisher-1] KeyboardInterrupt
+[container_tf_publisher-1] 
+[container_tf_publisher-1] Original exception was:
+[container_tf_publisher-1] Traceback (most recent call last):
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher", line 5, in <module>
+[container_tf_publisher-1]     main()
+[container_tf_publisher-1]   File "/tmp/elfin-st09-g3/install/g4/luggage_description/local/lib/python3.10/dist-packages/luggage_description/scene_tf_publisher.py", line 184, in main
+[container_tf_publisher-1]     rclpy.shutdown()
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/__init__.py", line 130, in shutdown
+[container_tf_publisher-1]     _shutdown(context=context)
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/utilities.py", line 58, in shutdown
+[container_tf_publisher-1]     return context.shutdown()
+[container_tf_publisher-1]   File "/opt/ros/humble/local/lib/python3.10/dist-packages/rclpy/context.py", line 102, in shutdown
+[container_tf_publisher-1]     self.__context.shutdown()
+[container_tf_publisher-1] rclpy._rclpy_pybind11.RCLError: failed to shutdown: rcl_shutdown already called on the given context, at ./src/rcl/init.c:241
+[ERROR] [container_tf_publisher-1]: process has died [pid 2593831, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_description/lib/luggage_description/container_tf_publisher --ros-args -r __node:=container_tf_publisher --params-file /tmp/launch_params_e925n9wz'].
+[ERROR] [trajectory_selector_node.py-8]: process has died [pid 2593845, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/trajectory_selector_node.py --ros-args -r __node:=trajectory_selector --params-file /tmp/launch_params_d1x7sahl'].
+[ERROR] [cargo_volume_mapper_node.py-10]: process has died [pid 2593849, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_perception/lib/luggage_perception/cargo_volume_mapper_node.py --ros-args -r __node:=cargo_volume_mapper --params-file /tmp/launch_params_4jod52ti'].
+[ERROR] [placement_planner_node.py-11]: process has died [pid 2593851, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_packing/lib/luggage_packing/placement_planner_node.py --ros-args -r __node:=placement_planner --params-file /tmp/launch_params_9yn2pcn_'].
+[ERROR] [waypoint_generator_node.py-7]: process has died [pid 2593843, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/waypoint_generator_node.py --ros-args -r __node:=waypoint_generator --params-file /tmp/launch_params_haylvlw0'].
+[ERROR] [vacuum_controller_node.py-12]: process has died [pid 2593853, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/vacuum_controller_node.py --ros-args -r __node:=vacuum_controller --params-file /tmp/launch_params_9kiszez7'].
+[ERROR] [scene_manager_node.py-6]: process has died [pid 2593841, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/scene_manager_node.py --ros-args -r __node:=scene_manager --params-file /tmp/launch_params_byzhrsn5'].
+[ERROR] [motion_planner_node.py-9]: process has died [pid 2593847, exit code 1, cmd '/tmp/elfin-st09-g3/install/g4/luggage_planning/lib/luggage_planning/motion_planner_node.py --ros-args -r __node:=motion_planner --params-file /tmp/launch_params_tk1sm0ho'].
+[ERROR] [move_group-5]: process has died [pid 2593839, exit code -11, cmd '/opt/ros/humble/lib/moveit_ros_move_group/move_group --ros-args -r __node:=move_group --params-file /tmp/launch_params_crmrzlgt --params-file /tmp/launch_params_5ix3fwpu --params-file /tmp/launch_params_8bqv5gsw'].

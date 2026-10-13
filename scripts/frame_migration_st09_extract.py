@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate joined two- or three-box evidence against a frozen manifest."""
+"""Evaluate joined one-, two-, or three-box evidence against a frozen manifest."""
 import argparse
 import json
 from pathlib import Path
@@ -81,12 +81,20 @@ def validate_handoffs(handoffs, expected_count):
 
 
 def extract_acceptance_variable(evidence, frozen):
+    """LEGACY shallow chain check — NOT the formal M3 judge (ST09-I S5).
+
+    Verifies only the five-event chain, causal identity, and handoff
+    count; physical gates, 11-stage completeness, revision identity, and
+    frozen-hash discipline are all outside its scope, so a pass here says
+    nothing about placement quality. main() never routes formal judgment
+    here; retained for triage of partial/legacy evidence only.
+    """
     boxes, handoffs = extract_box_events(evidence)
     expected_count = int(frozen.get("box_count") or len(frozen.get("sequence_ids") or []) or len(boxes))
     missing = []
     failures = []
-    if expected_count not in (2, 3):
-        failures.append("expected box_count must be 2 or 3")
+    if expected_count not in (1, 2, 3):
+        failures.append("expected box_count must be 1, 2, or 3")
     if len(boxes) != expected_count:
         missing.append("box events: observed %d expected %d" % (len(boxes), expected_count))
     failures.extend(validate_handoffs(handoffs, expected_count))
@@ -117,10 +125,20 @@ def main():
         try:
             evidence = json.loads(args.evidence.read_text())
             frozen = json.loads(args.frozen.read_text())
-            if extract_acceptance is not None and int(frozen.get("box_count") or 2) == 2:
+            # [ST09-I S5] formal judgment is the unified strict judge for
+            # one, two, and three boxes (same 11-stage completeness and
+            # physical gates). A one-box run has zero revision handoffs.
+            # An unknown workload size is refused, never silently
+            # downgraded to the shallow legacy chain check.
+            box_count = frozen.get("box_count", 2)
+            if extract_acceptance is not None and type(box_count) is int \
+                    and box_count in (1, 2, 3):
                 result = extract_acceptance(evidence, frozen)
             else:
-                result = extract_acceptance_variable(evidence, frozen)
+                result = {"status": "not_evaluated",
+                          "missing": ["frozen.box_count must be 1, 2, or 3 "
+                                      "for formal judgment"],
+                          "failures": [], "sample_count": 0}
         except (ValueError, KeyError, TypeError, AttributeError, OSError) as error:
             result = {"status": "not_evaluated", "missing": [str(error)], "failures": [], "sample_count": 0}
         json.dump(result, stream, indent=2, allow_nan=False)

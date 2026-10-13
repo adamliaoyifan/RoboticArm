@@ -1,0 +1,250 @@
+[
+  {
+    "label": "base",
+    "package": "luggage_description",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_description/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.8173695581499487
+  },
+  {
+    "label": "base",
+    "package": "luggage_description",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_description/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 0,
+    "elapsed": 2.5730614908970892
+  },
+  {
+    "label": "base",
+    "package": "luggage_planning",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_planning/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 1.1703895879909396
+  },
+  {
+    "label": "base",
+    "package": "luggage_planning",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_planning/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 0,
+    "elapsed": 2.922460967907682
+  },
+  {
+    "label": "base",
+    "package": "luggage_packing",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_packing/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.6655187129508704
+  },
+  {
+    "label": "base",
+    "package": "luggage_packing",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_packing/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 1,
+    "elapsed": 5.923413802869618
+  },
+  {
+    "label": "base",
+    "package": "luggage_gazebo",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_gazebo/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.9668750821147114
+  },
+  {
+    "label": "base",
+    "package": "luggage_gazebo",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_gazebo/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 1,
+    "elapsed": 7.02115425397642
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_description",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_description/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.8159959858749062
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_description",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_description/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 0,
+    "elapsed": 2.5234983321279287
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_planning",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_planning/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 1.1681041622068733
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_planning",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_planning/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 0,
+    "elapsed": 2.970122664934024
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_packing",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_packing/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.6658873420674354
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_packing",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_packing/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 1,
+    "elapsed": 6.023826762102544
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_gazebo",
+    "stage": "collect",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_gazebo/test",
+      "-q",
+      "--tb=short",
+      "--collect-only"
+    ],
+    "exit": 0,
+    "elapsed": 0.9658186140004545
+  },
+  {
+    "label": "candidate",
+    "package": "luggage_gazebo",
+    "stage": "pytest",
+    "argv": [
+      "python3",
+      "-m",
+      "pytest",
+      "src/luggage_gazebo/test",
+      "-q",
+      "--tb=short"
+    ],
+    "exit": 0,
+    "elapsed": 10.226995310978964
+  }
+]

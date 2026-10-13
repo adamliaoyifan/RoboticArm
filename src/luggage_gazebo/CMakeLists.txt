@@ -22,12 +22,15 @@ install(PROGRAMS
   scripts/place_only_eval_driver.py
   scripts/cargo_map_integrate_eval_driver.py
   scripts/motion_occ_eval_driver.py
+  scripts/m3_three_box_driver.py
   scripts/wait_controller_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(frame_migration_tools_pytest test/test_frame_migration_tools.py)
+  ament_add_pytest_test(rehearsal_evidence_pytest test/test_rehearsal_evidence.py)
   ament_add_pytest_test(eval_metrics_pytest test/test_eval_metrics.py)
   ament_add_pytest_test(wait_yolo_boxes_ring_pytest test/test_wait_yolo_boxes_ring.py)
   ament_add_pytest_test(yolo_not_ready_dump_identity_pytest test/test_yolo_not_ready_dump_identity.py)
@@ -38,6 +41,9 @@ if(BUILD_TESTING)
   ament_add_pytest_test(dsim2_observe_geometry_pytest test/test_dsim2_observe_geometry.py)
   ament_add_pytest_test(place_only_fixture_pytest test/test_place_only_fixture.py)
   ament_add_pytest_test(startup_probe_pytest test/test_startup_probe.py)
+  ament_add_pytest_test(payload_attachment_gate_pytest test/test_payload_attachment_gate.py)
+  ament_add_pytest_test(m3_place_event_order_pytest test/test_m3_place_event_order.py)
+  ament_add_pytest_test(retreat_start_contract_pytest test/test_retreat_start_contract.py)
 endif()
 
 # Export the GZ_SIM_RESOURCE_PATH entry so model:// URIs in the world and

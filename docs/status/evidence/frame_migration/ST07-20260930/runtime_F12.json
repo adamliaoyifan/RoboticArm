@@ -1,0 +1,26 @@
+{
+ "interface_id": "F12",
+ "kind": "runtime_boundary",
+ "status": "pass",
+ "contract_version": 2,
+ "command": "python3 -m pytest -q src/luggage_planning/test/test_frame_migration_selector.py::MapFixtures src/luggage_planning/test/test_frame_migration_selector.py::AtlasBins",
+ "observations": [
+  "open_direct winner is direct with zero probes. blocked_corridor_detour winner is gap_detour and its box-center polyline walks clear.",
+  "blocked_destination is PLACE_PATH_INFEASIBLE with occupancy_collision or outside_hull, never BIN_FULL.",
+  "A 0.50 m gap is infeasible at box yaw pi/2; a wider gap makes gap_detour win. A 0.05 m wall stays on a raised variant.",
+  "Grid setup queries the directed yaw. yaw_period_rad=pi raises ATLAS_SEMANTICS_MISMATCH before any cell query."
+ ],
+ "sample_count": 8,
+ "interface_contract_sha256": "41c4097dca20b2b727feb72d1f3b098545f7be85c1ee7953cfd28388a8653e13",
+ "source_sha256": {
+  "src/luggage_planning/luggage_planning/path_candidates.py": "92295b66fa1bb6aaf7d6f4bdf46cfd9530f63dcf9bbf5badc5b0e3331f9eb5d9",
+  "src/luggage_planning/luggage_planning/trajectory_selector.py": "30311d847ca4ec6c26bffe716037ee5de2bb5fbd504c4b4a80a87cc39156fad8",
+  "src/luggage_planning/luggage_planning/grid_path_search.py": "52c766b2a0bfb2c3044bb8982f8978925252e0fd0c7e2f50b2d49828778dd828",
+  "src/luggage_planning/luggage_planning/reachable_graph.py": "5861390009eccd72685bfa1a1c31a68d30cf2a145b9656b4a8b23ee6d9fadd79",
+  "src/luggage_planning/luggage_planning/place_path_planner.py": "c90ae56c5d29685c6db4b96aa06d24687cf3d885ce7dadc8065bcded457bc84e",
+  "src/luggage_planning/luggage_planning/occupancy_place_paths.py": "2c6378dbf249d3655109e4c9b7d17639bd106590681b3c60967e56ed0c2b7a2d",
+  "src/luggage_planning/luggage_planning/place_tcp.py": "8329a7cb6ede712e27e18e0ee10fa2118113abebe51d7450e9012d4a78e48934",
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+ }
+}

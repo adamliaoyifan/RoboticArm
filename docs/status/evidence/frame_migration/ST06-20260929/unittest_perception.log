@@ -1,0 +1,35 @@
+........................................................................ [  6%]
+........................................................................ [ 13%]
+......F................................................................. [ 20%]
+........................................s............................... [ 27%]
+........................................................................ [ 34%]
+........................................................................ [ 40%]
+........................................................................ [ 47%]
+......................................................... [ 53%]
+.................................................................... [ 59%]
+........................................................................ [ 66%]
+..........................sss....................................................................... [ 75%]
+........................................................................ [ 82%]
+........................................................................ [ 89%]
+..........................................................s............. [ 96%]
+...............ss......................                                  [100%]
+=================================== FAILURES ===================================
+______ TestPFA1StaticAudit.test_vacuum_geometry_is_classified_sim_backend ______
+
+self = <test_pf_a1_static_audit.TestPFA1StaticAudit testMethod=test_vacuum_geometry_is_classified_sim_backend>
+
+    def test_vacuum_geometry_is_classified_sim_backend(self):
+        backend = self.report["sim_backend"]
+        self.assertEqual(backend["class"], "sim_backend_only")
+>       self.assertTrue(backend["spawned_geometry_parser_lines"])
+E       AssertionError: [] is not true
+
+eval/test_pf_a1_static_audit.py:73: AssertionError
+=============================== warnings summary ===============================
+eval/test_eef_tf_fit_viz.py::TestEefTfFitViz::test_dump_writes_html_and_recipe
+  Warning: Unable to import Axes3D. This may be due to multiple versions of Matplotlib being installed (e.g. as a system package and as a pip package). As a result, the 3D projection is not available.
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED eval/test_pf_a1_static_audit.py::TestPFA1StaticAudit::test_vacuum_geometry_is_classified_sim_backend
+1 failed, 1048 passed, 7 skipped, 1 warning, 207 subtests passed in 25.97s

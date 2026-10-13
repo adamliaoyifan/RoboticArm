@@ -20,6 +20,7 @@ goals still use FollowJointTrajectory; Cartesian / pose targets go through
 """
 
 import os
+import subprocess
 
 import yaml
 from ament_index_python.packages import get_package_prefix, get_package_share_directory
@@ -38,7 +39,7 @@ from launch.conditions import IfCondition
 from launch.event_handlers import OnProcessExit
 from launch.events import Shutdown
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
@@ -78,15 +79,29 @@ def _default_launch_values():
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
         "use_cargo_map": "false",
+        "require_confirmed_map": "false",
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
+        # Reachability-atlas runtime wiring (placement gate + motion IK
+        # seeds). Empty = the nodes pick the atlas whose stored scene hash
+        # matches scene_tf_config. atlas_runtime_config overrides that.
+        # atlas_enabled forces the whole chain on/off.
+        "atlas_runtime_config": "",
+        "atlas_enabled": "",
+        # trajectory_selector route planner: graph or lattice.
+        "corridor_planner": "graph",
+        # Route budget is 60 s times this count.
+        "box_count": "1",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
         "acceleration_scaling": "0.3",
         "use_semantic": "false",
         "semantic_require_backend": "",
+        "semantic_clip_vendor_dir": "",
+        "semantic_model_name": "",
+        "semantic_pydeps_dir": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
         "yaw_mode": "",
@@ -105,68 +120,90 @@ def _default_launch_values():
             "config",
             "robot_poses.yaml.example",
         ),
+        # ST09 F21: the typed v2 runtime chain. On = every peer node
+        # publishes its measured RuntimeIdentityV2 and gates effects on
+        # graph readiness; requires the full chain (no mixed enablement).
+        "frame_runtime": "false",
+        "frame_calibration_revision": "urdf-embedded-d435",
+        "frame_driver_peer": "motion_occ_driver",
     }
 
 
-def _flatten_profile(data, out=None):
-    if out is None:
-        out = {}
-    if not isinstance(data, dict):
-        return out
-    for key, value in data.items():
-        key = str(key)
-        if isinstance(value, dict):
-            _flatten_profile(value, out)
-        else:
-            out[key] = value
-    return out
-
-
-def _load_profile_config(path):
-    path = str(path or "").strip()
-    if not path:
-        return {}
-    if not os.path.isfile(path):
-        raise RuntimeError("launch profile_config not found: %s" % path)
-    with open(path, "r", encoding="utf-8") as handle:
-        data = yaml.safe_load(handle) or {}
-    if not isinstance(data, dict):
-        raise RuntimeError("launch profile_config must be a YAML mapping: %s" % path)
-    return _flatten_profile(data)
-
-
-def _stringify_profile_value(value):
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, (list, tuple)):
-        return ",".join(str(v) for v in value)
-    return str(value)
-
-
 def _resolved_launch_config(context):
+    from luggage_description.runtime_profile import load_profile, resolve_profile, launch_text
     defaults = _default_launch_values()
     profile_path = LaunchConfiguration("profile_config").perform(context)
-    profile = _load_profile_config(profile_path)
-    unknown = sorted(set(profile) - set(defaults))
-    if unknown:
-        print(
-            "WARN: sim_world profile ignored unknown keys: %s"
-            % ", ".join(unknown)
-        )
-    cfg = {}
-    for name, default in defaults.items():
-        raw = LaunchConfiguration(name).perform(context)
-        if raw == _PROFILE_SENTINEL:
-            cfg[name] = _stringify_profile_value(profile.get(name, default))
-        else:
-            cfg[name] = raw
-    if profile_path:
-        print("sim_world launch profile: %s" % profile_path)
-    return cfg
+    overrides = {name: LaunchConfiguration(name).perform(context) for name in defaults}
+    resolved = resolve_profile(defaults, load_profile(profile_path), overrides)
+    return {name: launch_text(value) for name, value in resolved.items()}
 
 
 def _as_bool(value):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _semantic_asset_paths(cfg):
+    """[ST09-I S5.7-6] Semantic assets resolve from the INSTALL overlay.
+
+    Formal runs must not depend on the main workspace, the source tree,
+    or the user cache: the CLIP vendor and the YOLO-World checkpoint
+    are colcon-installed under install-st09/<pkg>/share and resolved
+    through the package share (hashes recorded in the acceptance
+    manifest). Explicit launch flags override; empty falls back to the
+    share location — NEVER to a bare filename, whose ultralytics
+    not-found fallback is a network download.
+    """
+    share = get_package_share_directory("luggage_perception")
+    vendor = str(cfg.get("semantic_clip_vendor_dir") or "").strip() \
+        or os.path.join(share, "vendor")
+    model = str(cfg.get("semantic_model_name") or "").strip() \
+        or os.path.join(share, "models", "yolov8s-world.pt")
+    return vendor, model
+
+
+def _require_semantic_assets(vendor, model):
+    """Fail-closed named launch errors for absent semantic assets."""
+    if not os.path.isdir(os.path.join(vendor, "clip_pkg")):
+        raise RuntimeError(
+            "SEMANTIC_VENDOR_MISSING: CLIP vendor incomplete at %s "
+            "(need clip_pkg/; expected the colcon-installed package "
+            "share copy)" % vendor)
+    if not os.path.isfile(model):
+        raise RuntimeError(
+            "SEMANTIC_WEIGHTS_MISSING: YOLO-World checkpoint absent at "
+            "%s (expected the colcon-installed package share copy; a "
+            "bare filename would fall back to a network download)" % model)
+
+
+def _semantic_pydeps_env(cfg):
+    """[ST09-I S5.7-6] Candidate-owned frozen Python deps for the segmenter.
+
+    The semantic backend's interpreter-side dependencies (torch +
+    ultralytics + their CUDA runtime) live in a candidate-owned frozen
+    prefix deployed by scripts/st09_i/deploy_python_deps.sh — NEVER in
+    the executing user's ~/.local site (a fresh HOME proved that
+    dependency; the user lock 2026-10-03 rejects it). The segmenter
+    node ALONE gets the prefix prepended to ITS PYTHONPATH with the
+    user site disabled, plus the prefix's cuda lib dirs on ITS
+    LD_LIBRARY_PATH — the rest of the stack keeps the overlay/system
+    environment (a frozen numpy 2.x must never leak into rclpy nodes
+    with numpy-1.x compiled extensions).
+    """
+    import glob
+
+    pydeps = str(cfg.get("semantic_pydeps_dir") or "").strip()
+    if not pydeps:
+        ws_root = os.path.dirname(os.path.dirname(
+            get_package_prefix("luggage_gazebo")))
+        pydeps = os.path.join(ws_root, "pydeps-frozen")
+    if not os.path.isfile(os.path.join(pydeps, "DEPLOYED.json")):
+        raise RuntimeError(
+            "SEMANTIC_PYDEPS_MISSING: frozen python deps prefix absent "
+            "at %s (deploy with scripts/st09_i/deploy_python_deps.sh; "
+            "the user site is NOT an allowed dependency source)" % pydeps)
+    nvidia_libs = sorted(glob.glob(
+        os.path.join(pydeps, "nvidia", "*", "lib")))
+    return pydeps, nvidia_libs
 
 
 def _bool_text(value):
@@ -291,14 +328,17 @@ def _robot_description_param(scene_tf_config: str, initial_joint_args):
     }
 
 
-def _robot_state_publisher_actions(scene_tf_config: str, robot_description):
+def _robot_state_publisher_actions(scene_tf_config: str, robot_description,
+                                   frame_scene_revision=""):
     return [
         Node(
             package="luggage_description",
             executable="container_tf_publisher",
             name="container_tf_publisher",
             output="screen",
-            parameters=[{"scene_tf_config": scene_tf_config, "republish_period": 0.0}],
+            parameters=[{"scene_tf_config": scene_tf_config,
+                         "republish_period": 0.0,
+                         "frame_scene_revision": frame_scene_revision}],
         ),
         Node(
             package="robot_state_publisher",
@@ -423,9 +463,43 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
         ]
         + list(initial_joint_args),
     )
-    urdf_file = os.path.join(os.environ.get("TMPDIR", "/tmp"), "elfin_s20_gazebo.urdf")
+    # Diagnostic only. MoveIt and the frame identity use the unstripped
+    # expansion above. This file is what `ros_gz_sim create` spawns.
+    strip_token = os.environ.get("ELFIN_GZ_STRIP_PANEL_COLLISION", "").strip()
+    if strip_token:
+        from luggage_description.gazebo_spawn_collision import (
+            strip_link_collision_mesh)
+        urdf_xml, removed = strip_link_collision_mesh(
+            urdf_xml, "suction_panel", strip_token)
+        if removed != 1:
+            raise RuntimeError(
+                "ELFIN_GZ_STRIP_PANEL_COLLISION=%s removed %d suction "
+                "collisions; expected 1, so Gazebo was not started"
+                % (strip_token, removed))
+    tmp = os.environ.get("TMPDIR", "/tmp")
+    urdf_file = os.path.join(tmp, "elfin_s20_gazebo.urdf")
     with open(urdf_file, "w", encoding="utf-8") as handle:
         handle.write(urdf_xml)
+    # p04's mask is applied on the converted SDF, not via a link-wide
+    # <gazebo> blob: that blob is copied onto every collision of the link.
+    converted = subprocess.run(
+        ["ign", "sdf", "-p", urdf_file],
+        capture_output=True, text=True, timeout=30, check=False)
+    if converted.returncode != 0 or not converted.stdout.strip():
+        raise RuntimeError(
+            "ign sdf -p failed (%s): %s" % (
+                converted.returncode, (converted.stderr or "")[:400]))
+    from luggage_description.gazebo_spawn_collision import (
+        P04_MASK, set_collision_bitmask_for_mesh)
+    sdf_xml, masked = set_collision_bitmask_for_mesh(
+        converted.stdout, "p04.stl", P04_MASK)
+    if masked != 1 and not strip_token:
+        raise RuntimeError(
+            "p04 collide_bitmask was set on %d collisions; expected 1, "
+            "so Gazebo was not started" % masked)
+    sdf_file = os.path.join(tmp, "elfin_s20_gazebo.sdf")
+    with open(sdf_file, "w", encoding="utf-8") as handle:
+        handle.write(sdf_xml)
 
     return Node(
         package="ros_gz_sim",
@@ -433,7 +507,7 @@ def _robot_create_node(scene_tf_config, initial_joint_args):
         output="screen",
         arguments=[
             "-world", WORLD_NAME,
-            "-file", urdf_file,
+            "-file", sdf_file,
             "-name", "S20",
             "-x", "0",
             "-y", "0",
@@ -517,12 +591,64 @@ def _shutdown_unless_clean_exit(event, context):
     ]
 
 
+def _frame_runtime_params(cfg, scene_tf_config, initial_joint_args):
+    """Identity + peer parameters for the v2 runtime chain, or ``{}``.
+
+    The identity is measured at launch resolution time (scene bytes,
+    expanded URDF, final SRDF, resolved atlas files) — never declared.
+    Fails closed on a partial enablement: the v2 chain is all or nothing.
+    """
+    if not _as_bool(cfg["frame_runtime"]):
+        return {}
+    off = [name for name in ("use_motion", "use_cargo_map", "use_packing",
+                             "use_vacuum") if not _as_bool(cfg[name])]
+    if off:
+        raise RuntimeError(
+            "frame_runtime requires the full v2 chain; disabled here: %s "
+            "(no mixed-v2 enablement)" % ", ".join(off))
+    import json
+    from luggage_description.runtime_graph import (
+        endpoint_registry, identity_endpoints, resolve_peers)
+    from luggage_description.runtime_identity import build_identity
+    from luggage_planning.atlas_runtime import (
+        load_atlas_runtime_for_scene, resolve_atlas_files)
+    peers = resolve_peers(cfg["frame_driver_peer"])
+    xacro_path = os.path.join(
+        get_package_share_directory("luggage_description"),
+        "urdf", "elfin_s20_with_camera.urdf.xacro")
+    # Same expansion the robot_description Command performs for RSP and
+    # move_group (scene pose on the joint, gz hardware plugin, named pose).
+    urdf_xml, _pose = expand_and_patch(
+        xacro_path, config_path=scene_tf_config,
+        xacro_args=[
+            "use_gz_sim:=true",
+            "hardware_plugin:=gz_ros2_control/GazeboSimSystem",
+        ] + list(initial_joint_args))
+    identity = build_identity(
+        scene_tf_config=scene_tf_config,
+        calibration_revision=cfg["frame_calibration_revision"],
+        urdf_text=urdf_xml,
+        srdf_text=_gazebo_semantic_description()["robot_description_semantic"],
+        tool_link="suction_contact_frame",
+        atlas_files=resolve_atlas_files(load_atlas_runtime_for_scene(
+            scene_tf_config, str(cfg["atlas_runtime_config"] or "") or None)),
+        endpoints=identity_endpoints(endpoint_registry(peers)))
+    return {
+        "frame_runtime": True,
+        "frame_identity_json": json.dumps(identity, sort_keys=True),
+        "frame_peers": ",".join(peers),
+        "frame_scene_revision": identity["scene_revision"],
+    }
+
+
 def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
     scene_tf_config = cfg["scene_tf_config"]
     gui = _as_bool(cfg["gui"])
     initial_joint_args = _initial_joint_xacro_args(cfg)
+    frame_params = _frame_runtime_params(cfg, scene_tf_config,
+                                         initial_joint_args)
 
     world_path = os.path.join(
         get_package_share_directory("luggage_gazebo"), "worlds", "airport_loading.sdf"
@@ -625,6 +751,10 @@ def _launch_setup(context):
                 "config", "sensor_preprocessor.yaml",
             ),
             {"use_sim_time": True},
+            # F02 observation admission rides the same scene revision the
+            # runtime chain measured (no-op when frame_runtime is off).
+            {"frame_scene_revision": frame_params.get("frame_scene_revision",
+                                                      "")},
         ],
     )
 
@@ -712,16 +842,56 @@ def _launch_setup(context):
         get_package_share_directory("luggage_perception"),
         "config", "semantic_segmenter.yaml")
     require_backend = cfg["semantic_require_backend"]
+    # [ST09-I S5.7-6] assets come from the INSTALL overlay via the
+    # package share (colcon-installed vendor + checkpoint; hash-recorded
+    # in the acceptance manifest). No main-workspace path, no source
+    # tree, no user cache, no bare filename (whose ultralytics fallback
+    # is a network download) — an absent asset is a NAMED launch error.
+    clip_vendor_dir, semantic_model_path = _semantic_asset_paths(cfg)
+    if use_semantic:
+        _require_semantic_assets(clip_vendor_dir, semantic_model_path)
+    segmenter_env = dict(_arena_env)
+    segmenter_env["YOLO_AUTOUPDATE"] = "false"
+    segmenter_env["LUGGAGE_CLIP_VENDOR_DIR"] = clip_vendor_dir
+    if use_semantic:
+        # [ST09-I S5.7-6] frozen python deps, segmenter-scoped: prefix
+        # first on ITS paths, user site disabled, cuda libs reachable.
+        # Scoped on purpose — the rest of the stack must keep resolving
+        # numpy/cv2 from the overlay/system (compiled ROS extensions).
+        pydeps, nvidia_libs = _semantic_pydeps_env(cfg)
+        segmenter_env["PYTHONNOUSERSITE"] = "1"
+        segmenter_env["PYTHONPATH"] = [
+            pydeps, os.pathsep,
+            EnvironmentVariable("PYTHONPATH", default_value=""),
+        ]
+        if nvidia_libs:
+            segmenter_env["LD_LIBRARY_PATH"] = [
+                os.pathsep.join(nvidia_libs), os.pathsep,
+                EnvironmentVariable("LD_LIBRARY_PATH", default_value=""),
+            ]
     segmenter = Node(
         package="luggage_perception",
         executable="semantic_segmenter_node.py",
         name="semantic_segmenter",
         output="screen",
-        additional_env=_arena_env,
+        additional_env=segmenter_env,
         condition=IfCondition(_bool_text(cfg["use_semantic"])),
         parameters=[semantic_config, {
             "use_sim_time": True,
             "require_backend": require_backend,
+            "model_name": semantic_model_path,
+            # Sim vocabulary for the textured suitcase mesh. The earlier
+            # "without texture" prompts described the untextured STL and
+            # are not the query for this asset. Thresholds stay at 0.2.
+            "prompts": [
+                "suitcase",
+                "luggage",
+                "box",
+                "container",
+                "floor",
+                "robot arm",
+            ],
+            "class_mapping_labels": [2, 2, 2, 1, 0, 3],
         }],
     )
     point_filter = Node(
@@ -769,6 +939,14 @@ def _launch_setup(context):
     # Pick/retreat shells (Todo 3). Default off so perception-only
     # debugging is unaffected; the closed-loop eval turns them on.
     poses_path = cfg["robot_poses_config"]
+    # Atlas overrides only when explicitly set; empty keeps the nodes on
+    # the installed atlas_runtime.yaml defaults.
+    atlas_params = {}
+    if cfg["atlas_runtime_config"]:
+        atlas_params["atlas_runtime_config"] = cfg["atlas_runtime_config"]
+    if cfg["atlas_enabled"]:
+        atlas_params["atlas_enabled"] = _as_bool(cfg["atlas_enabled"])
+
     motion_chain = [
         Node(
             package="luggage_planning",
@@ -780,6 +958,7 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 "world_frame": "world",
                 "pickup_object_id": "pickup_box",
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -793,6 +972,7 @@ def _launch_setup(context):
                 "scene_tf_config": scene_tf_config,
                 "world_frame": "world",
                 "place_slot_frame": "elfin_base_link",
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
@@ -803,12 +983,35 @@ def _launch_setup(context):
             output="screen",
             parameters=[{
                 "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
                 "robot_poses_config": poses_path,
                 "named_pose_duration": float(cfg["named_pose_duration"]),
                 "named_pose_max_vel": float(cfg["named_pose_max_vel"]),
                 "velocity_scaling": float(cfg["velocity_scaling"]),
                 "acceleration_scaling": float(cfg["acceleration_scaling"]),
-            }],
+                **frame_params,
+            }, atlas_params],
+            condition=IfCondition(_bool_text(cfg["use_motion"])),
+        ),
+        # SelectPlacePath provider (production path). The motion_occ driver
+        # still selects in-process; this node runs alongside so the service
+        # surface boots with the stack and stays covered by the smokes.
+        Node(
+            package="luggage_planning",
+            executable="trajectory_selector_node.py",
+            name="trajectory_selector",
+            output="screen",
+            parameters=[{
+                "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
+                # [ST09-I S5.7-6] GoToRobotPoseV2's site-pose file (the
+                # SIM schema document; the service refuses
+                # POSE_FILE_MISSING without it — never a default).
+                "robot_poses_config": poses_path,
+                "corridor_planner": str(cfg["corridor_planner"]),
+                "box_count": int(cfg["box_count"]),
+                **frame_params,
+            }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
         ),
     ]
@@ -829,6 +1032,21 @@ def _launch_setup(context):
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
     move_group = _move_group_node(robot_description, cfg["use_moveit"])
+    # Same URDF/SRDF move_group plans with. Pick certification calls
+    # /validate_route_v2; without this node the first authorized detect
+    # dies as BUILD_FAILED / CERT_SERVICE_UNAVAILABLE.
+    motion_chain.append(Node(
+        package="luggage_planning",
+        executable="validate_route_node",
+        name="validate_route_v2",
+        output="screen",
+        parameters=[
+            robot_description,
+            _gazebo_semantic_description(),
+            {"use_sim_time": True},
+        ],
+        condition=IfCondition(_bool_text(cfg["use_motion"])),
+    ))
 
     # Top-down orthographic RViz view (same viewpoint as the camera) plus
     # RobotModel/TF/point cloud/image panels for calibration checks.
@@ -867,6 +1085,9 @@ def _launch_setup(context):
                 "base_frame": "container_link",
                 "cloud_buffer_size": 12,
                 "freshness_window_sec": 0.20,
+                "require_confirmed_map": _as_bool(
+                    cfg["require_confirmed_map"]),
+                **frame_params,
             }],
             condition=IfCondition(_bool_text(cfg["use_cargo_map"])),
         ),
@@ -877,13 +1098,15 @@ def _launch_setup(context):
             output="screen",
             parameters=[{
                 "use_sim_time": True,
+                "scene_tf_config": scene_tf_config,
                 # 0 keeps the historical flush-wall hull gate; the
                 # place-only profile configures 0.01 (>=10 mm clearance).
                 "hull_margin": float(cfg["hull_margin"]),
                 "min_support_ratio": float(cfg["min_support_ratio"]),
                 "last_result_max_candidates": int(
                     float(cfg["last_result_max_candidates"])),
-            }],
+                **frame_params,
+            }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_packing"])),
         ),
         Node(
@@ -891,10 +1114,13 @@ def _launch_setup(context):
             executable="vacuum_controller_node.py",
             name="vacuum_controller",
             output="screen",
-            parameters=[{"use_sim_time": True}],
+            parameters=[{"use_sim_time": True, **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
-        *_robot_state_publisher_actions(scene_tf_config, robot_description),
+        *_robot_state_publisher_actions(
+            scene_tf_config, robot_description,
+            frame_scene_revision=frame_params.get("frame_scene_revision",
+                                                  "")),
         *_spawn_scene_and_robot(
             scene_tf_config, initial_joint_args,
             watchdog_sec=float(cfg["startup_watchdog_sec"]),
@@ -946,6 +1172,10 @@ def generate_launch_description():
                 "use_cargo_map",
                 "Start cargo_volume_mapper (geometry-commit "
                 "occupancy grid + surface_2d)."),
+            profile_arg(
+                "require_confirmed_map",
+                "A placed box leaves the cargo map pending until an "
+                "integrated view confirms it (two-box rehearsal profile)."),
             profile_arg(
                 "use_packing",
                 "Start placement_planner (ComputePlacement with "
@@ -1007,6 +1237,30 @@ def generate_launch_description():
                 "stats['backend'] starts with this prefix "
                 "(e.g. bbox_fill). Empty disables the guard."),
             profile_arg(
+                "semantic_model_name",
+                "YOLO-World checkpoint for the segmenter. Empty (the "
+                "default) resolves the colcon-installed copy under the "
+                "luggage_perception package share; an explicit path "
+                "overrides. A bare filename must never be used: it "
+                "resolves against the launch CWD and falls back to a "
+                "network download."),
+            profile_arg(
+                "semantic_clip_vendor_dir",
+                "Offline CLIP vendor dir (clip_pkg/ + deps/ + "
+                "clip_models/) exported to the segmenter as "
+                "LUGGAGE_CLIP_VENDOR_DIR. Empty (the default) resolves "
+                "the colcon-installed copy under the "
+                "luggage_perception package share."),
+            profile_arg(
+                "semantic_pydeps_dir",
+                "Frozen python deps prefix for the segmenter (torch/"
+                "ultralytics/cuda). Empty (the default) resolves "
+                "<candidate ws>/pydeps-frozen, deployed by scripts/"
+                "st09_i/deploy_python_deps.sh; the user site is never "
+                "an allowed source. Missing prefix = named launch "
+                "failure when use_semantic is on.",
+            ),
+            profile_arg(
                 "visual_kind",
                 "Pickup visual: box (primitive AABB) or mesh "
                 "(pre-scaled suitcase STL, visual=collision)."),
@@ -1042,6 +1296,41 @@ def generate_launch_description():
             profile_arg(
                 "robot_poses_config",
                 "Robot named-pose YAML path.",
+            ),
+            profile_arg(
+                "atlas_runtime_config",
+                "Reachability-atlas runtime YAML path (empty = installed "
+                "atlas_runtime.yaml).",
+            ),
+            profile_arg(
+                "atlas_enabled",
+                "Force the atlas chain on/off for placement and motion "
+                "(empty = yaml default).",
+            ),
+            profile_arg(
+                "corridor_planner",
+                "trajectory_selector route planner: graph (hop search) or "
+                "lattice (corridor lattice, MoveIt joint transit/return).",
+            ),
+            profile_arg(
+                "box_count",
+                "Route budget scale: 60 s times this box count "
+                "(1 box 60 s, 3 boxes 180 s).",
+            ),
+            profile_arg(
+                "frame_runtime",
+                "Start the typed v2 runtime chain (identity heartbeats + "
+                "readiness gating; requires the full stack on).",
+            ),
+            profile_arg(
+                "frame_calibration_revision",
+                "Calibration identity label stamped into the runtime "
+                "identity.",
+            ),
+            profile_arg(
+                "frame_driver_peer",
+                "Driver node name that joins the v2 graph as the client "
+                "peer.",
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),

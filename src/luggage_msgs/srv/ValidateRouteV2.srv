@@ -1,0 +1,49 @@
+# ST09-I internal endpoint: batched route certification against a
+# FROZEN private planning-scene copy. One request validates every leg of
+# one route. The service validates the GIVEN states through MoveIt's
+# native state, collision and distance checking — it never re-plans,
+# never runs IK, and never mutates the live planning scene.
+string request_id
+string scene_revision
+# Caller-side digests; the service echoes them verbatim so the caller
+# can prove the verdicts belong to exactly the frozen inputs.
+string route_digest
+string scene_digest
+# Frozen FULL scenes (is_diff=false), one per DISTINCT load state of
+# the route: world objects, ACM, robot state with the payload attached
+# at its link-relative pose (carrying) or the released box as a plain
+# world object (post-release). Each leg names its scene by index — no
+# diffs, no object lifecycle semantics, no ACM leakage across states.
+moveit_msgs/PlanningScene[] load_state_scenes
+# Frozen sampling discipline (verified, not assumed):
+float64 max_sample_dt_ns
+float64 max_sample_step_m
+# Per-joint knot velocity/acceleration bounds aligned with the legs'
+# shared joint_names (0 disables the check); position limits come from
+# the robot model itself.
+float64[] joint_velocity_limits
+float64[] joint_acceleration_limits
+# Distance measurement cadence: distances are measured every
+# distance_stride samples (1 = every sample); unmeasured entries are
+# NaN. Collision, joint-limit and constraint checks are ALWAYS
+# per-sample regardless of this stride.
+uint32 distance_stride
+# Processing budget in seconds; overrun stops with result 3 and the
+# partial per-leg evidence.
+float64 budget_s
+luggage_msgs/RouteLegV2[] legs
+---
+# 0 = OK (see leg_results for verdicts), 1 = INVALID_REQUEST,
+# 2 = SCENE_LOAD_FAILED, 3 = BUDGET_EXCEEDED
+int32 result
+string detail
+string request_id
+string route_digest
+string scene_digest
+bool all_valid
+luggage_msgs/RouteLegResultV2[] leg_results
+# SHA-256 over the service node's robot_description +
+# robot_description_semantic parameter bytes: the caller logs it and the
+# evidence ties the verdicts to the exact model that judged them.
+string model_sha256
+float64 service_time_ns

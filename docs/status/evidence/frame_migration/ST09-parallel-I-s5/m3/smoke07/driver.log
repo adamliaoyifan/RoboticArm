@@ -1,0 +1,5 @@
+[INFO] [1791025634.503981540] [pick_retreat_eval_driver]: frame runtime adopted (peer=motion_occ_driver, scene=98313fb8b3)
+graph ok; M3 n=1 sequence=carryon
+[INFO] [1791025648.875899384] [pick_retreat_eval_driver]: home: suction=[0.945, 0.214, 1.748] clear=True portal_exited=False
+{"fail_code": "YOLO_NOT_READY", "finalize": null, "index": 0}
+{"box_count": 2, "claim": "finite 2-box coverage; no population reliability claim", "failures": [], "missing": ["frozen.box_count", "frozen.sequence_ids", "2 cases"], "revision_handoff_count": 0, "sample_count": 0, "status": "not_evaluated"}

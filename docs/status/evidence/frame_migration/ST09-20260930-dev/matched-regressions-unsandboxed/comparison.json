@@ -1,0 +1,70 @@
+{
+  "luggage_description": {
+    "base_count": 187,
+    "candidate_count": 187,
+    "added": [],
+    "removed": [],
+    "failures": {
+      "base": [],
+      "candidate": []
+    }
+  },
+  "luggage_planning": {
+    "base_count": 690,
+    "candidate_count": 691,
+    "added": [
+      "src/luggage_planning/test/test_trajectory_selector.py::test_requested_probe_cannot_be_bypassed_by_grid_seeds"
+    ],
+    "removed": [],
+    "failures": {
+      "base": [],
+      "candidate": []
+    }
+  },
+  "luggage_packing": {
+    "base_count": 128,
+    "candidate_count": 128,
+    "added": [],
+    "removed": [],
+    "failures": {
+      "base": [
+        "E   AssertionError: False is not true : ATLAS_IDENTITY_UNVERIFIED: urdf hash missing",
+        "FAILED src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash"
+      ],
+      "candidate": [
+        "E   AssertionError: False is not true : ATLAS_IDENTITY_UNVERIFIED: urdf hash missing",
+        "FAILED src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash"
+      ]
+    }
+  },
+  "luggage_gazebo": {
+    "base_count": 171,
+    "candidate_count": 181,
+    "added": [
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_64_geometry_cases_dump_replay_markers",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_dump_negatives_and_no_overwrite",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::GeometryTools::test_explicit_legacy_unknowns_and_datum",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::IntegrationExtractor::test_latency_requires_observations",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::IntegrationExtractor::test_missing_stale_threshold_and_truncated",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_fault_codes_and_zero_effects",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_readiness_effects_and_restart",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_real_launch_profile_resolution",
+      "src/luggage_gazebo/test/test_frame_migration_tools.py::StartupContracts::test_resolution_precedence_and_unknown",
+      "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_service_down_at_selection_returns_rejecting_probe",
+      "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_unavailable_probe_rejects_row",
+      "src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_container_mapper_is_invariant_under_scene_pose_64_cases"
+    ],
+    "removed": [
+      "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_fail_open_leaves_row_untouched",
+      "src/luggage_gazebo/test/test_motion_occ_place_probe.py::PlaceProbeFnTest::test_service_down_at_selection_returns_no_probe_fn"
+    ],
+    "failures": {
+      "base": [
+        "E   AssertionError: 0 not greater than 0",
+        "FAILED src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_occupancy_marks_center_box"
+      ],
+      "candidate": []
+    }
+  },
+  "known_packing_failure_identical": true
+}

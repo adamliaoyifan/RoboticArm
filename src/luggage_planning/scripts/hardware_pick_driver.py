@@ -116,10 +116,39 @@ class RosPickSessionPorts:
     def now(self):
         return time.monotonic()
 
+    def scene_revision(self):
+        """Configured scene revision (F10 stale-calibration identity).
+
+        Empty when the deployment did not declare one — the session then
+        reports the wiring gap instead of silently passing.
+        """
+        return str(getattr(self._driver._args, "frame_scene_revision",
+                           "") or "")
+
     def sleep(self, dt):
         time.sleep(max(0.0, dt))
 
     def probe(self, segment, candidate_id):
+        if getattr(self._driver, "_typed", None) is not None:
+            from luggage_planning.typed_driver_adapter import (
+                segment_message_to_v2)
+            from luggage_description.frame_contracts import ContractError
+            try:
+                message = segment_message_to_v2(
+                    adapters.segment_to_msg(segment),
+                    self._driver._frame_request_id("probe"),
+                    self._driver._frame_scene_revision)
+                response = self._driver._typed.probe_segment(message)
+            except ContractError as error:
+                self._node.get_logger().warning(
+                    "probe_v2 rejected (%s %s)" % (error.code, error.field))
+                response = None
+            if response is None:
+                return {"ik_ok": False, "fraction": -1.0,
+                        "moveit_error_code": 0}
+            return {"ik_ok": bool(response.ik_ok),
+                    "fraction": float(response.fraction),
+                    "moveit_error_code": int(response.moveit_error_code)}
         request = ProbeMotionSegment.Request()
         request.segment = adapters.segment_to_msg(segment)
         response = self._driver._call_srv(
@@ -132,6 +161,25 @@ class RosPickSessionPorts:
                 "moveit_error_code": int(response.moveit_error_code)}
 
     def execute_segment(self, segment, candidate_id):
+        if getattr(self._driver, "_typed", None) is not None:
+            from luggage_planning.typed_driver_adapter import (
+                segment_message_to_v2)
+            from luggage_description.frame_contracts import ContractError
+            try:
+                motion_segment = segment_message_to_v2(
+                    adapters.segment_to_msg(segment),
+                    self._driver._frame_request_id("exec"),
+                    self._driver._frame_scene_revision)
+                ok, message, result = self._driver._typed.plan_motion(
+                    motion_segment, self._driver._args.plan_timeout,
+                    name="PlanMotionV2:%s" % segment.name)
+            except ContractError as error:
+                ok, message, result = False, "%s: %s" % (error.code,
+                                                         error.field), None
+            return SegmentOutcome(
+                ok=ok, message=message,
+                fraction=float(getattr(result, "fraction", -1.0) or 0.0),
+                settle_json=str(getattr(result, "settle_json", "") or ""))
         goal = PlanMotion.Goal()
         goal.segment = adapters.segment_to_msg(segment)
         ok, message, result = self._driver._send_action(
@@ -235,6 +283,48 @@ class HardwarePickDriver(Node):
             callback_group=self._group)
         self._scene = None
         self._release_on_exit = False
+        # ST09 F21/F22: typed v2 chain. --frame-runtime adopts the stack's
+        # measured identity from the graph heartbeat; pick build, probe,
+        # execution and vacuum route through the shared typed adapter.
+        self._typed = None
+        self._frame_runtime_handle = None
+        self._frame_scene_revision = ""
+        self._frame_pick_msg = None
+        self._frame_request_seq = 0
+        if getattr(args, "frame_runtime", False):
+            from luggage_planning.typed_driver_adapter import (
+                TypedDriverAdapter, adopt_runtime_identity)
+            peer = str(getattr(args, "frame_peer", "")
+                       or "hardware_pick_driver")
+            runtime, _registry = adopt_runtime_identity(self, peer=peer)
+            self._frame_runtime_handle = runtime
+            self._frame_scene_revision = str(
+                runtime.identity["scene_revision"])
+            self._typed = TypedDriverAdapter(self, runtime,
+                                             group=self._group)
+            self._current_box_identity = None
+            self.create_subscription(
+                String, "/luggage/current_box", self._on_current_box,
+                QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                           reliability=ReliabilityPolicy.RELIABLE),
+                callback_group=self._group)
+            self.get_logger().info(
+                "frame runtime adopted (peer=%s, scene=%s)"
+                % (peer, self._frame_scene_revision[:10]))
+
+    def _on_current_box(self, msg):
+        try:
+            from luggage_perception.cargo_instance_tracker import (
+                parse_current_box_payload,
+            )
+            box_id, generation = parse_current_box_payload(msg.data)
+            self._current_box_identity = (str(box_id), int(generation))
+        except Exception as exc:  # noqa: BLE001 - passive subscription
+            self.get_logger().warn("current_box unreadable: %s" % exc)
+
+    def _frame_request_id(self, prefix):
+        self._frame_request_seq += 1
+        return "%s-%d" % (prefix, self._frame_request_seq)
 
     def _scene_client(self):
         if self._scene is None:
@@ -282,12 +372,38 @@ class HardwarePickDriver(Node):
         return ok, str(result.message), result
 
     def vacuum(self, enable, timeout=20.0):
+        pick_msg = getattr(self, "_frame_pick_msg", None)
+        if getattr(self, "_typed", None) is not None and pick_msg is not None:
+            from luggage_planning.typed_driver_adapter import (
+                detection_record_from_box)
+            from luggage_description.frame_contracts import ContractError
+            box_id, generation = self._frame_box_identity()
+            request_id = self._frame_request_id("vacuum")
+            box_pose = detection_record_from_box(
+                pick_msg, request_id, self._frame_scene_revision)
+            try:
+                response = self._typed.vacuum_command(
+                    enable=enable, request_id=request_id,
+                    scene_revision=self._frame_scene_revision,
+                    box_id=box_id, generation=generation,
+                    measured_box=pick_msg, box_pose=box_pose)
+            except ContractError as error:
+                return False, "%s: %s" % (error.code, error.field)
+            if response is None:
+                return False, "vacuum timeout"
+            return bool(response.success), str(response.message)
         req = VacuumCommand.Request()
         req.enable = bool(enable)
         response = self._call_srv(self._vacuum, req, timeout)
         if response is None:
             return False, "vacuum timeout"
         return bool(response.success), str(response.message)
+
+    def _frame_box_identity(self):
+        identity = getattr(self, "_current_box_identity", None)
+        if identity:
+            return identity
+        return "", 0
 
     def goto_observe(self):
         goal = GoToRobotPose.Goal()
@@ -470,7 +586,12 @@ class HardwarePickDriver(Node):
             yaw_valid=bool(getattr(box, "yaw_valid", True)),
             box_xyz=xyz,
             box_quat=quat,
-            box_size=size)
+            box_size=size,
+            # Exact acquisition stamp straight from the header: the float
+            # ``stamp`` above is the lossy transport form (-21 ns at epoch
+            # scale); the retry snapshot prefers these nanoseconds.
+            stamp_ns=(int(box.header.stamp.sec) * 1_000_000_000
+                      + int(box.header.stamp.nanosec)))
 
     def _session_config(self, model):
         return SessionConfig(
@@ -484,6 +605,8 @@ class HardwarePickDriver(Node):
             use_scene=(not self._args.no_scene),
             use_vacuum=bool(self._args.use_vacuum),
             planning_frame="world",
+            scene_revision=str(getattr(self._args, "frame_scene_revision",
+                                       "") or ""),
             contact_model_version=model.model_version,
             contact_model_hash=model.identity_hash,
             dry_run=bool(self._args.dry_run),
@@ -557,6 +680,8 @@ class HardwarePickDriver(Node):
                 % (auth.decision.reason, auth.detect_reason))
             return 3
         box = auth.box
+        if getattr(self, "_typed", None) is not None:
+            self._frame_pick_msg = box
         detection = self._detection_view(box)
         self._log_detection(box, detection)
 
@@ -659,7 +784,10 @@ def main(argv=None):
     parser.add_argument("--goto-timeout", type=float, default=90.0)
     parser.add_argument("--detect-timeout", type=float, default=40.0)
     parser.add_argument("--detect-retries", type=int, default=5)
-    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument(
+        "--auth-max-attempts", type=int, default=11,
+        help="Safety cap on non-hold detect samples. The wait itself "
+             "is --auth-max-elapsed-sec (default 5 s).")
     parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
@@ -678,6 +806,17 @@ def main(argv=None):
     parser.add_argument(
         "--trace-out", default="",
         help="Write the session JSONL trace to this path (evidence).")
+    parser.add_argument(
+        "--frame-scene-revision", default="",
+        help="Scene revision the pick session runs under (F04/F10 "
+             "admission; empty disables v2 boundary checks).")
+    parser.add_argument(
+        "--frame-runtime", action="store_true",
+        help="ST09: adopt the v2 runtime chain from the stack heartbeat; "
+             "probe/execution/vacuum route through typed v2 endpoints.")
+    parser.add_argument(
+        "--frame-peer", default="hardware_pick_driver",
+        help="Driver node name registered in the v2 graph.")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
 

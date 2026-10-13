@@ -1,0 +1,28 @@
+# F11/F13 place legs from a slot profile, grasp, and container transform.
+# phase "pick" delegates to the existing pick builder. v1 BuildMotionSequence
+# is unchanged.
+string phase
+luggage_msgs/DetectedLuggage pick
+string suction_candidate_id
+luggage_msgs/PoseContractV2 slot
+luggage_msgs/PoseContractV2 grasp
+float64[3] box_wdh
+string container_source_frame
+string container_target_frame
+float64[3] container_translation
+float64[4] container_quaternion_xyzw
+int64 container_stamp_ns
+bool container_stamp_is_null
+string request_id
+string scene_revision
+luggage_msgs/PoseContractV2 pick_pose
+---
+luggage_msgs/MotionSegment[] segments
+luggage_msgs/MotionSegmentV2[] motion_segments
+bool success
+string message
+string reason_code
+luggage_msgs/PoseContractV2 contact_pose
+# [ST09-I S5.7-6] frozen-budget attribution for the pick build: edge
+# generation vs in-build certification (JSON object of floats in ms).
+string stage_timings_json

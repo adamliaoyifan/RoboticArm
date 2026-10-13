@@ -1,0 +1,98 @@
+{
+  "boxes": [
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-1",
+      "map_revision_after_release": 6,
+      "map_revision_at_select": 5,
+      "near_y": -0.15,
+      "path_hash": "473c2f77c107f24c92adae12c6dcaa912a2f161da29212ca75c5be09b97aaff5",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 400,
+      "slot_xy": [
+        -0.55,
+        -0.15
+      ]
+    },
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-2",
+      "map_revision_after_release": 8,
+      "map_revision_at_select": 7,
+      "near_y": 0.2,
+      "path_hash": "d546b1d1b88cf09154fd636e6c5af06ab2312a18d46f1b9a96d9be9940d44d93",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 400,
+      "slot_xy": [
+        -0.55,
+        0.2
+      ]
+    }
+  ],
+  "floor_z": 0.53,
+  "scene_revision": "b40c85ae6eb2eabc47d7da2ffb23b72c"
+}

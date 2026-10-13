@@ -10,6 +10,72 @@ UNREACHABLE = 1
 MARGINAL = 2
 REACHABLE = 3
 
+# Same-column carry/retreat lift. Low contacts keep the nominal 0.30 m.
+# The cap is the last tool-down height measured clear of the lid (>50 mm);
+# 1.55–1.70 m has no sample, so the cap is not raised to the interfering pose.
+NOMINAL_LIFT_CLEARANCE = 0.30
+SAFE_TOOL_Z = 1.55
+# Tool-down contact at this height already has the elbow in the lid.
+# Same-column carry is capped lower; contacts at or above this are not sampled.
+INTERFERENCE_TOOL_Z = 1.70
+MIN_LIFT = 0.06
+
+BRANCH_NONE = 0
+BRANCH_VERTICAL = 1
+BRANCH_INTERNAL_LIFT = 2
+
+_AXIS_ALIGN_EPS = 1e-6
+
+
+def contact_below_interference(contact_z, interference_z=INTERFERENCE_TOOL_Z):
+    """False when a tool-down contact is already in the measured elbow/lid band."""
+    return float(contact_z) < float(interference_z)
+
+
+def adaptive_lift_clearance(contact_z, nominal=NOMINAL_LIFT_CLEARANCE,
+                            safe_tool_z=SAFE_TOOL_Z, min_lift=MIN_LIFT):
+    """Vertical lift that keeps the tool at or below ``safe_tool_z``.
+
+    Returns ``None`` when the headroom above ``contact_z`` is below
+    ``min_lift``: a same-column carry would either be shorter than a real
+    lift or would enter the elbow/lid band. Heights are in one frame;
+    callers convert ``safe_tool_z`` before calling.
+    """
+    headroom = float(safe_tool_z) - float(contact_z)
+    if headroom < float(min_lift):
+        return None
+    return min(float(nominal), headroom)
+
+
+def container_tool_z_in_frame(safe_tool_z, origin_z, rotation_rpy):
+    """Map a container_link tool-z cap into the retreat frame.
+
+    ``origin_z`` and ``rotation_rpy`` describe container_link in that frame.
+    Roll and pitch must be zero so container z and the retreat z axis match.
+    A pitched container is refused instead of treating ``safe_tool_z`` as
+    already expressed in the retreat frame.
+    """
+    roll = float(rotation_rpy[0])
+    pitch = float(rotation_rpy[1])
+    if abs(roll) > _AXIS_ALIGN_EPS or abs(pitch) > _AXIS_ALIGN_EPS:
+        raise ValueError(
+            "container z is not aligned with the retreat frame (rpy=%s)"
+            % (tuple(float(v) for v in rotation_rpy),))
+    return float(origin_z) + float(safe_tool_z)
+
+
+def retreat_height(contact_z, corridor_clearance, safe_tool_z):
+    """Capped retreat tool z and how much of the requested lift was cut.
+
+    The retreat never descends below ``contact_z``. A contact already above
+    the cap stays put; the whole requested lift is then the truncation.
+    """
+    contact_z = float(contact_z)
+    requested = contact_z + float(corridor_clearance)
+    capped = min(requested, float(safe_tool_z))
+    capped = max(capped, contact_z)
+    return capped, max(0.0, requested - capped)
+
 
 def grid_neighbors(cell, shape):
     """Return deterministic 6-connected spatial neighbors."""

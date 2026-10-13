@@ -5,17 +5,20 @@ Unit-AABB sources live in ``luggage_gazebo/models/suitcase_loafbrr`` and
 two: Fortress ogre2 caches GPU meshes by URI, so sharing one STL with SDF
 ``<scale>`` makes later boxes render at the first scale.
 
-Pickup mesh assets are six pre-scaled models (each visual x small/medium/large)
-with visual and collision using the same STL at scale 1 1 1. Spawn only
-``gz create``s the matching ``model://``. Box visual stays a primitive box of
-the catalog size (production default).
+Pickup mesh assets are six pre-scaled models (each visual x small/medium/large).
+Collision is the scaled STL. Visual is a copy of the family DAE with the
+same vertex scale, ``Z_UP``, and a diffuse texture pointing at the copied
+``suitcase.png``. Spawn references those per-model URIs at scale 1 1 1.
 """
 
 from __future__ import division
 
 import json
+from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
 import math
 import os
+import re
+import shutil
 import struct
 
 # Gazebo model:// names (folders under luggage_gazebo/models).
@@ -34,9 +37,17 @@ DEFAULT_MODEL_VISUAL = {
 }
 
 # Gazebo Fortress ogre2 crashes on runtime OBJ import (GUI + camera render
-# threads both CreateMesh → HardwareBuffer already locked). STL matches the
-# container assets and loads safely. Color is SDF material, not a texture.
+# threads both CreateMesh → HardwareBuffer already locked). Collision stays
+# the STL. Visual is the COLLADA mesh; the sized copy embeds the PNG so
+# SDF material does not have to repaint it.
 MESH_FILE = "meshes/suitcase.stl"
+VISUAL_MESH_FILE = "meshes/suitcase.dae"
+TEXTURE_ASSET_FILES = (
+    "suitcase.dae",
+    "suitcase.png",
+    "material.mtl",
+    "suitcase.obj",
+)
 # Legacy path for tests that still exercise write_scaled_stl.
 SCALED_MESH_DIR = "/tmp/luggage_gz_scaled_meshes"
 
@@ -77,7 +88,14 @@ def sized_model_name(visual_id, tier):
 
 
 def sized_mesh_uri(visual_id, tier):
+    """Collision mesh. Physics and the observable-reference STL stay here."""
     return "model://%s/%s" % (sized_model_name(visual_id, tier), MESH_FILE)
+
+
+def sized_visual_mesh_uri(visual_id, tier):
+    """Textured visual mesh. Unique per sized model so ogre2 does not alias it."""
+    return "model://%s/%s" % (
+        sized_model_name(visual_id, tier), VISUAL_MESH_FILE)
 
 
 def size_tier_name(size, atol=1e-3):
@@ -388,7 +406,9 @@ def _mesh_geometry_xml(uri, scale):
 
 
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
-                      models_root=None, scaled_dir=SCALED_MESH_DIR):
+                      models_root=None, scaled_dir=SCALED_MESH_DIR,
+                      static=True, contact_topic=None,
+                      collide_bitmask=None):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -396,6 +416,10 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     break). The untextured primitive-box visual was removed: YOLO-World
     cannot reliably detect a textureless box, and the semantic chain is
     the accepted perception path.
+
+    Pickup carry stays ``static=True`` so kinematic ``set_pose`` follow
+    does not fight the solver. Place detach respawns the same mesh with
+    ``static=False`` so the body can fall onto the container support.
     """
     del models_root, scaled_dir
     kind = str(visual_kind or "mesh").strip().lower()
@@ -411,22 +435,29 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
             "(small/medium/large), got %s" % (list(size),))
     return suitcase_sdf(
         model_name, size, mass_kg, visual_id,
-        mesh_uri_override=sized_mesh_uri(visual_id, tier),
+        mesh_uri_override=sized_visual_mesh_uri(visual_id, tier),
+        collision_uri_override=sized_mesh_uri(visual_id, tier),
         mesh_already_scaled=True,
         visual_kind="mesh",
-        static=True,
+        static=bool(static),
+        use_mesh_material=True,
+        contact_topic=contact_topic,
+        collide_bitmask=collide_bitmask,
     )
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
-                 static=False):
-    """SDF: visual and collision share one geometry at the link origin.
+                 static=False, collision_uri_override=None,
+                 use_mesh_material=False, contact_topic=None,
+                 collide_bitmask=None):
+    """SDF at the link origin.
 
-    Mesh only: visual and collision use the suitcase STL (same URI and
-    scale). *mesh_already_scaled* sets mesh ``<scale>`` to 1 1 1. The
-    primitive-box branch was removed (untextured boxes are undetectable
-    by the open-vocabulary perception chain).
+    Default mesh mode shares one STL URI for visual and collision.
+    A sized pickup passes the textured DAE as *mesh_uri_override* and the
+    STL as *collision_uri_override*. *use_mesh_material* omits the SDF
+    ``<material>`` block so Gazebo keeps the COLLADA texture. An SDF
+    diffuse color replaces that texture.
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -439,13 +470,23 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
             "visual_kind must be 'mesh' (primitive-box visuals were "
             "removed), got %r" % (visual_kind,))
     uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
+    collision_uri = collision_uri_override if collision_uri_override else uri
     mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
         length, width, height)
     geometry = _mesh_geometry_xml(uri, mesh_scale)
+    collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
     comment_kind = visual_id
-    collision_geom = geometry
     static_xml = "    <static>true</static>\n" if static else ""
-    return """<?xml version="1.0"?>
+    if use_mesh_material:
+        material_xml = ""
+    else:
+        material_xml = (
+            "        <material>\n"
+            "          <ambient>%s</ambient>\n"
+            "          <diffuse>%s</diffuse>\n"
+            "        </material>\n" % (ambient, diffuse)
+        )
+    xml = """<?xml version="1.0"?>
 <sdf version="1.6">
   <!-- Suitcase %s visual+collision %.3f x %.3f x %.3f m, %.2f kg -->
   <model name="%s">
@@ -462,16 +503,13 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         <geometry>
 %s
         </geometry>
-        <material>
-          <ambient>%s</ambient>
-          <diffuse>%s</diffuse>
-        </material>
-      </visual>
+%s      </visual>
       <collision name="body_collision">
         <geometry>
 %s
         </geometry>
         <surface>
+          <contact><collide_bitmask>%d</collide_bitmask></contact>
           <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
         </surface>
       </collision>
@@ -483,9 +521,28 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         mass, ixx, iyy, izz,
         model_name,
         geometry,
-        ambient, diffuse,
+        material_xml,
         collision_geom,
+        BOX_FULL_MASK if collide_bitmask is None else int(collide_bitmask),
     )
+    topic = str(contact_topic or "").strip()
+    if topic:
+        # Observation sensor on the existing collision. It does not add a
+        # collision and does not change friction. gz Contact publishes only
+        # when this collision has contacts, so an empty log is not itself
+        # proof that nothing touched.
+        sensor = (
+            "      <sensor name=\"box_contact\" type=\"contact\">\n"
+            "        <always_on>1</always_on>\n"
+            "        <update_rate>50</update_rate>\n"
+            "        <contact>\n"
+            "          <collision>body_collision</collision>\n"
+            "          <topic>%s</topic>\n"
+            "        </contact>\n"
+            "      </sensor>\n" % topic)
+        xml = xml.replace(
+            "    </link>\n  </model>", sensor + "    </link>\n  </model>", 1)
+    return xml
 
 
 def _model_config_xml(name, description):
@@ -502,10 +559,129 @@ def _model_config_xml(name, description):
 """ % (name, description)
 
 
+def _source_mesh_dir(visual_id, models_root):
+    visual_id = visual_id if visual_id in VISUAL_IDS else VISUAL_LOAFBRR
+    return os.path.join(models_root, visual_id, "meshes")
+
+
+def _scale_dae_vertices(text, scale):
+    """Multiply the unit-cube vertex array by the catalog size.
+
+    The family DAE is the same centered 1x1x1 frame as the STL. Scaling
+    the copy keeps visual scale 1 1 1, matching the pre-scaled collision
+    STL, so two sizes never share one GPU mesh URI.
+    """
+    match = re.search(
+        r'(<float_array\b[^>]*\bid="verts-array-array"[^>]*>)([^<]*)(</float_array>)',
+        text)
+    if match is None:
+        raise ValueError("DAE has no verts-array-array")
+    sx, sy, sz = (float(scale[0]), float(scale[1]), float(scale[2]))
+    nums = match.group(2).split()
+    if len(nums) % 3 != 0:
+        raise ValueError("DAE vertex array length is not a multiple of 3")
+    scaled = []
+    for index in range(0, len(nums), 3):
+        scaled.append("%.7g" % (float(nums[index]) * sx))
+        scaled.append("%.7g" % (float(nums[index + 1]) * sy))
+        scaled.append("%.7g" % (float(nums[index + 2]) * sz))
+    return text[:match.start(2)] + " ".join(scaled) + text[match.end(2):]
+
+
+def _patch_textured_dae(text, scale):
+    """Bind suitcase.png and mark the already Z-up vertices as Z_UP.
+
+    The exported DAE carries UVs but a black diffuse color and a Y_UP
+    tag. Gazebo would rotate that tag and paint over the texture if an
+    SDF material were also set. This patch is applied only to the sized
+    copy.
+    """
+    if "<up_axis>Y_UP</up_axis>" not in text and "<up_axis>Z_UP</up_axis>" not in text:
+        raise ValueError("DAE has no up_axis")
+    text = text.replace("<up_axis>Y_UP</up_axis>", "<up_axis>Z_UP</up_axis>", 1)
+    text = _scale_dae_vertices(text, scale)
+    if 'semantic="TEXCOORD"' not in text:
+        raise ValueError("DAE has no TEXCOORD input")
+    text = text.replace(
+        'semantic="TEXCOORD" source="#texcoords-array"',
+        'semantic="TEXCOORD" source="#texcoords-array" set="0"',
+        1)
+    diffuse = re.search(
+        r"<diffuse>\s*<color>[^<]*</color>\s*</diffuse>", text)
+    if diffuse is None:
+        raise ValueError("DAE has no diffuse color to replace")
+    text = (
+        text[:diffuse.start()]
+        + '<diffuse><texture texture="suitcase_png-sampler" texcoord="0"/></diffuse>'
+        + text[diffuse.end():]
+    )
+    ambient = re.search(r"<ambient>\s*<color>[^<]*</color>\s*</ambient>", text)
+    if ambient is None:
+        raise ValueError("DAE has no ambient color")
+    text = (
+        text[:ambient.start()]
+        + "<ambient><color>1.0 1.0 1.0 1.0</color></ambient>"
+        + text[ambient.end():]
+    )
+    transparency = re.search(
+        r"<transparency>\s*<float>[^<]*</float>\s*</transparency>", text)
+    if transparency is None:
+        raise ValueError("DAE has no transparency")
+    text = (
+        text[:transparency.start()]
+        + "<transparency><float>0.0</float></transparency>"
+        + text[transparency.end():]
+    )
+    sampler = (
+        "<newparam sid=\"suitcase_png-surface\">"
+        "<surface type=\"2D\"><init_from>suitcase_png</init_from></surface>"
+        "</newparam>"
+        "<newparam sid=\"suitcase_png-sampler\">"
+        "<sampler2D><source>suitcase_png-surface</source></sampler2D>"
+        "</newparam>"
+    )
+    if "<profile_COMMON>" not in text:
+        raise ValueError("DAE has no profile_COMMON")
+    text = text.replace("<profile_COMMON>", "<profile_COMMON>" + sampler, 1)
+    images = (
+        "<library_images><image id=\"suitcase_png\" name=\"suitcase_png\">"
+        "<init_from>suitcase.png</init_from></image></library_images>"
+    )
+    if "<library_effects>" not in text:
+        raise ValueError("DAE has no library_effects")
+    text = text.replace("<library_effects>", images + "<library_effects>", 1)
+    if "suitcase.png" not in text:
+        raise ValueError("textured DAE did not reference suitcase.png")
+    return text
+
+
+def _copy_texture_assets(visual_id, model_dir, models_root, scale):
+    """Copy dae/png/mtl/obj and write the scaled textured DAE."""
+    source_dir = _source_mesh_dir(visual_id, models_root)
+    dest_dir = os.path.join(model_dir, "meshes")
+    os.makedirs(dest_dir, exist_ok=True)
+    for name in TEXTURE_ASSET_FILES:
+        src = os.path.join(source_dir, name)
+        if not os.path.isfile(src):
+            raise IOError("missing texture asset: %s" % src)
+        if name == "suitcase.dae":
+            continue
+        shutil.copyfile(src, os.path.join(dest_dir, name))
+    dae_src = os.path.join(source_dir, "suitcase.dae")
+    with open(dae_src, "r", encoding="utf-8") as handle:
+        patched = _patch_textured_dae(handle.read(), scale)
+    dest_dae = os.path.join(dest_dir, "suitcase.dae")
+    with open(dest_dae, "w", encoding="utf-8") as handle:
+        handle.write(patched)
+    return dest_dae
+
+
 def write_sized_suitcase_models(models_root):
     """Write the six pre-scaled pickup models and a measure_size manifest.
 
-    Spawn must not call this. Run from the generator script when assets change.
+    Collision size is the scaled STL. Visual is the textured DAE at the
+    same size. Catalog size, mass, and measure_size are unchanged.
+    Spawn must not call this.
     """
     records = {}
     for visual_id in VISUAL_IDS:
@@ -516,22 +692,26 @@ def write_sized_suitcase_models(models_root):
             name = sized_model_name(visual_id, tier)
             dest_stl = sized_stl_path(visual_id, tier, models_root)
             write_scaled_stl(src, dest_stl, size)
+            model_dir = os.path.join(models_root, name)
+            _copy_texture_assets(visual_id, model_dir, models_root, size)
             measure = mesh_top_footprint(dest_stl)
             sdf = suitcase_sdf(
                 name, size, mass_kg, visual_id,
-                mesh_uri_override=sized_mesh_uri(visual_id, tier),
+                mesh_uri_override=sized_visual_mesh_uri(visual_id, tier),
+                collision_uri_override=sized_mesh_uri(visual_id, tier),
                 mesh_already_scaled=True,
                 visual_kind="mesh",
+                use_mesh_material=True,
             )
-            model_dir = os.path.join(models_root, name)
             os.makedirs(model_dir, exist_ok=True)
             with open(os.path.join(model_dir, "model.sdf"), "w") as handle:
                 handle.write(sdf)
             with open(os.path.join(model_dir, "model.config"), "w") as handle:
                 handle.write(_model_config_xml(
                     name,
-                    "Pre-scaled %s %s suitcase. Visual and collision share "
-                    "this STL (scale 1 1 1)." % (visual_id, tier),
+                    "Pre-scaled %s %s suitcase. Visual is textured "
+                    "suitcase.dae; collision is suitcase.stl "
+                    "(scale 1 1 1)." % (visual_id, tier),
                 ))
             records[name] = {
                 "visual_id": visual_id,
@@ -541,6 +721,8 @@ def write_sized_suitcase_models(models_root):
                 "measure_size": [float(v) for v in measure],
                 "mass_kg": float(mass_kg),
                 "uri": sized_mesh_uri(visual_id, tier),
+                "visual_uri": sized_visual_mesh_uri(visual_id, tier),
+                "collision_uri": sized_mesh_uri(visual_id, tier),
             }
     manifest_path = sized_suitcases_manifest_path(models_root)
     with open(manifest_path, "w") as handle:

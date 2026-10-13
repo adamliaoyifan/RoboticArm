@@ -3,6 +3,9 @@
 
 from __future__ import division
 
+import copy
+import itertools
+import math
 import os
 import tempfile
 import unittest
@@ -30,6 +33,30 @@ class TestPlaceGtDump(unittest.TestCase):
 
     def setUp(self):
         self.cfg = load_scene_tf_config(resolve_scene_tf_config_path())
+
+    def test_container_mapper_is_invariant_under_scene_pose_64_cases(self):
+        from luggage_gazebo.place_gt_dump import mapper_from_scene, mark_placed_on_mapper
+        cases = itertools.product((0, math.pi/2, math.pi, math.atan2(4,3)),
+                                  ((0,0,0), (1.5,-0.4,0.2)), (0.53,0.71), (0,0.3), (0,0.3))
+        for index, (yaw, origin, floor, support, box_yaw) in enumerate(cases):
+            with self.subTest(case=index):
+                config = copy.deepcopy(self.cfg)
+                scene = next(t for t in config["static_transforms"] if t["child"] == "container_link")
+                scene.update(translation=list(origin), rotation_rpy=[0,0,yaw])
+                config["container"]["inner"]["floor_z"] = floor
+                center = [0.2, -0.1, floor+support+0.125]
+                world = [origin[0]+math.cos(yaw)*center[0]-math.sin(yaw)*center[1],
+                         origin[1]+math.sin(yaw)*center[0]+math.cos(yaw)*center[1],
+                         origin[2]+center[2]]
+                mapper = mapper_from_scene(config, resolution=0.1)
+                mark_placed_on_mapper(mapper, config, xyz_world_to_base_link(config,world),
+                                      [0.55,0.40,0.25], yaw_world_to_base_link(config,yaw+box_yaw))
+                ledger = mapper.commit_ledger()[0]
+                for actual, expected in zip(ledger["center"], center):
+                    self.assertAlmostEqual(actual, expected, delta=1e-9)
+                self.assertAlmostEqual(math.sin(ledger["yaw"]-box_yaw), 0, delta=1e-9)
+                self.assertGreater(mapper.stats()["occupied_count"], 0)
+        self.assertEqual(index+1, 64)
 
     def test_occupancy_marks_center_box(self):
         world = [1.5, 0.0, 0.655]

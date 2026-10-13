@@ -3,6 +3,8 @@ string name
 string type
 geometry_msgs/Pose target_pose
 geometry_msgs/Pose[] waypoints
+# Joint-space knots for type "joint_path". Empty for cartesian and pose_target.
+trajectory_msgs/JointTrajectoryPoint[] joint_waypoints
 # Enforce tool-Z-axis-down OrientationConstraint during planning (heavy payload transit).
 bool keep_tool_down
 # Enforce camera optical +Z toward world -Z (keep camera looking straight down).

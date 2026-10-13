@@ -1,0 +1,661 @@
+route chain goal=[0.84, -2.677] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-6689dbb1']
+[1/307] carryon|nominal|pick_tooldown|occ0|h0|door feasible
+route chain goal=[-5.443, -2.677] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-b52f86', 'carrying-slot_approach', 'carrying-slot_upper-44', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-a2d0397b', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-b52f86', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-dd8d460f', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-b52f86', 'carrying-slot_approach', 'carrying-slot_upper-44', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-a2d0397b', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-b52f86', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-dd8d460f', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-b52f86', 'carrying-slot_approach', 'carrying-slot_upper-44', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-a2d0397b', 'unloaded-home-0982411b']
+[2/307] carryon|nominal|pick_yaw1|occ0|h0|door feasible
+route chain goal=[0.84, -2.677] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1acb58', 'carrying-slot_approach', 'carrying-slot_upper-1a', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-3ac4a7fa', 'unloaded-home-21be740d']
+[3/307] carryon|nominal|pick_far|occ0|h0|door feasible
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-04878b34', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-04878b34', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-6689dbb1']
+[4/307] carryon|offset_tol|pick_tooldown|occ0|h0|door feasible
+route chain goal=[0.818, -2.669] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-0db224', 'carrying-slot_approach', 'carrying-slot_upper-49', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-d1f5a748', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-0db224', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-d1f5a748', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-0db224', 'carrying-slot_approach', 'carrying-slot_upper-49', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-d1f5a748', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-0db224', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-d1f5a748', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-0db224', 'carrying-slot_approach', 'carrying-slot_upper-49', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-d1f5a748', 'unloaded-home-0982411b']
+[5/307] carryon|offset_tol|pick_yaw1|occ0|h0|door feasible
+route chain goal=[0.818, -2.669] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-04878b34', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-04878b34', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-4dc006', 'carrying-slot_approach', 'carrying-slot_upper-a7', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-7fb1fb5f', 'unloaded-home-21be740d']
+[6/307] carryon|offset_tol|pick_far|occ0|h0|door feasible
+[7/307] carryon|nominal|pick_tooldown|occ0|h0|deep undetermined
+[8/307] carryon|nominal|pick_yaw1|occ0|h0|deep undetermined
+[9/307] carryon|nominal|pick_far|occ0|h0|deep undetermined
+[10/307] carryon|offset_tol|pick_tooldown|occ0|h0|deep undetermined
+[11/307] carryon|offset_tol|pick_yaw1|occ0|h0|deep undetermined
+[12/307] carryon|offset_tol|pick_far|occ0|h0|deep undetermined
+route chain goal=[1.336, -2.456] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1624ff', 'carrying-slot_approach', 'carrying-slot_upper-5f', 'carrying-slot-27d691db'] twin=[4.163, -0.939] retreat=['unloaded-slot-27d691db', 'unloaded-exit-f84b685e', 'unloaded-home-6689dbb1']
+[13/307] carryon|nominal|pick_tooldown|occ0|h0|wall_y feasible
+route chain goal=[-2.12, -0.685] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-f412d4', 'carrying-slot_approach', 'carrying-slot_upper-2e', 'carrying-slot-420f27f3'] twin=[4.163, -0.939] retreat=['unloaded-slot-420f27f3', 'unloaded-exit-0dc7a200', 'unloaded-home-0982411b']
+[14/307] carryon|nominal|pick_yaw1|occ0|h0|wall_y feasible
+route chain goal=[4.163, -0.939] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1624ff', 'carrying-slot_approach', 'carrying-slot_upper-5f', 'carrying-slot-27d691db'] twin=[4.163, -0.939] retreat=['unloaded-slot-27d691db', 'unloaded-exit-f84b685e', 'unloaded-home-21be740d']
+[15/307] carryon|nominal|pick_far|occ0|h0|wall_y feasible
+route chain goal=[1.312, -2.435] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-4f6907', 'carrying-slot_approach', 'carrying-slot_upper-fb', 'carrying-slot-c9330da6'] twin=[4.133, -0.955] retreat=['unloaded-slot-c9330da6', 'unloaded-exit-907a0df4', 'unloaded-home-6689dbb1']
+[16/307] carryon|offset_tol|pick_tooldown|occ0|h0|wall_y feasible
+route chain goal=[4.133, -0.706] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+route chain goal=[4.133, -0.955] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-7489e6', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-7617d84e'] twin=[4.133, -0.955] retreat=['unloaded-slot-7617d84e', 'unloaded-exit-366cfeac', 'unloaded-home-0982411b']
+[17/307] carryon|offset_tol|pick_yaw1|occ0|h0|wall_y feasible
+route chain goal=[-2.15, -0.706] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-496a1b', 'carrying-slot_approach', 'carrying-slot_upper-36', 'carrying-slot-da5cfa32'] twin=[4.133, -0.955] retreat=['unloaded-slot-da5cfa32', 'unloaded-exit-4a87d11b', 'unloaded-home-21be740d']
+[18/307] carryon|offset_tol|pick_far|occ0|h0|wall_y feasible
+route chain goal=[-2.527, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-d25ee8', 'carrying-slot_approach', 'carrying-slot_upper-cf', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-280dae1b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-d25ee8', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-280dae1b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-d25ee8', 'carrying-slot_approach', 'carrying-slot_upper-cf', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-280dae1b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-d25ee8', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-280dae1b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-d25ee8', 'carrying-slot_approach', 'carrying-slot_upper-cf', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-280dae1b', 'unloaded-home-6689dbb1']
+[19/307] carryon|nominal|pick_tooldown|occ0|hpi|door feasible
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-2c6c5c', 'carrying-slot_approach', 'carrying-slot_upper-80', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-1186cdc6', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-2c6c5c', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-1186cdc6', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-2c6c5c', 'carrying-slot_approach', 'carrying-slot_upper-80', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-1186cdc6', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-2c6c5c', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-1186cdc6', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-2c6c5c', 'carrying-slot_approach', 'carrying-slot_upper-80', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-1186cdc6', 'unloaded-home-0982411b']
+[20/307] carryon|nominal|pick_yaw1|occ0|hpi|door feasible
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-5236bf', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-20f3da99', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-5236bf', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-20f3da99', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-5236bf', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-20f3da99', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-5236bf', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-20f3da99', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-5236bf', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-20f3da99', 'unloaded-home-21be740d']
+[21/307] carryon|nominal|pick_far|occ0|hpi|door feasible
+route chain goal=[-2.504, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-2f26f3', 'carrying-slot_approach', 'carrying-slot_upper-c1', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-8f5ced65', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-2f26f3', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-8f5ced65', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-2f26f3', 'carrying-slot_approach', 'carrying-slot_upper-c1', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-8f5ced65', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-2f26f3', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-8f5ced65', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-2f26f3', 'carrying-slot_approach', 'carrying-slot_upper-c1', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-8f5ced65', 'unloaded-home-6689dbb1']
+[22/307] carryon|offset_tol|pick_tooldown|occ0|hpi|door feasible
+route chain goal=[-2.504, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-4c1dee', 'carrying-slot_approach', 'carrying-slot_upper-ad', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-aa62f994', 'unloaded-home-0982411b']
+[23/307] carryon|offset_tol|pick_yaw1|occ0|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-e95e04', 'carrying-slot_approach', 'carrying-slot_upper-4e', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-4e1d6276', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-e95e04', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-4e1d6276', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-e95e04', 'carrying-slot_approach', 'carrying-slot_upper-4e', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-4e1d6276', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-e95e04', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-4e1d6276', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-e95e04', 'carrying-slot_approach', 'carrying-slot_upper-4e', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-4e1d6276', 'unloaded-home-21be740d']
+[24/307] carryon|offset_tol|pick_far|occ0|hpi|door feasible
+[25/307] carryon|nominal|pick_tooldown|occ0|hpi|deep undetermined
+[26/307] carryon|nominal|pick_yaw1|occ0|hpi|deep undetermined
+[27/307] carryon|nominal|pick_far|occ0|hpi|deep undetermined
+[28/307] carryon|offset_tol|pick_tooldown|occ0|hpi|deep undetermined
+[29/307] carryon|offset_tol|pick_yaw1|occ0|hpi|deep undetermined
+[30/307] carryon|offset_tol|pick_far|occ0|hpi|deep undetermined
+route chain goal=[-4.945, -2.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-fe23b7', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-4f8b4c49'] twin=[4.165, -0.938] retreat=['unloaded-slot-4f8b4c49', 'unloaded-exit-d4f3799e', 'unloaded-home-6689dbb1']
+route chain goal=[4.165, -0.938] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-fe23b7', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-4f8b4c49'] twin=[4.165, -0.938] retreat=['unloaded-slot-4f8b4c49', 'unloaded-exit-d4f3799e', 'unloaded-home-6689dbb1']
+route chain goal=[4.165, -0.938] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-fe23b7', 'carrying-slot_approach', 'carrying-slot_upper-f1', 'carrying-slot-4f8b4c49'] twin=[4.165, -0.938] retreat=['unloaded-slot-4f8b4c49', 'unloaded-exit-d4f3799e', 'unloaded-home-6689dbb1']
+[31/307] carryon|nominal|pick_tooldown|occ0|hpi|wall_y feasible
+route chain goal=[4.165, -0.685] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8c8a41', 'carrying-slot_approach', 'carrying-slot_upper-67', 'carrying-slot-97e18fa7'] twin=[4.165, -0.938] retreat=['unloaded-slot-97e18fa7', 'unloaded-exit-01129170', 'unloaded-home-0982411b']
+route chain goal=[4.165, -0.938] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8c8a41', 'carrying-slot_approach', 'carrying-slot_upper-67', 'carrying-slot-97e18fa7'] twin=[4.165, -0.938] retreat=['unloaded-slot-97e18fa7', 'unloaded-exit-01129170', 'unloaded-home-0982411b']
+route chain goal=[4.165, -0.938] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8c8a41', 'carrying-slot_approach', 'carrying-slot_upper-67', 'carrying-slot-97e18fa7'] twin=[4.165, -0.938] retreat=['unloaded-slot-97e18fa7', 'unloaded-exit-01129170', 'unloaded-home-0982411b']
+[32/307] carryon|nominal|pick_yaw1|occ0|hpi|wall_y feasible
+route chain goal=[1.338, -2.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-55e526', 'carrying-slot_approach', 'carrying-slot_upper-e9', 'carrying-slot-7caa056d'] twin=[4.165, -0.938] retreat=['unloaded-slot-7caa056d', 'unloaded-exit-94e6b579', 'unloaded-home-21be740d']
+[33/307] carryon|nominal|pick_far|occ0|hpi|wall_y feasible
+route chain goal=[-4.922, -2.479] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-f9d823', 'carrying-slot_approach', 'carrying-slot_upper-c5', 'carrying-slot-26d439f1'] twin=[4.193, -0.921] retreat=['unloaded-slot-26d439f1', 'unloaded-exit-f636dacb', 'unloaded-home-6689dbb1']
+route chain goal=[4.193, -0.921] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-f9d823', 'carrying-slot_approach', 'carrying-slot_upper-c5', 'carrying-slot-26d439f1'] twin=[4.193, -0.921] retreat=['unloaded-slot-26d439f1', 'unloaded-exit-f636dacb', 'unloaded-home-6689dbb1']
+route chain goal=[4.193, -0.921] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-f9d823', 'carrying-slot_approach', 'carrying-slot_upper-c5', 'carrying-slot-26d439f1'] twin=[4.193, -0.921] retreat=['unloaded-slot-26d439f1', 'unloaded-exit-f636dacb', 'unloaded-home-6689dbb1']
+[34/307] carryon|offset_tol|pick_tooldown|occ0|hpi|wall_y feasible
+route chain goal=[-4.922, -2.479] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8cb9a9', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-a4c9d19a'] twin=[4.193, -0.921] retreat=['unloaded-slot-a4c9d19a', 'unloaded-exit-fb49f153', 'unloaded-home-0982411b']
+route chain goal=[4.193, -0.921] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8cb9a9', 'carrying-slot_approach', 'carrying-slot_upper-7f', 'carrying-slot-a4c9d19a'] twin=[4.193, -0.921] retreat=['unloaded-slot-a4c9d19a', 'unloaded-exit-0b7dc43f', 'unloaded-home-0982411b']
+route chain goal=[4.193, -0.921] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8cb9a9', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-a4c9d19a'] twin=[4.193, -0.921] retreat=['unloaded-slot-a4c9d19a', 'unloaded-exit-fb49f153', 'unloaded-home-0982411b']
+route chain goal=[4.193, -0.921] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8cb9a9', 'carrying-slot_approach', 'carrying-slot_upper-7f', 'carrying-slot-a4c9d19a'] twin=[4.193, -0.921] retreat=['unloaded-slot-a4c9d19a', 'unloaded-exit-0b7dc43f', 'unloaded-home-0982411b']
+route chain goal=[4.193, -0.921] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-8cb9a9', 'carrying-slot_approach', 'carrying-slot_upper-eb', 'carrying-slot-a4c9d19a'] twin=[4.193, -0.921] retreat=['unloaded-slot-a4c9d19a', 'unloaded-exit-fb49f153', 'unloaded-home-0982411b']
+[35/307] carryon|offset_tol|pick_yaw1|occ0|hpi|wall_y feasible
+route chain goal=[-4.922, -2.479] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-789e13', 'carrying-slot_approach', 'carrying-slot_upper-c2', 'carrying-slot-a1109089'] twin=[4.193, -0.921] retreat=['unloaded-slot-a1109089', 'unloaded-exit-7d9ef3a8', 'unloaded-home-21be740d']
+[36/307] carryon|offset_tol|pick_far|occ0|hpi|wall_y feasible
+route chain goal=[-2.528, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-6689dbb1']
+[37/307] carryon|nominal|pick_tooldown|occ1|h0|door feasible
+route chain goal=[0.84, -2.677] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-580c2e', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-8c486935', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-580c2e', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-14da2121', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-580c2e', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-8c486935', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-580c2e', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-14da2121', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-580c2e', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-8c486935', 'unloaded-home-0982411b']
+[38/307] carryon|nominal|pick_yaw1|occ1|h0|door feasible
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-fd12dd', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-f12416d7', 'unloaded-home-21be740d']
+[39/307] carryon|nominal|pick_far|occ1|h0|door feasible
+route chain goal=[-5.466, -2.669] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-3a1cabf5', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-3a1cabf5', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-6689dbb1']
+[40/307] carryon|offset_tol|pick_tooldown|occ1|h0|door feasible
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-c98791', 'carrying-slot_approach', 'carrying-slot_upper-02', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-24bbb80a', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-c98791', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-24bbb80a', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-c98791', 'carrying-slot_approach', 'carrying-slot_upper-02', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-24bbb80a', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-c98791', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-24bbb80a', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-c98791', 'carrying-slot_approach', 'carrying-slot_upper-02', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-24bbb80a', 'unloaded-home-0982411b']
+[41/307] carryon|offset_tol|pick_yaw1|occ1|h0|door feasible
+route chain goal=[-5.466, -2.669] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-3a1cabf5', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-3a1cabf5', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-a4ecc4', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-bf88aa24', 'unloaded-home-21be740d']
+[42/307] carryon|offset_tol|pick_far|occ1|h0|door feasible
+[43/307] carryon|nominal|pick_tooldown|occ1|h0|deep undetermined
+[44/307] carryon|nominal|pick_yaw1|occ1|h0|deep undetermined
+[45/307] carryon|nominal|pick_far|occ1|h0|deep undetermined
+[46/307] carryon|offset_tol|pick_tooldown|occ1|h0|deep undetermined
+[47/307] carryon|offset_tol|pick_yaw1|occ1|h0|deep undetermined
+[48/307] carryon|offset_tol|pick_far|occ1|h0|deep undetermined
+[49/307] carryon|nominal|pick_tooldown|occ1|h0|wall_y undetermined
+[50/307] carryon|nominal|pick_yaw1|occ1|h0|wall_y undetermined
+[51/307] carryon|nominal|pick_far|occ1|h0|wall_y undetermined
+[52/307] carryon|offset_tol|pick_tooldown|occ1|h0|wall_y undetermined
+[53/307] carryon|offset_tol|pick_yaw1|occ1|h0|wall_y undetermined
+[54/307] carryon|offset_tol|pick_far|occ1|h0|wall_y undetermined
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-2e09f339', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-2e09f339', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-823fda', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-9fb5f414', 'unloaded-home-6689dbb1']
+[55/307] carryon|nominal|pick_tooldown|occ1|hpi|door feasible
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-cfa97fd7', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-cfa97fd7', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-641c8a', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-af6c2126', 'unloaded-home-0982411b']
+[56/307] carryon|nominal|pick_yaw1|occ1|hpi|door feasible
+route chain goal=[-2.527, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-29f505', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-a6b8e72c', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-29f505', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-29244001', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-29f505', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-ad723f9c', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-29f505', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-29244001', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-29f505', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-ad723f9c', 'unloaded-home-21be740d']
+[57/307] carryon|nominal|pick_far|occ1|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-2fac483c', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-2fac483c', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-199fbe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-3846155b', 'unloaded-home-6689dbb1']
+[58/307] carryon|offset_tol|pick_tooldown|occ1|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-94fd13d1', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-94fd13d1', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-5d12a5', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-26789b9a', 'unloaded-home-0982411b']
+[59/307] carryon|offset_tol|pick_yaw1|occ1|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-3634a9', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-5717df43', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-3634a9', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-09e697a0', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-3634a9', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-5717df43', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-3634a9', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-09e697a0', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-3634a9', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-5717df43', 'unloaded-home-21be740d']
+[60/307] carryon|offset_tol|pick_far|occ1|hpi|door feasible
+[61/307] carryon|nominal|pick_tooldown|occ1|hpi|deep undetermined
+[62/307] carryon|nominal|pick_yaw1|occ1|hpi|deep undetermined
+[63/307] carryon|nominal|pick_far|occ1|hpi|deep undetermined
+[64/307] carryon|offset_tol|pick_tooldown|occ1|hpi|deep undetermined
+[65/307] carryon|offset_tol|pick_yaw1|occ1|hpi|deep undetermined
+[66/307] carryon|offset_tol|pick_far|occ1|hpi|deep undetermined
+[67/307] carryon|nominal|pick_tooldown|occ1|hpi|wall_y undetermined
+[68/307] carryon|nominal|pick_yaw1|occ1|hpi|wall_y undetermined
+[69/307] carryon|nominal|pick_far|occ1|hpi|wall_y undetermined
+[70/307] carryon|offset_tol|pick_tooldown|occ1|hpi|wall_y undetermined
+[71/307] carryon|offset_tol|pick_yaw1|occ1|hpi|wall_y undetermined
+[72/307] carryon|offset_tol|pick_far|occ1|hpi|wall_y undetermined
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+route chain goal=[3.755, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-6689dbb1']
+[73/307] carryon|nominal|pick_tooldown|occ3|h0|door feasible
+route chain goal=[0.84, -2.677] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-21d62b', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-2dd82834', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-21d62b', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-4abd6fbc', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-21d62b', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-2dd82834', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-21d62b', 'carrying-slot_approach', 'carrying-slot_upper-c0', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-4abd6fbc', 'unloaded-home-0982411b']
+route chain goal=[3.755, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-21d62b', 'carrying-slot_approach', 'carrying-slot_upper-5d', 'carrying-slot-580f5c56'] twin=[3.755, -0.465] retreat=['unloaded-slot-580f5c56', 'unloaded-exit-2dd82834', 'unloaded-home-0982411b']
+[74/307] carryon|nominal|pick_yaw1|occ3|h0|door feasible
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-21be740d']
+route chain goal=[3.755, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-9365f7', 'carrying-slot_approach', 'carrying-slot_upper-63', 'carrying-slot-0ab9f521'] twin=[3.755, -0.465] retreat=['unloaded-slot-0ab9f521', 'unloaded-exit-2ee292b1', 'unloaded-home-21be740d']
+[75/307] carryon|nominal|pick_far|occ3|h0|door feasible
+route chain goal=[-2.551, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-6689dbb1']
+route chain goal=[3.732, -0.472] entry=['carrying-home-6689dbb1', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-6689dbb1']
+[76/307] carryon|offset_tol|pick_tooldown|occ3|h0|door feasible
+route chain goal=[-2.551, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-58b29b', 'carrying-slot_approach', 'carrying-slot_upper-64', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-8aaa9f51', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-58b29b', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-8aaa9f51', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-58b29b', 'carrying-slot_approach', 'carrying-slot_upper-02', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-8aaa9f51', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-58b29b', 'carrying-slot_approach', 'carrying-slot_upper-07', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-8aaa9f51', 'unloaded-home-0982411b']
+route chain goal=[3.732, -0.472] entry=['carrying-home-0982411b', 'carrying-staging-ca8e5', 'carrying-portal-58b29b', 'carrying-slot_approach', 'carrying-slot_upper-02', 'carrying-slot-1dba0206'] twin=[3.732, -0.472] retreat=['unloaded-slot-1dba0206', 'unloaded-exit-8aaa9f51', 'unloaded-home-0982411b']
+[77/307] carryon|offset_tol|pick_yaw1|occ3|h0|door feasible
+route chain goal=[0.818, -2.669] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-21be740d']
+route chain goal=[3.732, -0.472] entry=['carrying-home-21be740d', 'carrying-staging-29027', 'carrying-portal-1af889', 'carrying-slot_approach', 'carrying-slot_upper-be', 'carrying-slot-65cff327'] twin=[3.732, -0.472] retreat=['unloaded-slot-65cff327', 'unloaded-exit-457721d3', 'unloaded-home-21be740d']
+[78/307] carryon|offset_tol|pick_far|occ3|h0|door feasible
+[79/307] carryon|nominal|pick_tooldown|occ3|h0|deep undetermined
+[80/307] carryon|nominal|pick_yaw1|occ3|h0|deep undetermined
+[81/307] carryon|nominal|pick_far|occ3|h0|deep undetermined
+[82/307] carryon|offset_tol|pick_tooldown|occ3|h0|deep undetermined
+[83/307] carryon|offset_tol|pick_yaw1|occ3|h0|deep undetermined
+[84/307] carryon|offset_tol|pick_far|occ3|h0|deep undetermined
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-fc0abbcb', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-fc0abbcb', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+route chain goal=[3.757, -0.465] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-958be7', 'carrying-slot_approach', 'carrying-slot_upper-15', 'carrying-slot-0ef83a13'] twin=[3.757, -0.465] retreat=['unloaded-slot-0ef83a13', 'unloaded-exit-b7f1d18b', 'unloaded-home-6689dbb1']
+[85/307] carryon|nominal|pick_tooldown|occ3|hpi|door feasible
+route chain goal=[-2.527, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-0b5cbd1c', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-0b5cbd1c', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+route chain goal=[3.757, -0.465] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-f2b76e', 'carrying-slot_approach', 'carrying-slot_upper-03', 'carrying-slot-93c392dd'] twin=[3.757, -0.465] retreat=['unloaded-slot-93c392dd', 'unloaded-exit-2fa7197f', 'unloaded-home-0982411b']
+[86/307] carryon|nominal|pick_yaw1|occ3|hpi|door feasible
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+route chain goal=[3.757, -0.465] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-2dc37a', 'carrying-slot_approach', 'carrying-slot_upper-4a', 'carrying-slot-0921bbfa'] twin=[3.757, -0.465] retreat=['unloaded-slot-0921bbfa', 'unloaded-exit-7773547b', 'unloaded-home-21be740d']
+[87/307] carryon|nominal|pick_far|occ3|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-a1b630f5', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e8', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-a1b630f5', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+route chain goal=[3.779, -0.456] entry=['carrying-home-6689dbb1', 'carrying-staging-03322', 'carrying-portal-3c2e9c', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-c4aca34e'] twin=[3.779, -0.456] retreat=['unloaded-slot-c4aca34e', 'unloaded-exit-f46be233', 'unloaded-home-6689dbb1']
+[88/307] carryon|offset_tol|pick_tooldown|occ3|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-992665', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-75d6af63', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-992665', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-3fc3f327', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-992665', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-75d6af63', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-992665', 'carrying-slot_approach', 'carrying-slot_upper-82', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-3fc3f327', 'unloaded-home-0982411b']
+route chain goal=[3.779, -0.456] entry=['carrying-home-0982411b', 'carrying-staging-0db06', 'carrying-portal-992665', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-581a90bc'] twin=[3.779, -0.456] retreat=['unloaded-slot-581a90bc', 'unloaded-exit-75d6af63', 'unloaded-home-0982411b']
+[89/307] carryon|offset_tol|pick_yaw1|occ3|hpi|door feasible
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-92c8fe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-9015425a', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-92c8fe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-603904a1', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-92c8fe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-9015425a', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-92c8fe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-603904a1', 'unloaded-home-21be740d']
+route chain goal=[3.779, -0.456] entry=['carrying-home-21be740d', 'carrying-staging-6a6bc', 'carrying-portal-92c8fe', 'carrying-slot_approach', 'carrying-slot_upper-e4', 'carrying-slot-711115e3'] twin=[3.779, -0.456] retreat=['unloaded-slot-711115e3', 'unloaded-exit-9015425a', 'unloaded-home-21be740d']
+[90/307] carryon|offset_tol|pick_far|occ3|hpi|door feasible
+[91/307] carryon|nominal|pick_tooldown|occ3|hpi|deep undetermined
+[92/307] carryon|nominal|pick_yaw1|occ3|hpi|deep undetermined
+[93/307] carryon|nominal|pick_far|occ3|hpi|deep undetermined
+[94/307] carryon|offset_tol|pick_tooldown|occ3|hpi|deep undetermined
+[95/307] carryon|offset_tol|pick_yaw1|occ3|hpi|deep undetermined
+[96/307] carryon|offset_tol|pick_far|occ3|hpi|deep undetermined
+[97/307] standard|nominal|pick_tooldown|occ0|h0|door undetermined
+[98/307] standard|nominal|pick_yaw1|occ0|h0|door undetermined
+[99/307] standard|nominal|pick_far|occ0|h0|door undetermined
+[100/307] standard|offset_tol|pick_tooldown|occ0|h0|door undetermined
+[101/307] standard|offset_tol|pick_yaw1|occ0|h0|door undetermined
+[102/307] standard|offset_tol|pick_far|occ0|h0|door undetermined
+[103/307] standard|nominal|pick_tooldown|occ0|h0|deep undetermined
+[104/307] standard|nominal|pick_yaw1|occ0|h0|deep undetermined
+[105/307] standard|nominal|pick_far|occ0|h0|deep undetermined
+[106/307] standard|offset_tol|pick_tooldown|occ0|h0|deep undetermined
+[107/307] standard|offset_tol|pick_yaw1|occ0|h0|deep undetermined
+[108/307] standard|offset_tol|pick_far|occ0|h0|deep undetermined
+[109/307] standard|nominal|pick_tooldown|occ0|h0|wall_y undetermined
+[110/307] standard|nominal|pick_yaw1|occ0|h0|wall_y undetermined
+[111/307] standard|nominal|pick_far|occ0|h0|wall_y undetermined
+[112/307] standard|offset_tol|pick_tooldown|occ0|h0|wall_y undetermined
+[113/307] standard|offset_tol|pick_yaw1|occ0|h0|wall_y undetermined
+[114/307] standard|offset_tol|pick_far|occ0|h0|wall_y undetermined
+[115/307] standard|nominal|pick_tooldown|occ0|hpi|door undetermined
+[116/307] standard|nominal|pick_yaw1|occ0|hpi|door undetermined
+[117/307] standard|nominal|pick_far|occ0|hpi|door undetermined
+[118/307] standard|offset_tol|pick_tooldown|occ0|hpi|door undetermined
+[119/307] standard|offset_tol|pick_yaw1|occ0|hpi|door undetermined
+[120/307] standard|offset_tol|pick_far|occ0|hpi|door undetermined
+[121/307] standard|nominal|pick_tooldown|occ0|hpi|deep undetermined
+[122/307] standard|nominal|pick_yaw1|occ0|hpi|deep undetermined
+[123/307] standard|nominal|pick_far|occ0|hpi|deep undetermined
+[124/307] standard|offset_tol|pick_tooldown|occ0|hpi|deep undetermined
+[125/307] standard|offset_tol|pick_yaw1|occ0|hpi|deep undetermined
+[126/307] standard|offset_tol|pick_far|occ0|hpi|deep undetermined
+[127/307] standard|nominal|pick_tooldown|occ0|hpi|wall_y undetermined
+[128/307] standard|nominal|pick_yaw1|occ0|hpi|wall_y undetermined
+[129/307] standard|nominal|pick_far|occ0|hpi|wall_y undetermined
+[130/307] standard|offset_tol|pick_tooldown|occ0|hpi|wall_y undetermined
+[131/307] standard|offset_tol|pick_yaw1|occ0|hpi|wall_y undetermined
+[132/307] standard|offset_tol|pick_far|occ0|hpi|wall_y undetermined
+[133/307] standard|nominal|pick_tooldown|occ1|h0|door undetermined
+[134/307] standard|nominal|pick_yaw1|occ1|h0|door undetermined
+[135/307] standard|nominal|pick_far|occ1|h0|door undetermined
+[136/307] standard|offset_tol|pick_tooldown|occ1|h0|door undetermined
+[137/307] standard|offset_tol|pick_yaw1|occ1|h0|door undetermined
+[138/307] standard|offset_tol|pick_far|occ1|h0|door undetermined
+[139/307] standard|nominal|pick_tooldown|occ1|h0|deep undetermined
+[140/307] standard|nominal|pick_yaw1|occ1|h0|deep undetermined
+[141/307] standard|nominal|pick_far|occ1|h0|deep undetermined
+[142/307] standard|offset_tol|pick_tooldown|occ1|h0|deep undetermined
+[143/307] standard|offset_tol|pick_yaw1|occ1|h0|deep undetermined
+[144/307] standard|offset_tol|pick_far|occ1|h0|deep undetermined
+[145/307] standard|nominal|pick_tooldown|occ1|h0|wall_y undetermined
+[146/307] standard|nominal|pick_yaw1|occ1|h0|wall_y undetermined
+[147/307] standard|nominal|pick_far|occ1|h0|wall_y undetermined
+[148/307] standard|offset_tol|pick_tooldown|occ1|h0|wall_y undetermined
+[149/307] standard|offset_tol|pick_yaw1|occ1|h0|wall_y undetermined
+[150/307] standard|offset_tol|pick_far|occ1|h0|wall_y undetermined
+[151/307] standard|nominal|pick_tooldown|occ1|hpi|door undetermined
+[152/307] standard|nominal|pick_yaw1|occ1|hpi|door undetermined
+[153/307] standard|nominal|pick_far|occ1|hpi|door undetermined
+[154/307] standard|offset_tol|pick_tooldown|occ1|hpi|door undetermined
+[155/307] standard|offset_tol|pick_yaw1|occ1|hpi|door undetermined
+[156/307] standard|offset_tol|pick_far|occ1|hpi|door undetermined
+[157/307] standard|nominal|pick_tooldown|occ1|hpi|deep undetermined
+[158/307] standard|nominal|pick_yaw1|occ1|hpi|deep undetermined
+[159/307] standard|nominal|pick_far|occ1|hpi|deep undetermined
+[160/307] standard|offset_tol|pick_tooldown|occ1|hpi|deep undetermined
+[161/307] standard|offset_tol|pick_yaw1|occ1|hpi|deep undetermined
+[162/307] standard|offset_tol|pick_far|occ1|hpi|deep undetermined
+[163/307] standard|nominal|pick_tooldown|occ1|hpi|wall_y undetermined
+[164/307] standard|nominal|pick_yaw1|occ1|hpi|wall_y undetermined
+[165/307] standard|nominal|pick_far|occ1|hpi|wall_y undetermined
+[166/307] standard|offset_tol|pick_tooldown|occ1|hpi|wall_y undetermined
+[167/307] standard|offset_tol|pick_yaw1|occ1|hpi|wall_y undetermined
+[168/307] standard|offset_tol|pick_far|occ1|hpi|wall_y undetermined
+[169/307] standard|nominal|pick_tooldown|occ3|h0|door undetermined
+[170/307] standard|nominal|pick_yaw1|occ3|h0|door undetermined
+[171/307] standard|nominal|pick_far|occ3|h0|door undetermined
+[172/307] standard|offset_tol|pick_tooldown|occ3|h0|door undetermined
+[173/307] standard|offset_tol|pick_yaw1|occ3|h0|door undetermined
+[174/307] standard|offset_tol|pick_far|occ3|h0|door undetermined
+[175/307] standard|nominal|pick_tooldown|occ3|h0|deep undetermined
+[176/307] standard|nominal|pick_yaw1|occ3|h0|deep undetermined
+[177/307] standard|nominal|pick_far|occ3|h0|deep undetermined
+[178/307] standard|offset_tol|pick_tooldown|occ3|h0|deep undetermined
+[179/307] standard|offset_tol|pick_yaw1|occ3|h0|deep undetermined
+[180/307] standard|offset_tol|pick_far|occ3|h0|deep undetermined
+[181/307] standard|nominal|pick_tooldown|occ3|h0|wall_y undetermined
+[182/307] standard|nominal|pick_yaw1|occ3|h0|wall_y undetermined
+[183/307] standard|nominal|pick_far|occ3|h0|wall_y undetermined
+[184/307] standard|offset_tol|pick_tooldown|occ3|h0|wall_y undetermined
+[185/307] standard|offset_tol|pick_yaw1|occ3|h0|wall_y undetermined
+[186/307] standard|offset_tol|pick_far|occ3|h0|wall_y undetermined
+[187/307] standard|nominal|pick_tooldown|occ3|hpi|door undetermined
+[188/307] standard|nominal|pick_yaw1|occ3|hpi|door undetermined
+[189/307] standard|nominal|pick_far|occ3|hpi|door undetermined
+[190/307] standard|offset_tol|pick_tooldown|occ3|hpi|door undetermined
+[191/307] standard|offset_tol|pick_yaw1|occ3|hpi|door undetermined
+[192/307] standard|offset_tol|pick_far|occ3|hpi|door undetermined
+[193/307] standard|nominal|pick_tooldown|occ3|hpi|deep undetermined
+[194/307] standard|nominal|pick_yaw1|occ3|hpi|deep undetermined
+[195/307] standard|nominal|pick_far|occ3|hpi|deep undetermined
+[196/307] standard|offset_tol|pick_tooldown|occ3|hpi|deep undetermined
+[197/307] standard|offset_tol|pick_yaw1|occ3|hpi|deep undetermined
+[198/307] standard|offset_tol|pick_far|occ3|hpi|deep undetermined
+[199/307] standard|nominal|pick_tooldown|occ3|hpi|wall_y undetermined
+[200/307] standard|nominal|pick_yaw1|occ3|hpi|wall_y undetermined
+[201/307] standard|nominal|pick_far|occ3|hpi|wall_y undetermined
+[202/307] standard|offset_tol|pick_tooldown|occ3|hpi|wall_y undetermined
+[203/307] standard|offset_tol|pick_yaw1|occ3|hpi|wall_y undetermined
+[204/307] standard|offset_tol|pick_far|occ3|hpi|wall_y undetermined
+[205/307] large|nominal|pick_tooldown|occ0|h0|door undetermined
+[206/307] large|nominal|pick_yaw1|occ0|h0|door undetermined
+[207/307] large|nominal|pick_far|occ0|h0|door undetermined
+[208/307] large|offset_tol|pick_tooldown|occ0|h0|door undetermined
+[209/307] large|offset_tol|pick_yaw1|occ0|h0|door undetermined
+[210/307] large|offset_tol|pick_far|occ0|h0|door undetermined
+[211/307] large|nominal|pick_tooldown|occ0|h0|deep undetermined
+[212/307] large|nominal|pick_yaw1|occ0|h0|deep undetermined
+[213/307] large|nominal|pick_far|occ0|h0|deep undetermined
+[214/307] large|offset_tol|pick_tooldown|occ0|h0|deep undetermined
+[215/307] large|offset_tol|pick_yaw1|occ0|h0|deep undetermined
+[216/307] large|offset_tol|pick_far|occ0|h0|deep undetermined
+[217/307] large|nominal|pick_tooldown|occ0|h0|wall_y undetermined
+[218/307] large|nominal|pick_yaw1|occ0|h0|wall_y undetermined
+[219/307] large|nominal|pick_far|occ0|h0|wall_y undetermined
+[220/307] large|offset_tol|pick_tooldown|occ0|h0|wall_y undetermined
+[221/307] large|offset_tol|pick_yaw1|occ0|h0|wall_y undetermined
+[222/307] large|offset_tol|pick_far|occ0|h0|wall_y undetermined
+[223/307] large|nominal|pick_tooldown|occ0|hpi|door undetermined
+[224/307] large|nominal|pick_yaw1|occ0|hpi|door undetermined
+[225/307] large|nominal|pick_far|occ0|hpi|door undetermined
+[226/307] large|offset_tol|pick_tooldown|occ0|hpi|door undetermined
+[227/307] large|offset_tol|pick_yaw1|occ0|hpi|door undetermined
+[228/307] large|offset_tol|pick_far|occ0|hpi|door undetermined
+[229/307] large|nominal|pick_tooldown|occ0|hpi|deep undetermined
+[230/307] large|nominal|pick_yaw1|occ0|hpi|deep undetermined
+[231/307] large|nominal|pick_far|occ0|hpi|deep undetermined
+[232/307] large|offset_tol|pick_tooldown|occ0|hpi|deep undetermined
+[233/307] large|offset_tol|pick_yaw1|occ0|hpi|deep undetermined
+[234/307] large|offset_tol|pick_far|occ0|hpi|deep undetermined
+[235/307] large|nominal|pick_tooldown|occ0|hpi|wall_y undetermined
+[236/307] large|nominal|pick_yaw1|occ0|hpi|wall_y undetermined
+[237/307] large|nominal|pick_far|occ0|hpi|wall_y undetermined
+[238/307] large|offset_tol|pick_tooldown|occ0|hpi|wall_y undetermined
+[239/307] large|offset_tol|pick_yaw1|occ0|hpi|wall_y undetermined
+[240/307] large|offset_tol|pick_far|occ0|hpi|wall_y undetermined
+[241/307] large|nominal|pick_tooldown|occ1|h0|door undetermined
+[242/307] large|nominal|pick_yaw1|occ1|h0|door undetermined
+[243/307] large|nominal|pick_far|occ1|h0|door undetermined
+[244/307] large|offset_tol|pick_tooldown|occ1|h0|door undetermined
+[245/307] large|offset_tol|pick_yaw1|occ1|h0|door undetermined
+[246/307] large|offset_tol|pick_far|occ1|h0|door undetermined
+[247/307] large|nominal|pick_tooldown|occ1|h0|deep undetermined
+[248/307] large|nominal|pick_yaw1|occ1|h0|deep undetermined
+[249/307] large|nominal|pick_far|occ1|h0|deep undetermined
+[250/307] large|offset_tol|pick_tooldown|occ1|h0|deep undetermined
+[251/307] large|offset_tol|pick_yaw1|occ1|h0|deep undetermined
+[252/307] large|offset_tol|pick_far|occ1|h0|deep undetermined
+[253/307] large|nominal|pick_tooldown|occ1|h0|wall_y undetermined
+[254/307] large|nominal|pick_yaw1|occ1|h0|wall_y undetermined
+[255/307] large|nominal|pick_far|occ1|h0|wall_y undetermined
+[256/307] large|offset_tol|pick_tooldown|occ1|h0|wall_y undetermined
+[257/307] large|offset_tol|pick_yaw1|occ1|h0|wall_y undetermined
+[258/307] large|offset_tol|pick_far|occ1|h0|wall_y undetermined
+[259/307] large|nominal|pick_tooldown|occ1|hpi|door undetermined
+[260/307] large|nominal|pick_yaw1|occ1|hpi|door undetermined
+[261/307] large|nominal|pick_far|occ1|hpi|door undetermined
+[262/307] large|offset_tol|pick_tooldown|occ1|hpi|door undetermined
+[263/307] large|offset_tol|pick_yaw1|occ1|hpi|door undetermined
+[264/307] large|offset_tol|pick_far|occ1|hpi|door undetermined
+[265/307] large|nominal|pick_tooldown|occ1|hpi|deep undetermined
+[266/307] large|nominal|pick_yaw1|occ1|hpi|deep undetermined
+[267/307] large|nominal|pick_far|occ1|hpi|deep undetermined
+[268/307] large|offset_tol|pick_tooldown|occ1|hpi|deep undetermined
+[269/307] large|offset_tol|pick_yaw1|occ1|hpi|deep undetermined
+[270/307] large|offset_tol|pick_far|occ1|hpi|deep undetermined
+[271/307] large|nominal|pick_tooldown|occ1|hpi|wall_y undetermined
+[272/307] large|nominal|pick_yaw1|occ1|hpi|wall_y undetermined
+[273/307] large|nominal|pick_far|occ1|hpi|wall_y undetermined
+[274/307] large|offset_tol|pick_tooldown|occ1|hpi|wall_y undetermined
+[275/307] large|offset_tol|pick_yaw1|occ1|hpi|wall_y undetermined
+[276/307] large|offset_tol|pick_far|occ1|hpi|wall_y undetermined
+[277/307] large|nominal|pick_tooldown|occ3|h0|door undetermined
+[278/307] large|nominal|pick_yaw1|occ3|h0|door undetermined
+[279/307] large|nominal|pick_far|occ3|h0|door undetermined
+[280/307] large|offset_tol|pick_tooldown|occ3|h0|door undetermined
+[281/307] large|offset_tol|pick_yaw1|occ3|h0|door undetermined
+[282/307] large|offset_tol|pick_far|occ3|h0|door undetermined
+[283/307] large|nominal|pick_tooldown|occ3|h0|wall_y undetermined
+[284/307] large|nominal|pick_yaw1|occ3|h0|wall_y undetermined
+[285/307] large|nominal|pick_far|occ3|h0|wall_y undetermined
+[286/307] large|offset_tol|pick_tooldown|occ3|h0|wall_y undetermined
+[287/307] large|offset_tol|pick_yaw1|occ3|h0|wall_y undetermined
+[288/307] large|offset_tol|pick_far|occ3|h0|wall_y undetermined
+[289/307] large|nominal|pick_tooldown|occ3|hpi|door undetermined
+[290/307] large|nominal|pick_yaw1|occ3|hpi|door undetermined
+[291/307] large|nominal|pick_far|occ3|hpi|door undetermined
+[292/307] large|offset_tol|pick_tooldown|occ3|hpi|door undetermined
+[293/307] large|offset_tol|pick_yaw1|occ3|hpi|door undetermined
+[294/307] large|offset_tol|pick_far|occ3|hpi|door undetermined
+[295/307] large|nominal|pick_tooldown|occ3|hpi|wall_y undetermined
+[296/307] large|nominal|pick_yaw1|occ3|hpi|wall_y undetermined
+[297/307] large|nominal|pick_far|occ3|hpi|wall_y undetermined
+[298/307] large|offset_tol|pick_tooldown|occ3|hpi|wall_y undetermined
+[299/307] large|offset_tol|pick_yaw1|occ3|hpi|wall_y undetermined
+[300/307] large|offset_tol|pick_far|occ3|hpi|wall_y undetermined
+[301/307] standard|nominal|pick_tooldown|occ1|h0|overlap_placed invalid
+[302/307] standard|nominal|pick_tooldown|occ1|hpi|overlap_placed invalid
+[303/307] standard|nominal|pick_tooldown|occ0|h0|below_floor invalid
+[304/307] standard|nominal|pick_tooldown|occ0|hpi|below_floor invalid
+[305/307] standard|nominal|pick_tooldown|occ0|h0|through_y_wall invalid
+[306/307] standard|nominal|pick_tooldown|occ0|hpi|through_y_wall invalid
+[307/307] standard|nominal|pick_tooldown|occ1|run02|slot64_run02 regression
+{
+ "summary": {
+  "baseline/atlas_on": {
+   "held_out_feasible_runs": 16,
+   "success": 10,
+   "success_rate": 0.625,
+   "wilson95_lower": 0.38640647097934805,
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.1835,
+   "wall_p95_s": 0.2498,
+   "edges_p50": 7.0,
+   "edges_p95": 9.0,
+   "invalid_runs": 6,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "baseline/atlas_off": {
+   "held_out_feasible_runs": 16,
+   "success": 10,
+   "success_rate": 0.625,
+   "wilson95_lower": 0.38640647097934805,
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.18395,
+   "wall_p95_s": 0.247025,
+   "edges_p50": 7.0,
+   "edges_p95": 9.0,
+   "invalid_runs": 6,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "state/atlas_on": {
+   "held_out_feasible_runs": 48,
+   "success": 42,
+   "success_rate": 0.875,
+   "wilson95_lower": 0.7529927291394518,
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.2151,
+   "wall_p95_s": 0.3249749999999999,
+   "edges_p50": 7.0,
+   "edges_p95": 9.649999999999999,
+   "invalid_runs": 8,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "SEARCH_INCOMPLETE",
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  },
+  "state/atlas_off": {
+   "held_out_feasible_runs": 48,
+   "success": 42,
+   "success_rate": 0.875,
+   "wilson95_lower": 0.7529927291394518,
+   "over_budget_runs": 0,
+   "wall_p50_s": 0.21545,
+   "wall_p95_s": 0.3240799999999999,
+   "edges_p50": 7.0,
+   "edges_p95": 9.649999999999999,
+   "invalid_runs": 8,
+   "invalid_false_success": 0,
+   "invalid_outcomes": [
+    "SEARCH_INCOMPLETE",
+    "UNREACHABLE"
+   ],
+   "constrained_max_step_rad": 0.03458,
+   "constrained_branch_flips": 0,
+   "proxy_collisions": 0,
+   "failure_outcomes": {
+    "UNREACHABLE": 6
+   }
+  }
+ },
+ "gate": {
+  "checks": {
+   "feasible_rate_atlas_on": false,
+   "invalid_no_false_success_atlas_on": true,
+   "continuity_atlas_on": true,
+   "p95_within_budget_atlas_on": true,
+   "feasible_rate_atlas_off": false,
+   "invalid_no_false_success_atlas_off": true,
+   "continuity_atlas_off": true,
+   "p95_within_budget_atlas_off": true,
+   "slot64_first_descend_fraction": true
+  },
+  "pass": false
+ }
+}

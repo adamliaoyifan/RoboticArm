@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
 """ROS-free tests for cargo-view integrate selection and occupancy scoring."""
 
+import math
 import time
 import unittest
 
 from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
 from luggage_perception.cargo_view_integration import (
+    MAP_MEASURED,
+    MAP_RELEASE_INTEGRATED,
+    measured_identity,
+    release_identity,
     DEFAULT_FRESHNESS_WINDOW_SEC,
     REASON_GEOMETRY_HASH_MISMATCH,
     REASON_NOT_SETTLED,
@@ -16,7 +21,11 @@ from luggage_perception.cargo_view_integration import (
     REASON_VIEW_EMPTY,
     apply_integrate,
     floor_through_count,
+    box_point_mask,
     footprint_sensor_coverage,
+    footprint_sensor_height,
+    occupancy_height_matches,
+    optical_axis_angle_rad,
     occupied_sensor_aabb,
     prepare_points,
     select_fresh_record,
@@ -199,6 +208,90 @@ class TestPrepareAndIntegrate(unittest.TestCase):
         self.assertTrue(summary["synthetic_plan_only"])
 
 
+class TestOccupancyHeight(unittest.TestCase):
+
+    def _surface(self, height_rows, confidence="sensor"):
+        return {
+            "resolution": 0.05,
+            "nx": 1,
+            "ny": 2,
+            "origin_local": [0.0, 0.0],
+            "state": [["occupied", "occupied"]],
+            "confidence": [[confidence, confidence]],
+            "height": [[0.0, 0.0]],
+            "height_above_floor": height_rows,
+        }
+
+    def test_median_within_one_voxel_matches_box_height(self):
+        surface = self._surface([[0.25, 0.30]])
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertAlmostEqual(height, 0.275)
+        self.assertTrue(occupancy_height_matches(height, 0.25, 0.05))
+
+    def test_hover_above_one_voxel_does_not_match(self):
+        surface = self._surface([[0.35, 0.35]])
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertFalse(occupancy_height_matches(height, 0.25, 0.05))
+
+    def test_v2_height_above_floor_beats_v1_height(self):
+        surface = self._surface([[0.25, 0.25]])
+        surface["height"] = [[0.90, 0.90]]
+        height = footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2))
+        self.assertAlmostEqual(height, 0.25)
+
+    def test_optical_axis_straight_ahead_is_zero(self):
+        import math
+        angle, distance = optical_axis_angle_rad(
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (0.0, 0.0, 2.0))
+        self.assertAlmostEqual(angle, 0.0)
+        self.assertAlmostEqual(distance, 2.0)
+        side, _ = optical_axis_angle_rad(
+            (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), (1.0, 0.0, 0.0))
+        self.assertAlmostEqual(side, math.pi / 2.0)
+
+    def test_geometry_cells_are_ignored(self):
+        surface = self._surface([[0.25, 0.25]], confidence="geometry")
+        self.assertIsNone(
+            footprint_sensor_height(surface, (0.0, 0.0, 0.2, 0.2)))
+
+
+class TestBoxPointMask(unittest.TestCase):
+
+    def test_keeps_the_lid_and_drops_the_wall(self):
+        import numpy as np
+        center = (0.2, -0.1, 0.655)
+        size = (0.55, 0.40, 0.25)
+        lid = np.array([[0.2, -0.1, 0.78], [0.40, 0.0, 0.70]])
+        wall = np.array([[1.4, -0.1, 0.78]])
+        points = np.vstack((lid, wall))
+        mask = box_point_mask(points, center, size, yaw=0.0, margin=0.0)
+        self.assertEqual(mask.tolist(), [True, True, False])
+
+    def test_yaw_swaps_the_narrow_axis(self):
+        import numpy as np
+        center = (0.0, 0.0, 0.0)
+        size = (0.40, 0.20, 0.25)
+        point = np.array([[0.0, 0.15, 0.0]])
+        self.assertFalse(bool(box_point_mask(point, center, size, yaw=0.0)[0]))
+        self.assertTrue(bool(box_point_mask(
+            point, center, size, yaw=math.pi / 2.0)[0]))
+
+    def test_margin_admits_a_near_miss_only(self):
+        import numpy as np
+        center = (0.0, 0.0, 0.0)
+        size = (0.40, 0.40, 0.40)
+        point = np.array([[0.22, 0.0, 0.0]])
+        self.assertFalse(bool(box_point_mask(point, center, size)[0]))
+        self.assertTrue(bool(box_point_mask(
+            point, center, size, margin=0.05)[0]))
+
+    def test_empty_cloud_stays_empty(self):
+        import numpy as np
+        mask = box_point_mask([], (0.0, 0.0, 0.0), (0.5, 0.4, 0.25))
+        self.assertEqual(mask.shape, (0,))
+        self.assertEqual(mask.dtype, np.dtype(bool))
+
+
 class TestUntrackedConcat(unittest.TestCase):
 
     def test_cargo_only(self):
@@ -211,5 +304,117 @@ class TestUntrackedConcat(unittest.TestCase):
         self.assertEqual(len(xyz), 2)
 
 
+class TestMapIdentity(unittest.TestCase):
+
+    def test_measured_keeps_the_sensor_stamp(self):
+        stamp, source = measured_identity(38_000_000_000)
+        self.assertEqual(stamp, 38_000_000_000)
+        self.assertEqual(source, MAP_MEASURED)
+
+    def test_measured_does_not_invent_a_stamp(self):
+        stamp, source = measured_identity(0)
+        self.assertEqual(stamp, 0)
+        self.assertEqual(source, MAP_MEASURED)
+
+    def test_release_uses_the_commit_clock(self):
+        stamp, source = release_identity(38_350_000_000)
+        self.assertEqual(stamp, 38_350_000_000)
+        self.assertEqual(source, MAP_RELEASE_INTEGRATED)
+
+    def test_release_before_the_clock_starts_stays_unstamped(self):
+        stamp, source = release_identity(0)
+        self.assertEqual(stamp, 0)
+        self.assertEqual(source, MAP_RELEASE_INTEGRATED)
+
+
+class TestContainerPoseMoved(unittest.TestCase):
+
+    def test_small_drift_is_not_a_change_and_a_shift_is(self):
+        from luggage_perception.cargo_view_integration import (
+            container_pose_moved,
+        )
+
+        self.assertFalse(container_pose_moved(
+            {"translation": [0, 0, 0], "rotation_rpy": [0, 0, 0]},
+            {"translation": [0.001, 0, 0], "rotation_rpy": [0, 0, 0]}))
+        self.assertTrue(container_pose_moved(
+            {"translation": [-1.5, 0.6, 0], "rotation_rpy": [0, 0, 3.14]},
+            {"translation": [-1.4, 0.6, 0], "rotation_rpy": [0, 0, 3.14]}))
+
+
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestRotatedRectAabb(unittest.TestCase):
+    """Reference footprint of a box that is turned inside the container."""
+
+    def test_axis_aligned_keeps_width_along_x(self):
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        box = rotated_rect_aabb((1.0, 2.0), 0.5, 0.3, 0.0)
+        self.assertEqual([round(v, 6) for v in box], [0.75, 1.85, 1.25, 2.15])
+
+    def test_quarter_turn_swaps_extents(self):
+        import math
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        box = rotated_rect_aabb((0.0, 0.0), 0.495, 0.361, math.pi / 2)
+        self.assertAlmostEqual(box[2] - box[0], 0.361, places=6)
+        self.assertAlmostEqual(box[3] - box[1], 0.495, places=6)
+
+    def test_half_turn_and_negative_quarter_turn_match_unturned_extents(self):
+        import math
+        from luggage_perception.cargo_view_integration import rotated_rect_aabb
+        for yaw in (math.pi, -math.pi / 2):
+            box = rotated_rect_aabb((0.0, 0.0), 0.5, 0.3, yaw)
+            expected = (0.5, 0.3) if abs(yaw) == math.pi else (0.3, 0.5)
+            self.assertAlmostEqual(box[2] - box[0], expected[0], places=6)
+            self.assertAlmostEqual(box[3] - box[1], expected[1], places=6)
+
+
+class TestFloorThroughFullCell(unittest.TestCase):
+    """A grid sliver is not a cell. One full cell is, including past 25 mm."""
+
+    def test_thirty_millimetres_contains_no_cell(self):
+        from luggage_perception.cargo_view_integration import (
+            overlap_contains_full_cell,
+        )
+        reference = (-0.10, -0.030, 0.10, 0.20)
+        sliver_30mm = (-0.10, -0.40, 0.10, 0.0)
+        one_cell = (-0.10, -0.40, 0.10, 0.05)
+        self.assertFalse(overlap_contains_full_cell(
+            sliver_30mm, reference, (0.0, 0.0), 0.05))
+        self.assertTrue(overlap_contains_full_cell(
+            one_cell, reference, (0.0, 0.0), 0.05))
+
+    def test_fraction_is_not_a_cell_and_one_cell_is(self):
+        from unittest import mock
+        import luggage_perception.cargo_view_integration as module
+        # Footprint 0.40 in y. Patch ymin is 30 mm below y=0.
+        # center_y=-0.2293 ends 0.7 mm into the patch.
+        # center_y=-0.20 ends on y=0, 30 mm into the patch, no full cell.
+        # center_y=-0.15 ends on y=0.05, one full cell.
+        candidates = [
+            {"feasible": True, "center_local": [0.0, -0.2293, -0.615],
+             "footprint": [0.55, 0.4]},
+            {"feasible": True, "center_local": [0.0, -0.20, -0.615],
+             "footprint": [0.55, 0.4]},
+            {"feasible": True, "center_local": [0.0, -0.15, -0.615],
+             "footprint": [0.55, 0.4]},
+        ]
+        surface = {
+            "inner_size": [1.5, 2.0, 1.48],
+            "resolution": 0.05,
+            "origin_local": [0.0, 0.0],
+        }
+        patch = (-0.10, -0.030, 0.10, 0.20)
+        with mock.patch("luggage_packing.placement_solver.solve_placement",
+                        return_value={"candidates": candidates,
+                                      "success": True}):
+            count, info = module.floor_through_count(
+                surface, [0.55, 0.4, 0.25], patch)
+        self.assertEqual(count, 1, info)
+        self.assertEqual(info["n_boundary_slivers"], 2)
+        self.assertEqual(info["rule"], "full_occupancy_cell")
+        self.assertEqual(info["full_cell_m"], 0.05)
+        self.assertEqual(info["half_cell_m"], 0.025)
+        self.assertGreater(info["max_overlap_m"], 0.05)

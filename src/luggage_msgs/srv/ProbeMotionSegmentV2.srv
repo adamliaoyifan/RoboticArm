@@ -1,0 +1,9 @@
+# Plan-only probe of one typed motion segment. v1 ProbeMotionSegment is unchanged.
+luggage_msgs/MotionSegmentV2 segment
+---
+bool success
+string message
+bool ik_ok
+float64 fraction
+int32 moveit_error_code
+luggage_msgs/BoundaryDiagnosticV2 diagnostic

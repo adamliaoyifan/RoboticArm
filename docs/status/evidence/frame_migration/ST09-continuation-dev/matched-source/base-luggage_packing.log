@@ -1,0 +1,60 @@
+.........................FF.F.................................... [ 50%]
+...............EEE.............................................          [100%]
+==================================== ERRORS ====================================
+_ ERROR at setup of TestGeometryIdentityLive.test_foreign_cargo_map_fails_closed_without_floor_prior _
+src/luggage_packing/test/test_placement_geometry_identity_live.py:61: in setUpClass
+    cls.mapper_mod = _load_node_module(
+src/luggage_packing/test/test_placement_geometry_identity_live.py:34: in _load_node_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:883: in exec_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+src/luggage_perception/scripts/cargo_volume_mapper_node.py:69: in <module>
+    from luggage_perception import ros_message_adapters as adapters
+E   ImportError: cannot import name 'ros_message_adapters' from 'luggage_perception' (unknown location)
+_ ERROR at setup of TestGeometryIdentityLive.test_matching_geometry_answers_with_its_hull_hash _
+src/luggage_packing/test/test_placement_geometry_identity_live.py:61: in setUpClass
+    cls.mapper_mod = _load_node_module(
+src/luggage_packing/test/test_placement_geometry_identity_live.py:34: in _load_node_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:883: in exec_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+src/luggage_perception/scripts/cargo_volume_mapper_node.py:69: in <module>
+    from luggage_perception import ros_message_adapters as adapters
+E   ImportError: cannot import name 'ros_message_adapters' from 'luggage_perception' (unknown location)
+_ ERROR at setup of TestGeometryIdentityLive.test_request_hash_pin_is_enforced _
+src/luggage_packing/test/test_placement_geometry_identity_live.py:61: in setUpClass
+    cls.mapper_mod = _load_node_module(
+src/luggage_packing/test/test_placement_geometry_identity_live.py:34: in _load_node_module
+    spec.loader.exec_module(module)
+<frozen importlib._bootstrap_external>:883: in exec_module
+    ???
+<frozen importlib._bootstrap>:241: in _call_with_frames_removed
+    ???
+src/luggage_perception/scripts/cargo_volume_mapper_node.py:69: in <module>
+    from luggage_perception import ros_message_adapters as adapters
+E   ImportError: cannot import name 'ros_message_adapters' from 'luggage_perception' (unknown location)
+=================================== FAILURES ===================================
+__________ FrameMigrationPlacement.test_review2_v1_cannot_regress_v2 ___________
+src/luggage_packing/test/test_frame_migration_placement.py:624: in test_review2_v1_cannot_regress_v2
+    from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+E   ModuleNotFoundError: No module named 'luggage_perception.cargo_volume_mapper'
+____ FrameMigrationPlacement.test_review3_v2_surface_to_service_continuity _____
+src/luggage_packing/test/test_frame_migration_placement.py:687: in test_review3_v2_surface_to_service_continuity
+    from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+E   ModuleNotFoundError: No module named 'luggage_perception.cargo_volume_mapper'
+_______ FrameMigrationPlacement.test_review_v2_surface_admission_policy ________
+src/luggage_packing/test/test_frame_migration_placement.py:550: in test_review_v2_surface_admission_policy
+    from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+E   ModuleNotFoundError: No module named 'luggage_perception.cargo_volume_mapper'
+=========================== short test summary info ============================
+FAILED src/luggage_packing/test/test_frame_migration_placement.py::FrameMigrationPlacement::test_review2_v1_cannot_regress_v2
+FAILED src/luggage_packing/test/test_frame_migration_placement.py::FrameMigrationPlacement::test_review3_v2_surface_to_service_continuity
+FAILED src/luggage_packing/test/test_frame_migration_placement.py::FrameMigrationPlacement::test_review_v2_surface_admission_policy
+ERROR src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_foreign_cargo_map_fails_closed_without_floor_prior
+ERROR src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_matching_geometry_answers_with_its_hull_hash
+ERROR src/luggage_packing/test/test_placement_geometry_identity_live.py::TestGeometryIdentityLive::test_request_hash_pin_is_enforced
+3 failed, 122 passed, 3 errors, 79 subtests passed in 3.20s

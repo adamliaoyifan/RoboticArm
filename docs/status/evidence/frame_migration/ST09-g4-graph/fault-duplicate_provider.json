@@ -1,0 +1,44 @@
+{
+ "counters": {
+  "ENDPOINT_PROVIDER_MISMATCH": 8,
+  "PEER_RESTART": 1
+ },
+ "gate_transitions": [
+  {
+   "at_monotonic": 1435643.801351667,
+   "reason": "MISSING_PEER"
+  },
+  {
+   "at_monotonic": 1435644.301435795,
+   "reason": "READY"
+  },
+  {
+   "at_monotonic": 1435645.365985285,
+   "reason": "PEER_RESTART"
+  }
+ ],
+ "healthy": {
+  "ready": true,
+  "startup_seconds": 2.0
+ },
+ "launch_log": "docs/status/evidence/frame_migration/ST09-g4-graph/fault-duplicate_provider.launch.log",
+ "peer_readiness_after_fault": {
+  "cargo_volume_mapper": "PEER_RESTART",
+  "motion_occ_driver": "PEER_RESTART",
+  "motion_planner": "READY",
+  "placement_planner": "PEER_RESTART",
+  "scene_manager": "PEER_RESTART",
+  "trajectory_selector": "PEER_RESTART",
+  "vacuum_controller": "READY",
+  "waypoint_generator": "READY"
+ },
+ "probe_readiness_after_fault": "PEER_RESTART",
+ "rogue": 0,
+ "scenario": "fault-duplicate_provider",
+ "teardown_seconds": 0.16,
+ "teardown_within_budget": true,
+ "v2_call": {
+  "code": "PEER_RESTART",
+  "ok": false
+ }
+}

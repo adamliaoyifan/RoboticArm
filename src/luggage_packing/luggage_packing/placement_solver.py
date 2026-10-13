@@ -20,14 +20,21 @@ from __future__ import division
 
 import math
 
+from luggage_packing.placement_legacy_v1 import v1_candidate_view
+
 
 REASON_OVERLAP = "overlap"
+REASON_SAME_LAYER_CLEARANCE = "same_layer_clearance"
 REASON_OUTSIDE_APERTURE = "outside_aperture"
 REASON_OUTSIDE_HULL = "outside_hull"
 REASON_CORRIDOR_BLOCKED = "corridor_blocked"
 REASON_UNKNOWN_ABOVE_FLOOR = "unknown_above_floor"
 REASON_INSUFFICIENT_CLEARANCE = "insufficient_clearance"
 REASON_INSUFFICIENT_SUPPORT = "insufficient_support"
+# ST09-A S1: a support surface whose contact heights ramp across the
+# footprint (gentle slope within ``support_tol`` per cell, so support_ratio
+# alone cannot see it) does not hold a placed box flat.
+REASON_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
 
 # A capacity gate answers "does this box physically fit here, given the
 # container hull and what is already inside?". Everything else (aperture,
@@ -36,39 +43,90 @@ REASON_INSUFFICIENT_SUPPORT = "insufficient_support"
 # independent eval enumerator in ``place_only_fixture.enumerate_footprints``
 # so the product's own claim and the arbiter's verdict are comparable.
 CAPACITY_REASONS = frozenset((
-    REASON_OVERLAP, REASON_OUTSIDE_HULL, REASON_INSUFFICIENT_CLEARANCE))
+    REASON_OVERLAP, REASON_SAME_LAYER_CLEARANCE, REASON_OUTSIDE_HULL,
+    REASON_INSUFFICIENT_CLEARANCE))
 POLICY_REASONS = frozenset((
     REASON_OUTSIDE_APERTURE, REASON_CORRIDOR_BLOCKED,
-    REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT))
+    REASON_UNKNOWN_ABOVE_FLOOR, REASON_INSUFFICIENT_SUPPORT,
+    REASON_SUPPORT_TILT_UNSUPPORTED))
+
+# Frozen st09_contracts GeometryVerdict values, mirrored as strings so the
+# plain-dict candidate contract stays ROS-free and import-cheap.
+VERDICT_LEGAL = "legal"
+VERDICT_HULL_VIOLATION = "hull_violation"
+VERDICT_APERTURE_VIOLATION = "aperture_violation"
+VERDICT_SUPPORT_MISSING = "support_missing"
+VERDICT_SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
+VERDICT_OVERLAP = "overlap"
+VERDICT_SAME_LAYER_CLEARANCE = "same_layer_clearance"
+VERDICT_TOP_CLEARANCE = "top_clearance"
+
+_REASON_TO_VERDICT = {
+    None: VERDICT_LEGAL,
+    "ok": VERDICT_LEGAL,
+    REASON_OUTSIDE_HULL: VERDICT_HULL_VIOLATION,
+    REASON_OUTSIDE_APERTURE: VERDICT_APERTURE_VIOLATION,
+    REASON_UNKNOWN_ABOVE_FLOOR: VERDICT_SUPPORT_MISSING,
+    REASON_INSUFFICIENT_SUPPORT: VERDICT_SUPPORT_MISSING,
+    REASON_SUPPORT_TILT_UNSUPPORTED: VERDICT_SUPPORT_TILT_UNSUPPORTED,
+    REASON_OVERLAP: VERDICT_OVERLAP,
+    REASON_SAME_LAYER_CLEARANCE: VERDICT_SAME_LAYER_CLEARANCE,
+    REASON_INSUFFICIENT_CLEARANCE: VERDICT_TOP_CLEARANCE,
+}
 
 # Stable placement failure taxonomy (docs/architecture/container_geometry.md).
-# The solver emits the first four; the node adds the last two at its own
-# boundary. They share this module so every consumer reads one taxonomy.
+# The solver emits the first four. The node adds cargo-map identity,
+# measured-height, and atlas-identity failures at its own boundary.
+# They share this module so every consumer reads one taxonomy.
 CODE_INVALID_BOX_SIZE = "INVALID_BOX_SIZE"
 CODE_BOX_EXCEEDS_CONTAINER = "BOX_EXCEEDS_CONTAINER"
 CODE_BIN_FULL = "BIN_FULL"
 CODE_PLACE_CANDIDATE_EXHAUSTED = "PLACE_CANDIDATE_EXHAUSTED"
+# ST09-A S1 4.3: zero legal candidates on a map whose unknown cells could
+# host a legal placement once observed. Distinct from BIN_FULL (capacity)
+# and from corridor exhaustion (route policy).
+CODE_OBSERVATION_REQUIRED = "OBSERVATION_REQUIRED"
 CODE_CARGO_MAP_GEOMETRY_MISMATCH = "CARGO_MAP_GEOMETRY_MISMATCH"
 CODE_DETECT_FULL_GEOMETRY_REQUIRED = "DETECT_FULL_GEOMETRY_REQUIRED"
+# Node boundary, same string as atlas_runtime.ATLAS_IDENTITY_UNVERIFIED.
+# Strict atlas identity failed: do not hard-reject or re-rank.
+CODE_ATLAS_IDENTITY_UNVERIFIED = "ATLAS_IDENTITY_UNVERIFIED"
 
 PLACEMENT_REASON_CODES = frozenset((
     CODE_INVALID_BOX_SIZE, CODE_BOX_EXCEEDS_CONTAINER, CODE_BIN_FULL,
-    CODE_PLACE_CANDIDATE_EXHAUSTED, CODE_CARGO_MAP_GEOMETRY_MISMATCH,
-    CODE_DETECT_FULL_GEOMETRY_REQUIRED))
+    CODE_PLACE_CANDIDATE_EXHAUSTED, CODE_OBSERVATION_REQUIRED,
+    CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+    CODE_DETECT_FULL_GEOMETRY_REQUIRED, CODE_ATLAS_IDENTITY_UNVERIFIED))
 
 
-def candidate_aabb(candidate, inner_h):
-    """Return a candidate AABB in floor-relative container coordinates."""
-    local = candidate.get("center_local") or [0.0, 0.0, 0.0]
+def candidate_aabb(candidate, inner_h, floor_z=0.0):
+    """Candidate AABB in floor-relative container coordinates (ST05).
+
+    Derived from the container box center: ``z_rel = center_container.z -
+    floor_z`` (z=0 at the container floor). ``floor_z`` is the floor's
+    elevation in the same container frame as ``center_container`` — the
+    internal constraint chain (hull/overlap/corridor) stays floor-relative
+    by design; support-relative quantities are derived locally, never
+    re-embedded. The legacy ``center_local`` path (volume-centered,
+    pre-ST05 replay rows) is honored when a candidate carries no
+    container center.
+    """
+    center = candidate.get("center_container")
+    if center is not None:
+        cx, cy = float(center[0]), float(center[1])
+        cz = float(center[2]) - float(floor_z)
+    else:
+        local = candidate.get("center_local") or [0.0, 0.0, 0.0]
+        cx, cy = float(local[0]), float(local[1])
+        cz = float(local[2]) + float(inner_h) * 0.5
     footprint = candidate.get("footprint") or candidate["size"][:2]
     height = float(candidate["size"][2])
-    center_z = float(local[2]) + float(inner_h) * 0.5
     half_l = float(footprint[0]) * 0.5
     half_w = float(footprint[1]) * 0.5
     half_h = height * 0.5
     return (
-        float(local[0]) - half_l, float(local[1]) - half_w, center_z - half_h,
-        float(local[0]) + half_l, float(local[1]) + half_w, center_z + half_h,
+        cx - half_l, cy - half_w, cz - half_h,
+        cx + half_l, cy + half_w, cz + half_h,
     )
 
 
@@ -81,9 +139,175 @@ def aabb_overlap(a, b, tolerance=1e-9):
     )
 
 
+# Frozen for this generation (2026-10-05 quick track / ST09-I v2).
+# Equality passes; a smaller oriented-footprint gap fails. A later
+# change needs a new generation. Wall and corridor margins are separate.
+SAME_LAYER_CLEARANCE_M = 0.05
+
+
+def _rect_corners(cx, cy, yaw, length, width):
+    """Corners of a yawed footprint. length follows yaw, width is across."""
+    cosine = math.cos(float(yaw))
+    sine = math.sin(float(yaw))
+    half_l = 0.5 * float(length)
+    half_w = 0.5 * float(width)
+    corners = []
+    for local_x, local_y in (
+            (half_l, half_w), (half_l, -half_w),
+            (-half_l, half_w), (-half_l, -half_w)):
+        corners.append((
+            float(cx) + cosine * local_x - sine * local_y,
+            float(cy) + sine * local_x + cosine * local_y,
+        ))
+    return corners
+
+
+def _polygon_overlaps(left, right, tolerance=1e-9):
+    """True when two convex polygons have positive area in common."""
+    def axes(corners):
+        out = []
+        count = len(corners)
+        for index in range(count):
+            x1, y1 = corners[index]
+            x2, y2 = corners[(index + 1) % count]
+            edge_x = x2 - x1
+            edge_y = y2 - y1
+            norm = math.hypot(edge_x, edge_y) or 1.0
+            out.append((-edge_y / norm, edge_x / norm))
+        return out
+
+    def project(corners, axis):
+        dots = [point[0] * axis[0] + point[1] * axis[1] for point in corners]
+        return min(dots), max(dots)
+
+    for axis in axes(left) + axes(right):
+        left_min, left_max = project(left, axis)
+        right_min, right_max = project(right, axis)
+        if left_max <= right_min + tolerance or right_max <= left_min + tolerance:
+            return False
+    return True
+
+
+def _candidate_footprint(candidate, floor_z):
+    """Yawed landed rectangle and vertical extent of one candidate."""
+    center = candidate.get("center_container")
+    if center is None:
+        box = candidate_aabb(candidate, 0.0, floor_z=floor_z)
+        return {
+            "cx": 0.5 * (box[0] + box[3]),
+            "cy": 0.5 * (box[1] + box[4]),
+            "yaw": 0.0,
+            "length": box[3] - box[0],
+            "width": box[4] - box[1],
+            "z_bottom": box[2],
+            "z_top": box[5],
+        }
+    size = candidate.get("size") or (0.0, 0.0, 0.0)
+    length = float(size[0])
+    width = float(size[1])
+    height = float(size[2]) if len(size) > 2 else 0.0
+    if "box_yaw" not in candidate:
+        footprint = candidate.get("footprint") or size[:2]
+        length = float(footprint[0])
+        width = float(footprint[1])
+        yaw = 0.0
+    else:
+        yaw = float(candidate.get("box_yaw") or 0.0)
+    cz = float(center[2]) - float(floor_z)
+    return {
+        "cx": float(center[0]),
+        "cy": float(center[1]),
+        "yaw": yaw,
+        "length": length,
+        "width": width,
+        "z_bottom": cz - 0.5 * height,
+        "z_top": cz + 0.5 * height,
+    }
+
+
+def _placed_footprint(placed, floor_z):
+    """A placed body is either an AABB tuple or an oriented record."""
+    if isinstance(placed, dict):
+        center = placed.get("center_xy") or placed.get("center") or (0.0, 0.0)
+        size = placed.get("size_lw") or placed.get("footprint") or (0.0, 0.0)
+        return {
+            "cx": float(center[0]),
+            "cy": float(center[1]),
+            "yaw": float(placed.get("yaw") or 0.0),
+            "length": float(size[0]),
+            "width": float(size[1]),
+            "z_bottom": float(placed.get("z_bottom", 0.0)) - float(floor_z),
+            "z_top": float(placed.get("z_top", 0.0)) - float(floor_z),
+        }
+    box = tuple(float(v) for v in placed)
+    return {
+        "cx": 0.5 * (box[0] + box[3]),
+        "cy": 0.5 * (box[1] + box[4]),
+        "yaw": 0.0,
+        "length": box[3] - box[0],
+        "width": box[4] - box[1],
+        "z_bottom": box[2],
+        "z_top": box[5],
+    }
+
+
+def _placed_aabb(placed, floor_z):
+    """Axis-aligned bound used only for the solid-penetration gate."""
+    if not isinstance(placed, dict):
+        return placed
+    foot = _placed_footprint(placed, floor_z)
+    corners = _rect_corners(
+        foot["cx"], foot["cy"], foot["yaw"], foot["length"], foot["width"])
+    xs = [point[0] for point in corners]
+    ys = [point[1] for point in corners]
+    return (min(xs), min(ys), foot["z_bottom"],
+            max(xs), max(ys), foot["z_top"])
+
+
+def _same_layer_reason(candidate, placed_aabbs, floor_z, clearance_m,
+                       support_tol):
+    """Boundary gap between footprints that share a support surface.
+
+    A box stacked on a placed support parent may cover that parent's
+    footprint. It still keeps this gap against every other body on its
+    own layer. Solid penetration stays the overlap gate.
+    """
+    if not placed_aabbs or clearance_m is None or float(clearance_m) <= 0.0:
+        return None
+    here = _candidate_footprint(candidate, floor_z)
+    here_rect = _rect_corners(
+        here["cx"], here["cy"], here["yaw"], here["length"], here["width"])
+    grown = _rect_corners(
+        here["cx"], here["cy"], here["yaw"],
+        here["length"] + float(clearance_m),
+        here["width"] + float(clearance_m))
+    tol = float(support_tol)
+    for placed in placed_aabbs:
+        other = _placed_footprint(placed, floor_z)
+        other_rect = _rect_corners(
+            other["cx"], other["cy"], other["yaw"],
+            other["length"], other["width"])
+        on_parent = (
+            abs(here["z_bottom"] - other["z_top"]) <= tol
+            and _polygon_overlaps(here_rect, other_rect))
+        if on_parent:
+            continue
+        same_layer = abs(here["z_bottom"] - other["z_bottom"]) <= tol
+        if not same_layer:
+            continue
+        other_grown = _rect_corners(
+            other["cx"], other["cy"], other["yaw"],
+            other["length"] + float(clearance_m),
+            other["width"] + float(clearance_m))
+        if _polygon_overlaps(grown, other_grown):
+            return REASON_SAME_LAYER_CLEARANCE
+    return None
+
+
 def placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None,
+        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05):
     """Return ``(reason, capacity_ok)`` for one candidate.
 
     ``reason`` is ``None`` when every gate passes, otherwise the first reject
@@ -96,7 +320,7 @@ def placement_constraint_verdict(
     injected geometry-kernel callback makes this function ROS-free without
     duplicating the authoritative seven-face hull implementation.
     """
-    box = candidate_aabb(candidate, inner_h)
+    box = candidate_aabb(candidate, inner_h, floor_z=floor_z)
     outside_aperture = (
         aperture_y is not None
         and (box[1] < float(aperture_y[0]) - 1e-6
@@ -113,8 +337,14 @@ def placement_constraint_verdict(
                     break
             if outside_hull:
                 break
-    overlaps = any(aabb_overlap(box, placed) for placed in (placed_aabbs or []))
-    capacity_ok = not (outside_hull or overlaps)
+    overlaps = any(
+        aabb_overlap(box, _placed_aabb(placed, floor_z))
+        for placed in (placed_aabbs or []))
+    if same_layer_clearance_m is None:
+        same_layer_clearance_m = SAME_LAYER_CLEARANCE_M
+    layer_reason = _same_layer_reason(
+        candidate, placed_aabbs, floor_z, same_layer_clearance_m, support_tol)
+    capacity_ok = not (outside_hull or overlaps or layer_reason)
 
     if outside_aperture:
         return REASON_OUTSIDE_APERTURE, capacity_ok
@@ -122,6 +352,8 @@ def placement_constraint_verdict(
         return REASON_OUTSIDE_HULL, capacity_ok
     if overlaps:
         return REASON_OVERLAP, capacity_ok
+    if layer_reason:
+        return layer_reason, capacity_ok
     # The corridor sweep is the expensive gate; it only matters once the box
     # already fits, so it stays behind the cheap gates as before.
     if (inner_size is not None and smallest_size is not None):
@@ -135,18 +367,23 @@ def placement_constraint_verdict(
 
 def placement_constraint_reason(
         candidate, inner_h, placed_aabbs=None, aperture_y=None,
-        hull_contains=None, inner_size=None, smallest_size=None, hull=None):
+        hull_contains=None, inner_size=None, smallest_size=None, hull=None,
+        floor_z=0.0, same_layer_clearance_m=None, support_tol=0.05):
     """Return the first hard-constraint reject reason, or ``None``."""
     reason, _capacity_ok = placement_constraint_verdict(
         candidate, inner_h, placed_aabbs=placed_aabbs, aperture_y=aperture_y,
         hull_contains=hull_contains, inner_size=inner_size,
-        smallest_size=smallest_size, hull=hull)
+        smallest_size=smallest_size, hull=hull, floor_z=floor_z,
+        same_layer_clearance_m=same_layer_clearance_m,
+        support_tol=support_tol)
     return reason
 
 
 def _default_params():
     return {
         "clearance_margin": 0.03,   # required free space above the placed box [m]
+        # Same-layer footprint gap. See SAME_LAYER_CLEARANCE_M.
+        "same_layer_clearance_m": None,
         "support_tol": 0.05,        # cells within this of the peak count as support [m]
         "min_support_ratio": 0.6,   # required contact ratio of the footprint
         "stride_cells": 1,          # grid stride for the sliding window
@@ -156,6 +393,265 @@ def _default_params():
         "w_confidence": 0.15,       # penalizes geometry-only or unknown support
         "top_n": 8,
         "keep_rejected": 6,         # rejected candidates kept for visualization
+        # --- ST09-A (S1) additions -------------------------------------------
+        # Wall margin handed to the hull kernel's closed faces (mirrors the
+        # node's hull_margin ROS parameter; 0.0 keeps the kernel exact).
+        "hull_margin": 0.0,
+        # Gentle support ramps: a contact plane that ramps across the
+        # footprint keeps every cell within support_tol of the peak, so
+        # support_ratio alone reads it as full contact — yet the box would
+        # rest on the slope's highest cells and tilt. Reject when the
+        # contact-cell height span over the longest footprint axis exceeds
+        # this ratio (0.05 ~ 2.9 deg; discrete voxel steps of one
+        # resolution never fire because only one level stays within tol).
+        # defined_by_A: no frozen contract value; provenance recorded in
+        # candidate_replay.json. Not widened after live failures.
+        "max_support_tilt_ratio": 0.05,
+        # Payload symmetry declaration ("none"|"pi"). Only a declared pi
+        # symmetry expands theta and theta+pi headings (convergence 5.1).
+        "payload_symmetry": "none",
+    }
+
+
+def _surface_hull(surface_map):
+    """Rehydrate the chamfered hull kernel from the map's descriptor.
+
+    Returns ``None`` when the map carries no usable descriptor (legacy
+    fixtures); hull legality then stays with the injected validator, exactly
+    as before ST09-A. A descriptor that fails normalization is foreign — the
+    node's fail-closed identity gates own that case, so here it also degrades
+    to ``None`` without raising.
+    """
+    descriptor = surface_map.get("geometry_descriptor")
+    if not descriptor:
+        return None
+    try:
+        from luggage_description.container_geometry import normalize_descriptor
+        return normalize_descriptor(descriptor)
+    except Exception:
+        return None
+
+
+def _depth_datum(surface_map, hull):
+    """Opening-plane point + inward unit normal for the depth metric.
+
+    Prefers the hull kernel's aperture-derived datum (no hardcoded axis);
+    falls back to the map grid's opening-side face when no hull exists.
+    """
+    if hull is not None:
+        from luggage_description.container_geometry import opening_inward_datum
+        return opening_inward_datum(hull)
+    half_l = 0.5 * float(surface_map["inner_size"][0])
+    return (-half_l, 0.0, 0.0), (1.0, 0.0, 0.0)
+
+
+def _depth_m(center, datum_point, datum_normal):
+    """depth = dot(box_center - opening_center, inward_normal) (S1 4.2)."""
+    return sum(
+        (float(center[i]) - float(datum_point[i])) * float(datum_normal[i])
+        for i in range(3))
+
+
+def _support_layer_z(peak, resolution):
+    """Support height quantised into surface-resolution layers (S1 4.2)."""
+    if resolution <= 0.0:
+        return float(peak)
+    return round(math.floor(float(peak) / resolution + 0.5) * resolution, 9)
+
+
+def _candidate_sort_key(candidate):
+    """Deterministic deep-first selection key (frozen PlacementCandidate
+    .sorting_key order): support layer low-to-high, depth deep-to-shallow,
+    route clearance large-to-small, score high-to-low, stable id last.
+
+    ``route_clearance_m`` stays 0.0 (route_not_evaluated) until ST09-B
+    annotates it; equal-zero keeps the key total and deterministic.
+    """
+    detail = candidate.get("detail") or {}
+    return (
+        float(candidate.get("support_layer_z", 0.0)),
+        -float(candidate.get("depth_m", 0.0)),
+        -float(detail.get("route_clearance_m", 0.0) or 0.0),
+        -float(candidate.get("score", 0.0)),
+        str(candidate.get("candidate_id", "")),
+    )
+
+
+def _support_tilt_ratio(cell_heights, peak, tol):
+    """Height span across the *support* cells over the footprint diagonal.
+
+    Cells within ``tol`` of the peak are contact cells; a ramp that rises
+    less than ``tol`` per cell registers as full support by ratio, so the
+    span across those same cells is what exposes it.
+    """
+    contact = [h for h in cell_heights if h >= peak - tol]
+    if len(contact) < 2:
+        return 0.0
+    span = max(contact) - min(contact)
+    return float(span)
+
+
+def _hull_legal(center_container, footprint, box_h, hull, margin):
+    """Exact seven-face oriented-box legality through the aperture door.
+
+    Returns ``(legal, margin_detail)``; ``margin_detail`` names each margin
+    class separately (static walls incl. the chamfered face share the hull
+    kernel's inset, top clearance and support contact keep their own
+    parameters) so consumers can audit which bound moved.
+    """
+    from luggage_description.container_geometry import (
+        contains_oriented_box_through_aperture,
+    )
+    size = (float(footprint[0]), float(footprint[1]), float(box_h))
+    legal = contains_oriented_box_through_aperture(
+        hull, center_container, size, yaw=0.0, margin=float(margin))
+    return bool(legal), {
+        "hull_static_wall_and_chamfer_m": float(margin),
+    }
+
+
+def _cell_center_local(surface_map, ix, iy):
+    resolution = float(surface_map["resolution"])
+    half_l = 0.5 * float(surface_map["inner_size"][0])
+    half_w = 0.5 * float(surface_map["inner_size"][1])
+    return (
+        -half_l + (ix + 0.5) * resolution,
+        -half_w + (iy + 0.5) * resolution,
+    )
+
+
+def _hypothetical_floor_windows(surface_map, box_size, allowed_yaws, cfg, hull,
+                                candidate_validator=None):
+    """Windows that would be legal if the unknown region were observed.
+
+    Occupied testimony stays occupied (this is the S1 4.3 starvation test:
+    a corrected hull may reject candidates but must never conjure free space
+    out of nothing). Each window is re-evaluated as a flat observed floor
+    landing: no occupied column under the footprint, exact hull legality at
+    floor level, clearance ok, and — when the caller injected one — the same
+    constraint validator the live enumeration used (placed boxes, aperture,
+    corridor), so overlap against known cargo cannot be observed away.
+    Returns the list of (ix0, iy0, cells_x, cells_y, yaw, depth) tuples,
+    best (deepest) first.
+    """
+    box_l, box_w, box_h = [float(v) for v in box_size]
+    resolution = float(surface_map["resolution"])
+    nx = int(surface_map["nx"])
+    ny = int(surface_map["ny"])
+    inner_l, inner_w, inner_h = [float(v) for v in surface_map["inner_size"]]
+    heights = surface_map["height"]
+    states = surface_map["state"]
+    floor_container_z = float(surface_map["center_base"][2]) - 0.5 * inner_h
+    datum_point, datum_normal = _depth_datum(surface_map, hull)
+    out = []
+    for box_yaw, rotated in _snap_yaws(allowed_yaws):
+        footprint_l, footprint_w = (box_w, box_l) if rotated else (box_l, box_w)
+        if footprint_l > inner_l + 1e-6 or footprint_w > inner_w + 1e-6:
+            continue
+        cells_x, cells_y = _footprint_cells(footprint_l, footprint_w, resolution)
+        if cells_x > nx or cells_y > ny:
+            continue
+        for ix0 in range(0, nx - cells_x + 1):
+            for iy0 in range(0, ny - cells_y + 1):
+                occupied_or_tall = False
+                for ix in range(ix0, ix0 + cells_x):
+                    for iy in range(iy0, iy0 + cells_y):
+                        if states[ix][iy] == "occupied" and (
+                                heights[ix][iy] > cfg["support_tol"]):
+                            occupied_or_tall = True
+                            break
+                    if occupied_or_tall:
+                        break
+                if occupied_or_tall:
+                    continue
+                top_of_box = box_h
+                if inner_h - top_of_box < cfg["clearance_margin"]:
+                    continue
+                lx, ly = _cell_center_local(
+                    surface_map, ix0 + cells_x / 2.0, iy0 + cells_y / 2.0)
+                center = (lx, ly, floor_container_z + box_h * 0.5)
+                if hull is not None:
+                    legal, _ = _hull_legal(
+                        center, (footprint_l, footprint_w), box_h, hull,
+                        cfg["hull_margin"])
+                    if not legal:
+                        continue
+                if candidate_validator is not None:
+                    probe = {
+                        "center_container": list(center),
+                        "footprint": [footprint_l, footprint_w],
+                        "size": [box_l, box_w, box_h],
+                    }
+                    verdict = candidate_validator(probe)
+                    if isinstance(verdict, tuple):
+                        verdict = verdict[0]
+                    if verdict:
+                        continue
+                depth = _depth_m(center, datum_point, datum_normal)
+                out.append((ix0, iy0, cells_x, cells_y, box_yaw, depth))
+    out.sort(key=lambda row: -row[5])
+    return out
+
+
+def _observation_requirement(surface_map, candidates, hypothetical=None):
+    """Build the ObservationRequirement record for the current selection.
+
+    ``footprint_cells``/``corridor_cells`` cover the candidate footprint and
+    the aperture-to-slot strip along the inward normal; ``missing_cells``
+    lists the still-unknown cells among them with per-cell reasons. No GT,
+    no catalog geometry — map states only.
+    """
+    nx = int(surface_map["nx"])
+    states = surface_map["state"]
+    target = None
+    for candidate in candidates:
+        if candidate.get("feasible"):
+            target = candidate
+            break
+    if target is None and hypothetical:
+        ix0, iy0, cells_x, cells_y, _yaw, _depth = hypothetical[0]
+        target = {
+            "ix0": ix0, "iy0": iy0, "cells_x": cells_x, "cells_y": cells_y,
+        }
+    if target is None:
+        return None
+    ix0 = int(target["ix0"])
+    iy0 = int(target["iy0"])
+    cells_x = int(target["cells_x"])
+    cells_y = int(target["cells_y"])
+    footprint_cells = [
+        (ix, iy)
+        for ix in range(ix0, ix0 + cells_x)
+        for iy in range(iy0, iy0 + cells_y)
+    ]
+    # Corridor: opening edge (ix=0) to the footprint's far edge, across the
+    # footprint's y band — the strip an insert/retreat must traverse.
+    corridor_cells = [
+        (ix, iy)
+        for ix in range(0, ix0 + cells_x)
+        for iy in range(iy0, iy0 + cells_y)
+        if (ix, iy) not in set(footprint_cells)
+    ]
+    required = sorted(set(footprint_cells) | set(corridor_cells))
+    missing = []
+    reasons = []
+    for ix, iy in required:
+        if 0 <= ix < nx and 0 <= iy < len(states[ix]):
+            if states[ix][iy] == "unknown":
+                missing.append((ix, iy))
+                reasons.append("unknown_%d_%d" % (ix, iy))
+    if not missing:
+        return None
+    return {
+        "requirement_id": "obs-req-%s" % (surface_map.get("map_revision"),),
+        "candidate_ids": (target.get("candidate_id", ""),),
+        "footprint_cells": footprint_cells,
+        "corridor_cells": corridor_cells,
+        "missing_cells": missing,
+        "missing_reasons": reasons,
+        "note": (
+            "unobserved cells in the target footprint / entry corridor; "
+            "bounded observation (<=2 prevalidated views) then re-solve"),
     }
 
 
@@ -217,13 +713,6 @@ def _support_ratio(cell_heights, peak, tol):
     return float(contact) / float(len(cell_heights))
 
 
-def _local_to_base(center_base, yaw, lx, ly, lz):
-    bx = center_base[0] + math.cos(yaw) * lx - math.sin(yaw) * ly
-    by = center_base[1] + math.sin(yaw) * lx + math.cos(yaw) * ly
-    bz = center_base[2] + lz
-    return [bx, by, bz]
-
-
 def _validator_verdict(candidate_validator, candidate):
     """Normalize a validator result to ``(reason, capacity_ok)``.
 
@@ -276,6 +765,9 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
     stride = max(1, int(cfg["stride_cells"]))
 
     candidates = []
+    hull = _surface_hull(surface_map)
+    datum_point, datum_normal = _depth_datum(surface_map, hull)
+    expand_headings = str(cfg.get("payload_symmetry", "none")).lower() == "pi"
     for box_yaw, rotated in _snap_yaws(allowed_yaws):
         footprint_l, footprint_w = (box_w, box_l) if rotated else (box_l, box_w)
         if footprint_l > inner_l + 1e-6 or footprint_w > inner_w + 1e-6:
@@ -283,6 +775,14 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
         cells_x, cells_y = _footprint_cells(footprint_l, footprint_w, resolution)
         if cells_x > nx or cells_y > ny:
             continue
+        footprint_class = 1 if rotated else 0
+        base_heading = math.pi / 2.0 if rotated else 0.0
+        headings = [base_heading]
+        if expand_headings:
+            # Convergence 5.1: theta+pi is a distinct physical rotation with
+            # the same symmetric footprint; both are emitted for the TCP/IK
+            # stage, never merged here.
+            headings.append(base_heading + math.pi)
 
         for ix0 in range(0, nx - cells_x + 1, stride):
             for iy0 in range(0, ny - cells_y + 1, stride):
@@ -295,8 +795,14 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
 
                 lx = -half_l + (ix0 + cells_x * 0.5) * resolution
                 ly = -half_w + (iy0 + cells_y * 0.5) * resolution
-                lz = -half_h + peak + box_h * 0.5
-                center_base_xyz = _local_to_base(center_base, map_yaw, lx, ly, lz)
+                # ST05 F07: the slot truth is the container box center with
+                # z = floor + support + h/2; the historical volume-centered
+                # fields are derived by the single legacy decoder below.
+                floor_container_z = center_base[2] - half_h
+                center_container = [
+                    lx, ly, floor_container_z + peak + box_h * 0.5]
+                depth = _depth_m(center_container, datum_point, datum_normal)
+                support_layer = _support_layer_z(peak, resolution)
 
                 feasible = True
                 reason = "ok"
@@ -319,12 +825,34 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                         # column is unobserved. confidence_ratio == 0 makes
                         # these score below observed positions. See §4.2.2.
                         support_source = "floor_prior"
+                tilt_record = {
+                    "support_span_m": 0.0,
+                    "support_tilt_ratio": 0.0,
+                    "max_support_tilt_ratio": float(
+                        cfg["max_support_tilt_ratio"]),
+                }
                 if feasible and not clearance_ok:
                     feasible = False
                     reason = REASON_INSUFFICIENT_CLEARANCE
                 elif feasible and support_ratio < cfg["min_support_ratio"]:
                     feasible = False
                     reason = REASON_INSUFFICIENT_SUPPORT
+                elif feasible:
+                    # ST09-A S1: a support ramp within support_tol per cell
+                    # reads as full support by ratio; the span across the
+                    # contact cells exposes the tilt.
+                    tilt_span = _support_tilt_ratio(
+                        cell_heights, peak, cfg["support_tol"])
+                    tilt_ratio = tilt_span / max(footprint_l, footprint_w, 1e-6)
+                    if tilt_ratio > float(cfg["max_support_tilt_ratio"]):
+                        feasible = False
+                        reason = REASON_SUPPORT_TILT_UNSUPPORTED
+                    tilt_record = {
+                        "support_span_m": round(tilt_span, 6),
+                        "support_tilt_ratio": round(tilt_ratio, 6),
+                        "max_support_tilt_ratio": float(
+                            cfg["max_support_tilt_ratio"]),
+                    }
 
                 clearance_score = max(0.0, min(1.0, clearance_top / max(box_h, 1e-6)))
                 compactness = 1.0 - min(1.0, peak / max(inner_h, 1e-6))
@@ -336,50 +864,100 @@ def generate_candidates(surface_map, box_size, allowed_yaws=None, params=None,
                     + w_conf * confidence_ratio
                 )
 
-                candidate = {
-                    "center_base": center_base_xyz,
-                    "center_local": [lx, ly, lz],
-                    "yaw": map_yaw + box_yaw,
-                    "box_yaw": box_yaw,
-                    "footprint": [footprint_l, footprint_w],
-                    "size": [box_l, box_w, box_h],
-                    "support_score": round(support_ratio, 4),
-                    "clearance_score": round(clearance_score, 4),
-                    "clearance_top": round(clearance_top, 4),
-                    "collision_margin": round(clearance_top, 4),
-                    "confidence_ratio": round(confidence_ratio, 4),
-                    "support_source": support_source,
-                    "reachability_score": -1.0,
-                    "score": round(score, 4),
-                    "feasible": feasible,
-                    "reason": reason,
-                    "capacity_feasible": clearance_ok,
-                }
-                if clearance_ok:
-                    # Run the geometry gates even when an observation gate
-                    # already rejected the slot: capacity_feasible must not
-                    # depend on which gate happened to fire first.
-                    constraint_reason, capacity_ok = _validator_verdict(
-                        candidate_validator, candidate)
-                    candidate["capacity_feasible"] = bool(capacity_ok)
-                    if feasible and constraint_reason:
+                # ST09-A S1: exact seven-face hull legality before any
+                # truncation, evaluated on every window so the capacity claim
+                # never rests on the flat inner_size rectangle. When an
+                # injected validator exists (node path) its verdict keeps
+                # historical precedence; the internal gate closes the
+                # standalone/replay path and both must agree.
+                hull_ok = True
+                hull_margin_detail = {}
+                if hull is not None:
+                    hull_ok, hull_margin_detail = _hull_legal(
+                        center_container, (footprint_l, footprint_w), box_h,
+                        hull, cfg["hull_margin"])
+
+                for heading_index, heading_theta in enumerate(headings):
+                    candidate = {
+                        "candidate_id": "c%03d_%03d_f%d_h%d" % (
+                            ix0, iy0, footprint_class, heading_index),
+                        "center_container": center_container,
+                        "box_yaw": box_yaw,
+                        "heading_theta": heading_theta,
+                        "footprint_class": footprint_class,
+                        "support_layer_z": support_layer,
+                        "depth_m": round(depth, 6),
+                        "ix0": ix0,
+                        "iy0": iy0,
+                        "cells_x": cells_x,
+                        "cells_y": cells_y,
+                        "footprint": [footprint_l, footprint_w],
+                        "size": [box_l, box_w, box_h],
+                        "support_score": round(support_ratio, 4),
+                        "clearance_score": round(clearance_score, 4),
+                        "clearance_top": round(clearance_top, 4),
+                        "collision_margin": round(clearance_top, 4),
+                        "confidence_ratio": round(confidence_ratio, 4),
+                        "support_source": support_source,
+                        "reachability_score": -1.0,
+                        "score": round(score, 4),
+                        "feasible": feasible,
+                        "reason": reason,
+                        "capacity_feasible": bool(clearance_ok and hull_ok),
+                        "detail": {
+                            "route_clearance_m": 0.0,
+                            "route_not_evaluated": True,
+                            "tilt": tilt_record,
+                            "margins": {
+                                "hull_static_wall_and_chamfer_m": float(
+                                    cfg["hull_margin"]),
+                                "top_clearance_m": float(cfg["clearance_margin"]),
+                                "support_contact_tol_m": float(cfg["support_tol"]),
+                                **hull_margin_detail,
+                            },
+                            "hull_from_descriptor": hull is not None,
+                        },
+                    }
+                    v1_candidate_view(candidate, surface_map)
+                    if clearance_ok:
+                        # Run the geometry gates even when an observation gate
+                        # already rejected the slot: capacity_feasible must not
+                        # depend on which gate happened to fire first.
+                        constraint_reason, capacity_ok = _validator_verdict(
+                            candidate_validator, candidate)
+                        candidate["capacity_feasible"] = bool(
+                            capacity_ok and hull_ok)
+                        if feasible and constraint_reason:
+                            candidate["feasible"] = False
+                            candidate["reason"] = constraint_reason
+                    if feasible and not hull_ok:
+                        # No injected validator fired (or none was provided)
+                        # and the exact hull rejects the pose.
                         candidate["feasible"] = False
-                        candidate["reason"] = constraint_reason
-                candidates.append(candidate)
+                        candidate["reason"] = REASON_OUTSIDE_HULL
+                    candidate["verdict"] = _REASON_TO_VERDICT.get(
+                        candidate["reason"]
+                        if candidate["reason"] != "ok" else None,
+                        VERDICT_LEGAL,
+                    )
+                    candidates.append(candidate)
 
     if totals is not None:
         totals["n_enumerated"] = len(candidates)
         totals["n_capacity_feasible"] = sum(
             1 for c in candidates if c["capacity_feasible"])
 
-    candidates.sort(key=lambda c: (not c["feasible"], -c["score"]))
+    # ST09-A S1 4.2 deterministic deep-first order (frozen sorting_key):
+    # support layer low-to-high, depth deep-to-shallow, route clearance,
+    # score, stable id. Feasible-first, then rejected in the same order.
+    candidates.sort(key=lambda c: (not c["feasible"], _candidate_sort_key(c)))
     feasible = [c for c in candidates if c["feasible"]][: int(cfg["top_n"])]
     rejected = [c for c in candidates if not c["feasible"]][: int(cfg["keep_rejected"])]
     return feasible + rejected
 
 
 def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
-                    candidate_validator=None):
+                    candidate_validator=None, atlas_annotate=None):
     """ROS-free ComputePlacement core with a stable failure taxonomy.
 
     On failure ``reason_code`` is one of ``INVALID_BOX_SIZE``,
@@ -388,6 +966,12 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     capacity-feasible, so a run that lost every slot to the aperture, the
     insertion corridor, or unobserved support is never reported as a full
     container.
+
+    ``atlas_annotate`` (see placement_reachability.make_atlas_annotate) runs
+    after enumeration and before selection: it may flip candidates
+    infeasible (atlas_unreachable) and adjust ``score`` (reachability
+    prior), so both the reject histogram and the ``max(score)`` selection
+    reflect the atlas. Its report is returned as ``result["atlas"]``.
     """
     size = [float(v) for v in box_size]
     if len(size) != 3 or not all(math.isfinite(v) and v > 0.0 for v in size):
@@ -405,6 +989,9 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
     candidates = generate_candidates(
         surface_map, size, allowed_yaws=allowed_yaws, params=params,
         candidate_validator=candidate_validator, totals=totals)
+    atlas_report = None
+    if atlas_annotate is not None:
+        candidates, atlas_report = atlas_annotate(candidates)
     feasible = [candidate for candidate in candidates
                 if candidate.get("feasible", False)]
     # Count over every enumerated candidate, not the retained subset: a
@@ -416,28 +1003,69 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
             continue
         reason = str(candidate.get("reason") or "rejected")
         histogram[reason] = histogram.get(reason, 0) + 1
-    if not feasible:
+
+    # ST09-A S1 4.2: deterministic deep-first selection over the feasible
+    # set (the frozen PlacementCandidate.sorting_key order), replacing the
+    # historical max-score pick. All hard gates already ran in enumeration.
+    cfg = _default_params()
+    if params:
+        cfg.update(params)
+    hull = _surface_hull(surface_map)
+    selected = None
+    observation_requirement = None
+    hypothetical = []
+    if feasible:
+        selected = min(feasible, key=_candidate_sort_key)
+        message = (
+            "slot id=%s score=%.3f depth=%.3f layer=%.3f feasible=%d "
+            "rejected=%s" % (
+                selected.get("candidate_id", ""),
+                selected.get("score", 0.0),
+                selected.get("depth_m", 0.0),
+                selected.get("support_layer_z", 0.0),
+                len(feasible), histogram or {}))
+        reason_code = ""
+    else:
         if not totals.get("n_enumerated"):
             # No sliding window was even enumerated: the footprint or height
             # exceeds the container at every allowed yaw.
             reason_code = CODE_BOX_EXCEEDS_CONTAINER
-        elif capacity_feasible_count:
-            reason_code = CODE_PLACE_CANDIDATE_EXHAUSTED
         else:
-            reason_code = CODE_BIN_FULL
+            # S1 4.3 starvation test: would ANY window become legal if the
+            # unknown region were observed (occupied testimony kept, and the
+            # same validator gates — placed boxes cannot be observed away)?
+            # If yes this is an observation deficit, not a full container.
+            # Evidence-absent rejections (unknown_above_floor) outrank the
+            # exhausted-policy claim: observe first, then re-solve — the
+            # route/corridor policy may still fail afterwards.
+            hypothetical = _hypothetical_floor_windows(
+                surface_map, size, allowed_yaws, cfg, hull,
+                candidate_validator=candidate_validator)
+            starved = bool(histogram.get(REASON_UNKNOWN_ABOVE_FLOOR))
+            if (starved or not capacity_feasible_count) and hypothetical:
+                reason_code = CODE_OBSERVATION_REQUIRED
+            elif capacity_feasible_count:
+                reason_code = CODE_PLACE_CANDIDATE_EXHAUSTED
+            else:
+                reason_code = CODE_BIN_FULL
         parts = " ".join("%s=%d" % (key, value)
                          for key, value in sorted(histogram.items()))
         message = "%s no_candidate%s%s" % (
             reason_code, ": " if parts else "", parts)
         selected = None
-    else:
-        reason_code = ""
-        selected = max(feasible, key=lambda item: item.get("score", 0.0))
-        message = "slot score=%.3f feasible=%d rejected=%s" % (
-            selected.get("score", 0.0), len(feasible),
-            histogram or {})
+
+    # ObservationRequirement (S1 4.3 / frozen ObservationRequirement): the
+    # still-unknown cells in the selected candidate's footprint and entry
+    # corridor, for the bounded observation stage (ST09-D) — or, on the
+    # starved-map failure path, of the best hypothetical legal window.
+    observation_requirement = _observation_requirement(
+        surface_map, candidates if feasible else [], hypothetical=hypothetical)
+
     return {
         "success": bool(feasible),
+        # preferred_candidate is the packing preference. It is not a
+        # certified selected slot; SelectPlacePathV2 owns that.
+        "preferred_candidate": selected,
         "selected": selected,
         "candidates": candidates,
         "reject_histogram": histogram,
@@ -446,6 +1074,12 @@ def solve_placement(surface_map, box_size, allowed_yaws=None, params=None,
         "candidates_enumerated": int(totals.get("n_enumerated", 0)),
         "message": message,
         "map_revision": surface_map.get("map_revision"),
+        "atlas": atlas_report,
+        "observation_requirement": observation_requirement,
+        "hypothetical_legal_windows": [
+            {"ix0": row[0], "iy0": row[1], "depth_m": round(row[5], 6)}
+            for row in hypothetical[:8]
+        ],
     }
 
 
@@ -456,19 +1090,223 @@ def best_candidate(candidates):
     return None
 
 
-def ranked_feasible_candidates(result, max_candidates=5):
-    """Score-sorted feasible prefix for ComputePlacement.candidates.
+def _reachability_band(candidate):
+    """0 reachable, 1 marginal, 2 unknown or no atlas.
 
-    ``candidates[0]`` matches ``result['selected']`` when any slot is
-    feasible. ``max_candidates <= 0`` uses the default of 5.
+    Unknown and no-atlas slots stay in band 2 so a deep unsampled cell
+    does not outrank a reachable or marginal one. Reachable and
+    marginal slots then prefer the opening side. Unknown slots keep
+    the frozen deep-first key.
+    """
+    status = candidate.get("atlas_status")
+    if status == 3:
+        return 0
+    if status == 2:
+        return 1
+    return 2
+
+
+def candidate_prefix_note(returned, feasible_count):
+    """One line describing which feasible slots the prefix kept."""
+    bands = {}
+    depths = []
+    for candidate in returned:
+        if candidate.get("atlas_status") == 3:
+            band = "reachable"
+        elif candidate.get("atlas_status") == 2:
+            band = "marginal"
+        elif str(candidate.get("atlas_status_name") or "") == "no_atlas":
+            band = "no_atlas"
+        else:
+            band = "unknown"
+        bands[band] = bands.get(band, 0) + 1
+        depths.append(float(candidate.get("depth_m") or 0.0))
+    band_text = ",".join(
+        "%s:%d" % item for item in sorted(bands.items())) or "none"
+    if depths:
+        span = "%.3f..%.3f" % (min(depths), max(depths))
+    else:
+        span = "none"
+    return "returned=%d/%d bands=%s depth=%s" % (
+        len(returned), int(feasible_count), band_text, span)
+
+
+def _motion_rank_key(candidate):
+    band = _reachability_band(candidate)
+    frozen = _candidate_sort_key(candidate)
+    if band in (0, 1):
+        return (band, float(candidate.get("depth_m") or 0.0),
+                frozen[0], -float(candidate.get("score") or 0.0))
+    return (2,) + frozen
+
+
+def ranked_feasible_candidates(result, max_candidates=5):
+    """Feasible prefix for ComputePlacement.candidates.
+
+    Groups are reachable, then marginal, then unknown. Inside the
+    reachable and marginal groups the shallower slot comes first.
+    Unknown slots keep the frozen deep-first key, so ``candidates[0]``
+    still matches ``result['preferred_candidate']`` when the atlas did
+    not annotate anyone. ``max_candidates <= 0`` uses 5.
     """
     feasible = [
         candidate for candidate in (result.get("candidates") or [])
         if candidate.get("feasible")]
+    feasible.sort(key=_motion_rank_key)
     limit = int(max_candidates or 0)
     if limit <= 0:
         limit = 5
     return feasible[:limit]
+
+
+class SnapshotCandidateGenerator:
+    """Frozen-protocol adapter over ``solve_placement`` (st09_contracts
+    ``CandidateGenerator``): pure, no motion requests, never BIN_FULL from a
+    single failed insertion corridor.
+
+    The frozen ``PlanningSnapshot`` is a coarse cell-state grid (no height
+    field, no hull descriptor), so the adapter takes the missing geometry
+    out-of-band at construction: ``geometry_descriptor`` (preferred —
+    rehydrates the exact chamfered hull and the aperture depth datum) or a
+    plain ``inner_size`` fallback, plus the payload (dimensions + symmetry)
+    the snapshot itself cannot carry. ``generate_candidates`` then only has
+    to match the digest, keeping the frozen call signature intact.
+    """
+
+    def __init__(self, payload, geometry_descriptor=None, inner_size=None,
+                 allowed_yaws=None, params=None):
+        self._payload = payload
+        self._geometry_descriptor = geometry_descriptor
+        self._inner_size = inner_size
+        self._allowed_yaws = allowed_yaws
+        self._params = dict(params or {})
+
+    # -- internals -------------------------------------------------------
+
+    def _surface_from_snapshot(self, snapshot):
+        from st09_contracts.planning import OccupancyCellState
+        resolution = float(snapshot.resolution_m)
+        cells_i = tuple(snapshot.cells_i)
+        cells_j = tuple(snapshot.cells_j)
+        cell_states = tuple(snapshot.cell_states)
+        nx = (max(cells_i) + 1) if cells_i else 1
+        ny = (max(cells_j) + 1) if cells_j else 1
+        state = [["unknown"] * ny for _ in range(nx)]
+        height = [[0.0] * ny for _ in range(nx)]
+        confidence = [["none"] * ny for _ in range(nx)]
+        for i, j, cell_state in zip(cells_i, cells_j, cell_states):
+            i, j = int(i), int(j)
+            if i >= nx or j >= ny:
+                raise ValueError("snapshot cell outside derived grid")
+            label = str(OccupancyCellState(cell_state).value)
+            state[i][j] = label
+            if label == "occupied":
+                # One-voxel marker height: conservative (forces stacking z,
+                # keeps occupied columns out of floor landings).
+                height[i][j] = resolution
+                confidence[i][j] = "sensor"
+            elif label == "free":
+                confidence[i][j] = "sensor"
+        if self._geometry_descriptor is not None:
+            inner_size = list(self._geometry_descriptor.get(
+                "inner_size",
+                [float(self._geometry_descriptor["length"]),
+                 float(self._geometry_descriptor["width"]),
+                 float(self._geometry_descriptor["ceiling_z"])
+                 - float(self._geometry_descriptor["floor_z"])]))
+            center_z = 0.5 * (
+                float(self._geometry_descriptor["ceiling_z"])
+                + float(self._geometry_descriptor["floor_z"]))
+        else:
+            if self._inner_size is None:
+                raise ValueError(
+                    "SnapshotCandidateGenerator needs geometry_descriptor "
+                    "or inner_size (the frozen snapshot carries neither)")
+            inner_size = [float(v) for v in self._inner_size]
+            center_z = 0.5 * float(inner_size[2])
+        return {
+            "resolution": resolution,
+            "nx": nx,
+            "ny": ny,
+            "inner_size": inner_size,
+            "center_base": [0.0, 0.0, center_z],
+            "yaw": 0.0,
+            "height": height,
+            "state": state,
+            "confidence": confidence,
+            "map_revision": int(snapshot.map_revision),
+            "geometry_descriptor": self._geometry_descriptor,
+        }
+
+    def _to_contract(self, candidate, hull_present):
+        from st09_contracts.planning import GeometryVerdict, PlacementCandidate
+        yaw = float(candidate.get("heading_theta", 0.0) or 0.0)
+        half = 0.5 * yaw
+        quaternion = (0.0, 0.0, math.sin(half), math.cos(half))
+        detail = dict(candidate.get("detail") or {})
+        detail["box_yaw_requested"] = candidate.get("box_yaw")
+        detail["support_source"] = candidate.get("support_source")
+        detail["hull_from_descriptor"] = hull_present
+        return PlacementCandidate(
+            candidate_id=str(candidate["candidate_id"]),
+            footprint_class=int(candidate["footprint_class"]),
+            heading_theta=float(candidate["heading_theta"]),
+            position_container=tuple(
+                float(v) for v in candidate["center_container"]),
+            quaternion_xyzw_container=quaternion,
+            support_layer_z=float(candidate["support_layer_z"]),
+            depth_m=float(candidate["depth_m"]),
+            verdict=GeometryVerdict(str(candidate["verdict"])),
+            score=float(candidate["score"]),
+            detail=detail,
+        )
+
+    # -- frozen protocol -------------------------------------------------
+
+    def generate_candidates(self, snapshot, payload_digest):
+        from st09_contracts.planning import ObservationRequirement
+        payload = self._payload
+        expected = getattr(payload, "digest", None)
+        if expected is not None and payload_digest is not None:
+            if str(payload_digest) != str(expected()):
+                raise ValueError(
+                    "payload_digest does not match the constructed payload")
+        params = dict(self._params)
+        params.setdefault(
+            "payload_symmetry",
+            str(getattr(payload, "symmetry", "none") or "none").lower(),
+        )
+        dimensions = tuple(
+            float(v) for v in payload.dimensions_wdh)
+        surface = self._surface_from_snapshot(snapshot)
+        result = solve_placement(
+            surface, list(dimensions), allowed_yaws=self._allowed_yaws,
+            params=params)
+        hull_present = surface.get("geometry_descriptor") is not None
+        contract_candidates = [
+            self._to_contract(candidate, hull_present)
+            for candidate in result["candidates"]
+        ]
+        requirement = None
+        raw = result.get("observation_requirement")
+        if raw:
+            requirement = ObservationRequirement(
+                requirement_id=str(raw["requirement_id"]),
+                candidate_ids=tuple(str(c) for c in raw["candidate_ids"]),
+                footprint_cells=tuple(
+                    tuple(int(v) for v in cell)
+                    for cell in raw["footprint_cells"]),
+                corridor_cells=tuple(
+                    tuple(int(v) for v in cell)
+                    for cell in raw["corridor_cells"]),
+                missing_cells=tuple(
+                    tuple(int(v) for v in cell)
+                    for cell in raw["missing_cells"]),
+                missing_reasons=tuple(
+                    str(reason) for reason in raw["missing_reasons"]),
+                note=str(raw.get("note", "")),
+            )
+        return contract_candidates, requirement
 
 
 if __name__ == "__main__":

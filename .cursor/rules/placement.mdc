@@ -34,9 +34,13 @@ Full contract: `docs/architecture/placement.md`. Hull identity and the
   prior. Do not treat floor prior as “no cargo inside.”
 - Do not require a fake `height_valid=true` box when detection is honestly
   TOP_ONLY (`RS-8`).
-- Do not treat `FreeSpaceModel` / `placement_scoring` / the reachability atlas
-  as the live Humble `placement_planner_node` path unless that node and
+- Do not treat `FreeSpaceModel` / `placement_scoring` as the live Humble
+  `placement_planner_node` path unless that node and
   `docs/architecture/placement.md` switch together.
+- The live node may hard-reject and re-rank with the reachability atlas.
+  On the certification cell (`hash_policy: strict`) that atlas must match
+  the live scene-file hash and URDF hash. A miss returns
+  `ATLAS_IDENTITY_UNVERIFIED` and must not hard-reject or re-rank.
 - Plan place motion (cartesian, OMPL, or later search) against the current
   cargo occupancy at `geometry_hash` / `map_revision`. Occupied and
   unknown-above-floor cells are obstacles for the swept payload and arm.

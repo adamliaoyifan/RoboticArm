@@ -306,6 +306,28 @@ class TestOccupancyPlacePaths(unittest.TestCase):
         self.assertTrue(snap.cell_inside_hull(snap.nx // 2, 0))
         self.assertFalse(snap.cell_inside_hull(snap.nx // 2, snap.ny - 1))
 
+    def test_approach_beside_door_is_not_outside_hull(self):
+        # Pick-side free space: local x << -half_x, Y outside the door
+        # shadow. Hull must not reject the transit arc (rehearsal-26).
+        inner = (1.0, 1.0, 1.0)
+        surface = _surface(nx=20, ny=20, inner=inner)
+        snap = OccupancySnapshot.from_surface_2d(surface, inflate_m=0.0)
+        payload = (0.10, 0.10, 0.10)
+        beside = [(-1.5, 0.80, 0.50), (-1.2, 0.80, 0.50)]
+        result = sweep_polyline(snap, beside, payload, arm_radius=0.0)
+        self.assertFalse(result.collides, result)
+        self.assertEqual(result.reason, "")
+
+    def test_entered_beside_door_is_still_outside_hull(self):
+        inner = (1.0, 1.0, 1.0)
+        surface = _surface(nx=20, ny=20, inner=inner)
+        snap = OccupancySnapshot.from_surface_2d(surface, inflate_m=0.0)
+        payload = (0.10, 0.10, 0.10)
+        entered = [(-1.5, 0.80, 0.50), (0.0, 0.80, 0.50)]
+        result = sweep_polyline(snap, entered, payload, arm_radius=0.0)
+        self.assertTrue(result.collides, result)
+        self.assertEqual(result.reason, "outside_hull")
+
 
 class TestResolvePayloadWdh(unittest.TestCase):
 

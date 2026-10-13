@@ -231,6 +231,21 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         self.create_subscription(
             String, "/luggage/cargo_map/surface_2d", self._on_surface, latch,
             callback_group=self._group)
+        # Typed chain (F22): the v2 surface feeds placement; the commit
+        # ledger keeps slot records. Fixture INSTALL commits stay v1: they
+        # are declared scaffolding, and the v2 ledger is measured-only.
+        self._surface_v2_msg = None
+        self._frame_placed_records = []
+        self._frame_slot_record = None
+        self._frame_slot_box_wdh = []
+        if getattr(self, "_typed", None) is not None:
+            from luggage_msgs.msg import SurfaceContractV2
+            self.create_subscription(
+                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+                self._on_surface_v2, latch, callback_group=self._group)
+
+    def _on_surface_v2(self, msg):
+        self._surface_v2_msg = msg
         self.create_subscription(
             String, "/luggage/finalized_models", self._on_finalized, latch,
             callback_group=self._group)
@@ -1137,6 +1152,8 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         }
 
     def _compute_placement(self, pick_msg):
+        if getattr(self, "_typed", None) is not None:
+            return self._frame_compute_placement(pick_msg)
         request = ComputePlacement.Request()
         request.box = pick_msg
         request.placed = list(self._placed_slots)
@@ -1144,6 +1161,80 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         # different scene config must fail closed rather than answer.
         request.geometry_hash = str(self._ctx["geometry_hash"])
         return self._call(self._compute_cli, request, timeout=30.0)
+
+    def _frame_compute_placement(self, pick_msg):
+        """Typed ComputePlacementV2; the surface carries fixture boxes, the
+        placed list carries this driver's own measured commits."""
+        from luggage_description.frame_contracts import ContractError
+        from luggage_description.frame_diagnostics import BoundaryContext
+        from luggage_description.ros_frame_bindings.poses import (
+            pose_from_message)
+        from luggage_planning.typed_driver_adapter import slot_spec_from_record
+        surface_msg = getattr(self, "_surface_v2_msg", None)
+        box_wdh = [float(pick_msg.width), float(pick_msg.depth),
+                   float(pick_msg.height)]
+        request_id = self._frame_request_id("placeonly")
+        ledger = getattr(self, "_frame_placed_records", None) or []
+        map_revision = int(
+            surface_msg.map_revision if surface_msg is not None else
+            (self._surface_2d or {}).get("map_revision") or 0)
+        try:
+            placement = self._typed.compute_placement(
+                request_id=request_id, box_wdh=box_wdh,
+                height_measured=bool(pick_msg.height_valid),
+                scene_revision=self._frame_scene_revision,
+                placed=[entry["record"] for entry in ledger],
+                placed_wdh_flat=[v for entry in ledger
+                                 for v in entry["size_wdh"]],
+                geometry_hash=str(self._ctx["geometry_hash"]),
+                expected_map_revision=map_revision)
+        except ContractError as error:
+            placement = None
+            self.get_logger().warning(
+                "compute_placement_v2 rejected (%s %s)"
+                % (error.code, error.field))
+        import types as _types
+        if placement is None or not placement.success:
+            return _types.SimpleNamespace(
+                success=False,
+                message=(placement.message if placement else "timeout"),
+                reason_code=(str(getattr(placement, "reason_code", "") or "")
+                             if placement else "COMPUTE_TIMEOUT"),
+                geometry_hash=str(
+                    getattr(placement, "geometry_hash", "") or ""
+                    if placement else self._ctx["geometry_hash"]),
+                slot=None, candidates=[], candidate_scores=[],
+                candidate_reasons=[])
+        context = BoundaryContext(
+            "F07", "typed_driver_adapter", "place_only_eval_driver",
+            request_id, self._frame_scene_revision, "container_link",
+            "box_center", "scene")
+
+        def decode(message):
+            return slot_spec_from_record(
+                pose_from_message(message, "slot", context),
+                self._scene_config, box_wdh)
+
+        try:
+            selected = decode(placement.slot)
+            candidates = [decode(message)
+                          for message in placement.candidates] or [selected]
+        except ContractError as error:
+            return _types.SimpleNamespace(
+                success=False, message="%s: %s" % (error.code, error.field),
+                reason_code=error.code,
+                geometry_hash=str(placement.geometry_hash or ""),
+                slot=None, candidates=[], candidate_scores=[],
+                candidate_reasons=[])
+        self._frame_slot_record = pose_from_message(
+            placement.slot, "slot", context)
+        self._frame_slot_box_wdh = box_wdh
+        return _types.SimpleNamespace(
+            success=True, message=str(placement.message or ""),
+            reason_code="", geometry_hash=str(placement.geometry_hash or ""),
+            slot=selected, candidates=candidates,
+            candidate_scores=list(placement.candidate_scores),
+            candidate_reasons=list(placement.candidate_reasons))
 
     def _check_geometry_identity(self, record, placement):
         """Every answer must name the hull the fixture and map agree on."""
@@ -1587,8 +1678,32 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         self._commit_seq += 1
         world_slot = self._slot_world_msg(slot, slot_meta, self._commit_seq)
         commit_t0 = time.time()
-        add = self._call(self._map_add, AddPlacedBox.Request(slot=world_slot),
-                         timeout=15.0)
+        if getattr(self, "_typed", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            surface_msg = getattr(self, "_surface_v2_msg", None)
+            record = getattr(self, "_frame_slot_record", None)
+            box_wdh = getattr(self, "_frame_slot_box_wdh", None) or list(size)
+            if record is None:
+                return {"ok": False, "code": "TYPED_COMMIT_CONTEXT_MISSING",
+                        "message": "no admitted slot record for this case"}
+            try:
+                add = self._typed.add_placed_box(
+                    slot=record, size_wdh=list(box_wdh),
+                    measured_source="verify_placed_box",
+                    expected_map_revision=int(
+                        surface_msg.map_revision if surface_msg is not None
+                        else (pre_map["stats"] or {}).get("map_revision")
+                        or 0),
+                    geometry_hash=str(self._ctx["geometry_hash"]))
+            except ContractError as error:
+                add = None
+                self.get_logger().warning(
+                    "add_placed_box_v2 rejected (%s %s)"
+                    % (error.code, error.field))
+        else:
+            add = self._call(
+                self._map_add, AddPlacedBox.Request(slot=world_slot),
+                timeout=15.0)
         commit_latency = time.time() - commit_t0
         if add is None or not add.success:
             return {"ok": False, "code": "COMMIT_FAILED",
@@ -1608,8 +1723,23 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
             > pre_map["stats"]["map_revision"])
 
         # Idempotency: repeat the identical commit.
-        repeat = self._call(self._map_add, AddPlacedBox.Request(
-            slot=world_slot), timeout=15.0)
+        if getattr(self, "_typed", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            stats_now = self._map_stats() or {}
+            try:
+                repeat = self._typed.add_placed_box(
+                    slot=getattr(self, "_frame_slot_record", None),
+                    size_wdh=list(getattr(self, "_frame_slot_box_wdh", [])
+                                  or size),
+                    measured_source="verify_placed_box",
+                    expected_map_revision=int(
+                        stats_now.get("map_revision") or 0),
+                    geometry_hash=str(self._ctx["geometry_hash"]))
+            except ContractError as error:
+                repeat = None
+        else:
+            repeat = self._call(self._map_add, AddPlacedBox.Request(
+                slot=world_slot), timeout=15.0)
         stats_repeat = self._map_stats() or {}
         self._wait_surface_revision(stats_repeat.get("map_revision", -1))
         post_repeat = self._map_snapshot()
@@ -1660,6 +1790,13 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
         committed_slot.place_pose.position.z = float(base["position"][2])
         committed_slot.place_pose.orientation = _yaw_quat(base["yaw"])
         self._placed_slots.append(committed_slot)
+        if getattr(self, "_typed", None) is not None:
+            record = getattr(self, "_frame_slot_record", None)
+            if record is not None:
+                self._frame_placed_records.append({
+                    "record": record,
+                    "size_wdh": list(getattr(self, "_frame_slot_box_wdh", [])
+                                     or size)})
         self._placed_local_boxes.append(
             fx.FixtureBox(tuple(center), tuple(size), yaw_local,
                           role="committed_%s" % case.case_id))

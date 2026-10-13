@@ -74,6 +74,7 @@
     "arm_min_margin_m": {"value": 0.0, "meaning": "hard floor for the measured wrist/elbow clearance on top-K rows", "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
     "arm_radius_m": {"value": 0.08, "source": "src/luggage_planning/luggage_planning/trajectory_selector.py SELECTOR_DEFAULTS"},
     "placement_top_clearance_m": {"value": 0.03, "meaning": "required free space above the placed box", "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params clearance_margin"},
+    "same_layer_clearance_m": {"value": 0.05, "meaning": "minimum boundary gap between oriented footprints on the same support surface; equality passes; a stacked box is exempt only against its support parent", "source": "src/luggage_packing/luggage_packing/placement_solver.py SAME_LAYER_CLEARANCE_M; docs/plans/st09_i_finish_execution_20261004.md 2026-10-05-v2"},
     "placement_support_tol_m": {"value": 0.05, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params support_tol"},
     "placement_min_support_ratio": {"value": 0.6, "source": "src/luggage_packing/luggage_packing/placement_solver.py _default_params min_support_ratio"},
     "margin_naming_rule": "S1 refines these into separately named static-wall / cargo / support-contact margins with unified sources; C0 freezes the current numbers",
@@ -93,7 +94,7 @@
     "status": "frozen"
   },
   "planning_budgets": {
-    "route_total_wall_s": {"value": 10.0, "meaning": "one route request budget; exhaustion returns PLANNING_BUDGET_EXHAUSTED, never BIN_FULL", "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
+    "route_total_wall_s": {"value": 60.0, "meaning": "per-box route budget. A run of n boxes uses n times this value (1 box 60 s, 3 boxes 180 s). Exhaustion returns PLANNING_BUDGET_EXHAUSTED, never BIN_FULL", "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
     "single_new_moveit_edge_wall_s": {"value": 2.0, "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
     "max_edge_repair_attempts": {"value": 4, "meaning": "including failures; cache hits do not count", "source": "docs/plans/frame_migration_st09_planner_convergence.md section 4.2"},
     "certification_timeout_s": {"value": 2.0, "meaning": "certifier wall-clock budget; timeout fails closed", "source": "C0 definition consistent with the single-edge 2 s budget", "status": "defined_by_c0"},
@@ -117,7 +118,7 @@
   "attachment_policy": {
     "schema_version": 2,
     "tf_sync_max_skew_ns": {"value": 0, "meaning": "T_tcp_box is computed from the SAME-stamp measured box pose and TCP TF (exact ns equality inherited from require_measured_pose_agreement)", "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:53-68 (INVALID_STAMP on stamp mismatch)"},
-    "attachment_max_age_ns": {"value": 10000000000, "meaning": "acquisition -> use window for a frozen record at admission; older records are ATTACHMENT_EXPIRED and require re-measure", "status": "defined_by_c0"},
+    "attachment_max_age_ns": {"value": 60000000000, "meaning": "per-box acquisition -> use window. A run of n boxes admits a record for n times this window, matching route_budget_s(n), so a search inside that budget is not ATTACHMENT_EXPIRED", "status": "defined_by_c0"},
     "measured_pose_agreement_m": {"value": 1e-06, "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:62"},
     "measured_pose_agreement_rad": {"value": 1e-06, "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:65"},
     "grasp_binding_tolerance_m": {"value": 0.01, "meaning": "planned grasp vs measured transform agreement at freeze; also the slip check bound", "source": "src/luggage_planning/luggage_planning/attachment_frame_contracts.py:25 (GRASP_TOLERANCE_M)"},

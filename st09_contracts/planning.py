@@ -53,6 +53,38 @@ class PlanningSnapshot:
     cells_i: Tuple[int, ...]
     cells_j: Tuple[int, ...]
     cell_states: Tuple[str, ...]
+    #: [ST09-I S5.7-6] Scene identity the snapshot was planned against
+    #: (RuntimeIdentityV2.scene_revision). Empty on legacy constructions
+    #: (the identity gates compare only what both sides declare — an
+    #: empty snapshot scene never blocks a legacy producer). Excluded
+    #: from digest(): the digest pins the MAP content, not the cell's
+    #: identity binding.
+    scene_revision: str = ""
+    #: ``static_empty`` / ``measured`` / ``release_integrated``. Empty
+    #: keeps the legacy acquisition-age check. Excluded from digest().
+    map_source: str = ""
+    #: Committed placed boxes. ``static_empty`` is legal only at 0.
+    placed_count: int = 0
+    #: True after a settled cargo view has been integrated. ``static_empty``
+    #: is then no longer a legal identity.
+    cargo_observed: bool = False
+    #: True only when ``cell_states`` is the whole decision domain.
+    #: A sparse snapshot that omitted unknown cells is not a full
+    #: container, even if every listed cell is occupied. Excluded from
+    #: digest(): it is an admission declaration, not map content.
+    occupancy_domain_complete: bool = False
+    #: Occupied-cell heights. ``geometry_hash`` is the container hull and
+    #: ``occupancy_digest`` is cell state only, so two maps can share a
+    #: revision and a hull hash while column tops differ. Empty means
+    #: the source grid had no heights. Excluded from digest().
+    column_height_digest: str = ""
+    #: False after a cargo change that has not been checked by an
+    #: observation. Age does not clear it. Excluded from digest().
+    occupancy_confirmed: bool = True
+    #: ``box_placed``, ``box_removed``, ``box_disturbed``,
+    #: ``cargo_edited``, or ``container_pose_changed``. Empty when the
+    #: snapshot is still the confirmed one. Excluded from digest().
+    change_event: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))
@@ -62,6 +94,22 @@ class PlanningSnapshot:
             if isinstance(value, bool) or not isinstance(value, int) or value < 0:
                 raise ContractViolation("%s: non-negative int required (%r)" % (name, value))
         object.__setattr__(self, "acquisition_stamp_ns", stamp_ns(self.acquisition_stamp_ns, "acquisition_stamp_ns"))
+        source = str(self.map_source or "")
+        if source not in ("", "static_empty", "measured", "release_integrated"):
+            raise ContractViolation(
+                "map_source: unknown identity %r" % source)
+        object.__setattr__(self, "map_source", source)
+        placed = self.placed_count
+        if isinstance(placed, bool) or not isinstance(placed, int) or placed < 0:
+            raise ContractViolation(
+                "placed_count: non-negative int required (%r)" % placed)
+        if not isinstance(self.cargo_observed, bool):
+            raise ContractViolation(
+                "cargo_observed: bool required (%r)" % self.cargo_observed)
+        if not isinstance(self.occupancy_domain_complete, bool):
+            raise ContractViolation(
+                "occupancy_domain_complete: bool required (%r)"
+                % self.occupancy_domain_complete)
         object.__setattr__(self, "resolution_m", finite(self.resolution_m, "resolution_m"))
         if self.resolution_m <= 0.0:
             raise ContractViolation("resolution_m: non-positive (%r)" % self.resolution_m)
@@ -107,6 +155,13 @@ class PlanningSnapshot:
             "geometry_hash": self.geometry_hash,
             "map_revision": self.map_revision,
             "acquisition_stamp_ns": self.acquisition_stamp_ns,
+            "map_source": self.map_source,
+            "placed_count": self.placed_count,
+            "cargo_observed": self.cargo_observed,
+            "occupancy_domain_complete": self.occupancy_domain_complete,
+            "column_height_digest": self.column_height_digest,
+            "occupancy_confirmed": self.occupancy_confirmed,
+            "change_event": self.change_event,
             "commit_revision": self.commit_revision,
             "occupancy_digest": self.occupancy_digest,
             "resolution_m": self.resolution_m,
@@ -200,6 +255,7 @@ class GeometryVerdict(str, Enum):
     SUPPORT_MISSING = "support_missing"
     SUPPORT_TILT_UNSUPPORTED = "support_tilt_unsupported"
     OVERLAP = "overlap"
+    SAME_LAYER_CLEARANCE = "same_layer_clearance"
     TOP_CLEARANCE = "top_clearance"
 
     def __str__(self) -> str:  # pragma: no cover - trivial

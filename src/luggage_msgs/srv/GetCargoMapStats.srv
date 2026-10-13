@@ -14,3 +14,15 @@ int32 total_voxels
 int64 map_revision
 # Kernel geometry_hash of the hull this map describes.
 string geometry_hash
+# Sensor stamp (ns) of the last integrated settled view, or the commit
+# clock of the last placed-box update. 0 means there is no acquisition.
+# 0 is not an acquisition time. It is legal only for map_source
+# static_empty while placed_count is 0 and cargo_observed is false.
+int64 last_acquisition_stamp_ns
+# static_empty | measured | release_integrated
+# static_empty is the configured empty container. measured is a settled
+# view. release_integrated is a placed-box commit. Once placed_count > 0
+# or cargo_observed is true, static_empty is not a legal identity.
+string map_source
+int32 placed_count
+bool cargo_observed

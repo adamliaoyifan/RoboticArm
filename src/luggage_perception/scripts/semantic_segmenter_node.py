@@ -14,9 +14,13 @@ Subscribes the *preprocessed* color image so the mask inherits the RGB
 ``primary_stamp`` and the downstream point filter can join on exact stamps
 with the preprocessed cloud.
 
-The mask/instance-mask/overlay outputs are BEST_EFFORT (sensor-stream
-contract); ``/luggage/semantic/yolo_detections`` is the structured per-frame
-box list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
+The label mask and overlay stay BEST_EFFORT. ``instance_mask`` is
+RELIABLE so the detector's exact-stamp subscription can connect; a
+BEST_EFFORT subscriber (the point filter) still matches. A BEST_EFFORT
+publisher is incompatible with that RELIABLE subscription, and the
+detector then never receives the topic.
+``/luggage/semantic/yolo_detections`` is the structured per-frame box
+list (BEST_EFFORT, depth 10). ``~/stats_json`` is transient-local so a
 late consumer sees the last record.
 """
 
@@ -32,7 +36,9 @@ import rclpy
 from rcl_interfaces.msg import SetParametersResult
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.qos import (
+    DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy,
+)
 from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 from tf2_ros import Buffer, TransformException, TransformListener
@@ -165,6 +171,11 @@ class SemanticSegmenterNode(Node):
             },
             "self_body_row_start_frac": float(
                 self.get_parameter("self_body_row_start_frac").value),
+            # [ST09-I S5.7-6] with require_backend set, a construction
+            # failure raises the NAMED error (no silent stub fallback);
+            # the stats-prefix check below stays as the belt-and-braces.
+            "require_backend": str(
+                self.get_parameter("require_backend").value),
         }
         self._segmenter = build_segmenter(config)
         self.add_on_set_parameters_callback(self._on_set_parameters)
@@ -231,14 +242,26 @@ class SemanticSegmenterNode(Node):
             Image, self.get_parameter("output.mask").value, mask_qos)
         self._overlay_pub = self.create_publisher(
             Image, self.get_parameter("output.overlay").value, mask_qos)
+        # Match the detector's RELIABLE instance-mask subscription.
+        # BEST_EFFORT subscribers remain compatible with a RELIABLE publisher.
+        instance_qos = QoSProfile(
+            depth=15,
+            reliability=ReliabilityPolicy.RELIABLE,
+            history=HistoryPolicy.KEEP_LAST)
         self._instance_pub = self.create_publisher(
-            Image, self.get_parameter("output.instance_mask").value, mask_qos)
+            Image, self.get_parameter("output.instance_mask").value,
+            instance_qos)
         self._yolo_pub = self.create_publisher(
             YoloDetections,
             self.get_parameter("output.yolo_detections").value,
             stream_qos)
         self._stats_pub = self.create_publisher(
             String, self.get_parameter("output.stats").value, stats_qos)
+        # Per-frame mask identity. Not throttled: stats_json keeps one
+        # pending record, which drops the frames between publishes.
+        self._mask_trace_pub = self.create_publisher(
+            String, "~/mask_trace", QoSProfile(
+                depth=50, reliability=ReliabilityPolicy.RELIABLE))
 
         self.create_subscription(
             Image, self.get_parameter("input.color_image").value,
@@ -500,6 +523,7 @@ class SemanticSegmenterNode(Node):
         if out.instance_map is not None:
             self._instance_pub.publish(adapters.instance_mask_msg_from_array(
                 out.instance_map, stamp, out.frame_id))
+        self._publish_mask_trace(out)
         self._publish_yolo(out, stamp)
         t_yolo = time.perf_counter()
         self._node_stage_ms["yolo_publish"] = round((t_yolo - t_mask) * 1000.0, 2)
@@ -519,6 +543,28 @@ class SemanticSegmenterNode(Node):
         self._last_stats_pub = now
         self._pending_stats = None
         self._stats_pub.publish(String(data=json.dumps(record, sort_keys=True)))
+
+    def _publish_mask_trace(self, out):
+        """Stamp, generation, and nonzero counts for one mask frame."""
+        label_map = getattr(out, "label_map", None)
+        instance_map = getattr(out, "instance_map", None)
+        record = {
+            "kind": "mask",
+            "stamp": float(getattr(out, "stamp", 0.0) or 0.0),
+            "generation": int(getattr(out, "generation", 0) or 0),
+            "instance_id": str(getattr(out, "instance_id", "") or ""),
+            "mask_nonzero": (
+                0 if label_map is None else int(np.count_nonzero(label_map))),
+            "instance_nonzero": (
+                None if instance_map is None
+                else int(np.count_nonzero(instance_map))),
+            "n_detections": int(len(getattr(out, "detections", None) or ())),
+        }
+        try:
+            self._mask_trace_pub.publish(String(
+                data=json.dumps(record, sort_keys=True)))
+        except Exception as exc:  # noqa: BLE001 - trace must not stop masks
+            self._warn_throttled("mask_trace publish failed: %s" % exc)
 
     def _publish_yolo(self, out, stamp):
         msg = YoloDetections()

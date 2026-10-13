@@ -1,0 +1,33 @@
+# Unified trajectory selector. Sweep keys match place_path_selector.yaml.
+# mode: unified scores grid paths and geometric variants together.
+# mode: legacy keeps PlacePathPlanner's batch-normalized costs.
+mode: unified
+w_placement: 1.0
+w_dimension: 1.0
+w_safety: 1.5
+w_efficiency: 0.5
+safety_ref_m: 0.10
+placement_score_ref: 1.0
+joint_travel_ref_rad: 3.0
+max_joint_step_rad: 1.2
+high_z_gain: 8.0
+diversity_penalty: 3.0
+overlap_max: 0.7
+probe_budget: 3
+hash_policy: "off"
+inflate_m: 0.05
+arm_radius_m: 0.08
+max_candidates: 5
+max_candidates_per_slot: 5
+# Arm-ceiling cost + corridor variant (2026-09-29 box3 transit bottleneck):
+w_arm: 1.0
+arm_margin_ref_m: 0.10
+arm_min_margin_m: 0.0
+arm_check_top_k: 4
+cartesian_min_fraction: 0.95
+max_occ_objects: 200
+occupancy_freshness_s: 0.0
+support_tol: 0.05
+carry_margin_m: 0.05
+collision_pad_m: 0.02
+arm_overhead_m: 0.20

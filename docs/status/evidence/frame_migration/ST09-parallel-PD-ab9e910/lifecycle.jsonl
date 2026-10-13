@@ -1,0 +1,30 @@
+{"stage": "campaign-start", "ts": "2026-10-02T18:10:53+08:00", "ws": "/tmp/elfin-st09-deploy-assets", "scene_md5": "98313fb8b30e51521a4c45a829ff6d5d"}
+{"stage": "launch", "pid": 4029341, "ts": "2026-10-02T18:10:58+08:00"}
+{"stage": "services-ready", "check_state_validity": 1, "sync_static_scene": 1, "ts": "2026-10-02T18:11:09+08:00"}
+{"stage": "atlas-build", "profile": "s20_container_collision_aware", "ts": "2026-10-02T18:11:09+08:00"}
+{"stage": "atlas-build-ok", "profile": "s20_container_collision_aware", "ts": "2026-10-02T18:13:44+08:00"}
+{"stage": "atlas-build", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-10-02T18:13:44+08:00"}
+{"stage": "atlas-build-ok", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-10-02T18:15:45+08:00"}
+{"stage": "atlas-build", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-10-02T18:15:45+08:00"}
+{"stage": "atlas-build-ok", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-10-02T18:17:43+08:00"}
+{"stage": "atlas-build", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-10-02T18:17:43+08:00"}
+{"stage": "atlas-build-ok", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-10-02T18:19:31+08:00"}
+{"stage": "fk-certify", "profile": "s20_container_collision_aware", "ts": "2026-10-02T18:19:31+08:00"}
+{"stage": "fk-certify-ok", "profile": "s20_container_collision_aware", "ts": "2026-10-02T18:19:31+08:00"}
+{"stage": "fk-certify", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-10-02T18:19:31+08:00"}
+{"stage": "fk-certify-ok", "profile": "s20_container_collision_aware_payload_0.55x0.40x0.25", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "fk-certify", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "fk-certify-ok", "profile": "s20_container_collision_aware_payload_0.70x0.45x0.28", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "fk-certify", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "fk-certify-ok", "profile": "s20_container_collision_aware_payload_0.80x0.50x0.32", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "graph-build", "ts": "2026-10-02T18:19:32+08:00"}
+{"stage": "graph-build-fail", "rc": 1, "ts": "2026-10-02T18:19:33+08:00"}
+{"stage": "campaign-done", "status": 1, "ts": "2026-10-02T18:19:33+08:00"}
+{"stage": "manual-resume", "note": "campaign aborted at graph-build (grid size 3-axis unpack bug); atlases + FK certs were complete and untouched", "ts": "2026-10-02T18:20:05+08:00"}
+{"stage": "stack-relaunch", "pid": 4033307, "ts": "2026-10-02T18:26:00+08:00"}
+{"stage": "graph-build-ok", "note": "manual rerun after floor-clamp contact-layer fix and edge dedup; 4 graphs, 8/8 targets chained each", "ts": "2026-10-02T18:33:30+08:00"}
+{"stage": "stack-teardown", "ts": "2026-10-02T18:35:00+08:00"}
+{"stage": "manifest-ok", "ts": "2026-10-02T18:36:30+08:00"}
+{"stage": "fresh-build-ok", "note": "colcon build --build-base build_fresh --install-base install_fresh, 13 packages, copied (non-symlink) install", "ts": "2026-10-02T18:40:00+08:00"}
+{"stage": "evidence-ok", "note": "PD 44 passed; install resolution 4 passed (source + fresh); graphs all ok; remaining failures are the ab9e910 baseline set (frame_contracts x2, wrist x1)", "ts": "2026-10-02T18:42:00+08:00"}
+{"stage": "fresh-prefix-rebuilt", "note": "copied install rebuilt at install-fresh-pd (gitignored); resolution evidence refreshed against it", "ts": "2026-10-02T18:52:00+08:00"}

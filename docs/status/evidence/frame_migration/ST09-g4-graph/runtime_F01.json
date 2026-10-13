@@ -1,0 +1,24 @@
+{
+ "command": "python3 scripts/frame_migration_st09_graph.py (same campaign; scene identity publisher + consumer validation observed on the wire)",
+ "contract_version": 2,
+ "interface_contract_sha256": "7e65b65a5fa88271c6fb530b5e15c4a023c0d329850dea395cb8461da46bf86a",
+ "interface_id": "F01",
+ "kind": "runtime_boundary",
+ "limits": "Graph-level producer/consumer proof; Gazebo scene TF parity rides the exclusive rehearsal.",
+ "observations": [
+  "container_tf_publisher enforced the shared horizontal-container gate and published the latched scene identity (measured scene digest, geometry hash, container yaw) in every campaign run; all eight peers carried the same scene revision through the identity chain into ComputePlacementV2 answers.",
+  "Scene/TF consumers (placement, planning, mapper) validated the shared transforms; the campaign's container-frame slot answers matched the scene geometry hash; horizontal-gate and identity-payload negatives covered in the tools suite."
+ ],
+ "prior_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/boundary-suite.log",
+ "sample_count": 27,
+ "source_sha256": {
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+  "src/luggage_description/luggage_description/scene_tf_config_utils.py": "74ab2f85ba147b54fd9ef66129d4e720a54bcf2b237fa6e4c6fb4b63b712d596",
+  "src/luggage_description/luggage_description/scene_tf_publisher.py": "ddb90bdadd689fcabb717224fb94e92fcf5b5ab5eeb2b9a69a7728afab5768ef",
+  "src/luggage_description/scripts/container_tf_publisher": "5d63f536ff6a906d40196383daf16d0bdd01606758e1fddc1f42f2840587cb6d",
+  "src/luggage_planning/luggage_planning/scene_box_v2.py": "45eaa18b619da253a6363dcc8dda8b9008867588c9f4a8abe429ea00d3f6cb13"
+ },
+ "status": "pass",
+ "test_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/campaign.json"
+}

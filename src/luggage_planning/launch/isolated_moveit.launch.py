@@ -33,6 +33,9 @@ def _semantic_description():
 def _launch(context, *args, **kwargs):
     scene_tf_config = LaunchConfiguration("scene_tf_config")
     use_rviz = LaunchConfiguration("use_rviz")
+    use_gz_sim = LaunchConfiguration("use_gz_sim").perform(context)
+    hardware_plugin = LaunchConfiguration("hardware_plugin").perform(context)
+    measure_distance = LaunchConfiguration("measure_distance").perform(context)
     helper = os.path.join(
         get_package_prefix("luggage_description"),
         "lib",
@@ -44,12 +47,23 @@ def _launch(context, *args, **kwargs):
         "urdf",
         "elfin_s20_with_camera.urdf.xacro",
     )
+    xacro_command = [helper, " ", xacro_path, " ", scene_tf_config]
+    if hardware_plugin:
+        xacro_command.extend([" ", "hardware_plugin:=" + hardware_plugin])
+    if use_gz_sim.strip().lower() in ("1", "true", "yes"):
+        xacro_command.extend([" ", "use_gz_sim:=true"])
+    extra = LaunchConfiguration("xacro_extra").perform(context)
+    for item in extra.split(","):
+        item = item.strip()
+        if item:
+            xacro_command.extend([" ", item])
     robot_description = {
         "robot_description": ParameterValue(
-            Command([helper, " ", xacro_path, " ", scene_tf_config]),
+            Command(xacro_command),
             value_type=str,
         )
     }
+    measure = measure_distance.strip().lower() in ("1", "true", "yes")
     moveit_config = (
         MoveItConfigsBuilder("S20", package_name="elfin_moveit_config")
         .trajectory_execution(
@@ -96,10 +110,23 @@ def _launch(context, *args, **kwargs):
         output="screen",
         parameters=[robot_description],
     )
-    return [publisher, rsp, move_group, rviz]
+    # Same URDF/SRDF move_group plans with. Plan-only certification
+    # calls /validate_route_v2; without this node a planned route dies
+    # as CERT_SERVICE_UNAVAILABLE.
+    validator = Node(
+        package="luggage_planning",
+        executable="validate_route_node",
+        name="validate_route_v2",
+        output="screen",
+        parameters=[robot_description, _semantic_description(), {
+            "measure_distance": measure,
+        }],
+    )
+    return [publisher, rsp, move_group, validator, rviz]
 
 
 def generate_launch_description():
+    from luggage_description.launch_profile import with_profile
     default_scene = PathJoinSubstitution(
         [
             FindPackageShare("luggage_description"),
@@ -107,7 +134,7 @@ def generate_launch_description():
             "scene_tf.yaml.example",
         ]
     )
-    return LaunchDescription(
+    return with_profile(LaunchDescription(
         [
             DeclareLaunchArgument(
                 "scene_tf_config",
@@ -115,10 +142,26 @@ def generate_launch_description():
                 description="scene_tf.yaml; default is the simulation example",
             ),
             DeclareLaunchArgument("use_rviz", default_value="false"),
+            DeclareLaunchArgument(
+                "use_gz_sim", default_value="false",
+                description="Expand the Gazebo URDF flavour.",
+            ),
+            DeclareLaunchArgument(
+                "hardware_plugin", default_value="",
+                description="xacro hardware_plugin override; empty keeps mock.",
+            ),
+            DeclareLaunchArgument(
+                "measure_distance", default_value="true",
+                description="GLOBAL distanceRobot at sample 0 of each leg.",
+            ),
+            DeclareLaunchArgument(
+                "xacro_extra", default_value="",
+                description="Comma-separated extra xacro key:=value mappings.",
+            ),
             SetEnvironmentVariable(name="ROS_LOCALHOST_ONLY", value="1"),
             LogInfo(msg=(
                 "[isolated_moveit] No Gazebo, no trajectory execution. "
                 "Do not use ROS_DOMAIN_ID=7 (live sim).")),
             OpaqueFunction(function=_launch),
         ]
-    )
+    ))

@@ -76,6 +76,15 @@ A stack candidate is feasible when:
 There is no API to target a specific prior box. Stacking is an automatic
 candidate at XY cells whose `peak` is that box's top.
 
+Boxes on the same support surface keep a horizontal gap of
+`same_layer_clearance_m` (frozen at 0.05 m for this generation) between
+yawed footprints. Each footprint is grown by half that gap and the grown
+polygons must not intersect; a gap equal to the threshold passes.
+Wall and corridor margins stay on the hull and are not added again here.
+A box whose bottom rests on a placed box's top may cover that support
+parent; it still keeps the gap against every other box on its own layer,
+and positive-volume overlap is still rejected.
+
 ## Scoring (flatten first)
 
 Live score, defaults in `placement_solver._default_params`:
@@ -104,6 +113,99 @@ Stacking wins once no feasible floor slot remains (floor tiled, remaining
 floor lost to overlap / hull / corridor, or clearance under a full-floor
 occupied map).
 
+## Reachability atlas on the live node
+
+`placement_planner_node` may annotate solver candidates from the
+reachability atlas. A high-confidence unreachable cell is a hard reject
+(`atlas_unreachable`). A reachable or marginal cell adds
+`w_reachability * prior` to the score. This gate is not the FreeSpaceModel
+replay scorer, and it does not generate slots.
+
+The active scene file selects the atlas cell. A scene hash that matches
+`data/reachability_atlas` loads `config/atlas_runtime.yaml` (simulation,
+`scene_tf.yaml.example`). A scene hash that matches
+`data/reachability_atlas_deploy` loads `config/atlas_runtime_deploy.yaml`
+(`scene_tf_deploy.yaml`). An explicit `atlas_runtime_config` overrides
+that match. No match keeps the simulation cell.
+
+The simulation runtime is the certification
+cell: `hash_policy: strict`. Atlas identity is the reachability identity:
+the MD5 of the place-reachability subset of the scene file
+(`compute_reachability_scene_hash`: container, robot base and attachment
+fields, numerically rounded) plus the MD5 of the live `robot_description`
+on `robot_state_publisher` (the same MD5 the atlas builder stores). The
+whole-file scene MD5 (`compute_scene_tf_hash`) is a diagnostic only;
+comments or pickup-platform edits must not change admission. Strict mode loads the atlas only when both
+hashes are present and match the atlas metadata. Otherwise
+`ComputePlacement` returns `ATLAS_IDENTITY_UNVERIFIED` and does not
+hard-reject or re-rank. `hash_policy: warn` on the deploy cell may keep a
+mismatched atlas; that cell is not a certification result.
+
+`TrajectorySelector` grid paths use the same two hashes. Under `strict`,
+a missing or mismatched hash disables the grid
+(`GRID_DISABLED_SCENE_TF` / `GRID_DISABLED_URDF`) instead of searching
+stale connectivity. The motion planner refuses IK seeds from an atlas
+that fails the same check.
+
+### Atlas is a prior for route search
+
+The `atlas_unreachable` slot reject above is the only hard use of the
+atlas. `hash_policy: strict` only checks that the loaded artifact matches
+this robot and scene. A matching atlas still does not reject unknown or
+low-confidence unreachable cells before a route is built. Inside
+place-route search the atlas ranks and seeds; it does not decide
+feasibility. An atlas miss, a failed atlas seed, or a sampled-cell IK
+failure is not proof that the continuous configuration space has no
+route; online IK, collision checking and certification decide.
+
+Certification of one whole route is one `ValidateRouteV2` request.
+`CERT_BUDGET_S` is 2 seconds of service time, measured from callback
+entry through the last leg. Edge construction is outside that clock.
+The selector's wall clock includes scene composition and must not
+reject a route whose `service_time_ns` is inside the budget. A service
+that does not answer is still bounded by the 5 second client timeout.
+
+Route search (`grid_path_search` / `route_producer`) is state-conditioned:
+
+- Every hop is solved from the **actual frontier joint state** (the real
+  endpoint of the previous edge), not from a per-target seed chosen in
+  isolation.
+- Short constrained hops (`INSERT`, `DESCEND`) are first solved as
+  continuous local IK from the frontier (exact refine seeded by the
+  frontier q). Same-branch destinations are tried before any destination
+  on another elbow, wrist or heading branch; those are deferred, not
+  deleted.
+- Each goal's branch is back-seeded up the entry hops to the last
+  joint-space hop (`PORTAL_TRANSIT`), so a goal on another branch has a
+  same-branch cartesian chain and the branch change is made in that
+  joint-space transit.
+- When a continuation fails, the search backtracks to the nearest upstream
+  choice that can change the result (hover goal, then entry, then slot)
+  instead of only retrying another final IK. Multi-branch goals stay as
+  ordered alternatives of that full-route search.
+- A 180-degree heading alternative is legal only when the frozen
+  attachment transform and payload geometry are re-checked for that
+  heading; an equal rectangular footprint is not sufficient.
+- The request budget (10 s total, 2 s per edge) is shared across
+  expansions. A failure class (goal, edge class, reason) that fails
+  `MAX_SAME_FAILURE_PER_GOAL` (3) times stops building for that goal, so
+  the next goal and slot get attempts.
+
+The frozen Reason code (`NO_FEASIBLE_ROUTE`, `PLANNING_BUDGET_EXHAUSTED`)
+is unchanged. Each refusal also carries `detail.search_outcome`:
+
+| search_outcome | Meaning |
+|---|---|
+| `UNREACHABLE` | Every goal was tried, no failure class was capped, no budget refusal. |
+| `SEARCH_INCOMPLETE` | Budget, a budget refusal or a failure-class cap left alternatives open, or no IK seed refined onto any goal. Not a reachability verdict. |
+
+`UNREACHABLE` means only that the bounded alternative set was exhausted;
+it is not a proof that no configuration-space route exists.
+
+`BIN_FULL` is packing capacity only and is never either case.
+`detail.coverage` reports edges built, goals tried and left open, capped
+failure classes and budget refusals.
+
 ## Occupancy update after place
 
 Required source of `surface_2d` is live depth integration and/or a verified
@@ -113,11 +215,30 @@ cargo map. See [real_scenario.md](real_scenario.md).
 Current Humble path (tracked defect `RS-2`, `RS-3`, `RS-6`; `RS-1` closed
 at the node/service):
 
-`/cargo_map/integrate_cargo_view` → stamp-matched untracked cargo cloud →
+`/cargo_map/integrate_cargo_view` → stamp-matched cloud →
 `CargoVolumeMapper.integrate_points` (`confidence=sensor`). Fail-closed on
 unsettled, hash/revision mismatch, stale/duplicate stamp, missing TF, or
-empty view. Input is `/luggage/semantic/cargo_points_untracked`, not the
-tracker-gated pickup track.
+empty view. The service still reads
+`/luggage/semantic/cargo_points_untracked`, not the tracker-gated pickup
+track.
+
+Post-place eval views do not wait for a YOLO mask. The driver unprojects
+the depth image, keeps points inside the planned resting box (slot center,
+suitcase size, yaw, 0.05 m margin), and publishes that crop on the
+untracked topic. The slot is a crop, not a painted occupancy: an empty crop
+does not call the service and does not change `map_revision`.
+
+View order after retreat is `aim` at the portal, then `lookback` (portal
+eye raised 0.20 m and backed off 0.15 m along the opening normal). The
+in-container lift is not a cargo view. Each view's
+`expected_map_revision` is the previous view's `resulting_map_revision`
+when that view was integrated, otherwise the stats revision. The sequence
+stops at the first view with `footprint_hits >= 1`, integrate success, and
+a revision increase. A view with no footprint hit keeps `empty_reason` in
+`TARGET_NOT_IN_FRAME`, `TF_TIME_MISMATCH`, `DEPTH_INVALID`,
+`BOX_CROP_EMPTY`, or `MAP_FILTERED`. An empty view is not a success.
+YOLO bbox, confidence, and mask counts are diagnostic only. The observe
+pose is not frozen (`cargo_view_policy.frozen` is false).
 
 `/cargo_map/add_placed_box` → `CargoVolumeMapper.mark_placed_box`:
 
@@ -193,9 +314,14 @@ code). Do not relabel that as `BIN_FULL` or `PLACE_CANDIDATE_EXHAUSTED`.
 Retain every tried path and rejection reason in the dump (same rule as
 exhausted placement candidates).
 
-Current Humble `motion_executor` cartesian `avoid_collisions` plus OMPL
-`RRTConnect` fallback does not read `surface_2d` and does not keep a
-scored path set (`RS-27`).
+`TrajectorySelector` keeps the scored set: geometric variants and, when a
+reachability atlas is loaded, shortest paths on its reachable cells. The
+atlas is a path prior here. It does not generate placement slots.
+`motion_occ` applies the winner before `PlanMotion`. A `joint_path` segment
+executes those joint knots with an occupancy sweep and does not fall back
+to `RRTConnect`. `motion_planner_node` still injects occupancy and re-sweeps;
+it does not select. `RS-27` stays open until a scored run shows every
+transit and traverse took the selector path.
 
 ## Replay / redesign path (not the live node)
 
@@ -208,8 +334,8 @@ blocked-deep term clip those tiles to the seven-face hull.
 
 `proxy_score` without that term is structurally stack-biased: a committed box
 top scores high on support and observation confidence, an unobserved floor
-scores 0. The floor-first term restores flatten-first for replay. The
-reachability atlas is a **score prior**, not the candidate generator.
+scores 0. The floor-first term restores flatten-first for replay. On this replay path the reachability atlas is a **score prior**, not the
+candidate generator. The live selector may also use it as a path prior.
 
 Offline replay (`packing_replay.FreeSpaceModelStrategy`) and
 `scripts/ros1_reference/placement_planner_node.py` use this path. Humble

@@ -1,0 +1,2 @@
+baf39afd3cdb242aeea190a879306eaf574604af
+branch: integration/frame-migration-st06-20260929 (rebased onto dff51dc)

@@ -49,6 +49,30 @@ class TestLivoxUrdfFrames(unittest.TestCase):
         ):
             self.assertIn(name, text)
         self.assertIn("mid360_origin.xacro", text)
+        self.assertIn('<box size="0.065 0.065 0.060"/>', text)
+        collision = text.split('<link name="mid360_mount_frame">', 1)[1]
+        collision = collision.split("</link>", 1)[0]
+        self.assertIn("<collision>", collision)
+
+    def test_gazebo_spawn_strips_mid360_collision(self):
+        import importlib.util
+        import xml.etree.ElementTree as ET
+        path = os.path.join(ROOT, "scripts", "gazebo_urdf_utils.py")
+        spec = importlib.util.spec_from_file_location("gazebo_urdf_utils", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        urdf = """<robot name="t">
+          <link name="suction_panel"><collision><box/></collision></link>
+          <link name="mid360_mount_frame"><collision><box/></collision></link>
+          <link name="camera_link"><collision><box/></collision></link>
+          <link name="eef_mount_adapter"><collision><mesh/></collision></link>
+        </robot>"""
+        root = ET.fromstring(module.gazebo_urdf_from_robot_description(urdf))
+        by_name = {link.get("name"): link for link in root.findall("link")}
+        self.assertEqual(list(by_name["mid360_mount_frame"]), [])
+        self.assertEqual(list(by_name["suction_panel"]), [])
+        self.assertEqual(len(list(by_name["camera_link"])), 1)
+        self.assertEqual(len(list(by_name["eef_mount_adapter"])), 1)
 
     def test_sim_gpu_lidar_on_mount(self):
         with open(MOUNT, encoding="utf-8") as handle:

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Box 2 at observe — a1 scene</title>
+<style>
+  body { margin: 0; background: #f4f1ea; color: #1c1915; font: 15px/1.45 "Segoe UI", sans-serif; }
+  header { padding: 20px 28px 8px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  p { margin: 0 0 8px; max-width: 920px; }
+  .wrap { display: grid; grid-template-columns: 640px 1fr; gap: 18px; padding: 8px 28px 28px; }
+  svg { background: #fff; border: 1px solid #d9d3c7; border-radius: 8px; }
+  aside { background: #fff; border: 1px solid #d9d3c7; border-radius: 8px; padding: 14px 16px; }
+  h2 { font-size: 16px; margin: 0 0 8px; }
+  li { margin: 0 0 6px; }
+  .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+  .measured { background: #d9ead3; }
+  .missing { background: #fce5cd; }
+  .no { background: #f4cccc; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Box 2 检测失败时的俯视场景</h1>
+  <p>来源是 a1 的关节、场景配置和检测日志，不是相机照片。失败转储里没有 RGB、没有 YOLO 框、没有货云。橙色块是“箱子在这个区域”，不是测到的位姿。</p>
+</header>
+<div class="wrap">
+<svg viewBox="0 0 640 460" width="640" height="460" role="img" aria-label="top view of observe pose">
+  <text x="16" y="22" font-size="13" fill="#666">俯视，+X 向右，+Y 向上。单位：米。</text>
+
+  <!-- container -->
+  <g transform="translate(70,150)">
+    <rect x="0" y="20" width="150" height="120" fill="#efe6d6" stroke="#8a8175"/>
+    <text x="8" y="40" font-size="12">集装箱</text>
+    <text x="8" y="56" font-size="11" fill="#555">中心 (-1.5, 0.6)</text>
+    <rect x="18" y="48" width="55" height="40" fill="#c4a574" stroke="#6b542c"/>
+    <text x="22" y="72" font-size="11">Box1</text>
+    <text x="8" y="124" font-size="11" fill="#555">已放入，0.55×0.40×0.25</text>
+  </g>
+
+  <!-- robot / camera -->
+  <g transform="translate(280,70)">
+    <circle cx="40" cy="40" r="16" fill="#4a6fa5"/>
+    <text x="0" y="72" font-size="12">相机目标</text>
+    <text x="0" y="88" font-size="11" fill="#555">(1.0, 0.0, 1.9)</text>
+    <path d="M40 56 L40 150" stroke="#4a6fa5" stroke-dasharray="4 3" fill="none"/>
+    <text x="46" y="120" font-size="11" fill="#4a6fa5">向下看平台</text>
+  </g>
+
+  <!-- platform -->
+  <g transform="translate(250,200)">
+    <rect x="0" y="0" width="220" height="180" fill="#e7eef6" stroke="#3d5a80"/>
+    <text x="10" y="20" font-size="12">取件台 1.0×1.0，顶面 z=0.66</text>
+    <text x="10" y="36" font-size="11" fill="#555">中心 (1.0, 0.0)</text>
+    <rect x="60" y="55" width="100" height="64" fill="#f6c28b" stroke="#b86e2a" stroke-dasharray="5 3"/>
+    <text x="72" y="84" font-size="12">Box2</text>
+    <text x="68" y="102" font-size="11">0.70×0.45×0.28</text>
+    <text x="10" y="160" font-size="11" fill="#555">已生成。平面位置未写入失败转储。</text>
+  </g>
+
+  <text x="16" y="440" font-size="12">臂关节与 pickup_observe_sim 一致（最大差约 0.001 rad）。place_state=INIT，还没开始放置。</text>
+</svg>
+<aside>
+  <h2>这一帧检测实际返回了什么</h2>
+  <ul>
+    <li><span class="tag measured">有记录</span> 11 次检测，5.03 秒，全部 gate=hold_track。</li>
+    <li><span class="tag measured">有记录</span> conf=1.00，raw=hit。顶面估计做出来了，原始深度也对上了。</li>
+    <li><span class="tag no">没算</span> height_valid=false。来源不是 measure，支撑面被跳过，所以没有可用箱高和抓取位姿。</li>
+    <li><span class="tag missing">没保存</span> YOLO 框、mask、货云点数、滤器 source。不能把箱子的框画出来。</li>
+  </ul>
+  <h2>是不是 YOLO 又没检出</h2>
+  <p>这次日志不能这么下结论。Box 2 生成后的分割日志只有 “self-body mesh mask is empty”，那是机器人自身网格遮罩为空，不是箱子漏检。没有 “no detection” 或 YOLO 未就绪。检测服务返回了置信度 1.00 的顶面，说明点云上做出了顶面，停在“这帧不是一次新的 measure”。</p>
+  <p>如果滤器当时是在重发上一团已接受的点，顶面可以很自信，同时高度仍然无效。a1 没把 source 和点数存下来，这两种可能分不开。</p>
+</aside>
+</div>
+</body>
+</html>

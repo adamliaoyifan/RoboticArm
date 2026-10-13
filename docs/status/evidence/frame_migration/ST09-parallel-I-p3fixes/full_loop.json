@@ -1,0 +1,201 @@
+{
+  "boxes": [
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-1",
+      "grid_occupied_total": 24,
+      "grid_shape": [
+        30,
+        40
+      ],
+      "landed_footprint_cells": [
+        [
+          -0.32,
+          -0.36
+        ],
+        [
+          -0.32,
+          -0.26
+        ],
+        [
+          -0.32,
+          -0.16
+        ],
+        [
+          -0.22,
+          -0.11
+        ],
+        [
+          -0.17,
+          -0.36
+        ],
+        [
+          -0.17,
+          -0.26
+        ],
+        [
+          -0.17,
+          -0.16
+        ],
+        [
+          -0.12,
+          -0.11
+        ],
+        [
+          -0.02,
+          -0.36
+        ],
+        [
+          -0.02,
+          -0.26
+        ],
+        [
+          -0.02,
+          -0.16
+        ],
+        [
+          -0.02,
+          -0.11
+        ]
+      ],
+      "map_revision_after_release": 6,
+      "map_revision_at_select": 5,
+      "near_y": -0.15,
+      "path_hash": "d0b3527e69fabc15c8692ae00bba63aef8fd8e5d22577c84bff8eb441521d9a3",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 399,
+      "slot_xy": [
+        -0.16999999999999993,
+        -0.2599999999999999
+      ]
+    },
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-2",
+      "grid_occupied_total": 33,
+      "grid_shape": [
+        30,
+        40
+      ],
+      "landed_footprint_cells": [
+        [
+          -0.62,
+          0.14
+        ],
+        [
+          -0.62,
+          0.24
+        ],
+        [
+          -0.62,
+          0.34
+        ],
+        [
+          -0.42,
+          0.14
+        ],
+        [
+          -0.42,
+          0.24
+        ],
+        [
+          -0.42,
+          0.34
+        ],
+        [
+          -0.27,
+          0.14
+        ],
+        [
+          -0.27,
+          0.24
+        ],
+        [
+          -0.27,
+          0.34
+        ],
+        [
+          -0.22,
+          0.14
+        ]
+      ],
+      "map_revision_after_release": 8,
+      "map_revision_at_select": 7,
+      "near_y": 0.2,
+      "overlap_with_previous_boxes": [],
+      "path_hash": "98f713be7ae8ad01c44181e42069927b14b422cad3b35110ea66f8a4ea7df44a",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 399,
+      "slot_xy": [
+        -0.42,
+        0.2400000000000001
+      ]
+    }
+  ],
+  "floor_z": 0.53,
+  "scene_revision": "b40c85ae6eb2eabc47d7da2ffb23b72c"
+}

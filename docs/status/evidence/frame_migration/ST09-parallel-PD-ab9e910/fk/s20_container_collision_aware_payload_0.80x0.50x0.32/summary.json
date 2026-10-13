@@ -1,0 +1,27 @@
+{
+ "artifact": "/tmp/elfin-st09-deploy-assets/src/luggage_planning/data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.80x0.50x0.32.npz",
+ "urdf_hash_ok": true,
+ "verdict": "pass",
+ "reasons": [],
+ "yaw_bins_rad": [
+  0.0,
+  1.570796327,
+  3.141592654,
+  4.71238898
+ ],
+ "per_bin_certified_seeds": [
+  257,
+  208,
+  176,
+  206
+ ],
+ "counts": {
+  "contact_rows": 847,
+  "transit_vertical_rows": 609,
+  "transit_predecessor_rows": 238
+ },
+ "max_pos_err_m": 1.25e-07,
+ "max_rot_err_rad": 4.2e-08,
+ "n_rows": 1694,
+ "n_breaches": 0
+}

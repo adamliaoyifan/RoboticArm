@@ -4,6 +4,24 @@ project(luggage_planning)
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
 
+# ST09-I: the batched route validation service (ValidateRouteV2) —
+# MoveIt-native state/collision/distance checks against a frozen private
+# scene copy. Pure C++ so certification needs no per-sample ROS calls.
+find_package(rclcpp REQUIRED)
+find_package(moveit_core REQUIRED)
+find_package(moveit_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(urdf REQUIRED)
+find_package(srdfdom REQUIRED)
+find_package(OpenSSL REQUIRED)
+find_package(luggage_msgs REQUIRED)
+add_executable(validate_route_node src/validate_route_node.cpp)
+ament_target_dependencies(validate_route_node
+  rclcpp moveit_core moveit_msgs geometry_msgs urdf srdfdom luggage_msgs)
+target_link_libraries(validate_route_node OpenSSL::Crypto)
+target_compile_options(validate_route_node PRIVATE -Wall -Wextra)
+install(TARGETS validate_route_node DESTINATION lib/${PROJECT_NAME})
+
 ament_python_install_package(${PROJECT_NAME})
 
 install(DIRECTORY data
@@ -21,9 +39,11 @@ install(DIRECTORY config
 install(PROGRAMS
   scripts/waypoint_generator_node.py
   scripts/motion_planner_node.py
+  scripts/trajectory_selector_node.py
   scripts/vacuum_controller_node.py
   scripts/scene_manager_node.py
   scripts/hardware_pick_driver.py
+  scripts/static_joint_state_publisher.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

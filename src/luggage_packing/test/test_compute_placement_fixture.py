@@ -33,6 +33,9 @@ def _solve(name):
         hull_contains=hull_contains if bounds else None,
         inner_size=surface["inner_size"] if case.get("smallest_size") else None,
         smallest_size=case.get("smallest_size"),
+        # These maps are smaller than the production same-layer gap.
+        # They lock overlap, hull, and aperture, not that gap.
+        same_layer_clearance_m=0.0,
     )
     return case, surface, solve_placement(
         surface, case["box"], allowed_yaws=[0.0], params=PARAMS,

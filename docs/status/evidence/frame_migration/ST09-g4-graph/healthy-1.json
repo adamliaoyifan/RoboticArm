@@ -1,0 +1,32 @@
+{
+ "adopt_seconds": 0.54,
+ "command": [
+  "ros2",
+  "launch",
+  "docs/status/evidence/frame_migration/ST09-g4-graph/graph_launch.py"
+ ],
+ "exercise": {
+  "ok": true,
+  "reason_code": "",
+  "resulting_map_revision": 1
+ },
+ "graph_nodes": "docs/status/evidence/frame_migration/ST09-g4-graph/healthy-1.nodes.txt",
+ "launch_log": "docs/status/evidence/frame_migration/ST09-g4-graph/healthy-1.launch.log",
+ "peer_readiness": {
+  "cargo_volume_mapper": "READY",
+  "motion_occ_driver": "READY",
+  "motion_planner": "READY",
+  "placement_planner": "READY",
+  "scene_manager": "READY",
+  "trajectory_selector": "READY",
+  "vacuum_controller": "READY",
+  "waypoint_generator": "READY"
+ },
+ "readiness_final": "READY",
+ "ready": true,
+ "scenario": "healthy-1",
+ "started_at": 1790823143.861521,
+ "startup_seconds": 1.94,
+ "teardown_seconds": 0.46,
+ "teardown_within_budget": true
+}

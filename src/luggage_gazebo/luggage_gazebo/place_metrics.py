@@ -5,8 +5,16 @@ from __future__ import division
 
 from collections import Counter
 from dataclasses import asdict, dataclass, field, fields
+import math
 import re
 from typing import Optional
+
+# After detach the suitcase falls onto the support. Declare settled only
+# once a trailing window stays inside a few millimetres, then measure
+# residual drift on a later sample. The fall itself is not drift.
+SETTLE_BUDGET_SEC = 3.0
+SETTLE_WINDOW_SEC = 0.4
+SETTLE_MOVE_M = 0.004
 
 
 # The arm failed on the way back to observe, after the box was already down.
@@ -75,6 +83,42 @@ def trial_from_dict(data):
             extras[key] = value
     payload["extras"] = extras
     return PlaceTrial(**payload)
+
+
+def xyz_separation(a, b):
+    """Euclidean distance between two XYZ sequences."""
+    return math.sqrt(sum(
+        (float(a[i]) - float(b[i])) ** 2 for i in range(3)))
+
+
+def settle_verdict(samples, move_m=SETTLE_MOVE_M, window_sec=SETTLE_WINDOW_SEC):
+    """Whether the trailing window of ``(t_sec, xyz)`` samples has stopped.
+
+    ``settled`` is true only when that window spans ``window_sec`` and every
+    sample in it stays within ``move_m`` of the window start. ``pose`` is the
+    last sample. ``window_move_m`` is that in-window travel; the distance
+    from the first sample (the fall) is intentionally not returned as drift.
+    """
+    rows = list(samples or [])
+    if not rows:
+        return {"settled": False, "pose": None, "window_move_m": None}
+    pose = [float(v) for v in rows[-1][1][:3]]
+    t_end = float(rows[-1][0])
+    # Pose queries are sparse (an ``ign model`` call can take seconds), so
+    # the stable interval is "from the newest sample at least window_sec
+    # older than the end" through the end, not "only samples inside the
+    # last window_sec" (that slice often holds a single point).
+    older = [row for row in rows if float(row[0]) <= t_end - float(window_sec)]
+    if not older:
+        return {"settled": False, "pose": pose, "window_move_m": None}
+    anchor = [float(v) for v in older[-1][1][:3]]
+    segment = [row for row in rows if float(row[0]) + 1e-9 >= float(older[-1][0])]
+    window_move = max(xyz_separation(anchor, row[1]) for row in segment)
+    return {
+        "settled": window_move <= float(move_m),
+        "pose": pose,
+        "window_move_m": float(window_move),
+    }
 
 
 def parse_ign_model_pose(text):

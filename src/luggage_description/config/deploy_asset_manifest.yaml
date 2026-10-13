@@ -1,0 +1,150 @@
+atlas:
+- basename: s20_container_collision_aware
+  graph:
+    digest: 6808ba772a8c2332d4b2d8c430292853cbc9fa791a05828db5571a72d5757fe0
+    graph_id: s20_deploy_empty
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/graphs/s20_deploy_empty.json
+    sha256: ec3e28a83804ff5cdea191a9e33e61f6bf95e330411d47d415d62df9794ba1d4
+  meta:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware.yaml
+    sha256: 8c3e84eb586fd84ec1a82010fe4873b28166a803f5c0f5469c04d59d1df2f580
+  npz:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware.npz
+    sha256: 3516b8d36574d710110a9c028d3a48a9c3e6244b8beee8c8d4ccf419d0684517
+  payload: null
+- basename: s20_container_collision_aware_payload_0.55x0.40x0.25
+  graph:
+    digest: e3605996e84f0c784110b5766563471f5948046a0f04c855c1939c8501af218c
+    graph_id: s20_deploy_payload_0.55x0.40x0.25
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/graphs/s20_deploy_payload_0.55x0.40x0.25.json
+    sha256: 43cdb56c66fb22e8ad103ada018860ee2aee52561ac028ef55c5bad7a59c61ac
+  meta:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.55x0.40x0.25.yaml
+    sha256: a4dfd5d23903f721831557926a43237be688f110f0e676f9202ac0de5573598a
+  npz:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.55x0.40x0.25.npz
+    sha256: 9cc09e8e9c94893e602b81e2560fe8d6f4aed65dc4d685c72d6fb7fe66beebad
+  payload:
+  - 0.55
+  - 0.4
+  - 0.25
+- basename: s20_container_collision_aware_payload_0.70x0.45x0.28
+  graph:
+    digest: 5a1f88c0830d94ae35fb615fdfa4f4697735274d1324befbf7cd07146b560026
+    graph_id: s20_deploy_payload_0.70x0.45x0.28
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/graphs/s20_deploy_payload_0.70x0.45x0.28.json
+    sha256: d767f355df514e6ff8a9aa6d3daa8a13d02217ed630dad4336f69925eee1a7e4
+  meta:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.70x0.45x0.28.yaml
+    sha256: 6850305befb87b27a45871c50a5ca760100aa0614787a7cd342c3e486ca18074
+  npz:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.70x0.45x0.28.npz
+    sha256: d0c3abe44f817621a93826d62387c8c6962bb2410c61e770bd4499f6ca1f2bc0
+  payload:
+  - 0.7
+  - 0.45
+  - 0.28
+- basename: s20_container_collision_aware_payload_0.80x0.50x0.32
+  graph:
+    digest: 2f203c0152c09051ba936ecadd0bb68caa51c7a8c75f5acb79473cad2e23140a
+    graph_id: s20_deploy_payload_0.80x0.50x0.32
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/graphs/s20_deploy_payload_0.80x0.50x0.32.json
+    sha256: 020287c26903de6d391c253a56339a9015f65c22bf2e39fcfc2045397b85e6ea
+  meta:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.80x0.50x0.32.yaml
+    sha256: 0fd159e9b03bb4d5ec80c4d5d4877bdd0e55167becc3608b54a737c275adac5a
+  npz:
+    package: luggage_planning
+    path: data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.80x0.50x0.32.npz
+    sha256: 1ea6ff93d75b30ca7e346cf029c9fe82b329a97a61dd4cab017e893987c6bf93
+  payload:
+  - 0.8
+  - 0.5
+  - 0.32
+generated:
+  command: scripts/generate_deploy_asset_manifest.py
+  generated_at: '2026-10-02T18:25:10.188469+08:00'
+  host: adamliao-X870-EAGLE-WIFI7
+  python: 3.10.12
+  ros_distro: humble
+  workspace_revision: ab9e91091d1fdd06eafd27bbf66a265e48a00147
+geometry:
+  ceiling_z: 2.01
+  chamfer:
+    floor_y: 0.55
+    side: positive_y
+    wall_y: 0.985
+    wall_z: 0.9
+  floor_z: 0.53
+  frame_id: container_link
+  geometry_hash: cb41f55f243786d50ab30997291083ab40467507abcf78a00e55da77ffc00856
+  length: 1.49
+  schema_version: 1
+  width: 1.97
+payload_envelopes:
+- - 0.55
+  - 0.4
+  - 0.25
+- - 0.7
+  - 0.45
+  - 0.28
+- - 0.8
+  - 0.5
+  - 0.32
+planning:
+  base_link: elfin_base_link
+  group: elfin_arm
+  tool_link: suction_contact_frame
+  tool_transform_identity:
+    quaternion_xyzw:
+    - -5.2097267807484455e-06
+    - -0.7048831561438694
+    - 0.7093234354867419
+    - -5.177076484245676e-06
+    translation:
+    - -1.5613990125724908
+    - -0.5906933473766305
+    - 0.03479043103754889
+scene:
+  package: luggage_description
+  path: config/scene_tf_deploy.yaml
+  scene_revision_md5: 98313fb8b30e51521a4c45a829ff6d5d
+  sha256: bd25b76b93f49715a86fb57090eca6439d611cc003b60463e991a52b2e91ea53
+schema: luggage.deploy_manifest/1
+semantics:
+  angle_unit: rad
+  height_datum: container_origin
+  length_unit: m
+  orientation_frame: container_link
+  orientation_semantics: concrete_tool_pose
+  position_frame: container_link
+  reference: suction_contact_frame
+  tool_down_reference: container_negative_z
+srdf:
+  package: luggage_description
+  path: config/S20_with_camera.srdf
+  semantic_sha256: 99653626dedff09ca5fb4ecc9858154677fe832692a4550a073e5f4251ce4be3
+  sha256: 3cfac36d96bc9c815b0d2b9b9cdd321719198541e8a7f25343a439863506936d
+urdf:
+  joint_names:
+  - elfin_joint1
+  - elfin_joint2
+  - elfin_joint3
+  - elfin_joint4
+  - elfin_joint5
+  - elfin_joint6
+  md5: 22ed00b5577d4b57421d9f02cf3fb2bf
+  package: luggage_planning
+  path: data/reachability_atlas_deploy/robot_description.xml
+  sha256: 3bf1f9b8149df2cc446282d5b58aafe68488b69a7727da28b499bdc5067453a8

@@ -230,6 +230,26 @@ class FreeSpaceModel(object):
         self.revision += 1
         return box
 
+    def merge_admitted_surface(self, surface_v2):
+        """Merge an ADMITTED container-origin surface record (F23).
+
+        The record arrived through the dump v2 contract or the named
+        legacy adapter; surface_z_container IS the elevation the legacy
+        merge consumes (absolute above container Z=0). Unknown cells are
+        state-skipped there, so their None height becomes the floor
+        placeholder in the converted view.
+        """
+        floor = float(surface_v2["floor_z_container"])
+        converted = {
+            "resolution": float(surface_v2["resolution_m"]),
+            "height": [[floor if z is None else float(z)
+                        for z in row]
+                       for row in surface_v2["surface_z_container"]],
+            "state": surface_v2["state"],
+            "confidence": surface_v2["confidence"],
+        }
+        return self.merge_surface_2d(converted)
+
     def merge_surface_2d(self, surface_map):
         """Merge a sensor heightmap (surface_map_2d contract) into the model.
 
@@ -476,3 +496,42 @@ class FreeSpaceModel(object):
             seen.add(key)
             out.append(yaw)
         return out
+
+
+def admit_surface_floor_relative_v1(record, *, scene_revision,
+                                    geometry_hash, request_id, map_revision,
+                                    floor_z_container, ceiling_z_container):
+    """The ONLY entry for raw surface_map_2d records into the v2 world.
+
+    The caller names the source format and the container datum explicitly;
+    an unknown schema or a conflicting datum rejects here (fail closed),
+    never inside the model. Returns an admitted container-origin surface
+    record for ``FreeSpaceModel.merge_admitted_surface``.
+    """
+    from luggage_description.frame_dump import adapt_legacy_surface
+    adapter_record = {
+        "height": record["height"],
+        "state": record["state"],
+        "confidence": record["confidence"],
+        "origin_xy_container": record.get(
+            "origin_xy_container", record.get("origin_local")),
+        "resolution_m": record["resolution"],
+    }
+    # A record that declares its own frame/datum must agree with the named
+    # adapter; silence is not consent, but a wrong declaration rejects.
+    for key in ("frame_id", "height_datum"):
+        if key in record:
+            adapter_record[key] = record[key]
+    return adapt_legacy_surface(
+        adapter_record,
+        source_format="surface_floor_relative_v1",
+        frame_id="container_link", height_datum="floor_relative",
+        floor_z_container=floor_z_container,
+        ceiling_z_container=ceiling_z_container,
+        identity={"scene_revision": str(scene_revision),
+                  "geometry_hash": str(geometry_hash),
+                  "request_id": str(request_id),
+                  "map_revision": int(map_revision),
+                  # Static scene-basis conversion: epoch stamp, scene clock.
+                  "stamp_ns": 0,
+                  "time_basis": "scene"})

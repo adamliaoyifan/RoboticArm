@@ -193,7 +193,8 @@ def _launch_setup(context):
 
 
 def generate_launch_description():
-    return LaunchDescription([
+    from luggage_description.launch_profile import with_profile
+    return with_profile(LaunchDescription([
         DeclareLaunchArgument(
             "scene_tf_config",
             default_value=os.path.join(
@@ -203,4 +204,4 @@ def generate_launch_description():
         SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
         SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),
         OpaqueFunction(function=_launch_setup),
-    ])
+    ]))

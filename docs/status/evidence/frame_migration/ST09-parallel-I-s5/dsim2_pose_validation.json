@@ -1,0 +1,116 @@
+{
+  "pose_values": [
+    -1.25,
+    -1.7466,
+    -0.9974,
+    -1.9153,
+    1.7714,
+    1.861
+  ],
+  "expected_0p24_m_note": "0.24 m is 1.90 - 0.86 - 0.80 for a standing 0.80 m case. Catalog spawn is lying; large height 0.32 m => optical Z about 0.720 m.",
+  "results": [
+    {
+      "catalog_id": "carryon",
+      "gt_id": "pickup_box_0001_carryon",
+      "gt_size": [
+        0.515886202454567,
+        0.390038400888443,
+        0.23746279627084732
+      ],
+      "gt_xyz": [
+        1.0,
+        0.0,
+        0.9787313981354235
+      ],
+      "camera_optical_xyz_world": [
+        0.9999521863851076,
+        -2.999516973217764e-05,
+        1.9000018943499604
+      ],
+      "image": {
+        "width": 640,
+        "height": 360
+      },
+      "optical_z_min": 0.785,
+      "optical_z_max": 1.047,
+      "valid_depth_ratio": 1.0,
+      "pixel_margin": 85.0384280075088,
+      "bbox": [
+        210.64600395275826,
+        85.0384280075088,
+        426.0731796397727,
+        252.28662845594624
+      ],
+      "support_inliers": 31552,
+      "support_reason": "ok",
+      "detector_support_inliers": null,
+      "top_surface_valid": true,
+      "top_z": 1.1072761890081886,
+      "support_z": 0.8601249968441722,
+      "joint_abs_err_max": 0.0,
+      "ideal_range_gap": 0.18500000000000005,
+      "ik_collision_note": "pickup_observe is the stored collision-aware IK; spawn_at_observe holds it. Settle is max joint abs error.",
+      "gates": {
+        "optical_z": true,
+        "valid_depth": true,
+        "margin": true,
+        "support": true,
+        "settle": true
+      },
+      "ok": true,
+      "reason": "pass"
+    },
+    {
+      "catalog_id": "standard",
+      "gt_id": "pickup_box_0002_standard",
+      "gt_size": [
+        0.6565824449062347,
+        0.4387931823730469,
+        0.26595833897590637
+      ],
+      "gt_xyz": [
+        1.0,
+        0.0,
+        0.9929791682958604
+      ],
+      "camera_optical_xyz_world": [
+        0.9999521863851076,
+        -2.999516973217764e-05,
+        1.9000018943499604
+      ],
+      "image": {
+        "width": 640,
+        "height": 360
+      },
+      "optical_z_min": 0.755,
+      "optical_z_max": 1.048,
+      "valid_depth_ratio": 1.0,
+      "pixel_margin": 70.0979590037583,
+      "bbox": [
+        177.16371904385068,
+        70.0979590037583,
+        460.2372546812161,
+        266.7740449455616
+      ],
+      "support_inliers": 29729,
+      "support_reason": "ok",
+      "detector_support_inliers": null,
+      "top_surface_valid": true,
+      "top_z": 1.1369349487665572,
+      "support_z": 0.8601250174073078,
+      "joint_abs_err_max": 0.0,
+      "ideal_range_gap": 0.15500000000000003,
+      "ik_collision_note": "pickup_observe is the stored collision-aware IK; spawn_at_observe holds it. Settle is max joint abs error.",
+      "gates": {
+        "optical_z": true,
+        "valid_depth": true,
+        "margin": true,
+        "support": true,
+        "settle": true
+      },
+      "ok": true,
+      "reason": "pass"
+    }
+  ],
+  "all_ok": true
+}

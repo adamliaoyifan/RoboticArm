@@ -33,6 +33,8 @@ import tf2_ros
 from luggage_perception import ros_message_adapters as adapters
 from luggage_perception.motion_stability_filter import MotionStabilityGate
 from luggage_perception.sensor_preprocessor import SensorPreprocessor
+from luggage_perception.frame_boundary_records import admit_sensor_observation
+from luggage_description.frame_diagnostics import BoundaryContractError
 
 
 class SensorPreprocessorNode(Node):
@@ -250,9 +252,25 @@ class SensorPreprocessorNode(Node):
             "motion_gate.settle_time_sec": 0.5,
             "motion_gate.joint_state_timeout_sec": 1.0,
             "motion_gate.enabled": False,
+            # ST03 F02: observation boundary admission is enabled only by an
+            # explicit scene revision; without one, product behaviour is
+            # byte-identical to the pre-ST03 node.
+            "frame_scene_revision": "",
+            "frame_request_prefix": "observe",
         }
         for name, value in defaults.items():
             self.declare_parameter(name, value)
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        self._frame_request_id = "%s-boot" % str(
+            self.get_parameter("frame_request_prefix").value or "observe")
+
+    def _observation_context(self, frame_id=""):
+        from luggage_description.frame_diagnostics import BoundaryContext
+        return BoundaryContext(
+            "F02", "sensor_preprocessor_node", "downstream_observation_join",
+            self._frame_request_id, self._frame_scene_revision,
+            str(frame_id), "", "acquisition")
 
     # ------------------------------------------------------------------
     # Sensor callbacks (payload-owning, no materialisation)
@@ -359,6 +377,11 @@ class SensorPreprocessorNode(Node):
         both carry ``primary_stamp``. A tolerance pair keeps the two source
         stamps, which is why a downstream exact-stamp join simply never
         matches it: two exposures must not look like one.
+
+        ST03 F02: every product is admitted at the boundary — truthful
+        frame, explicit own acquisition stamp — before any publish; a
+        rejected product is dropped with a throttled diagnostic, never
+        re-stamped with ``now()`` or published anyway.
         """
         color_stamp = adapters.sec_to_stamp(obs.rgb_stamp)
         depth_stamp = adapters.sec_to_stamp(obs.depth_stamp)
@@ -388,7 +411,32 @@ class SensorPreprocessorNode(Node):
                              obs.depth_info, depth_stamp), "info"))
         b1 = _time.monotonic()
         self._d1_note("build_total_ms", b1 - b0)
-        for pub, msg, kind in msgs:
+        admitted = msgs
+        if self._frame_scene_revision:
+            admitted = []
+            for pub, msg, kind in msgs:
+                record = {
+                    "contract_version": 2,
+                    "frame_id": str(msg.header.frame_id),
+                    "length_unit": "m",
+                    "stamp_ns": int(msg.header.stamp.sec) * 1_000_000_000
+                    + int(msg.header.stamp.nanosec),
+                    "time_basis": "acquisition",
+                    "scene_revision": self._frame_scene_revision,
+                    "request_id": self._frame_request_id,
+                }
+                try:
+                    admit_sensor_observation(
+                        record, self._observation_context())
+                except BoundaryContractError as error:
+                    self._warn_throttled(
+                        "observation %s rejected at boundary (%s %s)"
+                        % (kind, error.code, error.field))
+                    self._cb_counts["boundary_rejects"] = (
+                        self._cb_counts.get("boundary_rejects", 0) + 1)
+                    continue
+                admitted.append((pub, msg, kind))
+        for pub, msg, kind in admitted:
             p0 = _time.monotonic()
             pub.publish(msg)
             p1 = _time.monotonic()

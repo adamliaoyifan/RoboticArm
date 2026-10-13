@@ -238,6 +238,18 @@ def origin_in_world(config):
     return world_transform(config, "container_link")
 
 
+def require_horizontal_container_scene(config):
+    """F01 admission: the published container must be horizontal.
+
+    The 2.5D hull, occupancy and atlas semantics all assume a level
+    container in base_link; this is the producer-side gate the publisher
+    and every geometry admission share. Returns the container Z-yaw.
+    """
+    from .container_geometry import require_horizontal_rotation
+    _origin, rpy = origin_in_world(config)
+    return require_horizontal_rotation(rpy)
+
+
 def base_in_world(config):
     return robot_base_in_world(config)
 
@@ -844,6 +856,43 @@ def point_inside_opening_aperture(point, config, margin=0.0):
         lat_min - 1e-9 <= lat <= lat_max + 1e-9
         and vert_min - 1e-9 <= vert <= vert_max + 1e-9
     )
+
+
+#: Container-local zone taxonomy for motion-start decisions (ST09-I S5.7).
+#: INSIDE_CONTAINER / OPENING_CORRIDOR / OUTSIDE_CONTAINER are pure
+#: scene geometry; UNKNOWN is produced by the CALLER when identity or TF
+#: is unavailable (never a world-frame fallback).
+CONTAINER_ZONES = (
+    "inside_container", "opening_corridor", "outside_container", "unknown")
+
+
+def container_zone(point_base_link, config, corridor_depth_m):
+    """Classify a base-link-frame point into the container zone taxonomy.
+
+    inside_container: within the inner hull. opening_corridor: inside the
+    (unbounded) opening-aperture prism AND within corridor_depth_m of the
+    face plane along the OUTWARD normal (the corridor_depth caller derives
+    it from wall thickness + TCP/camera envelope + margin — never a bare
+    constant). outside_container: everything else. The aperture prism
+    alone would swallow the whole opening-side workspace (the deploy
+    pickup observe projects inside it ~1.7 m outside the face).
+    """
+    if point_inside_container_inner_box(point_base_link, config, margin=0.0):
+        return "inside_container"
+    if not point_inside_opening_aperture(point_base_link, config, margin=0.0):
+        return "outside_container"
+    local = _point_in_container_link(point_base_link, config)
+    normal, _lateral, _vertical = container_opening_axes_in_container(config)
+    corners = container_opening_aperture_corners_in_container(config, 0.0)
+    if not corners or not normal:
+        return "opening_corridor"  # geometry incomplete: stay conservative
+    face = corners[0]
+    depth = sum(
+        (local[axis] - float(face[axis])) * float(normal[axis])
+        for axis in range(3))
+    if depth > float(corridor_depth_m):
+        return "outside_container"
+    return ("opening_corridor" if depth >= 0.0 else "inside_container")
 
 
 def pickup_platform_config(config):

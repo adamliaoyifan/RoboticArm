@@ -1,0 +1,43 @@
+scene sync: static scene synced (airport_container_real, 8000 triangles)
+payload detach: True
+[WARN] Cannot load observe seed: luggage_description
+[INFO] Waiting for state validity service /check_state_validity ...
+[INFO] State validity service ready.
+[INFO] Grid: 10x14x10x4 = 5600 cells (resolution=0.15, avoid_collisions=True)
+[WARN] moveit_commander unavailable (No module named 'moveit_commander'); payload disabled.
+[INFO] Payload attached via ApplyPlanningScene: size=[0.7, 0.45, 0.28] link=suction_contact_frame offset=[0.0, 0.0, 0.14]
+[INFO] Computing deterministic opening wavefront: fixed_seeds=5 max_branches=3 workers=1
+[INFO] Yaw 1/4 complete: connected=227 elapsed=40.6s
+[INFO] Yaw 2/4 complete: connected=197 elapsed=84.1s
+[INFO] Yaw 3/4 complete: connected=240 elapsed=133.5s
+[INFO] Yaw 4/4 complete: connected=192 elapsed=169.0s
+[INFO] Done in 169.0s: reachable=844 marginal=12 unreachable=1085 unknown=3659
+[INFO] Saved atlas to src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28.npz + src/luggage_planning/data/reachability_atlas/s20_container_collision_aware_payload_0.70x0.45x0.28.yaml
+old
+iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
+ 0  0.575     0    0      28     252         0
+ 1  0.725     0    0     101     179         0
+ 2  0.875    85    0      52     143        85
+ 3  1.025    91    1      55     133        92
+ 4  1.175    85    0      53     142        85
+ 5  1.325    76    0      52     152        76
+ 6  1.475    67    0      51     162        67
+ 7  1.625    29    3      65     183        32
+ 8  1.775     0    0      60     220         0
+ 9  1.925     0    0      28     252         0
+new
+iz    z   REACH MARG UNREACH UNKNOWN CONNECTED
+ 0  0.575     0    0      56     504         0
+ 1  0.725     0    0     201     359         0
+ 2  0.875   166    2     104     288       168
+ 3  1.025   176    1     109     274       177
+ 4  1.175   170    0     106     284       170
+ 5  1.325   152    0     104     304       152
+ 6  1.475   134    0     102     324       134
+ 7  1.625    46    9     136     369        55
+ 8  1.775     0    0     111     449         0
+ 9  1.925     0    0      56     504         0
+low-layer drops are collision on the stored seed, or there were none
+iz7 report only: connected=55 reachable=46 unknown=369 z=1.625
+fingerprint 4a4a62a7248d5951595d346472947eca0389600466292d8e5e47fd2e6818f8c8
+GATE PASS

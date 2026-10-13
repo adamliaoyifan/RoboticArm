@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Build conservative pick/place motion segments."""
+"""Pick waypoints and frozen clearance helpers.
+
+[ST09-I] the fixed-clearance place legs were deleted with the geometric
+execution bypass (routes own place motion); pick waypoints remain
+candidate generators refined into certified edges, and the clearance
+helpers feed route graph anchors and coverage checks.
+"""
 
 import math
 
+from luggage_description.frame_transforms import transform_pose
 from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
 
 # Single source of truth for the motion clearances. These used to be declared
@@ -10,6 +17,12 @@ from luggage_planning.pose import MotionSegment, Point, Pose, Quaternion
 # different values, so the effective clearance depended on how the node was
 # started. waypoint_generator_node reads its defaults from here.
 DEFAULT_PLACE_CLEARANCE_Z = 0.15
+
+# Descend TCP sits this far along container +Z above the true rest top
+# (slot center + half height). SlotSpec.place_pose stays the rest pose.
+# 50 mm keeps the physical mesh bottom above the cargo slab at detach
+# (hang + mesh-vs-measured); the box then drops onto OCC.
+PLACE_RELEASE_GAP_M = 0.05
 
 DEFAULT_PICK_CLEARANCES = {
     "pre_grasp": 0.30,
@@ -171,6 +184,35 @@ def _pose_at(pose, z, yaw):
     )
 
 
+def slot_from_contract(record, container_in_world):
+    """World slot pose from a v2 slot record (ST05 F08 seam).
+
+    ``record`` is the slot-profile pose contract (container box center,
+    box-axis yaw); ``container_in_world`` is the declared container
+    transform as ``(translation_xyz, quaternion_xyzw)``. Returns the box
+    center in world with the COMPLETE orientation (container rotation
+    composed with the box-axis yaw) — never an xyz-only conversion. The
+    box top is center + h/2 by contract. ST07 wires this into the
+    BuildMotionSequenceV2/SelectPlacePathV2 endpoints; it is the declared
+    meaning those services will carry.
+    """
+    translation, rotation = container_in_world
+    world = transform_pose(record, {
+        "source_frame": record.get("frame_id"),
+        "target_frame": "world",
+        "translation": [float(v) for v in translation],
+        "quaternion_xyzw": [float(v) for v in rotation],
+        "stamp_ns": record.get("stamp_ns"),
+        "scene_revision": record.get("scene_revision"),
+    })
+    pos = world["position"]
+    quat = world["quaternion_xyzw"]
+    return Pose(
+        position=Point(x=pos[0], y=pos[1], z=pos[2]),
+        orientation=Quaternion(x=quat[0], y=quat[1], z=quat[2], w=quat[3]),
+    )
+
+
 def _perception_clearances(perception_info, pick_clearances):
     """Compute adaptive clearances from perception data.
 
@@ -200,7 +242,8 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
                    place_clearance_z=None, perception_info=None,
                    opening_info=None, fallback_yaw=0.0,
                    corridor_surface_max=None,
-                   corridor_margin=DEFAULT_CORRIDOR_MARGIN):
+                   corridor_margin=DEFAULT_CORRIDOR_MARGIN,
+                   retreat_safe_tool_z=None):
     """Build MotionSegment list for pick or place phase.
 
     Args:
@@ -225,6 +268,11 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             None keeps the single-slot fixed-clearance behavior.
         corridor_margin: clearance kept between the payload bottom and the
             corridor surface when raising heights.
+        retreat_safe_tool_z: optional tool-z cap in the same frame as
+            ``place_slot.place_pose``. When set, the place retreat stops at
+            this height instead of lifting into the lid. Traverse is not
+            capped. None keeps the uncapped retreat (tests and callers that
+            have not converted container_link's safe tool z).
 
     Returns:
         list[MotionSegment]
@@ -283,171 +331,13 @@ def build_sequence(pick, place_slot, phase, pick_clearances=None,
             ),
         ]
     if phase == "place":
-        slot_pose = place_slot.place_pose
-        # SlotSpec.place_pose is the suitcase CENTER. Motion planning targets
-        # suction_contact_frame, which must finish on the suitcase top.
-        slot_yaw = _yaw_from_quaternion(slot_pose.orientation)
-        pick_yaw = pick_tool_yaw(
-            _yaw_from_quaternion(pick.pose.orientation),
-            _luggage_yaw_valid(pick),
-            fallback_yaw,
-        )
-        place_yaw = nearest_box_yaw(pick_yaw, slot_yaw)
-        box_height = max(
-            0.0,
-            float(getattr(place_slot, "height", 0.0)
-                  or getattr(pick, "height", 0.0)),
-        )
-        contact_z = slot_pose.position.z + box_height * 0.5
-        if place_clearance_z is None:
-            place_clearance_z = DEFAULT_PLACE_CLEARANCE_Z
-        # G1: raise the carry height when neighbors along the corridor are
-        # taller than this slot's own top. The payload hangs a full box
-        # height below the suction frame, so the required height keeps the
-        # payload bottom above corridor_surface_max + margin.
-        clearance = corridor_clearance(
-            corridor_surface_max, box_height, contact_z, place_clearance_z,
-            margin=corridor_margin)
-        above_pose = _pose_at(slot_pose, contact_z + clearance, place_yaw)
-        transit_pose = above_pose
-        stage_pose = None
-        stage_mid_pose = None
-        stage_late_pose = None
-        if opening_info:
-            opening = opening_info["point"]
-            normal = opening_info["normal"]
-            outward = float(opening_info.get("outward_clearance", 0.15))
-            current = [
-                above_pose.position.x,
-                above_pose.position.y,
-                above_pose.position.z,
-            ]
-            signed = sum(
-                (current[i] - opening[i]) * normal[i]
-                for i in range(3))
-            portal = [
-                current[i] + normal[i] * (outward - signed)
-                for i in range(3)
-            ]
-            # Entry at the portal must already satisfy the corridor height:
-            # a straight portal->above traverse crosses the opening plane at
-            # (or near) portal height, so a tall box just inside the door
-            # would clip an ascending entry that starts too low.
-            portal[2] = max(
-                portal[2],
-                float(opening[2])
-                + float(opening_info.get("min_height_above_opening", 0.35)),
-            )
-            if corridor_surface_max is not None:
-                portal[2] = max(
-                    portal[2],
-                    float(corridor_surface_max) + box_height
-                    + float(corridor_margin))
-            transit_pose = Pose(
-                position=Point(
-                    x=portal[0], y=portal[1], z=portal[2]),
-                orientation=_tool_down_quaternion(place_yaw),
-            )
-            stage_distance = float(
-                opening_info.get("stage_outward_clearance", 0.65))
-            offset = staging_offset(normal, stage_distance)
-            stage_pose = Pose(
-                position=Point(
-                    x=portal[0] + offset[0],
-                    y=portal[1] + offset[1],
-                    z=max(
-                        portal[2] + offset[2],
-                        float(opening[2]) + float(
-                            opening_info.get(
-                                "stage_height_above_opening", 0.65))),
-                ),
-                orientation=_tool_down_quaternion(pick_yaw),
-            )
-            start = opening_info.get("start_point")
-            if start is not None:
-                stage_mid_pose = Pose(
-                    position=Point(
-                        x=(float(start[0]) + stage_pose.position.x) * 0.5,
-                        y=(float(start[1]) + stage_pose.position.y) * 0.5,
-                        z=max(
-                            float(start[2]),
-                            (float(start[2]) + stage_pose.position.z) * 0.5),
-                    ),
-                    orientation=_tool_down_quaternion(pick_yaw),
-                )
-                stage_late_pose = Pose(
-                    position=Point(
-                        x=(stage_mid_pose.position.x
-                           + stage_pose.position.x) * 0.5,
-                        y=(stage_mid_pose.position.y
-                           + stage_pose.position.y) * 0.5,
-                        z=(stage_mid_pose.position.z
-                           + stage_pose.position.z) * 0.5,
-                    ),
-                    orientation=_tool_down_quaternion(pick_yaw),
-                )
-        insert_pose = _pose_at(
-            slot_pose,
-            contact_z + insertion_clearance(box_height, clearance),
-            place_yaw)
-        contact_pose = _pose_at(slot_pose, contact_z, place_yaw)
-        retreat_pose = _pose_at(slot_pose, contact_z + clearance, place_yaw)
-        # Transit keeps the suction normal tool-down during payload carry.
-        # Do not also lock J4/J5/J6: that redundant joint-space constraint can
-        # exclude every IK branch for an otherwise valid tool-down goal
-        # (E12 one-box smoke). insert/descend/retreat follow the same safe
-        # orientation through Cartesian motion.
-        segments = []
-        if stage_mid_pose is not None:
-            segments.append(MotionSegment(
-                name="stage_mid", type="cartesian",
-                target_pose=stage_mid_pose,
-                keep_tool_down=True, keep_camera_down=False,
-                allow_ompl_fallback=True,
-                lock_wrist=False,
-            ))
-        if stage_late_pose is not None:
-            segments.append(MotionSegment(
-                name="stage_late", type="cartesian",
-                target_pose=stage_late_pose,
-                keep_tool_down=True, keep_camera_down=False,
-                allow_ompl_fallback=True,
-                lock_wrist=False,
-            ))
-        if stage_pose is not None and stage_late_pose is None:
-            segments.append(MotionSegment(
-                name="stage", type="cartesian", target_pose=stage_pose,
-                keep_tool_down=True, keep_camera_down=False,
-                allow_ompl_fallback=True,
-                lock_wrist=False,
-            ))
-        segments.extend([
-            MotionSegment(
-                name="transit", type="pose_target", target_pose=transit_pose,
-                keep_tool_down=True, keep_camera_down=False, lock_wrist=False,
-            ),
-            MotionSegment(
-                name="traverse", type="cartesian", target_pose=above_pose,
-                keep_tool_down=True, keep_camera_down=False,
-                allow_ompl_fallback=True,
-            ),
-            MotionSegment(
-                name="insert", type="cartesian", target_pose=insert_pose,
-                keep_tool_down=True, keep_camera_down=True,
-                allow_ompl_fallback=False,
-            ),
-            MotionSegment(
-                name="descend", type="cartesian", target_pose=contact_pose,
-                keep_tool_down=True, keep_camera_down=True,
-                allow_ompl_fallback=False,
-            ),
-            MotionSegment(
-                name="retreat", type="cartesian", target_pose=retreat_pose,
-                keep_tool_down=True, keep_camera_down=True,
-                allow_ompl_fallback=False,
-            ),
-        ])
-        return segments
+        # [ST09-I] the fixed-clearance place legs were the geometric
+        # execution bypass: certified route legs come from
+        # route_producer -> SelectPlacePathV2. The frozen clearance
+        # helpers stay as graph-anchor generators.
+        raise ValueError(
+            "PLACE_LEGS_ROUTE_OWNED: place motion comes from the "
+            "certified route (SelectPlacePathV2), not build_sequence")
     return []
 
 

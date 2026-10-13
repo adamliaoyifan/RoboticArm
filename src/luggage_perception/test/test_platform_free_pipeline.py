@@ -13,6 +13,7 @@ import numpy as np
 from luggage_perception.platform_free_pipeline import (
     PlatformFreeDetector,
     SUPPORT_MODES,
+    support_service_fields,
 )
 from luggage_perception.top_support_estimator import (
     DETECT_SUPPORT_STAMP_MISMATCH,
@@ -181,6 +182,28 @@ class TestPipelineFaults(unittest.TestCase):
         self.assertEqual(
             set(SUPPORT_MODES),
             {"auto", "configured", "auto_then_configured", "top_only"})
+
+    def test_service_fields_use_support_object_not_missing_result_reason(self):
+        cargo, raw, _, _, _ = _scene(seed=41)
+        out = _detector(stability_window=1).update(
+            cargo, raw, source="measure", geometry_ok=True,
+            raw_same_stamp=True)
+        self.assertFalse(hasattr(out, "reason"))
+        fields = support_service_fields(out)
+        self.assertEqual(fields["reason"], "ok")
+        self.assertIsNotNone(fields["side_coverage"])
+        self.assertGreater(fields["side_coverage"], 0.0)
+
+    def test_service_fields_name_a_skipped_fit(self):
+        cargo, raw, _, _, _ = _scene(seed=42)
+        out = _detector().update(
+            cargo, raw, source="measure", geometry_ok=True,
+            geometry_gate_reason="status_missing")
+        self.assertIsNone(out.support)
+        fields = support_service_fields(out)
+        self.assertEqual(fields["reason"], "DETECT_SUPPORT_STATUS_MISSING")
+        self.assertIsNone(fields["side_coverage"])
+        self.assertEqual(fields["gate"], "status_missing")
 
 
 if __name__ == "__main__":

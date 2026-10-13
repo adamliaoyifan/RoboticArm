@@ -32,6 +32,79 @@ MAX_VOXEL_MARKERS = 5000
 MARKER_VIZ_SCALE = 1.25
 
 
+def _clip_half_plane(polygon, origin, normal):
+    """Sutherland-Hodgman clip keeping (p - origin) . normal >= 0."""
+    out = []
+    count = len(polygon)
+    for index in range(count):
+        point = polygon[index]
+        previous = polygon[index - 1]
+        current = ((point[0] - origin[0]) * normal[0]
+                   + (point[1] - origin[1]) * normal[1])
+        before = ((previous[0] - origin[0]) * normal[0]
+                  + (previous[1] - origin[1]) * normal[1])
+        inside_c, inside_p = current >= -1e-12, before >= -1e-12
+        if inside_c != inside_p:
+            t = before / (before - current)
+            out.append((previous[0] + t * (point[0] - previous[0]),
+                        previous[1] + t * (point[1] - previous[1])))
+        if inside_c:
+            out.append(point)
+    return out
+
+
+def _rect_footprint_overlap(corners, xmin, ymin, xmax, ymax):
+    """Positive-intersection area between a CCW footprint and a cell rect.
+
+    Returns 0.0 for measure-zero boundary contact (half-open rule: a
+    touching edge or corner alone never occupies the cell).
+    """
+    polygon = [(xmin, ymin), (xmax, ymin), (xmax, ymax), (xmin, ymax)]
+    for index in range(4):
+        a, b = corners[index], corners[(index + 1) % 4]
+        edge = (b[0] - a[0], b[1] - a[1])
+        polygon = _clip_half_plane(polygon, a, (-edge[1], edge[0]))
+        if not polygon:
+            return 0.0
+    if len(polygon) < 3:
+        return 0.0
+    total = 0.0
+    for index, point in enumerate(polygon):
+        nxt = polygon[(index + 1) % len(polygon)]
+        total += point[0] * nxt[1] - nxt[0] * point[1]
+    return abs(total) / 2.0
+
+
+def normalize_ledger_slot(center_xyz, yaw, size, source_frame="world",
+                          container_yaw=0.0, container_translation=(0.0, 0.0, 0.0)):
+    """Single F19 normalization shared by add/remove/readback commits.
+
+    ``source_frame='container_link'`` (v2 slot records): the pose already
+    carries container coordinates — identity, no second yaw subtraction.
+    ``source_frame='world'`` is the one declared v1 shim for the existing
+    orchestrator: the historical inverse container transform (translation
+    subtracted, yaw un-rotated). Any other source frame is a refusal, not a
+    guess. Returns ``(center_container, yaw_container, size_wdh)``.
+    """
+    center = [float(v) for v in center_xyz]
+    size = [float(v) for v in size]
+    yaw = float(yaw)
+    if not all(math.isfinite(v) for v in center + size) or any(
+            v <= 0.0 for v in size) or not math.isfinite(yaw):
+        raise ValueError("ledger slot needs finite xyz/yaw and positive size")
+    if source_frame == "container_link":
+        return center, yaw, size
+    if source_frame != "world":
+        raise ValueError("ledger slot source frame %r is not declared"
+                         % (source_frame,))
+    tx, ty, tz = (float(v) for v in container_translation)
+    cos_y = math.cos(-float(container_yaw))
+    sin_y = math.sin(-float(container_yaw))
+    dx, dy = center[0] - tx, center[1] - ty
+    return ([dx * cos_y - dy * sin_y, dx * sin_y + dy * cos_y, center[2] - tz],
+            yaw - float(container_yaw), size)
+
+
 class CargoVolumeMapper:
     """Axis-aligned voxel grid in container-local frame (yaw-aligned with base)."""
 
@@ -103,6 +176,16 @@ class CargoVolumeMapper:
         self._source = [SOURCE_NONE] * total
         self._labels = [0] * total
         self._instance_ids = [0] * total
+        # Independent sensor evidence: a per-voxel shadow log-odds value
+        # the sensor's own hits/misses accumulate, plus its latest label
+        # and instance. The shadow is updated unconditionally — geometry
+        # locks protect the live grid, never this ledger — so retracting a
+        # committed box restores the sensor's *latest* word exactly as if
+        # the geometry had never been there (control-equivalence).
+        self._sensor_seen = [False] * total
+        self._sensor_values = [0.0] * total
+        self._sensor_labels = [0] * total
+        self._sensor_instance_ids = [0] * total
 
     def _build_active_mask(self):
         """Index the enclosing AABB; deactivate voxels outside the 7-face hull."""
@@ -246,19 +329,63 @@ class CargoVolumeMapper:
         vox = self._local_to_voxel(*local)
         if vox is None:
             return
-        idx = self._index(*vox)
+        self.mark_occupied_voxel(
+            *vox, source=source, label=label, instance_id=instance_id)
+
+    def mark_occupied_voxel(self, ix, iy, iz, source=SOURCE_SENSOR,
+                            label=0, instance_id=0):
+        """Mark one exact voxel index (ST04 exact rasterization path)."""
+        if not (0 <= ix < self.nx and 0 <= iy < self.ny
+                and 0 <= iz < self.nz):
+            return
+        idx = self._index(ix, iy, iz)
         if source == SOURCE_GEOMETRY:
             self._grid[idx] = self._occupancy.force_occupied(
                 idx, lock_geometry=True
             )
         else:
             self._grid[idx] = self._occupancy.apply_hit(idx)
+            self._record_sensor_hit(idx, label, instance_id)
         if self._source[idx] == SOURCE_NONE:
             self._source[idx] = source
         # Sensor observations overwrite geometry-inferred labels.
         if source == SOURCE_SENSOR or self._labels[idx] == 0:
             self._labels[idx] = int(label)
             self._instance_ids[idx] = int(instance_id)
+
+    def _record_sensor_hit(self, idx, label=0, instance_id=0):
+        """A sensor hit is testimony: accumulate the shadow ledger.
+
+        The shadow accumulates the sensor-only log-odds trajectory with
+        the same increments and clamps as the live grid. Because geometry
+        writes never touch it, restoring it after a geometry retraction
+        reproduces exactly the state the sensor alone would have built.
+        """
+        occupancy = self._occupancy
+        self._sensor_values[idx] = min(
+            occupancy.maximum, max(occupancy.minimum,
+                                   self._sensor_values[idx]
+                                   + occupancy.hit_increment))
+        self._sensor_seen[idx] = True
+        self._sensor_labels[idx] = int(label)
+        self._sensor_instance_ids[idx] = int(instance_id)
+
+    def _record_sensor_miss(self, idx):
+        """A miss is testimony too: the lock protects the grid, not the
+        ledger. The sensor's latest word is recorded unconditionally, so
+        retracting overlaid geometry restores it (never a stale hit)."""
+        occupancy = self._occupancy
+        # miss_increment is negative log-odds; accumulate exactly like
+        # LogOddsGrid.apply_miss (which the lock may bypass, the ledger
+        # never).
+        self._sensor_values[idx] = max(
+            occupancy.minimum, min(occupancy.maximum,
+                                   self._sensor_values[idx]
+                                   + occupancy.miss_increment))
+        self._sensor_seen[idx] = True
+        if occupancy.classify_value(self._sensor_values[idx]) == FREE:
+            self._sensor_labels[idx] = 0
+            self._sensor_instance_ids[idx] = 0
 
     def mark_free_world(self, x, y, z):
         local = self._world_to_local(x, y, z)
@@ -267,6 +394,7 @@ class CargoVolumeMapper:
             return
         idx = self._index(*vox)
         self._grid[idx] = self._occupancy.apply_miss(idx)
+        self._record_sensor_miss(idx)
         if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
             self._source[idx] = SOURCE_NONE
             self._labels[idx] = 0
@@ -335,6 +463,7 @@ class CargoVolumeMapper:
         miss_indices.difference_update(hit_records)
         for idx in miss_indices:
             self._grid[idx] = self._occupancy.apply_miss(idx)
+            self._record_sensor_miss(idx)
             if self._grid[idx] == FREE and self._source[idx] != SOURCE_GEOMETRY:
                 self._source[idx] = SOURCE_NONE
                 self._labels[idx] = 0
@@ -430,12 +559,16 @@ class CargoVolumeMapper:
                 return index
         return None
 
-    def mark_placed_box(self, center, size, yaw=0.0, tolerance=0.05):
+    def mark_placed_box(self, center, size, yaw=0.0, tolerance=0.05,
+                        measured_source=None):
         """Mark an axis/yaw-aligned box as occupied (size: width, depth, height).
 
         Samples at the voxel resolution so thin boxes are not skipped. ``center``
         is in base/world coordinates; ``yaw`` rotates the footprint about Z.
         Uses SOURCE_GEOMETRY so the map can distinguish this from sensor data.
+        ``measured_source`` records v2 commit provenance when supplied; it is
+        absent (not defaulted) for v1 commits, so v1 ledger output is
+        unchanged.
         """
         center = [float(v) for v in center]
         size = [float(v) for v in size]
@@ -451,6 +584,8 @@ class CargoVolumeMapper:
             "size": size,
             "yaw": float(yaw),
         }
+        if measured_source is not None:
+            record["measured_source"] = str(measured_source)
         self._placed_boxes.append(record)
         self._rasterize_placed_box(
             record["center"], record["size"], record["yaw"])
@@ -458,56 +593,137 @@ class CargoVolumeMapper:
         return True
 
     def unmark_placed_box(self, center, size, yaw=None, tolerance=0.05):
-        """Remove a committed geometry record and rebuild fail-closed state."""
+        """Remove a committed geometry record and rebuild fail-closed state.
+
+        ST04 F19: the removed box's exact voxel set is retracted — locks
+        released, and every cell the sensor had its own word on is
+        restored to the sensor's *latest* testimony (shadow ledger),
+        never erased and never a stale hit. Cells only geometry touched
+        return to unknown; removal never fabricates free space.
+        """
         match = self._matching_placed_box(center, size, yaw, tolerance)
         if match is None:
             return False
+        removed = self._placed_boxes[match]
         remaining = [
             record for index, record in enumerate(self._placed_boxes)
             if index != match]
         self._placed_boxes = remaining
-        self._clear_grid()
+        self._retract_box_voxels(
+            self._iter_placed_box_voxels(
+                removed["center"], removed["size"], removed["yaw"]))
         for record in remaining:
             self._rasterize_placed_box(
                 record["center"], record["size"], record["yaw"])
         self._revision += 1
         return True
 
+    def _retract_box_voxels(self, indices):
+        """Retract one removed box's voxel set.
+
+        Every covered cell is unlocked and cleared; the sensor's shadow
+        testimony is written back as the live log-odds value (no lock, no
+        force) so the cell equals the no-geometry control exactly.
+        """
+        occupancy = self._occupancy
+        for idx in indices:
+            occupancy.clear(idx)
+            if self._sensor_seen[idx]:
+                value = self._sensor_values[idx]
+                state = occupancy.classify_value(value)
+                occupancy.values[idx] = value
+                self._grid[idx] = state
+                if state == FREE:
+                    # A FREE cell has no owner or label — exactly what
+                    # mark_free_world's own normalization produces in the
+                    # no-geometry control.
+                    self._source[idx] = SOURCE_NONE
+                    self._labels[idx] = 0
+                    if self._instance_ids:
+                        self._instance_ids[idx] = 0
+                else:
+                    self._source[idx] = SOURCE_SENSOR
+                    self._labels[idx] = self._sensor_labels[idx]
+                    if self._instance_ids:
+                        self._instance_ids[idx] = \
+                            self._sensor_instance_ids[idx]
+                continue
+            self._grid[idx] = UNKNOWN
+            self._source[idx] = SOURCE_NONE
+            self._labels[idx] = 0
+            if self._instance_ids:
+                self._instance_ids[idx] = 0
+
     def commit_ledger(self):
         """Return a detached, deterministic snapshot of committed boxes."""
-        return [{
-            "center": list(record["center"]),
-            "size": list(record["size"]),
-            "yaw": float(record["yaw"]),
-        } for record in self._placed_boxes]
+        snapshot = []
+        for record in self._placed_boxes:
+            entry = {
+                "center": list(record["center"]),
+                "size": list(record["size"]),
+                "yaw": float(record["yaw"]),
+            }
+            if "measured_source" in record:
+                entry["measured_source"] = str(record["measured_source"])
+            snapshot.append(entry)
+        return snapshot
 
-    def _rasterize_placed_box(self, center, size, yaw=0.0):
-        """Rasterize a committed box without changing history/revision.
+    def _iter_placed_box_voxels(self, center, size, yaw=0.0):
+        """Yield the flat indices of one committed box's exact voxel set.
 
-        Samples sit strictly inside the box faces ((i+0.5)/n positions, one
-        extra column over the extent so spacing stays under one cell).
-        Edge-inclusive sampling marked measure-zero boundary cells as
-        occupied, over-reserving a one-cell skirt around every committed
-        footprint; interior samples mark exactly the cells the box covers
-        with positive measure.
+        ST04 declared half-open rule: a column cell is occupied iff the
+        oriented footprint rectangle intersects the cell's half-open square
+        with positive area; vertical occupancy spans exactly the voxel layers
+        the box's z-interval touches with positive overlap. This replaces
+        the historical interior-sample lattice, which could miss large
+        diagonal slivers; the occupied set is now exactly the exact
+        cell-intersection oracle (never only an array-sum comparison).
         """
         w, d, h = size
-        sx = max(2, int(math.ceil(w / self.resolution)) + 1)
-        sy = max(2, int(math.ceil(d / self.resolution)) + 1)
-        sz = max(2, int(math.ceil(h / self.resolution)) + 1)
         cos_y, sin_y = math.cos(yaw), math.sin(yaw)
-        for ix in range(sx):
-            lx = ((ix + 0.5) / float(sx) - 0.5) * w
-            for iy in range(sy):
-                ly = ((iy + 0.5) / float(sy) - 0.5) * d
-                rx = cos_y * lx - sin_y * ly
-                ry = sin_y * lx + cos_y * ly
-                for iz in range(sz):
-                    lz = ((iz + 0.5) / float(sz) - 0.5) * h
-                    self.mark_occupied_world(
-                        center[0] + rx, center[1] + ry, center[2] + lz,
-                        source=SOURCE_GEOMETRY,
-                    )
+        half_l, half_w = 0.5 * self.inner_l, 0.5 * self.inner_w
+        res = self.resolution
+        # Grid-frame footprint corners (mapper base == container frame).
+        corners = []
+        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1)):
+            lx, ly = 0.5 * sx * w, 0.5 * sy * d
+            corners.append((center[0] + cos_y * lx - sin_y * ly,
+                            center[1] + sin_y * lx + cos_y * ly))
+        extent_x = 0.5 * (abs(cos_y) * w + abs(sin_y) * d)
+        extent_y = 0.5 * (abs(sin_y) * w + abs(cos_y) * d)
+        ix_min = max(0, int(math.floor(
+            (center[0] - extent_x + half_l) / res)))
+        ix_max = min(self.nx - 1, int(math.floor(
+            (center[0] + extent_x + half_l) / res)))
+        iy_min = max(0, int(math.floor(
+            (center[1] - extent_y + half_w) / res)))
+        iy_max = min(self.ny - 1, int(math.floor(
+            (center[1] + extent_y + half_w) / res)))
+        z_local_min = center[2] - 0.5 * h - self.center[2]
+        z_local_max = center[2] + 0.5 * h - self.center[2]
+        # Half-open voxel layers [bottom, top): include a layer iff its
+        # bottom is strictly below z_max and its top strictly above z_min.
+        iz_min = max(0, int(math.floor(
+            (z_local_min + 0.5 * self.inner_h) / res)))
+        iz_max = min(self.nz - 1, int(math.ceil(
+            (z_local_max + 0.5 * self.inner_h) / res)) - 1)
+        for ix in range(ix_min, ix_max + 1):
+            xmin = -half_l + ix * res
+            for iy in range(iy_min, iy_max + 1):
+                ymin = -half_w + iy * res
+                if _rect_footprint_overlap(
+                        corners, xmin, ymin, xmin + res, ymin + res) <= 1e-12:
+                    continue
+                for iz in range(iz_min, iz_max + 1):
+                    yield self._index(ix, iy, iz)
+
+    def _rasterize_placed_box(self, center, size, yaw=0.0):
+        """Rasterize a committed box without changing history/revision."""
+        for idx in self._iter_placed_box_voxels(center, size, yaw):
+            self._grid[idx] = self._occupancy.force_occupied(
+                idx, lock_geometry=True)
+            if self._source[idx] == SOURCE_NONE:
+                self._source[idx] = SOURCE_GEOMETRY
 
     def fill_unoccupied_as_free(self):
         """Geometry GT: usable-hull empty cells are known-free."""
@@ -690,6 +906,70 @@ class CargoVolumeMapper:
             "confidence": confidence,
             "semantic_label": semantic_label,
         }
+
+    def surface_contract_v2(self, scene_revision, request_id):
+        """F06 v2: strict container-origin surface record for this map.
+
+        ``surface_z_container`` is measured from the container origin
+        (``floor_z_container = center[2] - inner_h/2``); unknown columns are
+        ``None`` with confidence ``unknown`` — never a numeric zero or the
+        floor. The v1 ``surface_map_2d`` output is unchanged; this record is
+        its scene-bound v2 counterpart (dual datum agrees within 1e-9 m on
+        every non-null cell). Raises ContractError on any inconsistency.
+        """
+        from luggage_description.frame_contracts import validate_surface
+
+        floor = self.center[2] - 0.5 * self.inner_h
+        ceiling = self.center[2] + 0.5 * self.inner_h
+        legacy = self.surface_map_2d()
+        surface_z, state, confidence, relative = [], [], [], []
+        for ix in range(self.nx):
+            z_row, s_row, c_row, r_row = [], [], [], []
+            for iy in range(self.ny):
+                cell_state = legacy["state"][ix][iy]
+                if cell_state == "unknown":
+                    z_row.append(None)
+                    s_row.append("unknown")
+                    c_row.append("unknown")
+                    r_row.append(None)
+                    continue
+                height = float(legacy["height"][ix][iy])
+                source = legacy["confidence"][ix][iy]
+                z_row.append(floor + height)
+                s_row.append(cell_state)
+                c_row.append(
+                    "verified_geometry" if source == "geometry" else "sensor")
+                r_row.append(height)
+            surface_z.append(z_row)
+            state.append(s_row)
+            confidence.append(c_row)
+            relative.append(r_row)
+        record = {
+            "contract_version": 2,
+            "frame_id": "container_link",
+            "length_unit": "m",
+            # Scene-basis map snapshot: zero is an explicit valid epoch,
+            # never a latest-TF request.
+            "stamp_ns": 0,
+            "time_basis": "scene",
+            "scene_revision": str(scene_revision),
+            "request_id": str(request_id),
+            "kind": "surface",
+            "map_revision": int(self._revision),
+            "geometry_hash": self.geometry_hash,
+            "height_datum": "container_origin",
+            "origin_xy_container": [float(v) for v in legacy["origin_local"]],
+            "resolution_m": float(self.resolution),
+            "floor_z_container": float(floor),
+            "ceiling_z_container": float(ceiling),
+            "surface_z_container": surface_z,
+            "state": state,
+            "confidence": confidence,
+            "height_above_floor": relative,
+        }
+        validate_surface(record, str(scene_revision), self.geometry_hash,
+                         int(self._revision))
+        return record
 
     def surface_cell_center_base(self, ix, iy, local_z=None):
         """Cell-center (ix,iy) in base frame; local_z defaults to inner floor."""

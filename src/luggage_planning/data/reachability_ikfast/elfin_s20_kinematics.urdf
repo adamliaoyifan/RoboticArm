@@ -1,0 +1,87 @@
+<?xml version="1.0"?>
+<robot name="elfin_s20_kinematics">
+  <!-- Kinematics only, from elfin_base_link to suction_contact_frame.
+       Joint numbers match S20.urdf.xacro and suction_flange_origin.xacro. -->
+  <link name="elfin_base_link"/>
+  <link name="elfin_base"/>
+  <joint name="elfin_base_joint" type="fixed">
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <parent link="elfin_base_link"/>
+    <child link="elfin_base"/>
+  </joint>
+
+  <link name="elfin_link1"/>
+  <joint name="elfin_joint1" type="revolute">
+    <origin xyz="0 0 0.171" rpy="0 0 0"/>
+    <parent link="elfin_base"/>
+    <child link="elfin_link1"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="200" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_link2"/>
+  <joint name="elfin_joint2" type="revolute">
+    <origin xyz="0 -0.2295 0" rpy="1.5707963267948966 0 0"/>
+    <parent link="elfin_link1"/>
+    <child link="elfin_link2"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-3.3158" upper="0.1745" effort="200" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_link3"/>
+  <joint name="elfin_joint3" type="revolute">
+    <origin xyz="-0.85 0 -0.1885" rpy="0 0 3.141592653589793"/>
+    <parent link="elfin_link2"/>
+    <child link="elfin_link3"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-2.9319" upper="2.9319" effort="200" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_link4"/>
+  <joint name="elfin_joint4" type="revolute">
+    <origin xyz="0.712 0 0" rpy="0 0 0"/>
+    <parent link="elfin_link3"/>
+    <child link="elfin_link4"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="104" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_link5"/>
+  <joint name="elfin_joint5" type="revolute">
+    <origin xyz="0 0 0.138" rpy="-1.5707963267948966 0 0"/>
+    <parent link="elfin_link4"/>
+    <child link="elfin_link5"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="34" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_link6"/>
+  <joint name="elfin_joint6" type="revolute">
+    <origin xyz="0 0 0.138" rpy="1.5707963267948966 0 0"/>
+    <parent link="elfin_link5"/>
+    <child link="elfin_link6"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-6.28" upper="6.28" effort="34" velocity="1.57"/>
+  </joint>
+
+  <link name="elfin_end_link"/>
+  <joint name="elfin_end_joint" type="fixed">
+    <origin xyz="0 0 0.1257" rpy="0 0 3.141592653589793"/>
+    <parent link="elfin_link6"/>
+    <child link="elfin_end_link"/>
+  </joint>
+
+  <link name="suction_panel"/>
+  <joint name="suction_panel_joint" type="fixed">
+    <origin xyz="0.000600 0 0" rpy="-1.56451314 0 3.14159265"/>
+    <parent link="elfin_end_link"/>
+    <child link="suction_panel"/>
+  </joint>
+
+  <link name="suction_contact_frame"/>
+  <joint name="suction_contact_frame_joint" type="fixed">
+    <origin xyz="0 -0.286 0" rpy="1.57079632679 0 0"/>
+    <parent link="suction_panel"/>
+    <child link="suction_contact_frame"/>
+  </joint>
+</robot>

@@ -34,6 +34,146 @@ class RevalidationInput:
     in_flight: bool = False
     runtime_lease_valid: bool = True
     start_joints_match: bool = True
+    #: An unloaded observation move may run while an occupancy change is
+    #: unconfirmed: the move to the observation pose is what confirms it.
+    #: Placement and every loaded route keep this False.
+    allow_unconfirmed: bool = False
+
+
+def freshness_verdict(snapshot, now_ns, max_age_ns, allow_unconfirmed=False):
+    """Whether this map identity may admit a route.
+
+    A confirmed occupancy snapshot stays valid until a change event or
+    a contradictory observation. The acquisition stamp stays the real
+    sensor time and is recorded as ``age_ns``. Age past
+    ``max_age_ns`` does not refuse that snapshot. ``allow_unconfirmed``
+    admits an unconfirmed snapshot for an unloaded observation route only.
+    Stamp 0 stays "no sensor acquisition": an unloaded observation of a
+    ``release_integrated`` commit may run before any view exists, and that
+    admission does not write or require a stamp. Every other route still
+    refuses stamp <= 0. ``static_empty`` is the configured empty container
+    and is legal only while nothing has been placed and no cargo view has
+    been integrated.
+    """
+    source = str(getattr(snapshot, "map_source", "") or "")
+    placed = int(getattr(snapshot, "placed_count", 0) or 0)
+    observed = bool(getattr(snapshot, "cargo_observed", False))
+    stamp = int(getattr(snapshot, "acquisition_stamp_ns", 0) or 0)
+    confirmed = bool(getattr(snapshot, "occupancy_confirmed", True))
+    verdict = {
+        "map_source": source,
+        "placed_count": placed,
+        "last_acquisition_stamp_ns": stamp,
+        "cargo_observed": observed,
+        "occupancy_confirmed": confirmed,
+        "change_event": str(getattr(snapshot, "change_event", "") or ""),
+        "freshness_policy": "",
+        "why_allowed": "",
+        "why_refused": "",
+        "allowed": False,
+        "age_ns": None,
+        "age_exceeds_window": False,
+    }
+    if source == "static_empty":
+        verdict["freshness_policy"] = "static_empty"
+        if placed == 0 and not observed:
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "static_empty_unplaced_unobserved"
+            return verdict
+        verdict["why_refused"] = (
+            "static_empty_after_place" if placed else
+            "static_empty_after_observation")
+        return verdict
+    if source not in ("", "measured", "release_integrated"):
+        verdict["freshness_policy"] = "reject_unknown_source"
+        verdict["why_refused"] = "unknown_map_source"
+        return verdict
+    verdict["freshness_policy"] = "acquisition_stamp"
+    verdict["acquisition_stamp_present"] = stamp > 0
+    if stamp <= 0:
+        if (allow_unconfirmed and source == "release_integrated"
+                and placed > 0):
+            verdict["freshness_policy"] = "commit_without_acquisition"
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "unloaded_observation_before_acquisition"
+            return verdict
+        verdict["why_refused"] = "acquisition_stamp_required"
+        return verdict
+    age = int(now_ns) - stamp
+    verdict["age_ns"] = age
+    verdict["age_exceeds_window"] = age > int(max_age_ns)
+    verdict["freshness_policy"] = "confirmed_occupancy"
+    if not confirmed:
+        if allow_unconfirmed:
+            verdict["allowed"] = True
+            verdict["why_allowed"] = "unconfirmed_unloaded_observation"
+            return verdict
+        verdict["why_refused"] = "occupancy_change_unconfirmed"
+        return verdict
+    verdict["allowed"] = True
+    verdict["why_allowed"] = "confirmed_occupancy"
+    return verdict
+
+
+def admission_reason(freshness):
+    """Map a freshness verdict to a refusal, or None when it may admit."""
+    from st09_contracts.reasons import Reason
+
+    if freshness.get("allowed"):
+        return None
+    if freshness.get("why_refused") == "occupancy_change_unconfirmed":
+        return Reason.MAP_CONFIRMATION_REQUIRED
+    return Reason.MAP_STALE
+
+
+def _occupancy_admission(snapshot, reason):
+    """Counts the revalidator actually compared, plus why.
+
+    Unknown cells omitted from a sparse snapshot are not free and are
+    not evidence that the container is full. ``why_allowed`` /
+    ``why_refused`` here are the occupancy verdict, separate from the
+    freshness strings.
+    """
+    counts = snapshot.occupancy_counts()
+    known = int(snapshot.cell_count)
+    occupied = int(counts.get("occupied", 0))
+    domain_complete = bool(snapshot.occupancy_domain_complete)
+    unknown_omitted = not domain_complete
+    if reason is Reason.MAP_FULLY_BLOCKED:
+        why_refused = "known_domain_fully_occupied"
+        why_allowed = ""
+    elif known == 0:
+        why_refused = ""
+        why_allowed = "empty_sparse_snapshot"
+    elif occupied == known and unknown_omitted:
+        why_refused = ""
+        why_allowed = "known_cells_occupied_domain_incomplete"
+    else:
+        why_refused = ""
+        why_allowed = "known_domain_not_fully_occupied"
+    return {
+        "known_cell_count": known,
+        "occupied_count": occupied,
+        "unknown_omitted": unknown_omitted,
+        "map_source": str(snapshot.map_source or ""),
+        "occupancy_domain_complete": domain_complete,
+        "why_allowed": why_allowed,
+        "why_refused": why_refused,
+    }
+
+
+def _known_domain_fully_occupied(snapshot) -> bool:
+    """True only for a declared complete domain that is entirely occupied.
+
+    ``cell_count == 0`` is an empty sparse snapshot (unknown omitted),
+    not a full container. Listed cells that are all occupied still do
+    not fill the container when unknown cells were left out.
+    """
+    if not snapshot.occupancy_domain_complete:
+        return False
+    known = snapshot.cell_count
+    occupied = snapshot.occupancy_counts()["occupied"]
+    return known > 0 and occupied == known
 
 
 class MapRevalidator:
@@ -44,18 +184,26 @@ class MapRevalidator:
 
     def revalidate(self, request: RevalidationInput) -> MapRevalidationDecision:
         latest = request.latest_snapshot
-        reason = self._preflight_reason(request)
+        freshness = freshness_verdict(
+            latest, request.now_ns, self.policy.max_snapshot_age_ns,
+            allow_unconfirmed=request.allow_unconfirmed)
+        reason = self._preflight_reason(request, freshness)
         if reason is not Reason.OK:
             decision = MapDecision.STOP if request.in_flight else MapDecision.FAULT
-            return self._decision(decision, reason, latest, ())
+            return self._decision(decision, reason, latest, (), freshness)
         affected = self._affected_edges(request.edges, latest)
         if affected:
             if request.in_flight:
-                return self._decision(MapDecision.STOP, Reason.CARRY_FAULT, latest, affected)
-            return self._decision(MapDecision.REPLAN, Reason.MAP_REVISION_MISMATCH, latest, affected)
-        return self._decision(MapDecision.CONTINUE, Reason.OK, latest, ())
+                return self._decision(
+                    MapDecision.STOP, Reason.CARRY_FAULT, latest, affected,
+                    freshness)
+            return self._decision(
+                MapDecision.REPLAN, Reason.MAP_REVISION_MISMATCH, latest,
+                affected, freshness)
+        return self._decision(
+            MapDecision.CONTINUE, Reason.OK, latest, (), freshness)
 
-    def _preflight_reason(self, request: RevalidationInput) -> Reason:
+    def _preflight_reason(self, request: RevalidationInput, freshness) -> Reason:
         planned, latest = request.planned_snapshot, request.latest_snapshot
         if not request.runtime_lease_valid:
             return Reason.MAP_RESTART
@@ -63,11 +211,21 @@ class MapRevalidator:
             return Reason.CERT_JOINT_DISCONTINUITY
         if latest.geometry_hash != planned.geometry_hash:
             return Reason.MAP_GEOMETRY_HASH_MISMATCH
+        planned_heights = str(
+            getattr(planned, "column_height_digest", "") or "")
+        latest_heights = str(
+            getattr(latest, "column_height_digest", "") or "")
+        # Same revision and the same hull hash still leave column tops
+        # free to change. Both sides must have a digest; a legacy
+        # snapshot with none is not treated as a conflict.
+        if (planned_heights and latest_heights
+                and planned_heights != latest_heights):
+            return Reason.MAP_HASH_CONFLICT
         if latest.map_revision < planned.map_revision or latest.commit_revision < planned.commit_revision:
             return Reason.MAP_RESTART
-        if request.now_ns - latest.acquisition_stamp_ns > self.policy.max_snapshot_age_ns:
-            return Reason.MAP_STALE
-        if latest.occupancy_counts()["occupied"] == latest.cell_count:
+        if not freshness["allowed"]:
+            return admission_reason(freshness) or Reason.MAP_STALE
+        if _known_domain_fully_occupied(latest):
             return Reason.MAP_FULLY_BLOCKED
         return Reason.OK
 
@@ -83,14 +241,18 @@ class MapRevalidator:
         return tuple(affected)
 
     def _decision(self, decision: MapDecision, reason: Reason, snapshot: PlanningSnapshot,
-                  affected: Tuple[str, ...]) -> MapRevalidationDecision:
+                  affected: Tuple[str, ...], freshness) -> MapRevalidationDecision:
         return MapRevalidationDecision(
             decision=decision,
             reason=reason,
             map_revision=snapshot.map_revision,
             validation_epoch=self.policy.validation_epoch,
             affected_edge_ids=affected,
-            detail={"policy": "st09-c-map-revalidation"},
+            detail={
+                "policy": "st09-c-map-revalidation",
+                "freshness": dict(freshness),
+                "occupancy": _occupancy_admission(snapshot, reason),
+            },
         )
 
 

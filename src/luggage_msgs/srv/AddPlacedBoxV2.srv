@@ -1,0 +1,13 @@
+# F19 v2: commit one verified placed box with an explicit container_link
+# slot pose (slot profile: box center, box_axis_pi, scene basis) and
+# measured provenance. The v1 AddPlacedBox world-pose shape stays for the
+# ROS1 orchestrator and normalizes through the same single ledger entry.
+luggage_msgs/PoseContractV2 slot_pose
+float64[3] size_wdh
+string measured_source
+uint64 expected_map_revision
+string geometry_hash
+---
+bool success
+string message
+uint64 resulting_map_revision

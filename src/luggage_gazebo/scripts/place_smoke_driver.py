@@ -33,12 +33,15 @@ from std_srvs.srv import SetBool
 
 from geometry_msgs.msg import Pose, Quaternion
 from moveit_msgs.msg import PlanningSceneComponents
+from ros_gz_interfaces.msg import Entity
+from ros_gz_interfaces.srv import DeleteEntity, SpawnEntity
 from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
 from luggage_msgs.srv import (
     AddPlacedBox,
     BuildMotionSequence,
+    CheckExecutionAdmission,
     ClearCurrentBox,
     DetectLuggage,
     GetCurrentBox,
@@ -59,6 +62,7 @@ from luggage_description.scene_tf_config_utils import (
     yaw_world_to_base_link,
 )
 from luggage_description.scene_tf_publisher import rpy_to_quaternion
+from luggage_description.suitcase_visual import pickup_visual_sdf
 from luggage_planning.motion_executor import MotionExecutor
 from luggage_planning.motion_boundary import (
     load_latest_boundary,
@@ -67,12 +71,23 @@ from luggage_planning.motion_boundary import (
 from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
+from luggage_gazebo.capture_budget import CONTROLLER_STATE_TOPIC
+from luggage_gazebo.handoff_settle import (
+    HandoffPolicy,
+    await_handoff,
+    summarize_for_extras,
+)
 from luggage_gazebo.place_metrics import (
+    SETTLE_BUDGET_SEC,
+    SETTLE_MOVE_M,
+    SETTLE_WINDOW_SEC,
     PlaceTrial,
     parse_ign_model_pose,
     place_ok,
+    settle_verdict,
     summarize,
     trial_to_dict,
+    xyz_separation,
 )
 
 # Import the eval driver as a library (same package scripts dir).
@@ -111,8 +126,36 @@ CARRYING_ABORTS = {
     "PLACE_FRACTION_descend", "RELEASE_SETTLE_FAILED", "VACUUM_DETACH",
 }
 
-STAGING_NAMES = ("stage_mid", "stage_late", "stage")
 PLACE_CORE = ("transit", "traverse", "insert", "descend", "retreat")
+# Legs that still hold the box. The attached check applies only here,
+# and only before a successful detach. Explicit
+# ``requires_payload_attached`` or a certified ``load_state`` wins over
+# these names.
+_CARRYING_LEG_NAMES = frozenset((
+    "transit", "traverse", "insert", "descend",
+))
+# Legs after the box is supposed to be down. ``attached == false`` is
+# the expected vacuum state, not a lost payload.
+_UNLOADED_LEG_NAMES = frozenset((
+    "retreat", "return", "place_exit", "home",
+))
+GZ_WORLD = "airport_loading"
+
+# [ST09-I S5.7] Safety margin in the DERIVED opening-corridor depth:
+# corridor = wall thickness ((outer-inner)/2, scene data)
+#          + TCP/camera envelope (|T_tcp_camera|, live static TF; the
+#            fallback below is the URDF-derived conservative bound)
+#          + this margin. Deploy numbers: 0.04 + ~0.27 + 0.10 ~ 0.41 m —
+# the pickup observe (1.70 m outside the face) classifies outside while
+# the mouth (+0.055 m) stays in the corridor.
+APERTURE_ESCAPE_MARGIN_M = 0.10
+CAMERA_ENVELOPE_FALLBACK_M = 0.30
+
+# [ST09-I G0-1] Receive-time freshness the exit-proof adjudication
+# demands of /vacuum/state — mirrors the selector's
+# route_producer.VACUUM_STATE_FRESHNESS_S (the message carries no
+# stamp, so receive time on the node clock is the only basis).
+PORTAL_PROOF_VACUUM_FRESHNESS_S = 2.0
 
 # Match elfin_controllers_sim.yaml goal_time. The previous 80-sample ring
 # was ~1.6 s at 50 Hz and froze after a 15 s abort. Keep at least this
@@ -172,6 +215,322 @@ def _xyz3(sample):
     return [float(sample[0]), float(sample[1]), float(sample[2])]
 
 
+def segment_requires_payload_attached(segment, load_state=None, detached=False):
+    """Whether this leg may start only while vacuum still holds the box.
+
+    ``requires_payload_attached`` on the segment is the contract. Else a
+    certified ``load_state`` (``carrying`` / ``unloaded``). Else the leg
+    name. After a successful detach, a leg without an explicit True
+    requirement does not need ``attached``.
+    """
+    explicit = getattr(segment, "requires_payload_attached", None)
+    if explicit is not None:
+        return bool(explicit)
+    if detached:
+        return False
+    if load_state is not None and str(load_state) != "":
+        return str(load_state) == "carrying"
+    name = str(getattr(segment, "name", "") or "")
+    if name in _UNLOADED_LEG_NAMES:
+        return False
+    if name in _CARRYING_LEG_NAMES:
+        return True
+    return True
+
+
+def payload_attachment_gate(segment, vacuum_state, use_vacuum=True,
+                            detached=False, load_state=None):
+    """Pre-leg vacuum gate.
+
+    Returns ``(ok, code)``. A carrying leg with ``attached`` false or a
+    ``fail_reason`` is ``PLACE_LOST_PAYLOAD``. An unloaded leg
+    (retreat, return, home, or any leg after a successful detach) may
+    run with ``attached`` false. A non-empty ``fail_reason`` on that
+    leg is a release/vacuum failure, ``VACUUM_DETACH:<reason>``.
+    """
+    if not use_vacuum:
+        return True, ""
+    state = dict(vacuum_state or {})
+    reason = str(state.get("fail_reason") or "")
+    attached = bool(state.get("attached"))
+    requires = segment_requires_payload_attached(
+        segment, load_state=load_state, detached=detached)
+    if requires:
+        if reason or not attached:
+            return False, "PLACE_LOST_PAYLOAD"
+        return True, ""
+    if reason:
+        return False, "VACUUM_DETACH:%s" % reason
+    return True, ""
+
+
+# Same gate as motion_executor._execute_timed_joint_v2: drift greater than
+# this refuses the timed path. Do not raise it; wait for the arm instead.
+QP_START_TOLERANCE_RAD = 0.01
+CANONICAL_ARM_JOINTS = tuple("elfin_joint%d" % i for i in range(1, 7))
+_RETREAT_START_WAIT_SEC = 3.0
+
+
+def _angular_gap(left, right):
+    """Shortest absolute joint distance, matching the executor QP gate."""
+    gap = abs(float(left) - float(right))
+    return min(gap, (2.0 * math.pi) - gap)
+
+
+def canonical_joint_positions(names, positions, wanted=CANONICAL_ARM_JOINTS):
+    """Order ``positions`` as elfin_joint1..6. None when the names cannot."""
+    if names is None or positions is None:
+        return None
+    try:
+        names = [str(name) for name in names]
+        values = [float(value) for value in positions]
+    except (TypeError, ValueError):
+        return None
+    if len(names) != len(values) or len(names) != len(wanted):
+        return None
+    if len(set(names)) != len(names):
+        return None
+    if tuple(names) == tuple(wanted):
+        return values
+    index = dict(zip(names, values))
+    if any(name not in index for name in wanted):
+        return None
+    return [index[name] for name in wanted]
+
+
+def trajectory_endpoint(segment, which):
+    """``(names, positions)`` of the first or last timed knot, or Nones."""
+    if segment is None or which not in ("first", "last"):
+        return None, None
+    if isinstance(segment, dict):
+        joint = segment.get("joint_trajectory")
+    else:
+        joint = getattr(segment, "joint_trajectory", None)
+    if joint is None:
+        return None, None
+    if isinstance(joint, dict):
+        names = list(joint.get("joint_names") or [])
+        points = list(joint.get("points") or [])
+        if not points:
+            return names, None
+        point = points[0] if which == "first" else points[-1]
+        if isinstance(point, dict):
+            raw = point.get("positions")
+        else:
+            raw = point
+        if raw is None:
+            return names, None
+        return names, [float(value) for value in raw]
+    trajectory = getattr(joint, "trajectory", None)
+    if trajectory is None:
+        return None, None
+    names = list(trajectory.joint_names)
+    points = list(trajectory.points)
+    if not points:
+        return names, None
+    point = points[0] if which == "first" else points[-1]
+    return names, [float(value) for value in point.positions]
+
+
+def trajectory_dump(segment, max_points=5000):
+    """Lossless submitted-trajectory record: names and every timed point.
+
+    Capture only. ``t`` is ``time_from_start`` in seconds; ``q`` and ``v``
+    are the point's positions and velocities (``v`` None when absent).
+    Returns None when the segment carries no timed trajectory. A trajectory
+    longer than ``max_points`` is cut and marked ``truncated``.
+    """
+    if segment is None:
+        return None
+    if isinstance(segment, dict):
+        joint = segment.get("joint_trajectory")
+    else:
+        joint = getattr(segment, "joint_trajectory", None)
+    if joint is None:
+        return None
+    if isinstance(joint, dict):
+        names = list(joint.get("joint_names") or [])
+        raw = list(joint.get("points") or [])
+    else:
+        trajectory = getattr(joint, "trajectory", None)
+        if trajectory is None:
+            return None
+        names = list(trajectory.joint_names)
+        raw = list(trajectory.points)
+    points = []
+    for point in raw[:int(max_points)]:
+        if isinstance(point, dict):
+            q = point.get("positions")
+            v = point.get("velocities")
+            t = point.get("time_from_start", point.get("t"))
+            if isinstance(t, dict):
+                t = float(t.get("sec", 0)) + 1e-9 * float(t.get("nanosec", 0))
+        else:
+            q = point.positions
+            v = point.velocities
+            stamp = point.time_from_start
+            t = float(stamp.sec) + 1e-9 * float(stamp.nanosec)
+        points.append({
+            "t": None if t is None else round(float(t), 6),
+            "q": None if q is None else [float(x) for x in q],
+            "v": [float(x) for x in v] if v else None,
+        })
+    return {
+        "joint_names": [str(n) for n in names],
+        "n_points": len(raw),
+        "truncated": len(raw) > int(max_points),
+        "points": points,
+    }
+
+
+def _round_joints(values):
+    if values is None:
+        return None
+    return [round(float(value), 6) for value in values]
+
+
+def retreat_start_decision(samples, detach_stamp, retreat_names,
+                           retreat_positions, descend_names,
+                           descend_positions,
+                           tolerance=QP_START_TOLERANCE_RAD):
+    """Decide whether retreat may submit against the descend-final contract.
+
+    A sample counts only when its stamp is strictly after ``detach_stamp``.
+    Ready requires that retreat's first knot and descend's last knot agree
+    within ``tolerance``, and that the newest post-detach joint state is
+    within ``tolerance`` of both. The tolerance is the executor QP gate.
+    """
+    tolerance = float(tolerance)
+    record = {
+        "tolerance_rad": tolerance,
+        "detach_stamp": (
+            None if detach_stamp is None else float(detach_stamp)),
+        "retreat_first_joints": None,
+        "descend_final_joints": None,
+        "joint_states": None,
+        "joint_names": list(CANONICAL_ARM_JOINTS),
+        "joint_state_stamp": None,
+        "stamp_after_detach": False,
+        "delta_per_joint": None,
+        "max_delta": None,
+        "delta_vs_retreat_per_joint": None,
+        "max_delta_vs_retreat": None,
+        "status": "missing_contract",
+    }
+    if retreat_positions is None or descend_positions is None:
+        return record
+    retreat = canonical_joint_positions(retreat_names, retreat_positions)
+    descend = canonical_joint_positions(descend_names, descend_positions)
+    if retreat is None or descend is None:
+        record["status"] = "joint_order"
+        return record
+    record["retreat_first_joints"] = _round_joints(retreat)
+    record["descend_final_joints"] = _round_joints(descend)
+    contract_delta = [
+        _angular_gap(left, right) for left, right in zip(retreat, descend)]
+    record["contract_delta_per_joint"] = _round_joints(contract_delta)
+    record["contract_max_delta"] = round(max(contract_delta), 6)
+
+    ordered = []
+    for sample in samples or []:
+        if not isinstance(sample, dict):
+            continue
+        try:
+            stamp = float(sample.get("stamp"))
+        except (TypeError, ValueError):
+            continue
+        ordered.append((stamp, sample))
+    newest = ordered[-1][1] if ordered else None
+    if newest is not None:
+        live = canonical_joint_positions(
+            newest.get("name"), newest.get("position"))
+        record["joint_state_stamp"] = float(newest.get("stamp"))
+        record["stamp_after_detach"] = bool(
+            detach_stamp is not None
+            and float(newest.get("stamp")) > float(detach_stamp))
+        if live is not None:
+            record["joint_states"] = _round_joints(live)
+
+    if max(contract_delta) > tolerance:
+        record["status"] = "contract_mismatch"
+        record["delta_per_joint"] = record["contract_delta_per_joint"]
+        record["max_delta"] = record["contract_max_delta"]
+        return record
+
+    fresh = [
+        sample for stamp, sample in ordered
+        if detach_stamp is not None and stamp > float(detach_stamp)]
+    if not fresh:
+        record["status"] = "stale_joint_state"
+        if newest is not None:
+            held = canonical_joint_positions(
+                newest.get("name"), newest.get("position"))
+            if held is not None:
+                versus_descend = [
+                    _angular_gap(left, right)
+                    for left, right in zip(held, descend)]
+                versus_retreat = [
+                    _angular_gap(left, right)
+                    for left, right in zip(held, retreat)]
+                record["delta_per_joint"] = _round_joints(versus_descend)
+                record["max_delta"] = round(max(versus_descend), 6)
+                record["delta_vs_retreat_per_joint"] = _round_joints(
+                    versus_retreat)
+                record["max_delta_vs_retreat"] = round(max(versus_retreat), 6)
+        return record
+    sample = max(fresh, key=lambda item: float(item.get("stamp")))
+    live = canonical_joint_positions(sample.get("name"), sample.get("position"))
+    record["joint_state_stamp"] = float(sample.get("stamp"))
+    record["stamp_after_detach"] = True
+    if live is None:
+        record["status"] = "joint_order"
+        record["joint_states"] = None
+        record["joint_states_raw_names"] = [
+            str(name) for name in (sample.get("name") or [])]
+        return record
+    versus_descend = [
+        _angular_gap(left, right) for left, right in zip(live, descend)]
+    versus_retreat = [
+        _angular_gap(left, right) for left, right in zip(live, retreat)]
+    record["joint_states"] = _round_joints(live)
+    record["delta_per_joint"] = _round_joints(versus_descend)
+    record["max_delta"] = round(max(versus_descend), 6)
+    record["delta_vs_retreat_per_joint"] = _round_joints(versus_retreat)
+    record["max_delta_vs_retreat"] = round(max(versus_retreat), 6)
+    if (max(versus_descend) > tolerance) or (max(versus_retreat) > tolerance):
+        record["status"] = "mismatch"
+        return record
+    record["status"] = "ready"
+    return record
+
+
+def detach_joint_motion(before, after):
+    """Change between two joint samples. ``moved`` is a gap above 1e-4 rad."""
+    out = {
+        "before_stamp": None,
+        "after_stamp": None,
+        "delta_per_joint": None,
+        "max_delta": None,
+        "moved": None,
+    }
+    if not isinstance(before, dict) or not isinstance(after, dict):
+        return out
+    try:
+        out["before_stamp"] = float(before.get("stamp"))
+        out["after_stamp"] = float(after.get("stamp"))
+    except (TypeError, ValueError):
+        return out
+    left = canonical_joint_positions(before.get("name"), before.get("position"))
+    right = canonical_joint_positions(after.get("name"), after.get("position"))
+    if left is None or right is None:
+        return out
+    deltas = [_angular_gap(a, b) for a, b in zip(left, right)]
+    out["delta_per_joint"] = _round_joints(deltas)
+    out["max_delta"] = round(max(deltas), 6)
+    out["moved"] = bool(max(deltas) > 1e-4)
+    return out
+
+
 def _ign_model_bin():
     for name in ("ign", "gz"):
         path = shutil.which(name)
@@ -229,8 +588,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._scene_config = load_scene_tf_config(
             resolve_scene_tf_config_path(
                 getattr(args, "scene_tf_config", None) or None))
+        self._scene_config_path = resolve_scene_tf_config_path(
+            getattr(args, "scene_tf_config", None) or None)
+        # F23: admitted GT envelopes render through scene_viz (latched).
+        self._dump_viz_pub = self.create_publisher(
+            String, "/luggage/frame_dump/viz",
+            QoSProfile(depth=1, reliability=ReliabilityPolicy.RELIABLE,
+                       durability=DurabilityPolicy.TRANSIENT_LOCAL))
         self._timeline = []
         self._place_state = "INIT"
+        self._payload_detached = False
         self._segments_log = []
         self._tf_trace = []
         self._probe_joints = None
@@ -240,6 +607,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._segment_exec_t0 = None
         self._segment_exec_name = None
+        self._handoff_policy = HandoffPolicy()
+        self._last_submitted_leg = None
+        self._handoff_failure_record = None
+        self._controller_state_ring = deque()
+        self._controller_state_count = 0
+        self._admission_check_client = None
         self._last_pick_detection = None
         self._home_arm_state = {}
         self._exit_yaw = {}
@@ -251,6 +624,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self.create_subscription(
             JointState, "/joint_states", self._on_joint_state, 10,
             callback_group=self._group)
+        self._subscribe_controller_state()
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
         self._add_placed = self.create_client(
@@ -260,6 +634,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             RemovePlacedBox, "/scene_manager/remove_placed_box",
             callback_group=self._group)
         self._box_model = ""
+        self._release_physics = None
+        self._gz_create = self.create_client(
+            SpawnEntity, "/world/%s/create" % GZ_WORLD,
+            callback_group=self._group)
+        self._gz_delete = self.create_client(
+            DeleteEntity, "/world/%s/remove" % GZ_WORLD,
+            callback_group=self._group)
         self._place_touch = self.create_client(
             SetBool, "/scene_manager/set_place_support_touch",
             callback_group=self._group)
@@ -269,49 +650,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe = MotionExecutor(self)
         self._keep_placed = False
         self._last_authorized_pick = None
-
-    def exit_tool_yaw(self):
-        """Portal yaw that keeps the wrist the place left the arm in.
-
-        The portal only needs the tool pointing down; `keep_tool_down` leaves
-        yaw free (``absolute_z_axis_tolerance = 3.14``). Asking for yaw 0 while
-        the arm carries yaw ±π is the same heading but a 180° wrist change, and
-        cartesian interpolation answers it by unwinding the arm: 1838 planned
-        `j1` -5.96 rad / `j5` -3.14 rad over 19.3 s and the controller missed
-        the goal. Pick the equivalent portal yaw nearest the current wrist.
-        """
-        try:
-            _xyz, quat = self._lookup_xyz_quat(
-                "world", "suction_contact_frame")
-        except Exception as exc:  # noqa: BLE001 - TF boundary
-            return 0.0, str(exc)
-        return nearest_box_yaw(tool_down_yaw(quat[0], quat[1]), 0.0), ""
-
-    def _exit_to_portal(self):
-        """Cartesian/OMPL out to the opening portal, not back onto the slot."""
-        opening = container_opening_target_point_in_world(self._scene_config)
-        normal = container_opening_normal_in_world(self._scene_config)
-        suction, _err = self.suction_xyz()
-        z = float(opening[2]) + 0.35
-        if suction is not None:
-            z = max(z, float(suction[2]))
-        yaw, yaw_err = self.exit_tool_yaw()
-        pose = Pose()
-        pose.position.x = float(opening[0] + 0.20 * normal[0])
-        pose.position.y = float(opening[1] + 0.20 * normal[1])
-        pose.position.z = float(max(z, 0.95))
-        pose.orientation.x = math.cos(0.5 * yaw)
-        pose.orientation.y = math.sin(0.5 * yaw)
-        pose.orientation.z, pose.orientation.w = 0.0, 0.0
-        self._exit_yaw = {"yaw": yaw, "tf_error": yaw_err}
-        segment = MotionSegment()
-        segment.name = "place_exit"
-        segment.type = "cartesian"
-        segment.allow_ompl_fallback = True
-        segment.keep_tool_down = True
-        segment.target_pose = pose
-        ok, _code, rec = self._execute_segment(segment, PlaceTrial(index=-1))
-        return ok, rec.get("message") if rec else "place_exit failed"
 
     def wait_arm_settle(self, reason="", timeout=6.0, still_eps=0.005,
                         quiet_sec=0.4):
@@ -345,36 +683,256 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             time.sleep(0.05)
         return "not still within %.1fs (%s)" % (timeout, reason or "settle")
 
+    #: [ST09-I S5.7-6] named stops _home_arm surfaces verbatim (the
+    #: four-state machine's own reasons — never re-mapped into a
+    #: generic failure).
+    ENSURE_NAMED_STOPS = frozenset((
+        "CARRY_EXIT_UNSUPPORTED", "EXIT_ROUTE_UNAVAILABLE",
+        "IDENTITY_UNKNOWN", "ATTACHMENT_STATE_UNKNOWN",
+        "JOINT_STATE_UNAVAILABLE", "CAMERA_FRAME_UNAVAILABLE",
+        "ZONE_UNKNOWN", "SCENE_CONFIG_UNAVAILABLE",
+        "ENSURE_CYCLE_START_UNAVAILABLE", "ENSURE_SERVICE_EXCEPTION",
+        "ROUTE_PRODUCER_UNAVAILABLE", "GOTO_V2_UNAVAILABLE",
+    ))
+
     def home_arm_code(self):
         """Reason code for the last `_home_arm`, or "" when it returned."""
         state = dict(self._home_arm_state or {})
         if not state or state.get("ok"):
             return ""
         if not state.get("exit_ok"):
-            return ("EXIT_FAILED_RECOVERED" if state.get("goto_ok")
-                    else "EXIT_FAILED_STUCK")
+            # [ST09-I S5.7-6] the ensure verdict's named stops pass
+            # through verbatim; anything else means the arm arrived
+            # somewhere it may not start a cycle from without a
+            # certified exit route.
+            reason = str(state.get("cycle_reason") or "")
+            if reason in self.ENSURE_NAMED_STOPS:
+                return reason
+            return "EXIT_REQUIRES_CERTIFIED_ROUTE"
         return "GOTO_FAILED"
 
+    def _ensure_cycle_start(self):
+        """[ST09-I S5.7-6 §2] The selector's authoritative cycle verdict.
+
+        Returns ``(ok_service, ready, reason, zone, attachment, detail)``
+        — the service absent fails CLOSED (the home path then refuses
+        by name; it never adjudicates for itself).
+        """
+        from luggage_msgs.srv import EnsureCycleStartV2
+
+        client = getattr(self, "_ensure_client", None)
+        if client is None:
+            client = self.create_client(
+                EnsureCycleStartV2,
+                "/trajectory_selector/ensure_cycle_start_v2",
+                callback_group=getattr(self, "_group", None))
+            self._ensure_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, False, "ENSURE_CYCLE_START_UNAVAILABLE", \
+                "unknown", "unknown", ""
+        request = EnsureCycleStartV2.Request()
+        request.scene_revision = str(self._frame_scene_revision or "")
+        result = self.call_srv(client, request, timeout=5.0) \
+            if hasattr(self, "call_srv") else None
+        if result is None:
+            return False, False, "ENSURE_CYCLE_START_UNAVAILABLE", \
+                "unknown", "unknown", ""
+        return (True, bool(result.outcome == (
+                    EnsureCycleStartV2.Response.ALREADY_READY)),
+                str(result.reason_code or ""),
+                str(result.zone or "unknown"),
+                str(result.attachment_state or "unknown"),
+                str(result.detail or ""))
+
+    def _portal_exit_proof_valid(self):
+        """[ST09-I S5.7-6 评审点 1 / G0-1] Adjudicate the structured
+        exit proof.
+
+        The proof is an evidence chain, not a boolean bypass: it holds
+        only while NOTHING has changed since the certified exit — a
+        NON-EMPTY certified exit route completed in THIS cycle (an
+        empty/already-there record is not a proof and never passes the
+        exception), same scene identity, the arm still at the exit's
+        final joints (0.02 rad wrap-aware), and a PRESENT and FRESH
+        un-attached vacuum feed (an absent or stale feed cannot vouch
+        that the cycle never restarted). Any drift voids it and the
+        four-state verdict stands.
+        """
+        proof = getattr(self, "_portal_exit_proof", None)
+        if not isinstance(proof, dict):
+            return False, "absent"
+        # [G0-1] bind the exception to the ACTUALLY-certified exit
+        # route: request/route/cert must all be non-empty.
+        for field in ("request_id", "route_digest", "certification_id"):
+            if not str(proof.get(field) or "").strip():
+                return False, "uncertified_exit(%s)" % field
+        if str(proof.get("scene_revision") or "") != str(
+                getattr(self, "_frame_scene_revision", "") or ""):
+            return False, "scene_changed"
+        final = [float(v) for v in proof.get("final_joint_values") or []]
+        live = list((getattr(self, "_last_joint_state", None) or {})
+                    .get("position") or [])[:len(final)]
+        if len(final) != 6 or len(live) != 6:
+            return False, "joints_unavailable"
+
+        def _wrap(delta):
+            return (delta + math.pi) % (2.0 * math.pi) - math.pi
+
+        delta = max(abs(_wrap(c - t)) for c, t in zip(live, final))
+        if delta > 0.02:
+            return False, "joints_moved(%.3frad)" % delta
+        vacuum = getattr(self, "_vacuum_state", None)
+        if not isinstance(vacuum, dict) or not vacuum:
+            return False, "vacuum_state_missing"
+        if bool(vacuum.get("attached")):
+            return False, "vacuum_reattached"
+        received_ns = int(vacuum.get("received_ns") or 0)
+        age_s = max(0.0, (
+            int(self.get_clock().now().nanoseconds) - received_ns) / 1e9)
+        if received_ns <= 0 or age_s > PORTAL_PROOF_VACUUM_FRESHNESS_S:
+            return False, "vacuum_state_stale(%.1fs)" % age_s
+        return True, "valid(delta=%.3frad)" % delta
+
+    def _start_new_cycle(self):
+        """[ST09-I S5.7-6 评审点 1 / G0-1] A new attach STARTS a cycle:
+        the previous cycle's exit proof is void from here — it must
+        never carry across a new carrying phase (cross-cycle rejection
+        happens at the voiding site, not at adjudication time)."""
+        self._portal_exit_proof = None
+        self._portal_exited = False
+
+    def _aperture_corridor_depth(self):
+        """Derived opening-corridor depth (design S5.7 section 1).
+
+        wall thickness from scene data + TCP/camera envelope from the
+        live static TF (URDF-derived fallback when TF is unavailable,
+        recorded in the return) + declared safety margin. Never a bare
+        constant.
+        """
+        scene = getattr(self, "_scene_config", None) or {}
+        outer = scene.get("container", {}).get("outer", {}) or {}
+        inner = scene.get("container", {}).get("inner", {}) or {}
+        wall = 0.04
+        try:
+            if outer.get("length") and inner.get("length"):
+                wall = max(0.0, (float(outer["length"])
+                                 - float(inner["length"])) * 0.5)
+        except (TypeError, ValueError):
+            pass
+        envelope, source = CAMERA_ENVELOPE_FALLBACK_M, "fallback"
+        try:
+            from rclpy.time import Time as _RclpyTime
+            tf_msg = self._tf_buffer.lookup_transform(
+                "suction_contact_frame", "camera_depth_optical_frame",
+                _RclpyTime())
+            t = tf_msg.transform.translation
+            magnitude = math.sqrt(
+                float(t.x) ** 2 + float(t.y) ** 2 + float(t.z) ** 2)
+            if magnitude > 1e-3:
+                envelope, source = magnitude, "tf"
+        except Exception:  # noqa: BLE001 - classification must not die
+            pass
+        return (wall + envelope + APERTURE_ESCAPE_MARGIN_M,
+                {"wall_m": round(wall, 4),
+                 "camera_envelope_m": round(envelope, 4),
+                 "envelope_source": source,
+                 "margin_m": APERTURE_ESCAPE_MARGIN_M})
+
+    def _container_zone(self):
+        """Classify the cup in CONTAINER-LOCAL coordinates (S5.7 taxonomy).
+
+        Returns ``(zone, detail)`` with zone in CONTAINER_ZONES: the
+        explicit scene-state classification `_home_arm` acts on. UNKNOWN
+        whenever TF fails or (under the typed chain) the scene identity
+        is missing — a named refusal, never a world-X fallback; the
+        legacy world-X guess survives only for non-frame-runtime callers.
+        """
+        from luggage_description.scene_tf_config_utils import container_zone
+        suction, err = self.suction_xyz()
+        if suction is None:
+            return "unknown", str(err)
+        scene = getattr(self, "_scene_config", None)
+        if scene is None:
+            if getattr(self, "_typed", None) is not None:
+                return "unknown", "SCENE_IDENTITY_MISSING"
+            # Legacy eval driver without a scene: world-X guess (sim
+            # layout, container on +X) — never reachable on the typed
+            # production chain.
+            return ("opening_corridor" if float(suction[0]) > 0.2
+                    else "outside_container"), ""
+        depth, source = self._aperture_corridor_depth()
+        base = xyz_world_to_base_link(scene, suction)
+        zone = container_zone(base, scene, depth)
+        return zone, "corridor=%s" % source
+
+    def _suction_clear_of_container(self):
+        """True only in the OUTSIDE_CONTAINER zone (classification, not
+        authorization: the named-pose motion itself still rides the
+        GoToRobotPose surface)."""
+        zone, _err = self._container_zone()
+        return zone == "outside_container"
+
+    def _capture_gz_contacts(self):
+        """One physics-contact sample. Absent publishers stay an explicit gap."""
+        topic = "/world/%s/physics/contacts" % GZ_WORLD
+        try:
+            proc = subprocess.run(
+                [_ign_model_bin(), "topic", "-e", "-t", topic, "--num", "1"],
+                capture_output=True, text=True, timeout=2.0)
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return {"available": False, "topic": topic, "reason": str(exc)}
+        text = (proc.stdout or "") + (proc.stderr or "")
+        if proc.returncode != 0 or "collision" not in text.lower():
+            return {
+                "available": False,
+                "topic": topic,
+                "reason": (text.strip() or "no contact sample")[:500],
+            }
+        return {"available": True, "topic": topic, "sample": text[:4000]}
+
     def _home_arm(self):
-        suction, _err = self.suction_xyz()
-        notes = []
+        """[ST09-I S5.7-6 §2] EnsureCycleStartV2 verdict + sanctioned goto.
+
+        The selector adjudicates the authoritative state (latched
+        joints, vacuum, scene identity — never a driver-side guess);
+        this driver only obeys. ALREADY_READY -> the named-pose goto
+        (GoToRobotPoseV2 under workstream C). RECOVERY_REQUIRED is a
+        named stop, with ONE exception: EXIT_ROUTE_UNAVAILABLE plus a
+        still-valid structured exit proof (评审点 1 — the certified
+        portal exit already happened and nothing has drifted since;
+        the portal pose legitimately classifies corridor).
+        """
+        (_ok_service, ready, cycle_reason, zone, attachment, detail) = \
+            self._ensure_cycle_start()
+        notes = ["cycle=%s zone=%s attachment=%s reason=%s" % (
+            "ALREADY_READY" if ready else "RECOVERY_REQUIRED",
+            zone, attachment, cycle_reason)]
         t_wall0 = time.time()
         t_ros0 = self.ros_now_sec()
-        exit_ok = True
-        if suction is not None and float(suction[0]) > 0.2:
-            exit_ok, exit_msg = self._exit_to_portal()
-            notes.append("exit=%s" % exit_msg)
-            if not exit_ok:
-                # An aborted exit leaves the arm mid-path, usually still
-                # inside the container. Returning here is what left trials 1
-                # and 2 of motion_occ/2026-09-21_1838 planning from that pose
-                # and failing before they picked anything. goto_observe is an
-                # FJT to a fixed joint vector and does not depend on the
-                # portal pose, so it is still worth attempting once the arm
-                # has stopped moving. The exit failure is still reported.
-                notes.append("settle=%s" % self.wait_arm_settle("place_exit"))
-        goto_ok, goto_msg, result = self.goto_observe()
-        notes.append("goto=%s" % goto_msg)
+        exit_ok = bool(ready)
+        proof_note = ""
+        if not exit_ok and cycle_reason == "EXIT_ROUTE_UNAVAILABLE":
+            valid, why = self._portal_exit_proof_valid()
+            if valid:
+                exit_ok = True
+                proof_note = "exit=portal_proof(%s)" % why
+                notes.append(proof_note)
+            elif why != "absent":
+                # [G0-1] the void reason is evidence — record which
+                # field drifted (absent is the ordinary never-exited
+                # case and stays out of the notes).
+                notes.append("exit_proof_void(%s)" % why)
+        goto_ok = True
+        goto_msg = ""
+        result = None
+        if not exit_ok:
+            goto_ok = False
+            goto_msg = "recovery required; arm %s (%s)" % (
+                zone, cycle_reason)
+            notes.append("goto=%s" % goto_msg)
+        else:
+            goto_ok, goto_msg, result = self.goto_observe()
+            notes.append("goto=%s" % goto_msg)
         dt_wall = time.time() - t_wall0
         dt_ros = self.ros_now_sec() - t_ros0
         rtf = (dt_ros / dt_wall) if dt_wall > 1e-3 else 0.0
@@ -382,7 +940,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             rtf, dt_ros, dt_wall))
         ok = bool(exit_ok and goto_ok)
         self._home_arm_state = {
-            "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok)}
+            "ok": ok, "exit_ok": bool(exit_ok), "goto_ok": bool(goto_ok),
+            "zone": zone, "zone_reason": cycle_reason,
+            "cycle_reason": cycle_reason,
+            "attachment_state": attachment,
+            "portal_proof": bool(proof_note),
+            "ensure_detail": str(detail or ""),
+            "t_ros": float(self.ros_now_sec()),
+        }
+        if not ok:
+            capture = getattr(self, "_capture_gz_contacts", None)
+            if callable(capture):
+                self._home_arm_state["contacts"] = capture()
         return ok, "; ".join(notes), result
 
     def graph_error(self):
@@ -450,7 +1019,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if not bool(getattr(pick_msg, "height_valid", False)):
             trial.fail_code = trial.fail_code or "DETECT_FULL_GEOMETRY_REQUIRED"
             return None, None
-        return self._fixed_slot(pick_msg)
+        # [ST09-I S5.7-5 legacy lock] the fixed floor-center slot is a
+        # TEST FIXTURE of the pack-eval lineage. On the typed production
+        # chain it is a named refusal — placement slots come from
+        # ComputePlacementV2, and a fixture fallback must never mask a
+        # placement failure.
+        if getattr(self, "_typed", None) is not None:
+            trial.fail_code = trial.fail_code or "FIXED_SLOT_TEST_ONLY"
+            trial.extras["slot_source"] = "test_fixture_refused"
+            return None, None
+        slot, meta = self._fixed_slot(pick_msg)
+        meta["slot_source"] = "test_fixture"
+        return slot, meta
 
     def _fixed_slot(self, box):
         height = float(box.height)
@@ -525,6 +1105,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
         return resp
 
+    def _commit_to_cargo_map(self, trial, slot, slot_meta):
+        """Commit the released box to the cargo-map ledger.
+
+        The base driver measures the box with the integration itself and
+        leaves the ledger alone; drivers that exercise the commit path
+        override this and return False on a refused commit.
+        """
+        del trial, slot, slot_meta
+        return True
+
     def _set_place_touch(self, allowed):
         request = SetBool.Request()
         request.data = bool(allowed)
@@ -547,6 +1137,493 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return False, "PLACE_LOST_PAYLOAD"
         return True, ""
 
+    def _carrying_vacuum_holds(self):
+        """[ST09-I S5.7-6] Live vacuum-held check for a carrying leg."""
+        state = dict(getattr(self, "_vacuum_state", None) or {})
+        if not state:
+            return True, ""
+        if state.get("fail_reason"):
+            return False, "PAYLOAD_LOST:%s" % str(
+                state.get("fail_reason"))[:80]
+        if not bool(state.get("attached")):
+            return False, "PAYLOAD_LOST:vacuum_released"
+        return True, ""
+
+    def _transition_admission_unloaded(self, release_evidence):
+        """[ST09-I S5.7-6] Activate the unloaded phase after release.
+
+        CARRYING phase -> release side effect -> detach confirmed ->
+        UNLOADED phase -> retreat. No admission (pick legs, legacy) is
+        a no-op success: there is nothing to transition. The service
+        being absent fails CLOSED — the retreat legs would then be
+        refused per leg by the executor gate anyway.
+        """
+        admission = getattr(self, "_execution_admission", None)
+        if not admission:
+            return True, ""
+        from luggage_msgs.srv import TransitionAdmissionPhase
+
+        client = getattr(self, "_phase_client", None)
+        if client is None:
+            client = self.create_client(
+                TransitionAdmissionPhase,
+                "/trajectory_selector/transition_admission_phase",
+                callback_group=getattr(self, "_group", None))
+            self._phase_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "SERVICE_UNAVAILABLE"
+        request = TransitionAdmissionPhase.Request()
+        request.route_digest = str(admission.get("route_digest", "") or "")
+        request.certification_id = str(
+            admission.get("certification_id", "") or "")
+        request.target_phase = "unloaded"
+        request.detach_confirmed = True
+        request.release_evidence = str(release_evidence or "")[:500]
+        result = self.call_srv(client, request, timeout=5.0) \
+            if hasattr(self, "call_srv") else None
+        if result is None:
+            return False, "SERVICE_TIMEOUT"
+        if not result.success:
+            return False, str(result.reason_code or "TRANSITION_REFUSED")
+        return True, str(result.reason_code or "OK")
+
+    def _leg_execution_admission(self, motion_segment):
+        """[ST09-I S5.7-6] Per-leg admission scope for one typed leg.
+
+        The stored admission carries the certified per-leg digests and
+        load-state indices from ValidateSelectedRoute; the leg about to
+        execute claims ITS OWN scope (carrying legs before the release
+        boundary, unloaded legs after it) instead of a route-level
+        blanket claim — the executor's liveness check then refuses a
+        carrying scope authorizing a post-release leg by name.
+        """
+        base = getattr(self, "_execution_admission", None)
+        if not base:
+            return None
+        admission = dict(base)
+        digests = list(admission.pop("leg_digests", None) or [])
+        states = list(admission.pop("leg_load_states", None) or [])
+        digest_fn = getattr(self, "_leg_trajectory_digest", None)
+        digest = (digest_fn(motion_segment)
+                  if callable(digest_fn) else None)
+        if digest and str(digest) in [str(d) for d in digests]:
+            index = [str(d) for d in digests].index(str(digest))
+            admission["leg_digest"] = str(digest)
+            if index < len(states):
+                admission["load_state"] = str(states[index])
+        return admission
+
+    def _peek_leg_load_state(self, segment):
+        """Certified load_state for this leg, without consuming the index."""
+        explicit = getattr(segment, "load_state", None)
+        if explicit:
+            return str(explicit)
+        segments_v2 = getattr(self, "_frame_motion_segments", None) or []
+        index = int(getattr(self, "_frame_motion_index", 0) or 0)
+        if index >= len(segments_v2):
+            return None
+        motion = segments_v2[index]
+        if str(getattr(motion, "name", "")) != str(getattr(segment, "name", "")):
+            return None
+        admission = self._leg_execution_admission(motion)
+        if not admission:
+            return None
+        state = admission.get("load_state")
+        return str(state) if state else None
+
+    def _payload_attachment_gate(self, segment):
+        """Attached is required only on a carrying leg before detach.
+
+        Carrying legs still go through ``_check_i1`` so a subclass can
+        keep its own retry policy. Unloaded legs do not.
+        """
+        if not getattr(self._args, "use_vacuum", False):
+            return True, ""
+        detached = bool(getattr(self, "_payload_detached", False))
+        load_state = self._peek_leg_load_state(segment)
+        requires = segment_requires_payload_attached(
+            segment, load_state=load_state, detached=detached)
+        if requires:
+            return self._check_i1()
+        state = dict(getattr(self, "_vacuum_state", None) or {})
+        reason = str(state.get("fail_reason") or "")
+        if reason:
+            return False, "VACUUM_DETACH:%s" % reason
+        return True, ""
+
+    def _timed_leg(self, name):
+        for segment in list(getattr(self, "_frame_motion_segments", None) or []):
+            if str(getattr(segment, "name", "") or "") == str(name):
+                return segment
+        return None
+
+    def _joint_sample(self):
+        record = getattr(self, "_last_joint_state", None)
+        if not isinstance(record, dict):
+            return None
+        try:
+            stamp = float(record.get("stamp"))
+        except (TypeError, ValueError):
+            return None
+        return {
+            "stamp": stamp,
+            "name": list(record.get("name") or []),
+            "position": [float(value) for value in (record.get("position") or [])],
+        }
+
+    # ------------------------------------------------------------------
+    # Leg-to-leg handoff: controller success is not arrival.
+    # See luggage_gazebo/handoff_settle.py for the contract and Run08.
+
+    # Live publisher verified 2026-10-08 (handoff_verify01). The namespaced
+    # /S20/... name has no publisher. Measured on an idle arm, ``feedback``
+    # equals ``reference`` (open_loop_control), so measured joint position
+    # comes from /joint_states, not from this message.
+    CONTROLLER_STATE_TOPIC = CONTROLLER_STATE_TOPIC
+    # Controller reference/feedback is kept this long for handoff capture.
+    _CONTROLLER_STATE_HORIZON_SEC = 30.0
+    # Success-path handoff evidence keeps at most this many controller rows.
+    _CONTROLLER_STATE_SUCCESS_ROWS = 30
+    _HANDOFF_ADMISSION_POLL_SEC = 1.0
+    _HANDOFF_ADMISSION_TIMEOUT_SEC = 1.0
+
+    def _subscribe_controller_state(self):
+        """Record controller reference/feedback/error for the handoff window.
+
+        Optional: a missing message type or topic is recorded explicitly as
+        ``unavailable`` in the handoff evidence, never silently skipped.
+        """
+        try:
+            from control_msgs.msg import JointTrajectoryControllerState
+        except ImportError:
+            self._controller_state_import_error = "control_msgs unavailable"
+            return
+        self._controller_state_import_error = ""
+        self.create_subscription(
+            JointTrajectoryControllerState, self.CONTROLLER_STATE_TOPIC,
+            self._on_controller_state,
+            QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT),
+            callback_group=self._group)
+
+    @staticmethod
+    def _controller_point(point, names):
+        if point is None:
+            return None
+        positions = canonical_joint_positions(
+            names, list(getattr(point, "positions", []) or []))
+        return positions
+
+    def _on_controller_state(self, msg):
+        names = list(msg.joint_names)
+        # humble: reference/feedback/error. foxy: desired/actual/error.
+        reference = getattr(msg, "reference", None)
+        if reference is None or not list(getattr(reference, "positions", [])):
+            reference = getattr(msg, "desired", None)
+        feedback = getattr(msg, "feedback", None)
+        if feedback is None or not list(getattr(feedback, "positions", [])):
+            feedback = getattr(msg, "actual", None)
+        row = {
+            "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
+            "rx_mono": time.monotonic(),
+            "reference": self._controller_point(reference, names),
+            "feedback": self._controller_point(feedback, names),
+            "error": self._controller_point(
+                getattr(msg, "error", None), names),
+            "output": self._controller_point(
+                getattr(msg, "output", None), names),
+        }
+        self._controller_state_count += 1
+        self._controller_state_ring.append(row)
+        cutoff = row["rx_mono"] - self._CONTROLLER_STATE_HORIZON_SEC
+        while (self._controller_state_ring
+               and self._controller_state_ring[0]["rx_mono"] < cutoff):
+            self._controller_state_ring.popleft()
+
+    def _controller_state_window(self, since_mono, until_mono, max_rows=None):
+        rows = []
+        for row in list(self._controller_state_ring):
+            if since_mono <= row["rx_mono"] <= until_mono:
+                rows.append({
+                    "stamp": row["stamp"],
+                    "reference": _round_joints(row["reference"]),
+                    "feedback": _round_joints(row["feedback"]),
+                    "error": _round_joints(row["error"]),
+                    "output": _round_joints(row["output"]),
+                })
+        if max_rows is not None and len(rows) > max_rows:
+            step = max(1, len(rows) // int(max_rows))
+            picked = rows[::step]
+            if picked[-1] is not rows[-1]:
+                picked.append(rows[-1])
+            rows = picked
+        return {
+            "topic": self.CONTROLLER_STATE_TOPIC,
+            "available": bool(rows),
+            "messages_total": int(self._controller_state_count),
+            "unavailable_reason": (
+                "" if rows else (
+                    getattr(self, "_controller_state_import_error", "")
+                    or "no controller_state message in the handoff window")),
+            "rows": rows,
+        }
+
+    def _note_leg_submitted(self, motion_segment, name, ok):
+        """Remember the leg that was actually submitted and its result time.
+
+        The endpoint comes from the typed segment handed to the controller
+        path, not from the certified route plan, so the next leg is compared
+        against what was really submitted.
+        """
+        if not ok:
+            self._last_submitted_leg = None
+            return
+        names, last = trajectory_endpoint(motion_segment, "last")
+        _first_names, first = trajectory_endpoint(motion_segment, "first")
+        self._last_submitted_leg = {
+            "name": str(name),
+            "joint_names": list(names) if names is not None else None,
+            "last_knot": None if last is None else list(last),
+            "first_knot": None if first is None else list(first),
+            "result_mono": time.monotonic(),
+            "result_sim_stamp": float(self.ros_now_sec()),
+        }
+
+    def _record_submitted_leg(self, trial, motion_segment, name, ok, message,
+                              submit_times):
+        """Capture only: the exact submitted trajectory and action times.
+
+        The PlanMotionV2 path writes no boundary dump, so this is the only
+        record of the time-parameterised trajectory handed to the controller.
+        Controller-level accept/success times come from the controller log
+        and are aligned to these by wall clock.
+        """
+        trial.extras.setdefault("submitted_legs", []).append({
+            "name": str(name),
+            "ok": bool(ok),
+            "message": str(message or ""),
+            "submit_wall": submit_times.get("submit_wall"),
+            "submit_sim_stamp": submit_times.get("submit_sim_stamp"),
+            "result_wall": time.time(),
+            "result_sim_stamp": float(self.ros_now_sec()),
+            "trajectory": trajectory_dump(motion_segment),
+        })
+
+    def _handoff_samples_reader(self, since_mono):
+        """``read_samples`` closure: new ring rows received after ``since``."""
+        cursor = {"stamp": None}
+
+        def read():
+            try:
+                rows = list(self._joint_ring)
+            except RuntimeError:  # ring mutated while copying; retry later
+                return []
+            fresh = []
+            for row in rows:
+                rx = row.get("rx_mono")
+                if rx is None or rx < since_mono:
+                    continue
+                stamp = float(row.get("stamp") or 0.0)
+                if cursor["stamp"] is not None and stamp <= cursor["stamp"]:
+                    continue
+                fresh.append((row, rx))
+            if fresh:
+                cursor["stamp"] = float(fresh[-1][0].get("stamp") or 0.0)
+            return fresh
+
+        return read
+
+    def _handoff_admission_reason(self, motion_segment, leg_admission):
+        """Revocation reason while waiting, or None. Fail-closed."""
+        if not leg_admission:
+            return None
+        client = self._admission_check_client
+        if client is None:
+            client = self.create_client(
+                CheckExecutionAdmission,
+                "/trajectory_selector/check_execution_admission",
+                callback_group=getattr(self, "_group", None))
+            self._admission_check_client = client
+        request = CheckExecutionAdmission.Request()
+        request.route_digest = str(leg_admission.get("route_digest", "") or "")
+        request.certification_id = str(
+            leg_admission.get("certification_id", "") or "")
+        request.admission_map_revision = int(
+            leg_admission.get("admission_map_revision", 0) or 0)
+        request.scene_revision = str(
+            getattr(motion_segment, "scene_revision", "") or "")
+        request.leg_digest = str(leg_admission.get("leg_digest", "") or "")
+        request.leg_load_state = str(leg_admission.get("load_state", "") or "")
+        response = self.call_srv(
+            client, request, timeout=self._HANDOFF_ADMISSION_TIMEOUT_SEC)
+        if response is None:
+            return "HANDOFF_ADMISSION_CHECK_UNAVAILABLE"
+        if not bool(response.live):
+            return "HANDOFF_ADMISSION_%s" % str(
+                response.reason_code or "REVOKED")
+        return None
+
+    def _await_leg_handoff(self, motion_segment, name, leg_admission, trial):
+        """Gate the submission of ``name`` on the previous leg's arrival.
+
+        Returns ``(ok, code)``. ``ok`` False means the leg must not be
+        submitted: ``HANDOFF_ENDPOINT_MISMATCH`` (structural),
+        ``HANDOFF_SETTLE_TIMEOUT`` (bounded wait expired), or the abort
+        reason (cancellation, vacuum loss, admission revoked). No motion is
+        commanded here and the executor start gate is unchanged.
+        """
+        previous = self._last_submitted_leg
+        if previous is None:
+            return True, ""
+        evidence = {
+            "previous_leg": previous.get("name"),
+            "next_leg": str(name),
+            "previous_result_sim_stamp": previous.get("result_sim_stamp"),
+        }
+        if previous.get("name") == "descend" and str(name) == "retreat":
+            # Retreat has its own detach-aware start contract.
+            evidence["status"] = "skipped"
+            evidence["reason"] = "retreat_owns_descend_handoff"
+            trial.extras.setdefault("handoffs", []).append(evidence)
+            return True, ""
+        next_names, next_first = trajectory_endpoint(motion_segment, "first")
+        if previous.get("last_knot") is None or next_first is None:
+            # No timed endpoint on one side: nothing to wait for. Recorded
+            # so a missing contract is visible, not silently passed.
+            evidence["status"] = "skipped"
+            evidence["reason"] = "no_timed_endpoint"
+            evidence["previous_last_knot_present"] = (
+                previous.get("last_knot") is not None)
+            evidence["next_first_knot_present"] = next_first is not None
+            trial.extras.setdefault("handoffs", []).append(evidence)
+            return True, ""
+
+        carrying = (leg_admission or {}).get("load_state") == "carrying"
+        wait_begun = {"mono": time.monotonic(), "polled": None}
+
+        def should_abort():
+            if not rclpy.ok():
+                return "HANDOFF_CANCELLED"
+            if carrying:
+                holds, reason = self._carrying_vacuum_holds()
+                if not holds:
+                    return reason
+            now = time.monotonic()
+            last = wait_begun["polled"]
+            if last is None:
+                last = wait_begun["mono"]
+            if now - last >= self._HANDOFF_ADMISSION_POLL_SEC:
+                wait_begun["polled"] = now
+                return self._handoff_admission_reason(
+                    motion_segment, leg_admission)
+            return None
+
+        record = await_handoff(
+            self._handoff_policy,
+            (previous.get("joint_names"), previous.get("last_knot")),
+            (next_names, next_first),
+            read_samples=self._handoff_samples_reader(
+                float(previous["result_mono"])),
+            now_mono=time.monotonic,
+            sleep=time.sleep,
+            started_mono=float(previous["result_mono"]),
+            should_abort=should_abort)
+        record.update(evidence)
+        record["action_result"] = {
+            "previous_leg_success": True,
+            "result_mono": previous.get("result_mono"),
+            "result_sim_stamp": previous.get("result_sim_stamp"),
+        }
+        window = self._controller_state_window(
+            float(previous["result_mono"]) - 0.5, time.monotonic(),
+            max_rows=(
+                self._CONTROLLER_STATE_SUCCESS_ROWS
+                if record.get("status") == "ready" else None))
+        record["controller_state"] = window
+        self.get_logger().info(
+            "handoff %s->%s status=%s waited=%.3fs samples=%d" % (
+                previous.get("name"), name, record.get("status"),
+                float(record.get("waited_sec") or 0.0),
+                len(record.get("samples") or [])))
+        if record.get("status") == "ready":
+            trial.extras.setdefault("handoffs", []).append(
+                summarize_for_extras(record))
+            return True, ""
+        self._handoff_failure_record = record
+        trial.extras.setdefault("handoffs", []).append({
+            "previous_leg": evidence["previous_leg"],
+            "next_leg": evidence["next_leg"],
+            "status": record.get("status"),
+            "code": record.get("code"),
+            "waited_sec": record.get("waited_sec"),
+            "detail": "full record in handoff.json",
+        })
+        return False, str(record.get("code") or "HANDOFF_SETTLE_TIMEOUT")
+
+    def _await_retreat_start_contract(self, retreat_seg, detach_request_stamp,
+                                      detach_response_stamp,
+                                      joints_before_detach,
+                                      timeout=_RETREAT_START_WAIT_SEC):
+        """Wait until a post-detach joint sample matches descend's final knot.
+
+        Descend can report success while joint 2 is still outside the 0.01 rad
+        QP gate (run17c/d). Stillness is not enough: the residual creeps slower
+        than the settle epsilon. This does not widen the gate.
+        """
+        retreat_names, retreat_q = trajectory_endpoint(
+            self._timed_leg("retreat"), "first")
+        descend_names, descend_q = trajectory_endpoint(
+            self._timed_leg("descend"), "last")
+        if detach_response_stamp is None:
+            detach_response_stamp = float(self.ros_now_sec())
+        started = time.time()
+        deadline = started + float(timeout)
+        seen = []
+        decision = None
+        while True:
+            sample = self._joint_sample()
+            if sample is not None and (
+                    not seen or sample["stamp"] != seen[-1]["stamp"]):
+                seen.append(sample)
+            decision = retreat_start_decision(
+                seen,
+                detach_stamp=float(detach_response_stamp),
+                retreat_names=retreat_names,
+                retreat_positions=retreat_q,
+                descend_names=descend_names,
+                descend_positions=descend_q)
+            if decision["status"] == "ready":
+                break
+            if decision["status"] in (
+                    "contract_mismatch", "joint_order", "missing_contract"):
+                break
+            if time.time() >= deadline or not rclpy.ok():
+                break
+            time.sleep(0.05)
+        fresh = [
+            sample for sample in seen
+            if sample["stamp"] > float(detach_response_stamp)]
+        decision["detach_request_stamp"] = detach_request_stamp
+        decision["detach_response_stamp"] = float(detach_response_stamp)
+        decision["detach_motion"] = detach_joint_motion(
+            joints_before_detach, fresh[0] if fresh else None)
+        decision["controller_settle"] = detach_joint_motion(
+            fresh[0] if fresh else None,
+            fresh[-1] if fresh else None)
+        decision["driver_motion_submitted"] = False
+        decision["waited_sec"] = round(time.time() - started, 3)
+        decision["timeout_sec"] = float(timeout)
+        load_state = self._peek_leg_load_state(retreat_seg)
+        decision["load_state"] = load_state
+        decision["requires_payload_attached"] = bool(
+            segment_requires_payload_attached(
+                retreat_seg, load_state=load_state,
+                detached=bool(getattr(self, "_payload_detached", False))))
+        self.get_logger().info(
+            "retreat start %s max_delta=%s stamp=%s" % (
+                decision["status"], decision.get("max_delta"),
+                decision.get("joint_state_stamp")))
+        return decision
+
     def _execute_segment(self, segment, trial):
         t0 = time.time()
         if self._last_joint_state:
@@ -559,8 +1636,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self._segment_exec_t0 = stamp0
         self._joint_ring_horizon_sec = joint_ring_horizon_sec()
         before = self._sample_tf_box("before_%s" % segment.name)
-        ok_i1, code = self._check_i1()
-        if not ok_i1 and segment.name not in ("retreat", "place_exit"):
+        ok_i1, code = self._payload_attachment_gate(segment)
+        if not ok_i1:
             return False, code, None
         if self._args.plan_only:
             probe = self._probe.probe_segment(
@@ -589,11 +1666,74 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if cartesian_ok is False:
                 return False, "PLACE_FRACTION_%s" % segment.name, rec
             return False, "PLACE_PLAN_%s" % segment.name, rec
-        goal = PlanMotion.Goal()
-        goal.segment = segment
-        ok, message, result = self.send_action(
-            self._plan, goal, timeout=self._args.plan_timeout,
-            name="PlanMotion:%s" % segment.name)
+        use_typed = False
+        if self._typed is not None:
+            # Typed chain: execute the v2 segment paired by build order.
+            # place_exit is built here, after release, and is not in that
+            # sequence. It still has to reach the cartesian replan.
+            segments_v2 = getattr(self, "_frame_motion_segments", None) or []
+            index = getattr(self, "_frame_motion_index", 0)
+            motion_segment = None
+            if index < len(segments_v2):
+                candidate = segments_v2[index]
+                if str(candidate.name) == name:
+                    motion_segment = candidate
+                    self._frame_motion_index = index + 1
+            if motion_segment is not None:
+                use_typed = True
+                leg_admission = self._leg_execution_admission(
+                    motion_segment)
+                # [ST09-I S5.7-6] live payload state for carrying legs:
+                # the producer binds the certificate scope and the
+                # measured digest; the VACUUM feed lives here. A box
+                # that fell off refuses the leg by name BEFORE any
+                # controller submission (absent feed = no signal, not
+                # payload-lost; the producer-side gates still hold).
+                if leg_admission.get("load_state") == "carrying":
+                    holds, lost_reason = self._carrying_vacuum_holds()
+                    if not holds:
+                        return False, lost_reason, None
+                # Controller success is not arrival (Run08): the previous
+                # leg's submitted endpoint must be continuous with this
+                # leg's first knot, and the measured joints must have
+                # arrived, before this leg is submitted. No motion is
+                # commanded and the executor start gate is unchanged.
+                handoff_ok, handoff_code = self._await_leg_handoff(
+                    motion_segment, name, leg_admission, trial)
+                if not handoff_ok:
+                    return False, handoff_code, None
+                # [ST09-I S5.7-6] during-leg poll for carrying legs:
+                # payload loss between the pre-submission check above
+                # and the controller commit cancels mid-wait (the
+                # adapter refuses by name and waits for the cancel
+                # receipt — no detach, no map commit, no recovery).
+                submit_times = {
+                    "submit_wall": time.time(),
+                    "submit_mono": time.monotonic(),
+                    "submit_sim_stamp": float(self.ros_now_sec()),
+                }
+                ok, message, result = self._typed.plan_motion(
+                    motion_segment, self._args.plan_timeout,
+                    name="PlanMotionV2:%s" % name,
+                    admission=leg_admission,
+                    should_abort=(
+                        (lambda: not self._carrying_vacuum_holds()[0])
+                        if leg_admission.get("load_state") == "carrying"
+                        else None))
+                self._note_leg_submitted(motion_segment, name, ok)
+                self._record_submitted_leg(
+                    trial, motion_segment, name, ok, message, submit_times)
+            else:
+                # [ST09-I S5.7] every executed leg pairs with a certified
+                # route leg; the driver-side place_exit fall-through to
+                # raw v1 PlanMotion is deleted with the ad-hoc builder.
+                return False, "TYPED_SEGMENT_MISMATCH:%s" % name, None
+        if not use_typed:
+            goal = PlanMotion.Goal()
+            goal.segment = segment
+            ok, message, result = self.send_action(
+                self._plan, goal, timeout=self._args.plan_timeout,
+                name="PlanMotion:%s" % segment.name)
         after = self._sample_tf_box("after_%s" % segment.name)
         fraction = float(getattr(result, "fraction", 0.0) or 0.0) if result else 0.0
         used_fb = bool(getattr(result, "used_ompl_fallback", False)) if result else False
@@ -693,6 +1833,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         gt = build_place_gt(
             self._scene_config, center_base, size, yaw_base,
             box_center_world=center_world, box_rpy_world=rpy_world)
+        # F23: the same GT fact as one explicit frame_dump/2 envelope
+        # (record_kind gt_reference), written next to the legacy artifacts.
+        gt["dump_v2"] = self._build_gt_envelope(center_base, size, yaw_base)
         surface = gt["surface_map"]
         trial.extras["place_debug"] = {
             "color_err": color_err,
@@ -717,6 +1860,30 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "occupancy_meta": gt["surface_map"],
         }
 
+    def _build_gt_envelope(self, center_base, size, yaw_base):
+        """GT dump envelope for this trial, or None with the refusal logged.
+
+        The scene revision is the measured scene-file digest, so the
+        envelope is self-consistent in v1 and frame-runtime modes alike.
+        """
+        from luggage_description.runtime_identity import scene_revision_from_path
+        from luggage_gazebo.place_gt_dump import gt_place_dump
+        self._gt_request_seq = getattr(self, "_gt_request_seq", 0) + 1
+        request_id = "gt-place-%d" % self._gt_request_seq
+        try:
+            return gt_place_dump(
+                self._scene_config,
+                scene_revision=scene_revision_from_path(
+                    self._scene_config_path),
+                request_id=request_id,
+                box_center_base=center_base, box_size_wdh=size,
+                box_yaw_base=yaw_base)
+        except Exception as exc:  # noqa: BLE001 - GT envelope is additive
+            self.get_logger().warning(
+                "gt dump envelope refused (%s); legacy GT artifacts only"
+                % exc)
+            return None
+
     def _scene_box_record(self):
         """Collision box the pick planner had to avoid, as it was added."""
         detection = self._last_pick_detection
@@ -732,10 +1899,37 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         }
 
     def _on_joint_state(self, msg):
+        names = list(msg.name)
+        positions = [float(v) for v in msg.position]
+        # [ST09-I G2] The Gazebo joint_state_broadcaster publishes in
+        # controller-registration order (observed j1,j2,j5,j3,j4,j6) —
+        # NOT the canonical elfin_joint1..6 every consumer of this
+        # record assumes (pose files, already-there wrap compare, exit
+        # proofs, V2 requests). Normalize AT INGESTION by name, the
+        # same discipline the selector's own _on_joints uses; a
+        # message without the full name set keeps raw order (and its
+        # evidence trail) exactly as before.
+        wanted = ["elfin_joint%d" % i for i in range(1, 7)]
+        # Reported velocity, aligned by name like the positions. None when
+        # the message carries no velocity for every joint: a missing field
+        # is never zero (handoff_settle treats None as "not stable").
+        velocity = None
+        raw_velocity = [float(v) for v in msg.velocity]
+        if len(raw_velocity) == len(names) and names:
+            velocity = raw_velocity
+        if names and positions and all(name in names for name in wanted):
+            index = {name: pos for name, pos in zip(names, positions)}
+            if velocity is not None:
+                velocity_index = dict(zip(names, velocity))
+                velocity = [velocity_index[name] for name in wanted]
+            positions = [index[name] for name in wanted]
+            names = list(wanted)
         record = {
             "stamp": msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9,
-            "name": list(msg.name),
-            "position": [float(v) for v in msg.position],
+            "name": names,
+            "position": positions,
+            "velocity": velocity,
+            "rx_mono": time.monotonic(),
         }
         self._last_joint_state = record
         self._joint_ring.append(record)
@@ -773,20 +1967,37 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         separate an unreachable target from a bad start state or a collision,
         and the next run repeats the same blind failure.
         """
+        waypoints = []
+        for pose in getattr(failed, "waypoints", ()) or ():
+            waypoints.append([
+                float(pose.position.x), float(pose.position.y),
+                float(pose.position.z)])
+        release_poses = []
+        events = self._vacuum_events if isinstance(
+            self._vacuum_events, dict) else {}
+        for event in events.values():
+            if isinstance(event, dict) and event.get("release_pose"):
+                release_poses.append(event["release_pose"])
         return {
             "failed_segment": self._segment_record(failed),
+            "failed_leg_waypoints": waypoints,
             "planner_message": str(message),
             "sequence": [self._segment_record(s) for s in segments],
             "joint_state_at_failure": self._last_joint_state,
             "pick_detection": self._last_pick_detection,
             "scene_pickup_box": self._scene_box_record(),
             "place_state": self._place_state,
+            "release_poses": release_poses,
         }
 
     def _dump_place(self, trial, extra_files=None, extra=None, debug=None):
         dump_dir = getattr(self._args, "dump_dir", "") or ""
         if not dump_dir:
             return None
+        contacts = (getattr(self, "_home_arm_state", None) or {}).get("contacts")
+        if contacts and str(getattr(trial, "fail_code", "") or "").startswith(
+                "EXIT_FAILED"):
+            trial.extras["gz_contacts"] = contacts
         images = {}
         if debug:
             if debug.get("place_retreat_color") is not None:
@@ -812,6 +2023,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         with open(os.path.join(dest, "vacuum_events.jsonl"), "w", encoding="utf-8") as handle:
             handle.write(json.dumps(events, sort_keys=True, default=str) + "\n")
         merged = {"scene.json": self._scene_snapshot()}
+        boundary = (getattr(trial, "extras", None) or {}).get(
+            "perception_boundary")
+        if boundary:
+            merged["perception_boundary.json"] = boundary
         if extra_files:
             merged.update(extra_files)
         if extra:
@@ -828,6 +2043,28 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 debug["cloud_xyz"], debug.get("cloud_rgb"))
             trial.extras.setdefault("place_debug", {})["gt_ply_points"] = n
             trial.extras.setdefault("place_debug", {})["gt_ply"] = "gt_interior_box.ply"
+            dump_v2 = debug.get("dump_v2")
+            if dump_v2 is not None:
+                from luggage_gazebo.frame_dump import write_dump
+                try:
+                    write_dump(os.path.join(dest, "gt_place_dump_v2.json"),
+                               dump_v2,
+                               scene_revision=dump_v2["scene_revision"],
+                               geometry_hash=dump_v2["geometry_hash"],
+                               request_id=dump_v2["request_id"],
+                               map_revision=dump_v2["map_revision"])
+                    trial.extras.setdefault(
+                        "place_debug", {})["gt_dump_v2"] = "gt_place_dump_v2.json"
+                    viz = String()
+                    viz.data = json.dumps(dump_v2, sort_keys=True,
+                                          allow_nan=False)
+                    self._dump_viz_pub.publish(viz)
+                except FileExistsError:
+                    self.get_logger().warning(
+                        "gt dump v2 already present in %s; not overwritten"
+                        % dest)
+                except OSError as exc:
+                    self.get_logger().warning("gt dump v2 write failed: %s" % exc)
             with open(os.path.join(dest, "trial.json"), "w", encoding="utf-8") as handle:
                 json.dump(trial_to_dict(trial), handle, indent=2, sort_keys=True, default=str)
                 handle.write("\n")
@@ -841,7 +2078,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         missing = []
         boundary = load_latest_boundary(
             os.environ.get("MOTION_BOUNDARY_DUMP", ""))
-        if boundary:
+        fail = str(getattr(trial, "fail_code", "") or "")
+        detect_stage = fail.startswith("DETECT_")
+        if boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
                       encoding="utf-8") as handle:
                 json.dump(boundary, handle, indent=2, sort_keys=True,
@@ -850,7 +2089,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             artifacts["last_boundary"] = "replay/last_boundary.json"
             if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
                 missing.append("trajectory")
-        else:
+        elif not detect_stage:
             missing.append("last_boundary")
         scene = self._scene_snapshot()
         with open(os.path.join(replay_dir, "planning_scene.json"), "w",
@@ -872,7 +2111,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             for row in joints:
                 handle.write(json.dumps(row, sort_keys=True) + "\n")
         artifacts["joint_ring"] = "replay/joint_ring.jsonl"
-        if not joints:
+        if not joints and not detect_stage:
             missing.append("joint_ring")
         surface = getattr(self, "_surface_2d", None)
         if surface:
@@ -906,29 +2145,28 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras.setdefault("replay", {})[
                 "capture_missing"] = list(capture["missing"])
         suction, serr = self.suction_xyz()
+        extras = getattr(trial, "extras", None) or {}
         perception = {
             "suction_xyz": suction,
             "suction_error": serr,
             "pick_detection": self._last_pick_detection,
             "gz_box": self._gz_box_pose() if hasattr(self, "_gz_box_pose")
             else None,
+            "detect_message": extras.get("detect_message"),
+            "support_stream": extras.get("support_stream"),
         }
         with open(os.path.join(replay_dir, "perception_refs.json"), "w",
                   encoding="utf-8") as handle:
             json.dump(perception, handle, indent=2, sort_keys=True, default=str)
             handle.write("\n")
         artifacts["perception_refs"] = "replay/perception_refs.json"
-        fail = str(getattr(trial, "fail_code", "") or "")
         stage = "motion"
-        if fail.startswith("PLACE_PLAN_"):
+        if detect_stage:
+            stage = "detect"
+        elif fail.startswith("PLACE_PLAN_"):
             stage = fail[len("PLACE_PLAN_"):]
-        elif fail.startswith("EXIT_FAILED_"):
-            stage = "place_exit"
         elif fail == "GOTO_FAILED":
-            if any(row.get("name") == "place_exit" for row in self._segments_log):
-                stage = "place_exit"
-            else:
-                stage = "goto_observe"
+            stage = "goto_observe"
         elif self._segments_log:
             stage = str(self._segments_log[-1].get("name") or "motion")
         manifest = replay_manifest(
@@ -945,8 +2183,108 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["replay"]["stage"] = stage
         return manifest
 
+    def _release_as_dynamic(self):
+        """Replace the static carry body with the same mesh, dynamic, in place.
+
+        Carry stays static so ``set_pose`` follow does not fight the solver.
+        Called after vacuum-off and before retreat. Returns
+        ``(ok, message, release_pose)``.
+        """
+        physics = getattr(self, "_release_physics", None) or {}
+        size = list(physics.get("command_size") or [])
+        visual = str(physics.get("visual_id") or "")
+        mass = physics.get("mass_kg")
+        model = str(self._box_model or physics.get("model_name") or "")
+        release = self._gz_box_pose()
+        if len(size) != 3 or not visual or mass is None or not model:
+            return False, "missing physics identity", release
+        try:
+            mass_kg = float(mass)
+            topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
+            from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
+            sdf = pickup_visual_sdf(
+                model, size, mass_kg, visual, static=False,
+                contact_topic=topic, collide_bitmask=BOX_FULL_MASK)
+            release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
+            if release_dump:
+                with open(release_dump, "w", encoding="utf-8") as handle:
+                    handle.write(sdf)
+        except (TypeError, ValueError) as exc:
+            return False, str(exc), release
+        if release is None or len(release) < 6:
+            return False, "no release pose", release
+        delete = DeleteEntity.Request()
+        delete.entity.name = model
+        delete.entity.type = Entity.MODEL
+        removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
+        if removed is None or not getattr(removed, "success", False):
+            return False, "delete failed", release
+        spawn = SpawnEntity.Request()
+        spawn.entity_factory.name = model
+        spawn.entity_factory.sdf = sdf
+        qx, qy, qz, qw = rpy_to_quaternion(release[3:6])
+        spawn.entity_factory.pose.position.x = float(release[0])
+        spawn.entity_factory.pose.position.y = float(release[1])
+        spawn.entity_factory.pose.position.z = float(release[2])
+        spawn.entity_factory.pose.orientation.x = float(qx)
+        spawn.entity_factory.pose.orientation.y = float(qy)
+        spawn.entity_factory.pose.orientation.z = float(qz)
+        spawn.entity_factory.pose.orientation.w = float(qw)
+        created = self.call_srv(self._gz_create, spawn, timeout=15.0)
+        if created is None or not getattr(created, "success", False):
+            return False, "create failed", release
+        return True, "dynamic", release
+
+    def _poses_after_settle(self):
+        """Return ``(residual_start, residual_end, verdict)``.
+
+        After the body has stopped, residual drift is the motion during
+        ``drift_wait``. If it never settles, the pair spans the poll so the
+        fall still fails the drift gate. ``err_z`` uses the end pose against
+        the slot support rest, not the planned release height.
+        """
+        if self._args.plan_only:
+            pose = self._gz_box_pose()
+            return pose, pose, {
+                "settled": False, "pose": _xyz3(pose), "window_move_m": None}
+        samples = []
+        captured = []
+        t0 = time.monotonic()
+        verdict = {"settled": False, "pose": None, "window_move_m": None}
+        last = None
+        while True:
+            last = self._gz_box_pose()
+            xyz = _xyz3(last)
+            now = time.monotonic() - t0
+            if xyz is not None:
+                samples.append((now, xyz))
+                captured.append(last)
+                verdict = settle_verdict(
+                    samples, move_m=SETTLE_MOVE_M, window_sec=SETTLE_WINDOW_SEC)
+            # One ``ign model --pose`` call can outlast the budget. Keep
+            # sampling until the window can be judged, then stop.
+            if verdict.get("settled"):
+                break
+            if now >= SETTLE_BUDGET_SEC and len(samples) >= 2:
+                break
+            if now >= SETTLE_BUDGET_SEC + 5.0:
+                break
+            time.sleep(0.05)
+        if verdict.get("settled"):
+            start = last
+            time.sleep(float(self._args.drift_wait))
+            end = self._gz_box_pose()
+            return start, end, verdict
+        start = captured[0] if captured else last
+        return start, last, verdict
+
     def _abort(self, trial, code, carrying, extra=None):
         trial.fail_code = code
+        pending_handoff = getattr(self, "_handoff_failure_record", None)
+        if pending_handoff is not None:
+            extra = dict(extra or {})
+            extra["handoff.json"] = pending_handoff
+            self._handoff_failure_record = None
         if carrying:
             self._set_state("ABORT_CARRYING", guard=code)
         else:
@@ -960,8 +2298,61 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._dump_place(trial, extra=extra)
         return trial
 
+    def _contact_capture_gate(self, trial, extras):
+        """Refuse the first certified leg until contact capture is live.
+
+        Active only when ``M3_CONTACT_CAPTURE=1``. The check is content:
+        the spawned box SDF is the static carry model and carries the
+        contact sensor, the follow trace is being written now, pose/info
+        is being recorded, and the contact topic has a publisher. An empty
+        contact log is not treated as ready or as proof of no contact.
+        """
+        if os.environ.get("M3_CONTACT_CAPTURE", "") != "1":
+            return None
+        script_dir = os.environ.get("ELFIN_ST09_SCRIPTS", "")
+        if script_dir and script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+        import contact_capture
+        topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip()
+        info = ""
+        if topic:
+            try:
+                proc = subprocess.run(
+                    ["ign", "topic", "-i", "-t", topic],
+                    capture_output=True, text=True, timeout=8.0, check=False)
+                info = (proc.stdout or "") + (proc.stderr or "")
+            except (OSError, subprocess.TimeoutExpired) as exc:
+                info = "ign topic failed: %s" % exc
+        ready, detail = contact_capture.capture_ready(
+            follow_trace=os.environ.get("ELFIN_FOLLOW_TRACE", ""),
+            topic_info=info,
+            box_sdf_path=os.environ.get("ELFIN_BOX_SDF_DUMP", ""),
+            robot_urdf_path=os.environ.get(
+                "ELFIN_ROBOT_URDF", "/tmp/elfin_s20_gazebo.urdf"),
+            recorder_status_path=os.environ.get(
+                "ELFIN_CONTACT_STATUS", ""),
+            now=time.time(),
+        )
+        token = os.environ.get("ELFIN_GZ_STRIP_PANEL_COLLISION", "").strip()
+        if token:
+            from luggage_description.gazebo_spawn_collision import (
+                panel_collision_absent)
+            strip_ok, strip_detail = panel_collision_absent(
+                os.environ.get("ELFIN_ROBOT_URDF", "/tmp/elfin_s20_gazebo.urdf"),
+                token)
+            detail["strip"] = strip_detail
+            ready = ready and strip_ok
+        trial.extras["contact_capture_gate"] = detail
+        extras["contact_capture_gate.json"] = json.dumps(detail)
+        if ready:
+            return None
+        return self._abort(trial, "CONTACT_CAPTURE_NOT_READY", True, extra=extras)
+
     def run_place_from_carry(self, pick_msg, trial, slot, slot_meta):
         self._probe_joints = None
+        self._last_submitted_leg = None
+        self._handoff_failure_record = None
+        self._payload_detached = False
         self._follow_skipped0 = self._follow_skipped()
         extras = {"slot.json": slot_meta}
         if not self._box_model:
@@ -985,30 +2376,37 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 base_xyz, self._scene_config, margin=0.0):
             return self._abort(trial, "PLACE_SLOT_INVALID", True, extra=extras)
 
-        req = BuildMotionSequence.Request()
-        req.phase = "place"
-        req.pick = pick_msg
-        req.place_slot = slot
-        built = self.call_srv(self._build, req, timeout=15.0)
-        if built is None or not built.success:
-            trial.extras["build"] = built.message if built else "timeout"
-            return self._abort(trial, "PLACE_BUILD_FAILED", True, extra=extras)
-        trial.staging_degenerate = "staging_degenerate" in (built.message or "")
-        trial.extras["build"] = built.message
-        segments = list(built.segments)
-        trial.segments_planned = len(segments)
-        self._set_state("SEQUENCE_BUILT", note=built.message)
+        route_v2 = list(getattr(self, "_selected_carry_v2", None) or ())
+        route_v1 = list(getattr(self, "_selected_carry_v1", None) or ())
+        if route_v2:
+            # [ST09-I] certified route legs from SelectPlacePathV2 are
+            # the place motion; the fixed-clearance build was a bypass.
+            if len(route_v1) != len(route_v2):
+                return self._abort(trial, "PLACE_ROUTE_LEGS_MISMATCH", True,
+                                   extra=extras)
+            segments = route_v1
+            self._frame_motion_segments = route_v2
+            self._frame_motion_index = 0
+            trial.segments_planned = len(segments)
+            trial.extras["build"] = "certified route (%d legs)" % len(route_v2)
+            self._set_state("SEQUENCE_BUILT", note="certified route")
+            blocked = self._contact_capture_gate(trial, extras)
+            if blocked is not None:
+                return blocked
+        elif self._typed is not None or True:
+            # The build endpoint no longer produces place legs.
+            return self._abort(trial, "PLANNING_ROUTE_REQUIRED", True,
+                               extra=extras)
 
         names = [s.name for s in segments]
-        retreat_seg = None
+        post_release = []
         remaining = []
         for segment in segments:
-            if segment.name == "retreat":
-                retreat_seg = segment
+            if segment.name in ("retreat", "return"):
+                post_release.append(segment)
             else:
                 remaining.append(segment)
-        if any(n in names for n in STAGING_NAMES):
-            self._set_state("STAGING")
+        retreat_seg = post_release[0] if post_release else None
         state_by_name = {
             "transit": "TRANSIT", "traverse": "TRAVERSE",
             "insert": "INSERT", "descend": "DESCEND",
@@ -1064,24 +2462,77 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             {})
         trial.extras["release_settle"] = descend_rec.get("settle_json") or "probe"
         self._set_state("RELEASED")
+        joints_before_detach = None
+        detach_request_stamp = None
+        detach_response_stamp = None
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            joints_before_detach = self._joint_sample()
+            detach_request_stamp = float(self.ros_now_sec())
+            # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
+            detach_response_stamp = float(self.ros_now_sec())
             trial.extras["vac_detach"] = off_msg
+            if off_ok:
+                # Later legs are unloaded. attached=false is expected.
+                self._payload_detached = True
             if not off_ok:
+                # [S5.7-6 negative] release backend refused: the
+                # retreat never submits (named stop, zero controller
+                # submissions past the release boundary).
                 return self._abort(trial, "VACUUM_DETACH", True, extra=extras)
+            dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
+            trial.extras["dynamic_body"] = dyn_msg
+            trial.extras["box_pose_at_release"] = release_pose
+            if not dyn_ok:
+                return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
+            # [ST09-I S5.7-6] explicit release-boundary phase
+            # transition BEFORE any post-release leg: the certifier
+            # side activates the UNLOADED phase only against verified
+            # detach evidence; a refusal stops the session by name
+            # (retreat never reaches the executor).
+            phase_ok, phase_reason = self._transition_admission_unloaded(
+                str(off_msg or ""))
+            trial.extras["admission_phase"] = phase_reason
+            if not phase_ok:
+                return self._abort(
+                    trial, "ADMISSION_PHASE_%s" % (
+                        phase_reason or "TRANSITION_FAILED"),
+                    False, extra=extras)
+
+        if retreat_seg is not None and not self._args.plan_only:
+            # The certified retreat knot is descend's final waypoint. Submit
+            # only after a joint sample newer than the detach response sits
+            # inside the existing QP tolerance of that knot.
+            evidence = self._await_retreat_start_contract(
+                retreat_seg,
+                detach_request_stamp=detach_request_stamp,
+                detach_response_stamp=detach_response_stamp,
+                joints_before_detach=joints_before_detach)
+            trial.extras["retreat_start"] = evidence
+            extras["retreat_start.json"] = evidence
+            if evidence.get("status") != "ready":
+                return self._abort(
+                    trial, "QP_START_STATE_MISMATCH", False, extra=extras)
 
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
-            ok, code, rec = self._execute_segment(retreat_seg, trial)
-            if ok:
-                trial.segments_succeeded += 1
-            else:
-                return self._abort(trial, code, False, extra=extras)
+            for post_seg in post_release:
+                ok, code, rec = self._execute_segment(post_seg, trial)
+                if ok:
+                    trial.segments_succeeded += 1
+                else:
+                    return self._abort(trial, code, False, extra=extras)
 
-        pose_release = self._gz_box_pose()
-        if not self._args.plan_only:
-            time.sleep(float(self._args.drift_wait))
-        pose_drift = self._gz_box_pose()
+        pose_release, pose_drift, settle = self._poses_after_settle()
+        trial.extras["settle"] = {
+            "settled": bool(settle.get("settled")),
+            "window_move_m": settle.get("window_move_m"),
+            "budget_sec": SETTLE_BUDGET_SEC,
+        }
+        release_xyz = _xyz3(trial.extras.get("box_pose_at_release"))
+        landed_xyz = _xyz3(pose_drift or pose_release)
+        if release_xyz and landed_xyz:
+            trial.extras["fall_m"] = xyz_separation(release_xyz, landed_xyz)
         self._set_state("COMMITTED")
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
             add = AddPlacedBox.Request()
@@ -1089,6 +2540,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             resp = self.call_srv(self._add_placed, add, timeout=10.0)
             trial.extras["add_placed"] = resp.message if resp else "timeout"
             if resp is None or not resp.success:
+                return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
+            if not self._commit_to_cargo_map(trial, slot, slot_meta):
                 return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
             self._set_place_touch(False)
 
@@ -1130,10 +2583,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["verify"] = {
             "box_pose_after_release": pose_release,
             "box_pose_after_drift_wait": pose_drift,
+            "box_pose_at_release": trial.extras.get("box_pose_at_release"),
             "err_xy": trial.err_xy, "err_z": trial.err_z,
             "drift": trial.drift,
+            "fall_m": trial.extras.get("fall_m"),
+            "settled": bool(settle.get("settled")),
             "inside_inner_box": trial.inside_inner_box,
             "roll": trial.roll, "pitch": trial.pitch,
+            "support_rest": list(expected) if expected is not None else None,
         }
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
@@ -1180,6 +2637,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._place_state = "INIT"
         self._box_model = ""
+        self._release_physics = None
         self._keep_placed = bool(keep_placed)
         trial = PlaceTrial(index=index)
         trial.extras = {}
@@ -1223,8 +2681,52 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
         return result
 
+    def _authorized_pick_record(self, auth):
+        """Stamp, source and size of the sample that authorized this pick.
+
+        The scene AABB is computed from that same message. The selected
+        detector-window row carries its own size, so a later read can see
+        whether authorization, the window row and the scene box agree.
+        """
+        from luggage_planning.pick_authorization import (
+            authorized_pick_boundary,
+            observation_gate,
+        )
+        from luggage_planning.pickup_collision import pickup_collision_aabb
+
+        pick = auth.box
+        fields = {}
+        scene_size = None
+        gate = ""
+        if pick is not None:
+            fields = _pick_detection_record(pick)
+            stamp = pick.header.stamp
+            fields["stamp_sec"] = (
+                float(stamp.sec) + 1e-9 * float(stamp.nanosec))
+            fields["pca_source"] = str(getattr(pick, "pca_source", "") or "")
+            gate = observation_gate(pick, auth.detect_reason)
+            try:
+                _xyz, _quat, scene_size = pickup_collision_aabb(pick)
+            except ValueError as exc:
+                fields["scene_aabb_error"] = str(exc)
+        selected = None
+        diag = self._last_auth_diag
+        if isinstance(diag, dict):
+            for read in diag.get("auth_reads") or []:
+                for row in read.get("window") or []:
+                    if row.get("selected"):
+                        selected = row
+        return authorized_pick_boundary(
+            fields, authorized=bool(auth.authorized),
+            detect_reason=auth.detect_reason,
+            observation_gate_name=gate, selected_frame=selected,
+            scene_size=scene_size)
+
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
+        self._join_trace.clear()
+        self._mask_trace.clear()
+        self._last_auth_diag = None
         goto_ok, goto_msg, _ = self._home_arm()
         if not goto_ok:
             trial.fail_code = self.home_arm_code()
@@ -1259,6 +2761,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             spawn_stamp = self.ros_now_sec()
         size_eval = _parse_json(self._size_eval["payload"]) or {}
         trial.catalog_id = str(size_eval.get("catalog_id") or "")
+        command_size = size_eval.get("command_size") or []
+        self._release_physics = {
+            "model_name": str(size_eval.get("model_name") or ""),
+            "command_size": [float(v) for v in command_size],
+            "visual_id": str(size_eval.get("visual_id") or ""),
+            "mass_kg": size_eval.get("mass_kg"),
+        }
         box_id, generation = parse_current_box_payload(
             self._current_box_topic["payload"])
         if spawn.box.id and box_id != spawn.box.id:
@@ -1290,6 +2799,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None
         auth = self.detect_until_authorized()
         trial.extras["pick_authorization"] = auth.to_dict()
+        trial.extras["authorized_pick"] = self._authorized_pick_record(auth)
+        boundary = self.perception_boundary_document()
+        trial.extras["perception_boundary"] = boundary
+        trial.extras["perception_boundary_summary"] = (
+            boundary.get("classification") or {})
         current = self.call_srv(
             self._current, GetCurrentBox.Request(), timeout=10.0)
         if not auth.authorized:
@@ -1318,21 +2832,43 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if not scene_ok:
                 trial.fail_code = "SCENE_ADD_FAILED"
                 return None
-        req = BuildMotionSequence.Request()
-        req.phase = "pick"
-        req.pick = pick_msg
-        built = self.call_srv(self._build, req, timeout=15.0)
+        if self._typed is not None:
+            self._frame_pick_msg = pick_msg
+            from luggage_description.frame_contracts import ContractError
+            try:
+                built = self._typed.build_pick(
+                    request_id=self._frame_request_id("pick"),
+                    scene_revision=self._frame_scene_revision,
+                    pick_message=pick_msg)
+            except ContractError as error:
+                built = None
+                trial.extras["build_pick"] = "%s: %s" % (error.code, error.field)
+        else:
+            req = BuildMotionSequence.Request()
+            req.phase = "pick"
+            req.pick = pick_msg
+            built = self.call_srv(self._build, req, timeout=15.0)
         if built is None or not built.success:
             trial.fail_code = "BUILD_FAILED"
             trial.extras["build_pick"] = built.message if built else "timeout"
             return None
         segments = list(built.segments)
-        for segment in segments:
-            goal = PlanMotion.Goal()
-            goal.segment = segment
-            ok, message, _res = self.send_action(
-                self._plan, goal, timeout=self._args.plan_timeout,
-                name="PlanMotion:%s" % segment.name)
+        motion_segments = list(getattr(built, "motion_segments", ()) or ())
+        self._frame_motion_segments = motion_segments
+        self._frame_motion_index = 0
+        for segment_index, segment in enumerate(segments):
+            if (self._typed is not None
+                    and segment_index < len(motion_segments)):
+                ok, message, _res = self._typed.plan_motion(
+                    motion_segments[segment_index],
+                    self._args.plan_timeout,
+                    name="PlanMotionV2:%s" % segment.name)
+            else:
+                goal = PlanMotion.Goal()
+                goal.segment = segment
+                ok, message, _res = self.send_action(
+                    self._plan, goal, timeout=self._args.plan_timeout,
+                    name="PlanMotion:%s" % segment.name)
             if not ok:
                 trial.fail_code = "PLAN_%s" % segment.name
                 trial.extras["plan_%s" % segment.name] = message
@@ -1340,12 +2876,22 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     segments, segment, message)
                 return None
             if segment.name == "attach" and self._args.use_vacuum:
-                vac_ok, vac_msg = self.vacuum_command(True)
+                vac_ok, vac_msg = self.vacuum_command(True, pick_msg=pick_msg)
                 trial.vac_attach = vac_ok
                 trial.extras["vac_attach"] = vac_msg
                 if not vac_ok:
+                    revision_dump = getattr(
+                        self, "_last_vacuum_attach_evidence", None)
+                    if revision_dump:
+                        trial.extras["vacuum_attach_revisions"] = revision_dump
                     trial.fail_code = "VACUUM_ATTACH"
                     return None
+                # [ST09-I S5.7-6 评审点 1] a new attach STARTS a cycle:
+                # the previous cycle's exit proof is void from here —
+                # it must never carry across a new carrying phase.
+                self._start_new_cycle()
+                if self._typed is not None:
+                    self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:
             state = dict(self._vacuum_state or {})
             if not (state.get("attached") and not state.get("fail_reason")):
@@ -1388,7 +2934,10 @@ def parse_args(argv):
     parser.add_argument(
         "--synthetic-size", default="",
         help="W,D,H metres for --dry-run / --payload none. Required there.")
-    parser.add_argument("--auth-max-attempts", type=int, default=5)
+    parser.add_argument(
+        "--auth-max-attempts", type=int, default=11,
+        help="Safety cap on non-hold detect samples. The wait itself "
+             "is --auth-max-elapsed-sec (default 5 s).")
     parser.add_argument("--auth-max-elapsed-sec", type=float, default=5.0)
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     args = parser.parse_args(argv)

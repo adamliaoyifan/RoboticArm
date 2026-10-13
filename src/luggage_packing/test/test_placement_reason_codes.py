@@ -11,6 +11,7 @@ from luggage_packing.placement_solver import (
     CODE_BIN_FULL,
     CODE_BOX_EXCEEDS_CONTAINER,
     CODE_INVALID_BOX_SIZE,
+    CODE_OBSERVATION_REQUIRED,
     CODE_PLACE_CANDIDATE_EXHAUSTED,
     placement_constraint_verdict,
     solve_placement,
@@ -43,7 +44,8 @@ def validator(placed_aabbs=None, aperture_y=None, inner_size=None,
         return placement_constraint_verdict(
             candidate, inner_h, placed_aabbs=placed_aabbs,
             aperture_y=aperture_y, inner_size=inner_size,
-            smallest_size=smallest_size)
+            smallest_size=smallest_size,
+            same_layer_clearance_m=0.0)
     return _validate
 
 
@@ -103,16 +105,23 @@ def test_corridor_only_rejection_is_candidate_exhaustion():
     assert result["reject_histogram"]["corridor_blocked"] > 0
 
 
-def test_unobserved_support_is_candidate_exhaustion():
+def test_unobserved_support_is_observation_required():
     # Something unseen appears to hold the box at peak > floor. Refusing to
     # trust it is an observation gate, not proof the container is full.
+    # ST09-A S1 4.3: with no occupied testimony anywhere, a bounded
+    # observation pass could open legal floor landings, so the named
+    # outcome is OBSERVATION_REQUIRED (was PLACE_CANDIDATE_EXHAUSTED before
+    # the starvation test distinguished evidence absence from policy
+    # exhaustion).
     result = solve_placement(
         surface(height=0.3, state="unknown", inner_h=1.0), BOX,
         allowed_yaws=[0.0], params=PARAMS,
         candidate_validator=validator(inner_h=1.0))
-    assert result["reason_code"] == CODE_PLACE_CANDIDATE_EXHAUSTED
+    assert result["reason_code"] == CODE_OBSERVATION_REQUIRED
     assert result["reject_histogram"]["unknown_above_floor"] > 0
     assert result["capacity_feasible_count"] > 0
+    assert result["observation_requirement"] is not None
+    assert result["hypothetical_legal_windows"]
 
 
 def test_insufficient_support_is_candidate_exhaustion():

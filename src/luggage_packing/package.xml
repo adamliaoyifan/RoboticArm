@@ -18,6 +18,11 @@
   <buildtool_depend>ament_cmake_pytest</buildtool_depend>
 
   <exec_depend>ament_index_python</exec_depend>
+  <!-- NOTE: placement_planner_node imports luggage_planning.atlas_runtime
+       lazily at runtime WITHOUT an exec_depend here: declaring it would
+       close a colcon build cycle (luggage_perception test_depends on this
+       package, luggage_planning exec_depends on luggage_perception). The
+       ament environment exports every installed python package anyway. -->
   <exec_depend>python3-numpy</exec_depend>
   <exec_depend>python3-yaml</exec_depend>
 

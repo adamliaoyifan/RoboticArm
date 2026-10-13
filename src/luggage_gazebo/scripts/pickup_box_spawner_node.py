@@ -42,6 +42,7 @@ from luggage_msgs.srv import (
 from ros_gz_interfaces.msg import Entity
 from ros_gz_interfaces.srv import DeleteEntity, SetEntityPose, SpawnEntity
 from std_msgs.msg import String
+from std_srvs.srv import SetBool
 
 from luggage_description.box_catalog_utils import (
     box_catalog_entries,
@@ -58,6 +59,8 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
 )
 
+from luggage_description.gazebo_spawn_collision import (
+    BOX_CARRY_MASK, BOX_FULL_MASK)
 from luggage_description.suitcase_visual import (
     OBSERVABLE_REFERENCE_VERSION,
     MeshReferenceError,
@@ -280,6 +283,9 @@ class PickupBoxSpawner(Node):
         self.create_service(
             GetCurrentBox, "/pickup_box_spawner/get_current_box", self.handle_get_current,
             callback_group=self._group)
+        self.create_service(
+            SetBool, "/pickup_box_spawner/set_p04_carry_filter",
+            self.handle_set_p04_carry_filter, callback_group=self._group)
         self.create_service(
             SyncPickupBox, "/pickup_box_spawner/sync_detected_pickup_box",
             self.handle_sync_detected, callback_group=self._group)
@@ -580,12 +586,31 @@ class PickupBoxSpawner(Node):
         mass = sample_box_mass(size, self._mass_model, self._rng)
         return entry, size, mass, True, "gen"
 
-    def _box_sdf(self, model_name, size, mass_kg, visual_id):
-        """Inline SDF. Mesh references a pre-scaled model:// URI."""
-        return pickup_visual_sdf(
+    def _box_sdf(self, model_name, size, mass_kg, visual_id,
+                 collide_bitmask=BOX_FULL_MASK):
+        """Inline SDF. Mesh references a pre-scaled model:// URI.
+
+        ``ELFIN_BOX_CONTACT_TOPIC`` adds an observation contact sensor on the
+        existing collision (default unset: the SDF is unchanged).
+        ``ELFIN_BOX_SDF_DUMP`` saves the exact text that is spawned.
+        ``collide_bitmask`` is only ``body_collision``. ``BOX_FULL_MASK``
+        still hits p04; ``BOX_CARRY_MASK`` does not.
+        """
+        topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
+        sdf = pickup_visual_sdf(
             model_name, size, mass_kg, visual_id,
             visual_kind=self._visual_kind,
+            contact_topic=topic,
+            collide_bitmask=collide_bitmask,
         )
+        dump = os.environ.get("ELFIN_BOX_SDF_DUMP", "").strip()
+        if dump:
+            parent = os.path.dirname(dump)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(dump, "w", encoding="utf-8") as handle:
+                handle.write(sdf)
+        return sdf
 
     def _gt_size(self, size, visual_id):
         """Size written to GetCurrentBox: the mesh's observable geometry.
@@ -753,6 +778,51 @@ class PickupBoxSpawner(Node):
         response.message = "measured geometry synced"
         return response
 
+    def handle_set_p04_carry_filter(self, request, response):
+        """Respawn the current static box so its mask is read at creation.
+
+        gz-sim applies collide_bitmask only when the collision is created.
+        True: body_collision mask excludes p04. False: full mask again.
+        The model name and the static flag stay. Release deletes this body
+        and spawns a dynamic one with the full mask, which is the revoke.
+        """
+        mask = BOX_CARRY_MASK if request.data else BOX_FULL_MASK
+        model = getattr(self, "_current_model", "") or ""
+        size = getattr(self, "_spawn_size", None)
+        if not model or not size:
+            response.success = False
+            response.message = "no current pickup box"
+            return response
+        pose = self._read_model_pose(model, timeout=2.0)
+        if pose is None and self._current_box is not None:
+            pose = self._current_box.pose
+        if pose is None:
+            response.success = False
+            response.message = "no pose for %s" % model
+            return response
+        try:
+            sdf = self._box_sdf(
+                model, size, self._spawn_mass, self._spawn_visual,
+                collide_bitmask=mask)
+        except (TypeError, ValueError) as exc:
+            response.success = False
+            response.message = str(exc)
+            return response
+        err = self._delete_model(model)
+        if err:
+            response.success = False
+            response.message = err
+            return response
+        err = self._spawn_model(model, pose, sdf=sdf)
+        if err:
+            response.success = False
+            response.message = err
+            return response
+        self._carry_bitmask = mask
+        response.success = True
+        response.message = "body_collision collide_bitmask %d" % mask
+        return response
+
     def handle_spawn_next(self, _req, _response):
         response = SpawnNextBox.Response()
         # PF-R5A-FIX2: sampling below advances the RNG; snapshot it so a
@@ -858,6 +928,10 @@ class PickupBoxSpawner(Node):
         box.height_confidence = 1.0
         box.height_source = DetectedLuggage.HEIGHT_SOURCE_MEASURED_SUPPORT
         self._current_model = model_name
+        self._spawn_size = list(size)
+        self._spawn_visual = visual_id
+        self._spawn_mass = mass_kg
+        self._carry_bitmask = BOX_FULL_MASK
         self._current_ref = self._observable_reference(size, visual_id)
         self._current_box = box
         self._current_mass = mass_kg

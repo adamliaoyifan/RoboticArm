@@ -1,0 +1,14 @@
+F......                                                                  [100%]
+=================================== FAILURES ===================================
+______________ TestPlaceGtDump.test_free_voxels_stay_inside_hull _______________
+src/luggage_gazebo/test/test_place_gt_dump.py:187: in test_free_voxels_stay_inside_hull
+    self.assertTrue(
+E   AssertionError: False is not true : [-0.7899973552971155, -0.7199973920195193, 1.415]
+=============================== warnings summary ===============================
+../../opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115
+  Warning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_free_voxels_stay_inside_hull
+1 failed, 6 passed, 1 warning in 5.23s

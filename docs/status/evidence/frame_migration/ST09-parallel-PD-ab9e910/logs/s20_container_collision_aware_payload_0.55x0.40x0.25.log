@@ -1,0 +1,15 @@
+scene sync: static scene synced (airport_container_real, 8000 triangles)
+payload detach: False
+[WARN] Cannot load observe seed: luggage_description
+[INFO] Waiting for state validity service /check_state_validity ...
+[INFO] State validity service ready.
+[INFO] Grid: 10x14x10x4 = 5600 cells (resolution=0.15, avoid_collisions=True)
+[WARN] moveit_commander unavailable (No module named 'moveit_commander'); payload disabled.
+[INFO] Payload attached via ApplyPlanningScene: size=[0.55, 0.4, 0.25] link=suction_contact_frame offset=[0.0, 0.0, 0.125]
+[INFO] Computing deterministic opening wavefront: fixed_seeds=5 max_branches=3 workers=1
+[INFO] Yaw 1/4 complete: connected=116 elapsed=33.6s
+[INFO] Yaw 2/4 complete: connected=119 elapsed=65.3s
+[INFO] Yaw 3/4 complete: connected=106 elapsed=88.6s
+[INFO] Yaw 4/4 complete: connected=118 elapsed=119.4s
+[INFO] Done in 119.4s: reachable=402 marginal=57 unreachable=828 unknown=4313
+[INFO] Saved atlas to /tmp/elfin-st09-deploy-assets/src/luggage_planning/data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.55x0.40x0.25.npz + /tmp/elfin-st09-deploy-assets/src/luggage_planning/data/reachability_atlas_deploy/s20_container_collision_aware_payload_0.55x0.40x0.25.yaml

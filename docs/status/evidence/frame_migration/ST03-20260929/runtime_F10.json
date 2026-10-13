@@ -1,0 +1,22 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_planning/test -p test_frame_migration_pick.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "f6d3cab722f919985160151f4ed38111ea93aa72cc63370a33f11cb06a790c45",
+  "interface_id": "F10",
+  "kind": "runtime_boundary",
+  "observations": [
+    "retry rebuilds strictly from the frozen snapshot; mutated live candidate state cannot move the target or the distance guard",
+    "recovery rejects a changed scene revision (CALIBRATION_REVISION_MISMATCH) with zero motion/vacuum calls",
+    "review repair R5 + wiring: frozen retry snapshot is mutation-independent; hardware_pick_driver passes --frame-scene-revision into SessionConfig and the ports, so the F10 stale-scene check is live on hardware",
+    "repair2 P2-d: the hardware snapshot chain is exact end to end (header sec/nanosec -> DetectionView.stamp_ns -> snapshot); P1-c admission precedes any probe spend in the session gate"
+  ],
+  "sample_count": 94,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_planning/luggage_planning/pick_frame_contracts.py": "0e0e5238182562e6f20a3567c8c02d20c162e3378ed3c4f4fdd6213ab6bdd596",
+    "src/luggage_planning/luggage_planning/suction_candidate_waypoints.py": "07369a663ea3f98c40187ef2a5c3995d1cd571ade430cb227b16c6037d650cdb",
+    "src/luggage_planning/luggage_planning/suction_retry_contracts.py": "bccbd84c97d957fd33f07013f76da15520efdf9c39194b8b6e51e4c0dcc867d6"
+  },
+  "status": "pass"
+}

@@ -18,6 +18,8 @@ import unittest
 PKG_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 from luggage_packing.placement_solver import (  # noqa: E402
+    SAME_LAYER_CLEARANCE_M,
+    candidate_prefix_note,
     generate_candidates,
     placement_constraint_verdict,
     ranked_feasible_candidates,
@@ -185,7 +187,8 @@ class TestLiveFlattenFirstAndCommitStack(unittest.TestCase):
     def _validator(self, placed_aabbs):
         def _validate(candidate):
             return placement_constraint_verdict(
-                candidate, self.INNER_H, placed_aabbs=placed_aabbs)
+                candidate, self.INNER_H, placed_aabbs=placed_aabbs,
+                same_layer_clearance_m=0.0)
         return _validate
 
     def test_floor_outranks_a_low_stack(self):
@@ -248,6 +251,122 @@ class TestRankedFeasibleCandidates(unittest.TestCase):
         self.assertLessEqual(len(top), 5)
         self.assertEqual(top[0]["center_base"], result["selected"]["center_base"])
         self.assertAlmostEqual(top[0]["score"], result["selected"]["score"])
+
+    def test_reachable_band_precedes_a_deeper_unknown_slot(self):
+        deep = {
+            "feasible": True, "depth_m": 1.3, "support_layer_z": 0.0,
+            "score": 1.0, "candidate_id": "deep", "center_base": [0, 0, 0],
+            "atlas_status": 0, "atlas_status_name": "unknown",
+        }
+        shallow = {
+            "feasible": True, "depth_m": 0.4, "support_layer_z": 0.0,
+            "score": 0.2, "candidate_id": "shallow", "center_base": [1, 0, 0],
+            "atlas_status": 3, "atlas_status_name": "reachable",
+        }
+        result = {"candidates": [deep, shallow], "selected": deep}
+        top = ranked_feasible_candidates(result, 1)
+        self.assertEqual(top[0]["candidate_id"], "shallow")
+        deeper = dict(shallow)
+        deeper.update(depth_m=1.1, candidate_id="deeper", score=5.0)
+        both = {"candidates": [deeper, shallow], "selected": deeper}
+        ordered = ranked_feasible_candidates(both, 2)
+        self.assertEqual(
+            [item["candidate_id"] for item in ordered],
+            ["shallow", "deeper"])
+        note = candidate_prefix_note(
+            ranked_feasible_candidates(result, 5), 2)
+        self.assertIn("returned=2/2", note)
+        self.assertIn("reachable:1", note)
+        self.assertIn("unknown:1", note)
+
+
+class TestSameLayerClearance(unittest.TestCase):
+    def test_frozen_clearance_is_five_centimetres(self):
+        self.assertAlmostEqual(SAME_LAYER_CLEARANCE_M, 0.05)
+
+    def _candidate(self, center, yaw, size):
+        return {
+            "center_container": list(center),
+            "box_yaw": yaw,
+            "size": list(size),
+            "footprint": [size[0], size[1]],
+        }
+
+    def _floor_pair(self, gap):
+        placed = {
+            "center_xy": (0.0, 0.0), "yaw": 0.0,
+            "size_lw": (0.40, 0.40), "z_bottom": 0.0, "z_top": 0.28,
+        }
+        center_x = 0.20 + float(gap) + 0.20
+        candidate = self._candidate(
+            (center_x, 0.0, 0.14), 0.0, (0.40, 0.40, 0.28))
+        return placement_constraint_verdict(
+            candidate, 1.5, placed_aabbs=[placed])
+
+    def test_gap_just_under_five_centimetres_is_rejected(self):
+        reason, capacity_ok = self._floor_pair(0.049)
+        self.assertEqual(reason, "same_layer_clearance")
+        self.assertFalse(capacity_ok)
+
+    def test_gap_of_five_centimetres_is_accepted(self):
+        reason, _capacity_ok = self._floor_pair(0.050)
+        self.assertIsNone(reason)
+
+    def test_yaw_uses_the_rotated_footprint(self):
+        # Unrotated, this 0.80 x 0.20 box at x=0.50 would overlap the
+        # placed box. Yawed by pi/2 it is only 0.20 m in x and clears it.
+        placed = {
+            "center_xy": (0.0, 0.0), "yaw": 0.0,
+            "size_lw": (0.40, 0.20), "z_bottom": 0.0, "z_top": 0.28,
+        }
+        candidate = self._candidate(
+            (0.50, 0.0, 0.14), 1.5707963267948966, (0.80, 0.20, 0.28))
+        candidate["footprint"] = [0.20, 0.80]
+        reason, _capacity_ok = placement_constraint_verdict(
+            candidate, 1.5, placed_aabbs=[placed])
+        self.assertIsNone(reason)
+        flat = self._candidate((0.50, 0.0, 0.14), 0.0, (0.80, 0.20, 0.28))
+        flat_reason, _flat_ok = placement_constraint_verdict(
+            flat, 1.5, placed_aabbs=[placed])
+        self.assertEqual(flat_reason, "overlap")
+
+    def test_stack_may_cover_its_support_parent(self):
+        parent = {
+            "center_xy": (0.0, 0.0), "yaw": 0.0,
+            "size_lw": (0.70, 0.45), "z_bottom": 0.0, "z_top": 0.28,
+        }
+        candidate = self._candidate(
+            (0.0, 0.0, 0.28 + 0.125), 0.0, (0.40, 0.40, 0.25))
+        reason, _capacity_ok = placement_constraint_verdict(
+            candidate, 1.5, placed_aabbs=[parent])
+        self.assertIsNone(reason)
+
+    def test_stack_still_clears_another_box_on_its_layer(self):
+        parent = {
+            "center_xy": (0.0, 0.0), "yaw": 0.0,
+            "size_lw": (0.70, 0.45), "z_bottom": 0.0, "z_top": 0.28,
+        }
+        sibling = {
+            "center_xy": (0.449, 0.0), "yaw": 0.0,
+            "size_lw": (0.40, 0.40), "z_bottom": 0.28, "z_top": 0.53,
+        }
+        candidate = self._candidate(
+            (0.0, 0.0, 0.28 + 0.125), 0.0, (0.40, 0.40, 0.25))
+        reason, _capacity_ok = placement_constraint_verdict(
+            candidate, 1.5, placed_aabbs=[parent, sibling])
+        self.assertEqual(reason, "same_layer_clearance")
+
+    def test_penetration_stays_overlap(self):
+        parent = {
+            "center_xy": (0.0, 0.0), "yaw": 0.0,
+            "size_lw": (0.70, 0.45), "z_bottom": 0.0, "z_top": 0.28,
+        }
+        candidate = self._candidate(
+            (0.0, 0.0, 0.20), 0.0, (0.40, 0.40, 0.25))
+        reason, capacity_ok = placement_constraint_verdict(
+            candidate, 1.5, placed_aabbs=[parent])
+        self.assertEqual(reason, "overlap")
+        self.assertFalse(capacity_ok)
 
 
 if __name__ == "__main__":

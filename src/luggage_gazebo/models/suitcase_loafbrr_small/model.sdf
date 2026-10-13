@@ -14,14 +14,10 @@
       <visual name="suitcase_loafbrr_small_visual">
         <geometry>
           <mesh>
-            <uri>model://suitcase_loafbrr_small/meshes/suitcase.stl</uri>
+            <uri>model://suitcase_loafbrr_small/meshes/suitcase.dae</uri>
             <scale>1.000000 1.000000 1.000000</scale>
           </mesh>
         </geometry>
-        <material>
-          <ambient>0.12 0.12 0.15 1</ambient>
-          <diffuse>0.20 0.20 0.24 1</diffuse>
-        </material>
       </visual>
       <collision name="body_collision">
         <geometry>

@@ -28,7 +28,9 @@ def gazebo_urdf_from_robot_description(urdf_xml):
     suction-panel CAD meshes participate in ODE contact makes the free suitcase
     or pedestal absorb hard impulses and can explode the simulation. Strip only
     those physical collisions from the Gazebo model while leaving visuals,
-    inertials, TF, and MoveIt collision geometry intact.
+    inertials, TF, and MoveIt collision geometry intact. The Mid-360 housing
+    collision is stripped for the same split: MoveIt must see it against the
+    container, and the Gazebo gpu_lidar must not raycast into its own body.
 
     The robot's root link is named ``world``. Gazebo anchors any link named
     ``world`` to the global world origin and IGNORES the spawn pose passed to
@@ -42,7 +44,8 @@ def gazebo_urdf_from_robot_description(urdf_xml):
         root = ET.fromstring(urdf_xml)
     except ET.ParseError:
         return urdf_xml
-    stripped = _strip_link_collisions(root, ["suction_panel"])
+    stripped = _strip_link_collisions(
+        root, ["suction_panel", "mid360_mount_frame"])
     if not stripped:
         return urdf_xml
     return ET.tostring(root, encoding="unicode")

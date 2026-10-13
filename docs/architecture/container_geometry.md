@@ -61,6 +61,7 @@ evidence:
 | `PLACE_CANDIDATE_EXHAUSTED` | At least one candidate was capacity-feasible and was rejected by a policy or observation gate. |
 | `CARGO_MAP_GEOMETRY_MISMATCH` | Geometry identity failed closed. |
 | `DETECT_FULL_GEOMETRY_REQUIRED` | The detection carries no measured height. |
+| `ATLAS_IDENTITY_UNVERIFIED` | The certification reachability atlas (`hash_policy: strict`) does not match the live scene file and URDF, or either hash is missing. Placement does not hard-reject or re-rank from that atlas. |
 
 A candidate is capacity-feasible when no capacity gate rejected it. Capacity
 gates are overlap with a placed box, top clearance, and hull containment.

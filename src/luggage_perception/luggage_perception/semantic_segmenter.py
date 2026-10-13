@@ -421,22 +421,32 @@ def _setup_clip_vendor():
             sys.modules.pop("regex", None)
             sys.modules.pop("_regex", None)
             sys.modules.pop("ftfy", None)
-    # clip.load("ViT-B/32") reads ~/.cache/clip/ViT-B-32.pt and skips the
-    # download when the sha matches. Symlink the vendored checkpoint there.
-    weights = os.path.join(base, "clip_models", "ViT-B-32.pt")
-    if os.path.isfile(weights):
-        cache_dir = os.path.expanduser(os.path.join("~", ".cache", "clip"))
-        target = os.path.join(cache_dir, "ViT-B-32.pt")
+    # [ST09-I S5.7-5] No user-cache dependency: clip.load gets the
+    # vendored weights DIR as its download_root (the ultralytics fork
+    # supports the argument), so nothing reads or writes ~/.cache/clip
+    # and no host-side symlink exists to drift. The wrap must land
+    # before ultralytics' text_model calls clip.load (the module
+    # attribute is resolved at call time, so patching the package
+    # works); ultralytics calls clip.load(size, device=...) and gets
+    # the vendored checkpoint after its sha check, offline.
+    weights_dir = os.path.join(base, "clip_models")
+    if os.path.isdir(weights_dir):
         try:
-            os.makedirs(cache_dir, exist_ok=True)
-            if os.path.islink(target) and not os.path.exists(target):
-                os.remove(target)
-            if not os.path.exists(target):
-                os.symlink(weights, target)
-        except OSError:
-            # Read-only home or cross-device symlink refused - leave it; clip
-            # will fall back to downloading (still works online).
-            pass
+            import clip as _clip_pkg
+        except ImportError:
+            _clip_pkg = None
+        if _clip_pkg is not None and not getattr(
+                _clip_pkg, "_luggage_clip_vendor_load", False):
+            _original_clip_load = _clip_pkg.load
+
+            def _vendor_clip_load(name, device=None, jit=False,
+                                  download_root=None):
+                return _original_clip_load(
+                    name, device=device, jit=jit,
+                    download_root=download_root or weights_dir)
+
+            _vendor_clip_load._luggage_clip_vendor_load = True
+            _clip_pkg.load = _vendor_clip_load
     return base
 
 
@@ -706,6 +716,85 @@ def apply_self_body_mask(label_map, detections, body_mask,
     return out, kept, inst, n_self
 
 
+def assign_temporal_hold_instance(label_map, detections, instance_map,
+                                  cargo_label=LABEL_CARGO):
+    """Give a temporal hold an instance id without merging live boxes.
+
+    ``temporal_hold`` is the gate's continuation of one previous target.
+    It paints cargo labels and, when that region has no instance id, one
+    new id on the hold bbox only. A live detection keeps its own id.
+    Overlap between two live boxes does not copy an id from one to the
+    other.
+    """
+    labels = np.asarray(label_map)
+    dets = [dict(det) for det in (detections or ())]
+    if instance_map is None:
+        inst = np.zeros(labels.shape[:2], dtype=np.uint16)
+    else:
+        inst = np.array(instance_map, copy=True)
+    holds = [
+        det for det in dets
+        if det.get("held") or det.get("prompt") == "temporal_hold"]
+    if not holds:
+        return labels, dets, inst
+    next_id = int(inst.max()) + 1 if inst.size else 1
+    if next_id < 1:
+        next_id = 1
+    height, width = inst.shape[:2]
+    for det in holds:
+        box = det.get("bbox") or ()
+        if len(box) < 4:
+            continue
+        x1, y1, x2, y2 = (int(v) for v in box[:4])
+        x1, x2 = max(0, min(width, x1)), max(0, min(width, x2))
+        y1, y2 = max(0, min(height, y1)), max(0, min(height, y2))
+        if x2 <= x1 or y2 <= y1:
+            continue
+        patch = inst[y1:y2, x1:x2]
+        positive = patch[patch > 0]
+        if positive.size:
+            det["instance_id"] = int(np.bincount(positive.ravel()).argmax())
+            continue
+        inst_id = next_id
+        next_id += 1
+        cargo = labels[y1:y2, x1:x2] == int(cargo_label)
+        # Background inside the rectangle stays unlabeled. The id separates
+        # cargo pixels; it does not turn the rectangle into a box.
+        if not cargo.any():
+            det["instance_source"] = "temporal_hold"
+            continue
+        region = inst[y1:y2, x1:x2]
+        region[cargo] = inst_id
+        det["instance_id"] = inst_id
+        det["instance_source"] = "temporal_hold"
+    return labels, dets, inst
+
+
+def observation_source_for_detections(detections, cloud_source,
+                                      cargo_label=LABEL_CARGO):
+    """A hold-only frame stays continuity, even if this depth was just read.
+
+    The synthesized instance id separates points. It is not a new measure.
+    A live cargo detection keeps ``cloud_source``.
+    """
+    cargo = []
+    for det in detections or ():
+        if isinstance(det, dict):
+            label = int(det.get("label", -1))
+            held = bool(det.get("held") or det.get("prompt") == "temporal_hold")
+        else:
+            label = int(getattr(det, "label", -1))
+            held = bool(
+                getattr(det, "held", False)
+                or getattr(det, "prompt", "") == "temporal_hold")
+        if label != int(cargo_label):
+            continue
+        cargo.append(held)
+    if cargo and all(cargo):
+        return "hold_track"
+    return cloud_source
+
+
 def row_band_mask(shape, row_start_frac):
     """Bottom row-band as HxW bool. All-False when frac is outside (0, 1)."""
     height, width = int(shape[0]), int(shape[1])
@@ -889,14 +978,21 @@ class SemanticSegmenter:
         t_temporal = self._time.perf_counter() if t_after_seg is not None else None
         if self.temporal_gate is not None:
             label_map, detections, tstats = self.temporal_gate.apply(
-                label_map, detections, rgb_uint8)
+                label_map, detections, rgb_uint8,
+                stamp=stamp, target_id=instance_id)
             stats["temporal"] = dict(tstats)
             stats["held"] = bool(tstats.get("held"))
-            if tstats.get("held") and n_self:
+            if tstats.get("held") and n_self and body is not None:
                 # A held bbox may reach into the panel; never hand the arm
                 # back to the cargo cloud.
                 label_map = np.array(label_map, copy=True)
                 label_map[body] = LABEL_ROBOT_ARM
+            label_map, detections, instance_map = (
+                assign_temporal_hold_instance(
+                    label_map, detections, instance_map))
+            if body is not None and instance_map is not None:
+                instance_map = np.array(instance_map, copy=True)
+                instance_map[np.asarray(body, dtype=bool)] = 0
         t_counts = self._time.perf_counter() if t_after_seg is not None else None
         stats["detections"] = compact_detections(detections)
         stats["label_counts"] = {
@@ -991,6 +1087,7 @@ class BboxFillSegmenter(SemanticSegmenter):
                  confidence_threshold=DEFAULT_YOLO_CONFIDENCE_THRESHOLD,
                  model_name="yolov8s-world.pt", device="cpu"):
         super().__init__(prompts, class_mapping, confidence_threshold)
+        import os
         import time
 
         self._time = time
@@ -1011,8 +1108,16 @@ class BboxFillSegmenter(SemanticSegmenter):
             to_fn(self._device)
         self._model.set_classes(list(self.prompts))
         self._last_stats["backend"] = "bbox_fill:%s" % self._model_name
+        # [ST09-I S5.7-6] the runtime-reported load paths (frozen-asset
+        # provenance: everything must sit under the install overlay).
+        self._last_stats["model_path"] = os.path.abspath(self._model_name)
         if clip_vendor:
             self._last_stats["clip_vendor"] = clip_vendor
+        self._load_provenance = {
+            key: self._last_stats[key]
+            for key in ("model_path", "clip_vendor")
+            if key in self._last_stats
+        }
 
     def segment(self, rgb_image):
         import numpy as _np
@@ -1035,6 +1140,10 @@ class BboxFillSegmenter(SemanticSegmenter):
             self._instance_map = instance_map
             self._last_stats = {
                 "backend": self._last_stats["backend"],
+                # [ST09-I S5.7-6] load provenance survives per-frame
+                # stats replacement (the runtime-reported paths must
+                # stay visible for overlay isolation checks).
+                **getattr(self, "_load_provenance", {}),
                 "inference_ms": inference_ms,
                 "detection_count": len(detections),
                 "label_counts": counts,
@@ -1344,10 +1453,26 @@ def build_segmenter(config):
             kwargs["sam2_model_type"] = sam2_model_type
         return _finish(cls(prompts, class_mapping, conf, **kwargs))
     except ImportError as exc:
+        # [ST09-I S5.7-6] a configured require_backend means the caller
+        # needs THIS backend: construction failure is a NAMED error,
+        # never a silent stub fallback (the stub would otherwise mask
+        # the real cause, e.g. a user-site dependency gone missing).
+        require = str(config.get("require_backend", "") or "")
+        if require:
+            raise RuntimeError(
+                "SEMANTIC_BACKEND_CONSTRUCTION_FAILED: %s import failed "
+                "(%s); require_backend=%r forbids the stub fallback"
+                % (backend, exc, require)) from exc
         stub = StubSegmenter(prompts, class_mapping, conf)
         stub._last_stats["backend"] = "stub(fallback:%s:%s)" % (backend, exc.name)
         return _finish(stub)
     except Exception as exc:  # noqa: BLE001
+        require = str(config.get("require_backend", "") or "")
+        if require:
+            raise RuntimeError(
+                "SEMANTIC_BACKEND_CONSTRUCTION_FAILED: %s construction "
+                "failed (%r); require_backend=%r forbids the stub "
+                "fallback" % (backend, exc, require)) from exc
         stub = StubSegmenter(prompts, class_mapping, conf)
         stub._last_stats["backend"] = "stub(fallback:%s:%s)" % (backend, type(exc).__name__)
         return _finish(stub)

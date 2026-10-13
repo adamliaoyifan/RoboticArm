@@ -1,0 +1,1 @@
+{"baseline_pass": true, "migration_ready": false, "cases": 50, "failed_cases": [], "errors": [], "pending_interfaces": 6, "evidence": "docs/status/evidence/frame_migration/ST09-20260930-dev/checkers-01/baseline", "exit_code": 0}

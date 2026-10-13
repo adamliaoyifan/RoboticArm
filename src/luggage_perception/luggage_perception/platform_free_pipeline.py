@@ -410,5 +410,30 @@ class PlatformFreeDetector:
             top, support if support_ok else None)
 
 
+def support_service_fields(result):
+    """Named support reason for a DetectLuggage response.
+
+    ``PipelineResult`` has no ``reason`` attribute. A fit that returned an
+    object keeps its reason on ``result.support``. A gate that skipped the
+    fit keeps the reason on ``result.box`` and ``result.support_gate``.
+    Reading ``result.reason`` prints ``n/a`` in both cases.
+    """
+    support = getattr(result, "support", None)
+    box = getattr(result, "box", None)
+    gate = str(getattr(result, "support_gate", "") or "")
+    reason = ""
+    if support is not None:
+        reason = str(getattr(support, "reason", "") or "")
+    if not reason and box is not None:
+        reason = str(getattr(box, "reason", "") or "")
+    if not reason:
+        reason = GATE_SUPPORT_REASONS.get(
+            gate, gate or "DETECT_SUPPORT_UNOBSERVABLE")
+    sides = None
+    if support is not None:
+        sides = round(float(getattr(support, "side_coverage", 0.0)), 3)
+    return {"reason": reason, "side_coverage": sides, "gate": gate}
+
+
 def _workspace_pair(config):
     return (config.workspace_center_xy, config.workspace_half_extents)

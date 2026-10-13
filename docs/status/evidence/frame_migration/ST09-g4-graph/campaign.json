@@ -1,0 +1,105 @@
+{
+ "profile": "sim",
+ "runs": [
+  {
+   "exercise": {
+    "ok": true,
+    "reason_code": "",
+    "resulting_map_revision": 1
+   },
+   "ready": true,
+   "scenario": "healthy-1",
+   "startup_seconds": 1.94,
+   "teardown_within_budget": true
+  },
+  {
+   "exercise": {
+    "ok": true,
+    "reason_code": "",
+    "resulting_map_revision": 1
+   },
+   "ready": true,
+   "scenario": "healthy-2",
+   "startup_seconds": 2.01,
+   "teardown_within_budget": true
+  },
+  {
+   "exercise": {
+    "ok": true,
+    "reason_code": "",
+    "resulting_map_revision": 1
+   },
+   "ready": true,
+   "scenario": "healthy-3",
+   "startup_seconds": 2.08,
+   "teardown_within_budget": true
+  },
+  {
+   "degraded": "PEER_LEASE_EXPIRED",
+   "ready": true,
+   "scenario": "fault-lease_expiry",
+   "teardown_within_budget": true,
+   "v1_call": null,
+   "v2_call": {
+    "code": "PEER_LEASE_EXPIRED",
+    "ok": false
+   }
+  },
+  {
+   "degraded": "PEER_LEASE_EXPIRED",
+   "ready": true,
+   "scenario": "fault-restart",
+   "teardown_within_budget": true,
+   "v1_call": null,
+   "v2_call": {
+    "code": "PEER_LEASE_EXPIRED",
+    "ok": false
+   }
+  },
+  {
+   "degraded": "PEER_LEASE_EXPIRED",
+   "ready": true,
+   "scenario": "fault-v1_bypass",
+   "teardown_within_budget": true,
+   "v1_call": {
+    "message": "PEER_LEASE_EXPIRED: readiness",
+    "ok": false,
+    "reason_code": "PEER_LEASE_EXPIRED"
+   },
+   "v2_call": null
+  },
+  {
+   "degraded": "PEER_RESTART",
+   "ready": true,
+   "scenario": "fault-duplicate_provider",
+   "teardown_within_budget": true,
+   "v1_call": null,
+   "v2_call": {
+    "code": "PEER_RESTART",
+    "ok": false
+   }
+  },
+  {
+   "degraded": "WRONG_OVERLAY",
+   "ready": true,
+   "scenario": "fault-wrong_overlay",
+   "teardown_within_budget": true,
+   "v1_call": null,
+   "v2_call": {
+    "code": "WRONG_OVERLAY",
+    "ok": false
+   }
+  },
+  {
+   "degraded": "STALE_ATLAS",
+   "ready": true,
+   "scenario": "fault-stale_atlas",
+   "teardown_within_budget": true,
+   "v1_call": null,
+   "v2_call": {
+    "code": "STALE_ATLAS",
+    "ok": false
+   }
+  }
+ ]
+}

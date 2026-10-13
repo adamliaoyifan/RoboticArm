@@ -1,0 +1,32 @@
+# [ST09-I S5.7-4] Observation motion through the certified pipeline.
+# The driver declares observation INTENT (world-frame camera poses the
+# ObservationPolicy selected); RouteProducer owns the camera->TCP
+# conversion, MoveIt edge building, and certification. The response is
+# a COMPLETE certified joint_path — never a pose spec.
+string request_id
+string scene_revision
+# Live joint state at request time (start-state anchor + gate).
+float64[] current_joint_state
+# World-frame camera poses (ObservationPolicy output, <= 2 per request).
+geometry_msgs/Pose[] observation_targets
+# The caller's latest authoritative map revision (GetCargoMapStats).
+uint64 latest_map_revision
+# Which observation stage this is (aim / lookback / ...) — evidence only.
+string purpose
+---
+bool success
+string reason_code
+string detail
+luggage_msgs/MotionSegmentV2[] motion_segments
+# Digest of the certified route (verify_selected re-checks by this).
+string route_digest
+string certification_id
+# Map revision the admission + certification ran against.
+uint64 validated_map_revision
+# Per-leg trajectory digests in execution order (certify A, execute A).
+string[] leg_digests
+# Certified load-state per leg ("unloaded" for observation routes),
+# aligned with leg_digests.
+string[] leg_load_states
+# [ST09-I S5.7-6] certification wall time of the returned route (ms).
+float64 certify_ms

@@ -34,11 +34,13 @@ def transform_pose(record, transform):
     stamp_ns=null explicitly means a static transform bound to scene_revision.
     This function changes frame only, never the represented physical point.
     """
+    if not isinstance(transform, dict):
+        raise ContractError("INVALID_RECORD", "transform", "object", transform)
     validate_envelope(record, transform.get("scene_revision"))
     require_equal(record, "kind", "pose", "RECORD_KIND_MISMATCH")
     source = transform.get("source_frame")
     target = transform.get("target_frame")
-    if not isinstance(source, str) or not source or not isinstance(target, str) or not target:
+    if not isinstance(source, str) or not source.strip() or not isinstance(target, str) or not target.strip():
         raise ContractError("MISSING_IDENTITY", "transform_frames", "explicit source/target", [source, target])
     require_equal(record, "frame_id", source, "FRAME_CONTRACT_MISMATCH")
     if "stamp_ns" not in transform:
@@ -64,6 +66,8 @@ def box_to_tool_target(box, box_from_tool):
     The caller selects a directed box representative/grasp branch beforehand.
     This operation does not fold tool yaw modulo π or select an IK branch.
     """
+    if not isinstance(box_from_tool, dict):
+        raise ContractError("INVALID_RECORD", "grasp_transform", "object", box_from_tool)
     validate_envelope(box, box_from_tool.get("scene_revision"))
     require_equal(box, "kind", "pose", "RECORD_KIND_MISMATCH")
     require_equal(box, "reference", "box_center", "POSE_REFERENCE_MISMATCH")
@@ -80,3 +84,21 @@ def box_to_tool_target(box, box_from_tool):
     out["position"] = [position[i] + offset[i] for i in range(3)]
     out["quaternion_xyzw"] = list(quaternion_product(orientation, tool_orientation))
     return out
+
+
+def rotate_covariance3(quaternion_xyzw, covariance):
+    """Rotate a finite symmetric 3x3 covariance (row-major) as R C R^T.
+
+    Translation never applies to vectors/covariances. This transports a
+    positional/vector covariance, not a 6D pose covariance or uncertainty model.
+    The caller owns the statistical validity of the supplied covariance.
+    """
+    values = vector(covariance, 9, "covariance")
+    if any(abs(values[3*i+j] - values[3*j+i]) > 1e-9 for i in range(3) for j in range(3)):
+        raise ContractError("INVALID_COVARIANCE", "covariance", "symmetric 3x3", covariance)
+    columns = [rotate_vector(quaternion_xyzw, axis)
+               for axis in ((1, 0, 0), (0, 1, 0), (0, 0, 1))]
+    rotation = [[columns[j][i] for j in range(3)] for i in range(3)]
+    return [sum(rotation[i][a] * values[3*a+b] * rotation[j][b]
+                for a in range(3) for b in range(3))
+            for i in range(3) for j in range(3)]

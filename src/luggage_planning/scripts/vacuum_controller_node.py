@@ -31,7 +31,7 @@ from std_msgs.msg import Bool, String
 from std_srvs.srv import SetBool
 
 from luggage_msgs.msg import VacuumState
-from luggage_msgs.srv import GetCurrentBox, VacuumCommand
+from luggage_msgs.srv import GetCurrentBox, VacuumCommand, VacuumCommandV2
 
 from luggage_planning.current_box_payload import (
     identity_from_current_box_payload,
@@ -66,10 +66,18 @@ class GzSetPoseClient(object):
             SetEntityPose, "/world/%s/set_pose" % world,
             callback_group=group)
         self._ready = False
+        self._probed = False
 
     def set_model_pose(self, model_name, xyz, quat, timeout_sec=0.05):
         if not self._ready:
-            if not self._client.wait_for_service(timeout_sec=5.0):
+            # First probe gets a real budget. A stack with no gz (the
+            # I-suite mock) must not block the 30 Hz follow timer for
+            # another 5 s every tick: that starves /vacuum/state
+            # republishing and the selector's vacuum freshness window
+            # then reads STALE on a perfectly healthy latch.
+            budget = 5.0 if not self._probed else 0.0
+            if not self._client.wait_for_service(timeout_sec=budget):
+                self._probed = True
                 return False, "set_pose service unavailable"
             self._ready = True
         elif not self._client.service_is_ready():
@@ -93,6 +101,29 @@ class GzSetPoseClient(object):
         if response is None or not response.success:
             return False, "set_pose rejected"
         return True, ""
+
+
+class _CarryFilterClient(object):
+    """Ask the spawner to respawn the carried box with the p04 mask excluded."""
+
+    def __init__(self, node, group):
+        self._client = node.create_client(
+            SetBool, "/pickup_box_spawner/set_p04_carry_filter",
+            callback_group=group)
+
+    def __call__(self, enabled):
+        if not self._client.wait_for_service(timeout_sec=5.0):
+            return False, "set_p04_carry_filter unavailable"
+        event = threading.Event()
+        future = self._client.call_async(SetBool.Request(data=bool(enabled)))
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout=15.0):
+            return False, "set_p04_carry_filter timeout"
+        response = future.result()
+        if response is None or not response.success:
+            message = "" if response is None else response.message
+            return False, message or "set_p04_carry_filter rejected"
+        return True, response.message
 
 
 class ExecutorVacuumIo(object):
@@ -248,10 +279,12 @@ class VacuumControllerNode(Node):
             scene = PlanningSceneClient(self, callback_group=group)
             gz_client = GzSetPoseClient(
                 self, group, str(self.get_parameter("world").value))
+            carry_filter = _CarryFilterClient(self, group)
             self._backend = SimVacuumBackend(
                 gz_client, scene,
                 follow_rate_hz=float(
-                    self.get_parameter("follow_rate_hz").value))
+                    self.get_parameter("follow_rate_hz").value),
+                carry_filter=carry_filter)
 
         self._vacuum_on = False
         self._last_fail_reason = ""
@@ -260,6 +293,29 @@ class VacuumControllerNode(Node):
         self.create_service(
             VacuumCommand, "/vacuum/command", self._handle_command,
             callback_group=group)
+        self.create_service(
+            VacuumCommandV2, "/vacuum/command_v2", self._handle_command_v2,
+            callback_group=group)
+        # ST09 F21: identity heartbeat + peer readiness. Attachment effects
+        # are admitted per request; refusal preserves backend state (a
+        # carried box is never detached by a gate failure). Off = legacy.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._frame_runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._frame_runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "backend": str(self.get_parameter("backend").value or ""),
+                    "panel_frame": str(
+                        self.get_parameter("panel_frame").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_planning"])
 
         follow_period = 1.0 / max(1.0, float(
             self.get_parameter("follow_rate_hz").value))
@@ -340,8 +396,92 @@ class VacuumControllerNode(Node):
 
     # ------------------------------------------------------------------
 
+    def _handle_command_v2(self, request, response):
+        from luggage_planning.attachment_frame_adapters import (
+            bound_attachment_scene_revision, handle_vacuum_command_v2)
+        from luggage_planning.atlas_runtime import compute_scene_tf_hash
+        from luggage_description.scene_tf_config_utils import resolve_scene_tf_config_path
+        if getattr(self, "_frame_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._frame_runtime.admit_request(
+                    str(getattr(request, "request_id", "") or ""),
+                    endpoint="/vacuum/command_v2")
+                # Attachment is the effect: authorize before the backend call.
+                self._frame_runtime.authorize_effect(
+                    admission, str(getattr(request, "request_id", "") or ""))
+            except ContractError as error:
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
+        # Bind the freeze to the launch-measured identity when the v2
+        # runtime is on. Hashing the default scene file here would stamp
+        # the tool with scene_tf.yaml.example (the atlas example
+        # scene_revision) while the driver stamps the detection with the
+        # live deploy scene.
+        runtime = getattr(self, "_frame_runtime", None)
+        identity = None if runtime is None else runtime.identity
+        fallback = ""
+        if identity is None:
+            path = resolve_scene_tf_config_path(None)
+            fallback = compute_scene_tf_hash(path)
+        revision = bound_attachment_scene_revision(identity, fallback)
+        generation = int(self._identity[1] or 0)
+
+        def resolve_tool(stamp_ns):
+            # Enable and disable both use the live TCP (stamp_ns is None).
+            # Attach must freeze contact, not the detection-stamp observe
+            # pose. Neither path reads the physics ground truth.
+            try:
+                stamp = rclpy.time.Time() if stamp_ns is None else rclpy.time.Time(nanoseconds=int(stamp_ns))
+                transform = self._tf_buffer.lookup_transform(
+                    WORLD, self._panel_frame, stamp)
+            except (tf2_ros.LookupException, tf2_ros.ConnectivityException,
+                    tf2_ros.ExtrapolationException):
+                return None
+            translation = transform.transform.translation
+            rotation = transform.transform.rotation
+            return {
+                "contract_version": 2,
+                "kind": "pose",
+                "frame_id": "world",
+                "length_unit": "m",
+                "time_basis": "acquisition",
+                "scene_revision": revision,
+                "request_id": str(request.request_id),
+                "stamp_ns": (int(transform.header.stamp.sec) * 10**9
+                             + int(transform.header.stamp.nanosec)),
+                "reference": "suction_contact_frame",
+                "orientation_semantics": "tool_quaternion",
+                "position": [translation.x, translation.y, translation.z],
+                "quaternion_xyzw": [rotation.x, rotation.y, rotation.z, rotation.w],
+            }
+
+        response = handle_vacuum_command_v2(
+            request, response, scene_revision=revision, generation=generation,
+            resolve_tool=resolve_tool, backend=self._backend)
+        # v1 publishes /vacuum/state before returning. The pick driver treats
+        # that latched state as the attach proof, so the v2 path must too.
+        self._vacuum_on = bool(request.enable and response.success)
+        self._last_fail_reason = "" if response.success else str(response.message or "")
+        self._publish_state()
+        self._publish_event(
+            "attach" if request.enable else "detach",
+            bool(response.success), str(response.message or ""))
+        return response
+
     def _handle_command(self, request, response):
         enable = bool(request.enable)
+        if getattr(self, "_frame_runtime", None) is not None:
+            # v1 attachment cannot bypass profile admission; a refusal
+            # leaves backend state (and any carried box) untouched.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._frame_runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         if not enable:
             ok, message = self._backend.detach({})
             self._vacuum_on = False

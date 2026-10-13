@@ -1,0 +1,98 @@
+{
+  "boxes": [
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-1",
+      "map_revision_after_release": 6,
+      "map_revision_at_select": 5,
+      "near_y": -0.15,
+      "path_hash": "67829af2e0a5dd5be2ec88556c0ffadcc9c037d4a90b77992bdff4ad7f1fc59b",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 399,
+      "slot_xy": [
+        -0.16999999999999993,
+        -0.2599999999999999
+      ]
+    },
+    {
+      "attach_fail_reason": "",
+      "attached_at_select": [
+        {
+          "frame": "suction_contact_frame",
+          "id": "pickup_box",
+          "link": "suction_contact_frame",
+          "pose": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "touch": [
+            "elfin_link5",
+            "elfin_link6",
+            "suction_contact_frame",
+            "suction_panel"
+          ]
+        }
+      ],
+      "box_id": "loop-box-2",
+      "map_revision_after_release": 8,
+      "map_revision_at_select": 7,
+      "near_y": 0.2,
+      "path_hash": "7ca11ee7c9b6fb825ec6febdeba86d6e6f190c4f9bbe4102bc8e6fbad14555e9",
+      "pick_legs": [
+        "pre_grasp",
+        "approach",
+        "attach",
+        "pick_retreat"
+      ],
+      "route_legs": [
+        "transit",
+        "traverse",
+        "traverse",
+        "insert",
+        "descend",
+        "retreat",
+        "return"
+      ],
+      "slot_index": 399,
+      "slot_xy": [
+        -0.42,
+        0.2400000000000001
+      ]
+    }
+  ],
+  "floor_z": 0.53,
+  "scene_revision": "b40c85ae6eb2eabc47d7da2ffb23b72c"
+}

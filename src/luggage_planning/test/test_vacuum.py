@@ -184,14 +184,39 @@ class TestSimBackend(unittest.TestCase):
         self.assertIn("VACUUM_BACKEND_ERROR", message)
         self.assertFalse(backend.is_attached())
 
-    def test_detach_failure_keeps_attached(self):
+    def test_detach_unlocks_follow_before_scene(self):
+        gz, scene = FakeGzClient(), FakeScene()
+        backend = SimVacuumBackend(gz, scene)
+        self.assertTrue(backend.attach(self._context())[0])
+        seen = []
+
+        def observing_detach(model):
+            seen.append(backend.is_attached())
+            n_before = len(gz.poses)
+            ok, _ = backend.follow_step(
+                (PANEL_XYZ[0] + 1.0, PANEL_XYZ[1], PANEL_XYZ[2]), PANEL_QUAT)
+            seen.append((ok, len(gz.poses) - n_before))
+            return FakeScene.detach_and_remove(scene, model)
+
+        scene.detach_and_remove = observing_detach
+        ok, _ = backend.detach({})
+        self.assertTrue(ok)
+        self.assertFalse(backend.is_attached())
+        self.assertEqual(seen[0], False)
+        self.assertEqual(seen[1], (True, 0))
+
+    def test_detach_scene_failure_still_unlocks_follow(self):
         gz, scene = FakeGzClient(), FakeScene(fail_detach=True)
         backend = SimVacuumBackend(gz, scene)
         self.assertTrue(backend.attach(self._context())[0])
+        n_before = len(gz.poses)
         ok, message = backend.detach({})
         self.assertFalse(ok)
         self.assertIn("VACUUM_BACKEND_ERROR", message)
-        self.assertTrue(backend.is_attached())
+        self.assertFalse(backend.is_attached())
+        backend.follow_step(
+            (PANEL_XYZ[0] + 1.0, PANEL_XYZ[1], PANEL_XYZ[2]), PANEL_QUAT)
+        self.assertEqual(len(gz.poses), n_before)
 
     def test_offset_roundtrip_identity(self):
         offset = relative_offset(PANEL_XYZ, PANEL_QUAT, BOX_XYZ, BOX_QUAT)
@@ -374,6 +399,51 @@ class TestPlanningSceneMessages(unittest.TestCase):
         self.assertEqual(
             list(obj.meshes[0].triangles[0].vertex_indices), [0, 1, 2])
 
+    def test_stl_roundtrip_without_trimesh(self):
+        import struct
+        import tempfile
+        pytest.importorskip("moveit_msgs")
+        from luggage_planning.planning_scene_client import (
+            load_stl_mesh_msg,
+            static_sync_failure_is_permanent,
+        )
+        tri = struct.pack(
+            "<12fH",
+            0.0, 0.0, 1.0,
+            0.0, 0.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 1.0, 0.0,
+            0)
+        binary = b"\0" * 80 + struct.pack("<I", 1) + tri
+        ascii_stl = (
+            "solid t\n"
+            "  facet normal 0 0 1\n"
+            "    outer loop\n"
+            "      vertex 0 0 0\n"
+            "      vertex 1 0 0\n"
+            "      vertex 0 1 0\n"
+            "    endloop\n"
+            "  endfacet\n"
+            "endsolid t\n")
+        with tempfile.TemporaryDirectory() as tmp:
+            binary_path = tmp + "/one.bin.stl"
+            ascii_path = tmp + "/one.ascii.stl"
+            with open(binary_path, "wb") as handle:
+                handle.write(binary)
+            with open(ascii_path, "w", encoding="utf-8") as handle:
+                handle.write(ascii_stl)
+            loaded = load_stl_mesh_msg(binary_path)
+            self.assertEqual(len(loaded.triangles), 1)
+            self.assertEqual(
+                list(loaded.triangles[0].vertex_indices), [0, 1, 2])
+            self.assertAlmostEqual(loaded.vertices[1].x, 1.0)
+            ascii_loaded = load_stl_mesh_msg(ascii_path)
+            self.assertEqual(len(ascii_loaded.triangles), 1)
+        self.assertTrue(static_sync_failure_is_permanent(
+            "stl load failed: No module named 'trimesh'"))
+        self.assertFalse(static_sync_failure_is_permanent(
+            "container mesh apply: planning scene not ready"))
+
     def test_acm_pair_roundtrip(self):
         pytest.importorskip("moveit_msgs")
         from moveit_msgs.msg import AllowedCollisionMatrix
@@ -398,10 +468,32 @@ class TestPlanningSceneMessages(unittest.TestCase):
         )
 
         class _Future(object):
+            def __init__(self, request):
+                self._request = request
+
             def add_done_callback(self, cb):
                 cb(self)
 
             def result(self):
+                from moveit_msgs.srv import GetPlanningScene
+
+                if isinstance(self._request, GetPlanningScene.Request):
+                    from moveit_msgs.msg import (
+                        AllowedCollisionMatrix, PlanningScene)
+                    from luggage_planning.planning_scene_client import (
+                        set_acm_pair,
+                    )
+
+                    response = GetPlanningScene.Response()
+                    response.scene = PlanningScene()
+                    # every GET reports the panel<->box pairs allowed so
+                    # the ACM verify passes immediately
+                    acm = AllowedCollisionMatrix()
+                    for link in ("suction_panel", "suction_contact_frame",
+                                 "elfin_link5", "elfin_link6"):
+                        set_acm_pair(acm, link, "pickup_box", True)
+                    response.scene.allowed_collision_matrix = acm
+                    return response
                 response = ApplyPlanningScene.Response()
                 response.success = True
                 return response
@@ -414,9 +506,12 @@ class TestPlanningSceneMessages(unittest.TestCase):
                 del timeout_sec
                 return True
 
+            def service_is_ready(self):
+                return True
+
             def call_async(self, request):
                 self.requests.append(request)
-                return _Future()
+                return _Future(request)
 
         class _FakeNode(object):
             def create_client(self, srv, name, **kwargs):
@@ -426,15 +521,27 @@ class TestPlanningSceneMessages(unittest.TestCase):
         client = _FakeClient()
         scene_client = PlanningSceneClient(_FakeNode())
         scene_client._client = client
+        scene_client._get = client
         ok, _ = scene_client.add_pickup_box(BOX_XYZ, BOX_QUAT, BOX_SIZE)
         self.assertTrue(ok)
-        self.assertEqual(len(client.requests), 1)
-        self.assertIsInstance(client.requests[0], ApplyPlanningScene.Request)
-        self.assertTrue(client.requests[0].scene.is_diff)
+        # [ST09-I] adding the pickup box also allows the panel assembly
+        # to touch it while it is still a world object (the ROS 1
+        # scene_manager seeded the same pairs): apply #1 is the box add,
+        # the later apply is the ACM diff.
+        applies = [request for request in client.requests
+                   if isinstance(request, ApplyPlanningScene.Request)]
+        self.assertGreaterEqual(len(applies), 2)
+        self.assertIsInstance(applies[0], ApplyPlanningScene.Request)
+        self.assertTrue(applies[0].scene.is_diff)
         add = build_add_scene("pickup_box", BOX_XYZ, BOX_QUAT, BOX_SIZE)
         self.assertEqual(
-            client.requests[0].scene.world.collision_objects[0].id,
+            applies[0].scene.world.collision_objects[0].id,
             add.world.collision_objects[0].id)
+        acm_applies = [request for request in applies[1:]
+                       if "pickup_box" in
+                       list(request.scene.allowed_collision_matrix
+                            .entry_names)]
+        self.assertTrue(acm_applies)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from luggage_description.container_geometry import (
     contains_point,
     contains_point_through_aperture,
     normalize_descriptor,
+    oriented_box_corners,
 )
 
 PLACE_PATH_INFEASIBLE = "PLACE_PATH_INFEASIBLE"
@@ -70,6 +71,11 @@ DEFAULT_WEIGHTS = {
     # Wrist + camera stack above suction in tool-down; MoveIt still owns
     # mesh-vs-ceiling, this only keeps the geometric hover under the lid.
     "arm_overhead_m": 0.20,
+    # Corridor variant: horizontal carry height for the enter-align-descend
+    # decomposition. 1.50 keeps the measured wrist/elbow band ~99 mm under
+    # the lid at door-crossing depth (2026-09-29 offline walk), while the
+    # single-diagonal variants ride the rim (-51 mm).
+    "corridor_tool_z": 1.50,
 }
 
 OFFSET_DELTAS = (0.10, 0.20, -0.10, -0.20)
@@ -98,6 +104,110 @@ def stamp_geometry_descriptor(surface, hull=None):
     if not out.get("geometry_hash"):
         out["geometry_hash"] = desc["geometry_hash"]
     return out
+
+
+def _legacy_view_of_surface_contract(record, inner_size,
+                                     geometry_descriptor):
+    """ST04 F06: convert one v2 surface record into the legacy dict view.
+
+    The v2 record is authoritative for grid, floor and ceiling
+    (container-origin datum, ``None`` unknowns). The consumer supplies
+    ``inner_size`` as its declared geometry identity; a grid whose span
+    disagrees with that identity by more than one cell is refused. Output
+    keeps the legacy floor-relative ``height`` vocabulary so every existing
+    consumer below this boundary is unchanged in this stage.
+    """
+    required = ("surface_z_container", "state", "confidence",
+                "floor_z_container", "ceiling_z_container",
+                "origin_xy_container", "resolution_m", "map_revision",
+                "geometry_hash")
+    for key in required:
+        if key not in record:
+            raise OccupancyMismatch(
+                "%s: v2 surface missing %s" % (PLACE_PATH_INFEASIBLE, key))
+    if str(record.get("height_datum")) != "container_origin":
+        raise OccupancyMismatch(
+            "%s: v2 surface height_datum %r is not container_origin"
+            % (PLACE_PATH_INFEASIBLE, record.get("height_datum")))
+    if str(record.get("frame_id")) != "container_link":
+        raise OccupancyMismatch(
+            "%s: v2 surface frame %r is not container_link"
+            % (PLACE_PATH_INFEASIBLE, record.get("frame_id")))
+    if not inner_size or not isinstance(geometry_descriptor, dict) \
+            or not geometry_descriptor:
+        raise OccupancyMismatch(
+            "%s: v2 surface ingest requires consumer inner_size and "
+            "geometry_descriptor" % PLACE_PATH_INFEASIBLE)
+    resolution = float(record["resolution_m"])
+    floor = float(record["floor_z_container"])
+    ceiling = float(record["ceiling_z_container"])
+    inner_h = ceiling - floor
+    inner = [float(v) for v in inner_size]
+    if abs(inner[2] - inner_h) > 1e-6:
+        raise OccupancyMismatch(
+            "%s: v2 surface inner height %s != consumer %s"
+            % (PLACE_PATH_INFEASIBLE, inner_h, inner[2]))
+    surface_z = record["surface_z_container"]
+    state = record["state"]
+    confidence = record["confidence"]
+    nx = len(surface_z)
+    ny = len(surface_z[0]) if nx else 0
+    if not nx or not ny:
+        raise OccupancyMismatch(
+            "%s: v2 surface grid is empty" % PLACE_PATH_INFEASIBLE)
+    span_x, span_y = nx * resolution, ny * resolution
+    if (abs(span_x - inner[0]) > resolution
+            or abs(span_y - inner[1]) > resolution):
+        raise OccupancyMismatch(
+            "%s: v2 surface span (%s, %s) disagrees with inner_size (%s, %s)"
+            % (PLACE_PATH_INFEASIBLE, span_x, span_y, inner[0], inner[1]))
+    height = []
+    legacy_state = []
+    legacy_confidence = []
+    inverse = {"sensor": "sensor", "verified_geometry": "geometry",
+               "unknown": "none"}
+    for ix in range(nx):
+        h_row, s_row, c_row = [], [], []
+        for iy in range(ny):
+            top = surface_z[ix][iy]
+            cell_state = str(state[ix][iy])
+            source = inverse.get(str(confidence[ix][iy]))
+            if source is None:
+                raise OccupancyMismatch(
+                    "%s: v2 surface confidence %r unknown"
+                    % (PLACE_PATH_INFEASIBLE, confidence[ix][iy]))
+            if top is None:
+                if cell_state != "unknown":
+                    raise OccupancyMismatch(
+                        "%s: v2 surface null top with state %r"
+                        % (PLACE_PATH_INFEASIBLE, cell_state))
+                h_row.append(0.0)
+                s_row.append("unknown")
+                c_row.append("none")
+            else:
+                h_row.append(float(top) - floor)
+                s_row.append(cell_state)
+                c_row.append(source)
+        height.append(h_row)
+        legacy_state.append(s_row)
+        legacy_confidence.append(c_row)
+    return {
+        "frame": "container_local",
+        "map_revision": record["map_revision"],
+        "geometry_hash": str(record["geometry_hash"]),
+        "geometry_descriptor": dict(geometry_descriptor),
+        "resolution": resolution,
+        "nx": nx,
+        "ny": ny,
+        "inner_size": inner,
+        "floor_z": 0.0,
+        "origin_local": [float(v) for v in record["origin_xy_container"]],
+        "center_base": [0.0, 0.0, floor + 0.5 * inner_h],
+        "yaw": 0.0,
+        "height": height,
+        "state": legacy_state,
+        "confidence": legacy_confidence,
+    }
 
 
 def clip01(value):
@@ -239,10 +349,39 @@ class OccupancySnapshot:
     @classmethod
     def from_surface_2d(cls, surface, expected_hash=None,
                         expected_revision=None, inflate_m=0.05,
-                        support_tol=0.05):
+                        support_tol=0.05, inner_size=None,
+                        geometry_descriptor=None):
+        """Build a snapshot from a v2 surface record or a legacy v1 dump.
+
+        ST04 F06: a v2 record (``kind == "surface"``,
+        ``height_datum == "container_origin"``) is the native input —
+        ``inner_size`` is then required from the consumer (declared geometry
+        identity; the record itself is authoritative only for grid, floor
+        and ceiling). Anything else is the **single declared v1 import
+        adapter**: a legacy ``surface_map_2d`` dict with the complete datum
+        field set. A dict with ``height`` but missing datum fields, a
+        foreign ``frame`` label, or neither schema is an OccupancyMismatch —
+        no default datum, no magnitude guessing.
+        """
+        if isinstance(surface, dict) and surface.get("kind") == "surface":
+            surface = _legacy_view_of_surface_contract(
+                surface, inner_size, geometry_descriptor)
         if not isinstance(surface, dict) or "height" not in surface:
             raise OccupancyMismatch(
                 "%s: surface_2d missing height" % PLACE_PATH_INFEASIBLE)
+        # Declared v1 import adapter: the legacy datum fields are required,
+        # and an explicit frame label must be the container-local one.
+        label = surface.get("frame")
+        if label is not None and str(label) != "container_local":
+            raise OccupancyMismatch(
+                "%s: surface_2d frame %r is not container_local"
+                % (PLACE_PATH_INFEASIBLE, label))
+        for datum in ("floor_z", "center_base", "inner_size", "resolution",
+                      "nx", "ny"):
+            if datum not in surface:
+                raise OccupancyMismatch(
+                    "%s: surface_2d missing datum field %s"
+                    % (PLACE_PATH_INFEASIBLE, datum))
         raw = surface.get("geometry_descriptor")
         if not isinstance(raw, dict) or not raw:
             raise OccupancyMismatch(
@@ -640,6 +779,18 @@ def _sample_polyline(points, step):
     return samples
 
 
+def _payload_fully_before_door(hull, center, size, yaw=0.0):
+    """True when every payload corner is still west of the -X door plane.
+
+    Joint-space transit from pick interpolates through free space that is
+    not the door YZ shadow; those samples are not ``outside_hull``.
+    """
+    limit = -float(hull.half_x)
+    return all(
+        float(corner[0]) < limit - 1e-9
+        for corner in oriented_box_corners(center, size, yaw))
+
+
 def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
                    collision_pad=None, exempt=None):
     """Sweep the hanging payload AABB (+ arm radius) along ``points``.
@@ -651,7 +802,10 @@ def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
     inside the seven-face hull; leaving it is ``outside_hull``, not cargo
     occupancy. The -X door is exempt: an insertion path enters through it, so
     the payload straddles that face by construction and only the closed faces
-    can reject it.
+    can reject it. Samples whose payload still sits fully in front of the
+    door plane (every corner ``x < -half_x``) skip the hull: that is free
+    space west of the opening, including a joint-space transit arc from
+    pick that is not yet in the door YZ shadow (rehearsal-26).
 
     ``exempt`` is a list of grid-local landing-footprint AABBs
     (``exempt_footprint_locals``): cargo cells inside them do not collide —
@@ -671,11 +825,13 @@ def sweep_polyline(snapshot, points, payload_wdh, yaw=0.0, arm_radius=0.08,
     for sample in samples:
         if hull is not None:
             center = [sample[0], sample[1], sample[2] - 0.5 * height]
-            if not contains_oriented_box_through_aperture(
-                    hull, center, [width, depth, height], yaw=yaw):
-                return SweepResult(
-                    True, 0.0, None, 0.0, len(samples),
-                    reason="outside_hull")
+            size = [width, depth, height]
+            if not _payload_fully_before_door(hull, center, size, yaw):
+                if not contains_oriented_box_through_aperture(
+                        hull, center, size, yaw=yaw):
+                    return SweepResult(
+                        True, 0.0, None, 0.0, len(samples),
+                        reason="outside_hull")
         payload_bottom = sample[2] - height
         payload_top = sample[2]
         for ix, iy, local_fp in _footprint_cells(
@@ -717,11 +873,129 @@ def _line_cells(snapshot, a, b):
     return cells
 
 
+def box_center_polyline(tcp_points, offset):
+    """TCP samples minus the grasp offset already expressed in this frame."""
+    if offset is None:
+        return [tuple(float(v) for v in point) for point in tcp_points]
+    ox, oy, oz = (float(v) for v in offset)
+    return [(point[0] - ox, point[1] - oy, point[2] - oz) for point in tcp_points]
+
+
+def occupancy_polyline(tcp_points, offset, payload_height):
+    """Box-top samples centered on the box, not on an off-center TCP.
+
+    The sweep hangs the payload in ``[z - height, z]``. ``z`` is the box top,
+    so a lateral grasp offset does not move the footprint.
+    """
+    if offset is None:
+        return [tuple(float(v) for v in point) for point in tcp_points]
+    centers = box_center_polyline(tcp_points, offset)
+    lift = 0.5 * float(payload_height)
+    return [(point[0], point[1], point[2] + lift) for point in centers]
+
+
+def _cross_extent(width, depth, yaw, along, pad):
+    """Payload width perpendicular to ``along``, including the radial pad."""
+    px, py = -along[1], along[0]
+    c, s = math.cos(float(yaw)), math.sin(float(yaw))
+    hw = 0.5 * float(width) + float(pad)
+    hd = 0.5 * float(depth) + float(pad)
+    projections = []
+    for sx in (-hw, hw):
+        for sy in (-hd, hd):
+            x = c * sx - s * sy
+            y = s * sx + c * sy
+            projections.append(x * px + y * py)
+    return max(projections) - min(projections)
+
+
+def _full_height_hits(snapshot, points, payload_wdh, yaw, arm_radius):
+    width, depth, _height = [float(v) for v in payload_wdh]
+    if width <= 1e-6 or depth <= 1e-6:
+        return []
+    inner_h = float(snapshot.inner_size[2])
+    hits = []
+    seen = set()
+    for sample in _sample_polyline(points, snapshot.resolution):
+        for ix, iy, local_fp in _footprint_cells(
+                snapshot, sample, width, depth, yaw, arm_radius):
+            if (ix, iy) in seen or not snapshot.obstacle[ix][iy]:
+                continue
+            dist = _aabb_distance(local_fp, snapshot.cell_aabb_xy(ix, iy))
+            if dist > 1e-6:
+                continue
+            if float(snapshot.column_top[ix][iy]) + 1e-6 < inner_h:
+                continue
+            seen.add((ix, iy))
+            hits.append((ix, iy))
+    return hits
+
+
+def _gap_center(snapshot, hits, along, extent):
+    """Center of the free run nearest the path, or None when none is wide enough."""
+    if not hits:
+        return None
+    inner_h = float(snapshot.inner_size[2])
+    along_x = abs(along[0]) >= abs(along[1])
+    if along_x:
+        wall = max(set(ix for ix, _iy in hits),
+                   key=lambda ix: sum(1 for a, _b in hits if a == ix))
+        count = snapshot.ny
+
+        def blocked(index):
+            return (snapshot.obstacle[wall][index]
+                    and float(snapshot.column_top[wall][index]) + 1e-6 >= inner_h)
+
+        def center(start, stop):
+            first = snapshot.cell_center_map(wall, start)
+            last = snapshot.cell_center_map(wall, stop - 1)
+            return ((first[0] + last[0]) * 0.5, (first[1] + last[1]) * 0.5)
+    else:
+        wall = max(set(iy for _ix, iy in hits),
+                   key=lambda iy: sum(1 for _a, b in hits if b == iy))
+        count = snapshot.nx
+
+        def blocked(index):
+            return (snapshot.obstacle[index][wall]
+                    and float(snapshot.column_top[index][wall]) + 1e-6 >= inner_h)
+
+        def center(start, stop):
+            first = snapshot.cell_center_map(start, wall)
+            last = snapshot.cell_center_map(stop - 1, wall)
+            return ((first[0] + last[0]) * 0.5, (first[1] + last[1]) * 0.5)
+
+    runs = []
+    start = None
+    for index in range(count + 1):
+        free = index < count and not blocked(index)
+        if free and start is None:
+            start = index
+        elif not free and start is not None:
+            runs.append((start, index))
+            start = None
+    if not runs:
+        return None
+    best = None
+    best_dist = None
+    anchor = snapshot.cell_center_map(hits[0][0], hits[0][1])
+    for start, stop in runs:
+        width = (stop - start) * float(snapshot.resolution)
+        if width + 1e-9 < float(extent):
+            continue
+        xy = center(start, stop)
+        dist = math.hypot(xy[0] - anchor[0], xy[1] - anchor[1])
+        if best_dist is None or dist < best_dist:
+            best_dist = dist
+            best = xy
+    return best
+
+
 def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
                            inner_h=None, max_candidates=4, payload_height=0.0,
                            payload_wdh=None, yaw=0.0, arm_radius=None,
                            carry_margin=None, collision_pad=None,
-                           arm_overhead=None):
+                           arm_overhead=None, corridor_tool_z=None,
+                           grasp_offset=None):
     """Return at least two geometric variants whenever possible.
 
     ``portal`` / ``target`` are map-frame XYZ (suction frame). ``target`` is
@@ -774,6 +1048,19 @@ def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
         hi_dest = (dest[0], dest[1], max(dest[2], headroom))
         if abs(hi_dest[2] - dest[2]) > 1e-4:
             variants.append(PathVariant("clear_headroom", [hi_entry, hi_dest]))
+
+    # Corridor: enter-inside at a fixed horizontal carry height, translate
+    # above the slot, then descend vertically. Axis-aligned legs keep the
+    # arm band off the lid by construction; the single-diagonal families
+    # ride the rim at door-crossing depth (2026-09-29 box3 evidence).
+    cz = float(_weight("corridor_tool_z", corridor_tool_z))
+    if snapshot is not None:
+        cz = min(max(cz, need), suction_max)
+    cz = max(cz, dest[2])
+    inset = 0.15
+    inside = (portal[0] + along[0] * inset, portal[1] + along[1] * inset, cz)
+    above = (dest[0], dest[1], cz)
+    variants.append(PathVariant("corridor", [inside, above, dest]))
 
     mid = (
         0.5 * (portal[0] + dest[0]),
@@ -830,7 +1117,33 @@ def generate_path_variants(portal, target, snapshot=None, opening_tangent=None,
                 chosen.append(variant)
             if len(chosen) >= 2:
                 break
-    return chosen[:cap]
+    chosen = chosen[:cap]
+    if snapshot is not None and wdh[0] > 1e-6 and wdh[1] > 1e-6:
+        ox = oy = 0.0
+        if grasp_offset is not None:
+            ox, oy = float(grasp_offset[0]), float(grasp_offset[1])
+        occ_direct = [(portal[0] - ox, portal[1] - oy, portal[2]),
+                      (target[0] - ox, target[1] - oy, target[2])]
+        hits = _full_height_hits(snapshot, occ_direct, wdh, yaw, radius)
+        extent = _cross_extent(wdh[0], wdh[1], yaw, along, radius)
+        center = _gap_center(snapshot, hits, along, extent)
+        if center is not None:
+            via = (center[0] + ox, center[1] + oy, dest[2])
+            if abs(along[0]) >= abs(along[1]):
+                side = (entry[0], via[1], dest[2])
+                step = math.copysign(
+                    0.5 * float(wdh[0]) + radius + snapshot.resolution,
+                    (dest[0] - via[0]) or 1.0)
+                past = (via[0] + step, via[1], dest[2])
+            else:
+                side = (via[0], entry[1], dest[2])
+                step = math.copysign(
+                    0.5 * float(wdh[1]) + radius + snapshot.resolution,
+                    (dest[1] - via[1]) or 1.0)
+                past = (via[0], via[1] + step, dest[2])
+            chosen.append(PathVariant(
+                "gap_detour", [entry, side, via, past, dest]))
+    return chosen
 
 
 def path_length(waypoints):

@@ -53,9 +53,20 @@ from rclpy.qos import (
 )
 
 from geometry_msgs.msg import Point, Pose, Quaternion
-from luggage_msgs.msg import DetectedLuggage, DetectionFrame, YoloDetections
+from luggage_msgs.msg import (
+    DetectedLuggage, DetectionFrame, PoseContractV2, YoloDetections,
+)
 from luggage_msgs.srv import DetectLuggage
 from luggage_perception import ros_message_adapters as adapters
+from luggage_perception.frame_boundary_records import (
+    contact_boundary, detection_boundary,
+)
+from luggage_perception.frame_message_adapters import (
+    contact_to_message, detection_to_message,
+)
+from luggage_description.frame_diagnostics import (
+    BoundaryContext, BoundaryContractError,
+)
 from sensor_msgs.msg import CameraInfo, Image, PointCloud2
 from std_msgs.msg import Header
 from std_msgs.msg import String
@@ -80,6 +91,7 @@ from luggage_perception.platform_free_pipeline import (
     GATE_SUPPORT_REASONS,
     GeometryStatusGate,
     PlatformFreeDetector,
+    support_service_fields,
 )
 from luggage_perception.top_support_estimator import (
     GEOMETRY_FULL_3D,
@@ -210,6 +222,14 @@ def _transform_points_to_world(tf_buffer, points, source_frame, target_frame,
     return points.dot(rot.T) + trans, None
 
 
+def _detection_frame_size(frame):
+    """WDH stored on this frame, or None when the frame has no PCA box."""
+    box = getattr(frame, "box", None)
+    if box is None or not bool(getattr(frame, "pca_valid", False)):
+        return None
+    return [float(box.width), float(box.depth), float(box.height)]
+
+
 def _fmt_metric(value):
     if isinstance(value, float):
         return "%.3f" % value
@@ -301,6 +321,14 @@ class LuggageDetector(Node):
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("world_frame", "world")
         self.declare_parameter("use_semantic", False)
+        # ST03 F03/F04: v2 boundary emission is enabled only by an explicit
+        # scene revision; without one the node publishes v1 only (v1 topics
+        # and messages stay byte-identical in both modes).
+        self.declare_parameter("frame_scene_revision", "")
+        self.declare_parameter("frame_yaw_fallback_rad", 0.0)
+        self.declare_parameter("detection_v2_topic", "/luggage/detection/luggage_v2")
+        self.declare_parameter(
+            "suction_candidates_v2_topic", "/luggage/suction/candidates_v2")
         # DYNAMIC-SUCTION ST-1: "dynamic" derives the top from the YOLO
         # instance ROI + aligned-depth component (plan design decision A);
         # "legacy" keeps the cargo-cloud RANSAC/PCA path. scene_tf never
@@ -591,6 +619,8 @@ class LuggageDetector(Node):
         self._box_epoch_seen = False
         self._box_id = ""
         self._box_generation = 0
+        self._auth_reads = []
+        self._last_selected_stamp = None
         self._join = ExactStampJoin(
             maxlen=max(1, int(self.get_parameter("join_buffer_maxlen").value)))
         self._frame_window = LockedStampWindow(
@@ -655,10 +685,29 @@ class LuggageDetector(Node):
                 Image, self.get_parameter("instance_mask_topic").value,
                 self._instance_mask_cb, support_qos,
                 callback_group=self._group)
+        # Capture only. Authorization does not read this buffer.
+        self.create_subscription(
+            Image, "/luggage/semantic/mask",
+            self._label_mask_cb, support_qos, callback_group=self._group)
         self._frame_pub = self.create_publisher(
             DetectionFrame,
             self.get_parameter("detection_frame_topic").value,
             stream_qos)
+        # ST03: v2 pose-contract publishers exist only when an explicit
+        # scene revision enables the boundary; a rejected conversion warns
+        # with its diagnostic and never disturbs the v1 stream.
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        self._detection_v2_pub = None
+        self._suction_v2_pub = None
+        if self._frame_scene_revision:
+            self._detection_v2_pub = self.create_publisher(
+                PoseContractV2,
+                self.get_parameter("detection_v2_topic").value, stream_qos)
+            self._suction_v2_pub = self.create_publisher(
+                PoseContractV2,
+                self.get_parameter("suction_candidates_v2_topic").value,
+                stream_qos)
         # Hands the newest parked pair to the estimate worker. Geometry
         # does not run in this timer. Default (mutually exclusive) group
         # so the handoff itself cannot re-enter.
@@ -1176,8 +1225,21 @@ class LuggageDetector(Node):
         image = adapters.image_array_from_msg(msg)
         if image is None:
             return
+        key = stamp_key(msg.header.stamp)
+        rgb = np.array(image, copy=True)
+        if getattr(msg, "encoding", "") == "bgr8":
+            rgb = np.ascontiguousarray(rgb[:, :, ::-1])
         with self._view_lock:
             self._latest_rgb = image
+            if key is None:
+                return
+            store = getattr(self, "_rgb_by_stamp", None)
+            if store is None:
+                store = {}
+                self._rgb_by_stamp = store
+            store[key] = rgb
+            while len(store) > 8:
+                del store[min(store)]
 
     def _on_current_box(self, msg):
         box_id, generation = parse_current_box_payload(msg.data)
@@ -1193,6 +1255,9 @@ class LuggageDetector(Node):
             self._gc_on_epoch()
             self._gc_post_epoch_deadline = time.monotonic() + 0.9
         self._box_generation = generation
+        if epoch_changed:
+            self._auth_reads = []
+            self._last_selected_stamp = None
         self._join.clear()
         self._frame_window.clear()
         with self._raw_lock:
@@ -1387,14 +1452,15 @@ class LuggageDetector(Node):
             self.get_logger().warning(msg)
             self._last_warn_ns = now
 
-    def _pca_source_label(self, n_points):
-        if int(n_points) <= 0:
-            return "empty"
-        stats = self._filter_stats or {}
-        source = str(stats.get("source") or "")
-        if source in ("measure", "hold_track", "empty"):
-            return source
-        return "measure"
+    def _pca_source_label(self, n_points, cloud_msg):
+        """Source of this cloud. ``stats_json`` is not a source.
+
+        The filter writes ``cargo_source`` on the cloud at the acquisition
+        stamp. A missing field fails closed as ``source_unmatched`` so a
+        rate-limited stats snapshot cannot relabel the frame.
+        """
+        found = adapters.source_from_cloud_msg(cloud_msg)
+        return adapters.label_cloud_source(n_points, found)
 
     def _geometry_ok(self):
         """Legacy helper: settled flag for diagnostics (None = absent)."""
@@ -1458,6 +1524,22 @@ class LuggageDetector(Node):
         box = result.box
         top = box.top
         height_valid = bool(result.height_valid)
+        # [ST09-I G2 instrumentation] the support-fit verdict must be
+        # observable from the service boundary: G2 run3 failed
+        # DETECT_FULL_GEOMETRY_REQUIRED with no recorded distinction
+        # between an exact-stamp raw-depth join miss, an unobservable
+        # support, and an unstable side coverage — one physical run was
+        # burned guessing. The response message carries it into the
+        # driver's trial evidence verbatim.
+        service_fields = support_service_fields(result)
+        self._last_support_diag = {
+            "reason": service_fields["reason"],
+            "gate": service_fields["gate"],
+            "side_coverage": service_fields["side_coverage"],
+            "raw_lookup": str(
+                (getattr(self, "_last_raw_lookup", None) or {}).get(
+                    "raw_lookup_status", "n/a")),
+        }
         if height_valid and box.center_xyz is not None:
             center_z = float(box.center_xyz[2])
         else:
@@ -1535,7 +1617,11 @@ class LuggageDetector(Node):
         pts_camera = pts_camera[np.isfinite(pts_camera).all(axis=1)]
         self._timing["read_ms"] = (time.monotonic() - _t0) * 1000.0
         n_points = int(len(pts_camera))
-        source = self._pca_source_label(n_points)
+        source = self._pca_source_label(n_points, cloud_msg)
+        from luggage_perception.semantic_segmenter import (
+            observation_source_for_detections)
+        source = observation_source_for_detections(
+            getattr(yolo_msg, "detections", None), source)
         if n_points <= 0:
             return (empty_cargo_pca_fields(0), None,
                     self._support_fields_empty())
@@ -1684,9 +1770,166 @@ class LuggageDetector(Node):
             msg.box = box
         return msg
 
+    def _label_mask_cb(self, msg):
+        key = stamp_key(msg.header.stamp)
+        if key is None:
+            return
+        with self._raw_lock:
+            buf = getattr(self, "_label_mask_buffer", None)
+            if buf is None:
+                buf = {}
+                self._label_mask_buffer = buf
+            buf[key] = msg
+            while len(buf) > 15:
+                del buf[min(buf)]
+
+    def _instance_positive_pixels(self, key):
+        """Positive instance-mask pixels at ``key``, or None if that stamp
+        has no mask. An all-zero mask is 0, not a missing mask.
+        """
+        with self._raw_lock:
+            msg = self._instance_mask_buffer.get(key)
+        if msg is None:
+            return None
+        arr = adapters.mono16_array_from_msg(msg)
+        if arr is None:
+            return None
+        return int(np.count_nonzero(arr))
+
+    def _capture_store(self):
+        store = getattr(self, "_frame_capture", None)
+        if store is False:
+            return None
+        if store is None:
+            import os
+            root = os.environ.get("ELFIN_AMBIGUITY_CAPTURE")
+            if not root:
+                self._frame_capture = False
+                return None
+            from luggage_perception.ambiguity_capture import FrameCapture
+            store = FrameCapture(root)
+            store.start()
+            self._frame_capture = store
+        return store
+
+    def _capture_consumed(self, yolo_msg, cloud_msg, cloud_key, fields,
+                          n_det, inst_px, ambiguous):
+        """Snapshot this joined frame. Disk I/O is not on this call."""
+        try:
+            cap = self._capture_store()
+            if cap is None or cloud_key is None:
+                return
+            points = int(fields.get("n_cargo_points") or 0)
+            if ambiguous:
+                role = "anomaly"
+            elif points > 0 and (n_det == 1 or int(inst_px or 0) > 0):
+                role = "control"
+            else:
+                return
+            epoch = {
+                "generation": int(getattr(yolo_msg, "generation", 0) or 0),
+                "instance_id": str(
+                    getattr(yolo_msg, "instance_id", "") or self._box_id or ""),
+            }
+            if cap.already_pinned(epoch, role):
+                cap.note_repeat(epoch, role)
+                return
+            components = {
+                "detections": [{
+                    "label": int(det.label),
+                    "prompt": str(det.prompt),
+                    "confidence": float(det.confidence),
+                    "bbox": [int(v) for v in det.bbox],
+                } for det in (getattr(yolo_msg, "detections", None) or [])],
+                "cloud_summary": {
+                    "n_cargo_points": points,
+                    "pca_reason": str(fields.get("pca_reason") or ""),
+                },
+            }
+            missing = {}
+            with self._raw_lock:
+                inst_msg = self._instance_mask_buffer.get(cloud_key)
+                depth_msg = self._raw_buffer.get(cloud_key)
+                label_msg = (getattr(self, "_label_mask_buffer", None) or {}).get(
+                    cloud_key)
+            if inst_msg is None:
+                missing["instance_mask"] = "not_in_buffer_at_consume"
+            else:
+                arr = adapters.mono16_array_from_msg(inst_msg)
+                if arr is None:
+                    missing["instance_mask"] = "decode_failed"
+                else:
+                    components["instance_mask"] = np.array(arr, copy=True)
+            if depth_msg is None:
+                missing["depth"] = "not_in_buffer_at_consume"
+            else:
+                depth = adapters.depth_array_from_msg(depth_msg)
+                if depth is None:
+                    missing["depth"] = "decode_failed"
+                else:
+                    components["depth"] = np.array(depth, copy=True)
+            with self._view_lock:
+                rgb = (getattr(self, "_rgb_by_stamp", None) or {}).get(cloud_key)
+                if rgb is not None:
+                    rgb = np.array(rgb, copy=True)
+            if rgb is None:
+                missing["rgb"] = "not_buffered_at_stamp"
+            else:
+                components["rgb"] = rgb
+            if label_msg is None:
+                missing["label_map"] = "not_in_buffer_at_consume"
+            else:
+                label = adapters.image_array_from_msg(label_msg)
+                if label is None:
+                    missing["label_map"] = "decode_failed"
+                else:
+                    components["label_map"] = np.array(label, copy=True)
+            intr = getattr(self, "_support_intrinsics", None)
+            if intr is None:
+                missing["intrinsics"] = "no_camera_info"
+            else:
+                components["intrinsics"] = {
+                    "fx": float(intr.fx), "fy": float(intr.fy),
+                    "cx": float(intr.cx), "cy": float(intr.cy),
+                    "width": int(intr.width), "height": int(intr.height),
+                }
+            try:
+                from sensor_msgs_py import point_cloud2 as pc2
+                raw = np.array(list(pc2.read_points(
+                    cloud_msg, field_names=("x", "y", "z"), skip_nans=True)))
+                if raw.size:
+                    components["cloud"] = np.stack(
+                        [raw["x"], raw["y"], raw["z"]], 1).astype(np.float32)
+                else:
+                    missing["cloud"] = "empty_cloud"
+            except Exception:
+                missing["cloud"] = "decode_failed"
+            stamp_ns = int(cloud_key[0]) * 1000000000 + int(cloud_key[1])
+            cap.consume(
+                stamp_ns, epoch, role, components, missing,
+                now=time.monotonic())
+        except Exception as exc:  # noqa: BLE001 - capture must not stop detect
+            self._warn_throttled("frame capture failed: %s" % exc)
+
     def _emit_joined(self, yolo_msg, cloud_msg):
         fields, box, support = self._pca_from_cloud_msg(
             cloud_msg, yolo_msg=yolo_msg)
+        from luggage_perception.target_association import (
+            association_inputs_aligned, target_association_ambiguous)
+        cloud_key = stamp_key(cloud_msg.header.stamp)
+        yolo_key = stamp_key(getattr(yolo_msg.header, "stamp", None))
+        # The size on this frame is the PCA of this cloud. The detection
+        # count is this joined message, never a later statistics sample.
+        # The instance lookup is this cloud stamp; a mask at another stamp
+        # stays out of the buffer read.
+        aligned = association_inputs_aligned(yolo_key, cloud_key, cloud_key)
+        n_det = (len(getattr(yolo_msg, "detections", None) or ())
+                 if aligned else None)
+        inst_px = self._instance_positive_pixels(cloud_key)
+        if target_association_ambiguous(
+                n_det, inst_px, stamps_aligned=aligned):
+            fields = dict(fields)
+            fields["pca_reason"] = "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"
         if not fields["pca_valid"]:
             reason = fields["pca_reason"]
             if reason in (
@@ -1700,7 +1943,69 @@ class LuggageDetector(Node):
         self._frame_pub.publish(frame)
         self._frame_window.push(
             adapters.stamp_to_sec(cloud_msg.header.stamp), frame)
+        self._publish_frame_contracts_v2(frame, cloud_msg)
         self._publish_stream_stats(frame, fields, support, yolo_msg, cloud_msg)
+        self._capture_consumed(
+            yolo_msg, cloud_msg, cloud_key, fields, n_det, inst_px,
+            target_association_ambiguous(
+                n_det, inst_px, stamps_aligned=aligned))
+
+    def _publish_frame_contracts_v2(self, frame, cloud_msg):
+        """Emit detection/contact v2 records beside the v1 frame (F03/F04).
+
+        Records carry the same acquisition stamp/frame as the v1 message.
+        Any contract rejection is a boundary diagnostic plus throttled
+        warning; the v1 publication has already happened and is never
+        retried or altered here.
+        """
+        if self._detection_v2_pub is None:
+            return
+        detected = getattr(frame, "box", None)
+        if detected is None:
+            return
+        stamp_ns = (int(detected.header.stamp.sec) * 1_000_000_000
+                    + int(detected.header.stamp.nanosec))
+        request_id = "detect-%d" % stamp_ns
+        yaw_source = ""
+        try:
+            # Integer nanoseconds end to end: a float-seconds round-trip
+            # at epoch scale cannot carry the measured nanoseconds.
+            record, yaw_source = detection_boundary(
+                (detected.pose.position.x, detected.pose.position.y,
+                 detected.pose.position.z),
+                2.0 * math.atan2(detected.pose.orientation.z,
+                                 detected.pose.orientation.w),
+                stamp_ns, self._frame_scene_revision, request_id,
+                frame_id=self._world_frame,
+                yaw_valid=bool(detected.yaw_valid),
+                fallback_yaw=float(
+                    self.get_parameter("frame_yaw_fallback_rad").value))
+            context = BoundaryContext(
+                "F03", "luggage_detector_node", "v2_detection_subscribers",
+                request_id, self._frame_scene_revision, self._world_frame,
+                "box_center", "acquisition")
+            self._detection_v2_pub.publish(
+                detection_to_message(record, context))
+            if self._suction_v2_pub is not None:
+                for candidate in detected.suction_candidates:
+                    candidate_id = str(candidate.candidate_id)
+                    contact = contact_boundary(
+                        candidate, stamp_ns,
+                        self._frame_scene_revision,
+                        request_id, frame_id=self._world_frame)
+                    candidate_context = BoundaryContext(
+                        "F04", "luggage_detector_node",
+                        "v2_suction_subscribers", request_id,
+                        self._frame_scene_revision, self._world_frame,
+                        "surface_contact", "acquisition")
+                    self._suction_v2_pub.publish(
+                        contact_to_message(contact, candidate_context))
+        except BoundaryContractError as error:
+            self._warn_throttled(
+                "frame contract v2 rejected (%s %s, yaw_source=%s)"
+                % (error.code, error.field, yaw_source))
+        except Exception as error:  # noqa: BLE001 - never break the v1 stream
+            self._warn_throttled("frame contract v2 emit failed: %s" % error)
 
     def _publish_stream_stats(self, frame, fields, support, yolo_msg, cloud_msg):
         with self._raw_lock:
@@ -1797,6 +2102,11 @@ class LuggageDetector(Node):
             self._last_failure_reason = str(
                 frame.pca_reason or "DETECT_ESTIMATION_FAILED")
             return None, float(frame.pca_confidence)
+        if str(frame.pca_reason) == "DETECT_TARGET_ASSOCIATION_AMBIGUOUS":
+            # Support may already be ok. This frame is still not a pick.
+            # latest() does not walk back to an older row.
+            self._last_failure_reason = "DETECT_TARGET_ASSOCIATION_AMBIGUOUS"
+            return None, float(frame.pca_confidence)
         if self._acquisition_unsettled(frame.header.stamp):
             self._last_failure_reason = "geometry_not_settled"
             return None, float(frame.pca_confidence)
@@ -1810,9 +2120,11 @@ class LuggageDetector(Node):
         for attempt in range(attempts):
             hit = self._frame_window.latest()
             if hit is None:
+                self._last_selected_stamp = None
                 self._last_failure_reason = "DETECT_NO_CLOUD"
             else:
                 prev_stamp, frame = hit
+                self._last_selected_stamp = float(prev_stamp)
                 detected, confidence = self._frame_to_detect(frame)
                 if detected is not None:
                     if attempt:
@@ -1885,8 +2197,46 @@ class LuggageDetector(Node):
         self._warn_throttled("luggage_detector: %s" % detail)
         return None, fields["pca_confidence"]
 
+    def _frame_window_rows(self, selected_stamp):
+        """Every DetectionFrame currently available to latest()."""
+        rows = []
+        for stamp, frame in self._frame_window.snapshot():
+            gate = self._support_gate_by_key.get(
+                stamp_key(frame.header.stamp), "")
+            rows.append({
+                "stamp": float(stamp),
+                "generation": int(frame.generation),
+                "instance_id": str(frame.instance_id),
+                "pca_source": str(frame.pca_source),
+                "pca_valid": bool(frame.pca_valid),
+                "pca_reason": str(frame.pca_reason),
+                "n_cargo_points": int(frame.n_cargo_points),
+                "support_valid": bool(frame.support_valid),
+                "support_reason": str(frame.support_reason),
+                "support_gate": str(gate or ""),
+                "geometry_level": int(frame.geometry_level),
+                "size_wdh": _detection_frame_size(frame),
+                "selected": (
+                    selected_stamp is not None
+                    and abs(float(stamp) - float(selected_stamp)) < 1e-6),
+            })
+        return rows
+
+    def _note_auth_read(self, success, reason):
+        """Append this DetectLuggage read. Selection stays latest()."""
+        self._auth_reads.append({
+            "read_ros_stamp": self.get_clock().now().nanoseconds / 1e9,
+            "selected_stamp": self._last_selected_stamp,
+            "success": bool(success),
+            "reason": str(reason),
+            "window": self._frame_window_rows(self._last_selected_stamp),
+        })
+        if len(self._auth_reads) > 16:
+            del self._auth_reads[:-16]
+
     def _publish_diagnostics(self, source, success, confidence, reason,
                              detected=None):
+        self._note_auth_read(success, reason)
         now_sec = self.get_clock().now().nanoseconds / 1e9
         ctype = self.get_clock().clock_type
         clock_name = ctype.name if hasattr(ctype, "name") else str(ctype)
@@ -1911,6 +2261,8 @@ class LuggageDetector(Node):
             stats.get("last_cargo_n_points", stats.get("n_points", 0)) or 0)
         record["cargo_source"] = str(stats.get("source") or "")
         record["support_mode"] = self._support_mode
+        record["selected_stamp"] = self._last_selected_stamp
+        record["auth_reads"] = list(self._auth_reads)
         if detected is not None:
             record["detected"] = {
                 "id": detected.id,
@@ -2003,9 +2355,17 @@ class LuggageDetector(Node):
                 "perception", True, confidence, "ok", detected)
             response.luggage = [detected]
             response.success = True
+            # [ST09-I G2 instrumentation] support verdict + raw-depth
+            # join status ride the message into the driver's evidence.
+            diag = getattr(self, "_last_support_diag", None) or {}
             response.message = (
-                "perception estimate (conf=%.2f, height_valid=%s)"
-                % (confidence, detected.height_valid))
+                "perception estimate (conf=%.2f, height_valid=%s, "
+                "support=%s, gate=%s, sides=%s, raw=%s)"
+                % (confidence, detected.height_valid,
+                   diag.get("reason") or "DETECT_SUPPORT_UNOBSERVABLE",
+                   diag.get("gate") or "n/a",
+                   diag.get("side_coverage"),
+                   diag.get("raw_lookup") or "n/a"))
             return response
 
         response.message = self._failure_message(self._last_failure_reason)

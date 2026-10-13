@@ -129,6 +129,16 @@ class OpeningEstimate:
     def height_axis(self):
         return np.cross(self.normal, self.width_axis)
 
+    def boundary_record(self, frame_id, scene_revision, request_id):
+        """ST03 F05: explicit-frame record (``frame_boundary_records``).
+
+        The opening pose stays in ``frame_id`` and aperture vertices stay
+        nested in the opening frame; nothing is relabelled as world points
+        here. The ST07 sweep binds this record to its ROS boundary.
+        """
+        from luggage_perception.frame_boundary_records import opening_boundary
+        return opening_boundary(self, frame_id, scene_revision, request_id)
+
     def as_dict(self):
         return {
             "center": self.center.tolist(),

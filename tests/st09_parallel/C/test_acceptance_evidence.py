@@ -82,7 +82,10 @@ def _context(attachment=None, snapshot=None, edges=None, adapter=None, now_ns=2_
 
 
 def _full_blocked(snapshot):
-    return dataclasses.replace(snapshot, cell_states=tuple("occupied" for _ in snapshot.cell_states))
+    return dataclasses.replace(
+        snapshot,
+        cell_states=tuple("occupied" for _ in snapshot.cell_states),
+        occupancy_domain_complete=True)
 
 
 def _map_request(latest, *, cells=((1, 1),), in_flight=False, now_ns=2_100_000_000,
@@ -110,13 +113,9 @@ def _certify_with_edge_attr(**attrs):
     return TrajectoryCertifier().certify(ctx)
 
 
-def test_st09_c_acceptance_matrix_and_evidence(request):
-    evidence_root = _evidence_root()
-    certifier = TrajectoryCertifier()
-    node_ids = [request.node.nodeid]
-
+def _run_map_acceptance_rows(profiles=("sim", "deploy")):
+    """Map-revalidation rows. Independent of the attachment/mutation rows."""
     map_records = []
-    profiles = ("sim", "deploy")
     for profile in profiles:
         unrelated = make_snapshot(map_revision=3, observed_free=[(1, 1), (5, 5)],
                                   acquisition_stamp_ns=2_050_000_000)
@@ -133,7 +132,12 @@ def test_st09_c_acceptance_matrix_and_evidence(request):
             ("fully_blocked_reject", _map_request(blocked), MapDecision.FAULT, Reason.MAP_FULLY_BLOCKED),
             ("in_flight_conflict_stop", _map_request(related, cells=((12, 1),), in_flight=True),
              MapDecision.STOP, Reason.CARRY_FAULT),
-            ("stale_reject", _map_request(stale, now_ns=4_000_000_000), MapDecision.FAULT, Reason.MAP_STALE),
+            ("confirmed_old_continue", _map_request(stale, now_ns=4_000_000_000),
+             MapDecision.CONTINUE, Reason.OK),
+            ("unconfirmed_change_reject", _map_request(dataclasses.replace(
+                stale, occupancy_confirmed=False, change_event="box_removed"),
+                now_ns=4_000_000_000),
+             MapDecision.FAULT, Reason.MAP_CONFIRMATION_REQUIRED),
             ("restart_reject", _map_request(restart), MapDecision.FAULT, Reason.MAP_RESTART),
         ]
         for case_id, revalidation_input, expected_decision, expected_reason in cases:
@@ -148,6 +152,26 @@ def test_st09_c_acceptance_matrix_and_evidence(request):
                 "affected_edge_ids": list(decision.affected_edge_ids),
                 "map_revision": decision.map_revision,
             })
+
+    return map_records
+
+
+def test_st09_c_map_acceptance_rows_run_on_their_own():
+    records = _run_map_acceptance_rows()
+    by_case = {row["case_id"] for row in records}
+    assert {"confirmed_old_continue", "unconfirmed_change_reject",
+            "unrelated_update_continue", "restart_reject"} <= by_case
+    reasons = {row["case_id"]: row["reason"] for row in records}
+    assert reasons["confirmed_old_continue"] == "OK"
+    assert reasons["unconfirmed_change_reject"] == "MAP_CONFIRMATION_REQUIRED"
+
+
+def test_st09_c_acceptance_matrix_and_evidence(request):
+    evidence_root = _evidence_root()
+    certifier = TrajectoryCertifier()
+    node_ids = [request.node.nodeid]
+
+    map_records = _run_map_acceptance_rows()
 
     mutation_records = []
     base_ctx = _context()

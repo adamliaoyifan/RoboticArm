@@ -1,0 +1,33 @@
+{
+ "boundary_trace": "docs/status/evidence/frame_migration/ST09-g4-graph/identity.json",
+ "command": "python3 scripts/frame_migration_st09_graph.py --ws <ws> --install <install> --out <out> --ros-domain-id 87 --runs healthy-1,healthy-2,healthy-3,fault:lease_expiry,fault:restart,fault:v1_bypass,fault:duplicate_provider,fault:wrong_overlay,fault:stale_atlas",
+ "contract_version": 2,
+ "interface_contract_sha256": "b8d9ae22455439686d649f34071fd79090831f07ffa66e6a06c465e2feffb547",
+ "interface_id": "F21",
+ "kind": "runtime_boundary",
+ "limits": "Mock controllers, no Gazebo/hardware; scored integration is a separate release.",
+ "observations": [
+  "Three healthy startups of the full production v2 graph on mock controllers: converged READY in ~2 s each (budget 180 s), ComputePlacementV2 answered through the readiness-gated chain, teardown within the 90 s budget.",
+  "Six faults, each once: lease expiry (SIGSTOP), restart (SIGTERM), v1 bypass attempt, impostor provider, foreign overlay artifact, stale atlas hash. Every fault degraded readiness to its documented code (PEER_LEASE_EXPIRED / PEER_RESTART / WRONG_OVERLAY / STALE_ATLAS) and the v1/v2 chain refused with zero planning, execution, attachment or map effects.",
+  "Identity adoption, heartbeats and readiness gating ride RuntimeIdentityV2 on /frame_contracts/v2/runtime_identity; per-peer readiness codes recorded from the wire; graph node snapshots archived per run."
+ ],
+ "prior_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/manifest-continuation.json",
+ "sample_count": 9,
+ "source_sha256": {
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+  "src/luggage_description/luggage_description/ros_frame_bindings/runtime.py": "ceed158b48eb1c8ab1554d38c4357691c6986a4a6207d7e352217db83de67635",
+  "src/luggage_description/luggage_description/runtime_manifest.py": "b8fd18d85fa3051b7ac395974556f521f0c091c251b22e9c94b4039095f19bb5",
+  "src/luggage_description/luggage_description/runtime_profile.py": "883638189efcb6dc7ec4ec4a8d502fb59c65dd5f300e1c25a99f4a2af34beaef",
+  "src/luggage_description/luggage_description/runtime_readiness.py": "c77711a634c2cf5ccca664a2b471b58679f08d0cb0f28387a1132033cc3504fc",
+  "src/luggage_gazebo/launch/sim_world.launch.py": "b283e518f805b300718e978c904426b58fec50f6f849dc6e368f4e9f66c1705b",
+  "src/luggage_msgs/msg/RuntimeArtifactV2.msg": "0aa3c1f2de344b7cd35752bf8d39f5f12f17ef8e355481e8c92a6aa2722ab218",
+  "src/luggage_msgs/msg/RuntimeEndpointV2.msg": "02f2a930bf27daa842848059b5fa77f3d027b10752844d256d1944bca804bef0",
+  "src/luggage_msgs/msg/RuntimeIdentityV2.msg": "7c0667b409dca1e5a9a11c75150a00dba47963a965f49bcbb4d56a3166ad9b0e",
+  "src/luggage_msgs/msg/RuntimePackageV2.msg": "209aad84bbfdf64a2c076c75de7a3450ec6a7bdf0bdaba485e4c613d2d0848ef",
+  "src/luggage_planning/launch/hardware_pick.launch.py": "b2df8ea93c592cf59d9ed064962147c6f58c63940974bfda647c133a05a22fd8",
+  "src/luggage_planning/scripts/hardware_pick_driver.py": "3a659df2ad8cc54dee7d384c6d6f324993b5362c46b073795406306df2546a64"
+ },
+ "status": "pass",
+ "test_evidence": "docs/status/evidence/frame_migration/ST09-g4-graph/campaign.json"
+}

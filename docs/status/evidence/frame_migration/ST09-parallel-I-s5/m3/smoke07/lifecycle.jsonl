@@ -1,0 +1,9 @@
+{"stage": "clean_room", "ts": "2026-10-03T19:07:13+08:00", "residual_processes": 0}
+{"stage": "stack_start", "ts": "2026-10-03T19:07:13+08:00", "launch_pid": 298971}
+{"stage": "bag_start", "ts": "2026-10-03T19:07:13+08:00", "bag_pid": 298973}
+{"stage": "driver_start", "ts": "2026-10-03T19:07:13+08:00", "driver_pid": 298975, "deadline_sec": 1200}
+{"stage": "driver_end", "ts": "2026-10-03T19:07:48+08:00", "rc": 1, "deadline": 0, "elapsed_s": 35}
+{"stage": "bag_stop", "ts": "2026-10-03T19:07:50+08:00"}
+{"stage": "stack_stop", "ts": "2026-10-03T19:08:52+08:00", "teardown_s": 62}
+{"stage": "bag_size_ok", "ts": "2026-10-03T19:08:52+08:00", "bytes": 3213518}
+{"stage": "end", "ts": "2026-10-03T19:08:52+08:00", "driver_rc": 1}

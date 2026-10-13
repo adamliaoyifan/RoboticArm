@@ -1,0 +1,5 @@
+{"stage": "clean_room", "ts": "2026-10-03T19:19:17+08:00", "residual_processes": 0}
+{"stage": "stack_start", "ts": "2026-10-03T19:19:17+08:00", "launch_pid": 301883}
+{"stage": "bag_start", "ts": "2026-10-03T19:19:17+08:00", "bag_pid": 301885}
+{"stage": "semantic_prewarm", "ts": "2026-10-03T19:24:38+08:00", "ready": 0, "waited_attempt": 100}
+{"stage": "bag_stop", "ts": "2026-10-03T19:24:40+08:00"}

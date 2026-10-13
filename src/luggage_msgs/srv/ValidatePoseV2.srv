@@ -1,0 +1,12 @@
+# Reserved service /frame_contracts/v2/validate_pose. No server enabled in ST02.
+luggage_msgs/PoseContractV2 pose
+string profile
+string interface_id
+string producer
+string consumer
+string expected_request_id
+string expected_scene_revision
+string expected_time_basis
+---
+bool accepted
+luggage_msgs/BoundaryDiagnosticV2 diagnostic

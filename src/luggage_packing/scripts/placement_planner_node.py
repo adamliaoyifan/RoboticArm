@@ -65,10 +65,13 @@ from luggage_description.scene_tf_config_utils import (
     yaw_base_link_to_world,
     yaw_world_to_base_link,
 )
+from luggage_packing.placement_reachability import make_atlas_annotate
 from luggage_packing.placement_solver import (
     CODE_CARGO_MAP_GEOMETRY_MISMATCH,
     CODE_DETECT_FULL_GEOMETRY_REQUIRED,
+    SAME_LAYER_CLEARANCE_M,
     placement_constraint_verdict,
+    candidate_prefix_note,
     ranked_feasible_candidates,
     solve_placement,
 )
@@ -76,6 +79,26 @@ from luggage_description.container_geometry import (
     descriptor_from_scene_config,
     y_max_at_z,
 )
+from luggage_description.frame_contracts import ContractError
+from luggage_description.frame_diagnostics import BoundaryContext
+from luggage_description.ros_frame_bindings.poses import (
+    pose_from_message, pose_to_message,
+)
+from luggage_description.ros_frame_bindings.surfaces import (
+    surface_from_message,
+)
+from luggage_msgs.msg import SurfaceContractV2
+from luggage_msgs.srv import ComputePlacementV2
+
+#: Correlation identity the cargo mapper stamps on every v2 surface
+#: publication (one per map revision). Mirrors the mapper-side producer
+#: constant; the cross-side regression test pins the two equal, and a
+#: mismatch fails closed here.
+SURFACE_V2_REQUEST_TEMPLATE = "map-rev-%d"
+
+#: A ComputePlacementV2 request whose declared map revision does not match
+#: the admitted surface is stale: it was planned against a different map.
+CODE_STALE_MAP_REVISION = "STALE_MAP_REVISION"
 
 
 def yaw_from_quaternion(q):
@@ -108,6 +131,8 @@ class PlacementPlannerNode(Node):
         self.declare_parameter("allowed_yaws", [0.0, 1.5707963, 3.14159265,
                                                 -1.5707963])
         self.declare_parameter("clearance_margin", 0.03)
+        self.declare_parameter(
+            "same_layer_clearance_m", SAME_LAYER_CLEARANCE_M)
         self.declare_parameter("min_support_ratio", 0.6)
         self.declare_parameter("top_n", 2000)
         self.declare_parameter("aperture_margin", 0.0)
@@ -121,17 +146,72 @@ class PlacementPlannerNode(Node):
         # visualization-sized default).
         self.declare_parameter("last_result_max_candidates", 24)
         self.declare_parameter("max_candidates", 5)
-
+        # Reachability atlas wiring (shared yaml; every key overridable).
+        # luggage_planning is imported lazily: declaring the exec_depend
+        # would close a colcon build cycle (see package.xml NOTE).
+        self.declare_parameter("atlas_runtime_config", "")
+        try:
+            from luggage_planning.atlas_runtime import (
+                PARAM_SPEC,
+                apply_query_semantics,
+                apply_ros_overrides,
+                certification_block_reason,
+                compute_reachability_scene_hash,
+                compute_scene_tf_hash,
+                load_atlas_runtime,
+                load_atlas_runtime_for_scene,
+                load_runtime_atlas,
+            )
+            from luggage_planning.urdf_identity import UrdfIdentity
+        except ImportError as exc:
+            PARAM_SPEC = ()
+            load_atlas_runtime = None
+            apply_query_semantics = None
+            certification_block_reason = None
+            load_atlas_runtime_for_scene = None
+            UrdfIdentity = None
+            compute_scene_tf_hash = lambda path: ""  # noqa: E731
+            compute_reachability_scene_hash = lambda path: ""  # noqa: E731
+            self.get_logger().warning(
+                "atlas runtime unavailable (%s); placement runs no_atlas",
+                exc)
         config_path = str(self.get_parameter("scene_tf_config").value)
         if not config_path:
             config_path = resolve_scene_tf_config_path()
+        if load_atlas_runtime_for_scene is not None:
+            atlas_cfg = load_atlas_runtime_for_scene(
+                config_path,
+                str(self.get_parameter("atlas_runtime_config").value) or None)
+            for ros_name, _path, _cast in PARAM_SPEC:
+                default = atlas_cfg
+                for key in _path:
+                    default = default[key]
+                self.declare_parameter(ros_name, default)
+            apply_ros_overrides(self, atlas_cfg)
+        else:
+            atlas_cfg = {"enabled": False, "placement": {}, "motion": {},
+                         "query_offset": None}
+        self._atlas_cfg = atlas_cfg
+        # The lazy imports above are locals of __init__; methods must go
+        # through these handles (a direct global lookup NameErrors -- caught
+        # once by test_placement_geometry_identity_live).
+        self._load_runtime_atlas = (
+            load_runtime_atlas if load_atlas_runtime is not None else None)
+        self._apply_query_semantics = apply_query_semantics
+        self._certification_block_reason = certification_block_reason
+
         self._scene = load_scene_tf_config(config_path)
+        self._scene_tf_hash = compute_scene_tf_hash(config_path)
+        self._reachability_scene_hash = compute_reachability_scene_hash(
+            config_path)
 
         self._allowed_yaws = [
             float(v) for v in self.get_parameter("allowed_yaws").value]
         self._params = {
             "clearance_margin": float(
                 self.get_parameter("clearance_margin").value),
+            "same_layer_clearance_m": float(
+                self.get_parameter("same_layer_clearance_m").value),
             "min_support_ratio": float(
                 self.get_parameter("min_support_ratio").value),
             "top_n": int(self.get_parameter("top_n").value),
@@ -149,19 +229,83 @@ class PlacementPlannerNode(Node):
         self._hull = descriptor_from_scene_config(self._scene)
         self._geometry_hash = str(self._hull.geometry_hash)
         self._rejected_maps = 0
+        # Highest map revision admitted through either surface transport
+        # (None = no map admitted yet). The v2 subscription enforces strict
+        # progression against it; ComputePlacementV2 checks requests against
+        # the active surface's revision.
+        self._admitted_map_revision = None
+        # Atlas handles keyed by requested box size (payload selection is
+        # per-request; see atlas_runtime.resolve_atlas_files).
+        self._atlas_cache = {}
+        self._urdf_identity = None
+        if UrdfIdentity is not None and self._atlas_cfg.get("enabled"):
+            self._urdf_identity = UrdfIdentity(self)
+            self._urdf_identity.start()
+        if self._atlas_cfg.get("enabled"):
+            self.get_logger().info(
+                "atlas runtime gate on (dir=%s, hash_policy=%s, w=%s, hard_reject=%s)"
+                % (self._atlas_cfg.get("atlas_dir") or "reachability_atlas",
+                   self._atlas_cfg.get("hash_policy"),
+                   self._atlas_cfg["placement"].get("w_reachability"),
+                   self._atlas_cfg["placement"].get("hard_reject")))
 
         map_qos = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
-        self.create_subscription(
-            String, "/luggage/cargo_map/surface_2d",
-            self._on_surface, map_qos, callback_group=group)
+        # ST05 surface mode: one map transport per deployment. With an
+        # explicit scene revision the planner subscribes ONLY the v2
+        # contract topic (a single admitted-revision stream); the v1 JSON
+        # topic stays for v1 deployments. A v2-mode planner on a mapper
+        # that does not publish v2 is a wiring gap: no map is admitted,
+        # the floor prior serves, and requests fail closed on the
+        # revision gate — never silently fed by the v1 topic. The v1
+        # ComputePlacement service keeps answering in v2 mode from the
+        # same admitted map (shared normalization, response unchanged).
+        self.declare_parameter("frame_scene_revision", "")
+        self._frame_scene_revision = str(
+            self.get_parameter("frame_scene_revision").value or "")
+        self._v2_surface_mode = bool(self._frame_scene_revision)
+        if not self._v2_surface_mode:
+            self.create_subscription(
+                String, "/luggage/cargo_map/surface_2d",
+                self._on_surface, map_qos, callback_group=group)
+        else:
+            self.create_subscription(
+                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+                self._on_surface_v2, map_qos, callback_group=group)
+            self.create_service(
+                ComputePlacementV2, "/placement_planner/compute_placement_v2",
+                self._handle_v2, callback_group=group)
         self._last_pub = self.create_publisher(
             String, "/placement_planner/last_result", map_qos)
 
         self.create_service(
             ComputePlacement, "/placement_planner/compute_placement",
             self._handle, callback_group=group)
+
+        # ST09 F21: when frame_runtime is on, this node publishes its
+        # measured identity, observes peers, and admits placement requests
+        # only against a fully ready v2 graph. Off = legacy byte-identical.
+        self.declare_parameter("frame_runtime", False)
+        self.declare_parameter("frame_identity_json", "")
+        self.declare_parameter("frame_peers", "")
+        self._runtime = None
+        if bool(self.get_parameter("frame_runtime").value):
+            import sys as _sys
+            from luggage_description.ros_frame_bindings.runtime import (
+                node_runtime_from_params)
+            self._runtime = node_runtime_from_params(
+                self,
+                resolved_config={
+                    "scene_tf_config": str(
+                        self.get_parameter("scene_tf_config").value or ""),
+                    "frame_scene_revision": self._frame_scene_revision,
+                    "hull_margin": float(self.get_parameter("hull_margin").value),
+                    "atlas_runtime_config": str(
+                        self.get_parameter("atlas_runtime_config").value or ""),
+                },
+                modules=[(_sys.modules["__main__"], "module", "application")],
+                package_names=["luggage_packing"])
 
         self.get_logger().info(
             "placement_planner ready (aperture_y=%s, corridor=request_box, "
@@ -242,6 +386,15 @@ class PlacementPlannerNode(Node):
     # Surface map in / floor prior
 
     def _on_surface(self, msg):
+        if getattr(self, "_v2_surface_mode", False):
+            # v2 mode subscribes only the contract topic; a v1 JSON
+            # message delivered here anyway is not this deployment's map
+            # stream. Consuming it could regress the admitted v2 map.
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "ignored v1 cargo map in v2 surface mode (rejected=%d)"
+                % self._rejected_maps)
+            return
         try:
             surface = json.loads(msg.data)
         except ValueError:
@@ -289,6 +442,333 @@ class PlacementPlannerNode(Node):
 
     def _active_surface(self):
         return self._surface or self._floor_prior_surface()
+
+    # ------------------------------------------------------------------
+    # ST05 v2 surface ingest + ComputePlacementV2 (F07/F08 producer)
+
+    def _surface_context(self, request_id, map_revision):
+        return BoundaryContext(
+            "F06", "cargo_volume_mapper", "placement_planner",
+            str(request_id), self._frame_scene_revision, "container_link",
+            "", "scene", geometry_hash=self._geometry_hash,
+            map_revision=int(map_revision))
+
+    def _on_surface_v2(self, msg):
+        """Ingest the v2 surface record beside the v1 JSON topic.
+
+        Subscriber admission policy (checked before the strict adapter):
+        correlation identity — the mapper stamps every publication with
+        ``map-rev-<revision>``, so a message whose request_id disagrees
+        with its claimed revision is not the mapper's map — and strict
+        revision progression: a revision older than or equal to the
+        admitted one is a stale or reordered duplicate, never re-ingested.
+        Scene and hull binding stay inside ``surface_from_message`` with
+        consumer-owned identities (this node's configured scene revision
+        and hull hash, never values copied from the message); the decoded
+        record's hull is re-checked below on top of the strict validation.
+        """
+        claimed_revision = int(getattr(msg, "map_revision", -1))
+        expected_request = SURFACE_V2_REQUEST_TEMPLATE % claimed_revision
+        if str(msg.identity.request_id or "") != expected_request:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: correlation %r != expected %r "
+                "(revision %d, rejected=%d)"
+                % (msg.identity.request_id, expected_request,
+                   claimed_revision, self._rejected_maps))
+            return
+        admitted = self._admitted_map_revision
+        if admitted is not None and claimed_revision <= admitted:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: stale/reordered revision %d <= "
+                "admitted %d (rejected=%d)"
+                % (claimed_revision, admitted, self._rejected_maps))
+            return
+        try:
+            record = surface_from_message(
+                msg, self._surface_context(expected_request, claimed_revision))
+        except ContractError as error:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map (%s %s, rejected=%d)"
+                % (error.code, error.field, self._rejected_maps))
+            return
+        if str(record.get("geometry_hash") or "") != self._geometry_hash:
+            self._rejected_maps += 1
+            self.get_logger().error(
+                "rejected v2 cargo map: geometry_hash %s != planner %s"
+                % (record.get("geometry_hash"), self._geometry_hash))
+            return
+        self._surface = self._surface_view_from_record(record)
+        self._admitted_map_revision = claimed_revision
+
+    def _surface_view_from_record(self, record):
+        """Normalize one v2 surface record into the solver's internal view.
+
+        The solver's internal representation stays floor-relative (support
+        quantities are derived locally); the v2 container-origin datum is
+        converted once, here, with the planner's declared inner size.
+        """
+        inner_l, inner_w, inner_h = self._inner_size
+        floor = float(record["floor_z_container"])
+        resolution = float(record["resolution_m"])
+        heights, states, confidence = [], [], []
+        inverse = {"sensor": "sensor", "verified_geometry": "geometry"}
+        for row_z, row_s, row_c in zip(record["surface_z_container"],
+                                       record["state"],
+                                       record["confidence"]):
+            h_row, s_row, c_row = [], [], []
+            for top, state, source in zip(row_z, row_s, row_c):
+                if top is None:
+                    h_row.append(0.0)
+                    s_row.append("unknown")
+                    c_row.append("none")
+                else:
+                    h_row.append(float(top) - floor)
+                    s_row.append(str(state))
+                    c_row.append(inverse.get(str(source), "sensor"))
+            heights.append(h_row)
+            states.append(s_row)
+            confidence.append(c_row)
+        return {
+            "geometry_hash": str(record["geometry_hash"]),
+            "geometry_descriptor": dict(self._hull.descriptor()),
+            "resolution": resolution,
+            "nx": len(heights), "ny": len(heights[0]) if heights else 0,
+            "inner_size": [inner_l, inner_w, inner_h],
+            "floor_z": 0.0,
+            "center_base": [0.0, 0.0, floor + 0.5 * inner_h],
+            "yaw": 0.0,
+            # The admitted revision travels with the view: ComputePlacementV2
+            # compares requests against the ACTIVE surface's revision — a
+            # conversion that dropped it would read 0 and stale-reject every
+            # request planned against the very map this node just admitted.
+            "map_revision": int(record["map_revision"]),
+            "height": heights,
+            "state": states,
+            "confidence": confidence,
+        }
+
+    def _slot_record(self, candidate, request_id):
+        """Slot-profile record (container box center) for one candidate."""
+        center = candidate["center_container"]
+        yaw = float(candidate["box_yaw"])
+        return {
+            "contract_version": 2,
+            "frame_id": "container_link",
+            "length_unit": "m",
+            "stamp_ns": 0,
+            "time_basis": "scene",
+            "scene_revision": self._frame_scene_revision,
+            "request_id": str(request_id),
+            "kind": "pose",
+            "reference": "box_center",
+            "orientation_semantics": "box_axis_pi",
+            "position": [float(center[0]), float(center[1]),
+                         float(center[2])],
+            "quaternion_xyzw": [0.0, 0.0,
+                                math.sin(yaw * 0.5), math.cos(yaw * 0.5)],
+        }
+
+    def _slot_message(self, candidate, request_id):
+        record = self._slot_record(candidate, request_id)
+        context = BoundaryContext(
+            "F07", "placement_planner", "v2_client", str(request_id),
+            self._frame_scene_revision, "container_link", "box_center",
+            "scene", geometry_hash=self._geometry_hash, map_revision=None)
+        return pose_to_message(record, "slot", context), record
+
+    def _placed_aabbs_v2(self, placed_messages, sizes_flat):
+        """Floor-relative AABBs from v2 placed slot records."""
+        aabbs = []
+        inner_h = self._inner_size[2]
+        sizes = [sizes_flat[i:i + 3] for i in range(0, len(sizes_flat), 3)]
+        for index, message in enumerate(placed_messages or []):
+            context = BoundaryContext(
+                "F07", "v2_client", "placement_planner",
+                str(message.identity.request_id or "placed-%d" % index),
+                self._frame_scene_revision, "container_link", "box_center",
+                "scene", geometry_hash=self._geometry_hash,
+                map_revision=None)
+            try:
+                record = pose_from_message(message, "slot", context)
+            except ContractError as error:
+                raise ValueError("placed[%d] rejected (%s %s)"
+                                 % (index, error.code, error.field))
+            w, d, h = (float(v) for v in sizes[index]) if index < len(sizes) \
+                else (0.0, 0.0, 0.0)
+            if w <= 0.0 or d <= 0.0 or h <= 0.0:
+                raise ValueError("placed[%d] needs positive wdh" % index)
+            yaw = 2.0 * math.atan2(record["quaternion_xyzw"][2],
+                                    record["quaternion_xyzw"][3])
+            rotated = abs(abs(yaw) - math.pi / 2.0) < math.radians(10.0)
+            footprint_l = d if rotated else w
+            footprint_w = w if rotated else d
+            z_rel = float(record["position"][2]) - self._floor_z
+            x, y = float(record["position"][0]), float(record["position"][1])
+            aabbs.append((
+                x - footprint_l * 0.5, y - footprint_w * 0.5,
+                max(0.0, z_rel - h * 0.5),
+                x + footprint_l * 0.5, y + footprint_w * 0.5,
+                min(inner_h, z_rel + h * 0.5),
+            ))
+        return aabbs
+
+    def _handle_v2(self, request, response):
+        """ComputePlacementV2: container box-center slot semantics."""
+        response.geometry_hash = self._geometry_hash
+        self._v2_request_seq = getattr(self, "_v2_request_seq", 0) + 1
+        request_id = "place-v2-%d" % self._v2_request_seq
+        if getattr(self, "_runtime", None) is not None:
+            from luggage_description.frame_contracts import ContractError
+            try:
+                admission = self._runtime.admit_request(
+                    request_id, endpoint="/placement_planner/compute_placement_v2")
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
+        if not bool(request.height_measured):
+            response.success = False
+            response.reason_code = CODE_DETECT_FULL_GEOMETRY_REQUIRED
+            response.message = ("DETECT_FULL_GEOMETRY_REQUIRED: V2 needs "
+                                "declared measured geometry")
+            return response
+        requested_hash = str(request.geometry_hash or "")
+        if requested_hash and requested_hash != self._geometry_hash:
+            response.success = False
+            response.reason_code = CODE_CARGO_MAP_GEOMETRY_MISMATCH
+            response.message = ("%s: request pinned %s, planner hull is %s"
+                                % (CODE_CARGO_MAP_GEOMETRY_MISMATCH,
+                                   requested_hash, self._geometry_hash))
+            return response
+        # Map-identity gate before any solver call: a request planned
+        # against a different map revision is stale, whatever the solver
+        # would find on the current one. The floor prior carries revision
+        # 0; a first-box request against no admitted map matches 0.
+        surface = self._active_surface()
+        active_revision = int(surface.get("map_revision") or 0)
+        requested_revision = int(request.expected_map_revision or 0)
+        if requested_revision != active_revision:
+            response.success = False
+            response.reason_code = CODE_STALE_MAP_REVISION
+            response.resulting_map_revision = active_revision
+            response.message = (
+                "%s: request planned against map revision %d, planner map "
+                "is revision %d" % (CODE_STALE_MAP_REVISION,
+                                    requested_revision, active_revision))
+            return response
+        size = [max(0.0, float(v)) for v in request.box_wdh]
+        if any(v <= 0.0 for v in size):
+            response.success = False
+            response.reason_code = "INVALID_BOX_SIZE"
+            response.message = "box_wdh must be positive"
+            return response
+        try:
+            placed_aabbs = self._placed_aabbs_v2(
+                list(request.placed), list(request.placed_wdh_flat))
+        except ValueError as error:
+            response.success = False
+            response.reason_code = "PLACED_SLOT_REJECTED"
+            response.message = str(error)
+            return response
+        result = solve_placement(
+            surface, size,
+            allowed_yaws=self._allowed_yaws,
+            params=self._params,
+            candidate_validator=lambda candidate: self._constraint_verdict(
+                candidate, placed_aabbs, size),
+            atlas_annotate=self._atlas_hook(size))
+        response.resulting_map_revision = int(
+            surface.get("map_revision") or 0)
+        if not result["success"]:
+            response.success = False
+            response.reason_code = result["reason_code"]
+            response.message = result["message"]
+            return response
+        best = result.get("preferred_candidate", result["selected"])
+        if getattr(self, "_runtime", None) is not None:
+            # Effect boundary: the solver ran asynchronously under the
+            # admission; recheck before committing the slot to the caller.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_effect(admission, request_id)
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
+        slot_message, _record = self._slot_message(best, request_id)
+        response.slot = slot_message
+        response.success = True
+        response.reason_code = ""
+        want = int(request.max_candidates or 0)
+        if want <= 0:
+            want = int(self.get_parameter("max_candidates").value)
+        topk = ranked_feasible_candidates(result, want)
+        n_feasible = sum(
+            1 for candidate in (result.get("candidates") or [])
+            if candidate.get("feasible"))
+        response.message = "%s %s" % (
+            result["message"], candidate_prefix_note(topk, n_feasible))
+        response.candidates = []
+        response.candidate_scores = []
+        response.candidate_reasons = []
+        for candidate in topk:
+            message, _record = self._slot_message(candidate, request_id)
+            response.candidates.append(message)
+            response.candidate_scores.append(float(candidate.get("score", 0.0)))
+            response.candidate_reasons.append(str(candidate.get("reason", "")))
+        return response
+
+    def _atlas_for(self, size):
+        """Cached (atlas, diagnostics) for one requested box size."""
+        if not self._atlas_cfg.get("enabled"):
+            return None, {"loaded": False, "reason": "disabled"}
+        if self._load_runtime_atlas is None:
+            return None, {"loaded": False, "reason": "unavailable"}
+        if self._urdf_identity is not None:
+            self._urdf_identity.poll()
+        urdf_hash = (
+            self._urdf_identity.hash
+            if self._urdf_identity is not None and self._urdf_identity.ready
+            else "")
+        key = (tuple(round(float(v), 4) for v in size),
+               self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
+        if key not in self._atlas_cache:
+            self._atlas_cache[key] = self._load_runtime_atlas(
+                self._atlas_cfg, box_size=list(key[0]),
+                scene_tf_hash=self._scene_tf_hash,
+                urdf_hash=urdf_hash,
+                reachability_scene_hash=self._reachability_scene_hash)
+        return self._atlas_cache[key]
+
+    def _atlas_hook(self, size):
+        """solve_placement hook for this request, or None when disabled."""
+        if not self._atlas_cfg.get("enabled"):
+            return None
+        atlas, _diag = self._atlas_for(size)
+        # Query-layer semantics (floor re-anchoring, boundary promotion):
+        # the hook queries the exact contact point, so it is the side that
+        # inherits the iz1 floor false-negative without this wrap.
+        if self._apply_query_semantics is not None:
+            atlas = self._apply_query_semantics(
+                atlas, self._atlas_cfg, floor_z=self._floor_z,
+                box_height=float(size[2]))
+        placement = self._atlas_cfg.get("placement") or {}
+        # A neutral no_atlas hook still annotates candidates for the dump.
+        hook = make_atlas_annotate(
+            atlas,
+            self._floor_z,
+            self._inner_size[2],
+            score_weight=float(placement.get("w_reachability", 0.3)),
+            hard_reject=bool(placement.get("hard_reject", True)),
+            dump_only=bool(placement.get("dump_only", False)),
+            query_offset=self._atlas_cfg.get("query_offset"),
+        )
+        return hook
 
     # ------------------------------------------------------------------
     # Feasibility gates (G2 + corridor)
@@ -349,6 +829,10 @@ class PlacementPlannerNode(Node):
             inner_size=self._inner_size,
             smallest_size=smallest_size,
             hull=hull,
+            floor_z=self._floor_z,
+            same_layer_clearance_m=float(
+                self._params["same_layer_clearance_m"]),
+            support_tol=float(self._params.get("support_tol", 0.05)),
         )
 
     def _publish_last(self, payload):
@@ -367,6 +851,16 @@ class PlacementPlannerNode(Node):
     def _handle(self, request, response):
         box = request.box
         response.geometry_hash = self._geometry_hash
+        if getattr(self, "_runtime", None) is not None:
+            # v1 cannot bypass profile admission: readiness still holds here.
+            from luggage_description.frame_contracts import ContractError
+            try:
+                self._runtime.authorize_legacy_effect()
+            except ContractError as error:
+                response.success = False
+                response.reason_code = error.code
+                response.message = "%s: %s" % (error.code, error.field)
+                return response
         # E0/E4 contract: packing needs measured full geometry. A top-only
         # detection must not become a collision box inside the container.
         # Catalog size is spawn-only and is never a substitute for height.
@@ -418,14 +912,46 @@ class PlacementPlannerNode(Node):
         size = [max(0.0, float(box.width)),
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]
+        atlas, atlas_diag = self._atlas_for(size)
+        if self._certification_block_reason is not None:
+            block = self._certification_block_reason(
+                self._atlas_cfg, atlas_diag)
+        else:
+            block = ""
+        if block:
+            response.success = False
+            response.reason_code = block
+            response.message = "%s: %s" % (
+                block,
+                atlas_diag.get("hash_message") or atlas_diag.get("reason")
+                or "atlas identity unverified")
+            self._publish_last({
+                "success": False,
+                "size_wdh": size,
+                "n_candidates_total": 0,
+                "n_feasible": 0,
+                "reject_histogram": {},
+                "reason_code": response.reason_code,
+                "geometry_hash": self._geometry_hash,
+                "floor_prior": False,
+                "candidates": [],
+                "message": response.message,
+                "atlas": {
+                    "enabled": True,
+                    "diagnostics": atlas_diag,
+                },
+            })
+            return response
         surface = self._active_surface()
         placed_aabbs = self._placed_aabbs(request.placed)
+        atlas, atlas_diag = self._atlas_for(size)
         result = solve_placement(
             surface, size,
             allowed_yaws=self._allowed_yaws,
             params=self._params,
             candidate_validator=lambda candidate: self._constraint_verdict(
                 candidate, placed_aabbs, size),
+            atlas_annotate=self._atlas_hook(size),
         )
         candidates = result["candidates"]
         histogram = result["reject_histogram"]
@@ -445,6 +971,18 @@ class PlacementPlannerNode(Node):
             "rejected_maps": self._rejected_maps,
             "map_revision": surface.get("map_revision"),
             "floor_prior": self._surface is None,
+            # ST09-A S1 4.3: what a bounded observation stage (ST09-D) must
+            # still see — unknown cells in the selected footprint and entry
+            # corridor, or of the best hypothetical legal window when no
+            # candidate survived (OBSERVATION_REQUIRED).
+            "observation_requirement": result.get("observation_requirement"),
+            "hypothetical_legal_windows": result.get(
+                "hypothetical_legal_windows", []),
+            "atlas": {
+                "enabled": bool(self._atlas_cfg.get("enabled")),
+                "diagnostics": atlas_diag,
+                "report": result.get("atlas"),
+            },
             "candidates": [jsonable_candidate(self._annotate_frames(dict(c)))
                            for c in candidates],
         }
@@ -461,7 +999,7 @@ class PlacementPlannerNode(Node):
             self._publish_last(dump)
             return response
 
-        best = result["selected"]
+        best = result.get("preferred_candidate", result["selected"])
         slot, annotated = self._slot_from_candidate(best, size)
         response.slot = slot
         response.success = True
@@ -471,6 +1009,11 @@ class PlacementPlannerNode(Node):
         if want <= 0:
             want = int(self.get_parameter("max_candidates").value)
         topk = ranked_feasible_candidates(result, want)
+        n_feasible = sum(
+            1 for candidate in (result.get("candidates") or [])
+            if candidate.get("feasible"))
+        response.message = "%s %s" % (
+            result["message"], candidate_prefix_note(topk, n_feasible))
         response.candidates = []
         response.candidate_scores = []
         response.candidate_reasons = []
@@ -480,7 +1023,9 @@ class PlacementPlannerNode(Node):
             response.candidate_scores.append(float(candidate.get("score", 0.0)))
             response.candidate_reasons.append(str(candidate.get("reason") or "ok"))
         dump["message"] = response.message
-        dump["selected"] = jsonable_candidate(annotated)
+        # Packing preference only. The certified slot is written by
+        # SelectPlacePathV2 after a complete route succeeds.
+        dump["preferred_candidate"] = jsonable_candidate(annotated)
         dump["pose_base_link"] = annotated["center_base_link"]
         dump["pose_world"] = annotated["center_world"]
         self._publish_last(dump)

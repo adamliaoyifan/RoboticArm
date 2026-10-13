@@ -1,7 +1,27 @@
-atlas_version: '2.0'
-schema_version: 2
-generated_at: '2026-08-11T07:08:18'
-computation_time_sec: 129.52
+atlas_version: '3.0'
+schema_version: 3
+contract:
+  contract_version: 2
+  position_frame: container_link
+  orientation_frame: container_link
+  reference: suction_contact_frame
+  orientation_semantics: concrete_tool_pose
+  angle_unit: rad
+  length_unit: m
+  height_datum: container_origin
+  tool_down_reference: container_negative_z
+  yaw_period_rad: 6.283185307179586
+  yaw_bins_rad:
+  - 0.0
+  - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  scene_revision: b40c85ae6eb2eabc47d7da2ffb23b72c
+  geometry_hash: 3460c2f23aa597efe71ad8e66b6b5faf
+  urdf_hash: 22ed00b5577d4b57421d9f02cf3fb2bf
+  payload_hash: 867ab60d2390d576c2f974a537f1ab0d
+generated_at: '2026-10-03T07:26:26'
+computation_time_sec: 176.81
 mode: collision_aware
 marginal_joint_margin: 0.1
 query:
@@ -9,20 +29,21 @@ query:
   hard_reject_min_neighbor_confidence: 0.9
   hard_reject_interior_fraction: 0.1
 builder:
-  algorithm: opening_connected_wavefront_v2
+  algorithm: opening_connected_wavefront_v3
   serial_deterministic: true
   max_branches: 3
   branch_distance: 0.25
   joint_interpolation_step: 0.1
   state_validity_available: true
   seed_policy: fixed_anchor_connected_warm_start_repair_v1
-  deterministic_fingerprint: 4c48b9cc898c2096ec444b5723691cc769d3c7475540bd7017fc70e267922cce
+  ik_solver: offline_ik.refine_to_pose
+  deterministic_fingerprint: 34928e990cd0985afddb5f87e64acd4d11458aa89a1f8d2be76b6fab960e16f1
   tool_down_tolerance: 0.0
   transit_clearance: 0.3
 dependencies:
   robot_model: elfin_s20_with_camera
-  scene_tf_hash: df5cccc65c5c9ceb2ca13e6eb4aa47b8
-  urdf_hash: 6dbca5f9423c84cbbc91efd24b3efe65
+  scene_tf_hash: b40c85ae6eb2eabc47d7da2ffb23b72c
+  urdf_hash: 22ed00b5577d4b57421d9f02cf3fb2bf
   ik_link: suction_contact_frame
   ik_group: elfin_arm
 payload:
@@ -53,7 +74,15 @@ grid:
   yaw_bins:
   - 0.0
   - 1.5707963267948966
+  - 3.141592653589793
+  - 4.71238898038469
+  yaw_semantics: directed_container_2pi
   transit_clearance: 0.3
+  lift_policy:
+    nominal: 0.3
+    safe_tool_z: 1.55
+    min_lift: 0.06
+    frame: container_link
 container:
   inner_dimensions:
   - 1.49
@@ -72,9 +101,9 @@ container:
   - -1.5708
   opening_side: negative_x
 stats:
-  total_cells: 2800
-  reachable_cells: 341
-  marginal_cells: 113
-  unreachable_cells: 481
-  unknown_cells: 1865
-  reachability_rate: 0.1218
+  total_cells: 5600
+  reachable_cells: 907
+  marginal_cells: 16
+  unreachable_cells: 1093
+  unknown_cells: 3584
+  reachability_rate: 0.162

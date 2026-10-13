@@ -1,0 +1,21 @@
+[WARN] [1790823170.193448869] [move_group.move_group]: Falling back to using the the move_group node namespace (deprecated behavior).
+[INFO] [1790823170.214443241] [moveit_rdf_loader.rdf_loader]: Loaded robot model in 0.0203209 seconds
+[INFO] [1790823170.214788257] [moveit_robot_model.robot_model]: Loading robot model 'S20'...
+[INFO] [1790823170.214796432] [moveit_robot_model.robot_model]: No root/virtual joint specified in SRDF. Assuming fixed joint
+[WARN] [1790823170.497792385] [moveit_ros.robot_model_loader]: No kinematics plugins defined. Fill and load kinematics.yaml!
+[INFO] [1790823170.853575041] [moveit.ros_planning_interface.moveit_cpp]: Listening to 'joint_states' for joint states
+[INFO] [1790823170.854679350] [moveit_ros.current_state_monitor]: Listening to joint states on topic 'joint_states'
+[INFO] [1790823170.856594581] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/attached_collision_object' for attached collision objects
+[INFO] [1790823170.857160347] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Publishing maintained planning scene on 'monitored_planning_scene'
+[INFO] [1790823170.857238385] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting planning scene monitor
+[INFO] [1790823170.857426482] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to '/planning_scene'
+[INFO] [1790823170.857433245] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Starting world geometry update monitor for collision objects, attached objects, octomap updates.
+[INFO] [1790823170.857604962] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'collision_object'
+[INFO] [1790823170.857740660] [moveit_ros.planning_scene_monitor.planning_scene_monitor]: Listening to 'planning_scene_world' for planning scene world geometry
+[WARN] [1790823170.857956761] [moveit.ros.occupancy_map_monitor.middleware_handle]: Resolution not specified for Octomap. Assuming resolution = 0.1 instead
+[ERROR] [1790823170.857963583] [moveit.ros.occupancy_map_monitor.middleware_handle]: No 3D sensor plugin(s) defined for octomap updates
+[INFO] [1790823171.608678292] [moveit.ros_planning_interface.moveit_cpp]: Loading planning pipeline 'move_group'
+[INFO] [1790823171.609219852] [moveit.ros_planning.planning_pipeline]: Multiple planning plugins available. You should specify the '~planning_plugin' parameter. Using 'chomp_interface/CHOMPPlanner' for now.
+[INFO] [1790823171.610134380] [moveit.ros_planning.planning_pipeline]: Using planning interface 'CHOMP'
+[FATAL] [1790823171.611873697] [moveit_ros.trajectory_execution_manager]: Parameter '~moveit_controller_manager' not specified. This is needed to identify the plugin to use for interacting with controllers. No paths can be executed.
+[ERROR] [1790823171.611891140] [moveit_ros.trajectory_execution_manager]: Failed to reload controllers: `controller_manager_` does not exist.

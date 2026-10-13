@@ -1,0 +1,336 @@
+{
+  "profiles": {
+    "base": {
+      "workspace": "/tmp/elfin-frame-migration-st08",
+      "install": "/tmp/elfin-frame-migration-st08/install/st08",
+      "revision": "1795a69d1eb33bd5eac631345d955de76c87a9c3",
+      "dirty": ""
+    },
+    "candidate": {
+      "workspace": "/tmp/elfin-st09-g3",
+      "install": "/tmp/elfin-st09-g3/install/continuation-full",
+      "revision": "009115e6513701388ae19515c5e12bcde0f23869",
+      "dirty": " M docs/agents/eng/2026-09-30_2035_st09-g3.md\n M docs/architecture/frame_contracts.md\n M docs/architecture/frame_interfaces.json\n M src/luggage_description/luggage_description/runtime_profile.py\n M src/luggage_description/luggage_description/runtime_readiness.py\n M src/luggage_gazebo/luggage_gazebo/frame_dump.py\n M src/luggage_msgs/CMakeLists.txt\n M src/luggage_planning/luggage_planning/attachment_frame_adapters.py\n M src/luggage_planning/luggage_planning/attachment_frame_contracts.py\n M src/luggage_planning/luggage_planning/place_service.py\n M src/luggage_planning/scripts/vacuum_controller_node.py\n?? src/luggage_description/luggage_description/frame_dump.py\n?? src/luggage_description/luggage_description/ros_frame_bindings/runtime.py\n?? src/luggage_description/luggage_description/runtime_manifest.py\n?? src/luggage_description/test/test_runtime_identity_wire.py\n?? src/luggage_description/test/test_runtime_readiness.py\n?? src/luggage_msgs/msg/RuntimeArtifactV2.msg\n?? src/luggage_msgs/msg/RuntimeEndpointV2.msg\n?? src/luggage_msgs/msg/RuntimeIdentityV2.msg\n?? src/luggage_msgs/msg/RuntimePackageV2.msg\n?? src/luggage_planning/test/test_st09_release.py\n?? src/luggage_planning/test/test_st09_typed_build.py\n"
+    }
+  },
+  "commands": [
+    {
+      "profile": "base",
+      "stage": "environment",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-c",
+        "import json,os,sys,luggage_msgs; print(json.dumps(dict(python=sys.version,environment={k:os.environ.get(k) for k in (\"ROS_DOMAIN_ID\",\"ROS_DISTRO\",\"RMW_IMPLEMENTATION\",\"AMENT_PREFIX_PATH\",\"PYTHONPATH\",\"PATH\")},messages=luggage_msgs.__file__),sort_keys=True))"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.1638453109189868
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_description-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_description/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.9661239271517843
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_description",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_description/test",
+        "--tb=short"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 2.6699137517716736
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_planning-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_planning/test"
+      ],
+      "exit_code": 2,
+      "elapsed_seconds": 1.0177267021499574
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_planning",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_planning/test",
+        "--tb=short"
+      ],
+      "exit_code": 2,
+      "elapsed_seconds": 1.0164884640835226
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_gazebo-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_gazebo/test"
+      ],
+      "exit_code": 2,
+      "elapsed_seconds": 0.8666552929207683
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_gazebo",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_gazebo/test",
+        "--tb=short"
+      ],
+      "exit_code": 2,
+      "elapsed_seconds": 0.8668553449679166
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_packing-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_packing/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.7676034679170698
+    },
+    {
+      "profile": "base",
+      "stage": "luggage_packing",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-frame-migration-st08/install/st08/setup.bash\nexport PYTHONPATH=/tmp/elfin-frame-migration-st08/src/luggage_description:/tmp/elfin-frame-migration-st08/src/luggage_planning:/tmp/elfin-frame-migration-st08/src/luggage_gazebo:/tmp/elfin-frame-migration-st08/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_packing/test",
+        "--tb=short"
+      ],
+      "exit_code": 1,
+      "elapsed_seconds": 3.9204592590685934
+    },
+    {
+      "profile": "candidate",
+      "stage": "environment",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-c",
+        "import json,os,sys,luggage_msgs; print(json.dumps(dict(python=sys.version,environment={k:os.environ.get(k) for k in (\"ROS_DOMAIN_ID\",\"ROS_DISTRO\",\"RMW_IMPLEMENTATION\",\"AMENT_PREFIX_PATH\",\"PYTHONPATH\",\"PATH\")},messages=luggage_msgs.__file__),sort_keys=True))"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.1639361239504069
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_description-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_description/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.9658013139851391
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_description",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_description/test",
+        "--tb=short"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.7233543021138757
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_planning-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_planning/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.3201844301074743
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_planning",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_planning/test",
+        "--tb=short"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 3.1224796411115676
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_gazebo-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_gazebo/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 1.1178064418490976
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_gazebo",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_gazebo/test",
+        "--tb=short"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 10.229441159171984
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_packing-nodes",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "--collect-only",
+        "-q",
+        "src/luggage_packing/test"
+      ],
+      "exit_code": 0,
+      "elapsed_seconds": 0.8181209790054709
+    },
+    {
+      "profile": "candidate",
+      "stage": "luggage_packing",
+      "command": [
+        "bash",
+        "-c",
+        "source /opt/ros/humble/setup.bash\nsource /tmp/elfin-st09-g3/install/continuation-full/setup.bash\nexport PYTHONPATH=/tmp/elfin-st09-g3/src/luggage_description:/tmp/elfin-st09-g3/src/luggage_planning:/tmp/elfin-st09-g3/src/luggage_gazebo:/tmp/elfin-st09-g3/src/luggage_packing:\"$PYTHONPATH\"\nexec \"$@\"",
+        "matched",
+        "python3",
+        "-m",
+        "pytest",
+        "-q",
+        "src/luggage_packing/test",
+        "--tb=short"
+      ],
+      "exit_code": 1,
+      "elapsed_seconds": 6.022971624974161
+    }
+  ]
+}

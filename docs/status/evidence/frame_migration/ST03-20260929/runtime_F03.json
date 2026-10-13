@@ -1,0 +1,24 @@
+{
+  "command": "python3 -m unittest discover -s src/luggage_perception/test -p test_frame_migration_perception.py -v",
+  "contract_version": 2,
+  "interface_contract_sha256": "a577a4701dc333ccaf0b2ea0632e9426ba8210d30569d4b75322b10e361ce467",
+  "interface_id": "F03",
+  "kind": "runtime_boundary",
+  "observations": [
+    "64 matrix cases: world box-center detection records through real PoseContractV2 serialization with exact acquisition stamps",
+    "near-square invalid yaw uses the declared fallback with recorded provenance, never relabelled measured",
+    "luggage_detector_node publishes /luggage/detection/luggage_v2 beside the byte-stable v1 topic; v1 wire assertions unchanged",
+    "review repair R7: the publisher passes integer nanoseconds end to end (a float-seconds round-trip lost 21 ns at epoch scale); epoch and adjacent-nanosecond cases pin the identity"
+  ],
+  "sample_count": 95,
+  "source_sha256": {
+    "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+    "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+    "src/luggage_msgs/msg/DetectedLuggage.msg": "1c99a4216af8bfa01a569093ff710cdeed0e819d6c8a44fe6b4bb0e7d2d6eaaa",
+    "src/luggage_msgs/msg/DetectionFrame.msg": "d7667355a711105779c4a48d6ecaee8994f0b4f94ec532eba6bc1fa68372153e",
+    "src/luggage_perception/luggage_perception/frame_boundary_records.py": "0e5075aa22b12960bd2ae2ba73104a460b2711d26aaff811d6afc375cfd2a1b2",
+    "src/luggage_perception/scripts/luggage_detector_node.py": "3f4578414065d4e3610f283d89280a93d29205444895449615ce5a8fab64e063",
+    "src/luggage_planning/luggage_planning/ros_message_adapters.py": "77b0237d0218950da5232d9f7258e9b32b07ae58103a0ca1fc7e0e56f066b1c6"
+  },
+  "status": "pass"
+}

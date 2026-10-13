@@ -1,0 +1,4 @@
+luggage_msgs/FrameIdentityV2 identity
+string reference
+string orientation_semantics
+geometry_msgs/Pose pose

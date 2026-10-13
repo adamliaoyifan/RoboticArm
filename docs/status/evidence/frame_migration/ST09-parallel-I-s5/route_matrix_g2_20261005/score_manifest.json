@@ -1,0 +1,31 @@
+{
+ "commit": "db78a456b17a4f87190c7c11b67a49d7ffc16794",
+ "dirty_count": 0,
+ "lineage": {
+  "descend_pair_baseline": "f9ba0e84aebb0b39979871aee3ebf1306c040232",
+  "container_drawing_rule": "bdb9394307d81a44496f7baa7b5e7bdf983a5a67",
+  "candidate_scope": "dd6d48eaec68965b1e94d4a9df68346ace1b4957"
+ },
+ "planner_revision": "dd6d48eaec68965b1e94d4a9df68346ace1b4957",
+ "command": "scripts/st09_i/route_matrix_eval.py --out docs/status/evidence/frame_migration/ST09-parallel-I-s5/route_matrix_g2_20261005 --score-frozen --reps 1",
+ "started": 1791141100.2823234,
+ "ended": 1791141583.2194376,
+ "cases": 1207,
+ "case_classes": {
+  "feasible": 391,
+  "undetermined": 809,
+  "invalid": 6,
+  "regression": 1
+ },
+ "split": {
+  "dev": 860,
+  "held_out": 347
+ },
+ "reps_held_out": 1,
+ "held_out_feasible": 123,
+ "skipped_reference_undetermined": true,
+ "score_trace": "score_trace.jsonl",
+ "reference_trace": "trace.jsonl",
+ "capture_complete": true,
+ "replay_possible": true
+}

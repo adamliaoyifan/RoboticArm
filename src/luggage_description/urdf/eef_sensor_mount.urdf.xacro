@@ -51,9 +51,10 @@
 
     <link name="mid360_mount_frame">
       <!-- Housing 65 x 65 x 60 mm, origin at base centre, +Z through the dome.
-           Visual only: a collision mesh at the optical origin would fill a
-           360° gpu_lidar with self-hits. Range min 0.1 m already covers the
-           60 mm body. -->
+           The collision box matches the visual housing so MoveIt reachability
+           rejects a pose whose lidar body intersects the container. Gazebo
+           spawn strips this collision: a body at the optical origin fills the
+           360° gpu_lidar with self-hits. -->
       <visual>
         <origin xyz="0 0 0.030" rpy="0 0 0"/>
         <geometry>
@@ -63,6 +64,12 @@
           <color rgba="0.15 0.45 0.75 0.7"/>
         </material>
       </visual>
+      <collision>
+        <origin xyz="0 0 0.030" rpy="0 0 0"/>
+        <geometry>
+          <box size="0.065 0.065 0.060"/>
+        </geometry>
+      </collision>
       <inertial>
         <mass value="0.265"/>
         <origin xyz="0 0 0.030" rpy="0 0 0"/>

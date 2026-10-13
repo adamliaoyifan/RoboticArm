@@ -1,0 +1,21 @@
+................F............................................... [ 35%]
+...............................F........................................ [ 75%]
+.........................sss................                             [100%]
+=================================== FAILURES ===================================
+_____ TestGraphDomainScope.test_unreadable_process_is_counted_fail_closed ______
+src/luggage_gazebo/test/test_eval_graph_domain_scope.py:106: in test_unreadable_process_is_counted_fail_closed
+    self.assertIsNone(self.driver.ros_domain_of_pid(1))
+E   AssertionError: '0' is not None
+_______________ TestPlaceGtDump.test_occupancy_marks_center_box ________________
+src/luggage_gazebo/test/test_place_gt_dump.py:43: in test_occupancy_marks_center_box
+    self.assertGreater(out["stats"]["occupied_count"], 0)
+E   AssertionError: 0 not greater than 0
+=============================== warnings summary ===============================
+../../opt/ros/humble/local/lib/python3.10/dist-packages/xacro/__init__.py:115
+  Warning: private variables, such as '_ConstructUnits__ConstructUnitsValue', will be normal attributes in 3.11
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED src/luggage_gazebo/test/test_eval_graph_domain_scope.py::TestGraphDomainScope::test_unreadable_process_is_counted_fail_closed
+FAILED src/luggage_gazebo/test/test_place_gt_dump.py::TestPlaceGtDump::test_occupancy_marks_center_box
+2 failed, 175 passed, 3 skipped, 1 warning, 80 subtests passed in 6.31s

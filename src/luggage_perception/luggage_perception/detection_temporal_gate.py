@@ -29,6 +29,7 @@ RETRYABLE_ESTIMATE_REASONS = (
     "DETECT_TF_FAILED",
     "DETECT_ESTIMATION_FAILED",
     "DETECT_LOW_CONFIDENCE",
+    "DETECT_TARGET_ASSOCIATION_AMBIGUOUS",
 )
 
 
@@ -253,12 +254,17 @@ class DetectionTemporalGate:
         self.cargo_label = int(cargo_label)
         self._window = deque(maxlen=self.window_size)
         self._last_sig = None
+        self._last_measured_stamp = None
+        self._last_target_id = ""
 
     def reset(self):
         self._window.clear()
+        self._last_measured_stamp = None
+        self._last_target_id = ""
         self._last_sig = None
 
-    def apply(self, label_map, detections, rgb_uint8):
+    def apply(self, label_map, detections, rgb_uint8, stamp=None,
+              target_id=""):
         """Return (label_map, detections, stats). Inputs are not mutated.
 
         "This frame saw cargo" means it saw an **accepted** cargo detection:
@@ -312,6 +318,9 @@ class DetectionTemporalGate:
         stats["positive_ratio"] = ratio
 
         if had:
+            self._last_measured_stamp = stamp
+            if target_id:
+                self._last_target_id = str(target_id)
             return labels, dets, stats
         if (n < self.min_frames
                 or n_pos == 0
@@ -332,6 +341,9 @@ class DetectionTemporalGate:
             "bbox": consensus,
             "held": True,
             "accepted": True,
+            "instance_source": "temporal_hold",
+            "source_stamp": self._last_measured_stamp,
+            "target_id": self._last_target_id or str(target_id or ""),
         }
         stats["held"] = True
         stats["held_bbox"] = list(consensus)

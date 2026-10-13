@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -8,6 +9,13 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from frame_migration_st09_extract import extract_acceptance_variable
+from frame_migration_st09_extract import main as extract_main
+from luggage_gazebo.integration_acceptance import (
+    COMMIT_STAGES,
+    EVENT_ORDER,
+    FROZEN_HASHES,
+    extract_acceptance,
+)
 from frame_migration_st09_freeze import make_frame_dump, validate_frame_dump
 from frame_migration_st09_verify import (
     _canonical_sha256,
@@ -207,6 +215,243 @@ def test_extract_rejects_duplicate_crossbox_and_missing_join():
     assert extract_acceptance_variable(wrong_order, {"box_count": 2})["status"] == "fail"
 
 
+def _m3_frozen():
+    return {
+        "box_count": 3,
+        "sequence_ids": ["carryon", "standard", "carryon"],
+        "hashes": {key: "a" * 64 for key in FROZEN_HASHES},
+        "release_sample_interval_s": 0.05,
+        "drift_sample_interval_s": 0.2,
+        "event_order": list(EVENT_ORDER),
+        "replay_command": ["bash", "scripts/st09_i/s5_m3_run.sh", "--n", "3"],
+    }
+
+
+def _m3_case(index, name):
+    request = "m3-req-%d" % index
+    input_revision, output_revision = index, index + 1
+    events = []
+    for seq, stage in enumerate(EVENT_ORDER):
+        event = {
+            "stage": stage,
+            "request_id": request,
+            "success": True,
+            "acquisition_stamp_ns": 10000 * index + 10 * seq,
+            "receiver_stamp_ns": 20000 * index + 10 * seq,
+            "event_seq": seq,
+            "scene_revision": "a" * 64,
+            "geometry_hash": "a" * 64,
+            "input_map_revision": input_revision,
+        }
+        if stage in COMMIT_STAGES:
+            event["output_map_revision"] = output_revision
+        events.append(event)
+    return {
+        "box_id": "%s@%02d" % (name, index),
+        "request_id": request,
+        "cycle_id": "m3-cycle-%d" % index,
+        "causal_id": "m3-causal-%d" % index,
+        "events": events,
+        "measured": {
+            "integration_success": True,
+            "return_success": True,
+            "payload_retained": True,
+            "input_map_revision": input_revision,
+            "output_map_revision": output_revision,
+            "sensor_occupied_cells": 1,
+            "floor_through_candidates": 0,
+            "retreat_start": {"status": "ready", "max_delta": 0.008},
+            # Boxes after the first must name an observed map. Box 1 stays
+            # without one; the judge only requires it from the second case.
+            "selection_map": (
+                {"map_source": "release_integrated"} if index > 1 else {}),
+        },
+        "gt_reference": {
+            "xy_error_m": 0.01, "z_error_m": 0.01, "drift_m": 0.005,
+            "roll_deg": 0.5, "pitch_deg": -0.5, "center_inside_hull": True,
+            "footprint_reference_cells": 10, "footprint_sensor_cells": 5,
+        },
+    }
+
+
+def _m3_evidence():
+    cases = [_m3_case(1, "carryon"), _m3_case(2, "standard"), _m3_case(3, "carryon")]
+    handoffs = [
+        {"box_id": "standard@02", "request_id": "m3-req-1", "from": 1, "to": 2,
+         "from_revision": 2, "to_revision": 2},
+        {"box_id": "carryon@03", "request_id": "m3-req-2", "from": 2, "to": 3,
+         "from_revision": 3, "to_revision": 3},
+    ]
+    return {"complete": True, "hashes": _m3_frozen()["hashes"], "cases": cases,
+            "handoffs": handoffs}
+
+
+def test_three_box_unified_judge_requires_physical_gates():
+    frozen = _m3_frozen()
+    result = extract_acceptance(_m3_evidence(), frozen)
+    assert result["status"] == "pass"
+    assert result["box_count"] == 3
+    assert result["revision_handoff_count"] == 2
+
+    stripped = _m3_evidence()
+    for case in stripped["cases"]:
+        case.pop("gt_reference")
+        case["measured"].pop("sensor_occupied_cells")
+    result = extract_acceptance(stripped, frozen)
+    assert result["status"] != "pass"
+    assert any("gt_reference.xy_error_m" in item for item in result["missing"])
+    assert any("sensor_occupied_cells" in item for item in result["missing"])
+
+    disguise = _m3_evidence()
+    for case in disguise["cases"]:
+        for event in case["events"]:
+            event["input_map_revision"] = 1
+            if "output_map_revision" in event:
+                event["output_map_revision"] = 1
+        case["measured"]["input_map_revision"] = 1
+        case["measured"]["output_map_revision"] = 1
+    assert extract_acceptance(disguise, frozen)["status"] != "pass"
+
+
+def _committed(evidence, confirmed, sensor_cells=0):
+    """Mark every case as a ledger-committed box with the given outcome.
+
+    Each box is committed between the previous box's output revision and its
+    own integration input, so every revision after a commit moves up by one.
+    """
+    previous_after = None
+    for index, case in enumerate(evidence["cases"]):
+        measured = case["measured"]
+        expected = (measured["input_map_revision"]
+                    if previous_after is None else previous_after)
+        before = expected + 1
+        after = before + 1
+        measured["input_map_revision"] = before
+        measured["output_map_revision"] = after
+        for event in case["events"]:
+            if event.get("input_map_revision") is not None:
+                event["input_map_revision"] = before
+            if event.get("output_map_revision") is not None:
+                event["output_map_revision"] = after
+        measured["sensor_occupied_cells"] = sensor_cells
+        measured["map_confirmation"] = {
+            "mode": "commit_confirmed", "confirmed": confirmed,
+            "cleared": [index + 1] if confirmed else [],
+            "evidence_points": {str(index + 1): 9}, "min_evidence_points": 3,
+            "commit_revisions": {"expected": expected, "resulting": before},
+        }
+        previous_after = after
+    for position, row in enumerate(evidence["handoffs"]):
+        revision = evidence["cases"][position]["measured"]["output_map_revision"]
+        row["from_revision"] = revision
+        row["to_revision"] = revision
+    return evidence
+
+
+def test_committed_box_is_judged_on_confirmation_not_sensor_cells():
+    frozen = _m3_frozen()
+    confirmed = extract_acceptance(_committed(_m3_evidence(), True), frozen)
+    assert confirmed["status"] == "pass"
+    unconfirmed = extract_acceptance(_committed(_m3_evidence(), False), frozen)
+    assert unconfirmed["status"] == "fail"
+    assert "case[0]:MAP_CONFIRMATION_REQUIRED" in unconfirmed["failures"]
+    assert not any("NO_SENSOR_OCCUPANCY" in item
+                   for item in unconfirmed["failures"])
+
+
+def test_committed_chain_joins_through_the_commit_not_the_raw_output():
+    frozen = _m3_frozen()
+    evidence = _committed(_m3_evidence(), True)
+    first, second = evidence["cases"][0]["measured"], evidence["cases"][1]["measured"]
+    # The next box's integration input is NOT the previous output: the
+    # commit sits between them.
+    assert second["input_map_revision"] != first["output_map_revision"]
+    assert extract_acceptance(evidence, frozen)["status"] == "pass"
+
+    broken = _committed(_m3_evidence(), True)
+    broken["cases"][1]["measured"]["map_confirmation"]["commit_revisions"][
+        "expected"] += 1
+    result = extract_acceptance(broken, frozen)
+    assert "case[1]:STALE_MAP_REVISION" in result["failures"]
+
+    skipped = _committed(_m3_evidence(), True)
+    skipped["cases"][2]["measured"]["input_map_revision"] += 1
+    assert "case[2]:STALE_MAP_REVISION" in extract_acceptance(
+        skipped, frozen)["failures"]
+
+
+def test_committed_box_needs_enough_evidence_points_not_sensor_coverage():
+    frozen = _m3_frozen()
+    evidence = _committed(_m3_evidence(), True)
+    for case in evidence["cases"]:
+        case["gt_reference"]["footprint_sensor_cells"] = 0
+    assert extract_acceptance(evidence, frozen)["status"] == "pass"
+
+    thin = _committed(_m3_evidence(), True)
+    thin["cases"][0]["measured"]["map_confirmation"]["evidence_points"] = {"1": 2}
+    assert "case[0]:MAP_EVIDENCE_POINTS" in extract_acceptance(
+        thin, frozen)["failures"]
+    passed = extract_acceptance(evidence, frozen)
+    assert passed["sensor_coverage_gate"] == "not_applied_commit_mode"
+    assert "case[0]:GT_SENSOR_COVERAGE" in passed["sensor_coverage_not_applied"]
+    assert "case[0]:GT_SENSOR_COVERAGE" not in passed["failures"]
+
+    uncommitted = _m3_evidence()
+    uncommitted["cases"][0]["gt_reference"]["footprint_sensor_cells"] = 0
+    assert "case[0]:GT_SENSOR_COVERAGE" in extract_acceptance(
+        uncommitted, frozen)["failures"]
+
+
+def test_uncommitted_box_still_needs_a_sensor_cell():
+    frozen = _m3_frozen()
+    evidence = _m3_evidence()
+    for case in evidence["cases"]:
+        case["measured"]["sensor_occupied_cells"] = 0
+    result = extract_acceptance(evidence, frozen)
+    assert result["status"] == "fail"
+    assert "case[0]:NO_SENSOR_OCCUPANCY" in result["failures"]
+
+
+def test_three_box_raw_stamps_reported_not_rewritten():
+    frozen = _m3_frozen()
+    evidence = _m3_evidence()
+    events = evidence["cases"][0]["events"]
+    events[2]["acquisition_stamp_ns"], events[3]["acquisition_stamp_ns"] = (
+        events[3]["acquisition_stamp_ns"], events[2]["acquisition_stamp_ns"])
+    result = extract_acceptance(evidence, frozen)
+    assert result["status"] == "fail"
+    assert "case[0]:EVENT_CAUSAL_ORDER" in result["failures"]
+    assert events[2]["acquisition_stamp_ns"] == 10000 + 30
+    assert events[3]["acquisition_stamp_ns"] == 10000 + 20
+
+
+def test_main_routes_three_box_to_the_strict_judge(tmp_path, monkeypatch):
+    frozen_path = tmp_path / "frozen.json"
+    frozen_path.write_text(json.dumps(_m3_frozen()))
+    # Shallow flat-event evidence the legacy chain check would pass: the
+    # formal route must refuse it (no cases, no physical gates).
+    shallow = {"events": _joined_evidence(("carryon@01", "standard@02", "carryon@03"))["events"]}
+    shallow_path = tmp_path / "shallow.json"
+    shallow_path.write_text(json.dumps(shallow))
+    out = tmp_path / "verdict_shallow.json"
+    monkeypatch.setattr(sys, "argv", [
+        "extract", "--evidence", str(shallow_path),
+        "--frozen", str(frozen_path), "--output", str(out)])
+    assert extract_main() != 0
+    verdict = json.loads(out.read_text())
+    assert verdict["status"] != "pass"
+    assert any("3 cases" in item for item in verdict["missing"])
+
+    full_path = tmp_path / "full.json"
+    full_path.write_text(json.dumps(_m3_evidence()))
+    out_full = tmp_path / "verdict_full.json"
+    monkeypatch.setattr(sys, "argv", [
+        "extract", "--evidence", str(full_path),
+        "--frozen", str(frozen_path), "--output", str(out_full)])
+    assert extract_main() == 0
+    assert json.loads(out_full.read_text())["status"] == "pass"
+
+
 def test_fault_replay_reproduces_reason_and_effect_deltas():
     report = fault_replay_report([
         {
@@ -222,3 +467,28 @@ def test_fault_replay_reproduces_reason_and_effect_deltas():
     ])
     assert report["status"] == "pass"
     assert all(not any(row["effect_deltas"].values()) for row in report["results"])
+
+
+def test_replay_shell_entrypoint_refuses_live_domain(tmp_path):
+    trajectory = {
+        "schema": "st09.trajectory/1",
+        "joint_names": list(EXPECTED_JOINT_ORDER),
+        "points": [
+            {"time_from_start_ns": 0, "positions": [0] * 6, "velocities": [0] * 6, "accelerations": [0] * 6},
+            {"time_from_start_ns": 1, "positions": [0] * 6, "velocities": [0] * 6, "accelerations": [0] * 6},
+        ],
+    }
+    path = tmp_path / "trajectory.json"
+    path.write_text(json.dumps(trajectory), encoding="utf-8")
+    script = ROOT / "scripts" / "frame_migration_st09_replay.sh"
+    assert script.is_file()
+    result = subprocess.run(
+        ["bash", str(script), "--trajectory", str(path), "--domain", "7", "--ws", str(ROOT)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert result.returncode == 2
+    assert "refusing ROS_DOMAIN_ID=7" in result.stderr

@@ -1,0 +1,29 @@
+{
+ "command": "python3 -m pytest -q src/luggage_description/test/test_runtime_readiness.py src/luggage_description/test/test_runtime_identity_wire.py src/luggage_planning/test/test_st09_release.py src/luggage_planning/test/test_st09_typed_build.py src/luggage_planning/test/test_frame_migration_execution.py src/luggage_planning/test/test_frame_migration_selector.py src/luggage_gazebo/test/test_frame_migration_tools.py --tb=short",
+ "contract_version": 2,
+ "interface_contract_sha256": "8732615dfb65352792253292025dee210adf643f65b93520be13de524ac6a184",
+ "interface_id": "F08",
+ "kind": "runtime_boundary",
+ "limits": "Boundary-level regression only; production graph adoption (F21) and ST09 release remain open.",
+ "observations": [
+  "Boundary suite green after ST09 g4 node admission wiring: 8 boundary samples, handler gates fail closed with zero effects; v1 byte-equivalence tests unchanged.",
+  "g4 additions: shared NodeRuntime publishes RuntimeIdentityV2 and gates node effects on peer readiness; no handler change when frame_runtime is off."
+ ],
+ "prior_evidence": "docs/status/evidence/frame_migration/ST09-continuation-dev/runtime_F08.json",
+ "sample_count": 8,
+ "source_sha256": {
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c",
+  "src/luggage_msgs/msg/SlotSpec.msg": "f2cf303e2c94919955ead305dd9fa2f8224d820fb30bbcd186ba6beb8c1bf16e",
+  "src/luggage_msgs/srv/BuildMotionSequence.srv": "a6184a7d7757a83b141ec0e94f0d8a603dbb143464033ae0fbe7934ee4e5d007",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "6b825645898bd217e9b019abf5a836358d45e62f43b3fb807e1d39c57816a19d",
+  "src/luggage_msgs/srv/ComputePlacement.srv": "a025221eb64cc1fcfb4d642098c49f79c03482eb78acf0b7d3bc5ad214764ef2",
+  "src/luggage_msgs/srv/SelectPlacePathV2.srv": "8bb8d61164f823264db97ff8df2af8c8799522cfb89dd0ae4f9951c8f75642ae",
+  "src/luggage_planning/luggage_planning/place_service.py": "db6a9c7bc58831ead19f75370ba9533c44c9bce9d8877e7f0c1dcf3946a2e5cc",
+  "src/luggage_planning/luggage_planning/place_tcp.py": "fa55da2878a2f68edd78e5c557f74afb7bf510b76f6cc7479cb7f0d8b6f767de",
+  "src/luggage_planning/scripts/trajectory_selector_node.py": "381e7a423da33da6769950bf7e21ee9acbae4e079ed613fee5ebab6af5118dba",
+  "src/luggage_planning/scripts/waypoint_generator_node.py": "47b35137b335cc16b3e19ee4017377c251f239a1347aa212492f3e6ce716de53"
+ },
+ "status": "pass",
+ "test_evidence": "docs/status/evidence/frame_migration/ST09-g4-foundation/boundary-suite.log"
+}

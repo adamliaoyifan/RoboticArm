@@ -1,0 +1,27 @@
+{
+ "interface_id": "F08",
+ "kind": "runtime_boundary",
+ "status": "pass",
+ "contract_version": 2,
+ "command": "python3 -m pytest -q src/luggage_planning/test/test_frame_migration_selector.py",
+ "observations": [
+  "SelectPlacePathV2 and BuildMotionSequenceV2 are on the same commit as the ST05 slot producer.",
+  "Invalid v2 requests return before probe, MoveIt, sweep mutation, or commit.",
+  "v1 SelectPlacePath still emits the yaw-only tool-down quaternion."
+ ],
+ "sample_count": 9,
+ "interface_contract_sha256": "8732615dfb65352792253292025dee210adf643f65b93520be13de524ac6a184",
+ "source_sha256": {
+  "src/luggage_msgs/msg/SlotSpec.msg": "f2cf303e2c94919955ead305dd9fa2f8224d820fb30bbcd186ba6beb8c1bf16e",
+  "src/luggage_msgs/srv/ComputePlacement.srv": "a025221eb64cc1fcfb4d642098c49f79c03482eb78acf0b7d3bc5ad214764ef2",
+  "src/luggage_msgs/srv/BuildMotionSequence.srv": "a6184a7d7757a83b141ec0e94f0d8a603dbb143464033ae0fbe7934ee4e5d007",
+  "src/luggage_planning/scripts/waypoint_generator_node.py": "51aafeba8ad5f74b2ce07ded5d39b9a6e908532989fa34fe0e05f5a881df0718",
+  "src/luggage_planning/scripts/trajectory_selector_node.py": "25d8fcb3b1141110a2410305eb9553bbad354c785f73215347298bfe6aa3e170",
+  "src/luggage_msgs/srv/BuildMotionSequenceV2.srv": "07a8a79a3f0236cb9e3ca9b6fb6fcc479c5df42ad04b616698ca0ae7c3778c3b",
+  "src/luggage_msgs/srv/SelectPlacePathV2.srv": "48d5bdb3ec113cdc6c07a129335dfd18cb7346ee5323a478fbd2b6f2fbc0ff0f",
+  "src/luggage_planning/luggage_planning/place_tcp.py": "8329a7cb6ede712e27e18e0ee10fa2118113abebe51d7450e9012d4a78e48934",
+  "src/luggage_planning/luggage_planning/place_service.py": "86767036cfbe3aaa2c1ccddb50e9e30bf6fa151ea1a3138b79afd150d3e7d87e",
+  "src/luggage_description/luggage_description/frame_contracts.py": "0ee21dbba7d85fe3e8cfc7a1bb12aa5ea5a8075f717316aaf401d716a3734637",
+  "src/luggage_description/luggage_description/frame_transforms.py": "c1d9add5c3fb8159b999ff996ad74b7292b6d57a88b43d2fe648eb0b3cd4c26c"
+ }
+}

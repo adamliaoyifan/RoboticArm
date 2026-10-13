@@ -1,0 +1,20 @@
+{
+  "complete": true,
+  "drift_mean": null,
+  "err_xy_mean": null,
+  "err_z_mean": null,
+  "fail_codes": {},
+  "finalize": [
+    "EXIT_FAILED_STUCK"
+  ],
+  "n": 1,
+  "n_cases": 1,
+  "n_descend_ok": 0,
+  "n_inside_inner_box": 0,
+  "n_lost_payload": 0,
+  "n_place_ok": 0,
+  "place_pass_rate": 0.0,
+  "sequence_ids": [
+    "carryon"
+  ]
+}
