@@ -17,6 +17,7 @@ from __future__ import division
 
 import argparse
 import copy
+import hashlib
 import json
 import math
 import os
@@ -59,6 +60,35 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
 MAX_CONSECUTIVE_FAILURES = 3
+
+
+def placement_slot_context_request_id(local_request_id, slot_request_id):
+    """Request id used to decode a ComputePlacementV2 slot.
+
+    The service has no client request id. The planner stamps its own id
+    on the slot. Decoding with the driver's private id rejects every
+    successful response as REQUEST_IDENTITY_MISMATCH.
+    """
+    stamped = str(slot_request_id or "")
+    if stamped:
+        return stamped
+    return str(local_request_id or "")
+
+
+def process_exit_code(termination, packed, max_boxes):
+    """0 only when every requested box committed."""
+    if str(termination) == "MAX_BOXES" and int(packed) == int(max_boxes):
+        return 0
+    return 1
+
+
+def driver_source_sha256():
+    """SHA256 of this driver file, the identity a launch must execute."""
+    digest = hashlib.sha256()
+    with open(__file__, "rb") as handle:
+        for chunk in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 class PackEvalDriver(PlaceSmokeDriver):
@@ -104,15 +134,25 @@ class PackEvalDriver(PlaceSmokeDriver):
         self._pending_placed = None
         self._surface_v2_msg = None
         if getattr(self, "_typed", None) is not None:
-            from rclpy.qos import (DurabilityPolicy, QoSProfile,
-                                   ReliabilityPolicy)
-            from luggage_msgs.msg import SurfaceContractV2
-            transient = QoSProfile(
-                depth=1, reliability=ReliabilityPolicy.RELIABLE,
-                durability=DurabilityPolicy.TRANSIENT_LOCAL)
-            self.create_subscription(
-                SurfaceContractV2, "/luggage/cargo_map/surface_v2",
-                self._on_surface_v2, transient, callback_group=self._group)
+            self._subscribe_typed_surface()
+
+    def _subscribe_typed_surface(self):
+        """Subscribe to the v2 cargo surface.
+
+        QoS symbols stay the module-level imports. A function-local
+        ``from rclpy.qos import QoSProfile`` inside ``__init__`` would
+        make that name local to the whole constructor and raise
+        UnboundLocalError on the latch subscription above.
+        """
+        if getattr(self, "_typed", None) is None:
+            return
+        from luggage_msgs.msg import SurfaceContractV2
+        transient = QoSProfile(
+            depth=1, reliability=ReliabilityPolicy.RELIABLE,
+            durability=DurabilityPolicy.TRANSIENT_LOCAL)
+        self.create_subscription(
+            SurfaceContractV2, "/luggage/cargo_map/surface_v2",
+            self._on_surface_v2, transient, callback_group=self._group)
 
     def _on_surface_v2(self, msg):
         self._surface_v2_msg = msg
@@ -232,7 +272,11 @@ class PackEvalDriver(PlaceSmokeDriver):
             trial.extras["placement_from"] = "DetectLuggage"
             return reason_code or "PLACEMENT_FAILED"
         context = BoundaryContext(
-            "F07", "typed_driver_adapter", "pack_eval_driver", request_id,
+            "F07", "typed_driver_adapter", "pack_eval_driver",
+            placement_slot_context_request_id(
+                request_id,
+                getattr(getattr(placement.slot, "identity", None),
+                        "request_id", "")),
             self._frame_scene_revision, "container_link", "box_center",
             "scene")
         try:
@@ -255,6 +299,12 @@ class PackEvalDriver(PlaceSmokeDriver):
         return ""
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
+        if getattr(self, "_typed", None) is not None:
+            slot, meta = self._typed_place_slot(pick_msg, trial)
+            if slot is not None:
+                self._pending_slot = slot
+                self._pending_slot_meta = meta
+            return slot, meta
         del pick_msg, box_msg
         if self._pending_slot is None:
             trial.fail_code = trial.fail_code or "PLACEMENT_FAILED"
@@ -406,7 +456,7 @@ class PackEvalDriver(PlaceSmokeDriver):
             if err:
                 print("graph: %s" % err)
                 self._write_suite("ABORT", 0, self._sample_rtf())
-                return
+                return "ABORT"
         termination = "MAX_BOXES"
         seq = 0
         rtf_start = self._sample_rtf()
@@ -628,10 +678,16 @@ class PackEvalDriver(PlaceSmokeDriver):
                 dump=dump_path,
             )
             seq += 1
+            if ((not commit_ok)
+                    and getattr(args, "stop_on_first_failure", False)):
+                if termination == "MAX_BOXES":
+                    termination = str(fail or dump_slug or "FIRST_FAILURE")
+                break
             if termination == "ABORT":
                 break
 
         self._write_suite(termination, seq, rtf_start)
+        return termination
 
     def _rename_dump_dir(self, seq, slug):
         pending = self._box_dump_dir(seq, "pending")
@@ -777,7 +833,21 @@ def merge_args(argv=None):
     pack.add_argument("--observe-pose", default="pickup_observe")
     pack.add_argument("--goto-timeout", type=float, default=60.0)
     pack.add_argument("--skip-graph-check", action="store_true")
+    pack.add_argument("--frame-runtime", action="store_true",
+                      help="Adopt the v2 runtime chain: place slots and "
+                           "motion come from ComputePlacementV2 -> "
+                           "SelectPlacePathV2 certified routes")
+    pack.add_argument("--frame-peer", default="pack_eval_driver")
+    pack.add_argument("--stop-on-first-failure", action="store_true",
+                      help="End the suite when the first box fails to commit")
     known, rest = pack.parse_known_args(argv)
+    # The shared place parser rejects unknown options, so strip the
+    # flags this driver owns before parse_place_args sees them.
+    local = argparse.ArgumentParser(add_help=False)
+    local.add_argument("--frame-runtime", action="store_true")
+    local.add_argument("--frame-peer", default="pack_eval_driver")
+    local.add_argument("--stop-on-first-failure", action="store_true")
+    _stripped, rest = local.parse_known_args(rest)
     smoke = parse_place_args([
         "--out", known.out,
         "--n", str(known.n if known.n is not None else known.max_boxes),
@@ -786,8 +856,13 @@ def merge_args(argv=None):
         "--payload", "vacuum",
         "--geometry-timeout", "25",
     ] + rest)
+    smoke.frame_runtime = bool(known.frame_runtime)
+    smoke.frame_peer = str(known.frame_peer)
+    smoke.stop_on_first_failure = bool(known.stop_on_first_failure)
     for key, value in vars(known).items():
-        setattr(smoke, key, value)
+        if key not in ("frame_runtime", "frame_peer",
+                       "stop_on_first_failure"):
+            setattr(smoke, key, value)
     if smoke.n is not None and known.n is None:
         pass
     if known.n is not None:
@@ -814,11 +889,12 @@ def main(argv=None):
     spinner = threading.Thread(target=executor.spin, daemon=True)
     spinner.start()
     try:
-        driver.run()
+        termination = driver.run()
     finally:
         driver.destroy_node()
         rclpy.shutdown()
-    return 0
+    packed = len(getattr(driver, "_committed_ledger_boxes", []) or [])
+    return process_exit_code(termination, packed, args.max_boxes)
 
 
 if __name__ == "__main__":

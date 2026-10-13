@@ -579,6 +579,9 @@ class CargoVolumeMapper:
             raise ValueError("placed box needs finite xyz and positive size")
         if self._matching_placed_box(center, size, yaw, tolerance) is not None:
             return False
+        if not any(self._iter_placed_box_voxels(center, size, float(yaw))):
+            raise ValueError(
+                "placed box rasterizes to zero voxels")
         record = {
             "center": center,
             "size": size,

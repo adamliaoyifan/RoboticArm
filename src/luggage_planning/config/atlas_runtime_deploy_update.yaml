@@ -1,0 +1,26 @@
+# Yaw-180 deploy-update reachability atlas.
+# Sampled against scene_tf_deploy_update.yaml (robot yaw +180 deg on the
+# pedestal). Nodes select this file when the live scene hash matches the
+# atlas metadata. hash_policy strict: a mismatch does not rank or reject.
+enabled: true
+atlas_dir: reachability_atlas_deploy_update
+basename: "s20_container_collision_aware"
+atlas_file: ""
+hash_policy: "strict"
+query_offset: [0.0, 0.0, 0.0]
+payload:
+  policy: "auto"
+  explicit_size: [0.0, 0.0, 0.0]
+placement:
+  hard_reject: true
+  w_reachability: 0.3
+  dump_only: false
+motion:
+  enabled: true
+  seed_set: "transit"
+  max_seeds: 3
+  mode: "miss-retry"
+  target_z_lift_m: 0.008
+  refine: true
+  fk_verify_tol_m: 0.25
+  submit_mode: "joint_goal"

@@ -43,16 +43,15 @@ class _FixtureDriver(object):
 
 class TestFixedSlotLock(unittest.TestCase):
 
-    def test_fixed_slot_refuses_on_typed_production_chain(self):
+    def test_typed_chain_routes_to_certified_place_slot(self):
         trial = SimpleNamespace(fail_code="", extras={})
         driver = _FixtureDriver(typed=True)
+        sentinel = (object(), {"slot_source": "certified_route"})
+        driver._typed_place_slot = lambda _pick, _trial: sentinel
         slot, meta = driver._place_slot_for(
             SimpleNamespace(height_valid=True), None, trial)
-        self.assertIsNone(slot)
-        self.assertIsNone(meta)
-        self.assertEqual(trial.fail_code, "FIXED_SLOT_TEST_ONLY")
-        self.assertEqual(trial.extras["slot_source"],
-                         "test_fixture_refused")
+        self.assertIs(slot, sentinel[0])
+        self.assertEqual(meta["slot_source"], "certified_route")
 
     def test_fixed_slot_stays_a_named_test_fixture_for_legacy(self):
         # Pack-eval lineage (no typed chain): the fixture still works

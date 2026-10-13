@@ -64,6 +64,20 @@ SIZE_TIERS = (
     ("large", (0.80, 0.50, 0.32), 23.0, "large"),
 )
 
+# Inch sizes used by the yaw-180 inch20 baseline. Standing order is
+# height x width x depth; the lying spawn size is (width, height, depth).
+INCH_SIZE_TIERS = (
+    ("inch20", (0.35, 0.53, 0.22), 5.67, "inch20"),
+    ("inch22", (0.37, 0.58, 0.24), 7.41, "inch22"),
+    ("inch24", (0.40, 0.63, 0.25), 9.40, "inch24"),
+    ("inch26", (0.42, 0.68, 0.27), 12.02, "inch26"),
+)
+
+
+def iter_size_tiers():
+    """Catalog tiers, then the inch sizes."""
+    return SIZE_TIERS + INCH_SIZE_TIERS
+
 SIZED_MANIFEST_NAME = "sized_suitcases.json"
 
 
@@ -99,10 +113,10 @@ def sized_visual_mesh_uri(visual_id, tier):
 
 
 def size_tier_name(size, atol=1e-3):
-    """Return small/medium/large if *size* matches a catalog tier, else None."""
+    """Return a tier name if *size* matches a registered tier, else None."""
     if size is None or len(size) < 3:
         return None
-    for name, spec, _mass, _catalog_id in SIZE_TIERS:
+    for name, spec, _mass, _catalog_id in iter_size_tiers():
         if all(abs(float(size[i]) - float(spec[i])) <= atol for i in range(3)):
             return name
     return None

@@ -41,6 +41,13 @@ mass_model:
   max_kg: 23.0           # vacuum rated payload; sampling is clamped here
 
 box_catalog:
+  - id: inch20
+    model: suitcase_loafbrr
+    visual: suitcase_loafbrr
+    size: [0.350, 0.530, 0.220]
+    weight: 1.0
+    mass_kg: 5.67
+    allowed_yaws: [1.5708]
   - id: carryon
     model: suitcase_carryon
     visual: suitcase_loafbrr
