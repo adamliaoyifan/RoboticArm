@@ -911,6 +911,69 @@ class RouteProducer(object):
             seeded.append(region)
         return candidate, box_target, plan, seeded, node_ids
 
+    def _screen_carrying_anchors(self, scope_ids, candidate, snapshot,
+                                 attachment, request, start_q, slot_index):
+        """Drop carrying anchors whose joints hit the carried payload.
+
+        Graph planner only (the lattice already judges every state). The
+        verdict comes from the certifier's scene for the carrying load, so
+        a refusal here is the same judgement the route would meet later,
+        reached without a MoveGroup call. See ``anchor_payload_gate``.
+        """
+        from luggage_planning.anchor_payload_gate import AnchorPayloadGate
+        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+
+        self._payload_screen_fn = None
+        if self.corridor_planner != "graph" or attachment is None \
+                or self.lattice_checker_factory is None:
+            return scope_ids, []
+
+        class _LoadEdge(object):
+            edge_id = "anchor-carrying"
+            load_state = "carrying"
+
+        state = self.edge_scene_states(
+            None, [_LoadEdge()], snapshot, attachment, candidate,
+            request)["anchor-carrying"]
+        state_key = FrozenSceneComposer._state_key(state)  # noqa: SLF001
+        checkers = self._anchor_checkers
+        if state_key not in checkers:
+            checkers[state_key] = self.lattice_checker_factory(
+                scene_states={"carrying": state}, start_q=start_q)
+        checker = checkers[state_key]
+        try:
+            full_key = (state_key, checker.live_scene_digest())
+        except Exception as error:  # noqa: BLE001 - checker boundary
+            self._log("route: anchor gate digest unavailable %r" % (error,))
+            return scope_ids, []
+        if self._anchor_gate is None:
+            self._anchor_gate = AnchorPayloadGate(
+                lambda key: self._anchor_checkers.get(key[0]))
+        nodes = [
+            self.graph.nodes[node_id] for node_id in scope_ids
+            if str(self.graph.nodes[node_id].load_state) == "carrying"
+            and self.graph.nodes[node_id].region in (
+                "staging", "portal", "slot_approach", "slot_upper")]
+        result = self._anchor_gate.screen(nodes, full_key, slot_index)
+        self.anchor_provenance.extend(result.rows)
+        rejected = {row["node_id"] for row in result.rows
+                    if row["verdict"] == "rejected"}
+        for row in result.rows:
+            if row["verdict"] == "rejected":
+                self._log(
+                    "route: %s %s region=%s q=%s (no MoveGroup call)" % (
+                        row["reason"], row["node_id"], row["region"],
+                        [round(v, 3) for v in row["q"]]))
+        gate = self._anchor_gate
+
+        def payload_hits_arm(node, _gate=gate, _key=full_key, _slot=slot_index):
+            rows = _gate.screen([node], _key, _slot).rows
+            self.anchor_provenance.extend(rows)
+            return rows[0]["verdict"] == "rejected"
+
+        self._payload_screen_fn = payload_hits_arm
+        return set(scope_ids) - rejected, result.rows
+
     def _lattice_planner(self, candidate, plan, scope_ids, start_q,
                          atlas_seeds, attachment, snapshot, request,
                          orientation):
@@ -1044,6 +1107,11 @@ class RouteProducer(object):
         purge = getattr(self.graph, "clear_request_scoped", None)
         if callable(purge):
             purge()
+        # Request scope: the payload gate cache and its provenance start empty.
+        self._anchor_gate = None
+        self._anchor_checkers = {}
+        self._payload_screen_fn = None
+        self.anchor_provenance = []
         # Admission order:
         #   hard_reject_safe unreachable is the only pre-route atlas drop
         #   -> reachable seeded
@@ -1264,6 +1332,15 @@ class RouteProducer(object):
                  for n in self.graph.nodes.values()
                  if n.region in ("portal", "slot_approach", "slot_upper")],
                 [round(v, 3) for v in start_q]))
+            scope_ids, gate_rows = self._screen_carrying_anchors(
+                scope_ids, candidate, snapshot, attachment, request,
+                start_q, index)
+            row["anchor_gate"] = {
+                "rejected": [g["node_id"] for g in gate_rows
+                             if g["verdict"] == "rejected"],
+                "not_evaluated": [g["node_id"] for g in gate_rows
+                                  if g["verdict"] == "not_evaluated"],
+            }
             row["candidate_id"] = candidate.candidate_id
             row["depth_m"] = candidate.depth_m
             row["_scope_ids"] = scope_ids
@@ -1276,8 +1353,12 @@ class RouteProducer(object):
                 entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
                     hop for hop in DEFAULT_ENTRY_HOPS
                     if hop[0] != "portal")
-                has_staging = bool(
-                    self.graph.nodes_by_region("staging"))
+                # The entry hops are carrying hops, so only a carrying
+                # staging anchor that survived the payload gate counts.
+                has_staging = any(
+                    node.node_id in scope_ids
+                    and str(node.load_state) == "carrying"
+                    for node in self.graph.nodes_by_region("staging"))
                 if has_staging:
                     # Free space outside the portal may detour. Both
                     # home -> staging and staging -> portal are joint
@@ -1339,7 +1420,8 @@ class RouteProducer(object):
                                 ("slot_upper", plan.slot_upper),
                                 ("exit", plan.exit))
                             if position is not None},
-                        scope_node_ids=scope_ids)
+                        scope_node_ids=scope_ids,
+                        payload_screen=self._payload_screen_fn)
                 planner.trace = getattr(self, "search_trace", None)
                 targets = self._expand_targets(
                     candidate, attachment, request)

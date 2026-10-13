@@ -97,6 +97,14 @@ class LatticeStateChecker(object):
         self.stats = {"service_calls": 0, "service_time_s": 0.0,
                       "states": 0}
 
+    def live_scene_digest(self):
+        """Semantic digest of the live scene this checker will judge against."""
+        from luggage_planning.anchor_payload_gate import live_scene_digest
+        from luggage_planning.moveit_state_validity import FrozenSceneComposer
+
+        return live_scene_digest(
+            FrozenSceneComposer(self._scene_client).read_live())
+
     def _prepare(self):
         if self._scenes is not None:
             return

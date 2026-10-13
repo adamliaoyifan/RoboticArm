@@ -480,14 +480,21 @@ class GraphRoutePlanner(object):
     st09_contracts.fixtures and never constructs a CertificationResult.
     """
 
+    #: Existing entry-region nodes offered as retreat targets per hop.
+    RETREAT_TWIN_LIMIT = 2
+
     def __init__(self, graph, edge_builder, *, home_node_id,
                  goal_seeds=None, budget_policy=None,
                  entry_hops=None, retreat_hops=None,
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
-                 region_poses=None, scope_node_ids=None):
+                 region_poses=None, scope_node_ids=None, payload_screen=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
+        #: Optional ``node -> bool`` (True = the carried payload hits the
+        #: arm at this node's q). Nodes this planner registers while
+        #: carrying are screened with it before they can join the scope.
+        self.payload_screen = payload_screen
         #: region -> world TCP position from the anchor plan.
         self.region_poses = dict(region_poses or {})
         #: Node ids of the current candidate (None = whole graph). Nodes
@@ -577,6 +584,14 @@ class GraphRoutePlanner(object):
         if node is None:
             node = self.graph.register_node(q, position, quaternion, region,
                                             load_state, ik_family=family)
+        if self.payload_screen is not None \
+                and str(load_state) == "carrying" \
+                and region in ("staging", "portal", "slot_approach",
+                               "slot_upper") \
+                and self.payload_screen(node):
+            # Same judgement the anchor gate applies: no MoveGroup call is
+            # spent on a goal the certifier would refuse. Not in scope.
+            return None
         if self.scope is not None:
             self.scope.add(node.node_id)
         return node
@@ -664,16 +679,19 @@ class GraphRoutePlanner(object):
                 return ()
             quaternion = tuple(float(v) for v in frontier.tcp_quaternion_xyzw)
             q = self._refine_one(position, quaternion, frontier.q)
-            if q is None:
-                return ()
             from luggage_planning.grid_path_search import descend_pair_rank
             # A Newton step that leaves the wrist/elbow branch is not a
             # continuous successor. Do not hand that q to Cartesian.
-            if descend_pair_rank(frontier.q, q)[0] != 0:
+            if q is None or descend_pair_rank(frontier.q, q)[0] != 0:
+                if hop.edge_class == "RETREAT":
+                    return self._retreat_twins(
+                        frontier, hop, position, load_state)
                 return ()
             node = self._register(
                 q, position, quaternion, hop.to_region,
                 load_state(hop.load_state), "frontier")
+            if node is None:
+                return ()
             if hop.edge_class == "DESCEND":
                 self._register(
                     q, position, quaternion, hop.to_region,
@@ -681,6 +699,45 @@ class GraphRoutePlanner(object):
             return (node,)
 
         return solve
+
+    def _retreat_twins(self, frontier, hop, position, load_state):
+        """Reverse of an entry corridor hop: reuse a same-branch entry q.
+
+        The entry reached ``hop.to_region`` on some branch and then ran
+        Cartesian to the next region, so the way back along that corridor
+        is continuous on the same branch. A fresh Newton step from the
+        frontier can land on another elbow branch for a pose near the base
+        and would leave the retreat without a target. The unloaded twin of
+        an existing carrying node at the same pose is the target; the edge
+        is still built and certified like any other RETREAT edge.
+        """
+        from luggage_planning.grid_path_search import descend_pair_rank
+        twins = []
+        for node in self.graph.nodes_by_region(hop.to_region):
+            if str(node.load_state) != "carrying" \
+                    or str(getattr(node, "ik_family", "")) == "endpoint":
+                continue
+            if max(abs(float(a) - float(b)) for a, b in
+                   zip(node.tcp_position, position)) > 1e-3:
+                continue
+            twins.append((descend_pair_rank(frontier.q, node.q), node))
+        # Nearest first. The rank is an ordering, not a filter: the entry
+        # corridor itself ran between these two joint branches, and the
+        # reverse edge is built and certified like the forward one.
+        twins.sort(key=lambda item: item[0])
+        registered = []
+        seen = set()
+        for _rank, node in twins:
+            key = tuple(round(float(v), 4) for v in node.q)
+            if key in seen:
+                continue
+            seen.add(key)
+            registered.append(self._register(
+                node.q, node.tcp_position, node.tcp_quaternion_xyzw,
+                hop.to_region, load_state.UNLOADED, "retreat_twin"))
+            if len(registered) >= self.RETREAT_TWIN_LIMIT:
+                break
+        return tuple(twin for twin in registered if twin is not None)
 
     def _released_box(self, attachment, candidate):
         """World-frame box at the candidate's placed pose, composed
