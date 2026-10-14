@@ -1,5 +1,6 @@
 """Portal hook and Select-request capture: behaviour, verified separately."""
 
+import pytest
 import json
 import os
 from pathlib import Path
@@ -213,3 +214,62 @@ def test_real_over_limit_goal_is_classified_outside():
     verdict = classify_portal_record(_rec(goal), urdf_joint_limits(
         "<robot>" + URDF + "</robot>"))
     assert verdict["category"] == "GOAL_OUTSIDE_URDF_LIMITS"
+
+
+# --- joint-edge interpolation gate and knot densification -------------------
+
+def test_densify_keeps_knots_and_bounds_the_step():
+    from luggage_planning.moveit_edge_adapter import _Knot, densify_knots
+
+    points = [_Knot([0.0] * 6), _Knot([0.3, 0, 0, 0, 0, -0.12])]
+    dense = densify_knots(points, 0.05)
+    assert dense[0].positions == [0.0] * 6
+    assert dense[-1].positions == pytest.approx([0.3, 0, 0, 0, 0, -0.12])
+    steps = [max(abs(a - b) for a, b in zip(p.positions, q.positions))
+             for p, q in zip(dense, dense[1:])]
+    assert max(steps) <= 0.05 + 1e-12
+    assert len(dense) == 7  # 0.3 / 0.05 = 6 pieces
+
+
+class _GateHost(object):
+    def __init__(self, verdict):
+        self.verdict = verdict
+
+    def _portal_submission_scene(self):
+        return object()
+
+    def _states_on_scene(self, scene, states, edge_id):
+        return self.verdict
+
+
+def _timed():
+    from st09_contracts.graph import TimedTrajectory
+
+    return TimedTrajectory(
+        joint_names=tuple(NAMES),
+        positions=((0.0,) * 6, (0.1,) * 6),
+        velocities=((0.0,) * 6, (0.0,) * 6),
+        accelerations=((0.0,) * 6, (0.0,) * 6),
+        time_from_start_ns=(0, 1_000_000_000))
+
+
+def _refuse(verdict):
+    import types
+    from luggage_planning.moveit_edge_adapter import EdgeClass
+
+    return MoveItEdgeAdapter._refuse_interpolated_collision(
+        _GateHost(verdict), types.SimpleNamespace(node_id="a"),
+        types.SimpleNamespace(node_id="b"), EdgeClass.PORTAL_TRANSIT,
+        _timed())
+
+
+def test_interpolated_collision_refuses_edge_but_checker_failure_does_not():
+    from luggage_planning.grid_path_search import RoutePlanningError
+
+    with pytest.raises(RoutePlanningError) as caught:
+        _refuse({"status": "queried", "valid": False, "reason": "COLLISION",
+                 "first_invalid_sample": 5, "contacts": []})
+    assert caught.value.detail["kind"] == "interpolated_collision"
+    assert caught.value.detail["first_invalid_sample"] == 5
+    _refuse({"status": "queried", "valid": True})
+    _refuse({"status": "not_evaluated", "reason": "timeout"})

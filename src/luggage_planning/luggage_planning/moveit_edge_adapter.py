@@ -341,6 +341,34 @@ def synthesize_waypoints(source_position, source_quaternion,
     return poses, distance
 
 
+#: Largest per-joint step between consecutive knots of a retimed joint edge.
+#: MoveGroup validates the straight joint segments between its waypoints; the
+#: controller (and the certifier) follow a spline through the knots, which can
+#: leave those segments between two sparse knots. Knots inserted on the
+#: validated segments keep the spline on the geometry that was checked.
+JOINT_KNOT_MAX_STEP_RAD = 0.05
+
+
+class _Knot(object):
+    def __init__(self, positions):
+        self.positions = list(positions)
+
+
+def densify_knots(points, max_step_rad):
+    """Insert knots on the straight joint segments (existing knots kept)."""
+    dense = [_Knot(points[0].positions)]
+    for left, right in zip(points, points[1:]):
+        a = [float(v) for v in left.positions]
+        b = [float(v) for v in right.positions]
+        delta = max(abs(y - x) for x, y in zip(a, b))
+        pieces = max(1, int(-(-delta // max_step_rad)))
+        for step in range(1, pieces + 1):
+            fraction = step / pieces
+            dense.append(_Knot(
+                [x + (y - x) * fraction for x, y in zip(a, b)]))
+    return dense
+
+
 class MoveItEdgeAdapter(object):
     """Builds route edges through MoveIt planning only (no execution).
 
@@ -772,6 +800,15 @@ class MoveItEdgeAdapter(object):
 
     def _goal_on_submission_scene(self, scene_msg, goal_q):
         """Validate the goal joints against the pre-call scene copy."""
+        return self._states_on_scene(scene_msg, [goal_q], "portal-goal")
+
+    def _states_on_scene(self, scene_msg, states, edge_id):
+        """Validate joint states against a scene copy (certifier ACM).
+
+        One ValidateRouteV2 leg whose samples are exactly ``states``; the
+        same collision machinery the certifier uses, so a verdict here is
+        the verdict the route would meet at certification for these states.
+        """
         from luggage_msgs.msg import RouteLegV2
         from luggage_msgs.srv import ValidateRouteV2
         from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
@@ -799,34 +836,35 @@ class MoveItEdgeAdapter(object):
                 FrozenSceneComposer, scene_msg.allowed_collision_matrix))
         scene_msg.is_diff = False
         request = ValidateRouteV2.Request()
-        request.request_id = "portal-goal"
-        request.route_digest = "portal-goal"
-        request.scene_digest = "portal-goal"
+        request.request_id = edge_id
+        request.route_digest = edge_id
+        request.scene_digest = edge_id
         request.load_state_scenes = [scene_msg]
         request.max_sample_dt_ns = 0.0
         request.distance_stride = 1000
-        request.budget_s = 2.0
+        request.budget_s = 2.0 if len(states) == 1 else 8.0
         request.joint_velocity_limits = [0.0] * len(JOINT_NAMES)
         leg = RouteLegV2()
-        leg.edge_id = "portal-goal"
+        leg.edge_id = edge_id
         leg.edge_class = "PORTAL_TRANSIT"
         leg.carrying = True
         leg.load_state_index = 0
         leg.joint_names = list(JOINT_NAMES)
-        leg.n_samples = 1
-        leg.sample_times_ns = [0.0]
-        leg.sample_positions_flat = [float(v) for v in goal_q]
+        leg.n_samples = len(states)
+        leg.sample_times_ns = [float(i) * 1e6 for i in range(len(states))]
+        leg.sample_positions_flat = [
+            float(v) for state in states for v in state]
         knots = JointTrajectory()
         knots.joint_names = list(JOINT_NAMES)
         point = JointTrajectoryPoint()
-        point.positions = [float(v) for v in goal_q]
+        point.positions = [float(v) for v in states[0]]
         knots.points = [point]
         leg.knots = knots
         request.legs = [leg]
         done = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _f: done.set())
-        if not done.wait(8.0):
+        if not done.wait(12.0):
             return {"status": "not_evaluated", "reason": "timeout"}
         response = future.result()
         if response is None or not response.leg_results:
@@ -839,6 +877,8 @@ class MoveItEdgeAdapter(object):
             "valid": bool(result.valid),
             "reason": str(result.reason),
             "detail": str(result.detail),
+            "first_invalid_sample": int(result.first_invalid_sample),
+            "n_samples": len(states),
             "acm_rule": "certifier_composed",
             "structure_pair_allowed_before_compose": raw_allowed,
             "contacts": [
@@ -917,11 +957,58 @@ class MoveItEdgeAdapter(object):
             raise RoutePlanningError("EDGE_BUILD_FAILED", {
                 "kind": "moveit_error",
                 "error_code": code})
-        timed = self._retime(joint_trajectory)
+        timed = self._retime(joint_trajectory, densify=True)
+        self._refuse_interpolated_collision(from_node, to_node, klass, timed)
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="joint", ok=True,
             moveit_error_code=int(result.error_code.val), attempts=1)
         return timed, outcome
+
+    def _refuse_interpolated_collision(self, from_node, to_node, klass,
+                                       timed):
+        """Judge the joint edge the way the certifier will, before keeping it.
+
+        MoveGroup validates the waypoints it plans through; the certifier
+        samples the controller's spline between them. A leg whose waypoints
+        are all valid can still graze the world between two of them (G2
+        slot 794: 78 valid knots, sample 514 of 2702 at 0.6 mm). The edge is
+        refused here as ``EDGE_BUILD_FAILED`` so the existing bounded edge
+        repair redraws it; the certifier keeps the final word and its
+        threshold is untouched. An unavailable checker keeps the edge and is
+        recorded, never reported as a collision.
+        """
+        from luggage_planning.grid_path_search import RoutePlanningError
+        from luggage_planning.moveit_state_validity import sample_states
+
+        if os.environ.get("ST09_EDGE_INTERPOLATION_GATE", "1") == "0":
+            return
+        record = {"edge_class": klass.value, "from": from_node.node_id,
+                  "to": to_node.node_id}
+        try:
+            scene_msg = self._portal_submission_scene()
+            states = sample_states(timed)
+            verdict = self._states_on_scene(
+                scene_msg, states, "edge-%s" % klass.value.lower())
+        except Exception as error:  # noqa: BLE001 - checker boundary
+            verdict = {"status": "not_evaluated",
+                       "reason": "exception:%s" % type(error).__name__}
+            states = ()
+        record.update(status=verdict.get("status"), valid=verdict.get("valid"),
+                      n_samples=len(states),
+                      first_invalid=verdict.get("first_invalid_sample"),
+                      contacts=verdict.get("contacts", [])[:4])
+        log = getattr(self, "_interpolation_gate_log", None)
+        if log is None:
+            log = self._interpolation_gate_log = []
+        log.append(record)
+        if verdict.get("status") == "queried" and not verdict.get("valid") \
+                and verdict.get("reason") == "COLLISION":
+            raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                "kind": "interpolated_collision",
+                "edge_class": klass.value,
+                "first_invalid_sample": verdict.get("first_invalid_sample"),
+                "n_samples": len(states),
+                "contacts": verdict.get("contacts", [])[:4]})
 
     def _plan_cartesian(self, from_node, to_node, klass, waypoints_hint):
         from luggage_planning.grid_path_search import RoutePlanningError
@@ -1081,7 +1168,7 @@ class MoveItEdgeAdapter(object):
 
     # -- timing -------------------------------------------------------------
 
-    def _retime(self, joint_trajectory):
+    def _retime(self, joint_trajectory, densify=False):
         """Site rest-to-rest trapezoid over the geometric knots -> ns."""
         from st09_contracts.graph import TimedTrajectory
         from luggage_planning.trajectory_timing import (
@@ -1091,6 +1178,8 @@ class MoveItEdgeAdapter(object):
         names = tuple(joint_trajectory.joint_names or JOINT_NAMES)
         if len(points) < 2:
             raise ValueError("retime needs at least two knots")
+        if densify and os.environ.get("ST09_JOINT_KNOT_DENSIFY", "1") != "0":
+            points = densify_knots(points, JOINT_KNOT_MAX_STEP_RAD)
         timed = time_parameterize_cartesian(
             [list(point.positions) for point in points],
             self._velocity_scaling, self._acceleration_scaling)

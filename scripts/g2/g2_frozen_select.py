@@ -143,6 +143,12 @@ def run_once(out, label):
                                  if i["verdict"] == "not_evaluated"),
             "checker_calls": getattr(getattr(producer, "_anchor_gate", None), "submitted", None),
             "cache_hits": getattr(getattr(producer, "_anchor_gate", None), "cache_hits", None)}
+        gate_log = list(getattr(producer.edge_builder, "_interpolation_gate_log", []))
+        report["interpolation_gate"] = {
+            "evaluated": len(gate_log),
+            "refused": sum(1 for g in gate_log if g.get("status") == "queried" and g.get("valid") is False),
+            "not_evaluated": sum(1 for g in gate_log if g.get("status") != "queried"),
+            "records": gate_log[:60]}
         with open(os.path.join(out, "response.bin"), "wb") as handle:
             handle.write(bytes(serialize_message(response)))
         report["status"] = "complete"
