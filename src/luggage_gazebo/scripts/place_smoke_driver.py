@@ -1832,7 +1832,22 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # that fell off refuses the leg by name BEFORE any
                 # controller submission (absent feed = no signal, not
                 # payload-lost; the producer-side gates still hold).
-                if leg_admission.get("load_state") == "carrying":
+                # No certified admission scope (Select's response alone
+                # carries no ValidateSelectedRoute record): the same
+                # no-admission semantics as the transition/handoff/peek
+                # helpers, with the carrying determination falling back
+                # to the segment contract the payload gate uses.
+                if leg_admission:
+                    leg_carries_payload = (
+                        leg_admission.get("load_state") == "carrying")
+                else:
+                    leg_carries_payload = segment_requires_payload_attached(
+                        motion_segment,
+                        load_state=self._peek_leg_load_state(
+                            motion_segment),
+                        detached=bool(getattr(
+                            self, "_payload_detached", False)))
+                if leg_carries_payload:
                     holds, lost_reason = self._carrying_vacuum_holds()
                     if not holds:
                         return False, lost_reason, None
@@ -1861,7 +1876,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     admission=leg_admission,
                     should_abort=(
                         (lambda: not self._carrying_vacuum_holds()[0])
-                        if leg_admission.get("load_state") == "carrying"
+                        if leg_carries_payload
                         else None))
                 self._note_leg_submitted(motion_segment, name, ok)
                 self._record_submitted_leg(

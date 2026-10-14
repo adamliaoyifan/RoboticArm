@@ -513,6 +513,8 @@ class PackEvalDriver(PlaceSmokeDriver):
                 record = None
                 fail = dump_slug
                 self.get_logger().error("trial %d raised %s" % (seq, exc))
+                import traceback
+                self.get_logger().error(traceback.format_exc())
 
             slot = self._pending_slot
             slot_meta = self._pending_slot_meta
