@@ -937,18 +937,29 @@ class RouteProducer(object):
             request)["anchor-carrying"]
         state_key = FrozenSceneComposer._state_key(state)  # noqa: SLF001
         checkers = self._anchor_checkers
-        if state_key not in checkers:
-            checkers[state_key] = self.lattice_checker_factory(
-                scene_states={"carrying": state}, start_q=start_q)
-        checker = checkers[state_key]
         try:
-            full_key = (state_key, checker.live_scene_digest())
+            # The checker judges the scene it prepared. A different live
+            # scene gets a new checker; the verdict key carries the digest
+            # of the scene that was actually judged.
+            checker = checkers.get(state_key)
+            digest = None
+            if checker is not None:
+                digest = checker.live_scene_digest()
+                if checker.prepared_digest != digest:
+                    checker = None
+            if checker is None:
+                checker = self.lattice_checker_factory(
+                    scene_states={"carrying": state}, start_q=start_q)
+                digest = checker.live_scene_digest()
+                checkers[state_key] = checker
+            full_key = (state_key, digest)
         except Exception as error:  # noqa: BLE001 - checker boundary
             self._log("route: anchor gate digest unavailable %r" % (error,))
             return scope_ids, []
         if self._anchor_gate is None:
             self._anchor_gate = AnchorPayloadGate(
-                lambda key: self._anchor_checkers.get(key[0]))
+                lambda key: self._anchor_checkers_by_full.get(key))
+        self._anchor_checkers_by_full[full_key] = checker
         nodes = [
             self.graph.nodes[node_id] for node_id in scope_ids
             if str(self.graph.nodes[node_id].load_state) == "carrying"
@@ -1110,6 +1121,7 @@ class RouteProducer(object):
         # Request scope: the payload gate cache and its provenance start empty.
         self._anchor_gate = None
         self._anchor_checkers = {}
+        self._anchor_checkers_by_full = {}
         self._payload_screen_fn = None
         self.anchor_provenance = []
         # Admission order:

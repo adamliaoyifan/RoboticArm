@@ -42,40 +42,62 @@ class GateResult:
     cache_hits: int
 
 
+def _octet(value):
+    return value[0] if isinstance(value, bytes) else int(value)
+
+
+def _pose_record(pose):
+    return [round(float(v), 9) for v in (
+        pose.position.x, pose.position.y, pose.position.z,
+        pose.orientation.x, pose.orientation.y,
+        pose.orientation.z, pose.orientation.w)]
+
+
+def _object_record(obj):
+    """Every field of a CollisionObject that changes a collision verdict."""
+    return [
+        str(obj.id), str(obj.header.frame_id), _octet(obj.operation),
+        _pose_record(obj.pose),
+        [[_octet(p.type), [round(float(d), 9) for d in p.dimensions]]
+         for p in obj.primitives],
+        [_pose_record(pose) for pose in obj.primitive_poses],
+        [[[[round(float(c), 9) for c in (v.x, v.y, v.z)]
+           for v in m.vertices],
+          [[int(i) for i in t.vertex_indices] for t in m.triangles]]
+         for m in obj.meshes],
+        [_pose_record(pose) for pose in obj.mesh_poses],
+        [[round(float(v), 9) for v in (
+            pl.coef[0], pl.coef[1], pl.coef[2], pl.coef[3])]
+         for pl in obj.planes],
+        [_pose_record(pose) for pose in obj.plane_poses],
+    ]
+
+
 def live_scene_digest(scene):
-    """Semantic digest of a PlanningScene (ACM, world, attached), no CDR bytes."""
+    """Semantic digest of a PlanningScene, no CDR bytes.
+
+    Covers world geometry (mesh vertices and triangles included), the full
+    allowed-collision matrix (pair entries and default entries) and attached
+    objects (geometry, pose, link, touch links).
+    """
     import hashlib
     import json
 
     acm = scene.allowed_collision_matrix
-    world = []
-    for obj in scene.world.collision_objects:
-        world.append([
-            str(obj.id), str(obj.header.frame_id),
-            [round(float(v), 9) for v in (
-                obj.pose.position.x, obj.pose.position.y, obj.pose.position.z,
-                obj.pose.orientation.x, obj.pose.orientation.y,
-                obj.pose.orientation.z, obj.pose.orientation.w)],
-            [[int(p.type), [round(float(d), 9) for d in p.dimensions]]
-             for p in obj.primitives],
-            [[round(float(q), 9) for q in (
-                pose.position.x, pose.position.y, pose.position.z,
-                pose.orientation.x, pose.orientation.y,
-                pose.orientation.z, pose.orientation.w)]
-             for pose in obj.primitive_poses],
-            [[len(m.vertices), len(m.triangles)] for m in obj.meshes],
-            [[round(float(q), 9) for q in (
-                pose.position.x, pose.position.y, pose.position.z,
-                pose.orientation.x, pose.orientation.y,
-                pose.orientation.z, pose.orientation.w)]
-             for pose in obj.mesh_poses]])
+    attached = []
+    for item in scene.robot_state.attached_collision_objects:
+        attached.append([
+            str(item.link_name), sorted(str(t) for t in item.touch_links),
+            _object_record(item.object)])
     body = {
         "acm_names": [str(n) for n in acm.entry_names],
         "acm": [[bool(f) for f in row.enabled] for row in acm.entry_values],
-        "world": sorted(world, key=lambda row: row[0]),
-        "attached": sorted(
-            str(a.object.id)
-            for a in scene.robot_state.attached_collision_objects),
+        "acm_default_names": [str(n) for n in acm.default_entry_names],
+        "acm_default": [bool(v) for v in acm.default_entry_values],
+        "world": sorted(
+            (_object_record(o) for o in scene.world.collision_objects),
+            key=lambda row: row[0]),
+        "attached": sorted(attached, key=lambda row: row[2][0]),
     }
     return hashlib.sha256(
         json.dumps(body, sort_keys=True).encode("utf-8")).hexdigest()

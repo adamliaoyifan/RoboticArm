@@ -135,3 +135,81 @@ def test_classifier_distinguishes_limit_collision_constraint_and_residual():
     assert classify_portal_record(
         _record(ok_q, {"status": "not_evaluated"}), limits)[
         "category"] == "NOT_EVALUATED"
+
+
+def test_same_goal_under_changed_scene_is_captured_separately(tmp_path):
+    from geometry_msgs.msg import Point
+    from moveit_msgs.msg import CollisionObject
+    from shape_msgs.msg import Mesh, MeshTriangle
+
+    os.environ["ST09_PORTAL_CAPTURE_DIR"] = str(tmp_path)
+    goal = _Node([0.1, -1.0, 0.2, -0.3, 0.4, 0.5])
+
+    def scene_with(vertex_x):
+        scene = _scene()
+        obj = CollisionObject()
+        obj.id = "wall"
+        mesh = Mesh()
+        mesh.vertices = [Point(x=vertex_x), Point(x=1.0), Point(y=1.0)]
+        triangle = MeshTriangle()
+        triangle.vertex_indices = [0, 1, 2]
+        mesh.triangles = [triangle]
+        obj.meshes = [mesh]
+        scene.world.collision_objects = [obj]
+        return scene
+
+    host = _Host()
+    for scene in (scene_with(0.0), scene_with(0.1), scene_with(0.0)):
+        MoveItEdgeAdapter._keep_portal_failure(
+            host, _Node([0.0] * 6), goal, -27, scene,
+            _constraints(goal.q))
+    assert len(list(Path(tmp_path).glob("portal_[0-9][0-9].json"))) == 2
+    index = json.loads((Path(tmp_path) / "capture_index.json").read_text())
+    assert sorted(e["occurrences"] for e in index["entries"]) == [1, 2]
+
+
+def _rec(goal, validity=None):
+    return {
+        "goal_q": goal,
+        "goal_constraints": [
+            {"joint_name": n, "position": v, "tolerance_above": 1e-4,
+             "tolerance_below": 1e-4} for n, v in zip(NAMES, goal)],
+        "validity_on_submission_scene": validity or {
+            "status": "queried", "valid": True},
+        "exact_sha256": "x", "error_code": -27}
+
+
+def test_missing_or_invalid_limit_is_not_evaluated_not_outside():
+    from luggage_planning.portal_goal_classifier import (
+        classify_portal_record, urdf_joint_limits)
+
+    goal = [0.0] * 6
+    for urdf in ("", "<robot><joint name='elfin_joint1'/></robot>",
+                 "<robot><joint name='elfin_joint1'><limit lower='a' "
+                 "upper='1'/></joint></robot>", "not xml <<"):
+        limits = urdf_joint_limits(urdf)
+        assert classify_portal_record(
+            _rec(goal), limits)["category"] == "NOT_EVALUATED"
+
+
+def test_xml_attribute_order_and_quote_variants_parse_alike():
+    from luggage_planning.portal_goal_classifier import urdf_joint_limits
+
+    variants = [
+        '<robot><joint name="elfin_joint1" type="revolute">'
+        '<limit lower="-1" upper="2"/></joint></robot>',
+        "<robot><joint type='revolute' name='elfin_joint1'>"
+        "<limit upper='2' effort='1' lower='-1'/></joint></robot>",
+    ]
+    assert [urdf_joint_limits(v) for v in variants] == [
+        {"elfin_joint1": (-1.0, 2.0)}] * 2
+
+
+def test_real_over_limit_goal_is_classified_outside():
+    from luggage_planning.portal_goal_classifier import (
+        classify_portal_record, urdf_joint_limits)
+
+    goal = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0]  # joint2 upper is 0.1745
+    verdict = classify_portal_record(_rec(goal), urdf_joint_limits(
+        "<robot>" + URDF + "</robot>"))
+    assert verdict["category"] == "GOAL_OUTSIDE_URDF_LIMITS"

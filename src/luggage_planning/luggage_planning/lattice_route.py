@@ -88,6 +88,8 @@ class LatticeStateChecker(object):
         self._distance_stride = max(1, int(distance_stride))
         self._client = None
         self._scenes = None
+        self._pending_live = None
+        self.prepared_digest = None
         self._indices = None
         self._distances = []
         self.collision_rejected = 0
@@ -98,12 +100,22 @@ class LatticeStateChecker(object):
                       "states": 0}
 
     def live_scene_digest(self):
-        """Semantic digest of the live scene this checker will judge against."""
+        """Digest of the live scene this checker will judge against.
+
+        The scene read for the digest is kept and is the one ``_prepare``
+        composes from, so digest and judged scene are the same object. A
+        checker that already prepared against another scene reports
+        ``prepared_digest`` so the caller can build a new one.
+        """
         from luggage_planning.anchor_payload_gate import live_scene_digest
         from luggage_planning.moveit_state_validity import FrozenSceneComposer
 
-        return live_scene_digest(
-            FrozenSceneComposer(self._scene_client).read_live())
+        live = FrozenSceneComposer(self._scene_client).read_live()
+        digest = live_scene_digest(live)
+        if self._scenes is None:
+            self._pending_live = live
+            self.prepared_digest = digest
+        return digest
 
     def _prepare(self):
         if self._scenes is not None:
@@ -120,7 +132,7 @@ class LatticeStateChecker(object):
                 self.edge_id = edge_id
 
         composer = FrozenSceneComposer(self._scene_client)
-        live = composer.read_live()
+        live = getattr(self, "_pending_live", None) or composer.read_live()
         legs = [_Leg("lattice-%s" % load) for load in self._scene_states]
         states = {
             "lattice-%s" % load: state

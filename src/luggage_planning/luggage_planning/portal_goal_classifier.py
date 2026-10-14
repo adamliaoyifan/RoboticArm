@@ -26,19 +26,37 @@ JOINT_NAMES = tuple("elfin_joint%d" % index for index in range(1, 7))
 
 
 def urdf_joint_limits(urdf_text, names=JOINT_NAMES):
-    """Return ``{joint: (lower, upper)}`` from URDF text."""
+    """Return ``{joint: (lower, upper)}`` parsed as XML.
+
+    A joint with no ``<limit>``, a non-numeric bound or lower > upper is left
+    out; the classifier then reports the limit check as not evaluated rather
+    than as an out-of-limit goal. Unparseable XML returns ``{}``.
+    """
+    import xml.etree.ElementTree as ET
+
+    try:
+        try:
+            root = ET.fromstring(urdf_text)
+        except ET.ParseError:
+            # A captured fragment without a <robot> root is still XML.
+            root = ET.fromstring("<robot>%s</robot>" % urdf_text)
+    except (ET.ParseError, TypeError, ValueError):
+        return {}
     limits = {}
-    for name in names:
-        block = re.search(
-            r'<joint\s+name="%s"[^>]*>.*?</joint>' % re.escape(name),
-            urdf_text, re.S)
-        limit = re.search(r"<limit[^>]*>", block.group(0)) if block else None
-        if not limit:
+    for joint in root.iter("joint"):
+        name = joint.get("name")
+        if name not in names:
             continue
-        lower = re.search(r'lower="([^"]+)"', limit.group(0))
-        upper = re.search(r'upper="([^"]+)"', limit.group(0))
-        if lower and upper:
-            limits[name] = (float(lower.group(1)), float(upper.group(1)))
+        limit = joint.find("limit")
+        if limit is None:
+            continue
+        try:
+            lower = float(limit.get("lower"))
+            upper = float(limit.get("upper"))
+        except (TypeError, ValueError):
+            continue
+        if lower == lower and upper == upper and lower <= upper:
+            limits[name] = (lower, upper)
     return limits
 
 
@@ -64,16 +82,18 @@ def classify_portal_record(record, limits, names=JOINT_NAMES):
                    "detail": defects})
 
     outside = []
+    unknown = []
     for name, value in zip(names, goal):
         if name not in limits:
-            outside.append("%s: no URDF limit found" % name)
+            unknown.append("%s: no URDF limit found" % name)
             continue
         lower, upper = limits[name]
         if value < lower or value > upper:
             outside.append("%s=%.6f outside [%.4f, %.4f]" % (
                 name, value, lower, upper))
     checks.append({"check": "urdf_limits", "ok": not outside,
-                   "detail": outside})
+                   "evaluated": not unknown, "detail": outside,
+                   "not_evaluated": unknown})
 
     validity = record.get("validity_on_submission_scene") or {}
     status = validity.get("status")
@@ -86,7 +106,8 @@ def classify_portal_record(record, limits, names=JOINT_NAMES):
         category = "GOAL_CONSTRAINT_DEFECT"
     elif outside:
         category = "GOAL_OUTSIDE_URDF_LIMITS"
-    elif status != "queried":
+    elif unknown or status != "queried":
+        # A joint whose limit is unknown cannot be called inside or outside.
         category = "NOT_EVALUATED"
     elif not validity.get("valid") and reason == "COLLISION":
         category = "GOAL_IN_COLLISION"

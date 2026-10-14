@@ -62,6 +62,7 @@ def run_once(out, label):
             "ROS_DOMAIN_ID", "ROS_LOCALHOST_ONLY", "ST09_PORTAL_CAPTURE_DIR")}}
     os.makedirs(out, exist_ok=True)
     os.environ["ST09_PORTAL_CAPTURE_DIR"] = os.path.join(out, "portal_capture")
+    os.environ["ST09_I_CERT_CAPTURE_DIR"] = os.path.join(out, "cert_capture")
     stack = common.MoveItStack(out, label)
     t_launch = time.time()
     stack.start()

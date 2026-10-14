@@ -465,6 +465,12 @@ class GraphStore(object):
         return graph
 
 
+def _same_rotation(first, second, tol=1e-3):
+    """True when two xyzw quaternions are the same rotation (q == -q)."""
+    dot = sum(float(a) * float(b) for a, b in zip(first, second))
+    return abs(dot) >= 1.0 - tol
+
+
 class GraphRoutePlanner(object):
     """ST09-B implementation of the frozen ``RoutePlanner`` protocol.
 
@@ -712,13 +718,22 @@ class GraphRoutePlanner(object):
         is still built and certified like any other RETREAT edge.
         """
         from luggage_planning.grid_path_search import descend_pair_rank
+        entry_ids = set(getattr(
+            getattr(self, "last_search", None), "entry_node_ids", ()) or ())
         twins = []
         for node in self.graph.nodes_by_region(hop.to_region):
-            if str(node.load_state) != "carrying" \
-                    or str(getattr(node, "ik_family", "")) == "endpoint":
+            if str(node.load_state) != "carrying":
+                continue
+            # Only the node the current entry chain arrived at. The chain
+            # belongs to this candidate, so it already carries the scope; an
+            # Cartesian arrival ("endpoint") node is a legitimate member.
+            if node.node_id not in entry_ids:
                 continue
             if max(abs(float(a) - float(b)) for a, b in
                    zip(node.tcp_position, position)) > 1e-3:
+                continue
+            if not _same_rotation(node.tcp_quaternion_xyzw,
+                                  frontier.tcp_quaternion_xyzw):
                 continue
             twins.append((descend_pair_rank(frontier.q, node.q), node))
         # Nearest first. The rank is an ordering, not a filter: the entry

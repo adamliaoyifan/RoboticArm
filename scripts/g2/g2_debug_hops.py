@@ -56,8 +56,8 @@ def main():
                 if err.detail.get("retreat_target_missing"):
                     print(json.dumps({"retreat_missing_at": frontier.node_id, "region": frontier.region,
                                       "load": str(frontier.load_state), "q": [round(v, 3) for v in frontier.q],
-                                      "hop": str(hops[0]),
-                                      "portals": [(n.node_id[:22], str(n.load_state), n.ik_family, [round(v,3) for v in n.q], [round(v,4) for v in n.tcp_position], list(__import__("luggage_planning.grid_path_search", fromlist=["x"]).descend_pair_rank(frontier.q, n.q))) for n in self.graph.nodes_by_region("portal")], "last_refines": refine_log[-4:],
+                                      "hop": str(hops[0]), "frontier_quat": [round(v,4) for v in frontier.tcp_quaternion_xyzw], "entry_ids": [n[:22] for n in getattr(self, "entry_node_ids", ())],
+                                      "entry_nodes": [(n.node_id[:22], n.region, str(n.load_state), n.ik_family, [round(v,3) for v in n.q], [round(v,3) for v in n.tcp_position], [round(v,4) for v in n.tcp_quaternion_xyzw]) for n in (self.graph.nodes.get(i) for i in getattr(self, "entry_node_ids", ())) if n is not None], "portals": [(n.node_id[:22], str(n.load_state), n.ik_family, [round(v,4) for v in n.tcp_quaternion_xyzw], n.node_id in (self_planner[0].scope or ()), [round(v,3) for v in n.q], [round(v,4) for v in n.tcp_position], list(__import__("luggage_planning.grid_path_search", fromlist=["x"]).descend_pair_rank(frontier.q, n.q))) for n in self.graph.nodes_by_region("portal")], "last_refines": refine_log[-4:],
                                       "region_poses": {k: [round(x, 3) for x in v] for k, v in (self_planner[0].region_poses or {}).items()}}, default=str))
                     raise _Stop()
                 raise

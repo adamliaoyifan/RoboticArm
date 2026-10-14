@@ -680,9 +680,19 @@ class MoveItEdgeAdapter(object):
         # 3-decimal signature is kept only to count log-visible groups.
         import hashlib
         exact_goal = [float(v) for v in to_node.q]
+        # Scene identity is part of the key: the same goal under another
+        # world, attached payload or ACM is a different request. The digest
+        # is semantic (geometry, attachment, ACM), never CDR padding bytes.
+        try:
+            from luggage_planning.anchor_payload_gate import (
+                live_scene_digest,
+            )
+            scene_digest = live_scene_digest(scene_msg)
+        except Exception as error:  # noqa: BLE001 - capture must not abort
+            scene_digest = "digest_unavailable:%s" % type(error).__name__
         exact_sha = hashlib.sha256(
-            json.dumps([int(code), exact_goal, [float(v) for v in from_node.q]]
-                       ).encode("utf-8")).hexdigest()
+            json.dumps([int(code), exact_goal, [float(v) for v in from_node.q],
+                        scene_digest]).encode("utf-8")).hexdigest()
         goal_q = tuple(round(float(v), 3) for v in to_node.q)
         signature = "%s:%s" % (int(code), ",".join("%.3f" % v for v in goal_q))
         seen = getattr(self, "_portal_signatures", None)
@@ -730,6 +740,7 @@ class MoveItEdgeAdapter(object):
             "error_code": int(code),
             "signature": signature,
             "exact_sha256": exact_sha,
+            "scene_digest": scene_digest,
             "start_q": [float(v) for v in from_node.q],
             "goal_q": [float(v) for v in to_node.q],
             "goal_constraints": [{

@@ -12,7 +12,7 @@ import os
 import sys
 import time
 
-ROOT = os.environ.get("G2_ROOT", "/tmp/elfin-master-pack-baseline-g2")
+ROOT = os.environ.get("G2_CODE_ROOT") or os.environ.get("G2_ROOT", "/tmp/elfin-master-pack-baseline-g2")
 EVID = os.environ["G2_EVID"]
 CAPTURE = os.environ["G1_CAPTURE"]
 for _path in (
