@@ -694,6 +694,23 @@ class MoveItEdgeAdapter(object):
 
     def _keep_portal_failure(self, from_node, to_node, code, scene_msg,
                              constraints):
+        """Capture boundary; a write failure is recorded, never raised.
+
+        Planning must not die because evidence could not be written. The
+        error list is the capture-health signal: a run with entries there
+        is incomplete evidence.
+        """
+        try:
+            MoveItEdgeAdapter._keep_portal_failure_impl(
+                self, from_node, to_node, code, scene_msg, constraints)
+        except OSError as error:
+            errors = getattr(self, "_portal_capture_errors", None)
+            if errors is None:
+                errors = self._portal_capture_errors = []
+            errors.append(repr(error)[:200])
+
+    def _keep_portal_failure_impl(self, from_node, to_node, code, scene_msg,
+                                  constraints):
         """Keep the first PORTAL_TRANSIT failure of each goal signature.
 
         ``scene_msg`` was read before the MoveGroup call. A scene read

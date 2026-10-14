@@ -273,3 +273,14 @@ def test_interpolated_collision_refuses_edge_but_checker_failure_does_not():
     assert caught.value.detail["first_invalid_sample"] == 5
     _refuse({"status": "queried", "valid": True})
     _refuse({"status": "not_evaluated", "reason": "timeout"})
+
+
+def test_capture_write_failure_is_recorded_not_raised(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("x")
+    os.environ["ST09_PORTAL_CAPTURE_DIR"] = str(blocker / "sub")
+    host = _Host()
+    goal = _Node([0.1, -1.0, 0.2, -0.3, 0.4, 0.5])
+    MoveItEdgeAdapter._keep_portal_failure(
+        host, _Node([0.0] * 6), goal, -27, _scene(), _constraints(goal.q))
+    assert host._portal_capture_errors  # incomplete evidence is visible
