@@ -235,3 +235,57 @@ def test_retreat_twin_ignores_nodes_outside_entry_chain():
     frontier = types.SimpleNamespace(
         q=(1.0,) * 6, tcp_quaternion_xyzw=(0.0, 0.0, 0.0, 1.0))
     assert _retreat(planner, frontier) == ()
+
+
+# --- every allowed portal rejected: production admission chain --------------
+
+class _NoEdgeBuilder(object):
+    """Any use means an edge (a MoveGroup call) was attempted."""
+
+    def __getattr__(self, name):
+        raise AssertionError("edge builder used: %s" % name)
+
+
+def test_all_portals_rejected_ends_finitely_without_submitting_or_bin_full():
+    from luggage_planning.grid_path_search import (
+        RoutePlanningError, RouteSearch, hops_from_table)
+
+    class _RejectAll(_LiveChecker):
+        def validate(self, items):
+            self.log.append("checked")
+            return {item: False for item in items}
+
+    scene_ref, log = {"digest": "scene-A"}, []
+    screen, fake, first = _producer_double(scene_ref, log)
+    fake.lattice_checker_factory = lambda **_k: _RejectAll(scene_ref, log)
+    graph = fake.graph
+    portal2 = graph.register_node(
+        (2.0,) * 6, (0.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), "portal",
+        LoadState.CARRYING, ik_family="ladder")
+    home = graph.register_node(
+        (0.0,) * 6, (1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), "home",
+        LoadState.CARRYING, ik_family="start")
+    goal = graph.register_node(
+        (3.0,) * 6, (2.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0), "slot",
+        LoadState.CARRYING, ik_family="anchor")
+    scope = {first.node_id, portal2.node_id, home.node_id, goal.node_id}
+
+    kept, rows = screen(fake, scope, None, None, object(), None,
+                        (0.0,) * 6, 1)
+    assert {r["verdict"] for r in rows} == {"rejected"}
+    assert {r["reason"] for r in rows} == {REASON_COLLISION}
+    assert not {first.node_id, portal2.node_id} & kept
+
+    search = RouteSearch(graph, _NoEdgeBuilder(), scope=kept)
+    hops = hops_from_table((
+        ("portal", "PORTAL_TRANSIT"), ("slot_approach", "TRAVERSE"),
+        ("slot_upper", "INSERT"), ("slot", "DESCEND")), "carrying")
+    with pytest.raises(RoutePlanningError) as ended:
+        search.best_full_route(
+            home.node_id, [goal], entry_hops=hops)
+    assert ended.value.code == "NO_FEASIBLE_ROUTE"
+    assert ended.value.code != "BIN_FULL"
+    assert ended.value.detail["search_outcome"] == "UNREACHABLE"
+    assert search.edges_built == 0
+    # the gate judged every portal once and nothing reached an edge builder
+    assert log.count("checked") == 1
