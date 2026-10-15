@@ -1502,7 +1502,20 @@ class RouteProducer(object):
                 # not get redraws: those are properties of the candidate.
                 remaining = self.budget_ns - (self._clock_ns() - started_ns)
                 route = None
-                if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure:
+                # [G3 optimization] A -2 (INVALID_MOTION_PLAN) in the
+                # edge detail means MoveIt computed a path that failed
+                # validation — a fresh OMPL draw of the same start/goal
+                # against the same obstacles rarely fixes the geometry.
+                # Skip the redraw and advance to the next candidate; only
+                # failures without a -2 (sampler miss, timeout) redraw.
+                _mg_codes = [
+                    e.get("error_code") for e in (
+                        (exc.detail or {}).get("edge_failures") or [])
+                    if isinstance(e, dict)]
+                _has_invalid_path = -2 in [c for c in _mg_codes
+                                           if c is not None]
+                if (exc.code == "NO_FEASIBLE_ROUTE" and not named_failure
+                        and not _has_invalid_path):
                     for retry in range(1, SAMPLER_MISS_REBUILDS + 1):
                         remaining = (self.budget_ns
                                      - (self._clock_ns() - started_ns))
