@@ -19,20 +19,24 @@ sys.path.insert(0, "/tmp/elfin-master-pack-baseline-g3/scripts/g2")
 import g2_common as common  # noqa: E402
 from g2_frozen_select import build_host_and_producer  # noqa: E402
 
+RUN_NAME = os.environ.get("G3_REPLAY_RUN", "score_run01")
 SCORE = ("/home/adamliao/work/elfin_humble_ws/docs/status/evidence/"
-         "master_pack_recovery/2026-10-14_g3/score_run01")
+         "master_pack_recovery/2026-10-14_g3/" + RUN_NAME)
 common.REQUEST_BIN = os.path.join(
     SCORE, "select_capture", "select_place_path_v2_01.bin")
 common.SURFACE_JSON = os.path.join(
     SCORE, "dumps", "box_01_PLANNING_BUDGET_EXHAUSTED", "surface_2d.json")
 
-# Box 1 as placed in the scored run (chosen slot, world frame).
-WORLD_OBJECTS = [{
-    "type": "box", "id": "placed_box_1",
-    "xyz": [-2.03, 0.46, 0.639],
-    "quat": [0.0, 0.0, 0.0, 1.0],
-    "size": [0.5099, 0.332, 0.2175],
-}]
+# Box 1 exactly as the ONLINE planning scene had it: taken from the
+# run's own portal capture (world_objects with the placed_0_0_0 box in
+# measured dims), not reconstructed from GT records.
+with open(os.path.join(SCORE, "portal_capture", "portal_01.json")) as _h:
+    _cap = json.load(_h)
+WORLD_OBJECTS = [
+    {"type": "box", "id": o["id"], "xyz": o["xyz"], "quat": o["quat"],
+     "size": o["size"]}
+    for o in _cap.get("world_objects", []) if o.get("type") == "box"
+    and o["id"] != "robot_pedestal"]
 
 
 def run_once(out, label):
