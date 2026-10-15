@@ -155,7 +155,6 @@ class PlacementPlannerNode(Node):
                 PARAM_SPEC,
                 apply_query_semantics,
                 apply_ros_overrides,
-                certification_block_reason,
                 compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime,
@@ -167,7 +166,6 @@ class PlacementPlannerNode(Node):
             PARAM_SPEC = ()
             load_atlas_runtime = None
             apply_query_semantics = None
-            certification_block_reason = None
             load_atlas_runtime_for_scene = None
             UrdfIdentity = None
             compute_scene_tf_hash = lambda path: ""  # noqa: E731
@@ -198,7 +196,6 @@ class PlacementPlannerNode(Node):
         self._load_runtime_atlas = (
             load_runtime_atlas if load_atlas_runtime is not None else None)
         self._apply_query_semantics = apply_query_semantics
-        self._certification_block_reason = certification_block_reason
 
         self._scene = load_scene_tf_config(config_path)
         self._scene_tf_hash = compute_scene_tf_hash(config_path)
@@ -243,9 +240,8 @@ class PlacementPlannerNode(Node):
             self._urdf_identity.start()
         if self._atlas_cfg.get("enabled"):
             self.get_logger().info(
-                "atlas runtime gate on (dir=%s, hash_policy=%s, w=%s, hard_reject=%s)"
+                "atlas runtime gate on (dir=%s, w=%s, hard_reject=%s)"
                 % (self._atlas_cfg.get("atlas_dir") or "reachability_atlas",
-                   self._atlas_cfg.get("hash_policy"),
                    self._atlas_cfg["placement"].get("w_reachability"),
                    self._atlas_cfg["placement"].get("hard_reject")))
 
@@ -913,11 +909,10 @@ class PlacementPlannerNode(Node):
                 max(0.0, float(box.depth)),
                 max(0.0, float(box.height))]
         atlas, atlas_diag = self._atlas_for(size)
-        if self._certification_block_reason is not None:
-            block = self._certification_block_reason(
-                self._atlas_cfg, atlas_diag)
-        else:
-            block = ""
+        # 2026-10-15: the identity block reason is gone with the full-hash
+        # verification; only a semantics refusal (v1 artifact) still fails
+        # the request by name.
+        block = str((atlas_diag or {}).get("semantics") or "")
         if block:
             response.success = False
             response.reason_code = block

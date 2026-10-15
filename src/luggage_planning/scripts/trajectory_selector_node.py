@@ -27,7 +27,6 @@ from luggage_description.scene_tf_config_utils import (
     resolve_scene_tf_config_path,
 )
 from luggage_planning.atlas_runtime import (
-    certification_block_reason,
     compute_reachability_scene_hash,
     compute_scene_tf_hash,
     load_atlas_runtime_for_scene,

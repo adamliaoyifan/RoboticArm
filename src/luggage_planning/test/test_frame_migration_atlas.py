@@ -477,13 +477,11 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("strict/v1-refused", dict(npz=npz)) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNone(loaded)
-                self.assertEqual(diag["reason"], "atlas_semantics_v1_strict")
+                self.assertEqual(diag["reason"], "atlas_semantics_v1")
                 self.assertEqual(
-                    ar.certification_block_reason(cfg, diag),
-                    ar.ATLAS_SEMANTICS_MISMATCH)
+                    diag["semantics"], ar.ATLAS_SEMANTICS_MISMATCH)
                 # Zero seeds escape: the refused atlas never reaches the
                 # seed query.
                 seeds = ar.atlas_seeds_for_query(
@@ -498,8 +496,7 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("strict/v2-accepted", {}) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNotNone(loaded)
                 self.assertTrue(diag["loaded"])
                 self.assertEqual(diag["reason"], "ok")
@@ -515,10 +512,9 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("strict/relabel-refused", {}) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNone(loaded)
-                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                self.assertEqual(diag["reason"], "atlas_contract_invalid")
                 self.assertFalse(diag["loaded"])
                 obs["reason"] = diag["reason"]
 
@@ -552,13 +548,12 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("review/p1-relabel-two-bin", {}) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNone(loaded)
                 self.assertFalse(diag["loaded"])
                 self.assertIn("contract", diag.get(
                     "contract_message", ""))
-                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                self.assertEqual(diag["reason"], "atlas_contract_invalid")
                 # Zero seeds escape: spy through the seed query itself.
                 seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
                 self.assertEqual(seeds["n_seeds"], 0)
@@ -576,10 +571,9 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("review/p1-permuted-bins", {}) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNone(loaded)
-                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                self.assertEqual(diag["reason"], "atlas_contract_invalid")
                 seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
                 self.assertEqual(seeds["n_seeds"], 0)
                 obs["contract_message"] = diag.get("contract_message")
@@ -601,25 +595,26 @@ class TestRuntimeStrictGate(unittest.TestCase):
             cfg = {"enabled": True, "hash_policy": "strict",
                    "atlas_file": npz, "basename": "unused"}
             with case("review/p1-rotated-both", {}) as obs:
-                loaded, diag = ar.load_runtime_atlas(
-                    cfg, scene_tf_hash="ab" * 16, urdf_hash="cd" * 16)
+                loaded, diag = ar.load_runtime_atlas(cfg, scene_tf_hash="ab" * 16)
                 self.assertIsNone(loaded)
-                self.assertEqual(diag["reason"], "atlas_contract_strict")
+                self.assertEqual(diag["reason"], "atlas_contract_invalid")
                 seeds = ar.atlas_seeds_for_query(loaded, 0.0, 0.0, 0.725, 0.0)
                 self.assertEqual(seeds["n_seeds"], 0)
                 obs["contract_message"] = diag.get("contract_message")
 
-    def test_warn_keeps_v1_with_downgrade(self):
+    def test_v1_always_refused_no_warn_bypass(self):
+        """2026-10-15: the policy knob is gone; a v1 artifact is refused
+        on every path (the old warn downgrade loaded it unverified)."""
         atlas = synthetic_atlas(contract=False, directed=False)
         with tempfile.TemporaryDirectory() as tmp:
             npz, _ = self._write_artifact(tmp, atlas)
-            cfg = {"enabled": True, "hash_policy": "warn",
+            cfg = {"enabled": True,
                    "atlas_file": npz, "basename": "unused"}
-            with case("warn/v1-downgrade", {}):
+            with case("scene-rule/v1-refused", {}):
                 loaded, diag = ar.load_runtime_atlas(cfg)
-                self.assertIsNotNone(loaded)
-                self.assertTrue(diag["loaded"])
-                self.assertIsNone(loaded.contract_record)
+                self.assertIsNone(loaded)
+                self.assertFalse(diag["loaded"])
+                self.assertEqual(diag["reason"], "atlas_semantics_v1")
 
 
 class TestPlacementHookBothGrasps(unittest.TestCase):

@@ -398,7 +398,7 @@ def _launch_description():
                 default_value=default_atlas_cfg,
                 description=(
                     "Reachability-atlas runtime YAML. Default is the "
-                    "installed atlas_runtime_deploy.yaml (hash_policy "
+                    "installed atlas_runtime_deploy.yaml (atlas identity "
                     "strict); atlas_runtime.yaml is the simulation cell "
                     "and is rejected on this cell."
                 ),

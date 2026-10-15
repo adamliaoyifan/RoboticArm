@@ -150,7 +150,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         self._atlas_diag = {}
         try:
             from luggage_planning.atlas_runtime import (
-                certification_block_reason,
                 compute_reachability_scene_hash,
                 compute_scene_tf_hash,
                 load_atlas_runtime_for_scene,
@@ -160,7 +159,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             from luggage_description.scene_tf_config_utils import (
                 resolve_scene_tf_config_path,
             )
-            self._certification_block_reason = certification_block_reason
             self._load_runtime_atlas = load_runtime_atlas
             scene_path = resolve_scene_tf_config_path(
                 getattr(args, "scene_tf_config", None) or None)
@@ -177,7 +175,6 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._atlas = None
             self._atlas_diag = {"reason": str(exc)}
             self._atlas_cfg = {"enabled": False}
-            self._certification_block_reason = None
             self._load_runtime_atlas = None
             self._urdf_identity = None
             self._scene_tf_hash = ""

@@ -172,10 +172,6 @@ def resolve_deploy_profile(scene_arg="", atlas_config_arg="",
     if not check_atlas:
         return record
     cfg = load_atlas_runtime(atlas_config)
-    if str(cfg.get("hash_policy") or "") != "strict":
-        reject_asset(
-            "DEPLOY_ATLAS_NOT_STRICT", "atlas_runtime_deploy.hash_policy",
-            "strict (the deploy cell never runs warn)", cfg.get("hash_policy"))
     atlas_dir = _deploy_atlas_dir(cfg, resolver)
     files = resolve_atlas_files(cfg, None, atlas_dir=atlas_dir)
     if files is None:
@@ -193,11 +189,11 @@ def resolve_deploy_profile(scene_arg="", atlas_config_arg="",
         reject_asset("DEPLOY_URDF_MISSING", "robot_description.xml",
                      "expanded deploy URDF captured at freeze time",
                      urdf_path)
-    ok, message, _scene_ok, _urdf_ok = identity_verdict(
+    # 2026-10-15: identity is the arm-to-container fingerprint only; the
+    # archived URDF stays a required frozen asset but is not hashed.
+    ok, message, _scene_ok = identity_verdict(
         meta.get("dependencies") or {},
         scene_tf_hash=compute_scene_tf_hash(scene),
-        urdf_hash=compute_urdf_hash(_read_bytes(urdf_path)),
-        policy="strict",
         reachability_scene_hash=compute_reachability_scene_hash(scene))
     if not ok:
         reject_asset("ATLAS_IDENTITY_MISMATCH",
