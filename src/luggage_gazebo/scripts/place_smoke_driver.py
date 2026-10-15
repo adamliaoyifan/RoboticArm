@@ -2360,9 +2360,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             mass_kg = float(mass)
             topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
             from luggage_description.gazebo_spawn_collision import BOX_FULL_MASK
+            # Placed body carries a box-primitive collision (authorized
+            # 2026-10-15): a resting suitcase STL on the container
+            # trimesh drives ODE trimesh-trimesh contact pathological
+            # (RTF ~0.03 measured, rehearsal_06); the primitive keeps
+            # the outer extents and the mesh visual for perception.
             sdf = pickup_visual_sdf(
                 model, size, mass_kg, visual, static=False,
-                contact_topic=topic, collide_bitmask=BOX_FULL_MASK)
+                contact_topic=topic, collide_bitmask=BOX_FULL_MASK,
+                collision_kind="box")
             release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:

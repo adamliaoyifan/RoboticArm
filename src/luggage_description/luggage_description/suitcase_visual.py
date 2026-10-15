@@ -419,10 +419,19 @@ def _mesh_geometry_xml(uri, scale):
     )
 
 
+def _box_geometry_xml(size):
+    return (
+        "          <box>\n"
+        "            <size>%.6f %.6f %.6f</size>\n"
+        "          </box>"
+        % (float(size[0]), float(size[1]), float(size[2]))
+    )
+
+
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR,
                       static=True, contact_topic=None,
-                      collide_bitmask=None):
+                      collide_bitmask=None, collision_kind="mesh"):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -434,6 +443,15 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     Pickup carry stays ``static=True`` so kinematic ``set_pose`` follow
     does not fight the solver. Place detach respawns the same mesh with
     ``static=False`` so the body can fall onto the container support.
+
+    ``collision_kind="box"`` (placed bodies only, authorized 2026-10-15)
+    keeps the textured mesh VISUAL for perception/depth but replaces the
+    collision STL with a size-matched box primitive: a resting suitcase
+    mesh on the container trimesh drives ODE trimesh-trimesh contact
+    pathological (RTF ~0.03); a primitive collision carries the same
+    outer extents and physical truth at a fraction of the cost. Carry
+    and pick stay ``"mesh"`` so vacuum contact/retention fidelity is
+    unchanged.
     """
     del models_root, scaled_dir
     kind = str(visual_kind or "mesh").strip().lower()
@@ -442,6 +460,11 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
             "visual_kind must be 'mesh' (textureless primitive boxes were "
             "removed: YOLO-World cannot detect them reliably), got %r"
             % (visual_kind,))
+    collision = str(collision_kind or "mesh").strip().lower()
+    if collision not in ("mesh", "box"):
+        raise ValueError(
+            "collision_kind must be 'mesh' or 'box', got %r"
+            % (collision_kind,))
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
@@ -457,6 +480,7 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         use_mesh_material=True,
         contact_topic=contact_topic,
         collide_bitmask=collide_bitmask,
+        collision_kind=collision,
     )
 
 
@@ -464,7 +488,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
                  static=False, collision_uri_override=None,
                  use_mesh_material=False, contact_topic=None,
-                 collide_bitmask=None):
+                 collide_bitmask=None, collision_kind="mesh"):
     """SDF at the link origin.
 
     Default mesh mode shares one STL URI for visual and collision.
@@ -472,6 +496,10 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     STL as *collision_uri_override*. *use_mesh_material* omits the SDF
     ``<material>`` block so Gazebo keeps the COLLADA texture. An SDF
     diffuse color replaces that texture.
+
+    ``collision_kind="box"`` replaces the collision STL with a box
+    primitive of the same outer extents (visual mesh unchanged); the
+    inertia model is the cuboid either way.
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -483,12 +511,20 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         raise ValueError(
             "visual_kind must be 'mesh' (primitive-box visuals were "
             "removed), got %r" % (visual_kind,))
+    collision = str(collision_kind or "mesh").strip().lower()
+    if collision not in ("mesh", "box"):
+        raise ValueError(
+            "collision_kind must be 'mesh' or 'box', got %r"
+            % (collision_kind,))
     uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
     collision_uri = collision_uri_override if collision_uri_override else uri
     mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
         length, width, height)
     geometry = _mesh_geometry_xml(uri, mesh_scale)
-    collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
+    if collision == "box":
+        collision_geom = _box_geometry_xml((length, width, height))
+    else:
+        collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
     comment_kind = visual_id
     static_xml = "    <static>true</static>\n" if static else ""
     if use_mesh_material:

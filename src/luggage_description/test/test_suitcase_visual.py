@@ -390,3 +390,56 @@ class TestMeshObservableReference(unittest.TestCase):
         stl = sized_stl_path(VISUAL_LOAFBRR, "medium", GAZEBO_MODELS)
         self.assertEqual(mesh_observable_reference(stl),
                          mesh_observable_reference(stl))
+
+
+class TestPlacedBoxPrimitiveCollision(unittest.TestCase):
+    """Placed bodies carry a box-primitive collision (authorized 2026-10-15).
+
+    Carry/pick keeps the mesh STL collision; only the release respawn
+    swaps collision to a primitive so a resting suitcase no longer drives
+    ODE trimesh-trimesh contact pathological against the container. The
+    textured mesh VISUAL is unchanged for perception/depth.
+    """
+
+    SIZE = (0.55, 0.40, 0.25)  # inch20-sized small tier catalog WDH
+
+    def _sdf(self, **kwargs):
+        return pickup_visual_sdf(
+            "placed_box", self.SIZE, 4.2, VISUAL_LOAFBRR,
+            static=False, **kwargs)
+
+    def test_box_collision_swaps_only_the_collision_block(self):
+        sdf = self._sdf(collision_kind="box")
+        root = ET.fromstring(sdf)
+        link = root.find("model/link")
+        visual_geom = link.find("visual/geometry/mesh")
+        collision_geom = link.find("collision/geometry")
+        self.assertIsNotNone(visual_geom)
+        self.assertIn("dae", str(visual_geom.find("uri").text))
+        self.assertIsNotNone(collision_geom.find("box"))
+        self.assertIsNone(collision_geom.find("mesh"))
+        size = [float(v) for v in
+                collision_geom.find("box/size").text.split()]
+        self.assertEqual(size, list(self.SIZE))
+
+    def test_default_collision_stays_mesh_for_carry(self):
+        sdf = self._sdf()
+        root = ET.fromstring(sdf)
+        collision_geom = root.find("model/link/collision/geometry")
+        self.assertIsNotNone(collision_geom.find("mesh"))
+        self.assertIsNone(collision_geom.find("box"))
+        visual_geom = root.find("model/link/visual/geometry/mesh")
+        self.assertIsNotNone(visual_geom)
+
+    def test_contact_sensor_survives_the_primitive_swap(self):
+        sdf = self._sdf(collision_kind="box", contact_topic="/box/contact")
+        root = ET.fromstring(sdf)
+        sensor = root.find("model/link/sensor")
+        self.assertIsNotNone(sensor)
+        self.assertEqual(sensor.get("type"), "contact")
+        self.assertEqual(sensor.find("contact/collision").text,
+                         "body_collision")
+
+    def test_unknown_collision_kind_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self._sdf(collision_kind="sphere")
