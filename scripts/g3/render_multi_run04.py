@@ -37,7 +37,7 @@ HLX, HLY = 0.745, 0.985
 
 
 def w2c(wx, wy):
-    return (round(-(wx + 2.56), 3), round(wy - 0.48, 3))
+    return (round(wx + 2.56, 3), round(wy - 0.48, 3))
 
 
 BOX1 = w2c(-2.03, 1.01)   # slot world (-2.03, 1.01)

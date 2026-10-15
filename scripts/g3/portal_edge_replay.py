@@ -153,8 +153,14 @@ def main():
                     entry["contacts"] = [
                         [str(c.body_1), str(c.body_2), round(float(c.depth), 5)]
                         for c in getattr(bad[0], "contacts", [])][:4]
+            if traj.points and not entry.get("returned_path_all_valid", True):
+                # Dump the failing joint path for offline FK visualization.
+                entry["joint_path"] = [
+                    [round(float(v), 5) for v in pt.positions]
+                    for pt in traj.points]
             report["attempts"].append(entry)
-            print(json.dumps(entry))
+            print(json.dumps({k: v for k, v in entry.items()
+                              if k != "joint_path"}))
         with open(os.path.join(out_dir, "edge_replay.json"), "w") as h:
             json.dump(report, h, indent=1)
         ok = sum(1 for a in report["attempts"]
