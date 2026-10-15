@@ -281,3 +281,52 @@ class TestG0FailureMemo(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestG0MissingGeometry(unittest.TestCase):
+    """Case 4: missing/misplaced geometry → zero submissions, named failure."""
+
+    def test_missing_origin_fails_closed(self):
+        surf = make_surface([(5, 5)], (-0.745, -0.985))
+        del surf["origin_xy_container"]  # required field removed
+        with self.assertRaises(Exception) as ctx:
+            occupancy_boxes_from_surface(surf, IDENTITY_TF)
+        self.assertIn("OCCUPANCY", str(ctx.exception))
+
+    def test_missing_height_fails_closed(self):
+        surf = make_surface([(5, 5)], (-0.745, -0.985))
+        surf["height_above_floor"][5][5] = 0.0  # occupied but no height
+        with self.assertRaises(Exception) as ctx:
+            occupancy_boxes_from_surface(surf, IDENTITY_TF)
+        self.assertIn("HEIGHT", str(ctx.exception))
+
+    def test_no_container_transform_no_world_boxes(self):
+        surf = make_surface([(5, 5)], (-0.745, -0.985))
+        # container_transform=None → no world frame → fail closed
+        with self.assertRaises(Exception):
+            occupancy_boxes_from_surface(surf, None)
+
+
+class TestG0SupportPenetration(unittest.TestCase):
+    """Case 8: legal supported release valid; deliberate penetration fails."""
+
+    def test_payload_touch_links_are_limited(self):
+        from luggage_planning.moveit_state_validity import (
+            SUCTION_INTERFACE_TOUCH_LINKS)
+        # Touch links are ONLY the suction seal, not blanket exemptions
+        self.assertEqual(
+            set(SUCTION_INTERFACE_TOUCH_LINKS),
+            {"suction_panel", "suction_contact_frame"})
+        # No world object is in the touch-link set
+        self.assertNotIn("airport_container_real",
+                         SUCTION_INTERFACE_TOUCH_LINKS)
+        self.assertNotIn("snapshot-cell-5-5",
+                         SUCTION_INTERFACE_TOUCH_LINKS)
+
+    def test_support_object_is_container_mesh_not_placed_box(self):
+        from luggage_planning.moveit_state_validity import (
+            SUPPORT_OBJECT_HINTS)
+        # Support resolution prefers the container mesh; placed boxes are
+        # obstacles, not landing surfaces for the ACM's support allowance
+        self.assertIn("airport_container_real", SUPPORT_OBJECT_HINTS)
+        self.assertNotIn("placed_0_0_0", SUPPORT_OBJECT_HINTS)
