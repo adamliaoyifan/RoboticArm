@@ -234,6 +234,22 @@ def estimate_top_surface(cargo_points_world, workspace, config=None,
         yaw_valid = False
     n_inliers = int(inlier_mask.sum())
     confidence = min(1.0, n_inliers / max(1, config.min_top_points * 4))
+    # [G3 wave3, D1-c 2026-10-15] width/depth describe the box's AABB
+    # FOOTPRINT, not the observable lid plateau: the top-plane inliers
+    # of a tapered suitcase read the plateau (~8-10% under the AABB),
+    # so placement planned a smaller footprint than the physical box
+    # and the extra corner rode the container chamfer. The cargo cloud
+    # is the segmented box, so its full rotated extents ARE the
+    # footprint; the plateau rectangle above still fixes yaw/center.
+    cos_y, sin_y = math.cos(yaw), math.sin(yaw)
+    dx = points[:, 0] - float(rectangle_center[0])
+    dy = points[:, 1] - float(rectangle_center[1])
+    extent_0 = float(np.max(dx * cos_y + dy * sin_y)
+                     - np.min(dx * cos_y + dy * sin_y))
+    extent_1 = float(np.max(-dx * sin_y + dy * cos_y)
+                     - np.min(-dx * sin_y + dy * cos_y))
+    if timing is not None:
+        timing["top_footprint_source"] = "cargo_cloud_aabb"
     width, depth = (
         (extent_0, extent_1) if extent_0 >= extent_1 else (extent_1, extent_0))
     return TopSurfaceEstimate(

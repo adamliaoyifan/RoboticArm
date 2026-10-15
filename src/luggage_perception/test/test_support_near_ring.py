@@ -84,3 +84,37 @@ class TestNearRingSupportPriority(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFootprintFromCargoCloud(unittest.TestCase):
+    """D1-c: width/depth are the AABB footprint, not the lid plateau."""
+
+    def test_tapered_box_reports_base_footprint(self):
+        from luggage_perception.top_support_estimator import (
+            estimate_top_surface)
+        rng = np.random.RandomState(3)
+        # A tapered suitcase: 0.53x0.35 base, flat lid plateau only
+        # 0.48x0.31, height 0.22 lying at yaw ~ pi/2.
+        yaw = np.pi / 2.0
+        cos_y, sin_y = np.cos(yaw), np.sin(yaw)
+        cx, cy, top_z = 0.56, 0.60, 1.08
+        base_w, base_d, plateau_w, plateau_d, h = 0.53, 0.35, 0.48, 0.31, 0.22
+        side = rng.uniform(0.70, 1.0, size=2400)
+        u = rng.uniform(-plateau_w / 2, plateau_w / 2, size=1200)
+        v = rng.uniform(-plateau_d / 2, plateau_d / 2, size=1200)
+        z = top_z + rng.normal(0, 0.001, size=1200)
+        top_pts = np.column_stack([
+            cx + cos_y * u - sin_y * v, cy + sin_y * u + cos_y * v, z])
+        u2 = (rng.uniform(-base_w / 2, base_w / 2, size=2400)
+              * side)
+        v2 = (rng.uniform(-base_d / 2, base_d / 2, size=2400)
+              * side)
+        z2 = top_z - rng.uniform(0.0, h, size=2400) * 0.98
+        body_pts = np.column_stack([
+            cx + cos_y * u2 - sin_y * v2, cy + sin_y * u2 + cos_y * v2, z2])
+        cloud = np.vstack([top_pts, body_pts])
+        est = estimate_top_surface(cloud, workspace=None)
+        self.assertIsNotNone(est)
+        self.assertAlmostEqual(max(est.width, est.depth), base_w, delta=0.02)
+        self.assertAlmostEqual(min(est.width, est.depth), base_d, delta=0.02)
+        self.assertAlmostEqual(est.top_z, top_z, delta=0.005)
