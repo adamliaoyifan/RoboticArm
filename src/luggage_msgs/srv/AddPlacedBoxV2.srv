@@ -7,6 +7,13 @@ float64[3] size_wdh
 string measured_source
 uint64 expected_map_revision
 string geometry_hash
+# [commit anchor] Verify-measured box center in container_link and the
+# caller's match tolerance. tolerance <= 0 means "not supplied" and keeps
+# the legacy un-anchored commit; when supplied, the mapper rejects a slot
+# farther than tolerance from the measured pose (witness_02: a stale
+# pre-select compute slot committed 0.65 m from the verified box).
+float64[3] verified_center_container
+float64 verify_tolerance_m
 ---
 bool success
 string message

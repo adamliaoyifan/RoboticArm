@@ -32,6 +32,20 @@ MAX_VOXEL_MARKERS = 5000
 MARKER_VIZ_SCALE = 1.25
 
 
+def verify_anchor_delta_m(slot_center, verified_center):
+    """Euclidean distance between an asserted slot and a measured pose.
+
+    The AddPlacedBoxV2 anchor gate: both points are container_link box
+    centers. ``None`` (unmeasured anchor) is distinguished from a distance
+    by the caller — a missing measurement must not silently read as 0.
+    """
+    if slot_center is None or verified_center is None:
+        return None
+    return math.sqrt(sum(
+        (float(slot_center[axis]) - float(verified_center[axis])) ** 2
+        for axis in range(3)))
+
+
 def _clip_half_plane(polygon, origin, normal):
     """Sutherland-Hodgman clip keeping (p - origin) . normal >= 0."""
     out = []

@@ -285,7 +285,9 @@ class PackEvalDriver(PlaceSmokeDriver):
             trial.extras["placement"] = error.code
             return error.code
         slot = slot_spec_from_record(record, self._scene_config, box_wdh)
-        self._frame_slot_record = record
+        # [single-writer fix] _frame_slot_record belongs to the Select
+        # winner (place_smoke_driver._typed_place_slot); this pre-select
+        # compute is a PREVIEW only and must not touch the shared record.
         audit, center_local = self._corridor_audit(slot)
         self._pending_slot = slot
         self._pending_slot_meta = self._slot_meta(slot)
@@ -304,12 +306,67 @@ class PackEvalDriver(PlaceSmokeDriver):
             if slot is not None:
                 self._pending_slot = slot
                 self._pending_slot_meta = meta
+                self._refresh_pending_placed_from_selection()
             return slot, meta
         del pick_msg, box_msg
         if self._pending_slot is None:
             trial.fail_code = trial.fail_code or "PLACEMENT_FAILED"
             return None, None
         return self._pending_slot, self._pending_slot_meta
+
+    def _refresh_pending_placed_from_selection(self):
+        """[commit-source fix] The Select winner is the slot that will be
+        executed; the cargo-map commit must describe THAT slot, not the
+        pre-select ComputePlacement preview stored when the pending record
+        was first written. Refresh record/size and the freshest map
+        identity available at selection time (witness_02: a 0.65 m
+        phantom footprint was committed because this refresh was missing).
+        """
+        record = getattr(self, "_frame_slot_record", None)
+        box_wdh = getattr(self, "_frame_box_wdh", None)
+        if record is None or not box_wdh:
+            return
+        surface_msg = getattr(self, "_surface_v2_msg", None)
+        self._pending_placed = {
+            "record": record,
+            "size_wdh": list(box_wdh),
+            "map_revision": int(
+                surface_msg.map_revision if surface_msg is not None else
+                (self._surface_2d or {}).get("map_revision") or 0),
+            "geometry_hash": str(
+                (surface_msg.geometry_hash if surface_msg is not None
+                 else "") or (self._surface_2d or {}).get("geometry_hash")
+                or ""),
+        }
+
+    #: [commit anchor] Verify-vs-slot match tolerance for cargo-map
+    #: commits (m). witness_02's phantom sat 0.65 m out; live verify noise
+    #: measured 0.033-0.038 m.
+    _COMMIT_VERIFY_TOLERANCE_M = 0.10
+
+    def _commit_anchor_kwargs(self, record):
+        """[commit anchor] add_placed_box kwargs tying the asserted slot
+        to the verify-measured pose. Returns {} when this cycle carries no
+        verify pose (legacy paths keep the un-anchored commit and the
+        mapper-side gate stays optional)."""
+        verify = ((getattr(record, "extras", None) or {}).get("verify")) \
+            or {}
+        pose = (verify.get("box_pose_after_drift_wait")
+                or verify.get("box_pose_after_release"))
+        if not pose or len(pose) < 3 \
+                or not all(map(math.isfinite, (pose[0], pose[1], pose[2]))):
+            return {}
+        try:
+            from luggage_planning.typed_driver_adapter import (
+                world_xyz_to_container)
+            center = world_xyz_to_container(
+                self._scene_config, pose[:3])
+        except Exception:  # noqa: BLE001 - anchor is best-effort only
+            return {}
+        return {
+            "verified_center_container": center,
+            "verify_tolerance_m": self._COMMIT_VERIFY_TOLERANCE_M,
+        }
 
     def _dump_json(self, folder, name, payload):
         os.makedirs(folder, exist_ok=True)
@@ -495,6 +552,11 @@ class PackEvalDriver(PlaceSmokeDriver):
             self._pending_slot_meta = None
             self._pending_audit = None
             self._pending_center_local = None
+            # [commit-source hygiene] A failed cycle must not leak its
+            # pending commit record or the previous cycle's selection
+            # into the next cycle's commit.
+            self._pending_placed = None
+            self._frame_slot_record = None
             self._last_result = {}
             args.dump_dir = self._box_dump_dir(seq, "pending")
             args.dump_exact = True
@@ -577,6 +639,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                 if getattr(self, "_typed", None) is not None:
                     pending = getattr(self, "_pending_placed", None) or {}
                     from luggage_description.frame_contracts import ContractError
+                    anchor_kwargs = self._commit_anchor_kwargs(record)
                     try:
                         add = self._typed.add_placed_box(
                             slot=pending["record"],
@@ -585,7 +648,8 @@ class PackEvalDriver(PlaceSmokeDriver):
                             expected_map_revision=int(
                                 pending.get("map_revision") or 0),
                             geometry_hash=str(
-                                pending.get("geometry_hash") or ""))
+                                pending.get("geometry_hash") or ""),
+                            **anchor_kwargs)
                     except ContractError as error:
                         add = None
                         trial.extras["add_placed"] = "%s: %s" % (

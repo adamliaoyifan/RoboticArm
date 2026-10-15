@@ -719,6 +719,29 @@ class CargoVolumeMapperNode(Node):
                 request.expected_map_revision, request.geometry_hash,
                 response):
             return response
+        # [commit anchor] A supplied verify pose must agree with the
+        # asserted slot: witness_02 committed a stale pre-select compute
+        # slot 0.65 m from the verified box. Tolerance <= 0 keeps the
+        # legacy un-anchored commit for callers without a measurement.
+        tolerance = float(request.verify_tolerance_m or 0.0)
+        if tolerance > 0.0:
+            verified = [float(v) for v in
+                        request.verified_center_container]
+            if not all(math.isfinite(v) for v in verified):
+                response.success = False
+                response.message = (
+                    "verify anchor requested but verified_center_container "
+                    "is not finite")
+                return response
+            from luggage_perception.cargo_volume_mapper import (
+                verify_anchor_delta_m)
+            delta = verify_anchor_delta_m(slot["position"], verified)
+            if delta is None or delta > tolerance:
+                response.success = False
+                response.message = (
+                    "verify anchor mismatch: slot %.3f m from measured "
+                    "pose (tolerance %.3f m)" % (delta or -1.0, tolerance))
+                return response
         measured_source = str(request.measured_source or "")
         if measured_source not in V2_MEASURED_SOURCES:
             # The v2 ledger records measured commits only: an unmeasured

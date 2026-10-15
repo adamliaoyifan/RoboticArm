@@ -212,6 +212,32 @@ def container_transform_fields(scene_config):
             [float(v) for v in origin], [float(v) for v in quaternion])
 
 
+def world_xyz_to_container(scene_config, xyz):
+    """World-frame point to container_link (inverse of the published TF).
+
+    Uses the same single scene-config transform as
+    ``container_transform_fields`` — drivers never hand-roll the inverse.
+    """
+    _source, _target, translation, quaternion = container_transform_fields(
+        scene_config)
+    qx, qy, qz, qw = (float(v) for v in quaternion)
+    dx = float(xyz[0]) - float(translation[0])
+    dy = float(xyz[1]) - float(translation[1])
+    dz = float(xyz[2]) - float(translation[2])
+    # p_container = R(q)^T * (p_world - t); rows below are R's columns.
+    return [
+        (1.0 - 2.0 * (qy * qy + qz * qz)) * dx
+        + 2.0 * (qx * qy + qw * qz) * dy
+        + 2.0 * (qx * qz - qw * qy) * dz,
+        2.0 * (qx * qy - qw * qz) * dx
+        + (1.0 - 2.0 * (qx * qx + qz * qz)) * dy
+        + 2.0 * (qy * qz + qw * qx) * dz,
+        2.0 * (qx * qz + qw * qy) * dx
+        + 2.0 * (qy * qz - qw * qx) * dy
+        + (1.0 - 2.0 * (qx * qx + qy * qy)) * dz,
+    ]
+
+
 def probe_segment_message(record, request_id, scene_revision, *,
                           name="place_probe", cartesian_fraction=0.95):
     """MotionSegmentV2 for ProbeMotionSegmentV2 from world waypoints."""
@@ -542,7 +568,9 @@ class TypedDriverAdapter:
 
     # -- map commits ---------------------------------------------------------
     def add_placed_box(self, *, slot, size_wdh, measured_source,
-                       expected_map_revision, geometry_hash):
+                       expected_map_revision, geometry_hash,
+                       verified_center_container=None,
+                       verify_tolerance_m=0.0):
         from luggage_msgs.srv import AddPlacedBoxV2
         request = AddPlacedBoxV2.Request()
         request.slot_pose = pose_message(slot)
@@ -550,6 +578,12 @@ class TypedDriverAdapter:
         request.measured_source = str(measured_source)
         request.expected_map_revision = int(expected_map_revision)
         request.geometry_hash = str(geometry_hash)
+        # [commit anchor] Optional verify-measured pose; tolerance <= 0
+        # leaves the legacy un-anchored commit.
+        if verified_center_container is not None:
+            request.verified_center_container = [
+                float(v) for v in verified_center_container]
+            request.verify_tolerance_m = float(verify_tolerance_m)
         return self._call(self._add_placed, request, 15.0)
 
     def remove_placed_box(self, *, slot, size_wdh, expected_map_revision,
