@@ -996,13 +996,24 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         model = str(model or self._box_model or "") or self.gt_model_name()
         if not model:
             return None
-        try:
-            out = subprocess.check_output(
-                [_ign_model_bin(), "model", "-m", model, "--pose"],
-                text=True, timeout=5.0, stderr=subprocess.STDOUT)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
-            return None
-        return parse_ign_model_pose(out)
+        # G3 wave4 (multi_run01): a single ign CLI read raced the sim and
+        # returned nothing right at the release boundary ("no release
+        # pose"), aborting a healthy cycle. Bounded retry over ~2 s;
+        # the caller's own semantics are unchanged.
+        for attempt in range(4):
+            try:
+                out = subprocess.check_output(
+                    [_ign_model_bin(), "model", "-m", model, "--pose"],
+                    text=True, timeout=5.0, stderr=subprocess.STDOUT)
+            except (OSError, subprocess.CalledProcessError,
+                    subprocess.TimeoutExpired):
+                out = ""
+            pose = parse_ign_model_pose(out) if out else None
+            if pose is not None:
+                return pose
+            if attempt < 3:
+                time.sleep(0.5)
+        return None
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """Hook after DetectLuggage. Return a fail_code or empty string.

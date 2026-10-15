@@ -20,9 +20,10 @@ PIDFILE="${ELFIN_SIM_PIDFILE:-/tmp/elfin_humble_sim.pid}"
 
 case "$MODE" in
   rehearsal) MAX_BOXES=1; DRIVER_TIMEOUT=2400 ;;
+  multi)     MAX_BOXES="${G3_MAX_BOXES:-4}"; DRIVER_TIMEOUT=3600 ;;
   score)     MAX_BOXES=2; DRIVER_TIMEOUT=1200 ;;
   observe)   MAX_BOXES=0; DRIVER_TIMEOUT=0 ;;
-  *) echo "mode must be rehearsal, score or observe" >&2; exit 2 ;;
+  *) echo "mode must be rehearsal, score, observe or multi" >&2; exit 2 ;;
 esac
 if [[ -e "$OUT" ]]; then echo "run dir already exists: $OUT" >&2; exit 2; fi
 

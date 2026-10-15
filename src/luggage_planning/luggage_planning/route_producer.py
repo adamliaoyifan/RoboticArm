@@ -455,6 +455,16 @@ STAGING_PULLBACK_M = 0.35
 #: authority — a rebuild that still collides is still a refusal).
 CERT_COLLISION_REBUILDS = 2
 
+#: Budget-bound diversified redraws after an UNNAMED planning failure
+#: (sampler miss / path-validation reject). Edge-level diagnosis
+#: (2026-10-15, wave4/portal_edge_attached): the same portal edge yields a
+#: fully valid route on ~8/10 fresh RRTConnect draws and a mm-scale
+#: payload-grazing invalid path on the rest — a per-solution sporadic
+#: failure, so redraws diversify naturally and pay for themselves inside
+#: the existing budget. Named failures (IK / fraction / excursion /
+#: collision / missing exit) never redraw: those belong to the candidate.
+SAMPLER_MISS_REBUILDS = 5
+
 
 def anchor_plan(contact_world: Sequence[float], container_quaternion,
                 box_height_m: float, *, corridor_surface_max=None,
@@ -1479,22 +1489,29 @@ class RouteProducer(object):
                 row["atlas"] = getattr(self, "last_atlas_diag", None)
                 self._close_row(rows, row)
                 last_reason = row["reason"]
-                # One OMPL redraw after a sampler miss. A named candidate
-                # failure (IK, fraction, excursion, collision, missing
-                # exit) does not get that redraw.
+                # Budget-bound diversified redraws after a sampler miss
+                # (unnamed NO_FEASIBLE_ROUTE). A named candidate failure
+                # (IK, fraction, excursion, collision, missing exit) does
+                # not get redraws: those are properties of the candidate.
                 remaining = self.budget_ns - (self._clock_ns() - started_ns)
                 route = None
-                if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure \
-                        and cert_rebuilds_left > 0 and remaining > 0:
-                    cert_rebuilds_left -= 1
-                    self._log("route: sampler miss — re-planning "
-                              "candidate %d" % index)
-                    try:
-                        route = planner.plan_route(
-                            snapshot, attachment, candidate, targets,
-                            budget_ns=int(remaining))
-                    except RoutePlanningError:
-                        route = None
+                if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure:
+                    for retry in range(1, SAMPLER_MISS_REBUILDS + 1):
+                        remaining = (self.budget_ns
+                                     - (self._clock_ns() - started_ns))
+                        if remaining <= 0:
+                            break
+                        self._log("route: sampler miss — re-planning "
+                                  "candidate %d (retry %d/%d)" % (
+                                      index, retry, SAMPLER_MISS_REBUILDS))
+                        try:
+                            route = planner.plan_route(
+                                snapshot, attachment, candidate, targets,
+                                budget_ns=int(remaining))
+                        except RoutePlanningError:
+                            route = None
+                        if route is not None:
+                            break
                 if route is None:
                     continue
                 row = {
