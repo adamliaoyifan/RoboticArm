@@ -392,6 +392,12 @@ def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
     Atlases built before that field still gate on the file hash.
     ``strict`` fails when the active scene hash or the URDF hash is
     missing: an unverified atlas must not be used.
+    ``scene`` (user decision 2026-10-15) requires exactly the
+    arm-to-container fingerprint — scene presence and match — and treats
+    a URDF text-hash difference as a diagnostic, not a rejection: the
+    live URDF embeds workspace-absolute plugin paths, so a byte hash
+    cannot be stable across worktrees while the arm-to-container
+    geometry is identical.
     """
     mode = str(policy or "warn")
     if mode == "off":
@@ -409,13 +415,14 @@ def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
     scene_ok = True
     urdf_ok = True
     messages = []
-    if mode == "strict":
-        if not current_urdf:
-            urdf_ok = False
-            messages.append("urdf hash missing")
-        if not stored_urdf:
-            urdf_ok = False
-            messages.append("atlas urdf hash missing")
+    if mode in ("strict", "scene"):
+        if mode == "strict":
+            if not current_urdf:
+                urdf_ok = False
+                messages.append("urdf hash missing")
+            if not stored_urdf:
+                urdf_ok = False
+                messages.append("atlas urdf hash missing")
         if use_reachability:
             if not current_reach:
                 scene_ok = False
@@ -448,9 +455,13 @@ def identity_verdict(dependencies, scene_tf_hash=None, urdf_hash=None,
     if current_urdf and stored_urdf and stored_urdf != current_urdf:
         urdf_ok = False
         messages.append(
-            "urdf hash mismatch (atlas=%s, current=%s)" % (
+            "%surdf hash mismatch (atlas=%s, current=%s)" % (
+                "(diagnostic) " if mode == "scene" else "",
                 stored_urdf[:8], current_urdf[:8]))
-    ok = scene_ok and urdf_ok
+    if mode == "scene":
+        ok = scene_ok
+    else:
+        ok = scene_ok and urdf_ok
     return ok, ("; ".join(messages) if messages else "ok"), scene_ok, urdf_ok
 
 
@@ -643,7 +654,7 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
     policy = str(cfg.get("hash_policy") or "warn")
     if policy != "off":
         contract = atlas.contract_record
-        if policy == "strict" and contract is None:
+        if policy in ("strict", "scene") and contract is None:
             # ST06: strict certification requires directed 2pi concrete-tool
             # semantics. A v1 artifact is never relabelled to pass; it is
             # refused before any query or seed use.
@@ -661,10 +672,11 @@ def load_runtime_atlas(cfg, box_size=None, scene_tf_hash=None,
         diagnostics["urdf_ok"] = urdf_ok
         diagnostics["hash_message"] = message
         if not ok:
-            if policy == "strict":
+            if policy in ("strict", "scene"):
+                suffix = "strict" if policy == "strict" else "scene"
                 diagnostics["reason"] = (
-                    "hash_mismatch_strict" if "mismatch" in message
-                    else "hash_unverified_strict")
+                    "hash_mismatch_%s" % suffix if "mismatch" in message
+                    else "hash_unverified_%s" % suffix)
                 return None, diagnostics
             sys.stderr.write(
                 "luggage_planning: atlas %s (%s); continuing (warn)\n"
@@ -755,7 +767,11 @@ def verify_atlas_contract(atlas, scene_tf_hash=None, urdf_hash=None,
             return False, "reachability scene identity differs from the live scene"
     elif scene_tf_hash and expected["scene_revision"] != str(scene_tf_hash):
         return False, "scene identity differs from the live scene"
-    if urdf_hash and expected["urdf_hash"] != str(urdf_hash):
+    if (urdf_hash and expected["urdf_hash"] != str(urdf_hash)
+            and policy != "scene"):
+        # scene mode: the URDF text hash is a diagnostic (workspace
+        # paths differ across worktrees); the scene fingerprint above
+        # is the identity requirement.
         return False, "urdf identity differs from the live model"
     return True, "ok"
 

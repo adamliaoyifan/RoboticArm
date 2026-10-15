@@ -535,3 +535,56 @@ def test_query_semantics_strict_interior_blocks_reject(data_cfg):
         # status untouched (promotion off), rejection suppressed
         assert int(got.status) == int(raw.status)
         assert not got.hard_reject_safe
+
+
+SCENE_DEPS = {
+    "scene_tf_hash": "aa" * 8,
+    "reachability_scene_hash": "bb" * 8,
+    "urdf_hash": "06c4187e" + "0" * 24,
+}
+
+
+def test_scene_match_with_urdf_mismatch_loads_with_diagnostic():
+    """hash_policy scene (2026-10-15): the arm-to-container fingerprint
+    is the requirement; a URDF text-hash difference (workspace-absolute
+    plugin paths in the live URDF) is a diagnostic, not a rejection."""
+    ok, message, scene_ok, urdf_ok = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,          # file hash differs: diagnostic
+        urdf_hash="1ab018b7" + "0" * 24,  # urdf differs: diagnostic
+        policy="scene",
+        reachability_scene_hash="bb" * 8)
+    assert ok and scene_ok and not urdf_ok
+    assert "(diagnostic) urdf hash mismatch" in message
+
+
+def test_scene_mismatch_refuses():
+    ok, message, scene_ok, _ = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,
+        urdf_hash="06c4187e" + "0" * 24,
+        policy="scene",
+        reachability_scene_hash="dd" * 8)   # WRONG container geometry
+    assert not ok and not scene_ok
+    assert "reachability_scene hash mismatch" in message
+
+
+def test_scene_requires_present_scene_hash():
+    ok, message, scene_ok, _ = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,
+        urdf_hash=None,
+        policy="scene",
+        reachability_scene_hash=None)        # live fingerprint missing
+    assert not ok and not scene_ok
+    assert "reachability_scene hash missing" in message
+
+
+def test_strict_still_refuses_urdf_mismatch():
+    ok, _message, scene_ok, urdf_ok = ar.identity_verdict(
+        SCENE_DEPS,
+        scene_tf_hash="cc" * 8,
+        urdf_hash="1ab018b7" + "0" * 24,
+        policy="strict",
+        reachability_scene_hash="bb" * 8)
+    assert not ok and scene_ok and not urdf_ok

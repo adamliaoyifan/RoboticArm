@@ -41,6 +41,10 @@ Full contract: `docs/architecture/placement.md`. Hull identity and the
   On the certification cell (`hash_policy: strict`) that atlas must match
   the live scene-file hash and URDF hash. A miss returns
   `ATLAS_IDENTITY_UNVERIFIED` and must not hard-reject or re-rank.
+  `hash_policy: scene` (2026-10-15) requires only the arm-to-container
+  fingerprint (`reachability_scene_hash`) and records a URDF text-hash
+  difference as a diagnostic — the URDF embeds workspace-absolute paths,
+  so its byte hash cannot be stable across worktrees.
 - Plan place motion (cartesian, OMPL, or later search) against the current
   cargo occupancy at `geometry_hash` / `map_revision`. Occupied and
   unknown-above-floor cells are obstacles for the swept payload and arm.
