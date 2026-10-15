@@ -414,6 +414,12 @@ class MoveItEdgeAdapter(object):
         self._call_counts: Dict[str, int] = {"move_group": 0,
                                              "cartesian": 0,
                                              "scene_apply": 0}
+        # [G1] per-stage wall timings in seconds: scene apply, MoveGroup
+        # round-trip, local retime/interpolation-check. Nested MoveGroup
+        # server timings are in the action result's planning_time.
+        self._stage_timings: Dict[str, List[float]] = {
+            "scene_apply": [], "move_group": [],
+            "retime_and_interpolation": [], "cartesian": []}
         self._call_durations: Dict[str, List[float]] = {
             "move_group": [], "cartesian": [], "scene_apply": []}
         self._request_dumps: List[dict] = []
@@ -443,6 +449,11 @@ class MoveItEdgeAdapter(object):
 
     def call_durations(self):
         return {key: list(values) for key, values in self._durations_items()}
+
+    def stage_timings(self):
+        """[G1] Per-stage wall timings (seconds) for the last session."""
+        return {key: list(values)
+                for key, values in self._stage_timings.items()}
 
     def _durations_items(self):
         return self._call_durations.items()
@@ -530,6 +541,7 @@ class MoveItEdgeAdapter(object):
         if marker == self._scene_state_applied:
             return
         started = time.monotonic()
+        self._scene_apply_began = started  # [G1] for stage timing
         world_boxes = tuple(scene.placed_boxes) + (
             (scene.released_box,) if scene.released_box else ())
         for box in world_boxes:
@@ -571,6 +583,8 @@ class MoveItEdgeAdapter(object):
             self._call_counts["scene_apply"] += 1
         self._verify_scene(scene.load_state, payload_id)
         self._scene_state_applied = marker
+        self._stage_timings["scene_apply"].append(
+            round(time.monotonic() - started, 6))  # [G1]
         self._scene_dumps.append({
             "load_state": scene.load_state,
             "world_boxes": len(world_boxes),
@@ -940,15 +954,20 @@ class MoveItEdgeAdapter(object):
         self._call_counts["move_group"] += 1
         began = time.monotonic()
         result = self._send_action_goal(goal)
-        self._call_durations["move_group"].append(
-            round(time.monotonic() - began, 6))
+        _mg_dur = round(time.monotonic() - began, 6)
+        self._call_durations["move_group"].append(_mg_dur)
+        self._stage_timings["move_group"].append(_mg_dur)  # [G1]
         self._request_dumps.append({
             "planner": "joint", "edge_class": klass.value,
             "planner_id": self._planner_id,
             "from": from_node.node_id, "to": to_node.node_id,
             "from_q": [round(float(v), 6) for v in from_node.q],
             "to_q": [round(float(v), 6) for v in to_node.q],
-            "error_code": int(result.error_code.val) if result else -1})
+            "error_code": int(result.error_code.val) if result else -1,
+            "wall_s": _mg_dur,
+            "server_planning_time_s": (
+                float(getattr(result, "planning_time", 0.0) or 0.0)
+                if result else None)})  # [G1]
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
         joint_trajectory = getattr(trajectory, "joint_trajectory", None) \
@@ -974,8 +993,11 @@ class MoveItEdgeAdapter(object):
             raise RoutePlanningError("EDGE_BUILD_FAILED", {
                 "kind": "moveit_error",
                 "error_code": code})
+        _rt_began = time.monotonic()
         timed = self._retime(joint_trajectory, densify=True)
         self._refuse_interpolated_collision(from_node, to_node, klass, timed)
+        self._stage_timings["retime_and_interpolation"].append(
+            round(time.monotonic() - _rt_began, 6))  # [G1]
         outcome = EdgeOutcome(
             edge_class=klass.value, planner="joint", ok=True,
             moveit_error_code=int(result.error_code.val), attempts=1)

@@ -2939,6 +2939,14 @@ class RouteProducer(object):
             scene_rows = list(scenes()[int(scene_at):])
             if scene_rows:
                 row["scene"] = scene_rows
+        stage_times = getattr(builder, "stage_timings", None)  # [G1]
+        if callable(stage_times):
+            row["stage_timings_s"] = {
+                key: {"n": len(vals),
+                      "total": round(sum(vals), 4),
+                      "mean": round(sum(vals) / len(vals), 6)
+                      if vals else None}
+                for key, vals in stage_times().items() if vals}
         params = getattr(builder, "planner_parameters", None)
         if callable(params) and "planner_parameters" not in row:
             row["planner_parameters"] = params()
