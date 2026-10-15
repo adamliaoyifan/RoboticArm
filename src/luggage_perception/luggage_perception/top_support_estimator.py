@@ -17,6 +17,7 @@ v1 is horizontal-only: top and support planes must be within
 from __future__ import division
 
 import math
+import os
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -389,6 +390,17 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     near = candidates[
         (((np.abs(u_c) > inner_w) | (np.abs(v_c) > inner_d))
          & ((np.abs(u_c) < near_w) & (np.abs(v_c) < near_d)))]
+    dump_path = os.environ.get("ELFIN_SUPPORT_CANDIDATES_DUMP", "")
+    if dump_path:
+        np.savez(
+            dump_path,
+            candidates=candidates, near=near,
+            u=u_c, v=v_c,
+            top_z=top_estimate.top_z,
+            rect_w=top_estimate.width, rect_d=top_estimate.depth,
+            yaw=top_estimate.yaw,
+            cx=float(top_estimate.center_xy[0]),
+            cy=float(top_estimate.center_xy[1]))
     fit_method = "zmode_median"
     inlier_mask = None
     support_z = None

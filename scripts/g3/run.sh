@@ -36,6 +36,7 @@ export ST09_I_CERT_CAPTURE_DIR="$OUT/cert_capture"
 mkdir -p "$ST09_PORTAL_CAPTURE_DIR" "$ST09_SELECT_REQUEST_CAPTURE_DIR" "$ST09_I_CERT_CAPTURE_DIR" "$OUT/sdf"
 export ELFIN_BOX_SDF_DUMP="$OUT/sdf/spawn.sdf"
 export ELFIN_BOX_RELEASE_SDF="$OUT/sdf/release.sdf"
+export ELFIN_SUPPORT_CANDIDATES_DUMP="$OUT/support_candidates.npz"
 export ROS_DOMAIN_ID=7
 
 stack_pids() {
