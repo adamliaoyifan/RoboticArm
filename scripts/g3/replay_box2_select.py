@@ -86,6 +86,10 @@ def run_once(out, label):
             surface_validity={"occupancy_confirmed": True, "change_event": ""})
         wall_s = time.perf_counter() - began
         rows = json.loads(response.rows_json or "[]")
+        with open(os.path.join(out, "rows.json"), "w") as handle:
+            json.dump(rows, handle, indent=1)
+        timings = json.loads(response.stage_timings_json or "{}")
+        report["stage_timings"] = timings
         winner = next(
             (r for r in rows if r.get("reason") == "OK" and r.get("certified")),
             None)
