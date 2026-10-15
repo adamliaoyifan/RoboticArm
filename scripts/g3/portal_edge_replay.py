@@ -46,6 +46,11 @@ def main():
         RUN, "portal_capture", "portal_%02d.scene.bin" % portal_index),
         "rb").read(), PlanningScene)
 
+    if os.environ.get("G3_CONTENDED") == "1":
+        # Contention probe: the full sim stack is INTENTIONALLY up on
+        # domain 7; skip the residual guard (isolated MoveIt uses its own
+        # domain, so no ROS-graph coupling — only CPU contention).
+        common.score._residuals = lambda: []  # noqa: SLF001
     stack = common.MoveItStack(out_dir, "portal_edge")
     stack.start()
     rclpy.init()

@@ -222,6 +222,10 @@ if [[ "$MODE" == "observe" ]]; then
   python3 "$WS/scripts/g3/geometry_chain_audit.py" collect "$OUT/chain_session" \
     > "$OUT/chain_session.log" 2>&1
   audit_rc=$?
+  if [[ -n "${G3_OBSERVE_HOLD:-}" ]]; then
+    echo "{"stage":"hold","seconds":${G3_OBSERVE_HOLD},"ts":"$(date -Is)"}" >> "$OUT/lifecycle.jsonl"
+    sleep "$G3_OBSERVE_HOLD"
+  fi
   bash "$WS/scripts/stop_sim.sh" || true
   echo "{\"stage\":\"audit_collect\",\"rc\":$audit_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
   exit "$audit_rc"
