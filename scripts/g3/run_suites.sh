@@ -5,6 +5,7 @@ source /tmp/elfin-master-pack-baseline-g3/scripts/g3/g3_env.sh
 OUT="$1"; mkdir -p "$OUT"; cd /tmp/elfin-master-pack-baseline-g3
 export PYTEST_DISABLE_PLUGIN_AUTOLOAD=1
 for suite in src/luggage_planning/test tests/st09_parallel/B tests/st09_parallel/C tests/st09_parallel/I \
+             src/luggage_description/test \
              src/luggage_gazebo/test/test_baseline_enablement.py \
              src/luggage_gazebo/test/test_planning_request_capture.py \
              src/luggage_gazebo/test/test_commit_to_cargo_map.py \

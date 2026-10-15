@@ -188,7 +188,9 @@ class TestEstimateLocalSupportZmode(unittest.TestCase):
         timing = {}
         estimate_local_support(raw, _top(), WORKSPACE, CONFIG,
                                timing=timing)
-        self.assertEqual(timing.get("support_fit_method"), "zmode_median")
+        # G3 wave3 near-ring priority: this scene has adjacent support,
+        # so the near-ring estimator is the recorded method.
+        self.assertEqual(timing.get("support_fit_method"), "zmode_near_median")
         self.assertLess(timing.get("support_ransac_ms", 1e9), 50.0)
 
 

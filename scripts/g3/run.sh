@@ -21,7 +21,8 @@ PIDFILE="${ELFIN_SIM_PIDFILE:-/tmp/elfin_humble_sim.pid}"
 case "$MODE" in
   rehearsal) MAX_BOXES=1; DRIVER_TIMEOUT=2400 ;;
   score)     MAX_BOXES=2; DRIVER_TIMEOUT=1200 ;;
-  *) echo "mode must be rehearsal or score" >&2; exit 2 ;;
+  observe)   MAX_BOXES=0; DRIVER_TIMEOUT=0 ;;
+  *) echo "mode must be rehearsal, score or observe" >&2; exit 2 ;;
 esac
 if [[ -e "$OUT" ]]; then echo "run dir already exists: $OUT" >&2; exit 2; fi
 
@@ -32,7 +33,9 @@ export MOTION_BOUNDARY_DUMP="$OUT/dumps/boundaries"
 export ST09_PORTAL_CAPTURE_DIR="$OUT/portal_capture"
 export ST09_SELECT_REQUEST_CAPTURE_DIR="$OUT/select_capture"
 export ST09_I_CERT_CAPTURE_DIR="$OUT/cert_capture"
-mkdir -p "$ST09_PORTAL_CAPTURE_DIR" "$ST09_SELECT_REQUEST_CAPTURE_DIR" "$ST09_I_CERT_CAPTURE_DIR"
+mkdir -p "$ST09_PORTAL_CAPTURE_DIR" "$ST09_SELECT_REQUEST_CAPTURE_DIR" "$ST09_I_CERT_CAPTURE_DIR" "$OUT/sdf"
+export ELFIN_BOX_SDF_DUMP="$OUT/sdf/spawn.sdf"
+export ELFIN_BOX_RELEASE_SDF="$OUT/sdf/release.sdf"
 export ROS_DOMAIN_ID=7
 
 stack_pids() {
@@ -210,6 +213,17 @@ print(json.dumps(report))
 node.destroy_node()
 rclpy.shutdown()
 PY
+
+if [[ "$MODE" == "observe" ]]; then
+  # P1 geometry chain audit: spawn one box, production DetectLuggage,
+  # GT record + synchronized frame; no driver, no motion.
+  python3 "$WS/scripts/g3/geometry_chain_audit.py" collect "$OUT/chain_session" \
+    > "$OUT/chain_session.log" 2>&1
+  audit_rc=$?
+  bash "$WS/scripts/stop_sim.sh" || true
+  echo "{\"stage\":\"audit_collect\",\"rc\":$audit_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+  exit "$audit_rc"
+fi
 
 if [[ "$MODE" == "rehearsal" ]]; then
   # B1 live input: one complete synchronized RGB/depth/info/TF/detection

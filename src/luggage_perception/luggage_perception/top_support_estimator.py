@@ -82,6 +82,13 @@ class TopSupportConfig:
     # Support annulus around the fitted top rectangle [m].
     support_inner_margin: float = 0.03
     support_outer_margin: float = 0.18
+    # [G3 wave3, D1 2026-10-15] Near-ring width past the inner margin:
+    # the support surface is ADJACENT to the box. When the outer annulus
+    # overhangs the platform edge, far structure inside the height band
+    # (a container aperture rim at top - 0.42 in the wave3 chain audit)
+    # can out-count the true platform ring; the near ring is preferred
+    # and the full annulus is only a fallback.
+    support_near_width: float = 0.05
     min_support_points: int = 80
     support_ransac_max_iter: int = 200
     support_ransac_dist_thresh: float = 0.008
@@ -366,14 +373,45 @@ def estimate_local_support(raw_points_world, top_estimate, workspace,
     # PF-R6 gen3: the adopted zmode_median estimator replaces support
     # RANSAC. Timing key keeps its historical name so probe/evidence
     # series stay comparable; support_fit_method records the estimator.
-    inlier_mask, support_z = _zmode_support_plane(
-        candidates,
-        dist_thresh=config.support_ransac_dist_thresh,
-        min_inliers=int(config.min_support_points),
-    )
+    # [G3 wave3, D1 2026-10-15] Near-ring priority: prefer the dominant
+    # cluster of the ring ADJACENT to the box (inner margin .. inner +
+    # support_near_width). On a tight platform the outer annulus
+    # overhangs the pedestal edge and can pick up far structure inside
+    # the height band (a container aperture rim), which out-counts the
+    # true platform ring and doubles the measured height. Inliers for
+    # the side-coverage gate stay the full-annulus window around the
+    # chosen plane; the full annulus remains the fallback when the near
+    # ring is too sparse to form a dominant cluster.
+    u_c = u[in_annulus]
+    v_c = v[in_annulus]
+    near_w = half_w + config.support_inner_margin + config.support_near_width
+    near_d = half_d + config.support_inner_margin + config.support_near_width
+    near = candidates[
+        (((np.abs(u_c) > inner_w) | (np.abs(v_c) > inner_d))
+         & ((np.abs(u_c) < near_w) & (np.abs(v_c) < near_d)))]
+    fit_method = "zmode_median"
+    inlier_mask = None
+    support_z = None
+    if len(near) >= int(config.min_support_points):
+        near_cluster, near_z = _zmode_support_plane(
+            near,
+            dist_thresh=config.support_ransac_dist_thresh,
+            min_inliers=int(config.min_support_points),
+        )
+        if near_cluster is not None and near_z is not None:
+            support_z = near_z
+            inlier_mask = (np.abs(candidates[:, 2] - support_z)
+                           <= config.support_ransac_dist_thresh)
+            fit_method = "zmode_near_median"
+    if inlier_mask is None or support_z is None:
+        inlier_mask, support_z = _zmode_support_plane(
+            candidates,
+            dist_thresh=config.support_ransac_dist_thresh,
+            min_inliers=int(config.min_support_points),
+        )
     if timing is not None:
         timing["support_ransac_ms"] = (time.monotonic() - _t0) * 1000.0
-        timing["support_fit_method"] = "zmode_median"
+        timing["support_fit_method"] = fit_method
     if inlier_mask is None or support_z is None:
         return SupportPlaneEstimate(
             support_z=float("nan"), reason=DETECT_SUPPORT_UNOBSERVABLE)
@@ -444,6 +482,9 @@ def compose_box_geometry(top, support=None, platform_z=None):
         and support.reason == "ok"
         and np.isfinite(support.support_z))
     if support_ok:
+        # height = vertical extent of the box AS IT RESTS (footprint_x /
+        # footprint_y / vertical_extent semantics, docs/architecture/
+        # size_semantics.md) — NOT the catalog H standing edge.
         height = top.top_z - support.support_z
         center = np.array([
             top.center_xy[0], top.center_xy[1],
