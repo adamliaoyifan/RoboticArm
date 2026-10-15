@@ -797,12 +797,11 @@ class PlaceOnlyDriver(PlaceSmokeDriver):
                 map_resp = self._call(
                     self._map_add, AddPlacedBox.Request(slot=slot),
                     timeout=15.0)
-            scene_resp = self._call(
-                self._add_placed, AddPlacedBox.Request(slot=slot),
-                timeout=15.0)
-            ok = bool(scene_resp and scene_resp.success
-                      and (not box.in_map
-                           or (map_resp and map_resp.success)))
+            # [G3 wave5] scene placed-object channel removed; the map
+            # commit (occ columns) is the single rigid-obstacle source.
+            scene_resp = None
+            ok = bool(not box.in_map
+                      or (map_resp and map_resp.success))
             record = {
                 "role": box.role,
                 "record": box.record(),

@@ -6,8 +6,8 @@ Does not modify pick_retreat_eval_driver.py. Reuses its graph / pick helpers
 by subclassing, then continues into place instead of vacuum-off + observe.
 
 Order after descend: RELEASE_SETTLE → VacuumCommand(false) → retreat →
-AddPlacedBox. Adding the placed box while the cup is still on the lid makes
-retreat start in-collision.
+cargo-map commit ([G3 wave5] the slot-named scene AddPlacedBox channel is
+removed; occupancy columns are the single rigid-obstacle source).
 """
 
 from __future__ import division
@@ -39,13 +39,11 @@ from moveit_msgs.srv import GetPlanningScene
 from luggage_msgs.action import PlanMotion
 from luggage_msgs.msg import DetectedLuggage, MotionSegment, SlotSpec
 from luggage_msgs.srv import (
-    AddPlacedBox,
     BuildMotionSequence,
     CheckExecutionAdmission,
     ClearCurrentBox,
     DetectLuggage,
     GetCurrentBox,
-    RemovePlacedBox,
     SpawnNextBox,
 )
 
@@ -627,12 +625,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._subscribe_controller_state()
         self._state_pub = self.create_publisher(
             String, "/luggage/place/state", latch)
-        self._add_placed = self.create_client(
-            AddPlacedBox, "/scene_manager/add_placed_box",
-            callback_group=self._group)
-        self._remove_placed = self.create_client(
-            RemovePlacedBox, "/scene_manager/remove_placed_box",
-            callback_group=self._group)
         self._box_model = ""
         self._release_physics = None
         self._gz_create = self.create_client(
@@ -1255,11 +1247,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return 0
 
     def _clear_smoke_slot(self, slot, delete_model=False):
-        resp = self.call_srv(
-            self._remove_placed, RemovePlacedBox.Request(slot=slot), timeout=5.0)
+        # [G3 wave5] no scene placed object to remove (occ-only); the
+        # map rollback happens through the cargo-map chain.
         if delete_model:
-            self.call_srv(self._clear, ClearCurrentBox.Request(), timeout=15.0)
-        return resp
+            return self.call_srv(
+                self._clear, ClearCurrentBox.Request(), timeout=15.0)
+        return None
 
     def _commit_to_cargo_map(self, trial, slot, slot_meta):
         """Commit the released box to the cargo-map ledger.
@@ -2760,12 +2753,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.extras["fall_m"] = xyz_separation(release_xyz, landed_xyz)
         self._set_state("COMMITTED")
         if (not self._args.plan_only) and getattr(self._args, "use_vacuum", False):
-            add = AddPlacedBox.Request()
-            add.slot = self._slot_world_msg(slot, slot_meta)
-            resp = self.call_srv(self._add_placed, add, timeout=10.0)
-            trial.extras["add_placed"] = resp.message if resp else "timeout"
-            if resp is None or not resp.success:
-                return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
+            # [G3 wave5] the slot-named scene object channel is gone; the
+            # confirmed cargo-map commit is the single rigid-obstacle
+            # source (occupancy columns, map_revision-bound).
+            trial.extras["add_placed"] = "occ-only"
             if not self._commit_to_cargo_map(trial, slot, slot_meta):
                 return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
             self._set_place_touch(False)
