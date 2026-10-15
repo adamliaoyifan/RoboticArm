@@ -495,7 +495,8 @@ class GraphRoutePlanner(object):
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
-                 region_poses=None, scope_node_ids=None, payload_screen=None):
+                 region_poses=None, scope_node_ids=None, payload_screen=None,
+                 occupancy_boxes=()):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
         #: Optional ``node -> bool`` (True = the carried payload hits the
         #: arm at this node's q). Nodes this planner registers while
@@ -517,6 +518,15 @@ class GraphRoutePlanner(object):
         self.t_frame_container = tuple(float(v) for v in t_frame_container)
         self.q_frame_container = tuple(float(v) for v in q_frame_container)
         self.certifier = certifier  # advisory only; see class docstring
+        #: [G3 wave5 fix, user 2026-10-15] World-frame occupancy columns
+        #: from the confirmed cargo map (occupancy_boxes_from_surface,
+        #: producer-built). The legacy scene_boxes_from_snapshot path
+        #: produced container-local XY at a fixed 0.30 m slab submitted
+        #: as world coords — wrong position AND wrong height — and the
+        #: carrying state had no placed boxes at all. Both load states
+        #: now share the same correctly-transformed columns the cert
+        #: composer uses.
+        self.occupancy_boxes = tuple(occupancy_boxes)
         self.refine = refine  # production default: offline_ik refine
         self.urdf = urdf
         self.tcp_path = tcp_path
@@ -772,19 +782,18 @@ class GraphRoutePlanner(object):
         from luggage_planning.moveit_edge_adapter import (
             PayloadSpec,
             SceneState,
-            scene_boxes_from_snapshot,
         )
         carrying = SceneState(
             load_state="carrying",
             payload=PayloadSpec(
                 dimensions_wdh=attachment.dimensions_wdh,
                 t_tcp_box_translation=attachment.t_tcp_box_translation,
-                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw))
+                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw),
+            placed_boxes=self.occupancy_boxes)
         unloaded = SceneState(
             load_state="unloaded",
             released_box=self._released_box(attachment, candidate),
-            placed_boxes=scene_boxes_from_snapshot(snapshot)
-            if snapshot is not None else ())
+            placed_boxes=self.occupancy_boxes)
         return carrying, unloaded
 
     # -- protocol -----------------------------------------------------------

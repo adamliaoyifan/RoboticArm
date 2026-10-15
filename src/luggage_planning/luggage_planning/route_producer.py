@@ -1412,6 +1412,12 @@ class RouteProducer(object):
                         attachment, snapshot, request,
                         prior_targets[0].quaternion_xyzw)
                 else:
+                    from luggage_planning.moveit_edge_adapter import (
+                        occupancy_boxes_from_surface,
+                    )
+                    _occupancy = occupancy_boxes_from_surface(
+                        request.get("surface") or {},
+                        request.get("container_transform"))
                     planner = GraphRoutePlanner(
                         self.graph, self.edge_builder,
                         home_node_id=self.graph.node_for_q(
@@ -1424,6 +1430,7 @@ class RouteProducer(object):
                         q_frame_container=tuple(float(v) for v in
                                                 request["container_transform"]
                                                 ["quaternion_xyzw"]),
+                        occupancy_boxes=_occupancy,
                         refine=self.refine, urdf=self.urdf,
                         goal_seeds=self._goal_seed_fn(
                             start_q,
