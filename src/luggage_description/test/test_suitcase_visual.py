@@ -344,7 +344,9 @@ class TestSizedPickupAssets(unittest.TestCase):
 
     def test_manifest_measure_size_matches_stl(self):
         manifest = load_sized_suitcases_manifest(GAZEBO_MODELS)
-        self.assertEqual(len(manifest), 6)
+        # G3 wave3: the manifest covers every registered tier
+        # (catalog + inch, both visual families) via the pipeline.
+        self.assertEqual(len(manifest), 14)
         rec = manifest[sized_model_name(VISUAL_LOAFBRR, "small")]
         stl = sized_stl_path(VISUAL_LOAFBRR, "small", GAZEBO_MODELS)
         measure = mesh_top_footprint(stl)

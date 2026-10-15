@@ -1053,6 +1053,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = trial.fail_code or "SURFACE_V2_MISSING"
             return None, None
         geometry_hash = str(surface_msg.geometry_hash or "")
+        # box_wdh = placement semantics: footprint_x, footprint_y,
+        # vertical_extent (see docs/architecture/size_semantics.md).
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]
         self._frame_box_wdh = list(box_wdh)
@@ -2341,6 +2343,51 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["replay"]["stage"] = stage
         return manifest
 
+    def _placed_primitive_size(self, visual, command_size):
+        """[G3 wave3] Placed-body primitive extents from the tier manifest.
+
+        The manifest is the single machine-readable truth for asset,
+        GT-reference and primitive collision sizes (pipeline:
+        ``generate_sized_suitcases.py sync-manifest``); the spawner's
+        command size stays the fallback when no record exists.
+        """
+        try:
+            from luggage_description.suitcase_visual import (
+                sized_model_name,
+                sized_suitcases_manifest_path,
+                size_tier_name,
+            )
+        except ImportError:
+            return None
+        tier = size_tier_name(command_size)
+        if not tier:
+            return None
+        root = getattr(self, "_placed_models_root", None)
+        if root is None:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+            except Exception:  # noqa: BLE001 - package share may be absent
+                root = ""
+            self._placed_models_root = root
+        if not root:
+            return None
+        path = sized_suitcases_manifest_path(root)
+        if not os.path.isfile(path):
+            return None
+        manifest = getattr(self, "_placed_manifest", None)
+        if manifest is None:
+            with open(path, "r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            self._placed_manifest = manifest
+        entry = manifest.get(sized_model_name(str(visual), tier)) or {}
+        primitive = entry.get("primitive_collision_size")
+        if not primitive:
+            return None
+        return [float(v) for v in primitive]
+
     def _release_as_dynamic(self):
         """Replace the static carry body with the same mesh, dynamic, in place.
 
@@ -2353,6 +2400,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         visual = str(physics.get("visual_id") or "")
         mass = physics.get("mass_kg")
         model = str(self._box_model or physics.get("model_name") or "")
+        # [G3 wave3] single source: the tier manifest's registered
+        # primitive_collision_size (falls back to the command size).
+        size = list(self._placed_primitive_size(visual, size) or size)
         release = self._gz_box_pose()
         if len(size) != 3 or not visual or mass is None or not model:
             return False, "missing physics identity", release

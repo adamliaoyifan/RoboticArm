@@ -726,6 +726,121 @@ def _copy_texture_assets(visual_id, model_dir, models_root, scale):
     return dest_dae
 
 
+def _dae_vertex_extents(path):
+    """Vertex-array extents of a COLLADA visual, in its own units."""
+    import xml.etree.ElementTree as ET
+
+    root = ET.parse(path).getroot()
+    vals = []
+    for fa in root.iter():
+        if not fa.tag.endswith("float_array"):
+            continue
+        if not str(fa.get("id") or "").lower().startswith("verts"):
+            continue
+        vals.extend(float(v) for v in fa.text.split())
+    if not vals:
+        return None
+    points = [vals[i:i + 3] for i in range(0, len(vals) - 2, 3)]
+    return [max(p[k] for p in points) - min(p[k] for p in points)
+            for k in range(3)]
+
+
+def _stl_vertex_extents(path):
+    """Vertex extents of a binary STL (normals skipped)."""
+    xs, ys, zs = [], [], []
+    for x, y, z in iter_stl_vertices(path):
+        xs.append(x)
+        ys.append(y)
+        zs.append(z)
+    return [max(xs) - min(xs), max(ys) - min(ys), max(zs) - min(zs)]
+
+
+def sized_asset_records(models_root):
+    """One machine-readable truth record per REGISTERED tier, from disk.
+
+    The single source for spawn/GT references, the placed-body primitive
+    collision size and asset hashes (G3 wave 3: one pipeline, every
+    asset; register a tier, run sync, check passes). Deterministic:
+    sorted keys, no timestamps, values from the on-disk meshes.
+    """
+    import hashlib
+
+    records = {}
+    for tier, size, mass_kg, catalog_id in iter_size_tiers():
+        for visual_id in VISUAL_IDS:
+            name = sized_model_name(visual_id, tier)
+            stl = sized_stl_path(visual_id, tier, models_root)
+            dae = os.path.join(os.path.dirname(stl), VISUAL_MESH_FILE)
+            if not os.path.isfile(stl):
+                continue
+            # measure_size keeps the historical mesh_top_footprint
+            # schema (top-band W/D + full height); the GT observable
+            # reference (mesh_observable_reference) is computed live by
+            # the spawner and is NOT stored here.
+            w, d, h = mesh_top_footprint(stl)
+            records[name] = {
+                "catalog_id": catalog_id,
+                "collision_uri": "model://%s/%s" % (name, MESH_FILE),
+                "mass_kg": mass_kg,
+                "measure_size": [w, d, h],
+                "primitive_collision_size": [float(v) for v in size],
+                "size": [float(v) for v in size],
+                "tier": tier,
+                "uri": "model://%s/%s" % (name, MESH_FILE),
+                "visual_id": visual_id,
+                "visual_uri": "model://%s/%s" % (name, VISUAL_MESH_FILE),
+                "stl_sha256": hashlib.sha256(
+                    open(stl, "rb").read()).hexdigest(),
+                "dae_sha256": (
+                    hashlib.sha256(open(dae, "rb").read()).hexdigest()
+                    if os.path.isfile(dae) else None),
+            }
+    return records
+
+
+def check_sized_assets(models_root, atol=1e-3):
+    """Validate the sim-object contract for every registered tier.
+
+    Returns a list of failure strings (empty = pass): each registered
+    tier must have a model dir whose collision STL and visual DAE vertex
+    extents equal the registered size, and the manifest on disk must
+    equal :func:`sized_asset_records` exactly.
+    """
+    failures = []
+    manifest_path = sized_suitcases_manifest_path(models_root)
+    records = sized_asset_records(models_root)
+    for tier, size, _mass, _catalog in iter_size_tiers():
+        for visual_id in VISUAL_IDS:
+            name = sized_model_name(visual_id, tier)
+            stl = sized_stl_path(visual_id, tier, models_root)
+            if name not in records:
+                failures.append("%s: missing model dir" % name)
+                continue
+            extents = _stl_vertex_extents(stl)
+            if any(abs(extents[k] - size[k]) > atol for k in range(3)):
+                failures.append("%s: STL extents %s != registered %s" % (
+                    name, [round(v, 4) for v in extents], list(size)))
+            dae = os.path.join(os.path.dirname(stl), VISUAL_MESH_FILE)
+            if os.path.isfile(dae):
+                dae_ext = _dae_vertex_extents(dae)
+                if dae_ext is None:
+                    failures.append("%s: DAE has no vertex array" % name)
+                elif any(abs(sorted(dae_ext)[k] - sorted(size)[k]) > atol
+                         for k in range(3)):
+                    failures.append("%s: DAE extents %s != registered %s" % (
+                        name, [round(v, 4) for v in dae_ext], list(size)))
+    if os.path.isfile(manifest_path):
+        on_disk = json.load(open(manifest_path))
+        if on_disk != records:
+            missing = sorted(set(records) - set(on_disk))
+            stale = sorted(set(on_disk) - set(records))
+            failures.append("manifest != records (missing=%s stale=%s"
+                            "; run sync-manifest)" % (missing, stale))
+    else:
+        failures.append("manifest missing: %s" % manifest_path)
+    return failures
+
+
 def write_sized_suitcase_models(models_root):
     """Write the six pre-scaled pickup models and a measure_size manifest.
 
@@ -738,7 +853,7 @@ def write_sized_suitcase_models(models_root):
         src = source_stl_path(visual_id, models_root)
         if not os.path.isfile(src):
             raise IOError("missing unit STL: %s" % src)
-        for tier, size, mass_kg, catalog_id in SIZE_TIERS:
+        for tier, size, mass_kg, catalog_id in iter_size_tiers():
             name = sized_model_name(visual_id, tier)
             dest_stl = sized_stl_path(visual_id, tier, models_root)
             write_scaled_stl(src, dest_stl, size)
