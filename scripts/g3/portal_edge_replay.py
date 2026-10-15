@@ -76,9 +76,14 @@ def main():
         start = RobotState()
         start.joint_state.name = [
             "elfin_joint%d" % (i + 1) for i in range(6)]
-        start.joint_state.position = [
-            float(c["position"]) for c in rec["goal_constraints"][0:0]] or \
-            list(rec["start_q"])
+        start.joint_state.position = list(rec["start_q"])
+        # Fidelity fix: carry the attached b-payload (and its touch links)
+        # in the request start state, exactly as the captured online scene
+        # had it — MoveGroup replaces the full start state, so an empty
+        # attachment list plans payload-less and invalidates the A/B.
+        start.attached_collision_objects = list(
+            scene.robot_state.attached_collision_objects)
+        start.is_diff = True
         goal.request.start_state = start
         constraints = Constraints()
         constraints.name = "portal_edge_replay"
@@ -141,7 +146,7 @@ def main():
                         bad[0].first_invalid_sample)
                     entry["invalid_reason"] = str(bad[0].reason)
                     entry["contacts"] = [
-                        [str(c.body_1), str(c.body_2)]
+                        [str(c.body_1), str(c.body_2), round(float(c.depth), 5)]
                         for c in getattr(bad[0], "contacts", [])][:4]
             report["attempts"].append(entry)
             print(json.dumps(entry))
