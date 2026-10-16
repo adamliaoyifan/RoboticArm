@@ -77,6 +77,15 @@ the captured request. This verifies the consumer/serialization/native-planner
 chain; its diagnostic transport does not exercise deployment runtime readiness
 and must not be reported as the hardware F2 gate.
 
+`exact_prior_replay.py` replays a measured Prepare request, captured baseline
+scene, exact volume response and extracted pre-Select surface publications
+through isolated production prior/checker nodes. Its fixture providers expose
+reads only and explicitly pin the owner confirmation-required setting to true;
+that setting is a replay assumption, not a fresh measured owner configuration.
+It checks model identity and cold/cache-hit outcomes, captures native boundaries
+and process-tree resources, and tears down the owned nodes. It neither starts
+MoveIt execution nor provides hardware-deployment or paired speedup acceptance.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
