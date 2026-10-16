@@ -43,6 +43,9 @@ def main():
     if hardware_consumer and any(value is None for value in consumer_inputs):
         parser.error('hardware consumer requires attachment request/response, prior response and choice index')
     if os.environ.get('ROS_DOMAIN_ID')!='8':raise ValueError('requires isolated domain 8')
+    # isolated_moveit.launch.py restricts every server to localhost. Apply the
+    # same discovery scope to this client before rclpy.init, including env -i.
+    os.environ['ROS_LOCALHOST_ONLY']='1'
     from process_guard import dedicated_domain_processes
     if dedicated_domain_processes('8'):raise RuntimeError('domain 8 occupied')
     args.output.mkdir(parents=True,exist_ok=False)
@@ -83,6 +86,7 @@ def main():
             'inputs':{str(p.resolve()):hashlib.sha256(p.read_bytes()).hexdigest()
                       for p in [request_path,b/stats_row['file'],surface_path,scene_path,args.scene_tf,
                                 args.robot_poses,identity_path]}}
+    report['transport']={'ROS_DOMAIN_ID':'8','ROS_LOCALHOST_ONLY':'1'}
     (args.output/'source.diff').write_bytes(subprocess.check_output(['git','diff']))
     (args.output/'replay_script.py').write_bytes(Path(__file__).read_bytes())
     if hardware_consumer:
