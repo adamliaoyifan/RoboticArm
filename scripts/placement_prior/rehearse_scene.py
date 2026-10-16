@@ -26,12 +26,16 @@ def main():
     parser.add_argument('--bootstrap-depth-targets', default='')
     parser.add_argument('--bootstrap-depth-samples', type=int, choices=range(3,9), default=3)
     parser.add_argument('--acquire-inputs', action='store_true')
+    parser.add_argument('--capture-release', action='store_true',
+                        help='Bounded raw Gazebo pose/contact diagnostic around each release; unscored only')
     parser.add_argument('--prefetch-template', type=Path,
                         help='Explicit hypothetical box_wdh and grasps_flat JSON for automatic background preparation')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
     if args.probe_carry_replacement and args.simulate_cycle:
         parser.error('carry replacement probe and motion cycle are mutually exclusive')
+    if args.capture_release and not args.simulate_cycle:
+        parser.error('--capture-release requires --simulate-cycle')
     prefetch_parameters = []
     template_bytes = None
     if args.prefetch_template:
@@ -71,6 +75,11 @@ def main():
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
     os.environ['ELFIN_CARRY_REPLACEMENT_TRACE']=str(out/'carry_replacement.jsonl')
+    if args.capture_release:
+        os.environ['ELFIN_RELEASE_CAPTURE_DIR']=str(out/'release_capture')
+        os.environ['ELFIN_BOX_CONTACT_TOPIC']='/placement_prior_release_contacts'
+        result['release_capture'] = {'duration_limit_s': 90, 'per_stream_byte_limit': 8388608,
+                                     'timing_comparable_to_clean_run': False}
     log = (out/'launch.log').open('w')
     launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     result['launch_pid']=launch.pid

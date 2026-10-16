@@ -24,6 +24,17 @@ execution timestamps or clean performance measurements.
 The prior worker owns only private copies and bounded temporary computation.
 It must not call ApplyPlanningScene, modify OCC, commit cargo or issue motion.
 
+The rehearsal-only `--capture-release` switch records raw Gazebo pose/contact
+streams around release, with a 90-second and 8-MiB-per-stream bound. Driver
+events identify vacuum-off, pre-recreation pose, delete/create responses,
+post-release motion and settled verification. The pre-recreation sample is not
+a post-spawn observation. Entity IDs and simulation stamps remain in raw topic
+bytes; host timestamps and byte offsets allow joining capture chunks to events.
+Reader readiness is not publisher readiness. Empty contacts do not prove absence;
+early EOF, limits and intervals outside capture must remain incomplete evidence.
+These truth observations are never planning inputs, and diagnostic timings are
+not eligible for the clean performance comparison.
+
 Hardware launch enables the complete placement provider graph with
 `start_placement:=true`; `start_placement_prior:=true` also enables it. This
 requires `frame_runtime`, `start_planning`, `start_scene` and `use_moveit`.

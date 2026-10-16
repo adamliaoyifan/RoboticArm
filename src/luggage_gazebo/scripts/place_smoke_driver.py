@@ -2209,6 +2209,47 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["replay"]["stage"] = stage
         return manifest
 
+    def _release_capture_event(self, event, **details):
+        directory = getattr(self, '_release_capture_directory', None)
+        if directory:
+            with open(os.path.join(directory, 'events.jsonl'), 'a') as handle:
+                handle.write(json.dumps(dict(event=event, wall=time.time(),
+                    monotonic=time.monotonic(), ros=self.ros_now_sec(),
+                    model=self._box_model, details=details))+'\n')
+
+    def _stop_release_capture(self):
+        recorder = getattr(self, '_release_capture_process', None)
+        if recorder is not None:
+            if recorder.poll() is None:
+                recorder.terminate()
+            recorder.wait(timeout=5.)
+            self._release_capture_process = None
+
+    def _start_release_capture(self):
+        root = os.environ.get('ELFIN_RELEASE_CAPTURE_DIR', '').strip()
+        if not root:
+            return
+        directory = os.path.join(root, str(self._box_model))
+        os.makedirs(directory, exist_ok=False)
+        self._release_capture_directory = directory
+        topic = os.environ.get('ELFIN_BOX_CONTACT_TOPIC', '').strip()
+        if not topic:
+            raise RuntimeError('release capture requires contact topic')
+        # Owned child remains in the driver process group and also self-expires.
+        with open(os.path.join(directory, 'recorder.log'), 'w') as log:
+            self._release_capture_process = subprocess.Popen([
+                sys.executable, '-m', 'luggage_gazebo.release_capture',
+                '--output', directory, '--contact-topic', topic],
+                stdout=log, stderr=subprocess.STDOUT)
+        deadline = time.monotonic()+3.
+        while not os.path.isfile(os.path.join(directory, 'ready.json')):
+            if self._release_capture_process.poll() is not None or time.monotonic() >= deadline:
+                self._release_capture_process.terminate()
+                self._release_capture_process.wait(timeout=5.)
+                raise RuntimeError('release recorder failed to start')
+            time.sleep(.02)
+        self._release_capture_event('before_vacuum_off')
+
     def _release_as_dynamic(self):
         """Replace the static carry body with the same mesh, dynamic, in place.
 
@@ -2222,6 +2263,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         mass = physics.get("mass_kg")
         model = str(self._box_model or physics.get("model_name") or "")
         release = self._gz_box_pose()
+        self._release_capture_event('pre_recreation_pose', pose=release)
         if len(size) != 3 or not visual or mass is None or not model:
             return False, "missing physics identity", release
         try:
@@ -2235,6 +2277,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:
                     handle.write(sdf)
+            if getattr(self, '_release_capture_directory', None):
+                with open(os.path.join(self._release_capture_directory, 'release.sdf'), 'w') as handle:
+                    handle.write(sdf)
         except (TypeError, ValueError) as exc:
             return False, str(exc), release
         if release is None or len(release) < 6:
@@ -2243,6 +2288,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         delete.entity.name = model
         delete.entity.type = Entity.MODEL
         removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
+        self._release_capture_event('delete_response', success=bool(removed and removed.success))
         if removed is None or not getattr(removed, "success", False):
             return False, "delete failed", release
         spawn = SpawnEntity.Request()
@@ -2257,6 +2303,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         spawn.entity_factory.pose.orientation.z = float(qz)
         spawn.entity_factory.pose.orientation.w = float(qw)
         created = self.call_srv(self._gz_create, spawn, timeout=15.0)
+        self._release_capture_event('create_response', success=bool(created and created.success))
         if created is None or not getattr(created, "success", False):
             return False, "create failed", release
         return True, "dynamic", release
@@ -2305,6 +2352,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return start, last, verdict
 
     def _abort(self, trial, code, carrying, extra=None):
+        self._release_capture_event('abort', code=code)
+        self._stop_release_capture()
         trial.fail_code = code
         pending_handoff = getattr(self, "_handoff_failure_record", None)
         if pending_handoff is not None:
@@ -2492,10 +2541,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         detach_request_stamp = None
         detach_response_stamp = None
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            self._start_release_capture()
             joints_before_detach = self._joint_sample()
             detach_request_stamp = float(self.ros_now_sec())
             # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
+            self._release_capture_event('vacuum_off_response', success=off_ok)
             detach_response_stamp = float(self.ros_now_sec())
             trial.extras["vac_detach"] = off_msg
             if off_ok:
@@ -2545,13 +2596,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
             for post_seg in post_release:
+                self._release_capture_event('post_release_segment_start')
                 ok, code, rec = self._execute_segment(post_seg, trial)
+                self._release_capture_event('post_release_segment_end', success=ok, code=code,
+                                            name=rec.get('name'))
                 if ok:
                     trial.segments_succeeded += 1
                 else:
                     return self._abort(trial, code, False, extra=extras)
 
         pose_release, pose_drift, settle = self._poses_after_settle()
+        self._release_capture_event('settle_complete', pose=pose_drift, verdict=settle)
+        self._stop_release_capture()
         # Preserve the raw comparison inputs before commit or verification can
         # abort. The success-only summary below cannot diagnose a failed gate.
         trial.extras["verify_inputs"] = {
