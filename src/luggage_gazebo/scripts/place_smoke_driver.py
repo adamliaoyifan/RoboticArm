@@ -2667,12 +2667,19 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return False, str(exc), release
         if release is None or len(release) < 6:
             return False, "no release pose", release
+        # [release observation] Sim-clock timing of the static->dynamic
+        # swap, for the synchronized release-window capture (the pose
+        # stream and these stamps share the simulation clock).
+        self._release_dynamic_timing = {
+            "t_delete_req_sim": float(self.ros_now_sec())}
         delete = DeleteEntity.Request()
         delete.entity.name = model
         delete.entity.type = Entity.MODEL
         removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
         if removed is None or not getattr(removed, "success", False):
             return False, "delete failed", release
+        self._release_dynamic_timing["t_delete_done_sim"] = float(
+            self.ros_now_sec())
         spawn = SpawnEntity.Request()
         spawn.entity_factory.name = model
         spawn.entity_factory.sdf = sdf
@@ -2687,6 +2694,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         created = self.call_srv(self._gz_create, spawn, timeout=15.0)
         if created is None or not getattr(created, "success", False):
             return False, "create failed", release
+        self._release_dynamic_timing["t_spawn_done_sim"] = float(
+            self.ros_now_sec())
+        self._release_dynamic_timing["spawn_pose_world"] = [
+            float(v) for v in release[:3]]
         return True, "dynamic", release
 
     def _poses_after_settle(self):
@@ -2951,6 +2962,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
             trial.extras["dynamic_body"] = dyn_msg
             trial.extras["box_pose_at_release"] = release_pose
+            trial.extras["release_dynamic_timing"] = getattr(
+                self, "_release_dynamic_timing", None)
             if not dyn_ok:
                 return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
             # [ST09-I S5.7-6] explicit release-boundary phase
