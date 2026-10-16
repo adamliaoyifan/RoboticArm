@@ -417,6 +417,7 @@ class TypedDriverAdapter:
             VacuumCommandV2)
         self.node = node
         self.runtime = runtime
+        self._placement_prior = None
         group = group or getattr(node, "_group", None)
         self._build = node.create_client(
             BuildMotionSequenceV2, "/waypoint_generator/build_motion_sequence_v2",
@@ -460,6 +461,17 @@ class TypedDriverAdapter:
                 "BOUNDARY_TIMEOUT", client.srv_name, "response", timeout_sec)
         return future.result()
 
+    def set_placement_prior(self, prior):
+        """Bind an optional measured pre-pick hint for this driver's next Select.
+
+        Actual attachment, map and dimensions are checked again at Select. A
+        caller starts a new cycle or abandons this grasp by passing None.
+        """
+        import copy
+        if prior is not None and (not prior.success or not prior.measured):
+            raise ValueError("only a successful measured prior may be bound")
+        self._placement_prior = copy.deepcopy(prior)
+
     # -- placement ---------------------------------------------------------
     def compute_placement(self, *, request_id, box_wdh, height_measured,
                           scene_revision, placed=(), placed_wdh_flat=(),
@@ -483,7 +495,7 @@ class TypedDriverAdapter:
                           surface_message, inner_size, geometry_hash,
                           map_revision, start_tcp, start_joints, grasp,
                           container_transform, excluded_ids=(),
-                          box_id="", generation=0, timeout_sec=30.0):
+                          box_id="", generation=0, timeout_sec=30.0, placement_prior=None):
         """SelectPlacePathV2; the mapper's surface message rides verbatim."""
         from luggage_msgs.srv import SelectPlacePathV2
         source, target, translation, quaternion = container_transform
@@ -511,7 +523,14 @@ class TypedDriverAdapter:
         request.excluded_ids = [str(v) for v in excluded_ids]
         request.box_id = str(box_id or "")
         request.generation = int(generation or 0)
-        return self._call(self._select, request, timeout_sec)
+        from luggage_planning.placement_prior_adoption import order_select_candidates
+        if placement_prior is None:
+            placement_prior = getattr(self, "_placement_prior", None)
+        order = order_select_candidates(request, placement_prior)
+        response = self._call(self._select, request, timeout_sec)
+        if response is not None and response.success and 0 <= response.slot_index < len(order):
+            response.slot_index = order[response.slot_index]
+        return response
 
     # -- probe ---------------------------------------------------------------
     def probe_segment(self, segment_message, timeout_sec=30.0):

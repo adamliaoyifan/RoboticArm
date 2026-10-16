@@ -261,6 +261,12 @@ class HardwarePickDriver(Node):
         self._group = ReentrantCallbackGroup()
         self._vacuum_state = {}
         self._scene_box = None
+        self._placement_prior_client = None
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        if bool(getattr(args, 'placement_prior', False)):
+            from luggage_planning.placement_prior_client import PlacementPriorClient
+            self._placement_prior_client = PlacementPriorClient(self, group=self._group)
         self.create_subscription(
             VacuumState, "/vacuum/state", self._on_vacuum, 10,
             callback_group=self._group)
@@ -372,6 +378,8 @@ class HardwarePickDriver(Node):
         return ok, str(result.message), result
 
     def vacuum(self, enable, timeout=20.0):
+        if not enable and getattr(self, "_typed", None) is not None:
+            self._typed.set_placement_prior(None)
         pick_msg = getattr(self, "_frame_pick_msg", None)
         if getattr(self, "_typed", None) is not None and pick_msg is not None:
             from luggage_planning.typed_driver_adapter import (
@@ -704,6 +712,24 @@ class HardwarePickDriver(Node):
             finally:
                 ports.close()
 
+        if getattr(self, "_placement_prior_client", None) is not None:
+            try:
+                prior = self._placement_prior_client.prepare(
+                    box, 'hardware-prior-%d' % detection.stamp_ns)
+                detection, choice = self._placement_prior_client.bind(
+                    prior, detection, str(getattr(self, "_frame_scene_revision", "")
+                                          or self._args.frame_scene_revision))
+                self._placement_prior_result = prior
+                self._placement_prior_choice = choice
+                if getattr(self, "_typed", None) is not None:
+                    self._typed.set_placement_prior(prior)
+                self.get_logger().info('placement prior selected slot=%s candidate=%s' %
+                                       (choice.slot_id, choice.candidate_id))
+            except Exception as exc:
+                # Optional optimization: keep the measured observation and
+                # ordinary candidate selection if prior cannot be adopted.
+                self.get_logger().warning('placement prior fallback: %s' % exc)
+
         if self._args.plan_only:
             if not detection.candidates:
                 self.get_logger().error(
@@ -792,6 +818,8 @@ def main(argv=None):
     parser.add_argument("--auth-wait-period-sec", type=float, default=0.5)
     parser.add_argument("--plan-timeout", type=float, default=90.0)
     parser.add_argument("--ready-timeout", type=float, default=90.0)
+    parser.add_argument("--placement-prior", action="store_true",
+                        help="Use read-only placement prior to choose the measured pickup candidate.")
     parser.add_argument("--max-candidates", type=int, default=3)
     parser.add_argument("--release-low-hold-sec", type=float, default=0.5)
     parser.add_argument("--release-deadline-sec", type=float, default=2.0)

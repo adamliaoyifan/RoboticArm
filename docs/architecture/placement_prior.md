@@ -55,6 +55,19 @@ abandoned native service future remains tracked until completion so subsequent
 jobs cannot create an unbounded service backlog. Templates and measured requests
 have distinct provenance and cannot be adopted interchangeably.
 
+Optional automatic prefetch requires explicit template dimensions and full
+box-to-TCP transforms. It triggers once per confirmed snapshot, after read-only
+dependencies are ready. Templates remain hypothetical. Matching geometry may
+reuse generated slot proposals and their ordering, but measured contact
+candidates undergo collision screening again. Changed size, model, scene or
+snapshot regenerates proposals. Foreground preparation supersedes background
+work; an old timeout cannot cancel a newer generation. Neither timer nor
+template completion issues motion or changes map ownership.
+
+Enable with `prefetch_enabled=true`, `prefetch_box_wdh` (three metres), and
+`prefetch_grasps_flat` (one or more concatenated xyz/xyzw transforms). These
+parameters describe a hypothesis, not a measured payload or approved grasp.
+
 Before pick, bind the selected slot, candidate and grasp. Picking another candidate
 requires a new matching binding; a prior for candidate A cannot follow a retry
 that picked B. After attach, measured attachment and actual joints remain

@@ -32,6 +32,10 @@ def test_world_copy_keeps_static_geometry_and_rotates_unknown_and_occupied_colum
     assert occupied.primitives[0].dimensions==pytest.approx((.2,.2,.3))
     assert unknown.primitives[0].dimensions[2]==pytest.approx(1.)
     assert result.map_revision==4
+    # Serialized CDR padding is not semantic identity; fresh composition of
+    # exactly the same message fields must hit the same cache key.
+    again=build_private_snapshot(frozen,scene,'model',transform,collision_margin_m=.05)
+    assert result.identity==again.identity
 
 
 def test_scene_diff_and_missing_occupied_height_fail_closed():

@@ -7,6 +7,8 @@ clearance. Unknown cells remain full-height obstacles in the prior filter.
 """
 import copy
 import math
+import hashlib
+import json
 
 from luggage_planning.placement_prior_contracts import Snapshot, Transform
 
@@ -20,6 +22,7 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
     from moveit_msgs.msg import CollisionObject
     from shape_msgs.msg import SolidPrimitive
     from rclpy.serialization import serialize_message
+    from rosidl_runtime_py.convert import message_to_ordereddict
     surface = confirmed_surface.record()
     if baseline_scene.is_diff:
         raise ValueError('full baseline scene required')
@@ -65,4 +68,8 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
             scene.world.collision_objects.append(obj)
     return Snapshot(surface['scene_revision'], int(surface['map_revision']),
                     surface['geometry_hash'], model_hash, world_from_container,
-                    confirmed_surface.surface_cdr, serialize_message(scene))
+                    confirmed_surface.surface_cdr, serialize_message(scene),
+                    surface_content_hash=hashlib.sha256(confirmed_surface.record_json).hexdigest(),
+                    scene_content_hash=hashlib.sha256(json.dumps(
+                        message_to_ordereddict(scene), sort_keys=True,
+                        separators=(',', ':'), allow_nan=False).encode()).hexdigest())

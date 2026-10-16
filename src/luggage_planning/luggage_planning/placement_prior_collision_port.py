@@ -21,6 +21,9 @@ class NativeToolCollisionPort:
         self._inflight = None
         self._counter = 0
 
+    def ready(self):
+        return self._client.service_is_ready()
+
     def check(self, snapshot, world_from_tcp, world_from_box, box_wdh, *, deadline, cancelled):
         from geometry_msgs.msg import Pose
         from moveit_msgs.msg import PlanningScene

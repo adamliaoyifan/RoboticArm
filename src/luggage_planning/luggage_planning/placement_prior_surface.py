@@ -42,6 +42,16 @@ class ConfirmedSurfaceStore:
         self._typed_version = None
         self._confirmation_version = None
 
+    def set_confirmation_required(self, required):
+        with self._lock:
+            self._confirmation_required = bool(required)
+
+    def invalidate(self):
+        with self._lock:
+            self._typed = None
+            self._confirmation = None
+            # Retain version watermarks so delayed old messages cannot revive it.
+
     def update_typed(self, admitted_record, cdr):
         # Caller must first pass surface_from_message / validate_surface.
         encoded = freeze(admitted_record)

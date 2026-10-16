@@ -18,7 +18,7 @@ def transform_from_pose(pose):
     return Transform((p.x, p.y, p.z), (q.x, q.y, q.z, q.w))
 
 
-def candidates_for_prior(detection, *, fallback_yaw=None):
+def candidates_for_prior(detection, *, fallback_yaw=0.0):
     if detection.frame != 'world' or not detection.top_surface_valid:
         raise ValueError('world-frame measured suction observation required')
     if detection.stamp_ns is None or detection.stamp_ns < 0:
@@ -51,7 +51,7 @@ def candidates_for_prior(detection, *, fallback_yaw=None):
     return tuple(result)
 
 
-def bind_choice_to_pick(choice, detection, *, fallback_yaw=None):
+def bind_choice_to_pick(choice, detection, *, fallback_yaw=0.0):
     """Restrict this pick to the checked candidate without changing its metadata.
 
     No generic fallback is allowed to keep this same slot/grasp binding after a

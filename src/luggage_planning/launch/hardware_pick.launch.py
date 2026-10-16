@@ -205,6 +205,23 @@ def _frame_nodes(context, *args, **kwargs):
     ]
 
 
+def _placement_prior_nodes(context, *args, **kwargs):
+    if not _bool_text(LaunchConfiguration("start_placement_prior").perform(context)):
+        return []
+    if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
+        raise RuntimeError("placement prior requires the measured v2 frame runtime")
+    frame = _frame_runtime_params(context)
+    from launch.actions import IncludeLaunchDescription
+    from launch.launch_description_sources import PythonLaunchDescriptionSource
+    launch_path = os.path.join(get_package_share_directory("luggage_planning"),
+                               "launch", "placement_prior.launch.py")
+    return [IncludeLaunchDescription(PythonLaunchDescriptionSource(launch_path),
+        launch_arguments={
+            "scene_tf_config": LaunchConfiguration("scene_tf_config").perform(context),
+            "frame_scene_revision": frame["frame_scene_revision"],
+        }.items())]
+
+
 def start_planning_of(context):
     from launch.conditions import IfCondition
     return IfCondition(LaunchConfiguration("start_planning"))
@@ -444,6 +461,7 @@ def _launch_description():
             ),
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
+            DeclareLaunchArgument("start_placement_prior", default_value="false"),
             DeclareLaunchArgument(
                 "start_scene",
                 default_value="true",
@@ -660,6 +678,7 @@ def _launch_description():
                 description="Driver node name joining the v2 graph as client.",
             ),
             OpaqueFunction(function=_frame_nodes),
+            OpaqueFunction(function=_placement_prior_nodes),
             OpaqueFunction(function=_move_group),
         ]
     )

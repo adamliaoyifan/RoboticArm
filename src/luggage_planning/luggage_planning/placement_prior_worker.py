@@ -36,8 +36,10 @@ class PriorWorker:
             self._condition.notify_all()
             return self._generation
 
-    def invalidate(self):
+    def invalidate(self, generation=None):
         with self._condition:
+            if generation is not None and generation != self._generation:
+                return False
             self._generation += 1
             self._pending = None
             self._result = None
@@ -45,10 +47,22 @@ class PriorWorker:
             if self._cancel:
                 self._cancel.set()
             self._condition.notify_all()
+            return True
 
     def poll(self):
         with self._condition:
             return self._generation, self._result, self._error
+
+    def wait_result(self, generation, timeout):
+        """Bounded service-side wait; supersession returns immediately."""
+        with self._condition:
+            self._condition.wait_for(
+                lambda: self._closed or generation != self._generation
+                or self._result is not None or self._error is not None,
+                timeout=timeout)
+            if generation != self._generation or self._closed:
+                return None, ('Cancelled', 'prior job superseded')
+            return self._result, self._error
 
     def close(self, timeout=1.0):
         with self._condition:

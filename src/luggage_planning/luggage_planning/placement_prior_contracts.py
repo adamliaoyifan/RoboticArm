@@ -57,6 +57,8 @@ class Snapshot:
     world_from_container: Transform
     surface_cdr: bytes
     scene_cdr: bytes
+    surface_content_hash: str = ""
+    scene_content_hash: str = ""
 
     def __post_init__(self):
         if not all(isinstance(s, str) and s.strip() for s in
@@ -75,8 +77,8 @@ class Snapshot:
         # Include bytes and static transform, not only mutable publisher labels.
         return (self.scene_revision, self.map_revision, self.geometry_hash,
                 self.model_hash, self.world_from_container,
-                hashlib.sha256(self.surface_cdr).hexdigest(),
-                hashlib.sha256(self.scene_cdr).hexdigest())
+                self.surface_content_hash or hashlib.sha256(self.surface_cdr).hexdigest(),
+                self.scene_content_hash or hashlib.sha256(self.scene_cdr).hexdigest())
 
 
 @dataclass(frozen=True)

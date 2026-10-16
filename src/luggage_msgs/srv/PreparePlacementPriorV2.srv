@@ -1,0 +1,28 @@
+string request_id
+# Measured mode requires an authorized detection with genuine suction candidates.
+bool measured
+luggage_msgs/DetectedLuggage detection
+# Explicit hypothetical geometry; never substituted for measured detection.
+float64[3] template_box_wdh
+geometry_msgs/Pose[] template_box_from_tcp
+# Empty slots requests geometric placement enumeration on the OCC snapshot.
+luggage_msgs/PoseContractV2[] slots
+string geometry_hash
+uint64 expected_map_revision
+uint32 max_slots
+uint32 candidate_limit
+float64 budget_s
+---
+bool success
+string reason
+bool measured
+string snapshot_id
+string geometry_hash
+uint64 map_revision
+string model_sha256
+float64[3] box_wdh
+luggage_msgs/SurfaceContractV2 surface
+luggage_msgs/PlacementPriorChoiceV2[] choices
+string trace_json
+float64 elapsed_s
+bool cache_hit
