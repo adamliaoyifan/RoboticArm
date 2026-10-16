@@ -9,6 +9,7 @@ Settle/verify runs only after retreat and return have been admitted.
 import os
 import sys
 import unittest
+from unittest.mock import patch
 
 _SCRIPTS = os.path.normpath(os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "..", "scripts"))
@@ -258,6 +259,9 @@ class _Flow(object):
     _abort = PlaceSmokeDriver._abort
     _slot_world_msg = PlaceSmokeDriver._slot_world_msg
     _contact_capture_gate = PlaceSmokeDriver._contact_capture_gate
+    _start_release_capture = PlaceSmokeDriver._start_release_capture
+    _release_capture_event = PlaceSmokeDriver._release_capture_event
+    _stop_release_capture = PlaceSmokeDriver._stop_release_capture
     _commit_to_cargo_map = PlaceSmokeDriver._commit_to_cargo_map
     run_place_from_carry = PlaceSmokeDriver.run_place_from_carry
 
@@ -312,6 +316,13 @@ def _route_v2():
 
 
 class TestSettleFollowsReturn(unittest.TestCase):
+    def setUp(self):
+        # Exercise the real optional-capture no-op path without inheriting a
+        # shell's live diagnostic launch setting into this offline fixture.
+        environment = patch.dict(os.environ, {'ELFIN_RELEASE_CAPTURE_DIR': ''})
+        environment.start()
+        self.addCleanup(environment.stop)
+
     def test_carrying_segment_does_not_submit_when_unattached(self):
         driver = _Flow(attached=False)
         trial = PlaceTrial(index=0)

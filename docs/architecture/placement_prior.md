@@ -188,6 +188,9 @@ for retry, invalidate the cached scene, and refuse Select output with
 `SCENE_CLEANUP_FAILED`. Scene certification digests cover all ROS message fields
 in canonical JSON, with no numeric rounding; CDR alignment padding is excluded
 because repeated serialization of identical fields can produce different bytes.
+Optional release diagnostics must accept a missing segment execution record on
+admission refusal. Recording the event must preserve the original refusal and
+must not submit later return/settle work or replace it with a logging exception.
 
 Budget-exhausted Select responses retain stage timing attribution and the
 attempt summary, including untried candidates. A missing terminal response or

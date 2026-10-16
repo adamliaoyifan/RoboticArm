@@ -2599,7 +2599,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._release_capture_event('post_release_segment_start')
                 ok, code, rec = self._execute_segment(post_seg, trial)
                 self._release_capture_event('post_release_segment_end', success=ok, code=code,
-                                            name=rec.get('name'))
+                                           name=(rec or {}).get('name'))
                 if ok:
                     trial.segments_succeeded += 1
                 else:
