@@ -46,6 +46,7 @@ def analyze(path, velocity_scale, acceleration_scale):
                 if kind=='a' and value>maximum_a[0]: maximum_a=(value,record)
     v_limit,a_limit = cartesian_joint_limits(velocity_scale,acceleration_scale)
     return dict(input=str(path), knots=len(positions), duration_s=timed.duration,
+        time_scale=timed.time_scale,
         velocity_scale=velocity_scale, acceleration_scale=acceleration_scale,
         velocity_limit=v_limit, acceleration_limit=a_limit,
         max_velocity=maximum_v[0], velocity_location=maximum_v[1],
@@ -58,10 +59,11 @@ def main():
     parser.add_argument('cases',type=Path)
     parser.add_argument('--velocity-scale',type=float,default=.3)
     parser.add_argument('--acceleration-scale',type=float,default=.3)
+    parser.add_argument('--output',type=Path)
     args=parser.parse_args()
     results=[analyze(path,args.velocity_scale,args.acceleration_scale)
              for path in sorted(args.cases.glob('offset-*/geometric.cdr'))]
-    destination=args.cases/'site_retiming.json'
+    destination=args.output or args.cases/'site_retiming.json'
     with destination.open('x') as stream:
         json.dump(dict(scope='geometry retiming diagnostic; not full-route certification',results=results),stream,indent=2)
         stream.write('\n')

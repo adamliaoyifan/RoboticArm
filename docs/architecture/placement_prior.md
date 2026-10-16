@@ -94,3 +94,14 @@ it does not execute the place route. It requires retained vacuum and rejects
 `--release`. Planning failure reports carry fault and does not release payload.
 Actual selector/OCC services and a healthy typed runtime must be running; the
 pick-only launch does not imply that a complete place graph exists.
+
+## Recovered trajectory timing
+
+Cartesian timing must bound the controller's interpolated trajectory, not only
+its knot derivatives. The site retimer evaluates quintic velocity/acceleration
+extrema between knots and uniformly dilates time when necessary. Derivative
+fields scale by 1/k and 1/k² along with times by k, preserving the interpolated
+joint curve. Recheck nanosecond wire-time rounding before returning a trajectory.
+Velocity/acceleration limits remain unchanged. This correction is not a collision
+or complete-route certificate; the existing route checks still apply. Report
+increased motion duration separately from prior planning latency.
