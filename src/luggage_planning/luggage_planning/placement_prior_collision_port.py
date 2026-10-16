@@ -20,6 +20,11 @@ class NativeToolCollisionPort:
         self._recorder = recorder
         self._inflight = None
         self._counter = 0
+        # One private decoded scene, shared read-only by sequential requests.
+        # Match complete immutable bytes, not map revision or snapshot labels:
+        # geometry/ACM changes with reused labels must still invalidate it.
+        self._scene_cdr = None
+        self._decoded_scene = None
 
     def ready(self):
         return self._client.service_is_ready()
@@ -48,7 +53,11 @@ class NativeToolCollisionPort:
         request.frame_id = 'world'
         request.tcp_link = 'suction_contact_frame'
         request.payload_id = self._payload_id
-        request.scene = deserialize_message(snapshot.scene_cdr, PlanningScene)
+        if self._scene_cdr != snapshot.scene_cdr:
+            decoded = deserialize_message(snapshot.scene_cdr, PlanningScene)
+            self._decoded_scene = decoded
+            self._scene_cdr = snapshot.scene_cdr
+        request.scene = self._decoded_scene
         request.tcp_poses = [pose(world_from_tcp)]
         request.box_poses = [pose(world_from_box)]
         request.box_wdh = list(box_wdh)

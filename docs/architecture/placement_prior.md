@@ -178,6 +178,12 @@ uses the actual current scene and authoritative attachment.
 
 ## Grasp and tool boundary
 
+The native collision transport retains at most one private decoded PlanningScene
+for repeated checks. It matches full immutable scene CDR contents, not identity
+labels alone; changed geometry, ACM or state bytes require fresh decoding. The
+decoded message is read-only and never applied to a shared scene. Requests still
+carry the full scene and receive independent native collision verdicts.
+
 Edge scene mutations use the PlanningSceneClient `(ok, reason)` contract.
 Every add/remove/attach/detach must inspect `ok` before the next mutation or
 motion search; tuple truthiness does not establish acceptance. A rejection
