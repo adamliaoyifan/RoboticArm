@@ -1973,3 +1973,36 @@ def test_staging_collision_can_use_alternate_transit_position(available):
     assert not rejected  # Invalid endpoints never spend a connection attempt.
     assert accepted
     assert all(abs(p[1]) >= 0.01 for p in accepted)
+
+
+def test_graph_edges_receive_world_measured_columns_used_by_certifier():
+    import math
+    producer, _clock = build_producer()
+    request = make_request()
+    request['container_transform']['translation'] = [1., 2., 3.]
+    request['container_transform']['quaternion_xyzw'] = [0., 0., math.sqrt(.5), math.sqrt(.5)]
+    request['surface'].update(state=[['occupied', 'free'], ['free', 'free']],
+                              floor_z_container=.1,
+                              height_above_floor=[[.42, 0.], [0., 0.]])
+    original = producer.edge_builder
+    seen = []
+
+    class CaptureScenes:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        def __call__(self, source, destination, edge_class, **kwargs):
+            seen.append(kwargs['scene'])
+            return original(source, destination, edge_class, **kwargs)
+
+    producer.edge_builder = CaptureScenes()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    producer.plan_place_route(request)
+    assert {s.load_state for s in seen} == {'carrying', 'unloaded'}
+    for scene in seen:
+        assert len(scene.placed_boxes) == 1
+        box = scene.placed_boxes[0]
+        assert box.center == pytest.approx((.975, 2.025, 3.31))
+        assert box.size_whd == pytest.approx((.15, .15, .42))
+        assert box.quaternion_xyzw == pytest.approx((0, 0, math.sqrt(.5), math.sqrt(.5)))

@@ -1360,6 +1360,12 @@ class RouteProducer(object):
                         attachment, snapshot, request,
                         prior_targets[0].quaternion_xyzw)
                 else:
+                    from types import SimpleNamespace
+                    scene_edges = [SimpleNamespace(
+                        edge_id="graph-" + load, load_state=load)
+                        for load in ("carrying", "unloaded")]
+                    graph_states = self.edge_scene_states(
+                        None, scene_edges, snapshot, attachment, candidate, request)
                     planner = GraphRoutePlanner(
                         self.graph, self.edge_builder,
                         home_node_id=self.graph.node_for_q(
@@ -1390,7 +1396,9 @@ class RouteProducer(object):
                                 ("slot_upper", plan.slot_upper),
                                 ("exit", plan.exit))
                             if position is not None},
-                        scope_node_ids=scope_ids)
+                        scope_node_ids=scope_ids,
+                        scene_states={load: graph_states["graph-" + load]
+                                      for load in ("carrying", "unloaded")})
                 planner.trace = getattr(self, "search_trace", None)
                 targets = self._expand_targets(
                     candidate, attachment, request)

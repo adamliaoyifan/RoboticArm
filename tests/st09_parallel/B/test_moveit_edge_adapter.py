@@ -393,6 +393,7 @@ def test_graph_carrying_and_unloaded_scenes_share_occupied_snapshot():
     from luggage_planning.reachable_graph import GraphRoutePlanner
     snapshot = make_snapshot(2, observed_free=[(1, 1)], occupied=[(14, 5)])
     planner = object.__new__(GraphRoutePlanner)
+    planner.scene_states = None
     released = object()
     planner._released_box = lambda attachment, candidate: released
     attachment = SimpleNamespace(dimensions_wdh=(.4, .3, .2),

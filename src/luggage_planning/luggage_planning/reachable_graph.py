@@ -486,9 +486,10 @@ class GraphRoutePlanner(object):
                  t_frame_container=(0.0, 0.0, 0.0),
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
-                 region_poses=None, scope_node_ids=None):
+                 region_poses=None, scope_node_ids=None, scene_states=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
         #: region -> world TCP position from the anchor plan.
+        self.scene_states = None if scene_states is None else dict(scene_states)
         self.region_poses = dict(region_poses or {})
         self.continuation_diagnostics = []
         #: Node ids of the current candidate (None = whole graph). Nodes
@@ -719,6 +720,8 @@ class GraphRoutePlanner(object):
             quaternion_xyzw=quaternion)
 
     def _scenes(self, attachment, candidate, snapshot):
+        if self.scene_states is not None:
+            return self.scene_states["carrying"], self.scene_states["unloaded"]
         from luggage_planning.moveit_edge_adapter import (
             PayloadSpec,
             SceneState,

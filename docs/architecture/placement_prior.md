@@ -288,3 +288,11 @@ for carrying and unloaded SceneState. Attaching the payload does not replace
 OCC obstacles. A collision-free MoveGroup result in a scene that omitted those
 obstacles cannot establish a feasible carry route. Full certification remains
 required after planning against the occupied scene.
+
+Production graph planning receives carrying/unloaded SceneState directly from
+RouteProducer.edge_scene_states, the same world-frame measured-column builder
+used by endpoint validation and certification. Do not rebuild production OCC
+with scene_boxes_from_snapshot: that legacy helper uses local XY and a fixed
+0.30 m slab, so merely including its boxes does not establish scene parity.
+Rotated/translated container and measured-height regression must observe the
+actual SceneState delivered to the edge builder in both load modes.
