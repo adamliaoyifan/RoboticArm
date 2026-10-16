@@ -6,6 +6,15 @@ certify functional gates. Instrumented process-tree collection and the six
 measured workload acquisition remain required before the performance campaign.
 Run only after F0-F2 acceptance, and retain F3 as a final acceptance requirement.
 
+`account_phases.py --prepare-dir DIR --route-dir DIR --shared-prior-artifact
+PRIOR.cdr --output NEW.json` audits separately captured native preparation and
+hardware-consumer route reports. It verifies frozen input hashes, clean matching
+revisions and the shared captured prior, and keeps cold/cache/route timings and
+resource windows separate. Serial sums are arithmetic estimates, not measured
+end-to-end latency. It does not invent overlap, sum independent memory peaks,
+replace missing counters with zero, or emit a scored arm sample. Its verdict is
+always `not_evaluated`; the output explicitly lists remaining scoring evidence.
+
 ```bash
 python3 scripts/placement_prior/benchmark.py --manifest workloads.json --output schedule.json
 python3 scripts/placement_prior/benchmark.py --manifest workloads.json --samples samples.jsonl --output report.json
