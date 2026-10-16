@@ -25,3 +25,16 @@
 
 测试计数：store 核心 24 + 锚门 11 + 确认机 10 + 投影 5 + 适配器 7 +
 adopt-release 4 + live 12 + anchor 原语 4 = 77 项（含并发×60 次重复）。
+
+## 复核补口（2026-10-16 二审，540183f9）
+
+四处合同缺口闭合（三处离线探针复现）：
+
+| 缺口 | 修复 | 钉死测试 |
+|---|---|---|
+| P1 快照非深度不可变（exported center=99 泄漏进缓存快照、digest 不变） | 记录形状全冻结（tagged-tuple JSON 冻结、anchor/footprint 元组化）；投影器逐次重建全新可变副本 | test_exports_cannot_reach_the_snapshot（改 committed/v1/v2 导出后快照逐字段+digest+mapper 内部全不变） |
+| P1 幂等账 FIFO 淘汰后旧 reset 可再清空新地图（cap=1 复现） | RESET 结果钉住永不淘汰（cap 让位于钉住） | test_reset_survives_cap_eviction（reset→add→retry reset=ALREADY_PROCESSED、箱数保持 1） |
+| P2 三路发布未共用同一快照（投影间插入更新可得 v1 rev2/v2 rev3） | 投影器显式 snapshot 参数，发布方传同一对象 | test_projectors_use_the_passed_snapshot + test_publish_mid_update_stays_consistent |
+| P2 stamp 去重先于幂等破坏统一合同（原样重试误报 STAMP_ALREADY；指纹缺 points/pose） | 次序改为：精确重放→ALREADY_PROCESSED；integrate+stamp 已整合→STAMP_ALREADY；同 id 异内容→OPERATION_ID_CONFLICT；指纹覆盖点云(shape+bytes)与确认位姿 | test_integrate_literal_retry_is_already_processed / test_different_operation_same_stamp_is_stamp_already / test_same_operation_id_different_points_rejected |
+
+回归：72 离线 + 12 live 全绿；gazebo+perception+planning 三包全套本轮零失败。
