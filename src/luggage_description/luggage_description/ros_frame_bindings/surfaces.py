@@ -86,10 +86,15 @@ def surface_from_message(message, context):
         record['confidence'] = grid(message.confidence)
         if message.has_height_above_floor:
             record['height_above_floor'] = grid([v if ok else None for v, ok in zip(relative, message.valid)])
-        record['epoch'] = str(message.epoch or '')
-        record['content_digest'] = str(message.content_digest or '')
-        record['occupancy_confirmed'] = bool(message.occupancy_confirmed)
-        record['change_event'] = str(message.change_event or '')
+        # [B1 snapshot identity] Present only when the publisher declared
+        # one (empty epoch = pre-B1 record): the 64-case serialization
+        # matrix round-trips pre-B1 records byte-identically.
+        if message.epoch or message.content_digest:
+            record['epoch'] = str(message.epoch or '')
+            record['content_digest'] = str(message.content_digest or '')
+            record['occupancy_confirmed'] = bool(message.occupancy_confirmed)
+            if message.change_event:
+                record['change_event'] = str(message.change_event)
         _validate(record, context)
         return deepcopy(record)
     return at_boundary(record, context, decode)
