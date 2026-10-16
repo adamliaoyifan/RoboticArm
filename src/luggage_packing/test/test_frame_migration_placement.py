@@ -919,6 +919,13 @@ class PlacedLedgerSingleSource(unittest.TestCase):
             response = handle(stub, request([[0.1, 0.05, .53 + 0.16]]),
                               ComputePlacementV2.Response())
             self.assertEqual(len(calls), 1)
+            # EMPTY copy = the driver defers to the ledger (the select
+            # path's second compute never carried placed; empty is not a
+            # divergence claim). Solver proceeds, ledger-sourced.
+            calls.clear()
+            response = handle(stub, request([]),
+                              ComputePlacementV2.Response())
+            self.assertEqual(len(calls), 1)
         finally:
             handle.__globals__['solve_placement'] = original_solver
 

@@ -661,12 +661,22 @@ class PlacementPlannerNode(Node):
 
     def _placed_matches_ledger(self, placed_messages, sizes_flat, committed,
                                 tolerance_m=0.10):
-        """True when the request-carried placed copy agrees with the
-        mapper's committed ledger (count + per-box nearest match)."""
+        """Subset agreement between the request-carried placed copy and
+        the mapper's committed ledger.
+
+        An EMPTY or PARTIAL request copy is "the driver defers to the
+        ledger" (the single-source direction; the pre-B2 second compute
+        inside the select path never carried placed and the map's
+        columns are the planning truth). What refuses is a copy that
+        CLAIMS a box the ledger does not hold (the witness_02 phantom
+        class) or disagrees geometrically.
+        """
         sizes = [sizes_flat[i:i + 3] for i in range(0, len(sizes_flat), 3)]
-        if len(placed_messages or ()) != len(committed["boxes"]):
-            return False, "count %d != ledger %d" % (
-                len(placed_messages or ()), len(committed["boxes"]))
+        if not placed_messages:
+            return True, ""
+        if len(placed_messages) > len(committed["boxes"]):
+            return False, "count %d > ledger %d" % (
+                len(placed_messages), len(committed["boxes"]))
         ledger = [([float(v) for v in box["center"]],
                    [float(v) for v in box["size"]])
                   for box in committed["boxes"]]
