@@ -137,6 +137,28 @@ def _call(producer, *, targets=None, latest=5, scene="scene-A",
         latest_map_revision=latest, purpose="post_place_aim")
 
 
+def test_equivalent_goal_still_requires_certification():
+    goal = (0.1, -0.2, 0.3, -2.326786302484541, 0.5, -2.648232939126331)
+    producer = _Producer(snapshot=_snapshot(), refine_q=goal,
+                         revalidation=_ok_revalidation(),
+                         certification=_ok_certification())
+    producer.urdf = SimpleNamespace(joints={name: dict(
+        type='revolute', lower=-6.28, upper=6.28) for name in rp.CANONICAL_JOINTS})
+    rp._CAMERA_TCP_CACHE[id(producer.urdf)] = ((0., 0., 0.), (0., 0., 0., 1.))
+    joints = (0.1, -0.2, 0.3, 4.855687, 0.5, 3.431873)
+    result = _call(producer, joints=joints)
+    assert result['success']
+    row = result['rows'][0]
+    assert row['ik_goal_raw'] == list(goal)
+    assert abs(row['ik_goal_nearest'][3] - joints[3]) < 1.
+    assert abs(row['ik_goal_nearest'][5] - joints[5]) < .3
+    assert row['certified']
+    producer._stub_certification = (None, 'CERT_COLLISION')
+    refused = _call(producer, joints=joints)
+    assert not refused['success']
+    assert refused['reason_code'] == 'CERT_COLLISION'
+
+
 def test_missing_targets_and_limit_refuse():
     producer = _Producer(snapshot=_snapshot())
     assert _call(producer, targets=[])[

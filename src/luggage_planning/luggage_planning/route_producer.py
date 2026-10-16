@@ -2169,6 +2169,14 @@ class RouteProducer(object):
                     self._close_row(rows, row)
                     last_reason = row["reason"]
                     continue
+                from luggage_planning.observation_joint_goal import nearest_revolute_goal
+                raw_goal = tuple(q)
+                q = nearest_revolute_goal(
+                    raw_goal, current, CANONICAL_JOINTS,
+                    getattr(self.urdf, "joints", {}))
+                row["ik"] = dict(_info or {})
+                row["ik_goal_raw"] = list(raw_goal)
+                row["ik_goal_nearest"] = list(q)
                 goal_node = self.graph.register_node(
                     tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
                     "observation_goal_%d" % index, LoadState.UNLOADED,
