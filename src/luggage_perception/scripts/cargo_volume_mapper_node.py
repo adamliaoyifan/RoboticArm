@@ -431,9 +431,13 @@ class CargoVolumeMapperNode(Node):
         response.epoch = result.identity.epoch
         response.content_digest = result.identity.content_digest
         if not result.accepted:
+            reason = result.reason or (
+                "ALREADY_PROCESSED"
+                if result.status is UpdateStatus.ALREADY_PROCESSED
+                else result.status.value)
             return self._fail_integrate(
-                response, result.reason,
-                str(result.details.get("message") or result.reason),
+                response, reason,
+                str(result.details.get("message") or reason),
                 self._mapper.stats())
         details = result.details
         snapshot = result.snapshot

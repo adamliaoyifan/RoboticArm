@@ -231,9 +231,18 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         first = self._call(stamp=stamp)
         self.assertTrue(first.success, first.message)
         after = first.resulting_map_revision
+        # [B1 unified idempotency] Same synthesized id + same view content
+        # (premise revision moved, points and stamp identical) is an
+        # OPERATION replay.
         second = self._call(stamp=stamp, expected_map_revision=after)
         self.assertFalse(second.success)
-        self.assertEqual(second.reason_code, REASON_STAMP_ALREADY_INTEGRATED)
+        self.assertEqual(second.reason_code, "ALREADY_PROCESSED")
+        # An UNKNOWN operation submitting the same physical frame is the
+        # duplicate-frame case.
+        third = self._call(stamp=stamp, view_request_id="other",
+                           expected_map_revision=after)
+        self.assertFalse(third.success)
+        self.assertEqual(third.reason_code, REASON_STAMP_ALREADY_INTEGRATED)
         self.assertEqual(
             self.mapper._mapper.stats()["map_revision"], after)
 
@@ -279,8 +288,9 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
 
     def test_operation_id_retry_is_processed_once(self):
         """[B1] A literal retry of one integration (same operation id,
-        same stamp) is refused as already-integrated with the current
-        identity echoed — never re-applied."""
+        same view) replays as ALREADY_PROCESSED with the current identity
+        echoed — never re-applied; a different operation id on the same
+        frame is the duplicate-frame refusal."""
         from luggage_msgs.srv import ResetCargoMap
         stamp = self._stamp(30)
         self._publish_cloud(stamp, self._patch(0.1, 0.1, n=80))
@@ -293,10 +303,14 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         second = self._call(stamp=stamp, operation_id="op-live-1",
                             expected_map_revision=revision)
         self.assertFalse(second.success)
-        self.assertEqual(second.reason_code,
-                         REASON_STAMP_ALREADY_INTEGRATED)
+        self.assertEqual(second.reason_code, "ALREADY_PROCESSED")
         self.assertEqual(int(second.resulting_map_revision), revision)
         self.assertEqual(second.epoch, first.epoch)
+        third = self._call(stamp=stamp, operation_id="op-live-2",
+                           expected_map_revision=revision)
+        self.assertFalse(third.success)
+        self.assertEqual(third.reason_code,
+                         REASON_STAMP_ALREADY_INTEGRATED)
 
     def test_reset_rotates_epoch(self):
         """[B1] Reset rotates the epoch: a write carrying the pre-reset

@@ -92,6 +92,9 @@ _FIXED_FACT_EVENTS = {
 #: dedups on the cloud stamp key — both properties are pinned by tests).
 PROCESSED_CAP = 256
 
+#: Default capacity of the separate RESET outcome ledger.
+RESET_LEDGER_CAP = 16
+
 
 def _digest_of(*parts):
     """Lazy st09_contracts digest (same availability as the planning side)."""
@@ -202,13 +205,17 @@ class MapUpdate:
         """Digest over the FULL canonical content of this update.
 
         Includes the point payload and the confirm pose: "same operation
-        id, different content" must be detectable exactly — a retry is a
-        byte-identical request, anything else under the same id is a
-        conflict (subject to the stamp-dedup override for integrate).
+        id, different content" must be detectable exactly — a retry is
+        the same content (for INTEGRATE_VIEW the premise legs are context,
+        not content: the operation IS the physical view, so a same-view
+        retry whose expected revision moved still replays, while different
+        points under the same id conflict).
         """
+        premise = (None if self.kind is UpdateKind.INTEGRATE_VIEW
+                   else self.expected_snapshot)
         return _digest_of(
             self.kind.value,
-            self.expected_snapshot,
+            premise,
             self.geometry_hash,
             None if self.box is None else (
                 tuple(float(v) for v in self.box[0]),
@@ -299,7 +306,8 @@ class OccupancyMapStore(object):
     """Sole write owner of one cargo map. See module docstring."""
 
     def __init__(self, mapper, *, require_confirmation=False, clock_ns=None,
-                 epoch=None, processed_cap=PROCESSED_CAP):
+                 epoch=None, processed_cap=PROCESSED_CAP,
+                 reset_ledger_cap=RESET_LEDGER_CAP):
         self._mapper = mapper
         self._pending = PendingConfirmation(bool(require_confirmation))
         self._clock_ns = clock_ns or time.time_ns
@@ -307,10 +315,16 @@ class OccupancyMapStore(object):
         self._epoch = str(epoch) if epoch else uuid.uuid4().hex
         self._processed = OrderedDict()
         self._processed_cap = max(1, int(processed_cap))
-        # RESET outcomes are never evicted: an evicted-and-retried reset
-        # would wipe a newer map (probe-confirmed with cap=1). Resets are
-        # rare, so pinning them cannot grow unboundedly in practice.
-        self._pinned = set()
+        # RESET outcomes live in their own bounded ledger (they must never
+        # squeeze the normal operations' dedup capacity, and "resets are
+        # rare" is not a capacity guarantee). Retries of recorded resets
+        # replay; a reset declaring a non-current epoch premise is refused
+        # (EPOCH_MISMATCH) instead of re-executing against a newer map.
+        # Beyond this bound a premise-less retry of a forgotten reset
+        # executes — production reset callers (the node) synthesize fresh
+        # ids per call, and premise-declaring callers fail closed.
+        self._resets = OrderedDict()
+        self._reset_cap = max(1, int(reset_ledger_cap))
         # State moved under the transaction lock from the node:
         self._integrated = set()
         self._last_acquisition_ns = 0
@@ -477,48 +491,54 @@ class OccupancyMapStore(object):
 
     def _apply_locked(self, update):
         # 1. IDEMPOTENCY ---------------------------------------------
-        # Order matters and is pinned by tests:
-        #   (a) same id + full-content match   -> ALREADY_PROCESSED
-        #   (b) integrate + stamp integrated   -> STAMP_ALREADY_INTEGRATED
-        #       (another operation re-submitting one physical acquisition,
-        #       or a same-id retry whose premise moved — the physical fact
-        #       dominates either way)
-        #   (c) same id + different content    -> OPERATION_ID_CONFLICT
+        # Order (pinned by tests — the unified contract):
+        #   known id:  same full content   -> ALREADY_PROCESSED
+        #              different content   -> OPERATION_ID_CONFLICT
+        #              (covers same id + same stamp + different points)
+        #   unknown id: integrate + integrated stamp
+        #                                   -> STAMP_ALREADY_INTEGRATED
+        # RESETs use their own bounded epoch ledger (see _remember_reset).
         key = str(update.operation_id or "")
         if not key:
             return self._reject(REASON_OPERATION_ID_CONFLICT,
                                 "operation_id is required")
-        stored = self._processed.get(key)
-        if stored is not None:
-            fingerprint, identity, status, reason = stored
-            if fingerprint == update.content_fingerprint():
-                # Exactly-once replay: the write already happened (whatever
-                # the map has been through since, including a reset — a
-                # retried pre-reset write must NOT re-apply onto the fresh
-                # epoch). The verdict is ALREADY_PROCESSED against the
-                # CURRENT identity; the original outcome rides in details.
-                return UpdateResult(
-                    status=UpdateStatus.ALREADY_PROCESSED, reason="",
-                    identity=self._snapshot.identity,
-                    snapshot=self._snapshot,
-                    details={"operation_id": key, "replay": True,
-                             "original_status": status.value,
-                             "original_reason": reason,
-                             "original_identity": identity})
-        if (update.kind is UpdateKind.INTEGRATE_VIEW
-                and tuple(update.stamp_key or ()) in self._integrated):
-            return self._reject(
-                REASON_STAMP_ALREADY_INTEGRATED,
-                "cloud stamp %r already integrated" % (update.stamp_key,))
-        if stored is not None:
-            return self._reject(
-                REASON_OPERATION_ID_CONFLICT,
-                "operation_id %r reused with different content" % key)
+        if update.kind is UpdateKind.RESET:
+            outcome = self._reset_replay(update, key)
+            if outcome is not None:
+                return outcome
+        else:
+            stored = self._processed.get(key)
+            if stored is not None:
+                fingerprint, identity, status, reason = stored
+                if fingerprint == update.content_fingerprint():
+                    # Exactly-once replay: the write already happened
+                    # (whatever the map has been through since, including
+                    # a reset). The verdict is ALREADY_PROCESSED against
+                    # the CURRENT identity; the original outcome rides in
+                    # details.
+                    return UpdateResult(
+                        status=UpdateStatus.ALREADY_PROCESSED, reason="",
+                        identity=self._snapshot.identity,
+                        snapshot=self._snapshot,
+                        details={"operation_id": key, "replay": True,
+                                 "original_status": status.value,
+                                 "original_reason": reason,
+                                 "original_identity": identity})
+                return self._reject(
+                    REASON_OPERATION_ID_CONFLICT,
+                    "operation_id %r reused with different content" % key)
+            if (update.kind is UpdateKind.INTEGRATE_VIEW
+                    and tuple(update.stamp_key or ())
+                    in self._integrated):
+                return self._reject(
+                    REASON_STAMP_ALREADY_INTEGRATED,
+                    "cloud stamp %r already integrated"
+                    % (update.stamp_key,))
 
         # 2. PREMISE ---------------------------------------------------
         current = self._snapshot.identity
         is_fact = update.kind.value in FACT_KINDS
-        if not is_fact:
+        if not is_fact and update.kind is not UpdateKind.RESET:
             want = str(update.geometry_hash or "")
             if want and want != self._mapper.geometry_hash:
                 return self._reject(
@@ -817,20 +837,54 @@ class OccupancyMapStore(object):
             details={"message": message})
 
     def _remember(self, key, update, status, reason):
+        if update.kind is UpdateKind.RESET:
+            # Separate bounded ledger; the epoch AFTER rotation is the
+            # replay premise for epoch-declaring retries.
+            self._resets[key] = (
+                update.content_fingerprint(),
+                self._snapshot.identity.epoch, status, reason)
+            while len(self._resets) > self._reset_cap:
+                self._resets.popitem(last=False)
+            return
         self._processed[key] = (
             update.content_fingerprint(), self._snapshot.identity,
             status, reason)
-        if update.kind is UpdateKind.RESET:
-            self._pinned.add(key)
         while len(self._processed) > self._processed_cap:
-            for candidate in self._processed:
-                if candidate not in self._pinned:
-                    del self._processed[candidate]
-                    break
-            else:
-                # Everything left is pinned: exceed the cap rather than
-                # make a reset re-executable.
-                break
+            self._processed.popitem(last=False)
+
+    def _reset_replay(self, update, key):
+        """Idempotency for RESET via the bounded epoch ledger.
+
+        Returns an UpdateResult when the verdict is decided here (replay,
+        conflict, or a stale epoch premise), None to proceed.
+        """
+        stored = self._resets.get(key)
+        if stored is not None:
+            fingerprint, epoch_after, status, reason = stored
+            if fingerprint != update.content_fingerprint():
+                return self._reject(
+                    REASON_OPERATION_ID_CONFLICT,
+                    "reset operation_id %r reused with different content"
+                    % key)
+            return UpdateResult(
+                status=UpdateStatus.ALREADY_PROCESSED, reason="",
+                identity=self._snapshot.identity,
+                snapshot=self._snapshot,
+                details={"operation_id": key, "replay": True,
+                         "original_status": status.value,
+                         "original_reason": reason,
+                         "epoch_after": epoch_after})
+        expected = update.expected_snapshot
+        if expected is not None and expected.epoch \
+                and expected.epoch != self._epoch:
+            # A reset may only target the epoch it declares; retrying a
+            # forgotten reset against a newer epoch fails closed instead
+            # of wiping the newer map.
+            return self._reject(
+                REASON_EPOCH_MISMATCH,
+                "reset premise epoch %r is not the current %r"
+                % (expected.epoch, self._epoch))
+        return None
 
     # ------------------------------------------------------------------
     # Snapshot construction + digest

@@ -239,7 +239,7 @@ class TestIdempotency(_StoreCase):
     def test_reset_survives_cap_eviction(self):
         """[P1 gap] An evicted RESET re-executing would wipe a newer map
         (probe: cap=1, reset -> add -> retry reset cleared the box).
-        RESET outcomes are pinned and never evicted."""
+        RESET outcomes live in their own bounded ledger."""
         store = _store(cap=1)
         reset = MapUpdate(operation_id="reset-1", kind=UpdateKind.RESET)
         self.assertTrue(store.apply_update(reset).accepted)
@@ -251,14 +251,66 @@ class TestIdempotency(_StoreCase):
         self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
         self.assertEqual(store.snapshot().placed_count, 1)
 
+    def test_reset_ledger_is_bounded_and_does_not_squeeze_capacity(self):
+        """[P2 gap] Pinning resets inside the normal ledger squeezed the
+        normal operations' dedup space (probe: cap=1, reset -> note, the
+        note's entry evicted instantly, literal retry re-recorded,
+        change_token 1->2) and grew past the cap with distinct resets.
+        Resets now use a separate bounded ledger; normal capacity is
+        untouched."""
+        store = OccupancyMapStore(
+            _mapper(), require_confirmation=True, clock_ns=_Clock(),
+            epoch="e1", processed_cap=1, reset_ledger_cap=2)
+        store.apply_update(
+            MapUpdate(operation_id="reset-1", kind=UpdateKind.RESET))
+        note = MapUpdate(operation_id="note-1",
+                         kind=UpdateKind.NOTE_EVENT, event="box_disturbed")
+        first = store.apply_update(note)
+        self.assertTrue(first.accepted)
+        token = store.snapshot().change_token
+        replay = store.apply_update(note)
+        self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
+        self.assertEqual(store.snapshot().change_token, token)
+        self.assertEqual(len(store.snapshot().pending_changes), 1)
+        # Distinct resets fill only their own bounded ledger.
+        for i in range(3):
+            store.apply_update(
+                MapUpdate(operation_id="reset-%d" % (i + 2),
+                          kind=UpdateKind.RESET))
+        self.assertLessEqual(len(store._resets), 2)
+        self.assertLessEqual(len(store._processed), 1)
+
+    def test_reset_stale_epoch_premise_refused(self):
+        """A retry of a reset declaring a non-current epoch fails closed
+        (EPOCH_MISMATCH) instead of wiping the newer map."""
+        store = _store()
+        store.apply_update(
+            MapUpdate(operation_id="reset-1", kind=UpdateKind.RESET))
+        store.apply_update(
+            MapUpdate(operation_id="reset-2", kind=UpdateKind.RESET))
+        store.apply_update(MapUpdate(
+            operation_id="op-1", kind=UpdateKind.ADD_BOX_V1,
+            box=((0.1, 0.1, 0.15), (0.2, 0.2, 0.2), 0.0)))
+        stale = store.apply_update(MapUpdate(
+            operation_id="reset-ancient", kind=UpdateKind.RESET,
+            expected_snapshot=SnapshotIdentity("old-epoch", 1, "")))
+        self.assertIs(stale.status, UpdateStatus.REJECTED)
+        self.assertEqual(stale.reason, "EPOCH_MISMATCH")
+        self.assertEqual(store.snapshot().placed_count, 1)
+
     def test_integrate_literal_retry_is_already_processed(self):
         """[P2 gap] A byte-identical retry of one successful integration
         is an OPERATION retry (ALREADY_PROCESSED), not a duplicate-frame
-        submission."""
+        submission. The premise legs are context, not content: a retry
+        whose expected revision moved still replays."""
         update = self._integrate("i1", [(0.0, 0.0, 0.5)],
                                  stamp_key=(11, 0))
         self.assertTrue(self.store.apply_update(update).accepted)
-        replay = self.store.apply_update(update)
+        revision_now = self.store.map_revision
+        drifted = self._integrate("i1", [(0.0, 0.0, 0.5)],
+                                  stamp_key=(11, 0),
+                                  rev=revision_now)
+        replay = self.store.apply_update(drifted)
         self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
         self.assertTrue(replay.details["replay"])
 
@@ -271,15 +323,17 @@ class TestIdempotency(_StoreCase):
         self.assertEqual(other.reason, "STAMP_ALREADY_INTEGRATED")
 
     def test_same_operation_id_different_points_rejected(self):
-        """Same id + different content (points differ, fresh stamp) is an
-        operation-id conflict, now detectable because the fingerprint
-        covers the point payload."""
+        """Same id + different content is an operation-id conflict, now
+        detectable because the fingerprint covers the point payload —
+        including the probe variant that keeps the SAME stamp."""
         self.assertTrue(self.store.apply_update(self._integrate(
             "i1", [(0.0, 0.0, 0.5)], stamp_key=(11, 0))).accepted)
-        clash = self.store.apply_update(self._integrate(
-            "i1", [(0.4, 0.4, 0.5)], stamp_key=(12, 0)))
-        self.assertIs(clash.status, UpdateStatus.REJECTED)
-        self.assertEqual(clash.reason, "OPERATION_ID_CONFLICT")
+        for stamp_key in ((11, 0), (12, 0)):
+            with self.subTest(stamp_key=stamp_key):
+                clash = self.store.apply_update(self._integrate(
+                    "i1", [(0.4, 0.4, 0.5)], stamp_key=stamp_key))
+                self.assertIs(clash.status, UpdateStatus.REJECTED)
+                self.assertEqual(clash.reason, "OPERATION_ID_CONFLICT")
 
 
 class TestPremiseAndEpoch(_StoreCase):
