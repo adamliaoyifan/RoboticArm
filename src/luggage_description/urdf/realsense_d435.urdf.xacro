@@ -103,6 +103,10 @@
          depth_image, camera_info); ros_gz_bridge maps them onto the same
          camera/... ROS names the noetic stack consumed. Depth range and FOV
          match the noetic D435 configuration. -->
+    <!-- Ogre2 depth ignores a custom projection in rendering6 6.6.4.
+         Report its actual 640x360/HFOV pixel-centre model, not hardware K.
+         Native regression: scripts/placement_prior/check_depth_projection.py. -->
+    <xacro:property name="sim_camera_focal" value="${320.0 / tan(1.56005 / 2.0)}"/>
     <gazebo reference="camera_link">
       <sensor name="d435" type="rgbd_camera">
         <always_on>true</always_on>
@@ -112,8 +116,9 @@
         <gz_frame_id>camera_depth_optical_frame</gz_frame_id>
         <camera name="d435">
           <!-- D555 colour-aligned sim profile (DSIM-1): 640x360 at 15 Hz.
-               HFOV 1.56005 rad so fx=(320)/tan(hfov/2) ≈ 323.18, matching
-               HB-1 colour K within 2%. One rgbd_camera models aligned
+               HFOV 1.56005 rad so fx=fy=320/tan(hfov/2), matching
+               HB-1 colour K within 2%. Pixel centres start at index zero.
+               One rgbd_camera models aligned
                depth on the colour grid. Near clip 0.26 m is D555 VGA Min-Z.
                Runtime CameraInfo is the acceptance source of truth. -->
           <horizontal_fov>1.56005</horizontal_fov>
@@ -128,12 +133,20 @@
           </clip>
           <lens>
             <intrinsics>
-              <fx>323.1775</fx>
-              <fy>322.8994</fy>
-              <cx>317.7526</cx>
-              <cy>178.0294</cy>
+              <fx>${sim_camera_focal}</fx>
+              <fy>${sim_camera_focal}</fy>
+              <cx>319.5</cx>
+              <cy>179.5</cy>
               <s>0</s>
             </intrinsics>
+            <projection>
+              <fx>${sim_camera_focal}</fx>
+              <fy>${sim_camera_focal}</fy>
+              <cx>319.5</cx>
+              <cy>179.5</cy>
+              <tx>0</tx>
+              <ty>0</ty>
+            </projection>
           </lens>
           <depth_camera>
             <output>depths</output>
