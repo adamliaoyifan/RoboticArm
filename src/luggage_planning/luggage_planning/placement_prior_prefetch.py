@@ -50,3 +50,21 @@ def reusable_placements(prefetched, snapshot, dimensions, max_slots):
     preferred = {choice.placement.slot_id for choice in result.choices}
     return tuple(sorted(request.placements,
                         key=lambda slot: slot.slot_id not in preferred))[:max_slots]
+
+
+def rank_regenerated_placements(prefetched, snapshot, placements):
+    """Apply template preferences to fresh, dimension-checked candidates only.
+
+    Slot IDs identify grid anchors and headings. A different payload size may
+    retain an anchor but change its height or invalidate it entirely. Never
+    insert a missing template slot or copy its pose into the current request.
+    Full measured-grasp collision checks still follow this ordering hint.
+    """
+    current = tuple(placements)
+    if prefetched is None:
+        return current
+    request, result = prefetched
+    if request.measured or request.snapshot.identity != snapshot.identity:
+        return current
+    preferred = {choice.placement.slot_id for choice in result.choices}
+    return tuple(sorted(current, key=lambda slot: slot.slot_id not in preferred))

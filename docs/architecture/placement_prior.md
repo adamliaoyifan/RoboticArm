@@ -168,7 +168,12 @@ box-to-TCP transforms. It triggers once per confirmed snapshot, after read-only
 dependencies are ready. Templates remain hypothetical. Matching geometry may
 reuse generated slot proposals and their ordering, but measured contact
 candidates undergo collision screening again. Changed size, model, scene or
-snapshot regenerates proposals. Foreground preparation supersedes background
+snapshot regenerates proposals. If only size changes, preferences for grid
+anchors/headings may order the freshly generated legal candidates. The current
+measured dimensions determine every pose and support/clearance check; template
+poses and missing or now-infeasible anchors are never inserted. Scene/model/map
+identity changes disable this ordering hint. Measured contact collision checks
+still run, including for template-preferred slots. Foreground preparation supersedes background
 work; an old timeout cannot cancel a newer generation. Neither timer nor
 template completion issues motion or changes map ownership.
 

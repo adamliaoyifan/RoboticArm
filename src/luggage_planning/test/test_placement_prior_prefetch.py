@@ -89,3 +89,78 @@ def test_timer_waits_for_confirmation_and_runs_once_per_snapshot():
     current[0]=confirmed_grid(floor=.3)
     tick()
     assert len(calls)==2
+
+
+def test_changed_size_preserves_only_regenerated_geometry_and_rechecks_collision():
+    from luggage_planning.placement_prior_requests import enumerate_placements
+    from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
+    from luggage_planning.placement_prior import CollisionVerdict
+    confirmed = confirmed_grid()
+    original = request()
+    # Representative measured dimensions from corrected_projection acquisition03.
+    measured_size = (.5056767675344938, .3155214191690675, .21751788507479985)
+    fresh = enumerate_placements(confirmed, measured_size, 8)
+    template_slots = enumerate_placements(confirmed, (.53, .35, .22), 32)
+    matching = next(slot for slot in reversed(fresh)
+                    if slot.slot_id in {item.slot_id for item in template_slots})
+    hypothetical = replace(original, measured=False, box_wdh=(.53,.35,.22),
+                           placements=template_slots)
+    preferred_template = next(slot for slot in template_slots if slot.slot_id==matching.slot_id)
+    cached = SimpleNamespace(choices=(SimpleNamespace(placement=preferred_template),))
+    assert preferred_template.container_from_box != matching.container_from_box
+    assert reusable_placements((hypothetical,cached),original.snapshot,measured_size,8)==()
+    ranked = rank_regenerated_placements((hypothetical,cached),original.snapshot,fresh)
+    assert ranked[0] is matching
+    assert {id(slot) for slot in ranked} == {id(slot) for slot in fresh}
+    assert all(slot.container_from_box.translation[2] == pytest.approx(.25+measured_size[2]/2)
+               for slot in ranked)
+
+    class NewlyBlocked:
+        def __init__(self): self.calls=[]
+        def check(self,snapshot,tcp,box,size,**kwargs):
+            self.calls.append((box,size))
+            return CollisionVerdict(False,'MEASURED_COLLISION')
+    port=NewlyBlocked()
+    measured=replace(original,box_wdh=measured_size,placements=ranked,candidate_limit=32)
+    result=compute_prior(measured,port)
+    assert not result.choices
+    assert len(port.calls)==len(ranked)*len(measured.grasps)
+    assert all(size==measured_size for _,size in port.calls)
+
+
+def test_regenerated_order_never_adds_missing_slots_or_crosses_snapshot_identity():
+    from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
+    from luggage_planning.placement_prior_contracts import PlacementCandidate,Transform
+    original=request();other=PlacementCandidate('other',Transform((.1,0,.1),(0,0,0,1)))
+    current=(other,*original.placements)
+    hypothetical=replace(original,measured=False)
+    cached=SimpleNamespace(choices=(SimpleNamespace(placement=original.placements[0]),))
+    assert rank_regenerated_placements((hypothetical,cached),original.snapshot,current)==tuple(reversed(current))
+    assert rank_regenerated_placements((hypothetical,cached),original.snapshot,(other,))==(other,)
+    for changed in (replace(original.snapshot,map_revision=99),
+                    replace(original.snapshot,model_hash='new-model'),
+                    replace(original.snapshot,scene_cdr=b'changed-world')):
+        assert rank_regenerated_placements((hypothetical,cached),changed,current)==current
+    assert rank_regenerated_placements((original,cached),original.snapshot,current)==current
+
+
+def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
+    import luggage_planning.placement_prior_requests as requests
+    from luggage_planning.placement_prior_contracts import Snapshot
+    from test_placement_prior_requests import query
+    message=query();message.measured=True;message.slots=[];message.max_slots=8
+    snapshot=Snapshot('cal',3,'hull','model',request().snapshot.world_from_container,b'occ',b'world')
+    confirmed=confirmed_grid();size=(.5056767675344938,.3155214191690675,.21751788507479985)
+    fresh=requests.enumerate_placements(confirmed,size,8)
+    old=requests.enumerate_placements(confirmed,(.53,.35,.22),32)
+    desired=next(slot for slot in reversed(fresh) if slot.slot_id in {s.slot_id for s in old})
+    hypothetical=replace(request(),snapshot=snapshot,measured=False,box_wdh=(.53,.35,.22),placements=old)
+    cached=SimpleNamespace(choices=(SimpleNamespace(placement=next(s for s in old if s.slot_id==desired.slot_id)),))
+    # Detection admission has its own genuine-patch tests. Isolate the decoder's
+    # ordering boundary while retaining the production geometry generator.
+    monkeypatch.setattr(requests,'measured_detection_view',lambda _message:SimpleNamespace(box_size=size))
+    monkeypatch.setattr(requests,'candidates_for_prior',lambda *args,**kwargs:request().grasps)
+    decoded=requests.decode_request(message,snapshot,confirmed,prefetched=(hypothetical,cached))
+    assert decoded.measured and decoded.box_wdh==size
+    assert decoded.placements[0]==desired
+    assert set(decoded.placements)==set(fresh)

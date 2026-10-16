@@ -101,6 +101,8 @@ def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched
     if not placements:
         placements=enumerate_placements(confirmed,dimensions,message.max_slots,
                                        volume=volume,margin=margin)
+        from luggage_planning.placement_prior_prefetch import rank_regenerated_placements
+        placements=rank_regenerated_placements(prefetched,snapshot,placements)
     if not placements:
         raise ValueError('no geometric placement candidate')
     return PriorRequest(message.request_id,snapshot,dimensions,tuple(placements),grasps,
