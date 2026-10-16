@@ -1671,6 +1671,21 @@ class LuggageDetector(Node):
             top_surface=dynamic_top)
         self._timing["geometry_ms"] = (time.monotonic() - _t0) * 1000.0
         self._timing["pipeline"] = dict(result.timing)
+        # Bounded opt-in diagnosis; never changes fitted geometry.
+        import os
+        support_capture_root=os.environ.get('ELFIN_SUPPORT_CAPTURE','')
+        if support_capture_root and result.height_valid:
+            try:
+                from luggage_perception.support_geometry_capture import SupportGeometryCapture
+                if not hasattr(self,'_support_geometry_capture'):
+                    self._support_geometry_capture=SupportGeometryCapture(support_capture_root)
+                self._support_geometry_capture.capture(
+                    (str(self._box_id),int(self._box_generation)),
+                    int(stamp.sec)*1_000_000_000+int(stamp.nanosec),
+                    pts_world,raw_world,self._pipeline.config,result,
+                    self._pipeline._stability._history)
+            except Exception as error:
+                self._warn_throttled('support geometry capture failed: %s'%error)
         support_fields = self._support_fields(result)
 
         if not result.top_valid:

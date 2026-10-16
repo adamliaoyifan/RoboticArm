@@ -40,6 +40,7 @@ def main():
     (out/'source.diff').write_bytes(subprocess.check_output(['git','diff'], cwd=repo))
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(out/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
+    os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
     log = (out/'launch.log').open('w')
     launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT)
     result['launch_pid']=launch.pid
