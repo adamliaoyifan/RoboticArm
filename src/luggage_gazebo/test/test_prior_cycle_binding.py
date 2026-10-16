@@ -69,3 +69,39 @@ def test_acquisition_only_stops_at_detection_even_on_prior_miss():
     trial=SimpleNamespace(extras={})
     assert instance.on_detected_luggage(box,trial,None)=='PRIOR_INPUT_ACQUISITION_COMPLETE'
     assert not trial.extras['placement_prior']['adopted']
+
+
+def test_bootstrap_uses_certified_named_motion_before_observation_and_return():
+    instance=object.__new__(MotionOccDriver);calls=[]
+    instance._args=SimpleNamespace(goto_timeout=60.)
+    instance._goto_named_pose_v2=lambda name,**kw: calls.append(('goto',name)) or (True,'')
+    instance._depth_observer=SimpleNamespace(observe_once=lambda name:calls.append(('observe',name)) or {'view':name})
+    instance.goto_observe=lambda:calls.append(('return',None)) or (True,'',None)
+    views=instance.bootstrap_depth_map()
+    assert len(views)==3
+    assert calls[0]==('goto','portal_observe_sim') and calls[-1]==('return',None)
+    assert [kind for kind,_ in calls]==['goto','observe','observe','observe','return']
+
+
+def test_bootstrap_refuses_observation_if_certified_route_fails():
+    import pytest
+    instance=object.__new__(MotionOccDriver);calls=[]
+    instance._args=SimpleNamespace(goto_timeout=60.)
+    instance._goto_named_pose_v2=lambda *args,**kw:(False,'NO_ROUTE')
+    instance._depth_observer=SimpleNamespace(observe_once=calls.append)
+    with pytest.raises(RuntimeError,match='BOOTSTRAP_OBSERVE_ROUTE'):
+        instance.bootstrap_depth_map()
+    assert not calls
+
+
+def test_raw_service_boundaries_include_named_motion_requests():
+    from concurrent.futures import Future
+    from luggage_msgs.srv import GoToRobotPoseV2
+    instance=object.__new__(MotionOccDriver);captured=[]
+    instance._service_boundary_recorder=lambda boundary,message:captured.append((boundary,deepcopy(message)))
+    request=GoToRobotPoseV2.Request();request.pose_name='portal_observe_sim'
+    response=GoToRobotPoseV2.Response();response.success=False;response.reason_code='NO_ROUTE'
+    future=Future();future.set_result(response)
+    client=SimpleNamespace(srv_name='/goto',wait_for_service=lambda **kw:True,call_async=lambda req:future)
+    assert instance.call_srv(client,request,1.) is response
+    assert captured==[('/goto:request',request),('/goto:response',response)]

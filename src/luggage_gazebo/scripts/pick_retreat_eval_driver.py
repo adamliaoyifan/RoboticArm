@@ -863,12 +863,18 @@ class PickRetreatEvalDriver(Node):
     def call_srv(self, client, request, timeout):
         if not client.wait_for_service(timeout_sec=min(timeout, 15.0)):
             return None
+        recorder = getattr(self, '_service_boundary_recorder', None)
+        if recorder is not None:
+            recorder(client.srv_name+':request', request)
         event = threading.Event()
         future = client.call_async(request)
         future.add_done_callback(lambda _f: event.set())
         if not event.wait(timeout):
             return None
-        return future.result()
+        response = future.result()
+        if recorder is not None:
+            recorder(client.srv_name+':response', response)
+        return response
 
     def send_action(self, client, goal, timeout, name):
         if not client.wait_for_server(timeout_sec=min(timeout, 20.0)):

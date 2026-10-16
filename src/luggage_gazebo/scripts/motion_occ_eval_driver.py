@@ -148,8 +148,17 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         super().__init__(args)
         if self._typed is not None and getattr(args, 'dump_dir', ''):
             from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
-            self._typed.set_boundary_recorder(PriorEvidenceRecorder(
-                os.path.join(args.dump_dir, 'typed_service_boundaries')))
+            self._service_boundary_recorder = PriorEvidenceRecorder(
+                os.path.join(args.dump_dir, 'typed_service_boundaries'))
+            self._typed.set_boundary_recorder(self._service_boundary_recorder)
+        self._depth_observer = None
+        if getattr(args, 'bootstrap_depth_map', False):
+            if self._typed is None:
+                raise ValueError('depth bootstrap requires frame-runtime')
+            from luggage_perception.container_depth_observer import ContainerDepthObserver
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            self._depth_observer = ContainerDepthObserver(self, group=self._group,
+                recorder=PriorEvidenceRecorder(os.path.join(args.out, 'depth_bootstrap_boundaries')))
         self._placement_prior_client = None
         self._placement_prior_result = None
         self._placement_prior_choice = None
@@ -403,6 +412,21 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 str(state) for state in (result.leg_load_states or [])],
         }
         return True, ""
+
+    def bootstrap_depth_map(self):
+        """Explicit unloaded observation, through normal certified motion."""
+        if self._depth_observer is None:
+            return []
+        ok, reason = self._goto_named_pose_v2('portal_observe_sim', timeout=self._args.goto_timeout)
+        if not ok:
+            raise RuntimeError('BOOTSTRAP_OBSERVE_ROUTE: '+str(reason))
+        views=[]
+        for index in range(3):
+            views.append(self._depth_observer.observe_once('bootstrap-depth-%d'%index))
+        ok, reason, _ = self.goto_observe()
+        if not ok:
+            raise RuntimeError('BOOTSTRAP_RETURN_ROUTE: '+str(reason))
+        return views
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         reason = super().on_detected_luggage(pick_msg, trial, spawn)
@@ -1101,6 +1125,8 @@ def parse_args(argv=None):
     local.add_argument("--frame-runtime", action="store_true",
                        help="Adopt the v2 runtime chain from the stack graph")
     local.add_argument("--frame-peer", default="motion_occ_driver")
+    local.add_argument("--bootstrap-depth-map", action="store_true",
+                       help="Observe container depth from certified portal pose before pickup")
     local.add_argument("--prior-acquisition-only", action="store_true",
                        help="Non-scored rehearsal: stop after measured detection/prior request, before pick")
     local.add_argument("--placement-prior", action="store_true",
@@ -1121,6 +1147,7 @@ def parse_args(argv=None):
     args.frame_runtime = local_ns.frame_runtime
     args.frame_peer = local_ns.frame_peer
     args.placement_prior = local_ns.placement_prior
+    args.bootstrap_depth_map = local_ns.bootstrap_depth_map
     args.prior_acquisition_only = local_ns.prior_acquisition_only
     if args.prior_acquisition_only and not (args.placement_prior and local_ns.rehearsal):
         local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")
@@ -1323,6 +1350,15 @@ def main(argv=None):
                 return 2
         print("graph ok; MOTION-OCC n=%d" % args.n, flush=True)
         time.sleep(8.0)
+        if args.bootstrap_depth_map:
+            try:
+                views = driver.bootstrap_depth_map()
+                _atomic_json(os.path.join(args.out, 'depth_bootstrap.json'),
+                             dict(success=True, views=views))
+            except Exception as error:
+                _atomic_json(os.path.join(args.out, 'depth_bootstrap.json'),
+                             dict(success=False, reason=str(error)))
+                return 2
         if args.rehearsal_fault:
             rec = driver.run_trial(0)
             records.append(rec)

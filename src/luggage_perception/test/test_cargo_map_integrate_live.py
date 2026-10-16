@@ -233,6 +233,40 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         self.assertFalse(duplicate.success)
         self.assertEqual(duplicate.reason_code,REASON_STAMP_ALREADY_INTEGRATED)
 
+    def test_depth_observer_real_ros_client_reaches_owner(self):
+        from copy import deepcopy
+        from sensor_msgs.msg import Image, CameraInfo, JointState
+        from luggage_perception.container_depth_observer import ContainerDepthObserver
+        from rclpy.callback_groups import ReentrantCallbackGroup
+        observer=ContainerDepthObserver(self.helper,group=ReentrantCallbackGroup())
+        image_pub=self.helper.create_publisher(Image,"/luggage/preprocessed/camera/depth/image",10)
+        info_pub=self.helper.create_publisher(CameraInfo,"/luggage/preprocessed/camera/depth/camera_info",10)
+        joint_pub=self.helper.create_publisher(JointState,"/joint_states",10)
+        hull=self.mapper._mapper._hull
+        tf=TransformStamped();tf.header.frame_id="container_link";tf.child_frame_id="observer_optical"
+        tf.transform.translation.x=-hull.half_x-.3
+        tf.transform.translation.z=.5*(hull.floor_z+hull.ceiling_z)
+        tf.transform.rotation.y=2.**-.5;tf.transform.rotation.w=2.**-.5
+        self._tf_pub.sendTransform(tf)
+        for _ in range(24):
+            stamp=self.helper.get_clock().now().to_msg()
+            joints=JointState();joints.header.stamp=stamp
+            joints.name=['elfin_joint%d'%i for i in range(1,7)]
+            joints.position=[0.]*6;joints.velocity=[0.]*6
+            image=Image();image.header.stamp=stamp;image.header.frame_id="observer_optical"
+            image.height=2;image.width=2;image.step=4;image.encoding="16UC1"
+            image.data=np.array([[int((hull.length+.3)*1000),0],[0,0]],dtype=np.uint16).tobytes()
+            info=CameraInfo();info.header=deepcopy(image.header);info.height=2;info.width=2
+            info.k=[2.,0.,0.,0.,2.,0.,0.,0.,1.]
+            joint_pub.publish(joints);image_pub.publish(image);info_pub.publish(info)
+            time.sleep(.05)
+        before=self.mapper._mapper.stats()["map_revision"]
+        result=observer.observe_once("ros-depth-client",timeout=2.)
+        self.assertEqual(result["map_revision"],before+1)
+        self.assertEqual(self.mapper._map_source,"measured")
+        self.assertEqual(self.mapper._last_acquisition_ns,result["acquisition_stamp_ns"])
+        self.assertEqual(len(self.mapper._mapper.commit_ledger()),0)
+
     def test_success_sensor_cells(self):
         stamp = self._stamp(16)
         self._publish_cloud(stamp, self._patch(0.0, 0.0, n=200))

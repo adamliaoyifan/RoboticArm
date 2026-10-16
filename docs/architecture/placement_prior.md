@@ -182,3 +182,20 @@ or rejected rays create no evidence. Surface columns remain unknown until the
 existing mapper has sufficient observations; no unknown-to-free shortcut is
 introduced. A zero-cargo measured depth view may initialize provenance, but that
 alone does not establish enough free columns for a prior placement.
+
+`ContainerDepthObserver` is the explicit client for that owner service. It joins
+preprocessed depth images and depth CameraInfo by exact positive stamp, equal
+optical frame and image dimensions; unsupported distortion is rejected. It uses
+the existing six-joint MotionStabilityGate at the samples' sensor times, so stale
+joint arrivals cannot refresh stability. It preserves the image stamp on optical
+points and checks the owner's schema, integrated stamp and advancing map revision
+before accepting a result. Call it from an orchestration worker while the ROS
+executor continues processing its subscriptions and service replies.
+
+The simulation driver opt-in `--bootstrap-depth-map` uses the existing certified
+GoToRobotPoseV2 path to `portal_observe_sim`, integrates three settled depth frames,
+and returns through the certified pickup-observe path before starting a box.
+Failure to reach the observation pose prevents capture. It does not promise full
+coverage: measured unknown/occupancy ratios are preserved. Input images, camera
+calibration, joint stability samples, clouds and owner requests/replies are
+captured; raw named-motion service calls are also captured when dumps are on.
