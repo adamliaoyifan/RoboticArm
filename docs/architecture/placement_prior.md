@@ -162,3 +162,23 @@ Evaluation drivers must stop and join both the main executor spinner and the
 TransformListener's dedicated executor/thread before destroying either node.
 Worker shutdown is a prerequisite to rclpy context shutdown, not interpreter
 finalizer work.
+
+The mapper now provides `/cargo_map/integrate_container_depth_view` using the
+existing `IntegrateCargoView` settled-acquisition request contract. It consumes
+`/luggage/perception/container_depth_points` (configurable `container_depth_topic`)
+in an independent buffer. The acquisition stamp ledger is shared with cargo
+integration, so the same frame cannot count twice through different endpoints.
+Both view handlers serialize through the same view lock and retain existing
+runtime readiness, geometry hash, expected revision, settled, freshness and
+exact-stamp TF checks. No topic producer is started by the prior.
+
+Full-depth ray processing uses the authoritative hull (including its chamfer),
+permits entry only through its -X aperture, and rejects returns inconsistent
+with closed faces. One voxel diagonal before a return remains unobserved;
+interior returns outside that closed-face band become sensor occupancy. Near-door
+obstacles remain hits even when no preceding free voxel can be established.
+Static boundary returns create free-ray evidence only, never cargo hits. Missing
+or rejected rays create no evidence. Surface columns remain unknown until the
+existing mapper has sufficient observations; no unknown-to-free shortcut is
+introduced. A zero-cargo measured depth view may initialize provenance, but that
+alone does not establish enough free columns for a prior placement.

@@ -121,6 +121,7 @@ class CargoVolumeMapperNode(Node):
         self.declare_parameter("occupancy_params_yaml", "")
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points_untracked")
+        self.declare_parameter("container_depth_topic", "/luggage/perception/container_depth_points")
         self.declare_parameter("base_frame", "container_link")
         self.declare_parameter("cloud_buffer_size", 12)
         self.declare_parameter("freshness_window_sec", 0.20)
@@ -173,6 +174,8 @@ class CargoVolumeMapperNode(Node):
             self.get_parameter("freshness_window_sec").value)
         self._lock = threading.Lock()
         self._clouds = OrderedDict()
+        self._depth_clouds = OrderedDict()
+        self._view_integration_lock = threading.Lock()
         self._integrated = set()
         #: Empty-container identity until a settled view or a placed-box
         #: commit. Stamp 0 is legal only while this stays static_empty,
@@ -202,6 +205,13 @@ class CargoVolumeMapperNode(Node):
             PointCloud2,
             str(self.get_parameter("cargo_cloud_topic").value),
             self._on_cloud, sensor_qos, callback_group=group)
+
+        self.create_subscription(
+            PointCloud2, str(self.get_parameter("container_depth_topic").value),
+            lambda msg: self._on_cloud(msg, depth_view=True), sensor_qos, callback_group=group)
+        self.create_service(
+            IntegrateCargoView, "/cargo_map/integrate_container_depth_view",
+            self._on_integrate_depth, callback_group=group)
 
         self.create_service(
             AddPlacedBox, "/cargo_map/add_placed_box",
@@ -305,7 +315,7 @@ class CargoVolumeMapperNode(Node):
         out.orientation = pose_world.orientation
         return out
 
-    def _on_cloud(self, msg):
+    def _on_cloud(self, msg, *, depth_view=False):
         points = adapters.cloud_points_from_msg(msg)
         if points is None:
             return
@@ -320,9 +330,10 @@ class CargoVolumeMapperNode(Node):
             "n_points": int(finite.shape[0]),
         }
         with self._lock:
-            self._clouds[key] = record
-            while len(self._clouds) > self._buffer_size:
-                self._clouds.popitem(last=False)
+            buffer = self._depth_clouds if depth_view else self._clouds
+            buffer[key] = record
+            while len(buffer) > self._buffer_size:
+                buffer.popitem(last=False)
 
     def _lookup_rt(self, target, source, stamp):
         if not source:
@@ -370,6 +381,14 @@ class CargoVolumeMapperNode(Node):
         return True
 
     def _on_integrate(self, request, response):
+        with self._view_integration_lock:
+            return self._integrate_view(request, response, depth_view=False)
+
+    def _on_integrate_depth(self, request, response):
+        with self._view_integration_lock:
+            return self._integrate_view(request, response, depth_view=True)
+
+    def _integrate_view(self, request, response, *, depth_view):
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(response):
             return response
@@ -386,7 +405,7 @@ class CargoVolumeMapperNode(Node):
         # placed while this view is being integrated stays pending.
         token_at_start = self._pending.begin()
         with self._lock:
-            records = list(self._clouds.values())
+            records = list((self._depth_clouds if depth_view else self._clouds).values())
             integrated = set(self._integrated)
         record, reason = select_fresh_record(
             records, stamp_to_sec(request.source_acquisition_stamp),
@@ -404,12 +423,16 @@ class CargoVolumeMapperNode(Node):
                 stats)
         rot, trans = rt
         points_base = transform_points(record["points"], rot, trans)
-        zmin = self._floor_z + max(0.0, self._min_z_above_floor)
-        if points_base is not None and getattr(points_base, "shape", (0,))[0]:
-            points_base = points_base[points_base[:, 2] >= zmin]
-        result = apply_integrate(
-            self._mapper, points_base, origin=trans,
-            voxel_size=self._mapper.resolution)
+        if depth_view:
+            from luggage_perception.depth_view_rays import integrate_depth_acquisition
+            result = integrate_depth_acquisition(self._mapper, points_base, trans)
+        else:
+            zmin = self._floor_z + max(0.0, self._min_z_above_floor)
+            if points_base is not None and getattr(points_base, "shape", (0,))[0]:
+                points_base = points_base[points_base[:, 2] >= zmin]
+            result = apply_integrate(
+                self._mapper, points_base, origin=trans,
+                voxel_size=self._mapper.resolution)
         if not result["ok"]:
             return self._fail_integrate(
                 response, result["reason_code"] or REASON_VIEW_EMPTY,
@@ -517,6 +540,7 @@ class CargoVolumeMapperNode(Node):
         self._mapper.reset(preserve_placed=False)
         with self._lock:
             self._clouds.clear()
+            self._depth_clouds.clear()
             self._integrated.clear()
             self._last_acquisition_ns = 0
             self._map_source = MAP_STATIC_EMPTY

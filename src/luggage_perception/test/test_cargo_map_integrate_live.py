@@ -132,7 +132,7 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
     def _call(self, **fields):
         from luggage_msgs.srv import IntegrateCargoView
         client = self.helper.create_client(
-            IntegrateCargoView, "/cargo_map/integrate_cargo_view")
+            IntegrateCargoView, fields.get("endpoint", "/cargo_map/integrate_cargo_view"))
         self.assertTrue(client.wait_for_service(timeout_sec=5.0))
         request = IntegrateCargoView.Request()
         request.schema_version = int(fields.get("schema_version", SCHEMA_VERSION))
@@ -200,6 +200,38 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         resp = self._call(stamp=stamp)
         self.assertFalse(resp.success)
         self.assertEqual(resp.reason_code, REASON_VIEW_EMPTY)
+
+    def test_full_depth_endpoint_isolated_from_empty_cargo_at_same_stamp(self):
+        from rclpy.qos import QoSProfile, ReliabilityPolicy
+        topic="/luggage/perception/container_depth_points"
+        pub=self.helper.create_publisher(PointCloud2,topic,
+            QoSProfile(depth=10,reliability=ReliabilityPolicy.BEST_EFFORT))
+        hull=self.mapper._mapper._hull
+        camera=(-hull.half_x-.3,0.,.5*(hull.floor_z+hull.ceiling_z))
+        self._publish_tf("container_link","depth_bootstrap_test",camera)
+        stamp=self._stamp(31)
+        cloud=adapters.cloud_msg_from_points(np.array([[hull.length+.3,0.,0.]]),
+                                            stamp,"depth_bootstrap_test")
+        for _ in range(15):
+            pub.publish(cloud)
+            self._cloud_pub.publish(adapters.cloud_msg_from_points(np.zeros((0,3)),stamp,"container_link"))
+            time.sleep(.02)
+        before=self.mapper._mapper.stats()["map_revision"]
+        endpoint="/cargo_map/integrate_container_depth_view"
+        refused=self._call(stamp=stamp,endpoint=endpoint,settled=False)
+        self.assertFalse(refused.success)
+        self.assertEqual(self.mapper._mapper.stats()["map_revision"],before)
+        accepted=self._call(stamp=stamp,endpoint=endpoint)
+        self.assertTrue(accepted.success,accepted.message)
+        self.assertEqual(self.mapper._map_source,"measured")
+        self.assertEqual(self.mapper._last_acquisition_ns,31_000_000_000)
+        self.assertTrue(self.mapper._cargo_observed)
+        self.assertEqual(len(self.mapper._mapper.commit_ledger()),0)
+        # Same camera acquisition cannot be counted a second time via the
+        # cargo endpoint, even though its buffer is independently populated.
+        duplicate=self._call(stamp=stamp)
+        self.assertFalse(duplicate.success)
+        self.assertEqual(duplicate.reason_code,REASON_STAMP_ALREADY_INTEGRATED)
 
     def test_success_sensor_cells(self):
         stamp = self._stamp(16)
