@@ -12,3 +12,5 @@ target_include_directories(prior_native_probe PRIVATE ../../src/luggage_planning
 ament_target_dependencies(prior_native_probe rclcpp moveit_core moveit_msgs urdf srdfdom)
 add_executable(prior_cartesian_replay cartesian_replay.cpp)
 ament_target_dependencies(prior_cartesian_replay rclcpp moveit_core moveit_ros_planning moveit_msgs)
+add_executable(prior_observation_check observation_check.cpp)
+ament_target_dependencies(prior_observation_check rclcpp moveit_core moveit_msgs urdf srdfdom)
