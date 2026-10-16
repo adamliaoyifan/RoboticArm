@@ -417,12 +417,23 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         """Explicit unloaded observation, through normal certified motion."""
         if self._depth_observer is None:
             return []
+        from luggage_gazebo.depth_observation_targets import load_depth_targets
+        targets=load_depth_targets(getattr(self._args,'bootstrap_depth_targets',''),
+                                   self._frame_scene_revision)
         ok, reason = self._goto_named_pose_v2('portal_observe_sim', timeout=self._args.goto_timeout)
         if not ok:
             raise RuntimeError('BOOTSTRAP_OBSERVE_ROUTE: '+str(reason))
         views=[]
         for index in range(3):
             views.append(self._depth_observer.observe_once('bootstrap-depth-%d'%index))
+        for view_index,(xyz,quaternion) in enumerate(targets):
+            ok,reason=self._execute_observation_route(
+                'bootstrap-depth-view-%d'%view_index,xyz,quaternion)
+            if not ok:
+                raise RuntimeError('BOOTSTRAP_ADDITIONAL_ROUTE: '+str(reason))
+            for sample_index in range(3):
+                views.append(self._depth_observer.observe_once(
+                    'bootstrap-depth-view-%d-sample-%d'%(view_index,sample_index)))
         ok, reason, _ = self.goto_observe()
         if not ok:
             raise RuntimeError('BOOTSTRAP_RETURN_ROUTE: '+str(reason))
@@ -1127,6 +1138,8 @@ def parse_args(argv=None):
     local.add_argument("--frame-peer", default="motion_occ_driver")
     local.add_argument("--bootstrap-depth-map", action="store_true",
                        help="Observe container depth from certified portal pose before pickup")
+    local.add_argument("--bootstrap-depth-targets", default="",
+                       help="Scene-bound world camera intents; each uses certified observation routing")
     local.add_argument("--prior-acquisition-only", action="store_true",
                        help="Non-scored rehearsal: stop after measured detection/prior request, before pick")
     local.add_argument("--placement-prior", action="store_true",
@@ -1148,6 +1161,7 @@ def parse_args(argv=None):
     args.frame_peer = local_ns.frame_peer
     args.placement_prior = local_ns.placement_prior
     args.bootstrap_depth_map = local_ns.bootstrap_depth_map
+    args.bootstrap_depth_targets = local_ns.bootstrap_depth_targets
     args.prior_acquisition_only = local_ns.prior_acquisition_only
     if args.prior_acquisition_only and not (args.placement_prior and local_ns.rehearsal):
         local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")

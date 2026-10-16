@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--simulate-cycle', action='store_true', help='Run one non-scored measured pick/place cycle with prior')
     parser.add_argument('--cycle-timeout', type=float, default=360.)
     parser.add_argument('--bootstrap-depth-map', action='store_true')
+    parser.add_argument('--bootstrap-depth-targets', default='')
     parser.add_argument('--acquire-inputs', action='store_true')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
@@ -112,6 +113,8 @@ def main():
                 '--rehearsal',str(out/'cycle'),'--n','1']
             if args.bootstrap_depth_map:
                 command.append('--bootstrap-depth-map')
+            if args.bootstrap_depth_targets:
+                command.extend(['--bootstrap-depth-targets',args.bootstrap_depth_targets])
             if args.acquire_inputs:
                 command.append('--prior-acquisition-only')
             if args.cycle_fault:
