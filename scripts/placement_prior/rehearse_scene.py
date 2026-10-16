@@ -131,6 +131,8 @@ def main():
                 command.append('--prior-acquisition-only')
             if args.cycle_fault:
                 command.extend(['--rehearsal-fault',args.cycle_fault])
+            if not args.acquire_inputs and not args.cycle_fault:
+                command.append('--prior-functional-rehearsal')
             result['driver_command']=command
             with (out/'driver.log').open('w') as driver_log:
                 driver=subprocess.run(command,stdout=driver_log,stderr=subprocess.STDOUT,timeout=args.cycle_timeout)

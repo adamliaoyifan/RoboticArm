@@ -2,6 +2,16 @@
 
 A prior is a read-only speculative hint, never an execution certificate. The
 nominal orchestration cycle and operator/motion/vacuum authority are unchanged.
+The simulation driver's explicit `--prior-functional-rehearsal` mode reports
+unscored prior motion/OCC coverage for exactly the requested number of cycles.
+It requires frame-runtime, placement-prior, rehearsal, motion and route
+verification; acquisition-only and injected-fault runs remain separate. The
+legacy fixed two-box rehearsal document is preserved. The dedicated
+`prior-functional-evidence.json` controls this mode's exit status and requires
+every cycle's typed route verification, successful submitted legs, authorized
+pick, retained payload, settled placement and confirmed measured occupancy.
+Missing cycles or any failed cycle reject the rehearsal. This report never
+passes the frozen F3 campaign or performance gates.
 The prior worker owns only private copies and bounded temporary computation.
 It must not call ApplyPlanningScene, modify OCC, commit cargo or issue motion.
 

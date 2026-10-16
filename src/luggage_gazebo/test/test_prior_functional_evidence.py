@@ -1,6 +1,6 @@
 from copy import deepcopy
 import pytest
-from luggage_gazebo.prior_functional_evidence import summarize_prior_cycle
+from luggage_gazebo.prior_functional_evidence import summarize_prior_cycle, summarize_prior_rehearsal
 
 
 def trial():
@@ -46,3 +46,24 @@ def test_missing_or_failed_boundary_refuses_case(path,value):
 
 def test_empty_evidence_is_not_a_pass():
     assert not summarize_prior_cycle({})['functional_cycle_passed']
+
+
+def test_rehearsal_requires_all_requested_cycles_and_preserves_failures():
+    healthy = trial()
+    failed = trial()
+    failed['extras']['submitted_legs'][1]['ok'] = False
+    for cases, expected, passed in [([healthy], 1, True), ([healthy, healthy], 2, True),
+                                    ([], 1, False), ([healthy], 2, False),
+                                    ([healthy, healthy], 1, False), ([healthy, failed], 2, False)]:
+        before = deepcopy(cases)
+        report = summarize_prior_rehearsal(cases, expected)
+        assert report['functional_rehearsal_passed'] is passed
+        assert report['f3_campaign'] == report['performance'] == 'not_evaluated'
+        assert report['observed_count'] == len(cases)
+        assert cases == before
+
+
+@pytest.mark.parametrize('expected', [0, -1, True, 1.0, None])
+def test_rehearsal_rejects_invalid_expected_count(expected):
+    with pytest.raises(ValueError):
+        summarize_prior_rehearsal([trial()], expected)

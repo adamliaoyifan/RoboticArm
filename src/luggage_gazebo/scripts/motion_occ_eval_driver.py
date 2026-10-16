@@ -1158,6 +1158,8 @@ def parse_args(argv=None):
                        help="Bind measured pickup candidate and target using the read-only prior service")
     local.add_argument("--rehearsal", default="",
                        help="Write non-scoring rehearsal evidence to this directory")
+    local.add_argument("--prior-functional-rehearsal", action="store_true",
+                       help="Use typed prior motion/OCC checks for every requested unscored cycle")
     local.add_argument("--rehearsal-fault", choices=("", "pre_pick", "pre_place"),
                        default="",
                        help="Inject one readiness refusal without scoring")
@@ -1180,6 +1182,13 @@ def parse_args(argv=None):
         local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")
     args.rehearsal_dir = str(local_ns.rehearsal or "")
     args.rehearsal_fault = str(local_ns.rehearsal_fault or "")
+    args.prior_functional_rehearsal = local_ns.prior_functional_rehearsal
+    if args.prior_functional_rehearsal and (
+            not args.placement_prior or not args.frame_runtime or not args.rehearsal_dir
+            or args.prior_acquisition_only or args.rehearsal_fault
+            or args.place_probe != "on" or args.plan_only):
+        local.error("--prior-functional-rehearsal requires measured prior/frame rehearsal "
+                    "with route verification and motion; acquisition-only/fault modes are separate")
     return args
 
 
@@ -1424,10 +1433,21 @@ def main(argv=None):
             path, evidence = _write_rehearsal(args.rehearsal_dir, records)
             note = {"scoring_writes": False, "namespace": "rehearsal",
                     "evidence": path, "complete": evidence.get("complete")}
+            if args.prior_functional_rehearsal:
+                from luggage_gazebo.prior_functional_evidence import summarize_prior_rehearsal
+                functional = summarize_prior_rehearsal(
+                    [trial_to_dict(record) for record in records], args.n)
+                functional_path = _atomic_json(
+                    os.path.join(args.rehearsal_dir, "prior-functional-evidence.json"), functional)
+                note.update(prior_functional_evidence=functional_path,
+                            functional_rehearsal_passed=functional["functional_rehearsal_passed"],
+                            f3_campaign="not_evaluated", performance="not_evaluated")
             _write_t0(args.out, extra, args, records, note, started_at)
             print(json.dumps(note, sort_keys=True), flush=True)
             if not records:
                 return 2
+            if args.prior_functional_rehearsal:
+                return 0 if functional["functional_rehearsal_passed"] else 1
             return 0 if evidence.get("complete") else 1
         suite = _write_suite(args.out, records, driver)
         _write_t0(args.out, extra, args, records, suite, started_at)

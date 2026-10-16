@@ -19,7 +19,7 @@ _SCRIPTS = os.path.normpath(os.path.join(
 if _SCRIPTS not in sys.path:
     sys.path.insert(0, _SCRIPTS)
 
-from motion_occ_eval_driver import MotionOccDriver  # noqa: E402
+from motion_occ_eval_driver import MotionOccDriver, parse_args  # noqa: E402
 
 
 class _Client(object):
@@ -94,7 +94,7 @@ class TestMapAdmissionNoStaleFallback(unittest.TestCase):
 
     def test_verify_request_carries_fetched_latest_revision(self):
         driver = _Driver(
-            stats_response=SimpleNamespace(success=True, map_revision=7),
+            stats_response=SimpleNamespace(success=True, map_revision=7, map_source="measured"),
             verify_response=_ok_verify_response())
         ok, reason = driver._verify_selected_route(
             _selection_response(), "req-1", {})
@@ -105,6 +105,25 @@ class TestMapAdmissionNoStaleFallback(unittest.TestCase):
         # fabricated 0 nor the selection-time snapshot.
         self.assertEqual(
             driver.verify_requests[0].latest_map_revision, 7)
+
+
+class TestPriorFunctionalRehearsalArguments(unittest.TestCase):
+    def test_explicit_mode_requires_motion_prior_and_verification(self):
+        base = ["--prior-functional-rehearsal", "--placement-prior", "--frame-runtime",
+                "--rehearsal", "/tmp/prior-parser-only", "--n", "1"]
+        args = parse_args(base)
+        self.assertTrue(args.prior_functional_rehearsal)
+        self.assertEqual(args.n, 1)
+        for suffix in (["--plan-only"], ["--place-probe", "off"],
+                       ["--prior-acquisition-only"], ["--rehearsal-fault", "pre_pick"]):
+            with self.subTest(suffix=suffix), self.assertRaises(SystemExit):
+                parse_args(base + suffix)
+        for required in ("--placement-prior", "--frame-runtime"):
+            with self.subTest(required=required), self.assertRaises(SystemExit):
+                parse_args([item for item in base if item != required])
+
+    def test_legacy_mode_is_not_changed(self):
+        self.assertFalse(parse_args(["--rehearsal", "/tmp/legacy-parser-only"]).prior_functional_rehearsal)
 
 
 if __name__ == "__main__":

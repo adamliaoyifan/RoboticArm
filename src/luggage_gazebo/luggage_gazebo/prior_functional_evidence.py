@@ -1,6 +1,26 @@
 """Summarize one unscored prior cycle; never certify an F3 campaign."""
 
 
+def summarize_prior_rehearsal(trials, expected_count):
+    """Require every requested cycle; interruption must not shorten the gate."""
+    if type(expected_count) is not int or expected_count < 1:
+        raise ValueError("expected_count must be a positive integer")
+    cases = [summarize_prior_cycle(trial) for trial in trials]
+    count_matches = len(cases) == expected_count
+    return {
+        "scope": "unscored prior functional rehearsal",
+        "scored": False,
+        "expected_count": expected_count,
+        "observed_count": len(cases),
+        "count_matches": count_matches,
+        "functional_rehearsal_passed": count_matches and all(
+            case["functional_cycle_passed"] for case in cases),
+        "cases": cases,
+        "f3_campaign": "not_evaluated",
+        "performance": "not_evaluated",
+    }
+
+
 def summarize_prior_cycle(trial):
     extras = trial.get("extras") or {}
     selector = extras.get("selector") or {}
