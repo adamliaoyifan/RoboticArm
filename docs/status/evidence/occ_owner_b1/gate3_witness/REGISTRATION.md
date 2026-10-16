@@ -43,3 +43,9 @@
 - **正式见证（尝试 1，计额度）**: `bash scripts/g3/run.sh score gate3_*`，
   冻结代码 = worktree HEAD（含两处运行开关提交），MAIN 侧冻结资产按
   run.sh 既有指向。
+- **r3 发现（产品缺陷，修复后重冻结）**: 箱 0 死于 STALE_MAP_REVISION，根因
+  是 B1 快照冻结量化把边界列 z 推到 floor 之下 1e-16 → v2 发布自拒
+  SURFACE_HEIGHT_OUT_OF_RANGE → planner 收不到 v2 面。修复 7391f460
+  （冻结不量化+部署 hull 回归测试）。**冻结 HEAD 更新为 7391f460**；
+  r1–r3 均未产生任何箱放置，见证额度仍未消耗。
+- **正式见证（r4，计额度）**: 同命令，冻结 7391f460。
