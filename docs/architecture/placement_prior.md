@@ -241,7 +241,10 @@ The simulation launch accepts `box_catalog_config` for a frozen spawn-only
 catalog, allowing historical box geometry to be reacquired without changing the
 installed default catalog. This parameter is passed only to the spawner; prior
 and pick authorization must consume the new measured detection and candidates.
-New acquisitions are not exact replays of historical perception.
+New acquisitions are not exact replays of historical perception. The explicit
+`inch20` fixture tier (0.35 x 0.53 x 0.22 m) has baked unique mesh URIs,
+verified by the same asset size/visual/collision checks as normal tiers; it is
+not added to the default spawn catalog.
 
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock

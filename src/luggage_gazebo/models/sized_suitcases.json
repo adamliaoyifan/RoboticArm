@@ -1,4 +1,23 @@
 {
+  "suitcase_loafbrr_inch20": {
+    "catalog_id": "inch20",
+    "collision_uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.stl",
+    "mass_kg": 5.67,
+    "measure_size": [
+      0.3145875483751297,
+      0.5168008506298065,
+      0.2199999988079071
+    ],
+    "size": [
+      0.35,
+      0.53,
+      0.22
+    ],
+    "tier": "inch20",
+    "uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.stl",
+    "visual_id": "suitcase_loafbrr",
+    "visual_uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.dae"
+  },
   "suitcase_loafbrr_large": {
     "catalog_id": "large",
     "collision_uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
@@ -55,6 +74,25 @@
     "uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
     "visual_id": "suitcase_loafbrr",
     "visual_uri": "model://suitcase_loafbrr_small/meshes/suitcase.dae"
+  },
+  "suitcase_vintage_inch20": {
+    "catalog_id": "inch20",
+    "collision_uri": "model://suitcase_vintage_inch20/meshes/suitcase.stl",
+    "mass_kg": 5.67,
+    "measure_size": [
+      0.3314480036497116,
+      0.4682113379240036,
+      0.2199999988079071
+    ],
+    "size": [
+      0.35,
+      0.53,
+      0.22
+    ],
+    "tier": "inch20",
+    "uri": "model://suitcase_vintage_inch20/meshes/suitcase.stl",
+    "visual_id": "suitcase_vintage",
+    "visual_uri": "model://suitcase_vintage_inch20/meshes/suitcase.dae"
   },
   "suitcase_vintage_large": {
     "catalog_id": "large",

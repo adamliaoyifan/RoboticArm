@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Write the six pre-scaled pickup suitcase models (run once, not at spawn)."""
+"""Write the supported pre-scaled pickup suitcase models (run once, not at spawn)."""
 
 from __future__ import division
 

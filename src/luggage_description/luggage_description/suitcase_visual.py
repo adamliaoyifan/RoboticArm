@@ -5,7 +5,7 @@ Unit-AABB sources live in ``luggage_gazebo/models/suitcase_loafbrr`` and
 two: Fortress ogre2 caches GPU meshes by URI, so sharing one STL with SDF
 ``<scale>`` makes later boxes render at the first scale.
 
-Pickup mesh assets are six pre-scaled models (each visual x small/medium/large).
+Pickup mesh assets have unique pre-scaled models for each visual and size tier.
 Collision is the scaled STL. Visual is a copy of the family DAE with the
 same vertex scale, ``Z_UP``, and a diffuse texture pointing at the copied
 ``suitcase.png``. Spawn references those per-model URIs at scale 1 1 1.
@@ -64,6 +64,11 @@ SIZE_TIERS = (
     ("large", (0.80, 0.50, 0.32), 23.0, "large"),
 )
 
+# Explicit historical fixture geometry; not added to the default spawn catalog.
+HISTORICAL_SIZE_TIERS = (
+    ("inch20", (0.35, 0.53, 0.22), 5.67, "inch20"),
+)
+
 SIZED_MANIFEST_NAME = "sized_suitcases.json"
 
 
@@ -99,10 +104,10 @@ def sized_visual_mesh_uri(visual_id, tier):
 
 
 def size_tier_name(size, atol=1e-3):
-    """Return small/medium/large if *size* matches a catalog tier, else None."""
+    """Return a supported baked tier for *size*, or None."""
     if size is None or len(size) < 3:
         return None
-    for name, spec, _mass, _catalog_id in SIZE_TIERS:
+    for name, spec, _mass, _catalog_id in SIZE_TIERS + HISTORICAL_SIZE_TIERS:
         if all(abs(float(size[i]) - float(spec[i])) <= atol for i in range(3)):
             return name
     return None
@@ -677,7 +682,7 @@ def _copy_texture_assets(visual_id, model_dir, models_root, scale):
 
 
 def write_sized_suitcase_models(models_root):
-    """Write the six pre-scaled pickup models and a measure_size manifest.
+    """Write supported pre-scaled pickup models and a measure_size manifest.
 
     Collision size is the scaled STL. Visual is the textured DAE at the
     same size. Catalog size, mass, and measure_size are unchanged.
@@ -688,7 +693,7 @@ def write_sized_suitcase_models(models_root):
         src = source_stl_path(visual_id, models_root)
         if not os.path.isfile(src):
             raise IOError("missing unit STL: %s" % src)
-        for tier, size, mass_kg, catalog_id in SIZE_TIERS:
+        for tier, size, mass_kg, catalog_id in SIZE_TIERS + HISTORICAL_SIZE_TIERS:
             name = sized_model_name(visual_id, tier)
             dest_stl = sized_stl_path(visual_id, tier, models_root)
             write_scaled_stl(src, dest_stl, size)
