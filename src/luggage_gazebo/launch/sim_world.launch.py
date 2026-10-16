@@ -886,18 +886,8 @@ def _launch_setup(context):
             "use_sim_time": True,
             "require_backend": require_backend,
             "model_name": semantic_model_path,
-            # Sim vocabulary for the textured suitcase mesh. The earlier
-            # "without texture" prompts described the untextured STL and
-            # are not the query for this asset. Thresholds stay at 0.2.
-            "prompts": [
-                "suitcase",
-                "luggage",
-                "box",
-                "container",
-                "floor",
-                "robot arm",
-            ],
-            "class_mapping_labels": [2, 2, 2, 1, 0, 3],
+            # Keep vocabulary and label mapping in semantic_config. Its
+            # top-down prompts also cover rotated pickup observations.
         }],
     )
     point_filter = Node(
