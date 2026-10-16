@@ -5,6 +5,19 @@ nominal orchestration cycle and operator/motion/vacuum authority are unchanged.
 The prior worker owns only private copies and bounded temporary computation.
 It must not call ApplyPlanningScene, modify OCC, commit cargo or issue motion.
 
+Hardware launch enables the complete placement provider graph with
+`start_placement:=true`; `start_placement_prior:=true` also enables it. This
+requires `frame_runtime`, `start_planning`, `start_scene` and `use_moveit`.
+The mapper, placement planner, selector and pick nodes share one identity and
+peer registry. The mapper owns measured occupancy with confirmation required;
+the sidecar only reads it. The native route validator uses the same model as
+MoveIt and starts with the planning chain, including pick-only operation.
+An explicit `deploy_asset_manifest` may select a frozen deployment profile,
+but all existing asset/hash checks still apply. A historical profile cannot
+certify the current physical cell. Offline hardware-interface rehearsals use
+`plan_only:=true start_d555:=false start_perception:=false` and supply recorded
+state/observations separately; launch does not fabricate a measured grasp.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication

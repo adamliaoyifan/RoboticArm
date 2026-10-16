@@ -89,6 +89,11 @@ def _preprocessor_node(context, *args, **kwargs):
     ]
 
 
+def _placement_enabled(context):
+    return any(_bool_text(LaunchConfiguration(name, default="false").perform(context))
+               for name in ("start_placement", "start_placement_prior"))
+
+
 def _frame_runtime_params(context):
     """ST09 F21 identity/peer parameters for the hardware-plan-only chain.
 
@@ -96,6 +101,10 @@ def _frame_runtime_params(context):
     URDF, final SRDF, resolved atlas files). Fails closed on a partial
     enablement; off (default) leaves the graph byte-identical.
     """
+    if _placement_enabled(context):
+        for name in ("frame_runtime", "start_planning", "start_scene", "use_moveit"):
+            if not _bool_text(LaunchConfiguration(name, default="false").perform(context)):
+                raise RuntimeError("placement planning requires " + name)
     if not _bool_text(LaunchConfiguration("frame_runtime").perform(context)):
         return {}
     off = [name for name in ("start_planning", "start_scene")
@@ -106,7 +115,7 @@ def _frame_runtime_params(context):
             "(no mixed-v2 enablement)" % ", ".join(off))
     import json
     from luggage_description.runtime_graph import (
-        HARDWARE_STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
+        HARDWARE_STACK_PEERS, STACK_PEERS, endpoint_registry, identity_endpoints, resolve_peers)
     from luggage_description.runtime_identity import build_identity
     from luggage_planning.atlas_runtime import (
         load_atlas_runtime_for_scene, resolve_atlas_files)
@@ -115,7 +124,8 @@ def _frame_runtime_params(context):
     driver = str(
         LaunchConfiguration("frame_driver_peer").perform(context)
         or "hardware_pick_driver")
-    peers = resolve_peers(driver, stack=HARDWARE_STACK_PEERS)
+    peers = resolve_peers(driver, stack=STACK_PEERS if _placement_enabled(context)
+                          else HARDWARE_STACK_PEERS)
     xacro_path = os.path.join(
         get_package_share_directory("luggage_description"),
         "urdf", "elfin_s20_with_camera.urdf.xacro")
@@ -233,6 +243,26 @@ def _placement_prior_nodes(context, *args, **kwargs):
         }.items())]
 
 
+def _placement_service_nodes(context, *args, **kwargs):
+    if not _placement_enabled(context):
+        return []
+    from luggage_planning.hardware_placement_launch import placement_nodes
+    return placement_nodes(
+        frame=_frame_runtime_params(context),
+        scene=LaunchConfiguration("scene_tf_config"),
+        atlas=LaunchConfiguration("atlas_runtime_config"),
+        poses=LaunchConfiguration("robot_poses_config"))
+
+
+def _certification_nodes(context, *args, **kwargs):
+    if not _bool_text(LaunchConfiguration("start_planning").perform(context)):
+        return []
+    return [Node(package="luggage_planning", executable="validate_route_node",
+                 name="validate_route_v2", output="screen", parameters=[
+                     _robot_description(LaunchConfiguration("scene_tf_config")),
+                     _semantic_srdf(), {"use_sim_time": False}])]
+
+
 def start_planning_of(context):
     from launch.conditions import IfCondition
     return IfCondition(LaunchConfiguration("start_planning"))
@@ -255,6 +285,8 @@ def _deploy_profile_gate(context, *args, **kwargs):
         LaunchConfiguration("atlas_runtime_config").perform(context) or "")
     record = resolve_deploy_profile(
         scene, atlas_cfg,
+        manifest_arg=LaunchConfiguration(
+            "deploy_asset_manifest", default="").perform(context),
         check_atlas=_bool_text(
             LaunchConfiguration("start_planning").perform(context)))
     if "atlas_npz" not in record:
@@ -474,9 +506,14 @@ def _launch_description():
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
             DeclareLaunchArgument(
+                "deploy_asset_manifest", default_value="",
+                description="Explicit frozen deployment manifest; all file hashes remain strictly checked."),
+            DeclareLaunchArgument(
                 "plan_only", default_value="false",
                 description="Disable CPS startup and MoveIt execution; use a vacuum stub for offline interface checks."),
             DeclareLaunchArgument("start_placement_prior", default_value="false"),
+            DeclareLaunchArgument("start_placement", default_value="false",
+                description="Start typed OCC, placement and Select providers; also enabled by start_placement_prior."),
             DeclareLaunchArgument(
                 "start_scene",
                 default_value="true",
@@ -694,6 +731,8 @@ def _launch_description():
                 description="Driver node name joining the v2 graph as client.",
             ),
             OpaqueFunction(function=_frame_nodes),
+            OpaqueFunction(function=_placement_service_nodes),
+            OpaqueFunction(function=_certification_nodes),
             OpaqueFunction(function=_placement_prior_nodes),
             OpaqueFunction(function=_move_group),
         ]
