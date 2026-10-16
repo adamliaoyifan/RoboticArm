@@ -1596,9 +1596,15 @@ class RouteProducer(object):
                             snapshot, attachment, candidate, targets,
                             budget_ns=int(remaining))
                     except (RoutePlanningError, ContractViolation) as exc:
-                        row["detail"] = {"rebuild_failure": getattr(exc, "code", str(exc)),
-                                         "candidate_failure": reason}
+                        retry["outcome"] = "failed"
+                        retry["failure_code"] = getattr(exc, "code", str(exc))
+                        retry["failure_detail"] = getattr(exc, "detail", None)
+                        retry["continuations"] = list(getattr(
+                            planner, "continuation_diagnostics", ()))
+                        self._log("route: certification rebuild failed %s" %
+                                  retry["failure_code"])
                     else:
+                        retry["outcome"] = "rebuilt"
                         row["route_build_count"] += 1
                         row["route_id"] = route.route_id
                         self.last_budget_snapshot = planner.last_budget_snapshot

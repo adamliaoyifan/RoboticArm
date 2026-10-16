@@ -2096,3 +2096,26 @@ def test_cert_collision_never_restarts_expired_select_budget():
     assert not result['success']
     assert len(calls) == 1
     assert failed_ids[0] not in producer.graph.edges
+
+
+def test_cert_rebuild_failure_retains_secondary_cause():
+    from st09_contracts.reasons import Reason
+    producer, _clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        edge = next(e for e in edges if e.attributes.get('edge_class') == 'RETURN')
+        producer._builder.fail_all = True
+        return dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+            failed_edge_id=edge.edge_id, failed_sample_index=1,
+            failed_sample_is_knot=False), failure
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert not result['success']
+    retry = result['rows'][0]['certification_rebuilds'][0]
+    assert retry['outcome'] == 'failed'
+    assert retry['failure_code']
+    assert retry['failure_detail'] is not None
