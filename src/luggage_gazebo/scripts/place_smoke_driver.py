@@ -2545,6 +2545,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     return self._abort(trial, code, False, extra=extras)
 
         pose_release, pose_drift, settle = self._poses_after_settle()
+        # Preserve the raw comparison inputs before commit or verification can
+        # abort. The success-only summary below cannot diagnose a failed gate.
+        trial.extras["verify_inputs"] = {
+            "box_pose_after_release": pose_release,
+            "box_pose_after_drift_wait": pose_drift,
+            "box_pose_at_release": trial.extras.get("box_pose_at_release"),
+            "expected_box_position_world": list(slot_meta["pose_world"]["position"]),
+        }
         trial.extras["settle"] = {
             "settled": bool(settle.get("settled")),
             "window_move_m": settle.get("window_move_m"),
