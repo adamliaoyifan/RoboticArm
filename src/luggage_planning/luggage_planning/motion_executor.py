@@ -693,6 +693,8 @@ class MotionExecutor:
         hook = getattr(self, "_timed_submit", None)
         if hook is not None:
             return hook(trajectory)
+        from luggage_planning.timed_execution_budget import timed_execution_wait
+        response_wait = timed_execution_wait(points, execute_timeout)
         self._notify(feedback_cb, "executing", admitted.name, 1.0)
         goal = ExecuteTrajectory.Goal()
         goal.trajectory = trajectory
@@ -702,7 +704,7 @@ class MotionExecutor:
         handle = self._wait_future(future, 10.0)
         if handle is None or not handle.accepted:
             return self._result(False, "ExecuteTrajectory goal rejected", 1.0)
-        wrapped = self._wait_goal(handle, execute_timeout)
+        wrapped = self._wait_goal(handle, response_wait)
         if wrapped is None:
             handle.cancel_goal()
             return self._result(False, "ExecuteTrajectory timeout", 1.0)

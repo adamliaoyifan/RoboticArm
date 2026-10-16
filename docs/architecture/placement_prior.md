@@ -328,3 +328,10 @@ Keep target, measured attachment and snapshot unchanged. Certify the complete
 replacement route before admission. Endpoint/unknown-location collisions and
 Cartesian failures do not receive this redraw. Discard a known colliding graph
 edge even when the retry budget is exhausted; no rejected edge is reusable.
+
+Certified timed joint execution uses the transmitted trajectory duration plus
+the configured result-response overhead when waiting for the controller action.
+The caller and executor share duration validation; neither retimes the certified
+trajectory to fit a fixed RPC wait. Planning/certification budgets and trajectory
+limits are unchanged. Preserve the controller result and distinguish an
+execution timeout from a planning failure in run evidence.
