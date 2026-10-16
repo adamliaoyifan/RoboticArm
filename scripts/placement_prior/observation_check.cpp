@@ -13,8 +13,8 @@ std::string readFile(const std::string& path) {
 }
 
 int main(int argc, char** argv) {
-  if (argc != 5) {
-    std::cerr << "usage: prior_observation_check URDF SRDF SCENE_CDR JOINT_ROWS\n";
+  if (argc != 5 && argc != 6) {
+    std::cerr << "usage: prior_observation_check URDF SRDF SCENE_CDR JOINT_ROWS [expected-payload-id]\n";
     return 2;
   }
   auto urdf = std::make_shared<urdf::Model>();
@@ -41,8 +41,10 @@ int main(int argc, char** argv) {
   }
   std::vector<const moveit::core::AttachedBody*> attached;
   scene.getCurrentState().getAttachedBodies(attached);
-  if (!attached.empty())
+  if (argc == 5 && !attached.empty())
     throw std::runtime_error("Observation expects no attached payload");
+  if (argc == 6 && (attached.size() != 1 || attached[0]->getName() != argv[5]))
+    throw std::runtime_error("Carrying probe requires exactly the named payload");
   std::ifstream rows(argv[4]);
   if (!rows) return 4;
   int index;
