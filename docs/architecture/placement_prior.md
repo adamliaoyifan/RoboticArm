@@ -74,3 +74,23 @@ that picked B. After attach, measured attachment and actual joints remain
 canonical. Reconnect/replan as required and pass the existing complete route
 certifier. On prior miss, mismatch or failure use ordinary planning; do not
 relax limits or replay a cached trajectory blindly.
+
+## Hardware place planning boundary
+
+Successful VacuumCommandV2 enable returns `has_measured_attachment`, the
+controller-admitted `measured_grasp`, and `attached_box_wdh`. Encode the reply
+before the attach effect and expose it only after backend success. Disable and
+failure never claim an attachment. The reply retains the actual attach TCP
+stamp and scene/request identity; do not replace it with the requested prior.
+
+`hardware_pick_driver --frame-runtime --placement-prior
+--plan-place-after-pick` binds that measured reply, reads six current joints and
+TCP/container TF at the joint stamp, and calls complete SelectPlacePathV2 after
+pickup. A matching selected prior fixes the box target; the measured attachment
+determines its TCP target. Stale maps, changed pickup candidate, missing attach
+proof or changed box identity refuse this binding. Without a prior, the ordinary
+ComputePlacementV2 then Select chain remains available. This option plans only;
+it does not execute the place route. It requires retained vacuum and rejects
+`--release`. Planning failure reports carry fault and does not release payload.
+Actual selector/OCC services and a healthy typed runtime must be running; the
+pick-only launch does not imply that a complete place graph exists.

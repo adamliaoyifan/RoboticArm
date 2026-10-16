@@ -148,6 +148,7 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
                              resolve_tool, backend, physical_relation=None):
     """Admit a measured snapshot, then attach or detach. GT is not read here."""
     require_message(request, VacuumCommandV2.Request)
+    response.has_measured_attachment = False
     try:
         context = _context(request, scene_revision)
     except ContractError as error:
@@ -212,6 +213,20 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
         attachment = admit_attachment(
             tool, box_pose, measured, grasp, int(request.generation),
             int(generation), str(request.box_id), context)
+        # Encode before the effect, so a conversion error cannot hide an
+        # already-successful physical attach. This is the controller's admitted
+        # relation, never the request's speculative/desired grasp.
+        from luggage_planning.place_service import pose_message
+        actual = attachment['t_box_tool']
+        measured_grasp = pose_message({
+            'contract_version': 2, 'frame_id': 'suction_contact_frame',
+            'length_unit': 'm', 'time_basis': 'scene',
+            'scene_revision': scene_revision, 'request_id': str(request.request_id),
+            'stamp_ns': attachment['tool_stamp_ns'],
+            'reference': 'suction_contact_frame', 'orientation_semantics': 'box',
+            'position': actual['translation'],
+            'quaternion_xyzw': actual['quaternion_xyzw'],
+        })
         ok, message = backend.attach({
             "attach_record": attachment,
             "physical_relation": physical_relation,
@@ -220,6 +235,10 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
         })
         response.success = bool(ok)
         response.message = message
+        if ok:
+            response.measured_grasp = measured_grasp
+            response.attached_box_wdh = list(attachment['size_wdh'])
+            response.has_measured_attachment = True
         response.diagnostic = diagnostic_to_message(box_pose, context, None if ok else None)
         return response
     except BoundaryContractError as exc:

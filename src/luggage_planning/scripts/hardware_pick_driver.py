@@ -264,6 +264,8 @@ class HardwarePickDriver(Node):
         self._placement_prior_client = None
         self._placement_prior_result = None
         self._placement_prior_choice = None
+        self._measured_attachment = None
+        self._place_planner = None
         if bool(getattr(args, 'placement_prior', False)):
             from luggage_planning.placement_prior_client import PlacementPriorClient
             self._placement_prior_client = PlacementPriorClient(self, group=self._group)
@@ -317,6 +319,11 @@ class HardwarePickDriver(Node):
             self.get_logger().info(
                 "frame runtime adopted (peer=%s, scene=%s)"
                 % (peer, self._frame_scene_revision[:10]))
+        if bool(getattr(args, 'plan_place_after_pick', False)):
+            if self._typed is None or not args.use_vacuum or args.release:
+                raise ValueError('place planning requires frame-runtime, vacuum, and retained payload')
+            from luggage_planning.hardware_place_planning import HardwarePlacePlanner
+            self._place_planner = HardwarePlacePlanner(self, self._typed, group=self._group)
 
     def _on_current_box(self, msg):
         try:
@@ -378,6 +385,8 @@ class HardwarePickDriver(Node):
         return ok, str(result.message), result
 
     def vacuum(self, enable, timeout=20.0):
+        if enable:
+            self._measured_attachment = None
         if not enable and getattr(self, "_typed", None) is not None:
             self._typed.set_placement_prior(None)
         pick_msg = getattr(self, "_frame_pick_msg", None)
@@ -399,6 +408,19 @@ class HardwarePickDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum timeout"
+            if response.success:
+                if enable:
+                    from luggage_planning.hardware_place_planning import attachment_from_response
+                    try:
+                        self._measured_attachment = attachment_from_response(response,
+                            request_id=request_id, box_id=box_id, generation=generation,
+                            scene_revision=self._frame_scene_revision)
+                    except ValueError as exc:
+                        # Physical attach already succeeded. Keep that fact;
+                        # subsequent place planning will refuse missing proof.
+                        self.get_logger().error('place attachment unavailable: %s' % exc)
+                else:
+                    self._measured_attachment = None
             return bool(response.success), str(response.message)
         req = VacuumCommand.Request()
         req.enable = bool(enable)
@@ -755,6 +777,26 @@ class HardwarePickDriver(Node):
                 "pick session: exit=%d reason=%s detail=%s candidate=%s"
                 % (result.exit_code, result.reason_code, result.detail,
                    result.selected_candidate_id))
+            if result.completed and self._place_planner is not None:
+                try:
+                    if self._measured_attachment is None:
+                        raise ValueError('controller-confirmed attachment missing')
+                    if self._frame_box_identity() != (self._measured_attachment.box_id,
+                                                      self._measured_attachment.generation):
+                        raise ValueError('attached box identity changed')
+                    selected = self._placement_prior_choice
+                    if selected is not None and selected.candidate_id != result.selected_candidate_id:
+                        raise ValueError('pickup retry changed the prior binding')
+                    selection = self._place_planner.plan(self._measured_attachment,
+                        request_id=self._frame_request_id('place'),
+                        prior=self._placement_prior_result, selected_choice=selected)
+                    if selection is None or not selection.success:
+                        raise ValueError(getattr(selection, 'reason_code', 'place planning timeout'))
+                    self.get_logger().info('place route planned: %s; execution remains separate' %
+                                           selection.selection_id)
+                except Exception as exc:
+                    self.get_logger().error('CARRY FAULT: place planning failed; vacuum retained: %s' % exc)
+                    return 10
             if result.completed and self._args.use_vacuum and self._args.release:
                 vac_ok, vac_msg = self.vacuum(False)
                 self.get_logger().info(
@@ -820,6 +862,8 @@ def main(argv=None):
     parser.add_argument("--ready-timeout", type=float, default=90.0)
     parser.add_argument("--placement-prior", action="store_true",
                         help="Use read-only placement prior to choose the measured pickup candidate.")
+    parser.add_argument("--plan-place-after-pick", action="store_true",
+                        help="After successful pickup, plan a complete place route from measured attachment; do not execute it.")
     parser.add_argument("--max-candidates", type=int, default=3)
     parser.add_argument("--release-low-hold-sec", type=float, default=0.5)
     parser.add_argument("--release-deadline-sec", type=float, default=2.0)
