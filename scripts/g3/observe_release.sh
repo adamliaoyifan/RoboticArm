@@ -91,17 +91,23 @@ export MOTION_BOUNDARY_DUMP="$OUT/dumps/boundaries"
 mkdir -p "$OUT/sdf" "$ST09_SELECT_REQUEST_CAPTURE_DIR" "$OUT/dumps/boundaries"
 
 # Wait for the sim to be publishing, then start the synchronized captures.
-for _ in $(seq 1 60); do
-  "$IGN_BIN" topic -l 2>/dev/null | grep -q "pose/info" && break
+# OBS_NO_CAPTURE=1 skips them (bisect control: capture load vs code path).
+if [[ -z "${OBS_NO_CAPTURE:-}" ]]; then
+  for _ in $(seq 1 60); do
+    "$IGN_BIN" topic -l 2>/dev/null | grep -q "pose/info" && break
+    sleep 2
+  done
+  CAPTURE_PIDS=()
+  capture "/world/$WORLD/pose/info" "$OUT/pose_stream.txt"
+  capture "/world/$WORLD/dynamic_pose/info" "$OUT/dyn_pose_stream.txt"
+  capture "/obs/box_contact" "$OUT/contact_stream.txt"
   sleep 2
-done
-CAPTURE_PIDS=()
-capture "/world/$WORLD/pose/info" "$OUT/pose_stream.txt"
-capture "/world/$WORLD/dynamic_pose/info" "$OUT/dyn_pose_stream.txt"
-capture "/obs/box_contact" "$OUT/contact_stream.txt"
-sleep 2
-python3 "$WS/scripts/g3/record_tool_stream.py" "$OUT/tool_stream.jsonl" &
-CAPTURE_PIDS+=("$!")
+  python3 "$WS/scripts/g3/record_tool_stream.py" "$OUT/tool_stream.jsonl" &
+  CAPTURE_PIDS+=("$!")
+else
+  CAPTURE_PIDS=()
+  echo "captures disabled (OBS_NO_CAPTURE)"
+fi
 
 # Readiness: the stack must hold the observe pose first (the proven
 # gate; cold-boot controller races retry by rerunning this script).
