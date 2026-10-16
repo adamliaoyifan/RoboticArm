@@ -18,3 +18,12 @@
   5. v2 commit 带 verify 锚（ledger verify_anchor 有 request_id/delta），
      admission 生效（validate_selected_route 调用记录）。
 - **见证额度**: 1 次。失败保留完整证据束离线归因，不重跑、不临时改规则。
+
+## 执行记录
+
+- **尝试 0（中止，不计额度）**: 2026-10-16T14:00 启动即在 launch 段失败——
+  `SEMANTIC_VENDOR_MISSING`（worktree install 的 CLIP vendor 为空，冻结内容
+  不入 git）。驱动未启动、无运动、无箱生成：见证未发生。
+  修复为环境层：`LUGGAGE_CLIP_VENDOR_DIR` 指向主工作区 src vendor
+  （semantic_segmenter._setup_clip_vendor 的正统覆盖，代码零改动）。
+- **尝试 1（正式见证）**: 同一冻结 HEAD `4bee0022`，附加上述 env，执行同一命令。
