@@ -99,6 +99,11 @@ SURFACE_V2_REQUEST_TEMPLATE = "map-rev-%d"
 #: A ComputePlacementV2 request whose declared map revision does not match
 #: the admitted surface is stale: it was planned against a different map.
 CODE_STALE_MAP_REVISION = "STALE_MAP_REVISION"
+#: [B2] The request-carried placed ledger disagrees with the mapper's
+#: committed ledger (count or geometry). The driver's local copy diverged
+#: from the single source — the witness_02 divergence class, now caught
+#: at the planner boundary instead of planning against a phantom.
+CODE_PLACED_LEDGER_MISMATCH = "PLACED_LEDGER_MISMATCH"
 
 
 def yaw_from_quaternion(q):
@@ -269,6 +274,13 @@ class PlacementPlannerNode(Node):
             self.create_subscription(
                 SurfaceContractV2, "/luggage/cargo_map/surface_v2",
                 self._on_surface_v2, map_qos, callback_group=group)
+            # [B2] The mapper's committed ledger is the single placed
+            # source: the request-carried copy is validated against it,
+            # and the solver input is derived from it, never from the
+            # driver's local bookkeeping.
+            self.create_subscription(
+                String, "/luggage/cargo_map/committed",
+                self._on_committed, map_qos, callback_group=group)
             self.create_service(
                 ComputePlacementV2, "/placement_planner/compute_placement_v2",
                 self._handle_v2, callback_group=group)
@@ -611,6 +623,81 @@ class PlacementPlannerNode(Node):
             ))
         return aabbs
 
+    def _on_committed(self, message):
+        """Latch the mapper's committed placed ledger (single source)."""
+        try:
+            payload = json.loads(message.data)
+            boxes = list(payload.get("boxes") or [])
+            self._committed = {
+                "boxes": boxes,
+                "map_revision": int(payload.get("map_revision") or 0),
+                "geometry_hash": str(payload.get("geometry_hash") or ""),
+                "epoch": str(payload.get("epoch") or ""),
+                "content_digest": str(payload.get("content_digest") or ""),
+            }
+        except (ValueError, TypeError):  # malformed publication: keep last
+            self.get_logger().warning(
+                "committed ledger publication unparsable; keeping previous")
+
+    def _ledger_aabbs(self, committed):
+        """Floor-relative AABBs from the mapper's committed boxes."""
+        aabbs = []
+        inner_h = self._inner_size[2]
+        for box in committed["boxes"]:
+            center = [float(v) for v in box["center"]]
+            w, d, h = (float(v) for v in box["size"])
+            yaw = float(box.get("yaw") or 0.0)
+            rotated = abs(abs(yaw) - math.pi / 2.0) < math.radians(10.0)
+            footprint_l = d if rotated else w
+            footprint_w = w if rotated else d
+            z_rel = center[2] - self._floor_z
+            aabbs.append((
+                center[0] - footprint_l * 0.5, center[1] - footprint_w * 0.5,
+                max(0.0, z_rel - h * 0.5),
+                center[0] + footprint_l * 0.5, center[1] + footprint_w * 0.5,
+                min(inner_h, z_rel + h * 0.5),
+            ))
+        return aabbs
+
+    def _placed_matches_ledger(self, placed_messages, sizes_flat, committed,
+                                tolerance_m=0.10):
+        """True when the request-carried placed copy agrees with the
+        mapper's committed ledger (count + per-box nearest match)."""
+        sizes = [sizes_flat[i:i + 3] for i in range(0, len(sizes_flat), 3)]
+        if len(placed_messages or ()) != len(committed["boxes"]):
+            return False, "count %d != ledger %d" % (
+                len(placed_messages or ()), len(committed["boxes"]))
+        ledger = [([float(v) for v in box["center"]],
+                   [float(v) for v in box["size"]])
+                  for box in committed["boxes"]]
+        for index, message in enumerate(placed_messages):
+            context = BoundaryContext(
+                "F07", "v2_client", "placement_planner",
+                str(getattr(message.identity, "request_id", "")
+                    or "placed-%d" % index),
+                self._frame_scene_revision, "container_link", "box_center",
+                "scene", geometry_hash=self._geometry_hash,
+                map_revision=None)
+            try:
+                record = pose_from_message(message, "slot", context)
+            except ContractError:
+                return False, "placed[%d] undecodable" % index
+            position = [float(v) for v in record["position"]]
+            size = ([float(v) for v in sizes[index]]
+                    if index < len(sizes) else [0.0, 0.0, 0.0])
+            best = None
+            for center, box_size in ledger:
+                if any(abs(a - b) > 0.05 for a, b in zip(size, box_size)):
+                    continue
+                delta = math.sqrt(sum(
+                    (a - b) ** 2 for a, b in zip(position, center)))
+                if best is None or delta < best:
+                    best = delta
+            if best is None or best > tolerance_m:
+                return False, "placed[%d] %.3f m from any ledger box" % (
+                    index, best if best is not None else -1.0)
+        return True, ""
+
     def _handle_v2(self, request, response):
         """ComputePlacementV2: container box-center slot semantics."""
         response.geometry_hash = self._geometry_hash
@@ -663,8 +750,28 @@ class PlacementPlannerNode(Node):
             response.message = "box_wdh must be positive"
             return response
         try:
-            placed_aabbs = self._placed_aabbs_v2(
-                list(request.placed), list(request.placed_wdh_flat))
+            # [B2 single-source] Once the mapper's committed ledger is
+            # latched, the request-carried placed copy is VALIDATED against
+            # it and the solver input comes from the ledger — never from
+            # the driver's local bookkeeping. Before the first committed
+            # publication arrives, the request copy is the only source
+            # (startup fail-open, unchanged legacy behavior).
+            committed = getattr(self, "_committed", None)
+            if committed is not None:
+                ok, detail = self._placed_matches_ledger(
+                    list(request.placed), list(request.placed_wdh_flat),
+                    committed)
+                if not ok:
+                    response.success = False
+                    response.reason_code = CODE_PLACED_LEDGER_MISMATCH
+                    response.message = (
+                        "PLACED_LEDGER_MISMATCH: %s (mapper rev %d)"
+                        % (detail, committed["map_revision"]))
+                    return response
+                placed_aabbs = self._ledger_aabbs(committed)
+            else:
+                placed_aabbs = self._placed_aabbs_v2(
+                    list(request.placed), list(request.placed_wdh_flat))
         except ValueError as error:
             response.success = False
             response.reason_code = "PLACED_SLOT_REJECTED"

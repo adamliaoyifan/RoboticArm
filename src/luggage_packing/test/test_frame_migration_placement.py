@@ -824,3 +824,107 @@ class FrameMigrationPlacement(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PlacedLedgerSingleSource(unittest.TestCase):
+    """[B2] 规划输入必须来自 mapper：request-carried placed is validated
+    against the committed ledger; the solver input is ledger-derived."""
+
+    def test_phantom_placed_copy_rejected_ledger_source_used(self):
+        import json as json_module
+        import runpy
+        import types as types_module
+        from std_msgs.msg import String
+        from luggage_msgs.srv import ComputePlacementV2
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+        from luggage_planning.place_service import pose_message
+
+        module = runpy.run_path(os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            'scripts', 'placement_planner_node.py'))
+        planner = module['PlacementPlannerNode']
+        mapper = CargoVolumeMapper(
+            (1.0, 0.6, 0.8), (0.0, 0.0, .53 + 0.4), 0.0, resolution=0.05)
+        mapper.mark_placed_box([0.1, 0.05, .53 + 0.16], [0.2, 0.2, 0.2],
+                               measured_source='verify_placed_box')
+        stub = types_module.SimpleNamespace(
+            _frame_scene_revision=SCENE, _v2_surface_mode=True,
+            _geometry_hash=mapper.geometry_hash, _rejected_maps=0,
+            _surface=None, _admitted_map_revision=None,
+            _inner_size=(float(mapper.inner_l), float(mapper.inner_w),
+                         float(mapper.inner_h)), _floor_z=0.0,
+            _hull=types_module.SimpleNamespace(descriptor=lambda: {}),
+            _runtime=None, _allowed_yaws=[0.0], _params={},
+            _atlas_hook=lambda size: None,
+            get_logger=lambda: types_module.SimpleNamespace(
+                error=lambda *_: None))
+        for name in ('_surface_context', '_surface_view_from_record',
+                     '_on_surface_v2', '_on_committed', '_active_surface',
+                     '_placed_matches_ledger', '_ledger_aabbs'):
+            setattr(stub, name,
+                    types_module.MethodType(getattr(planner, name), stub))
+        # If the request copy were used as the solver source, this blows up.
+        def _no_request_copy(*_a, **_k):
+            raise AssertionError('request placed copy must not be the source')
+        stub._placed_aabbs_v2 = _no_request_copy
+
+        revision = mapper._revision
+        planner._on_surface_v2(stub, FrameMigrationPlacement._wire_surface(
+            mapper, revision, 'map-rev-%d' % revision))
+        planner._on_committed(stub, String(data=json_module.dumps({
+            'boxes': mapper.commit_ledger(), 'map_revision': revision,
+            'geometry_hash': mapper.geometry_hash, 'epoch': 'e1',
+            'content_digest': 'd1'})))
+        self.assertEqual(len(stub._committed['boxes']), 1)
+
+        def placed_message(position):
+            record = dict(
+                contract_version=2, frame_id='container_link',
+                length_unit='m', stamp_ns=1, time_basis='scene',
+                scene_revision=SCENE, request_id='placed-0',
+                reference='box_center', orientation_semantics='box_axis_pi',
+                position=list(position),
+                quaternion_xyzw=[0., 0., 0., 1.])
+            return pose_message(record)
+
+        def request(positions):
+            req = ComputePlacementV2.Request()
+            req.height_measured = True
+            req.box_wdh = [.35, .25, .22]
+            req.geometry_hash = mapper.geometry_hash
+            req.expected_map_revision = revision
+            for position in positions:
+                req.placed.append(placed_message(position))
+                req.placed_wdh_flat.extend([0.2, 0.2, 0.2])
+            return req
+
+        handle = planner._handle_v2
+        original_solver = handle.__globals__['solve_placement']
+        calls = []
+
+        def spy(*_args, **_kwargs):
+            calls.append(True)
+            return {'success': False, 'reason_code': 'SPY',
+                    'message': 'spy'}
+
+        try:
+            handle.__globals__['solve_placement'] = spy
+            # witness-scale phantom copy: rejected at the gate.
+            response = handle(stub, request([[0.75, 0.7, .53 + 0.16]]),
+                              ComputePlacementV2.Response())
+            self.assertFalse(response.success)
+            self.assertEqual(response.reason_code, 'PLACED_LEDGER_MISMATCH')
+            self.assertEqual(len(calls), 0)
+            # matching copy: solver entered, ledger the placed source.
+            response = handle(stub, request([[0.1, 0.05, .53 + 0.16]]),
+                              ComputePlacementV2.Response())
+            self.assertEqual(len(calls), 1)
+        finally:
+            handle.__globals__['solve_placement'] = original_solver
+
+        # Ledger-derived AABBs are floor-relative and sane.
+        aabbs = stub._ledger_aabbs(stub._committed)
+        self.assertEqual(len(aabbs), 1)
+        (x0, y0, z0, x1, y1, z1) = aabbs[0]
+        self.assertAlmostEqual(x1 - x0, 0.2, places=6)
+        self.assertAlmostEqual(z1 - z0, 0.2, places=6)
