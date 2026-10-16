@@ -49,6 +49,17 @@ targets and record each missing region. Do not assume that solving the final
 slot pose proves its higher approach pose reachable. This preparation changes
 neither the requested box geometry nor collision/trajectory certification gates.
 
+For diagnosis independent of perception, `scripts/placement_prior/exact_route_replay.py`
+loads the exact Select CDR, preceding map stats, unchanged surface metadata and
+captured carrying PlanningScene into an owned domain-8 MoveIt process. It checks
+scene/model hashes against the captured runtime identity and disables execution.
+The fixture clock advances with elapsed wall time from recorded attachment time;
+route/certification budgets remain active. Vacuum retention is a pinned replay
+assumption, not a live physical observation. This tool currently supports only
+captures whose atlas was unavailable and does not stand in for hardware F2 or
+the F3 motion/OCC campaign. It preserves response, native boundary captures,
+input hashes, model bytes, script revision and teardown evidence.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
