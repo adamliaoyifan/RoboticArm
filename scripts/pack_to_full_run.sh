@@ -94,6 +94,7 @@ launch_stack() {
       observe_pose_name:=pickup_observe \
       semantic_require_backend:=bbox_fill \
       frame_runtime:=true \
+      frame_driver_peer:=pack_eval_driver \
       > "$OUT/launch.log" 2>&1 &)
   sleep 3
   local pid
