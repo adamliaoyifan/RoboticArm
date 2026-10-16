@@ -918,9 +918,19 @@ class MoveItEdgeAdapter(object):
                 x=float(quaternion[0]), y=float(quaternion[1]),
                 z=float(quaternion[2]), w=float(quaternion[3]))
             request.waypoints.append(pose)
+        insert_capture_index = getattr(self, "_insert_capture_index", 0)
+        capture_insert = (klass == EdgeClass.INSERT and insert_capture_index < 4
+                          and os.environ.get("ST09_PORTAL_CAPTURE_DIR"))
+        submission_scene = self._portal_submission_scene() if capture_insert else None
         self._call_counts["cartesian"] += 1
         began = time.monotonic()
         response = self._send_cartesian_request(request)
+        if capture_insert:
+            from luggage_planning.joint_boundary_capture import capture_insert_boundary
+            if capture_insert_boundary(
+                    os.environ.get("ST09_PORTAL_CAPTURE_DIR"), insert_capture_index,
+                    submission_scene, request, response):
+                self._insert_capture_index = insert_capture_index + 1
         self._call_durations["cartesian"].append(
             round(time.monotonic() - began, 6))
         self._request_dumps.append({
