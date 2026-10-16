@@ -178,6 +178,12 @@ uses the actual current scene and authoritative attachment.
 
 ## Grasp and tool boundary
 
+Edge scene mutations use the PlanningSceneClient `(ok, reason)` contract.
+Every add/remove/attach/detach must inspect `ok` before the next mutation or
+motion search; tuple truthiness does not establish acceptance. A rejection
+retains its reason as a scene-apply failure and must not cache the scene as
+applied. Full route certification remains required after successful updates.
+
 Budget-exhausted Select responses retain stage timing attribution and the
 attempt summary, including untried candidates. A missing terminal response or
 untried candidate must not be reported as a proven infeasible placement.

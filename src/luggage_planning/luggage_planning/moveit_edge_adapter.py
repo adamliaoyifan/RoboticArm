@@ -510,15 +510,17 @@ class MoveItEdgeAdapter(object):
         desired_ids = {str(box.object_id) for box in world_boxes}
         for object_id in tuple(self._scene_world_ids_added):
             if object_id not in desired_ids:
-                if not self._scene.remove_object(object_id):
-                    raise RuntimeError("scene remove failed for %s" % object_id)
+                ok, reason = self._scene.remove_object(object_id)
+                if not ok:
+                    raise RuntimeError("scene remove failed for %s: %s" % (object_id, reason))
                 self._scene_world_ids_added.remove(object_id)
                 self._call_counts["scene_apply"] += 1
         for box in world_boxes:
-            if not self._scene.add_collision_box(
+            ok, reason = self._scene.add_collision_box(
                     box.object_id, list(box.center), list(box.quaternion_xyzw),
-                    list(box.size_whd), frame_id="world"):
-                raise RuntimeError("scene add failed for %s" % box.object_id)
+                    list(box.size_whd), frame_id="world")
+            if not ok:
+                raise RuntimeError("scene add failed for %s: %s" % (box.object_id, reason))
             if str(box.object_id) not in self._scene_world_ids_added:
                 self._scene_world_ids_added.append(str(box.object_id))
             self._call_counts["scene_apply"] += 1
@@ -537,20 +539,23 @@ class MoveItEdgeAdapter(object):
             # carrying edge refused on phantom collisions (live:
             # pedestal x pickup_box contacts at the world origin while
             # the arm stood over the platform).
-            if not self._scene.detach_and_remove(box_id=BOX_OBJECT_ID):
-                raise RuntimeError("live payload detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=BOX_OBJECT_ID)
+            if not ok:
+                raise RuntimeError("live payload detach failed: %s" % reason)
             attach_diff = build_attach_scene(
                 payload_id,
                 list(scene.payload.t_tcp_box_translation),
                 list(scene.payload.t_tcp_box_quaternion_xyzw),
                 list(scene.payload.dimensions_wdh),
                 self._link)
-            if not self._scene.apply_diff(attach_diff, timeout=5.0):
-                raise RuntimeError("scene attach failed")
+            ok, reason = self._scene.apply_diff(attach_diff, timeout=5.0)
+            if not ok:
+                raise RuntimeError("scene attach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         elif self._scene_state_applied is not None:
-            if not self._scene.detach_and_remove(box_id=payload_id):
-                raise RuntimeError("scene detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=payload_id)
+            if not ok:
+                raise RuntimeError("scene detach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         self._verify_scene(scene.load_state, payload_id)
         self._scene_state_applied = marker
@@ -614,9 +619,9 @@ class MoveItEdgeAdapter(object):
             waypoints_hint = [
                 (tuple(row["position"]), tuple(row["quaternion_xyzw"]))
                 for row in candidate.attributes["waypoints"]]
-        if scene is not None:
-            self._ensure_scene(scene)
         try:
+            if scene is not None:
+                self._ensure_scene(scene)
             if klass.planner == "joint":
                 trajectory, outcome = self._plan_joint(from_node, to_node,
                                                        klass)
