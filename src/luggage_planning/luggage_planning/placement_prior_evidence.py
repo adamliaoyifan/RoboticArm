@@ -2,6 +2,7 @@
 import json
 from pathlib import Path
 import threading
+import time
 
 
 class PriorEvidenceRecorder:
@@ -17,6 +18,8 @@ class PriorEvidenceRecorder:
         from rclpy.serialization import serialize_message
         data = serialize_message(message)
         with self._lock:
+            monotonic_ns = time.monotonic_ns()
+            wall_time_ns = time.time_ns()
             if self._written + len(data) > self._limit:
                 raise RuntimeError('PRIOR_EVIDENCE_BUDGET_EXHAUSTED')
             self._sequence += 1
@@ -26,5 +29,6 @@ class PriorEvidenceRecorder:
             with (self._root / 'boundaries.jsonl').open('a') as stream:
                 stream.write(json.dumps(dict(file=name, boundary=boundary,
                     request_id=getattr(message, 'request_id', ''),
+                    monotonic_ns=monotonic_ns, wall_time_ns=wall_time_ns,
                     type=type(message).__module__+'.'+type(message).__name__,
                     bytes=len(data)))+'\n')

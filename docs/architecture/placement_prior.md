@@ -12,6 +12,15 @@ every cycle's typed route verification, successful submitted legs, authorized
 pick, retained payload, settled placement and confirmed measured occupancy.
 Missing cycles or any failed cycle reject the rehearsal. This report never
 passes the frozen F3 campaign or performance gates.
+The isolated `rehearse_scene.py --prefetch-template <json>` option supplies
+explicit hypothetical `box_wdh` and `grasps_flat` to the background sidecar.
+The input is validated before launching and preserved with its hash. It does
+not wait for prefetch or delay pickup to manufacture overlap. Measured detection,
+grasp checks and foreground planning proceed normally. Opt-in prior/typed-service
+boundary journals include host monotonic and wall timestamps taken after
+serialization, before artifact writes, so preparation and foreground intervals
+can be joined on the same host. These are capture boundaries, not controller
+execution timestamps or clean performance measurements.
 The prior worker owns only private copies and bounded temporary computation.
 It must not call ApplyPlanningScene, modify OCC, commit cargo or issue motion.
 

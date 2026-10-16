@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exclusive unscored rehearsal; optional measured one/two-box cycles."""
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -23,8 +24,22 @@ def main():
     parser.add_argument('--bootstrap-depth-targets', default='')
     parser.add_argument('--bootstrap-depth-samples', type=int, choices=range(3,9), default=3)
     parser.add_argument('--acquire-inputs', action='store_true')
+    parser.add_argument('--prefetch-template', type=Path,
+                        help='Explicit hypothetical box_wdh and grasps_flat JSON for automatic background preparation')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
+    prefetch_parameters = []
+    template_bytes = None
+    if args.prefetch_template:
+        if not args.simulate_cycle:
+            parser.error('--prefetch-template requires --simulate-cycle')
+        from luggage_planning.placement_prior_prefetch import PrefetchTemplate
+        template_bytes = args.prefetch_template.read_bytes()
+        template = json.loads(template_bytes)
+        validated = PrefetchTemplate(template['box_wdh'], template['grasps_flat'])
+        prefetch_parameters = ['prefetch_enabled:=true',
+            'prefetch_box_wdh:=' + json.dumps(list(validated.box_wdh)),
+            'prefetch_grasps_flat:=' + json.dumps(template['grasps_flat'])]
     repo = Path(__file__).resolve().parents[2]
     out = Path(args.output).resolve()
     out.mkdir(parents=True, exist_ok=False)
@@ -40,6 +55,13 @@ def main():
         raise RuntimeError('dedicated ROS domain is occupied: '+str([row['pid'] for row in domain_residuals]))
     params = shlex.split(Path(args.launch_params_file).read_text())
     result = {'scored': False, 'ok': False, 'revision': subprocess.check_output(['git','rev-parse','HEAD'], cwd=repo, text=True).strip(), 'parameters': params}
+    if template_bytes is not None:
+        (out/'prefetch_template.json').write_bytes(template_bytes)
+        result['prefetch_template'] = {
+            'source': str(args.prefetch_template.resolve()),
+            'sha256': hashlib.sha256(template_bytes).hexdigest(),
+            'measured': False,
+        }
     (out/'source.diff').write_bytes(subprocess.check_output(['git','diff'], cwd=repo))
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(out/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
@@ -108,7 +130,7 @@ def main():
             sidecar_log=(out/'prior.log').open('w')
             sidecar=subprocess.Popen(['ros2','launch','luggage_planning','placement_prior.launch.py',
                 'scene_tf_config:='+scene,'frame_scene_revision:='+scene_revision_from_path(scene),
-                'evidence_dir:='+str(out/'prior_boundaries')],stdout=sidecar_log,stderr=subprocess.STDOUT,
+                'evidence_dir:='+str(out/'prior_boundaries'),*prefetch_parameters],stdout=sidecar_log,stderr=subprocess.STDOUT,
                 start_new_session=True)
             until=time.monotonic()+20.
             while time.monotonic()<until:
