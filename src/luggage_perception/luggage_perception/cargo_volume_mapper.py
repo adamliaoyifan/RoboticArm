@@ -141,6 +141,7 @@ class CargoVolumeMapper:
         self._grid = None
         self._occupancy = None
         self._revision = 0
+        self._depth_ray_phase = 0
         self._placed_boxes = []
         self._build_active_mask()
         self.reset()
@@ -503,7 +504,12 @@ class CargoVolumeMapper:
                 if voxel is not None:hits[self._index(*voxel)]=hit
         if self.max_raycast_points and len(rays)>self.max_raycast_points:
             stride=int(math.ceil(len(rays)/self.max_raycast_points))
-            rays=rays[::stride]
+            # A fixed prefix repeats the same blind spots in ordered depth
+            # clouds. Rotate across fresh admitted acquisitions, retaining the
+            # same per-frame ray budget and all terminal/hit safety rules.
+            phase = self._depth_ray_phase % stride
+            rays=rays[phase::stride]
+            self._depth_ray_phase += 1
         misses=set()
         for end in rays:misses.update(self._raycast_indices(origin,end))
         misses.difference_update(hits)

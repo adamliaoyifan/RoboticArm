@@ -79,3 +79,17 @@ def test_obstacle_just_inside_open_door_is_not_discarded():
         result=mapper.integrate_depth_view([(-.48,.035,.565)],(-1.03,.035,.565))
     assert result['hits']==1 and result['free_voxels']==0
     assert state(mapper,(-.48,.035,.565))==OCCUPIED
+
+
+def test_bounded_depth_sampling_eventually_observes_each_ray_without_clearing_behind_wall():
+    mapper=CargoVolumeMapper((1.,1.,1.),(0.,0.,.5),0.,.05,max_raycast_points=1)
+    # Ordered wall returns: fixed stride sampling permanently misses ray 1.
+    # Each call represents a separately admitted acquisition at the owner port.
+    points=[(.5,-.3,.5),(.5,.3,.5)]
+    for _ in range(10):
+        detail=mapper.integrate_depth_view(points,(-1.,0.,.5))
+        assert detail['rays']==1 and detail['hits']==0
+    assert state(mapper,(.225,-.225,.5))==FREE
+    assert state(mapper,(.225,.225,.5))==FREE
+    assert state(mapper,(.475,.3,.5))==UNKNOWN
+    assert state(mapper,(.25,0.,.8))==UNKNOWN

@@ -397,3 +397,10 @@ execution, and selects a vacuum stub. Stub responses are transport-test evidence
 not measurements of a physical grasp. Replay inputs retain their measured source
 identity; passing this mode never authorizes motion. The MoveIt launch keeps
 Humble's scalar plugin configuration and uses the array overlay only on Jazzy.
+
+Depth acquisition uses bounded rotating ray subsampling when admitted returns
+exceed the per-frame limit. Successive fresh acquisitions vary the selected
+stride phase so identical cloud ordering cannot permanently starve a measured
+ray. The map owner still admits fresh observations and applies unchanged
+terminal bands, hit/miss rules and confirmation thresholds. The prior remains
+read-only; no sampling policy can substitute hypothetical free cells for rays.
