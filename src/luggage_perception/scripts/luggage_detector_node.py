@@ -1085,12 +1085,6 @@ class LuggageDetector(Node):
             text += "; e.g. " + "; ".join(examples)
         return text
 
-    def _failure_message(self, reason):
-        detail = str(getattr(self, "_last_plane_detail", "") or "")
-        if detail:
-            return "%s: %s" % (reason, detail)
-        return str(reason)
-
     def _support_info_cb(self, msg):
         """Latest aligned-depth camera info (colour-grid intrinsics)."""
         k = msg.k
@@ -2088,12 +2082,14 @@ class LuggageDetector(Node):
             "luggage_detector: cloud too old (%.2fs, max %.1fs)"
             % (age, self._cloud_max_age))
 
-    def _failure_message(self):
-        reason = str(self._last_failure_reason or "DETECT_FAILED")
+    def _failure_message(self, reason=None):
+        """Format explicit or latest failure without shadowing either caller."""
+        reason = str(reason or self._last_failure_reason or "DETECT_FAILED")
         if reason == "DETECT_STALE_CLOUD" and self._last_cloud_age_sec is not None:
             return "DETECT_STALE_CLOUD (age=%.2fs max=%.1fs)" % (
                 self._last_cloud_age_sec, self._cloud_max_age)
-        return reason
+        detail = str(getattr(self, "_last_plane_detail", "") or "")
+        return "%s: %s" % (reason, detail) if detail else reason
 
     def _frame_to_detect(self, frame):
         age = self._stamp_age_sec(frame.header.stamp)
