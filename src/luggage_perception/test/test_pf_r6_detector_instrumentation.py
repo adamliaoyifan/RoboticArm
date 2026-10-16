@@ -226,6 +226,19 @@ class TestLatestEstimateQueue(unittest.TestCase):
         self.assertEqual(cloud.header.stamp.sec, 2)
         self.assertEqual(queue.coalesced, 1)
 
+    def test_bounded_trace_preserves_latest_only_behavior(self):
+        queue = self.mod.LatestEstimateQueue(trace_enabled=True)
+        for stamp in range(300):
+            queue.submit(str(stamp), _cloud(stamp, 0))
+        queue.submit("old", _cloud(1, 0))
+        self.assertEqual(queue.take()[0], "299")
+        trace = queue.trace_snapshot()
+        self.assertEqual(len(trace), 256)
+        self.assertEqual([r["event"] for r in trace[-2:]], ["discard_older", "take"])
+        self.assertTrue(any(r["replaced_stamp_key"] is not None for r in trace))
+        trace[0]["event"] = "mutated"
+        self.assertNotEqual(queue.trace_snapshot()[0]["event"], "mutated")
+
     def test_close_unblocks_take(self):
         queue = self.mod.LatestEstimateQueue()
         holder = []

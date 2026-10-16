@@ -420,3 +420,8 @@ Opt-in support diagnosis also preserves up to eight failed same-acquisition
 measured support fits (16 MiB input-array cap each), with exact cargo/raw arrays,
 fit outcome and support history. Tracked clouds are not relabelled as fresh
 measurements. Diagnostic capture does not change the five-fit stability gate.
+
+When support capture is enabled, detector diagnostics retain a bounded
+256-event estimate-queue trace (submit/replacement/discard/take, acquisition
+stamp, cloud-carried source and monotonic receipt time). The trace contains
+no cloud payload and must not alter queue scheduling or authorization policy.

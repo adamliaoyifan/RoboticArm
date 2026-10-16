@@ -268,11 +268,28 @@ class LatestEstimateQueue(object):
     pair is waiting or ``close`` is called.
     """
 
-    def __init__(self):
+    def __init__(self, trace_enabled=False):
         self._cond = threading.Condition()
         self._pending = None
         self._stop = False
         self._coalesced = 0
+        self._trace = deque(maxlen=256) if trace_enabled else None
+
+    def _record(self, event, key, cloud_msg, replaced=None):
+        # Called under the queue lock; retain metadata only, never cloud bytes.
+        if self._trace is None:
+            return
+        try:
+            source = adapters.source_from_cloud_msg(cloud_msg)
+        except (AttributeError, TypeError, ValueError):
+            source = None
+        self._trace.append(dict(event=event, stamp_key=key, source=source,
+                                replaced_stamp_key=replaced,
+                                monotonic_sec=time.monotonic()))
+
+    def trace_snapshot(self):
+        with self._cond:
+            return [dict(row) for row in (self._trace or ())]
 
     @property
     def coalesced(self):
@@ -283,11 +300,14 @@ class LatestEstimateQueue(object):
         header = getattr(cloud_msg, "header", None)
         key = stamp_key(getattr(header, "stamp", None))
         with self._cond:
+            old_key = None
             if self._pending is not None:
                 old_key = self._pending[0]
                 self._coalesced += 1
                 if (key is not None and old_key is not None and key < old_key):
+                    self._record('discard_older', key, cloud_msg)
                     return
+            self._record('submit', key, cloud_msg, old_key)
             self._pending = (key, yolo_msg, cloud_msg)
             self._cond.notify()
 
@@ -299,6 +319,7 @@ class LatestEstimateQueue(object):
                 return None
             _key, yolo_msg, cloud_msg = self._pending
             self._pending = None
+            self._record('take', _key, cloud_msg)
             return yolo_msg, cloud_msg
 
     def close(self):
@@ -575,7 +596,8 @@ class LuggageDetector(Node):
         self._pending_joins = OrderedDict()
         self._ready_joins = deque()
         self._join_emit_lock = threading.Lock()
-        self._estimates = LatestEstimateQueue()
+        self._estimates = LatestEstimateQueue(
+            trace_enabled=bool(os.environ.get("ELFIN_SUPPORT_CAPTURE")))
         self._estimate_thread = None
         self._support_wait_timeout = float(
             self.get_parameter("support_wait_timeout_sec").value)
@@ -2284,6 +2306,9 @@ class LuggageDetector(Node):
         record["support_mode"] = self._support_mode
         record["selected_stamp"] = self._last_selected_stamp
         record["auth_reads"] = list(self._auth_reads)
+        estimates = getattr(self, "_estimates", None)
+        if estimates is not None:
+            record["estimate_queue_trace"] = estimates.trace_snapshot()
         if detected is not None:
             record["detected"] = {
                 "id": detected.id,
