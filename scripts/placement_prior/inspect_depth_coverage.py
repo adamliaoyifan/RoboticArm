@@ -56,10 +56,12 @@ def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_po
         points = rotation.apply(points) + origin
         admitted = [admit_depth_ray(geometry, origin, point, np.sqrt(3) * resolution) for point in points]
         accepted = [point for point, ray in zip(points, admitted) if ray is not None]
+        free_ends = [ray.free_end for ray in admitted if ray is not None]
         results.append(dict(file=row['file'], stamp_ns=Time.from_msg(cloud.header.stamp).nanoseconds,
                             camera_container=origin.tolist(), optical_forward_container=rotation.apply([0,0,1]).tolist(),
                             points=len(points), admitted=len(accepted),
                             obstacle_returns=sum(ray is not None and ray.obstacle is not None for ray in admitted),
+                            free_end_bounds=None if not free_ends else [np.min(free_ends,axis=0).tolist(),np.max(free_ends,axis=0).tolist()],
                             endpoint_percentiles=np.percentile(points,[0,5,50,95,100],axis=0).tolist(),
                             accepted_bounds=None if not accepted else [np.min(accepted,axis=0).tolist(),np.max(accepted,axis=0).tolist()]))
         if mapper is not None:

@@ -253,6 +253,15 @@ hashes the target artifact and saves the submitted CDR, and labels this as a
 derived experiment rather than an exact historical request replay. A successful
 tool-placement check remains distinct from full-route or executed-cycle success.
 
+For missing observation diagnosis, `find_observation_candidates.py --views`
+accepts a bounded JSON list of container-frame eyes and targets (one to three
+each), records its hash, and proposes IK only. Native endpoint screening and
+normal route certification remain necessary before motion. The depth-coverage
+inspector reports admitted free-ray endpoint bounds separately from measured
+return bounds: terminal-band exclusion can leave near-wall cells unknown even
+with dense measured returns. An offline reconstructed volume is diagnostic data,
+never a replacement for the owner's confirmed OCC snapshot.
+
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock
 publisher; it spawns no box and is not a functional pick/place acceptance test.

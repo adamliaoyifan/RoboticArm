@@ -12,7 +12,7 @@ from luggage_planning.offline_ik import load_urdf, refine_to_pose
 from luggage_planning.container_aim_utils import look_at_quaternion
 
 
-def propose(scene, output, budget_s, profile='initial'):
+def propose(scene, output, budget_s, profile='initial', views=None):
     started = time.monotonic()
     robot = load_urdf(scene_tf_config=str(scene))
     if robot.root_link != 'world':
@@ -25,7 +25,17 @@ def propose(scene, output, budget_s, profile='initial'):
     seeds = [[.7412,-1.8043,-1.0461,-1.8668,1.5749,-2.4370],
              [1.8806,-1.7736,-1.0491,4.4439,1.7721,1.8473]]
     attempts = []
-    if profile == 'lower':
+    if views is not None:
+        specification = json.loads(views.read_text())
+        eyes = specification['eyes_container']
+        targets = specification['targets_container']
+        for values in (eyes, targets):
+            if not isinstance(values, list) or not 1 <= len(values) <= 3:
+                raise ValueError('one to three explicit eyes/targets required')
+            for value in values:
+                if len(value) != 3 or not np.isfinite(np.asarray(value, dtype=float)).all():
+                    raise ValueError('finite container-frame XYZ required')
+    elif profile == 'lower':
         # Diagnostic views aimed at the measured floor/side collision regions.
         eyes=[(-.95,-.6,.8),(-1.15,-.6,1.),(-1.,.05,.85)]
         targets=[(.4,-.6,.65),(.5,-.6,1.2)]
@@ -59,6 +69,9 @@ def propose(scene, output, budget_s, profile='initial'):
                   urdf_sha256=hashlib.sha256(xml).hexdigest(),
                   elapsed_s=time.monotonic()-started, budget_s=budget_s,
                   attempts=attempts, feasible=sum(r['joints'] is not None for r in attempts))
+    if views is not None:
+        report['views_source'] = str(views)
+        report['views_sha256'] = hashlib.sha256(views.read_bytes()).hexdigest()
     (output/'result.json').write_text(json.dumps(report,indent=2)+'\n')
     print(json.dumps({k:v for k,v in report.items() if k!='attempts'}))
 
@@ -69,5 +82,7 @@ if __name__ == '__main__':
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--budget-s',type=float,default=30.)
     parser.add_argument('--profile',choices=('initial','lower'),default='initial')
+    parser.add_argument('--views',type=Path,
+                        help='Explicit bounded container-frame eyes and targets JSON')
     args=parser.parse_args()
-    propose(args.scene,args.output,args.budget_s,args.profile)
+    propose(args.scene,args.output,args.budget_s,args.profile,args.views)
