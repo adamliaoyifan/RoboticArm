@@ -27,3 +27,7 @@
   修复为环境层：`LUGGAGE_CLIP_VENDOR_DIR` 指向主工作区 src vendor
   （semantic_segmenter._setup_clip_vendor 的正统覆盖，代码零改动）。
 - **尝试 1（正式见证）**: 同一冻结 HEAD `4bee0022`，附加上述 env，执行同一命令。
+- **尝试 0b（中止，同因续）**: 依次揭出三道同类冻结内容门——YOLO 权重、
+  pydeps-frozen 前缀（均 gitignored、主工作区持有）。修复同为安装/环境层
+  符号链接（install share models/yolov8s-world.pt、ws 根 pydeps-frozen），
+  代码零改动。逐门失败均为 launch 即断，无运动、无箱、见证未发生。
