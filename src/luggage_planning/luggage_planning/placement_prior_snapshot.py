@@ -16,6 +16,23 @@ from luggage_planning.placement_prior_contracts import Snapshot, Transform
 COLUMN_PREFIX = 'placement-prior-occ-'
 
 
+def proposal_scene_hash(scene):
+    """Hash an ordering context, retaining every field except joint samples.
+
+    Keep joint names/frame, multi-DOF base transforms, attached bodies, world,
+    ACM and padding. This does not modify the message or authorize reuse of a
+    collision verdict; full scene bytes and identity remain separate.
+    """
+    from rosidl_runtime_py.convert import message_to_ordereddict
+    fields = message_to_ordereddict(scene)
+    joints = fields['robot_state']['joint_state']
+    joints['header'].pop('stamp')
+    for key in ('position', 'velocity', 'effort'):
+        joints.pop(key)
+    return hashlib.sha256(json.dumps(fields, sort_keys=True,
+        separators=(',', ':'), allow_nan=False).encode()).hexdigest()
+
+
 def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
                            world_from_container, *, collision_margin_m, volume=None):
     from geometry_msgs.msg import Pose
@@ -85,4 +102,5 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
                     surface_content_hash=hashlib.sha256(confirmed_surface.record_json).hexdigest(),
                     scene_content_hash=hashlib.sha256(json.dumps(
                         message_to_ordereddict(scene), sort_keys=True,
-                        separators=(',', ':'), allow_nan=False).encode()).hexdigest())
+                        separators=(',', ':'), allow_nan=False).encode()).hexdigest(),
+                    proposal_scene_hash=proposal_scene_hash(scene))

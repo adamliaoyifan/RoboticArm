@@ -59,6 +59,7 @@ class Snapshot:
     scene_cdr: bytes
     surface_content_hash: str = ""
     scene_content_hash: str = ""
+    proposal_scene_hash: str = ""
 
     def __post_init__(self):
         if not all(isinstance(s, str) and s.strip() for s in
@@ -79,6 +80,16 @@ class Snapshot:
                 self.model_hash, self.world_from_container,
                 self.surface_content_hash or hashlib.sha256(self.surface_cdr).hexdigest(),
                 self.scene_content_hash or hashlib.sha256(self.scene_cdr).hexdigest())
+
+    @property
+    def proposal_identity(self):
+        """Ordering hints only; never a result-cache or execution identity.
+
+        The scene adapter may omit scalar joint samples from this hash. Every
+        current placement and measured collision query must still be rebuilt.
+        Adapters without that explicit hash retain the complete identity.
+        """
+        return (*self.identity[:-1], self.proposal_scene_hash or self.identity[-1])
 
 
 @dataclass(frozen=True)

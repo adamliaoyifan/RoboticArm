@@ -173,7 +173,15 @@ anchors/headings may order the freshly generated legal candidates. The current
 measured dimensions determine every pose and support/clearance check; template
 poses and missing or now-infeasible anchors are never inserted. Scene/model/map
 identity changes disable this ordering hint. Measured contact collision checks
-still run, including for template-preferred slots. Foreground preparation supersedes background
+still run, including for template-preferred slots. The ordering-only identity
+excludes scalar joint positions/velocities/efforts and their acquisition stamp;
+moving the arm must not discard a preference for a freshly regenerated slot.
+It retains joint names/frame, multi-DOF transforms, attached bodies, complete
+world geometry, ACM, padding, and all model/OCC identities. The strict full-scene
+identity remains required for result caching and adoption; it is never replaced
+by the ordering identity. A joint-state change therefore regenerates geometry
+and performs measured collision checks even when ordering hints survive.
+Foreground preparation supersedes background
 work; an old timeout cannot cancel a newer generation. Neither timer nor
 template completion issues motion or changes map ownership.
 

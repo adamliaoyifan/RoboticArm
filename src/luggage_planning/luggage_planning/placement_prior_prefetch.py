@@ -64,7 +64,7 @@ def rank_regenerated_placements(prefetched, snapshot, placements):
     if prefetched is None:
         return current
     request, result = prefetched
-    if request.measured or request.snapshot.identity != snapshot.identity:
+    if request.measured or request.snapshot.proposal_identity != snapshot.proposal_identity:
         return current
     preferred = {choice.placement.slot_id for choice in result.choices}
     return tuple(sorted(current, key=lambda slot: slot.slot_id not in preferred))
