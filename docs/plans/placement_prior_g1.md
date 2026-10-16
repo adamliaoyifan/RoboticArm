@@ -143,3 +143,9 @@ without changing planning or certification budgets or controller tolerances.
 Missing/invalid certified times refuse before submission. Submitted-leg evidence
 records response_wait_s. This addresses client premature cancellation only;
 long-path selection cost and full-cycle success still require measurement.
+
+Unscored single-cycle reporting uses `scripts/placement_prior/simulation_eval.py
+--trials <cycle/trials.jsonl> --output <new-report.json>`. It preserves original
+legacy two-box rehearsal output, recognizes typed route verification, and reports
+motion/measured-OCC coverage separately. `f3_campaign` and `performance` remain
+`not_evaluated`; a one-case report cannot pass the frozen six-cycle acceptance.
