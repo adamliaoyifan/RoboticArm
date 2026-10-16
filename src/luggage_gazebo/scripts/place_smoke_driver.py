@@ -1388,6 +1388,43 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 admission["load_state"] = str(states[index])
         return admission
 
+    def _leg_trajectory_digest(self, segment):
+        """Rebuild the certified trajectory digest from a v2 leg message.
+
+        [B3] Ported from motion_occ_eval_driver: _leg_execution_admission
+        always looked for this helper and silently degraded to a
+        scope-less admission when it was absent; the B3 verify wiring
+        makes the absence a named refusal (LEG_DIGEST_UNAVAILABLE), so
+        the helper now exists here too.
+        """
+        from st09_contracts.graph import TimedTrajectory
+        trajectory = None
+        if getattr(segment, "joint_trajectory", None) is not None:
+            trajectory = getattr(segment.joint_trajectory, "trajectory",
+                                 None)
+        if trajectory is None or not trajectory.points:
+            return ""
+        points = list(trajectory.points)
+
+        def _times():
+            return tuple(
+                int(p.time_from_start.sec) * 1_000_000_000
+                + int(p.time_from_start.nanosec) for p in points)
+
+        try:
+            return TimedTrajectory(
+                joint_names=tuple(trajectory.joint_names),
+                positions=tuple(
+                    tuple(float(v) for v in p.positions) for p in points),
+                velocities=tuple(
+                    tuple(float(v) for v in p.velocities) for p in points),
+                accelerations=tuple(
+                    tuple(float(v) for v in p.accelerations)
+                    for p in points),
+                time_from_start_ns=_times()).digest()
+        except Exception:  # noqa: BLE001 - malformed leg = no digest match
+            return ""
+
     def _call_srv_sync(self, client, request, timeout=30.0):
         """Minimal synchronous service call (event-wait, None on timeout)."""
         import threading
