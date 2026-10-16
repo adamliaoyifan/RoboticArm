@@ -49,3 +49,7 @@
   （冻结不量化+部署 hull 回归测试）。**冻结 HEAD 更新为 7391f460**；
   r1–r3 均未产生任何箱放置，见证额度仍未消耗。
 - **正式见证（r4，计额度）**: 同命令，冻结 7391f460。
+- **r4 发现（部署缺口，非产品缺陷）**: st09_contracts 为独立 colcon 包，
+  B2 的 PlanningSnapshot epoch 字段改了源码未重建 → 运行时旧拷贝报
+  unexpected keyword 'epoch'。已重建（含级联）。冻结仍为源码 HEAD
+  7391f460；install 与之同步。
