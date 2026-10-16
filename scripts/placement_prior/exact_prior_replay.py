@@ -6,6 +6,7 @@ The owner's confirmation-required setting is an explicit replay assumption,
 not a fresh live owner measurement. No MoveIt execution, simulator or motion.
 """
 import argparse
+from copy import deepcopy
 import hashlib
 import json
 import os
@@ -22,6 +23,8 @@ def main():
     parser.add_argument('--surface-directory', type=Path, required=True)
     parser.add_argument('--scene-tf', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--negative-checks', action='store_true',
+                        help='Inject stale revision and unconfirmed-map negatives after cold/cache checks')
     args = parser.parse_args()
     from process_guard import dedicated_domain_processes
     if os.environ.get('ROS_DOMAIN_ID') != '8' or dedicated_domain_processes('8'):
@@ -132,10 +135,19 @@ def main():
         typed_pub.publish(typed)
         legacy_pub.publish(legacy)
         time.sleep(.2)
-        for label in ('cold', 'cached'):
+        labels = ['cold', 'cached'] + (['stale_revision', 'unconfirmed'] if args.negative_checks else [])
+        for label in labels:
+            submitted = deepcopy(request)
+            if label == 'stale_revision':
+                submitted.expected_map_revision += 1
+            if label == 'unconfirmed':
+                invalidated = dict(confirmation, occupancy_confirmed=False)
+                legacy_pub.publish(String(data=json.dumps(invalidated)))
+                time.sleep(.2)
+            (args.output / (label + '.request.cdr')).write_bytes(serialize_message(submitted))
             with ResourceWindow([os.getpid()], [proc.pid]) as resource:
                 started = time.monotonic()
-                future = client.call_async(request)
+                future = client.call_async(submitted)
                 ready = threading.Event()
                 future.add_done_callback(lambda unused: ready.set())
                 if not ready.wait(20.):
@@ -148,6 +160,12 @@ def main():
                            cache_hit=response.cache_hit, service_elapsed_s=response.elapsed_s,
                            elapsed_s=elapsed, choice_count=len(response.choices))
             report['results'].append(outcome)
+            if label in ('stale_revision', 'unconfirmed'):
+                expected = 'snapshot identity mismatch' if label == 'stale_revision' else 'NO_CONFIRMED_OCC_SNAPSHOT'
+                outcome['injected_negative'] = True
+                if response.success or response.choices or expected not in response.reason:
+                    raise ValueError('negative input was not refused for its expected reason')
+                continue
             if not response.success or not response.choices:
                 raise ValueError('prior preparation failed: ' + response.reason)
             if response.model_sha256 != historical.model_sha256:

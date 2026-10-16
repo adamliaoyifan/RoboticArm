@@ -85,6 +85,10 @@ that setting is a replay assumption, not a fresh measured owner configuration.
 It checks model identity and cold/cache-hit outcomes, captures native boundaries
 and process-tree resources, and tears down the owned nodes. It neither starts
 MoveIt execution nor provides hardware-deployment or paired speedup acceptance.
+Optional `--negative-checks` explicitly perturbs the requested map revision and
+then the fixture confirmation flag. Both cases must return no choices and the
+corresponding identity/unconfirmed refusal. These injected test inputs are
+preserved separately and never relabeled as measured map changes.
 
 ## Snapshot boundary
 
