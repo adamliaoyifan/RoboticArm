@@ -316,7 +316,10 @@ def map_confirmation_record(final_trace):
 
 
 def view_policy_record():
+    from luggage_gazebo.fresh_view_burst import MAX_FRAMES, WALL_BUDGET_S
     return {
+        "max_fresh_frames_per_pose": MAX_FRAMES,
+        "fresh_frame_start_budget_s": WALL_BUDGET_S,
         "view_order": list(VIEW_ORDER),
         "stop": "footprint_hits>=1 and integrate success and revision increased",
         "target": "slot_world + 0.5*box_height (policy-owned)",

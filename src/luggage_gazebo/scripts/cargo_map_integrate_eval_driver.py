@@ -307,7 +307,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         }
         if aim_chosen is not None:
             time.sleep(0.4)
-        t_aim = self._integrate_after_place(
+        t_aim = self._integrate_fresh_views(
             trial, slot, slot_meta, pick_msg, view="aim", record=False,
             expected_revision=stats_rev)
         traces = {"aim": t_aim}
@@ -326,7 +326,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             }
             if look_chosen is not None:
                 time.sleep(0.4)
-            t_look = self._integrate_after_place(
+            t_look = self._integrate_fresh_views(
                 trial, slot, slot_meta, pick_msg, view="lookback",
                 record=False,
                 expected_revision=next_expected_revision(t_aim, stats_rev))
@@ -338,6 +338,41 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         # the live TCP. A failed re-exit leaves the proof void so home
         # refuses by name instead of trusting the pre-view joints.
         self._restore_portal_after_views(trial)
+
+    def _integrate_fresh_views(self, trial, slot, slot_meta, pick_msg,
+                               view, record=False, expected_revision=None):
+        from luggage_gazebo.fresh_view_burst import observe_fresh_frames
+
+        def acquire(after_ns, deadline):
+            # Stop waiting after one second even if the burst has time left.
+            wait_until = min(deadline, time.monotonic() + 1.0)
+            while time.monotonic() < wait_until:
+                frame = self._latest_buffer_msg("depth")
+                if frame is not None:
+                    stamp = frame.header.stamp
+                    stamp_ns = int(stamp.sec) * 1000000000 + int(stamp.nanosec)
+                    if stamp_ns > after_ns:
+                        return stamp_ns, frame
+                time.sleep(0.02)
+            return None
+
+        def integrate(frame, ordinal, revision):
+            label = view if ordinal == 0 else "%s_frame_%d" % (view, ordinal + 1)
+            return self._integrate_after_place(
+                trial, slot, slot_meta, pick_msg, view=label, record=False,
+                expected_revision=revision, depth_msg=frame)
+
+        # Require an acquisition after arriving at this observation pose.
+        after_ns = getattr(self, "_post_place_depth_stamp_ns", -1)
+        buffered = self._latest_buffer_msg("depth")
+        if buffered is not None:
+            stamp = buffered.header.stamp
+            after_ns = max(after_ns, int(stamp.sec) * 1000000000 + int(stamp.nanosec))
+        final, stamp = observe_fresh_frames(
+            acquire, integrate, int(expected_revision),
+            after_ns=after_ns)
+        self._post_place_depth_stamp_ns = stamp
+        return final
 
     def _restore_portal_after_views(self, trial):
         back_ok, back_msg = self._exit_to_portal()
@@ -796,7 +831,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             return None
         return snap[max(snap)]
 
-    def _dump_view_bundle(self, dump, view, slot, slot_meta, pick_msg):
+    def _dump_view_bundle(self, dump, view, slot, slot_meta, pick_msg, depth_msg=None):
         """Raw frames, intrinsics, stamps, YOLO, and the projected footprint."""
         diag = self._dump_cargo_view(dump, view, slot_meta, pick_msg)
         info = getattr(self, "_camera_info", None)
@@ -811,7 +846,8 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 "stamp_sec": stamp_to_sec(info.header.stamp),
             })
             diag["files"]["camera_info"] = "%s_camera_info.json" % view
-        depth_msg = self._latest_buffer_msg("depth")
+        if depth_msg is None:
+            depth_msg = self._latest_buffer_msg("depth")
         color_msg = self._latest_buffer_msg("color")
         mask_msg = self._latest_buffer_msg("mask")
         stamps = {
@@ -1102,7 +1138,7 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 float(pick_msg.height)]
         return center, size, yaw
 
-    def _placed_box_depth_cloud(self, slot, pick_msg):
+    def _placed_box_depth_cloud(self, slot, pick_msg, depth_msg=None):
         """Publish depth points that fall inside the placed box.
 
         Points stay in the depth optical frame so the mapper raycasts from
@@ -1125,7 +1161,8 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         if fx <= 1e-6 or fy <= 1e-6:
             diag["reason"] = "bad_intrinsics"
             return {"msg": None, "diag": diag}
-        depth_msg = self._latest_buffer_msg("depth")
+        if depth_msg is None:
+            depth_msg = self._latest_buffer_msg("depth")
         if depth_msg is None:
             diag["reason"] = "no_depth"
             return {"msg": None, "diag": diag}
@@ -1197,12 +1234,13 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
 
     def _integrate_after_place(
             self, trial, slot, slot_meta, pick_msg, view="lift", record=True,
-            expected_revision=None):
+            expected_revision=None, depth_msg=None):
         dump = os.path.join(
             self._args.dump_dir, "box_%02d_integrate" % trial.index)
         os.makedirs(dump, exist_ok=True)
-        view_diag = self._dump_view_bundle(dump, view, slot, slot_meta, pick_msg)
-        gate = self._placed_box_depth_cloud(slot, pick_msg)
+        view_diag = self._dump_view_bundle(
+            dump, view, slot, slot_meta, pick_msg, depth_msg=depth_msg)
+        gate = self._placed_box_depth_cloud(slot, pick_msg, depth_msg=depth_msg)
         self._dump_json(dump, "geometry_gate_%s.json" % view, gate.get("diag") or {})
         stats = self.call_srv(self._stats, GetCargoMapStats.Request(), timeout=5.0)
         if gate.get("msg") is not None:
@@ -1210,6 +1248,9 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
             cloud = gate["msg"]
             freshness = abs(
                 stamp_to_sec(cloud.header.stamp) - self.ros_now_sec())
+        elif depth_msg is not None:
+            # An explicit acquisition must never silently integrate another frame.
+            cloud, freshness = None, None
         else:
             cloud, freshness = self._wait_untracked(timeout=5.0, min_points=100)
         t1 = {

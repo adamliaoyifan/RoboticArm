@@ -122,3 +122,16 @@ contacts, controller and verification outputs. Persist before rerun/teardown.
 Missing boundaries require instrumentation before another scored attempt.
 Final report must separate functional recovery, hardware planning integration,
 simulation placement and efficiency; none may stand in for another.
+
+## Post-release observation rehearsal repair
+
+Exact saved-frame replay in `mapper_replay01` showed that saturated free voxels
+need at least three consistent fresh hits under the existing log-odds settings.
+Each executed observation pose now admits at most four distinct depth acquisitions,
+waiting past its cached frame and chaining the owner's map revision. A 15-second
+budget gates starting each acquisition/integration; an in-flight call retains its
+existing service watchdog. Stop at the existing confirmation criterion or refuse
+on unavailable/duplicate input, failed integration, or exhaustion. Explicit depth
+crop failure cannot fall back to an unrelated semantic frame. Each frame retains
+its own raw depth and integration trace. This is an unscored rehearsal repair;
+confirmation thresholds, OCC ownership and F3 acceptance remain unchanged.
