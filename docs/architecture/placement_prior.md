@@ -224,3 +224,11 @@ Failure to reach the observation pose prevents capture. It does not promise full
 coverage: measured unknown/occupancy ratios are preserved. Input images, camera
 calibration, joint stability samples, clouds and owner requests/replies are
 captured; raw named-motion service calls are also captured when dumps are on.
+
+Observation route search tries the actual joint-state IK seed, four wrist-seed
+perturbations (J6 and J4, minus/plus pi), then the legacy tool-down seed. These
+are solver inputs only; unique solved goals each require the ordinary MoveIt
+edge and full-route certification. A failed branch may advance to the next
+within the existing route wall budget. The first certified route is returned;
+no endpoint-distance score substitutes for a measured path. Attempted seeds and
+refusals are included in route diagnostic rows.

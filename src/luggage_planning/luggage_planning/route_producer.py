@@ -2162,105 +2162,112 @@ class RouteProducer(object):
                 start_node = self.graph.register_node(
                     current, tuple(start_fk[0]), tuple(start_fk[1]),
                     "observation_home", LoadState.UNLOADED, "observation")
-                q, _info = self._refine_to(
-                    tcp_position, tcp_quaternion, list(current))
-                if q is None:
-                    row["reason"] = "IK_UNAVAILABLE"
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                goal_node = self.graph.register_node(
-                    tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
-                    "observation_goal_%d" % index, LoadState.UNLOADED,
-                    "observation")
-                try:
-                    edge = self.edge_builder(
-                        start_node, goal_node, "PORTAL_TRANSIT")
-                except Exception as error:  # noqa: BLE001 - named row
-                    code = getattr(
-                        getattr(error, "reason", None), "value", None) \
-                        or "EDGE_BUILD_FAILED"
-                    row["reason"] = code
-                    row["detail"] = repr(error)[:200]
-                    rows.append(row)
-                    last_reason = code
-                    continue
-                edges = (edge,)
-                route = PlannedRoute(
-                    route_id="route-obs-%s-%d" % (str(request_id)[:12],
-                                                  index),
-                    request_id=str(request_id),
-                    snapshot_digest=snapshot.digest(),
-                    payload_digest=UNLOADED_ATTACHMENT_DIGEST,
-                    attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
-                    candidate_id="observation-%s" % str(purpose),
-                    entry_edge_ids=(edge.edge_id,),
-                    retreat_edge_ids=(),
-                    edge_digests=(edge.digest(),),
-                    trajectory_digest=edge.trajectory.digest(),
-                    planning_revision="observation")
-                # Unloaded observation move: it is what confirms a pending
-                # occupancy change, so a pending change does not refuse it.
-                revalidation = self._revalidate(
-                    route, snapshot, edges, allow_unconfirmed=True)
-                if revalidation is None:
-                    row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                from st09_contracts.certification import MapDecision
+                from luggage_planning.observation_ik_search import observation_goals
+                refine = getattr(self, "refine", None) or self._refine_to
+                expired = lambda: self._clock_ns() - started_ns >= self.budget_ns
+                for q, _info in observation_goals(
+                        refine, tcp_position, tcp_quaternion, current,
+                        TOOL_DOWN_SEED_Q, expired):
+                    row = {"target_index": index, "ik": _info}
+                    if expired():
+                        return self._fail("PLANNING_BUDGET_EXHAUSTED", rows + [row])
+                    if q is None:
+                        row["reason"] = _info.get("reason", "IK_UNAVAILABLE")
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    goal_node = self.graph.register_node(
+                        tuple(q), tuple(tcp_position), tuple(tcp_quaternion),
+                        "observation_goal_%d_%s" % (index, _info["seed"]), LoadState.UNLOADED,
+                        "observation")
+                    try:
+                        edge = self.edge_builder(
+                            start_node, goal_node, "PORTAL_TRANSIT")
+                    except Exception as error:  # noqa: BLE001 - named row
+                        code = getattr(
+                            getattr(error, "reason", None), "value", None) \
+                            or "EDGE_BUILD_FAILED"
+                        row["reason"] = code
+                        row["detail"] = repr(error)[:200]
+                        rows.append(row)
+                        last_reason = code
+                        continue
+                    edges = (edge,)
+                    route = PlannedRoute(
+                        route_id="route-obs-%s-%d" % (str(request_id)[:12],
+                                                      index),
+                        request_id=str(request_id),
+                        snapshot_digest=snapshot.digest(),
+                        payload_digest=UNLOADED_ATTACHMENT_DIGEST,
+                        attachment_digest=UNLOADED_ATTACHMENT_DIGEST,
+                        candidate_id="observation-%s" % str(purpose),
+                        entry_edge_ids=(edge.edge_id,),
+                        retreat_edge_ids=(),
+                        edge_digests=(edge.digest(),),
+                        trajectory_digest=edge.trajectory.digest(),
+                        planning_revision="observation")
+                    # Unloaded observation move: it is what confirms a pending
+                    # occupancy change, so a pending change does not refuse it.
+                    revalidation = self._revalidate(
+                        route, snapshot, edges, allow_unconfirmed=True)
+                    if revalidation is None:
+                        row["reason"] = "MAP_REVALIDATION_UNAVAILABLE"
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    from st09_contracts.certification import MapDecision
 
-                if revalidation.decision is not MapDecision.CONTINUE:
-                    row["reason"] = getattr(
-                        revalidation.reason, "value",
-                        "MAP_REVISION_MISMATCH")
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                certification, failure = self._certify(
-                    route, snapshot, None, edges, None, None,
-                    load_state=LoadState.UNLOADED)
-                if certification is None or not certification.passed:
-                    row["reason"] = failure if certification is None \
-                        else certification.reason.value
-                    row["recertified"] = False
-                    self._close_row(rows, row)
-                    last_reason = row["reason"]
-                    continue
-                legs = leg_records(route, edges, request)
-                row["reason"] = "OK"
-                row["certified"] = True
-                rows.append(row)
-                self.last_route = route
-                self.last_certification = certification
-                self.last_revalidation = revalidation
-                self.last_rows = rows
-                self._promote_selection({
-                    "path_hash": route.digest(),
-                    "route": route,
-                    "edges": edges,
-                    "snapshot": snapshot,
-                    "attachment": None,
-                    "candidate": None,
-                    "request": request,
-                    "certification_id": certification.digest(),
-                    "load_state": LoadState.UNLOADED,
-                    "purpose": str(purpose),
-                })
-                return {
-                    "success": True,
-                    "reason_code": "OK",
-                    "selection_id": route.route_id,
-                    "path_source": "route-graph",
-                    "path_hash": route.digest(),
-                    "rows": rows,
-                    "route": route,
-                    "edges": edges,
-                    "legs": legs,
-                    "certification": certification,
-                    "revalidation": revalidation,
-                    "stage_timings": self._stage_timings(started_ns),
-                }
+                    if revalidation.decision is not MapDecision.CONTINUE:
+                        row["reason"] = getattr(
+                            revalidation.reason, "value",
+                            "MAP_REVISION_MISMATCH")
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    certification, failure = self._certify(
+                        route, snapshot, None, edges, None, None,
+                        load_state=LoadState.UNLOADED)
+                    if certification is None or not certification.passed:
+                        row["reason"] = failure if certification is None \
+                            else certification.reason.value
+                        row["recertified"] = False
+                        self._close_row(rows, row)
+                        last_reason = row["reason"]
+                        continue
+                    legs = leg_records(route, edges, request)
+                    row["reason"] = "OK"
+                    row["certified"] = True
+                    rows.append(row)
+                    self.last_route = route
+                    self.last_certification = certification
+                    self.last_revalidation = revalidation
+                    self.last_rows = rows
+                    self._promote_selection({
+                        "path_hash": route.digest(),
+                        "route": route,
+                        "edges": edges,
+                        "snapshot": snapshot,
+                        "attachment": None,
+                        "candidate": None,
+                        "request": request,
+                        "certification_id": certification.digest(),
+                        "load_state": LoadState.UNLOADED,
+                        "purpose": str(purpose),
+                    })
+                    return {
+                        "success": True,
+                        "reason_code": "OK",
+                        "selection_id": route.route_id,
+                        "path_source": "route-graph",
+                        "path_hash": route.digest(),
+                        "rows": rows,
+                        "route": route,
+                        "edges": edges,
+                        "legs": legs,
+                        "certification": certification,
+                        "revalidation": revalidation,
+                        "stage_timings": self._stage_timings(started_ns),
+                    }
         finally:
             if callable(reset_scene):
                 reset_scene()
