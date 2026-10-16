@@ -146,3 +146,27 @@ def test_successful_vacuum_without_attachment_cannot_authorize_place():
     instance._frame_capture_grasp=lambda box:None
     assert instance.vacuum_command(True,measured_box())==(False,'MEASURED_ATTACHMENT_MISSING')
     assert instance._frame_grasp is None
+
+
+def test_release_pose_query_preserves_timeout_output(monkeypatch):
+    import subprocess
+    import place_smoke_driver as module
+    instance=object.__new__(module.PlaceSmokeDriver);instance._box_model='box'
+    monkeypatch.setattr(module,'_ign_model_bin',lambda:'ign')
+    def timeout(*args,**kwargs):
+        raise subprocess.TimeoutExpired(args[0],5.,output=b'waiting for world')
+    monkeypatch.setattr(module.subprocess,'check_output',timeout)
+    assert instance._gz_box_pose() is None
+    assert instance._last_gz_pose_probe['error']=='TimeoutExpired'
+    assert instance._last_gz_pose_probe['output']=='waiting for world'
+    assert instance._last_gz_pose_probe['command']==['ign','model','-m','box','--pose']
+
+
+def test_release_pose_query_preserves_unparseable_output(monkeypatch):
+    import place_smoke_driver as module
+    instance=object.__new__(module.PlaceSmokeDriver);instance._box_model='box'
+    monkeypatch.setattr(module,'_ign_model_bin',lambda:'ign')
+    monkeypatch.setattr(module.subprocess,'check_output',lambda *a,**kw:'world missing')
+    assert instance._gz_box_pose() is None
+    assert instance._last_gz_pose_probe['output']=='world missing'
+    assert instance._last_gz_pose_probe['parsed'] is None

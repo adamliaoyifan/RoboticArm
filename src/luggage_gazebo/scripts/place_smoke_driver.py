@@ -994,15 +994,26 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def _gz_box_pose(self, model=None):
         model = str(model or self._box_model or "") or self.gt_model_name()
+        self._last_gz_pose_probe = {"model": model}
         if not model:
+            self._last_gz_pose_probe["error"] = "missing model name"
             return None
+        command = [_ign_model_bin(), "model", "-m", model, "--pose"]
+        self._last_gz_pose_probe["command"] = command
         try:
             out = subprocess.check_output(
-                [_ign_model_bin(), "model", "-m", model, "--pose"],
+                command,
                 text=True, timeout=5.0, stderr=subprocess.STDOUT)
-        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            output = getattr(exc, "output", "") or ""
+            if isinstance(output, bytes):
+                output = output.decode(errors="replace")
+            self._last_gz_pose_probe.update(error=type(exc).__name__, detail=str(exc),
+                output=str(output)[-16000:], returncode=getattr(exc, "returncode", None))
             return None
-        return parse_ign_model_pose(out)
+        pose = parse_ign_model_pose(out)
+        self._last_gz_pose_probe.update(output=out[-16000:], parsed=pose)
+        return pose
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """Hook after DetectLuggage. Return a fail_code or empty string.
@@ -2491,6 +2502,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
             trial.extras["dynamic_body"] = dyn_msg
             trial.extras["box_pose_at_release"] = release_pose
+            trial.extras["release_pose_probe"] = dict(
+                getattr(self, "_last_gz_pose_probe", {}) or {})
             if not dyn_ok:
                 return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
             # [ST09-I S5.7-6] explicit release-boundary phase
