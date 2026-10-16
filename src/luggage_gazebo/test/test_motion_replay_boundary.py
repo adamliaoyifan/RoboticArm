@@ -23,3 +23,7 @@ def test_truncated_submission_is_not_disguised_as_complete():
 def test_legacy_path_remains_available_without_typed_submissions():
     legacy = dict(name='legacy')
     assert replay_boundary([], 'legacy', legacy) == legacy
+
+
+def test_typed_failure_before_first_submission_cannot_reuse_another_trials_boundary():
+    assert replay_boundary([], 'transit', dict(name='transit'), typed=True) is None

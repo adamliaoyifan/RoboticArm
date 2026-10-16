@@ -2101,7 +2101,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         from luggage_gazebo.motion_replay_boundary import replay_boundary
         boundary = replay_boundary(
             trial.extras.get("submitted_legs", []),
-            getattr(self, "_segment_exec_name", None), boundary)
+            getattr(self, "_segment_exec_name", None), boundary,
+            typed=getattr(self, "_typed", None) is not None)
         detect_stage = fail.startswith("DETECT_")
         if boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
