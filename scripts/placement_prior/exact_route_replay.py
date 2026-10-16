@@ -213,7 +213,11 @@ def main():
                     callback_group=ReentrantCallbackGroup())
             def transport(port,wire,timeout):
                 recorder('hardware_consumer:request',wire)
-                result=call(port,wire,timeout)
+                # Preserve the server's 60s planning budget. Allow its terminal
+                # response to cross ROS after budget exhaustion before teardown.
+                grace=5. if port is client else 0.
+                if grace:report['diagnostic_select_response_grace_s']=grace
+                result=call(port,wire,timeout+grace)
                 recorder('hardware_consumer:response',result)
                 return result
             adapter._call=transport
@@ -258,12 +262,20 @@ def main():
     except Exception as exc:
         import traceback
         report.update(error=str(exc),traceback=traceback.format_exc())
+        import faulthandler
+        with (args.output/'exception_threads.txt').open('w') as threads:
+            faulthandler.dump_traceback(file=threads,all_threads=True)
     finally:
         if resource_window is not None:
             resource_window.__exit__(None,None,None)
             (args.output/'resources.json').write_text(json.dumps(resource_window.result,indent=2)+'\n')
         (args.output/'result.json').write_text(json.dumps(report,indent=2)+'\n')
-        if executor:executor.shutdown(timeout_sec=5.)
+        callbacks_stopped=executor.shutdown(timeout_sec=5.) if executor else True
+        report['callback_shutdown_complete']=bool(callbacks_stopped)
+        if not callbacks_stopped:
+            import faulthandler
+            with (args.output/'shutdown_threads.txt').open('w') as threads:
+                faulthandler.dump_traceback(file=threads,all_threads=True)
         if spin:spin.join(timeout=5.)
         if placement_node:placement_node.destroy_node()
         if node:node.destroy_node()
@@ -273,7 +285,18 @@ def main():
         proc.wait(timeout=10);log.close()
         residual=dedicated_domain_processes('8')
         (args.output/'domain_after.json').write_text(json.dumps(residual,indent=2))
+        if not callbacks_stopped or residual:
+            report['success']=False
+            report['teardown_incomplete']=True
+        (args.output/'result.json').write_text(json.dumps(report,indent=2))
     print(json.dumps({k:v for k,v in report.items() if k not in ('inputs','traceback')}))
+    if not callbacks_stopped:
+        # Only this owned diagnostic process is exited, after all external
+        # children were stopped and thread/failure artifacts made durable.
+        # Python otherwise waits indefinitely on executor worker threads.
+        import sys
+        sys.stdout.flush();sys.stderr.flush()
+        os._exit(1)
     return 0 if report['success'] else 1
 
 
