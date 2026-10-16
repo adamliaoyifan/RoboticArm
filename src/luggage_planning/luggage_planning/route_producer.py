@@ -1279,6 +1279,7 @@ class RouteProducer(object):
             row["depth_m"] = candidate.depth_m
             row["_scope_ids"] = scope_ids
             targets = prior_targets
+            planner = None
             try:
                 staging_nodes = [
                     node for node in self.graph.nodes_by_region("staging")
@@ -1409,6 +1410,8 @@ class RouteProducer(object):
                 self._log("route: candidate %d planned %s"
                           % (index, route.route_id))
             except RoutePlanningError as exc:
+                row["continuation_diagnostics"] = list(
+                    getattr(planner, "continuation_diagnostics", ()))
                 # Keep structured TCP targets. A truncated JSON string cannot
                 # be replayed and was mistaken for a missing candidate.
                 row["targets"] = target_pairs(targets)

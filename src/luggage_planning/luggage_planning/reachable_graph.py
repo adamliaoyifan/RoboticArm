@@ -490,6 +490,7 @@ class GraphRoutePlanner(object):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
         #: region -> world TCP position from the anchor plan.
         self.region_poses = dict(region_poses or {})
+        self.continuation_diagnostics = []
         #: Node ids of the current candidate (None = whole graph). Nodes
         #: this planner registers join it; earlier candidates' do not.
         self.scope = None if scope_node_ids is None \
@@ -664,12 +665,23 @@ class GraphRoutePlanner(object):
                 return ()
             quaternion = tuple(float(v) for v in frontier.tcp_quaternion_xyzw)
             q = self._refine_one(position, quaternion, frontier.q)
+            diagnostic = {
+                "frontier": frontier.node_id, "to_region": hop.to_region,
+                "edge_class": hop.edge_class, "seed_q": list(frontier.q),
+                "target_position": list(position),
+                "target_quaternion_xyzw": list(quaternion),
+                "result_q": None if q is None else list(q),
+                "reason": "ik_failed" if q is None else "refined"}
+            self.continuation_diagnostics.append(diagnostic)
+            del self.continuation_diagnostics[:-64]
             if q is None:
                 return ()
             from luggage_planning.grid_path_search import descend_pair_rank
             # A Newton step that leaves the wrist/elbow branch is not a
             # continuous successor. Do not hand that q to Cartesian.
-            if descend_pair_rank(frontier.q, q)[0] != 0:
+            diagnostic["branch_rank"] = list(descend_pair_rank(frontier.q, q))
+            if diagnostic["branch_rank"][0] != 0:
+                diagnostic["reason"] = "branch_change"
                 return ()
             node = self._register(
                 q, position, quaternion, hop.to_region,
