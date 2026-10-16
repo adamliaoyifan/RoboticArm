@@ -146,6 +146,10 @@ def _world_to_map(scene, xyz):
 class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
+        if self._typed is not None and getattr(args, 'dump_dir', ''):
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            self._typed.set_boundary_recorder(PriorEvidenceRecorder(
+                os.path.join(args.dump_dir, 'typed_service_boundaries')))
         self._placement_prior_client = None
         self._placement_prior_result = None
         self._placement_prior_choice = None
@@ -426,6 +430,8 @@ class MotionOccDriver(CargoMapIntegrateDriver):
                 candidate_id=choice.candidate_id,elapsed_s=response.elapsed_s,cache_hit=response.cache_hit)
         except Exception as exc:
             trial.extras['placement_prior'] = dict(adopted=False,reason=str(exc))
+        if getattr(getattr(self, '_args', None), 'prior_acquisition_only', False):
+            return 'PRIOR_INPUT_ACQUISITION_COMPLETE'
         return reason
 
     def _frame_place_slot(self, pick_msg, trial):
@@ -1095,6 +1101,8 @@ def parse_args(argv=None):
     local.add_argument("--frame-runtime", action="store_true",
                        help="Adopt the v2 runtime chain from the stack graph")
     local.add_argument("--frame-peer", default="motion_occ_driver")
+    local.add_argument("--prior-acquisition-only", action="store_true",
+                       help="Non-scored rehearsal: stop after measured detection/prior request, before pick")
     local.add_argument("--placement-prior", action="store_true",
                        help="Bind measured pickup candidate and target using the read-only prior service")
     local.add_argument("--rehearsal", default="",
@@ -1113,6 +1121,9 @@ def parse_args(argv=None):
     args.frame_runtime = local_ns.frame_runtime
     args.frame_peer = local_ns.frame_peer
     args.placement_prior = local_ns.placement_prior
+    args.prior_acquisition_only = local_ns.prior_acquisition_only
+    if args.prior_acquisition_only and not (args.placement_prior and local_ns.rehearsal):
+        local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")
     args.rehearsal_dir = str(local_ns.rehearsal or "")
     args.rehearsal_fault = str(local_ns.rehearsal_fault or "")
     return args

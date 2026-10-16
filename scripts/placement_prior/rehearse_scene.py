@@ -17,6 +17,8 @@ def main():
     parser.add_argument('--timeout', type=float, default=60.)
     parser.add_argument('--simulate-cycle', action='store_true', help='Run one non-scored measured pick/place cycle with prior')
     parser.add_argument('--cycle-timeout', type=float, default=360.)
+    parser.add_argument('--acquire-inputs', action='store_true')
+    parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     out = Path(args.output).resolve()
@@ -29,6 +31,8 @@ def main():
     params = shlex.split(Path(args.launch_params_file).read_text())
     result = {'scored': False, 'ok': False, 'revision': subprocess.check_output(['git','rev-parse','HEAD'], cwd=repo, text=True).strip(), 'parameters': params}
     (out/'source.diff').write_bytes(subprocess.check_output(['git','diff'], cwd=repo))
+    os.environ['ST09_I_CERT_CAPTURE_DIR']=str(out/'cert_boundaries')
+    os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     log = (out/'launch.log').open('w')
     launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT)
     Path(os.environ.get('ELFIN_SIM_PIDFILE','/tmp/elfin_humble_sim.pid')).write_text(str(launch.pid))
@@ -98,6 +102,10 @@ def main():
                 '--payload','vacuum','--goto-timeout','60','--observe-pose','pickup_observe_sim',
                 '--scene-tf-config',scene,'--out',str(out/'cycle'),'--dump-dir',str(out/'dumps'),
                 '--rehearsal',str(out/'cycle'),'--n','1']
+            if args.acquire_inputs:
+                command.append('--prior-acquisition-only')
+            if args.cycle_fault:
+                command.extend(['--rehearsal-fault',args.cycle_fault])
             result['driver_command']=command
             with (out/'driver.log').open('w') as driver_log:
                 driver=subprocess.run(command,stdout=driver_log,stderr=subprocess.STDOUT,timeout=args.cycle_timeout)

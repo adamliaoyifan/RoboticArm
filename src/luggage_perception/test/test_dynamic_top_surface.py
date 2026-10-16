@@ -634,10 +634,13 @@ class TestSceneIndependenceStructure(unittest.TestCase):
         self.assertIn('"workspace_accept_enabled": False', source)
 
     def test_sim_launch_unchanged_defaults(self):
-        with open(SIM_LAUNCH) as fh:
-            source = fh.read()
-        self.assertNotIn("top_surface_mode", source)
-        self.assertNotIn("crop_to_workspace", source)
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sim_defaults", SIM_LAUNCH)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        defaults = module._default_launch_values()
+        self.assertEqual(defaults["top_surface_mode"], "legacy")
+        self.assertFalse(defaults.get("crop_to_workspace", False))
 
 
 if __name__ == "__main__":

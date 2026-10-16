@@ -59,3 +59,13 @@ def test_prior_miss_retains_original_candidates_and_records_fallback():
     assert box==before
     assert instance._placement_prior_choice is None
     assert not trial.extras['placement_prior']['adopted']
+
+
+def test_acquisition_only_stops_at_detection_even_on_prior_miss():
+    box=measured_box()
+    def unavailable(*args):raise ValueError('no confirmed snapshot')
+    instance=driver(SimpleNamespace(prepare=unavailable))
+    instance._args=SimpleNamespace(prior_acquisition_only=True)
+    trial=SimpleNamespace(extras={})
+    assert instance.on_detected_luggage(box,trial,None)=='PRIOR_INPUT_ACQUISITION_COMPLETE'
+    assert not trial.extras['placement_prior']['adopted']

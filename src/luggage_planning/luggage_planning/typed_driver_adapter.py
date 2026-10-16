@@ -451,6 +451,9 @@ class TypedDriverAdapter:
         if not client.wait_for_service(timeout_sec=2.0):
             raise ContractError("MISSING_ENDPOINT", client.srv_name,
                                 "v2 service", "unavailable")
+        recorder = getattr(self, '_boundary_recorder', None)
+        if recorder is not None:
+            recorder(client.srv_name + ':request', request)
         future = client.call_async(request)
         import time as _time
         deadline = _time.monotonic() + float(timeout_sec)
@@ -459,7 +462,14 @@ class TypedDriverAdapter:
         if not future.done():
             raise ContractError(
                 "BOUNDARY_TIMEOUT", client.srv_name, "response", timeout_sec)
-        return future.result()
+        response = future.result()
+        if recorder is not None:
+            recorder(client.srv_name + ':response', response)
+        return response
+
+    def set_boundary_recorder(self, recorder):
+        """Opt-in exact service capture before caller remapping or mutation."""
+        self._boundary_recorder = recorder
 
     def set_placement_prior(self, prior):
         """Bind an optional measured pre-pick hint for this driver's next Select.

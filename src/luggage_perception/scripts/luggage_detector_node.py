@@ -113,7 +113,6 @@ from luggage_perception.dynamic_top_surface import (
 # model is a versioned hardware config (B0); the evaluator is ROS-free.
 from luggage_perception.suction_patch_evaluator import (
     SuctionPatchEvaluator,
-    center_suction_evaluation,
 )
 from luggage_description._share import description_config_path
 from luggage_description.suction_contact_model import (
@@ -1031,21 +1030,17 @@ class LuggageDetector(Node):
                 "luggage_detector: %s: %s"
                 % (result.reason, self._last_plane_detail))
             return result.reason, None
-        # Centre only. The footprint grid is not run; one candidate is
-        # the fitted top centre so a pick is not blocked on seal gates.
-        model = (self._suction_evaluator.contact_model
-                 if self._suction_evaluator is not None else None)
-        suction = center_suction_evaluation(
-            result,
-            stamp=cloud_stamp_sec,
-            frame_id=self._world_frame,
+        # Evaluate real seal patches from this exact depth acquisition. A
+        # fitted top centre alone is not a validated suction footprint.
+        self._suction_evaluator.update(
+            depth, intr, mat4, result, instance_region=instance_region,
+            stamp=cloud_stamp_sec, frame_id=self._world_frame,
             instance_id=str(getattr(yolo_msg, "instance_id", "") or ""),
             generation=int(getattr(yolo_msg, "generation", 0) or 0),
-            model_version=int(getattr(model, "model_version", 0) or 0),
-            model_hash=str(getattr(model, "identity_hash", "") or ""),
-        )
+            timing=self._timing)
+        suction = self._suction_evaluator.copy_output()
         self._last_plane_detail = ""
-        self._timing["suction_mode"] = "center"
+        self._timing["suction_mode"] = "validated_footprint"
         self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
         return result, suction
 

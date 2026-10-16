@@ -132,3 +132,15 @@ suction candidates. The existing legacy detector produces no such candidates.
 An initial `static_empty` map is not a measured snapshot: acquire a settled cargo
 view through the map owner's normal observation workflow before expecting prior
 adoption. The read-only prior must never promote static geometry to measured data.
+
+Dynamic perception must run `SuctionPatchEvaluator` on the joined depth,
+instance region and top estimate before publishing grasp candidates. A fitted
+centre produced by `center_suction_evaluation` bypasses footprint validation and
+must not be used as offset-grasp acceptance evidence. Zero accepted patches
+remain zero; do not mint a centre fallback. Contact model thresholds remain
+unchanged by this integration.
+
+`--prior-acquisition-only` in the motion/OCC driver requires a non-scored
+rehearsal and prior enabled. It returns at the detected-input hook before pickup;
+it is an input capture tool, not a successful cycle. `--dump-dir` also captures
+exact typed service requests/responses before client-side slot-index remapping.
