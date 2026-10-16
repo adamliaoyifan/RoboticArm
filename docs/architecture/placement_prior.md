@@ -16,8 +16,22 @@ its default-off "confirmed" flag is insufficient evidence. Read that setting
 through a read-only parameter query. Never fabricate a measured next box from
 catalog dimensions. Old revisions must not replace newer accepted input.
 
-GetPlanningScene provides a baseline world for a private copy. Append columns
-from the frozen OCC grid using its explicit container-to-world transform.
+GetPlanningScene provides a baseline world for a private copy. The prior reads
+`/cargo_map/get_volume_v2` for the exact admitted surface revision. The owner
+serializes this read with all map service mutations; a read never integrates,
+confirms or commits data. Join scene/geometry/map identity, acquisition stamp,
+confirmation, grid origin/resolution/dimensions and explicit container frame.
+Require measured confirmed provenance and no pending changes. Reject mismatches.
+
+Append unknown and occupied active voxel runs using the explicit
+container-to-world transform. Merge only consecutive blocked vertical cells;
+never bridge an observed-free interval. Inactive hull cells do not establish
+observed free space; the static container geometry remains present. Bounds:
+at most 1,000,000 volume cells and 20,000 private obstacle runs, otherwise refuse.
+The 2D surface remains the support/candidate interface; its full-column unknown
+classification must not erase measured 3D free intervals. The conservative
+column adapter remains for offline legacy callers; the online prior requires
+the exact volume and cannot silently fall back if acquisition fails.
 Unknown cells remain blocked for prior screening. Retain unrelated world
 obstacles; only replace the prior's own reserved column IDs. Never publish the
 composed scene. Missing/full-scene identity or invalid occupied heights reject

@@ -76,6 +76,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/ResetCargoMap.srv"
   "srv/IntegrateCargoView.srv"
   "srv/GetCargoMapStats.srv"
+  "srv/GetCargoVolumeV2.srv"
   "srv/EvaluateCargoViews.srv"
   "srv/OrchestratorStep.srv"
   "action/PlanMotion.action"

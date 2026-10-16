@@ -282,6 +282,74 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         ]
         self.assertTrue(occupied)
 
+    def test_volume_service_exact_revision_read_only_and_stale_refusal(self):
+        from luggage_msgs.srv import GetCargoVolumeV2
+        self.mapper._frame_scene_revision = 'volume-test-scene'
+        stamp = self._stamp(41)
+        self._publish_cloud(stamp, self._patch(0.,0.,n=200))
+        integrated = self._call(stamp=stamp)
+        self.assertTrue(integrated.success, integrated.message)
+        client = self.helper.create_client(GetCargoVolumeV2, '/cargo_map/get_volume_v2')
+        self.assertTrue(client.wait_for_service(timeout_sec=5.))
+        request = GetCargoVolumeV2.Request(scene_revision='volume-test-scene',
+            geometry_hash=self.hash, expected_map_revision=integrated.resulting_map_revision)
+        before = bytes(self.mapper._mapper._grid)
+        future = client.call_async(request)
+        deadline = time.monotonic()+5.
+        while not future.done() and time.monotonic()<deadline:
+            time.sleep(.01)
+        self.assertTrue(future.done())
+        result = future.result()
+        self.assertTrue(result.success, result.reason)
+        self.assertEqual(bytes(result.states), before)
+        self.assertEqual(bytes(self.mapper._mapper._grid), before)
+        self.assertEqual(result.acquisition_stamp_ns,41_000_000_000)
+        self.assertEqual(result.map_revision,request.expected_map_revision)
+        request.expected_map_revision += 1
+        future = client.call_async(request)
+        deadline = time.monotonic()+5.
+        while not future.done() and time.monotonic()<deadline:
+            time.sleep(.01)
+        self.assertTrue(future.done())
+        self.assertFalse(future.result().success)
+        self.assertEqual(future.result().reason,'SNAPSHOT_IDENTITY_MISMATCH')
+
+    def test_volume_read_waits_for_inflight_map_mutation(self):
+        from luggage_msgs.srv import GetCargoVolumeV2
+        self.mapper._frame_scene_revision = 'volume-test-scene'
+        stamp = self._stamp(42)
+        self._publish_cloud(stamp,self._patch(0.,0.,n=200))
+        old_revision = self.mapper._mapper._revision
+        entered,release = threading.Event(),threading.Event()
+        original = self.mapper._mapper.integrate_points
+        def paused_integration(*args,**kwargs):
+            entered.set()
+            if not release.wait(5.):
+                raise RuntimeError('test integration release timeout')
+            return original(*args,**kwargs)
+        self.mapper._mapper.integrate_points = paused_integration
+        results=[]
+        worker=threading.Thread(target=lambda:results.append(self._call(stamp=stamp)))
+        worker.start()
+        try:
+            self.assertTrue(entered.wait(5.))
+            client=self.helper.create_client(GetCargoVolumeV2,'/cargo_map/get_volume_v2')
+            self.assertTrue(client.wait_for_service(timeout_sec=5.))
+            future=client.call_async(GetCargoVolumeV2.Request(scene_revision='volume-test-scene',
+                geometry_hash=self.hash,expected_map_revision=old_revision))
+            time.sleep(.2)
+            self.assertFalse(future.done(),'snapshot read overlapped an owner mutation')
+        finally:
+            release.set();worker.join(timeout=6.)
+            self.mapper._mapper.integrate_points=original
+        self.assertTrue(results and results[0].success)
+        deadline=time.monotonic()+5.
+        while not future.done() and time.monotonic()<deadline:
+            time.sleep(.01)
+        self.assertTrue(future.done())
+        self.assertFalse(future.result().success)
+        self.assertEqual(future.result().reason,'SNAPSHOT_IDENTITY_MISMATCH')
+
     def test_duplicate_stamp(self):
         stamp = self._stamp(17)
         self._publish_cloud(stamp, self._patch(0.05, 0.0, n=120))

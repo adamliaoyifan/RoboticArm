@@ -17,7 +17,7 @@ from rcl_interfaces.srv import GetParameters
 from moveit_msgs.srv import GetPlanningScene
 from moveit_msgs.msg import PlanningSceneComponents
 from luggage_msgs.msg import SurfaceContractV2
-from luggage_msgs.srv import PreparePlacementPriorV2
+from luggage_msgs.srv import PreparePlacementPriorV2, GetCargoVolumeV2
 
 from luggage_description.frame_diagnostics import BoundaryContext
 from luggage_description.ros_frame_bindings.surfaces import surface_from_message
@@ -66,6 +66,7 @@ class PlacePriorNode(Node):
         qos=QoSProfile(depth=1,reliability=ReliabilityPolicy.RELIABLE,durability=DurabilityPolicy.TRANSIENT_LOCAL)
         self.create_subscription(SurfaceContractV2,'/luggage/cargo_map/surface_v2',self._on_surface,qos)
         self.create_subscription(String,'/luggage/cargo_map/surface_2d',self._on_confirmation,qos)
+        self._get_volume=self.create_client(GetCargoVolumeV2,'/cargo_map/get_volume_v2')
         self._get_scene=self.create_client(GetPlanningScene,'/get_planning_scene')
         mapper=self.declare_parameter('map_parameter_service','/cargo_volume_mapper/get_parameters').value
         self._get_map_parameters=self.create_client(GetParameters,mapper)
@@ -177,8 +178,16 @@ class PlacePriorNode(Node):
                 PlanningSceneComponents.ALLOWED_COLLISION_MATRIX | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
             baseline=self._call(self._get_scene,get_request,2.).scene
             if self._recorder:self._recorder('baseline_scene',baseline)
+            surface_record=confirmed.record()
+            volume_request=GetCargoVolumeV2.Request(
+                scene_revision=surface_record['scene_revision'],
+                geometry_hash=surface_record['geometry_hash'],
+                expected_map_revision=surface_record['map_revision'])
+            if self._recorder:self._recorder('volume_request',volume_request)
+            volume=self._call(self._get_volume,volume_request,2.)
+            if self._recorder:self._recorder('volume_response',volume)
             snapshot=build_private_snapshot(confirmed,baseline,self._model_hash,self._container,
-                                            collision_margin_m=self._margin)
+                                            collision_margin_m=self._margin,volume=volume)
             with self._lock:
                 prefetched=self._prefetched
             request=decode_request(message,snapshot,confirmed,fallback_yaw=self._fallback_yaw,

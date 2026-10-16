@@ -17,7 +17,7 @@ COLUMN_PREFIX = 'placement-prior-occ-'
 
 
 def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
-                           world_from_container, *, collision_margin_m):
+                           world_from_container, *, collision_margin_m, volume=None):
     from geometry_msgs.msg import Pose
     from moveit_msgs.msg import CollisionObject
     from shape_msgs.msg import SolidPrimitive
@@ -42,30 +42,43 @@ def build_private_snapshot(confirmed_surface, baseline_scene, model_hash,
     origin = surface['origin_xy_container']
     state = surface['state']
     tops = surface['surface_z_container']
-    for row, cells in enumerate(state):
-        for column, value in enumerate(cells):
-            if value == 'free':
-                continue
-            if value == 'unknown':
-                top = ceiling
-            elif value == 'occupied':
-                top = tops[row][column]
-                if top is None or not math.isfinite(top) or not floor < top <= ceiling:
-                    raise ValueError('occupied cell without valid measured top')
-            else:
-                raise ValueError('unknown occupancy state')
-            centre = (origin[0]+(row+.5)*resolution,
-                      origin[1]+(column+.5)*resolution, (floor+top)/2)
+    if volume is not None:
+        from luggage_planning.placement_prior_volume import blocked_volume_runs
+        for index, (centre, dimensions) in enumerate(blocked_volume_runs(volume, confirmed_surface)):
             world = world_from_container.compose(Transform(centre, (0,0,0,1)))
-            obj = CollisionObject();obj.id=COLUMN_PREFIX+'%d-%d' % (row,column)
-            obj.header.frame_id='world';obj.operation=CollisionObject.ADD
-            shape=SolidPrimitive();shape.type=SolidPrimitive.BOX
-            shape.dimensions=[resolution+2*collision_margin_m,
-                              resolution+2*collision_margin_m, top-floor]
-            pose=Pose();pose.position.x,pose.position.y,pose.position.z=world.translation
+            obj = CollisionObject(); obj.id = COLUMN_PREFIX+"voxel-"+str(index)
+            obj.header.frame_id="world"; obj.operation=CollisionObject.ADD
+            shape=SolidPrimitive(); shape.type=SolidPrimitive.BOX
+            shape.dimensions=[v+2*collision_margin_m for v in dimensions]
+            pose=Pose(); pose.position.x,pose.position.y,pose.position.z=world.translation
             pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w=world.quaternion_xyzw
-            obj.primitives=[shape];obj.primitive_poses=[pose]
+            obj.primitives=[shape]; obj.primitive_poses=[pose]
             scene.world.collision_objects.append(obj)
+    else:
+        for row, cells in enumerate(state):
+            for column, value in enumerate(cells):
+                if value == 'free':
+                    continue
+                if value == 'unknown':
+                    top = ceiling
+                elif value == 'occupied':
+                    top = tops[row][column]
+                    if top is None or not math.isfinite(top) or not floor < top <= ceiling:
+                        raise ValueError('occupied cell without valid measured top')
+                else:
+                    raise ValueError('unknown occupancy state')
+                centre = (origin[0]+(row+.5)*resolution,
+                          origin[1]+(column+.5)*resolution, (floor+top)/2)
+                world = world_from_container.compose(Transform(centre, (0,0,0,1)))
+                obj = CollisionObject();obj.id=COLUMN_PREFIX+'%d-%d' % (row,column)
+                obj.header.frame_id='world';obj.operation=CollisionObject.ADD
+                shape=SolidPrimitive();shape.type=SolidPrimitive.BOX
+                shape.dimensions=[resolution+2*collision_margin_m,
+                                  resolution+2*collision_margin_m, top-floor]
+                pose=Pose();pose.position.x,pose.position.y,pose.position.z=world.translation
+                pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w=world.quaternion_xyzw
+                obj.primitives=[shape];obj.primitive_poses=[pose]
+                scene.world.collision_objects.append(obj)
     return Snapshot(surface['scene_revision'], int(surface['map_revision']),
                     surface['geometry_hash'], model_hash, world_from_container,
                     confirmed_surface.surface_cdr, serialize_message(scene),
