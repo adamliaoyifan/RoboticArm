@@ -182,6 +182,21 @@ class CargoVolumeMapper:
                 placed["center"], placed["size"], placed["yaw"])
         self._revision += 1
 
+    @property
+    def map_revision(self):
+        """Public read of the single revision counter (B1 snapshot identity
+        reads this; nothing outside the mapper may keep a second counter)."""
+        return self._revision
+
+    def note_external_change(self):
+        """Advance the revision for a state change that mutated no voxel
+        (a confirmation transition: late fact event, container pose note).
+        Without this, a snapshot rebuilt after such a change would carry a
+        different confirmation state at an identical revision — readers
+        could not distinguish it from a stale snapshot."""
+        self._revision += 1
+        return self._revision
+
     def _clear_grid(self):
         """Clear voxel state without changing the commit revision."""
         total = self.nx * self.ny * self.nz
@@ -760,12 +775,21 @@ class CargoVolumeMapper:
                 self._source[idx] = SOURCE_GEOMETRY
 
     def fill_unoccupied_as_free(self):
-        """Geometry GT: usable-hull empty cells are known-free."""
+        """Geometry GT: usable-hull empty cells are known-free.
+
+        Mutates voxel state, so it advances the revision like every other
+        grid mutation (B1: a revision-frozen snapshot contract cannot
+        tolerate unmetered writes; the GT dump path does not read the
+        revision afterwards)."""
+        changed = False
         for i, cell in enumerate(self._grid):
             if self._active is not None and not self._active[i]:
                 continue
-            if cell != OCCUPIED:
+            if cell == UNKNOWN:
                 self._grid[i] = FREE
+                changed = True
+        if changed:
+            self._revision += 1
 
     def stats(self):
         unknown = 0
