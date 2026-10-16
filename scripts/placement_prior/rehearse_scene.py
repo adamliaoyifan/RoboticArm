@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Non-scored exclusive sim scene/service rehearsal; never spawns a box."""
+"""Exclusive unscored rehearsal; optional measured one/two-box cycles."""
 import argparse
 import json
 import os
@@ -17,6 +17,8 @@ def main():
     parser.add_argument('--timeout', type=float, default=60.)
     parser.add_argument('--simulate-cycle', action='store_true', help='Run one non-scored measured pick/place cycle with prior')
     parser.add_argument('--cycle-timeout', type=float, default=360.)
+    parser.add_argument('--cycle-count', type=int, choices=(1, 2), default=1,
+                        help='Measured cycles in the same scene; placed occupancy is retained')
     parser.add_argument('--bootstrap-depth-map', action='store_true')
     parser.add_argument('--bootstrap-depth-targets', default='')
     parser.add_argument('--acquire-inputs', action='store_true')
@@ -111,7 +113,7 @@ def main():
                 '--frame-runtime','--frame-peer','motion_occ_driver','--placement-prior',
                 '--payload','vacuum','--goto-timeout','60','--observe-pose','pickup_observe_sim',
                 '--scene-tf-config',scene,'--out',str(out/'cycle'),'--dump-dir',str(out/'dumps'),
-                '--rehearsal',str(out/'cycle'),'--n','1']
+                '--rehearsal',str(out/'cycle'),'--n',str(args.cycle_count)]
             if args.bootstrap_depth_map:
                 command.append('--bootstrap-depth-map')
             if args.bootstrap_depth_targets:

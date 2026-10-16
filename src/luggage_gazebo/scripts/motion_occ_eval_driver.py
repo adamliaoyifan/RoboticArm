@@ -151,6 +151,9 @@ class MotionOccDriver(CargoMapIntegrateDriver):
             self._service_boundary_recorder = PriorEvidenceRecorder(
                 os.path.join(args.dump_dir, 'typed_service_boundaries'))
             self._typed.set_boundary_recorder(self._service_boundary_recorder)
+            with open(os.path.join(args.dump_dir, 'runtime_identity.json'), 'x') as handle:
+                json.dump(self._frame_runtime_handle.identity, handle, indent=2)
+                handle.write('\n')
         self._depth_observer = None
         if getattr(args, 'bootstrap_depth_map', False):
             if self._typed is None:
