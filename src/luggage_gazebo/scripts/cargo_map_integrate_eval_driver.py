@@ -432,8 +432,10 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
                 leg_admission["leg_digest"] = digests[index]
                 leg_admission["load_state"] = (
                     states[index] if index < len(states) else "unloaded")
+            from luggage_gazebo.observation_execution_budget import observation_execution_wait
+            response_wait=observation_execution_wait(segment,self._args.plan_timeout)
             ok, message, _rec = self._typed.plan_motion(
-                segment, self._args.plan_timeout,
+                segment, response_wait,
                 name="PlanMotionV2:%s" % segment.name,
                 admission=leg_admission)
             executed += 1

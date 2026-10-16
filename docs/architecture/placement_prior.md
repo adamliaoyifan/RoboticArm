@@ -122,6 +122,14 @@ increased motion duration separately from prior planning latency.
 
 ## Full-cycle simulation binding
 
+Depth bootstrap may declare up to three additional scene-bound world-camera
+intents. Each uses the existing certified observation route and execution
+admission; only the map owner integrates settled depth acquisitions. The
+response wait for an already-certified observation leg includes its trajectory
+duration plus the configured response overhead. It does not alter planning or
+certification budgets, trajectory timing, controller limits or collision gates.
+An empty or nonmonotonic trajectory cannot supply an execution wait budget.
+
 The existing motion/OCC evaluation driver accepts `--placement-prior` only with
 its typed frame runtime. Before pickup it binds one measured candidate without
 changing its contact pose or rank; after pickup it preserves the selected box
