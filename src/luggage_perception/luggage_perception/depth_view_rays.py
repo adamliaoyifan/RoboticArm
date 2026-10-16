@@ -33,6 +33,11 @@ def admit_depth_ray(hull, origin, measured_end, terminal_band_m):
     model wall by more than the terminal band, and entry through a closed face.
     Never extrapolate a short return to the wall behind it.
     """
+    return _admit_depth_ray(hull, origin, measured_end, terminal_band_m)
+
+
+def _admit_depth_ray(hull, origin, measured_end, terminal_band_m, physical_hit_distance_m=None):
+    """Shared clipping kernel; physical distance is validated by its boundary adapter."""
     origin=tuple(float(v) for v in origin);end=tuple(float(v) for v in measured_end)
     if len(origin)!=3 or len(end)!=3 or not all(map(math.isfinite,origin+end)):
         return None
@@ -56,11 +61,22 @@ def admit_depth_ray(hull, origin, measured_end, terminal_band_m):
         elif denominator>0:
             far=min(far,crossing)
     if near>far or far<=0 or near>=1 or (entry is not None and entry!=0):return None
-    if length*(1.-far)>band:return None
+    if physical_hit_distance_m is None:
+        if length*(1.-far)>band:return None
+    else:
+        # The first physical surface must not precede usable-volume entry.
+        # A measured return behind that surface cannot clear through it.
+        if physical_hit_distance_m <= near*length or length-physical_hit_distance_m > band:
+            return None
     interior=all((bound-dot(normal,end))/math.sqrt(dot(normal,normal))>band
                  for normal,bound in planes)
     obstacle=end if interior and end[0]>=-hull.half_x else None
-    stop=min(1.,far)-band/length
+    if physical_hit_distance_m is None:
+        stop=min(1.,far)-band/length
+    else:
+        # Truncate at the nearer measured/physical surface BEFORE clipping to
+        # usable volume. The inset semantic boundary is not a measured wall.
+        stop=min((min(length,physical_hit_distance_m)-band)/length,far)
     if stop<=near:
         # A return just inside the open door is still an obstacle, even
         # when no full voxel before it is justified as free.

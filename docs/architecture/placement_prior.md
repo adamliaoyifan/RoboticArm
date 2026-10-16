@@ -277,6 +277,19 @@ intersections with the usable hull. Its synthetic geometric rays are diagnostics
 only, never measurement or occupancy evidence. The nearest positive mesh hit
 is retained; parallel, missed and behind-origin intersections provide no hit.
 
+`depth_physical_boundary.admit_physical_depth_ray` is an offline-validated,
+currently unwired owner-side admission kernel. Its physical first-hit record
+must match scene revision, mesh identity, ray origin and normalized direction.
+Missing evidence refuses the ray; mismatched evidence raises an error. It
+rejects entry through closed usable faces and returns behind the first physical
+surface beyond the unchanged terminal band. Free evidence stops before the
+nearer measured/physical surface, then clips to usable volume; it does not
+subtract a second band from an inset semantic boundary. Short measured returns
+are never extended to mesh walls. Existing online integration still uses its
+original admission path. Wiring requires an authoritative identity-bound mesh
+provider and bounded owner-side representation; a successful ray test alone
+does not establish voxel coverage, map confirmation or motion feasibility.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
