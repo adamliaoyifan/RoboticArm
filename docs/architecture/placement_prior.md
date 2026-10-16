@@ -121,3 +121,14 @@ explicit dependency. Source-root PYTHONPATH is not installation verification.
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock
 publisher; it spawns no box and is not a functional pick/place acceptance test.
+
+Prior experiments may opt into `evidence_dir` on the sidecar. It captures exact
+prepare requests/responses, baseline scene, and native collision boundaries in a
+new directory with a 256 MiB limit. Exhaustion refuses adoption and must be
+reported as incomplete evidence. No capture directory means capture is disabled.
+
+Simulation must explicitly select `top_surface_mode:=dynamic` to obtain measured
+suction candidates. The existing legacy detector produces no such candidates.
+An initial `static_empty` map is not a measured snapshot: acquire a settled cargo
+view through the map owner's normal observation workflow before expecting prior
+adoption. The read-only prior must never promote static geometry to measured data.

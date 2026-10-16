@@ -33,6 +33,7 @@ def _nodes(context):
         Node(package='luggage_planning', executable='place_prior_node.py', name='place_prior',
              output='screen', parameters=[model, {
                  'frame_scene_revision': revision,
+                 'evidence_dir': LaunchConfiguration('evidence_dir').perform(context),
                  'container_translation': list(map(float, translation)),
                  'container_quaternion_xyzw': list(map(float, rpy_to_quaternion(rpy))),
                  'collision_margin_m': float(LaunchConfiguration('collision_margin_m').perform(context)),
@@ -49,6 +50,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument('scene_tf_config', default_value=os.path.join(share, 'config', 'scene_tf.yaml')),
         DeclareLaunchArgument('frame_scene_revision', default_value=''),
+        DeclareLaunchArgument('evidence_dir', default_value=''),
         DeclareLaunchArgument('collision_margin_m', default_value='0.05'),
         DeclareLaunchArgument('map_parameter_service', default_value='/cargo_volume_mapper/get_parameters'),
         DeclareLaunchArgument('prefetch_enabled', default_value='false'),

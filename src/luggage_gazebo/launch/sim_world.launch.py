@@ -75,6 +75,7 @@ def _default_launch_values():
         "gui": "true",
         "use_rviz": "true",
         "use_perception": "true",
+        "top_surface_mode": "legacy",
         "hull_margin": "0.0",
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
@@ -818,6 +819,7 @@ def _launch_setup(context):
         parameters=[{
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
+            "top_surface_mode": cfg["top_surface_mode"],
             "use_sim_time": True,
             "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
@@ -1161,6 +1163,7 @@ def generate_launch_description():
                 "use_moveit",
                 "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
+            profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "startup_watchdog_sec",

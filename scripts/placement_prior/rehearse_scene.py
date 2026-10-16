@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import time
 
@@ -14,6 +15,8 @@ def main():
     parser.add_argument('--launch-params-file', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--timeout', type=float, default=60.)
+    parser.add_argument('--simulate-cycle', action='store_true', help='Run one non-scored measured pick/place cycle with prior')
+    parser.add_argument('--cycle-timeout', type=float, default=360.)
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     out = Path(args.output).resolve()
@@ -31,6 +34,10 @@ def main():
     Path(os.environ.get('ELFIN_SIM_PIDFILE','/tmp/elfin_humble_sim.pid')).write_text(str(launch.pid))
     start = time.monotonic()
     node = None
+    sidecar = None
+    bag = None
+    sidecar_log = None
+    bag_log = None
     try:
         import rclpy
         from rclpy.serialization import serialize_message
@@ -64,11 +71,56 @@ def main():
                 future = None
         if not result['ok']:
             result['reason'] = 'scene_or_service_readiness_timeout'
+        elif args.simulate_cycle:
+            from luggage_description.runtime_identity import scene_revision_from_path
+            options=dict(item.split(':=',1) for item in params)
+            scene=options['scene_tf_config']
+            sidecar_log=(out/'prior.log').open('w')
+            sidecar=subprocess.Popen(['ros2','launch','luggage_planning','placement_prior.launch.py',
+                'scene_tf_config:='+scene,'frame_scene_revision:='+scene_revision_from_path(scene),
+                'evidence_dir:='+str(out/'prior_boundaries')],stdout=sidecar_log,stderr=subprocess.STDOUT,
+                start_new_session=True)
+            until=time.monotonic()+20.
+            while time.monotonic()<until:
+                rclpy.spin_once(node,timeout_sec=.1)
+                if '/placement_prior/prepare' in {name for name,_ in node.get_service_names_and_types()}:
+                    break
+                if sidecar.poll() is not None:raise RuntimeError('prior launch failed')
+            else:raise RuntimeError('prior service readiness timeout')
+            bag_log=(out/'bag.log').open('w')
+            bag=subprocess.Popen(['ros2','bag','record','-o',str(out/'bag'),
+                '--max-bag-size','134217728', '/clock','/tf','/tf_static','/joint_states',
+                '/monitored_planning_scene','/luggage/cargo_map/surface_2d',
+                '/luggage/cargo_map/surface_v2','/motion_planner/last_boundary'],
+                stdout=bag_log,stderr=subprocess.STDOUT,start_new_session=True)
+            command=['ros2','run','luggage_gazebo','motion_occ_eval_driver.py',
+                '--frame-runtime','--frame-peer','motion_occ_driver','--placement-prior',
+                '--payload','vacuum','--goto-timeout','60','--observe-pose','pickup_observe_sim',
+                '--scene-tf-config',scene,'--out',str(out/'cycle'),'--dump-dir',str(out/'dumps'),
+                '--rehearsal',str(out/'cycle'),'--n','1']
+            result['driver_command']=command
+            with (out/'driver.log').open('w') as driver_log:
+                driver=subprocess.run(command,stdout=driver_log,stderr=subprocess.STDOUT,timeout=args.cycle_timeout)
+            result['startup_ok']=result['ok']
+            result['driver_exit_code']=driver.returncode
+            result['ok']=driver.returncode == 0
+            result['scope']='non-scored functional acquisition; inspect cycle evidence for verdict'
+
     except Exception as exc:
+        result['ok']=False
         result['reason'] = repr(exc)
     finally:
         result['elapsed_s'] = time.monotonic()-start
         (out/'result.json').write_text(json.dumps(result, indent=2))
+        for process in (bag,sidecar):
+            if process is not None and process.poll() is None:
+                os.killpg(process.pid,signal.SIGINT)
+                try:process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    os.killpg(process.pid,signal.SIGTERM)
+                    process.wait(timeout=10)
+        for handle in (bag_log,sidecar_log):
+            if handle is not None:handle.close()
         if node is not None:
             node.destroy_node()
             rclpy.try_shutdown()

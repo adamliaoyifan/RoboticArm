@@ -45,7 +45,12 @@ class PlacePriorNode(Node):
         self._margin=float(self.declare_parameter('collision_margin_m',.05).value)
         self._fallback_yaw=float(self.declare_parameter('pick_fallback_yaw',0.).value)
         self._store=ConfirmedSurfaceStore()
-        self._collision=NativeToolCollisionPort(self)
+        evidence_dir=self.declare_parameter('evidence_dir','').value
+        self._recorder=None
+        if evidence_dir:
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            self._recorder=PriorEvidenceRecorder(evidence_dir)
+        self._collision=NativeToolCollisionPort(self, recorder=self._record_collision)
         self._worker=PriorWorker(self._collision)
         self._active_snapshot=None
         self._last_request=None
@@ -142,6 +147,10 @@ class PlacePriorNode(Node):
             raise TimeoutError('read-only dependency timeout')
         return future.result()
 
+    def _record_collision(self, boundary, message):
+        if self._recorder:
+            self._recorder('collision_'+boundary, message)
+
     def _prepare(self,message,response,*,background=False):
         started=time.monotonic();response.success=False;response.measured=message.measured
         if not background:
@@ -149,6 +158,7 @@ class PlacePriorNode(Node):
                 self._foreground_active=True
                 self._worker.invalidate()
         try:
+            if self._recorder:self._recorder('prepare_request',message)
             params=self._call(self._get_map_parameters,
                              GetParameters.Request(names=['require_confirmed_map']),2.)
             if len(params.values)!=1 or params.values[0].type!=1:
@@ -166,6 +176,7 @@ class PlacePriorNode(Node):
                 PlanningSceneComponents.OCTOMAP | PlanningSceneComponents.TRANSFORMS |
                 PlanningSceneComponents.ALLOWED_COLLISION_MATRIX | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
             baseline=self._call(self._get_scene,get_request,2.).scene
+            if self._recorder:self._recorder('baseline_scene',baseline)
             snapshot=build_private_snapshot(confirmed,baseline,self._model_hash,self._container,
                                             collision_margin_m=self._margin)
             with self._lock:
@@ -216,6 +227,14 @@ class PlacePriorNode(Node):
                 with self._lock:
                     self._foreground_active=False
         response.elapsed_s=time.monotonic()-started
+        if self._recorder:
+            try:
+                self._recorder('prepare_response',response)
+            except Exception as exc:
+                response.success=False
+                response.choices=[]
+                response.reason='PRIOR_EVIDENCE_INCOMPLETE: '+str(exc)
+                self.get_logger().error(response.reason)
         return response
 
     def destroy_node(self):
