@@ -1100,7 +1100,7 @@ class LuggageDetector(Node):
                 from luggage_perception.suction_input_capture import SuctionInputCapture
                 if not hasattr(self, '_suction_input_capture'):
                     self._suction_input_capture = SuctionInputCapture(capture_root)
-                self._suction_input_capture.capture(
+                self._suction_input_capture.stage(
                     depth, intr, mat4, result, instance_region,
                     self._suction_evaluator.contact_model, suction,
                     stamp_ns=int(key[0])*1000000000+int(key[1]))
@@ -2199,6 +2199,15 @@ class LuggageDetector(Node):
             self._last_failure_reason = "geometry_not_settled"
             return None, float(frame.pca_confidence)
         self._last_failure_reason = "ok"
+        capture = getattr(self, '_suction_input_capture', None)
+        if capture is not None:
+            try:
+                outcome = capture.pin(frame.instance_id, frame.generation,
+                    int(frame.header.stamp.sec)*1000000000+int(frame.header.stamp.nanosec))
+                if outcome['status'] not in ('saved', 'already_saved'):
+                    self._warn_throttled('selected suction input capture: %s' % outcome['status'])
+            except Exception as error:
+                self._warn_throttled('selected suction input capture failed: %s' % error)
         return frame.box, float(frame.pca_confidence)
 
     def _detect_from_window_with_retries(self):

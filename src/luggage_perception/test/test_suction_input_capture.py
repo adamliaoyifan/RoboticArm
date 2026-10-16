@@ -38,3 +38,16 @@ def test_exact_capture_replays_candidates_and_preserves_limits(tmp_path):
     with pytest.raises(ValueError,match='byte budget'):
         too_small.capture(case.depth_mm,INTR,case.mat4,top,region,model,expected,stamp_ns=1)
     assert list((tmp_path/'small').iterdir())==[]
+
+    buffered=SuctionInputCapture(tmp_path/'buffered',buffer_frames=2)
+    for stamp in (1,2,3):
+        buffered.stage(case.depth_mm,INTR,case.mat4,top,region,model,expected,stamp_ns=stamp)
+    assert not list((tmp_path/'buffered').glob('case-*'))
+    assert buffered.pin(expected.instance_id,expected.generation,1)['status']=='exact_input_missing'
+    assert buffered.pin(expected.instance_id,expected.generation+1,3)['status']=='exact_input_missing'
+    original=case.depth_mm.copy()
+    case.depth_mm[:]=0
+    assert buffered.pin(expected.instance_id,expected.generation,3)['status']=='saved'
+    captured=np.load(tmp_path/'buffered/case-000/inputs.npz')
+    np.testing.assert_array_equal(captured['depth_mm'],original)
+    assert buffered.pin(expected.instance_id,expected.generation,3)['status']=='already_saved'

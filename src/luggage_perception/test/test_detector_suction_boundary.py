@@ -31,3 +31,26 @@ def test_detector_keeps_empty_evaluation_instead_of_minting_center(monkeypatch):
     assert kw['instance_id']=='measured-box' and kw['generation']==3
     assert kw['stamp']==1.000000002 and kw['instance_region'] is mask
     assert fake._timing['suction_mode']=='validated_footprint'
+
+
+def test_selected_frame_pins_its_exact_stamp_without_changing_detection():
+    path=Path(__file__).parents[1]/'scripts/luggage_detector_node.py'
+    spec=importlib.util.spec_from_file_location('detector_capture_selection',path)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    calls=[]
+    def pin(*identity):
+        calls.append(identity)
+        return {'status':'exact_input_missing'}
+    warnings=[]
+    fake=SimpleNamespace(_stamp_age_sec=lambda stamp:0.,_cloud_max_age=1.,
+        _use_semantic=True,_box_epoch_seen=True,_box_generation=7,
+        _acquisition_unsettled=lambda stamp:False,
+        _suction_input_capture=SimpleNamespace(pin=pin),_warn_throttled=warnings.append)
+    box=object()
+    frame=SimpleNamespace(header=SimpleNamespace(stamp=SimpleNamespace(sec=123,nanosec=456789123)),
+        instance_id='selected-box',generation=7,pca_valid=True,pca_reason='ok',
+        pca_confidence=.9,box=box)
+    result,confidence=module.LuggageDetector._frame_to_detect(fake,frame)
+    assert result is box and confidence==.9
+    assert calls==[('selected-box',7,123456789123)]
+    assert warnings and 'exact_input_missing' in warnings[0]

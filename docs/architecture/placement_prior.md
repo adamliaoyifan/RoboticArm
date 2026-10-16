@@ -182,8 +182,12 @@ Unscored rehearsal may enable `--capture-suction` to preserve exact evaluator
 inputs via `ELFIN_SUCTION_INPUT_CAPTURE`. The detector records depth, intrinsics,
 acquisition TF, instance region, fitted top/labels, effective contact model and
 accepted/rejected candidates with the original nanosecond acquisition stamp.
-Capture is bounded to four identities and four distinct stamps per identity,
-eight MiB of uncompressed arrays/metadata per case. It never authorizes a new
+An eight-frame private input buffer owns copies of the latest evaluator inputs;
+the selected detection frame pins only its exact instance/generation/nanosecond
+stamp. A missing or evicted frame is explicitly recorded, never replaced by a
+nearby acquisition. Persistent capture is bounded to four identities and four
+distinct stamps per identity, eight MiB of uncompressed arrays/metadata per
+case; selection diagnostics are capped at 64 events. It never authorizes a new
 contact or changes candidate selection. An absent center in a bounded candidate
 list does not establish that the center failed footprint evaluation. Replay
 must check matching captured acquisition/model before drawing that conclusion.
