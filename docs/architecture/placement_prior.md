@@ -54,6 +54,20 @@ context. With no bound prior it calls ordinary ComputePlacement before Select;
 it does not claim byte-identical historical candidate replay in that mode.
 Successful invocation alone does not satisfy the full F2 case matrix.
 
+The isolated native replay's explicit `--baseline-consumer` mode uses the
+production ComputePlacementV2 node and hardware consumer before Select, with
+captured actual attachment and map/start context. An explicit
+`--placement-parameters` JSON pins the diagnostic placement policy; effective
+solver parameters are recorded. Recorded surface admission uses the production
+subscriber callback. The fixture disables runtime registry admission and does
+not claim deployment F2. It never supplies a prior response to the baseline.
+Recomputed slots and request IDs may differ from the historical prior-selected
+request; physical attachment, payload, map and start context must remain equal.
+Node construction precedes the measured request window. Capture both placement
+and Select boundaries. This measures planning conditional on the same actual
+grasp; it does not measure the effects of changing the earlier pick. Different
+allowed targets and policy profiles must be disclosed before paired comparison.
+
 Both hardware and simulation consumers must preserve the controller-confirmed
 attachment for the carrying phase. A later TCP sample combined with the old
 pickup detection must not overwrite that transform or its acquisition stamp.

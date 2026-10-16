@@ -33,6 +33,10 @@ def main():
     parser.add_argument('--attachment-response',type=Path)
     parser.add_argument('--prior-response',type=Path)
     parser.add_argument('--choice-index',type=int)
+    parser.add_argument('--baseline-consumer',action='store_true',
+                        help='Run production ComputePlacementV2 then Select, with recorded actual attachment and no prior')
+    parser.add_argument('--placement-parameters',type=Path,
+                        help='Explicit baseline production placement parameters JSON; required for baseline-consumer')
     parser.add_argument('--measure-resources',action='store_true',
                         help='Record sampled client/producer/MoveIt process-tree resources; no live prior process')
     args=parser.parse_args()
@@ -40,7 +44,13 @@ def main():
         parser.error('later Select calls require explicit matching --surface and --scene')
     consumer_inputs=(args.attachment_request,args.attachment_response,args.prior_response,args.choice_index)
     hardware_consumer=any(value is not None for value in consumer_inputs)
-    if hardware_consumer and any(value is None for value in consumer_inputs):
+    if args.baseline_consumer:
+        if not args.attachment_request or not args.attachment_response or not args.placement_parameters:
+            parser.error('baseline-consumer requires actual attachment request/response and placement-parameters')
+        if args.prior_response is not None or args.choice_index is not None:
+            parser.error('baseline-consumer cannot use a prior response or choice')
+        hardware_consumer=True
+    elif hardware_consumer and any(value is None for value in consumer_inputs):
         parser.error('hardware consumer requires attachment request/response, prior response and choice index')
     if os.environ.get('ROS_DOMAIN_ID')!='8':raise ValueError('requires isolated domain 8')
     # isolated_moveit.launch.py restricts every server to localhost. Apply the
@@ -90,10 +100,14 @@ def main():
     (args.output/'source.diff').write_bytes(subprocess.check_output(['git','diff']))
     (args.output/'replay_script.py').write_bytes(Path(__file__).read_bytes())
     if hardware_consumer:
-        for path in consumer_inputs[:3]:
+        for path in [value for value in consumer_inputs[:3] if value is not None]:
             report['inputs'][str(path.resolve())]=hashlib.sha256(path.read_bytes()).hexdigest()
         report['scope']='captured inputs through hardware consumer and live ROS Select; not hardware deployment F2'
         report['F2']='not_evaluated'
+    if args.baseline_consumer:
+        report['inputs'][str(args.placement_parameters.resolve())]=hashlib.sha256(args.placement_parameters.read_bytes()).hexdigest()
+        report['placement_parameters']=json.loads(args.placement_parameters.read_text())
+        report['arm']='baseline_compute_then_select'
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(args.output/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(args.output/'portal_boundaries')
     log=(args.output/'moveit.log').open('w')
@@ -102,7 +116,7 @@ def main():
              'hardware_plugin:=gz_ros2_control/GazeboSimSystem','xacro_extra:='+xacro_extra]
     (args.output/'command.json').write_text(json.dumps(command,indent=2))
     proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-    node=None;executor=None;spin=None;resource_window=None
+    node=None;executor=None;spin=None;resource_window=None;placement_node=None
     try:
         rclpy.init();node=rclpy.create_node('exact_route_replay')
         executor=MultiThreadedExecutor(num_threads=4);executor.add_node(node)
@@ -153,6 +167,20 @@ def main():
             site_poses_fn=lambda:None)
         if producer is None or not producer.edge_builder.wait_ready(timeout_sec=30.):
             raise RuntimeError('producer dependencies unavailable')
+        if hardware_consumer:
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            recorder=PriorEvidenceRecorder(args.output/'consumer_boundaries')
+            if args.baseline_consumer:
+                from baseline_placement import create_baseline_placement
+                from luggage_msgs.srv import ComputePlacementV2
+                placement_node=create_baseline_placement(args.scene_tf,document['scene_revision'],
+                    request.surface,report['placement_parameters'],recorder)
+                executor.add_node(placement_node)
+                report['effective_placement_parameters']={
+                    'solver':placement_node._params,'allowed_yaws':placement_node._allowed_yaws,
+                    'hull_margin':placement_node.get_parameter('hull_margin').value,
+                    'aperture_margin':placement_node.get_parameter('aperture_margin').value,
+                    'atlas_enabled':placement_node._atlas_cfg.get('enabled')}
         if args.measure_resources:
             from luggage_planning.prior_resources import ResourceWindow
             # The producer lives here, and this process owns the MoveIt launch
@@ -165,8 +193,6 @@ def main():
             from luggage_msgs.srv import VacuumCommandV2,PreparePlacementPriorV2
             from luggage_planning.hardware_place_replay import replay_place
             from luggage_planning.typed_driver_adapter import TypedDriverAdapter
-            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
-            recorder=PriorEvidenceRecorder(args.output/'consumer_boundaries')
             received=[]
             def select_callback(wire,reply):
                 recorder('select_server:request',wire)
@@ -182,6 +208,9 @@ def main():
             # deployment runtime registry, claim readiness, or authorize motion.
             adapter=object.__new__(TypedDriverAdapter)
             adapter._select=client
+            if args.baseline_consumer:
+                adapter._compute=node.create_client(ComputePlacementV2,'/placement_planner/compute_placement_v2',
+                    callback_group=ReentrantCallbackGroup())
             def transport(port,wire,timeout):
                 recorder('hardware_consumer:request',wire)
                 result=call(port,wire,timeout)
@@ -192,10 +221,27 @@ def main():
                 deserialize_message(args.attachment_response.read_bytes(),VacuumCommandV2.Response),
                 attachment_request=deserialize_message(args.attachment_request.read_bytes(),VacuumCommandV2.Request),
                 scene_revision=document['scene_revision'],
-                prior=deserialize_message(args.prior_response.read_bytes(),PreparePlacementPriorV2.Response),
+                prior=(deserialize_message(args.prior_response.read_bytes(),PreparePlacementPriorV2.Response)
+                       if args.prior_response else None),
                 choice_index=args.choice_index)
             report['consumer_request_matches_capture']=len(received)==1 and received[0]==request
-            if not report['consumer_request_matches_capture']:
+            if args.baseline_consumer:
+                if len(received)!=1:
+                    raise ValueError('baseline did not issue exactly one Select')
+                wire=received[0]
+                # Baseline recomputes targets and correlation IDs. It must still
+                # preserve physical attachment, map, payload and start context.
+                fields=('box_wdh','surface','inner_size','geometry_hash','map_revision',
+                        'start_joints','container_source_frame','container_target_frame',
+                        'container_translation','container_quaternion_xyzw','box_id','generation')
+                report['baseline_context_preserved']=all(getattr(wire,key)==getattr(request,key) for key in fields)
+                report['baseline_context_preserved'] &= (wire.grasp.pose==request.grasp.pose
+                    and wire.grasp.identity.stamp_ns==request.grasp.identity.stamp_ns
+                    and wire.start_tcp.pose==request.start_tcp.pose)
+                report['baseline_slot_count']=len(wire.slots)
+                if not report['baseline_context_preserved']:
+                    raise ValueError('baseline changed captured physical/map context')
+            elif not report['consumer_request_matches_capture']:
                 raise ValueError('hardware consumer changed captured Select request')
         else:
             response=fill_select_response_route(request,SelectPlacePathV2.Response(),producer,
@@ -219,6 +265,7 @@ def main():
         (args.output/'result.json').write_text(json.dumps(report,indent=2)+'\n')
         if executor:executor.shutdown(timeout_sec=5.)
         if spin:spin.join(timeout=5.)
+        if placement_node:placement_node.destroy_node()
         if node:node.destroy_node()
         if rclpy.ok():rclpy.shutdown()
         subprocess.run(['bash','scripts/stop_sim.sh','--owned-pgid',str(proc.pid)],
