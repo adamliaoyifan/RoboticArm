@@ -53,3 +53,8 @@
   B2 的 PlanningSnapshot epoch 字段改了源码未重建 → 运行时旧拷贝报
   unexpected keyword 'epoch'。已重建（含级联）。冻结仍为源码 HEAD
   7391f460；install 与之同步。
+- **r7 发现（B3 缺口，修复 a19760fd）**: place_smoke 缺 _leg_trajectory_digest
+  （历史上 _leg_execution_admission 静默降级无 scope；B3 接线显式拒
+  LEG_DIGEST_UNAVAILABLE——fail-closed 正确行为暴露了存量缺口）。已按
+  motion_occ 原版移植。**冻结 HEAD 更新为 a19760fd**；r5–r7 仍零箱放置，
+  额度未耗。
