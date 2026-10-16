@@ -42,3 +42,19 @@ def test_reject_changed_candidate_identity():
     d.candidates[0].frame='camera_link'
     with pytest.raises(ValueError,match='identity mismatch'):
         candidates_for_prior(d)
+
+
+def test_directed_pi_pick_axes_and_rotated_place_preserve_offset_and_target():
+    # Physical contact is 4 cm along the directed box +X axis. At pi yaw
+    # it lies on world -X; do not canonicalize the box axes modulo pi.
+    d = replace(detection(), box_quat=(0.,0.,1.,0.), detection_yaw=math.pi)
+    d.candidates[0].contact.position.x = .96
+    d.candidates[0].contact.position.y = 2.
+    grasp, = candidates_for_prior(d)
+    assert grasp.box_from_tcp.translation == pytest.approx((.04,0.,.1))
+    target = Transform((3.,4.,.5),(0.,0.,math.sqrt(.5),math.sqrt(.5)))
+    tcp = target.compose(grasp.box_from_tcp)
+    assert tcp.translation == pytest.approx((3.,4.04,.6))
+    recovered = tcp.compose(grasp.box_from_tcp.inverse())
+    assert recovered.translation == pytest.approx((3.,4.,.5))
+    assert recovered.quaternion_xyzw == pytest.approx(target.quaternion_xyzw)
