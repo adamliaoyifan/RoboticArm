@@ -1073,6 +1073,18 @@ class CargoMapIntegrateDriver(PlaceSmokeDriver):
         The slot pose is the planned box center. Size is the suitcase that
         was placed. This volume only selects depth points.
         """
+        # Typed placement already carries authoritative container-frame pose
+        # and measured dimensions. Do not round-trip through the legacy slot
+        # view or use physics command geometry to select sensor points.
+        record = getattr(self, "_frame_slot_record", None)
+        measured_size = getattr(self, "_frame_box_wdh", None)
+        if record is not None and measured_size is not None:
+            if record.get("frame_id") != "container_link" or len(measured_size) != 3:
+                raise ValueError("invalid measured placement observation geometry")
+            quat = record["quaternion_xyzw"]
+            yaw = math.atan2(2 * (quat[3] * quat[2] + quat[0] * quat[1]),
+                             1 - 2 * (quat[1] ** 2 + quat[2] ** 2))
+            return (list(record["position"]), list(measured_size), yaw)
         pos = slot.place_pose.position
         base = [float(pos.x), float(pos.y), float(pos.z)]
         center = _point_in_container_link(base, self._scene_config)

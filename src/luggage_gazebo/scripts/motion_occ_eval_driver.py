@@ -701,18 +701,21 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         # v1 view for the shared trial bookkeeping: container -> base_link
         # through the shared scene helpers, never hand-rolled.
         from luggage_description.scene_tf_config_utils import (
-            _local_point_to_base_link)
+            _local_point_to_base_link, container_in_base_link)
+        from scipy.spatial.transform import Rotation
         record = self._frame_slot_record
         base_xyz = _local_point_to_base_link(
             list(record["position"]), self._scene_config)
-        yaw_container = 2.0 * math.atan2(record["quaternion_xyzw"][2],
-                                          record["quaternion_xyzw"][3])
+        _translation, container_rpy = container_in_base_link(self._scene_config)
+        base_quaternion = (Rotation.from_euler("xyz", container_rpy)
+                           * Rotation.from_quat(record["quaternion_xyzw"])).as_quat()
         slot = SlotSpec()
         slot.place_pose.position.x = float(base_xyz[0])
         slot.place_pose.position.y = float(base_xyz[1])
         slot.place_pose.position.z = float(base_xyz[2])
-        slot.place_pose.orientation.z = math.sin(0.5 * yaw_container)
-        slot.place_pose.orientation.w = math.cos(0.5 * yaw_container)
+        (slot.place_pose.orientation.x, slot.place_pose.orientation.y,
+         slot.place_pose.orientation.z, slot.place_pose.orientation.w) = (
+             float(v) for v in base_quaternion)
         slot.width, slot.height, slot.depth = box_wdh[0], box_wdh[2], box_wdh[1]
         winner_rows = self._rows_from_selection(selection)
         self._dump_selector(trial, input_slots, winner_rows,

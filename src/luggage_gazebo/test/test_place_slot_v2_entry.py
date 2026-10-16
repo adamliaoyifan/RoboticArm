@@ -174,3 +174,20 @@ class TestPlaceSlotV2Entry(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_rotated_container_slot_view_and_measured_crop_agree():
+    import math
+    from cargo_map_integrate_eval_driver import CargoMapIntegrateDriver
+    driver = _Driver()
+    driver._scene_config['static_transforms'][0]['rotation_rpy'][2] = math.pi / 2
+    trial = SimpleNamespace(fail_code='', extras={})
+    slot, _ = driver._place_slot_for(_pick(), None, trial)
+    assert slot is not None
+    yaw_base = 2 * math.atan2(slot.place_pose.orientation.z, slot.place_pose.orientation.w)
+    assert abs(yaw_base - math.pi / 2) < 1e-9
+    driver._release_physics = {'command_size': [9., 8., 7.]}
+    center, size, yaw = CargoMapIntegrateDriver._placed_box_container(driver, slot, _pick())
+    assert center == [0.2, -0.1, 0.14]
+    assert size == [.4, .3, .2]
+    assert abs(yaw) < 1e-9

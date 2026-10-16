@@ -308,3 +308,12 @@ margin. Raise portal/approach along the container-up ladder when necessary;
 retain the exact contact target and attachment. This is a conservative proposal,
 not a path certificate; all downstream IK/collision/endpoint gates still apply.
 Record intersecting obstacle ids and required world TCP height in each row.
+
+### Post-release observation geometry
+
+The typed placement caller's legacy SlotSpec view must transform orientation
+as well as position from container_link to robot base. Depth selection for a
+typed placement reads the authoritative container-frame slot and measured
+box dimensions directly; physics command dimensions must not select sensor
+points. A crop with sufficient points is not occupancy confirmation: mapper
+filtering, raster hits, measured height and confirmation gates remain required.
