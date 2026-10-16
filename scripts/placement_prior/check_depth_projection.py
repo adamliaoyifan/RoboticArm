@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Check expanded simulator K against native Ogre2 depth, including negative control.
 
-Requires g++, pkg-config, ROS xacro, ignition-rendering6 and ignition-utils1.
+Requires g++, pkg-config, ROS xacro, ignition-rendering6, ignition-utils1,
+and sdformat12.
 Runs an isolated in-process renderer only. Preserves all inputs and logs.
 """
 import argparse
@@ -31,28 +32,32 @@ def main():
     intrinsics = camera.find('lens/intrinsics')
     values = [float(intrinsics.findtext(k)) for k in ('fx', 'fy', 'cx', 'cy')]
     hfov = float(camera.findtext('horizontal_fov'))
-    projection = camera.find('lens/projection')
-    projection_matches = projection is not None and all(
-        abs(float(projection.findtext(k))-v)<1e-10
-        for k,v in zip(('fx','fy','cx','cy'),values))
+    sensor = ET.fromstring(expanded).find('.//sensor')
+    sensor_file = args.output / 'sensor.sdf'
+    sensor_file.write_text('<sdf version="1.9"><model name="projection_probe">'
+                          '<static>true</static><link name="camera">' +
+                          ET.tostring(sensor, encoding='unicode') +
+                          '</link></model></sdf>')
     hardware_reference = (323.1775,322.8994,317.7526,178.0294)
     within_profile = all(abs(v/r-1)<=.02 for v,r in zip(values,hardware_reference))
     binary = args.output / 'probe'
     source = Path(__file__).with_name('depth_projection_probe.cc')
     flags = shlex.split(subprocess.check_output(
-        ['pkg-config','--cflags','--libs','ignition-rendering6','ignition-utils1'],text=True))
+        ['pkg-config','--cflags','--libs','ignition-rendering6','ignition-utils1','sdformat12'],text=True))
     with (args.output / 'build.log').open('w') as log:
         subprocess.run(['g++',str(source),'-o',str(binary),*flags],stdout=log,
                        stderr=subprocess.STDOUT,timeout=60,check=True)
     runs=[]
     for name,k in [('configured',values),('old_hardware_K',hardware_reference)]:
         command=[str(binary.resolve()),*map(str,k),str(hfov)]
+        if name == 'configured':
+            command.append(str(sensor_file.resolve()))
         with (args.output / (name+'.log')).open('w') as log:
             result=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,timeout=30)
         runs.append({'name':name,'command':command,'returncode':result.returncode})
-    passed=projection_matches and within_profile and runs[0]['returncode']==0 and runs[1]['returncode']==4
+    passed=within_profile and runs[0]['returncode']==0 and runs[1]['returncode']==4
     report={'pass':passed,'scope':'nine pixels on tilted analytic plane; native renderer, no robot/full-world validation',
-            'K':values,'hfov':hfov,'K_equals_P':projection_matches,'within_hardware_profile_2pct':within_profile,
+            'K':values,'hfov':hfov,'native_K_P_and_geometry_pass':runs[0]['returncode']==0,'within_hardware_profile_2pct':within_profile,
             'runs':runs,'revision':subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip(),
             'dirty_state':subprocess.check_output(['git','status','--porcelain'],cwd=root,text=True)}
     (args.output/'result.json').write_text(json.dumps(report,indent=2)+'\n')

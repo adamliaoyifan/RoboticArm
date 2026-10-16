@@ -57,6 +57,9 @@ all nine pixels on a native rendered tilted plane must agree with the expanded
 camera configuration within 0.1 mm, and the previous hardware-K negative control
 must fail. This isolated renderer gate does not replace live CameraInfo and
 whole-scene acquisition verification.
+The gate also loads the expanded camera through native sdformat's Camera DOM:
+projection uses `p_fx/p_fy/p_cx/p_cy`, whereas intrinsics uses `fx/fy/cx/cy`.
+Checking XML text alone misses ignored fields and silently selected defaults.
 
 Backend bindings are configuration, never algorithm constants:
 

@@ -140,10 +140,10 @@
               <s>0</s>
             </intrinsics>
             <projection>
-              <fx>${sim_camera_focal}</fx>
-              <fy>${sim_camera_focal}</fy>
-              <cx>319.5</cx>
-              <cy>179.5</cy>
+              <p_fx>${sim_camera_focal}</p_fx>
+              <p_fy>${sim_camera_focal}</p_fy>
+              <p_cx>319.5</p_cx>
+              <p_cy>179.5</p_cy>
               <tx>0</tx>
               <ty>0</ty>
             </projection>

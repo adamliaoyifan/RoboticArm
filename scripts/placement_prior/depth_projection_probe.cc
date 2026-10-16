@@ -6,14 +6,41 @@
 #include <gz/rendering/Visual.hh>
 #include <gz/rendering/Geometry.hh>
 #include <gz/math/Matrix4.hh>
+#include <sdf/Root.hh>
+#include <sdf/Model.hh>
+#include <sdf/Link.hh>
+#include <sdf/Sensor.hh>
+#include <sdf/Camera.hh>
 #include <cmath>
 #include <iostream>
 #include <iomanip>
 #include <vector>
 int main(int argc, char **argv) {
-  if (argc != 6) return 2;
+  if (argc != 6 && argc != 7) return 2;
   const double fx=std::stod(argv[1]), fy=std::stod(argv[2]);
   const double cx=std::stod(argv[3]), cy=std::stod(argv[4]), hfov=std::stod(argv[5]);
+  if (argc == 7) {
+    // Parse the expanded sensor through the same DOM as RgbdCameraSensor.
+    // Merely finding XML tags would miss ignored fields and SDF defaults.
+    sdf::Root root;
+    const auto errors = root.Load(argv[6]);
+    if (!errors.empty() || !root.Model()) return 6;
+    const auto link = root.Model()->LinkByIndex(0);
+    if (!link || !link->SensorByIndex(0)) return 6;
+    const auto parsed = link->SensorByIndex(0)->CameraSensor();
+    if (!parsed) return 6;
+    std::cout << "PARSED_P " << parsed->LensProjectionFx() << " "
+              << parsed->LensProjectionFy() << " " << parsed->LensProjectionCx()
+              << " " << parsed->LensProjectionCy() << "\n";
+    const std::vector<double> expected{fx,fy,cx,cy,fx,fy,cx,cy};
+    const std::vector<double> actual{
+      parsed->LensIntrinsicsFx(),parsed->LensIntrinsicsFy(),
+      parsed->LensIntrinsicsCx(),parsed->LensIntrinsicsCy(),
+      parsed->LensProjectionFx(),parsed->LensProjectionFy(),
+      parsed->LensProjectionCx(),parsed->LensProjectionCy()};
+    for (size_t i=0;i<expected.size();++i)
+      if (std::abs(expected[i]-actual[i])>1e-9) return 6;
+  }
   auto engine=ignition::rendering::engine("ogre2", {{"headless", "1"}});
   if (!engine) return 2;
   auto scene=engine->CreateScene("placement_prior_depth_plane_audit");
