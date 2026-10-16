@@ -30,7 +30,7 @@
 | R4 | 驱动 4 份 placed 账 `_frame_placed_records`/`_committed_ledger_boxes`/`_placed_slots`/`_placed_records` | 同一 commit 块内同步 append（pack:596/606/608/609），4 个读者，永不对账 | 账本漂移；compute 的 `placed=` 参数吃本地副本而非 mapper ledger | 收敛为 mapper ledger 单源 |
 | R5 | v1/v2 双发布 | `_publish_all` 同点双发（mapper_node:625-654） | 无写侧竞态，但读侧每通道一份缓存 | v2 权威、v1 派生 |
 | R6 | MoveIt 规划场景 | 产线单写者（moveit_edge_adapter apply_diff + _verify_scene 回读 + marker 缓存）；world_objects 同步只在 G2 harness（isolated_moveit_worker） | harness≠产线差异已被 witness 根因证实会掩盖产线缺陷 | harness 注明与产线的分叉点，或改喂产线同源 |
-| R7 | gz 物理世界 vs 地图 | verify 实测不回写、不持久（方案 A 只在 commit 时一次性使用） | 感知缺失时地图无二次锚 | placed ledger 的 measured_source 记录升级为持久 measured anchor |
+| R7 | gz 物理世界 vs 地图 | verify 实测不回写（方案 A 只在 commit 时一次性使用）；**2026-10-16 补**：锚定 commit 已在 ledger 落 `verify_anchor{request_id, delta_m, tolerance_m}` 审计踪迹，mapper 端拒非有限/超顶(0.30m)容差 | 坐标仍是调用方自述（无 verify 记录身份/箱体/时间关联），感知缺失时地图无二次锚 | placed ledger 升级为持久 measured anchor + verify 会话身份绑定 |
 
 ## 不做的事（决策记录）
 

@@ -100,6 +100,13 @@ from luggage_perception.occupancy_confirmation import PendingConfirmation
 #: measurement, and must never enter the ledger as verified geometry.
 V2_MEASURED_SOURCES = ("verify_placed_box",)
 
+#: [commit anchor] Ceiling on caller-supplied verify tolerances (m). The
+#: anchor gate exists to catch slot-vs-reality divergence (witness_02:
+#: 0.65 m phantom; live verify noise measured 0.033-0.038 m); a tolerance
+#: beyond this is not an anchor, so the mapper refuses it instead of
+#: letting a caller widen the gate to meaninglessness.
+VERIFY_ANCHOR_TOLERANCE_MAX_M = 0.30
+
 #: Correlation identity the mapper stamps on every v2 surface publication
 #: (one per map revision); v2 subscribers can verify it without latest-TF.
 SURFACE_V2_REQUEST_TEMPLATE = "map-rev-%d"
@@ -721,9 +728,26 @@ class CargoVolumeMapperNode(Node):
             return response
         # [commit anchor] A supplied verify pose must agree with the
         # asserted slot: witness_02 committed a stale pre-select compute
-        # slot 0.65 m from the verified box. Tolerance <= 0 keeps the
-        # legacy un-anchored commit for callers without a measurement.
+        # slot 0.65 m from the verified box. The tolerance itself is
+        # validated first — NaN compares False against every bound and
+        # would silently skip the gate, an infinite tolerance would admit
+        # any finite delta, and a tolerance beyond the mapper ceiling is a
+        # caller trying to widen the gate. tolerance == 0 keeps the legacy
+        # un-anchored commit for callers without a measurement.
         tolerance = float(request.verify_tolerance_m or 0.0)
+        if not math.isfinite(tolerance):
+            response.success = False
+            response.message = (
+                "verify_tolerance_m must be finite (got %r)"
+                % request.verify_tolerance_m)
+            return response
+        if tolerance > VERIFY_ANCHOR_TOLERANCE_MAX_M:
+            response.success = False
+            response.message = (
+                "verify_tolerance_m %.3f exceeds the mapper ceiling %.3f m"
+                % (tolerance, VERIFY_ANCHOR_TOLERANCE_MAX_M))
+            return response
+        anchor_info = None
         if tolerance > 0.0:
             verified = [float(v) for v in
                         request.verified_center_container]
@@ -742,6 +766,14 @@ class CargoVolumeMapperNode(Node):
                     "verify anchor mismatch: slot %.3f m from measured "
                     "pose (tolerance %.3f m)" % (delta or -1.0, tolerance))
                 return response
+            # Ledger trail: tie the accepted commit to the request that
+            # carried the anchor and record the measured agreement, so the
+            # self-asserted coordinates stay auditable after the fact.
+            anchor_info = {
+                "request_id": str(request.slot_pose.identity.request_id),
+                "delta_m": float(delta),
+                "tolerance_m": tolerance,
+            }
         measured_source = str(request.measured_source or "")
         if measured_source not in V2_MEASURED_SOURCES:
             # The v2 ledger records measured commits only: an unmeasured
@@ -760,7 +792,8 @@ class CargoVolumeMapperNode(Node):
                 slot["position"], yaw, list(request.size_wdh),
                 source_frame="container_link")
             added = self._mapper.mark_placed_box(
-                center, size, yaw=yaw_c, measured_source=measured_source)
+                center, size, yaw=yaw_c, measured_source=measured_source,
+                verify_anchor=anchor_info)
         except Exception as exc:  # noqa: BLE001 - service boundary
             response.success = False
             response.message = "mark failed: %s" % exc

@@ -33,8 +33,9 @@ class _Mapper(object):
         self.marks = []
         self._revision = 4
 
-    def mark_placed_box(self, center, size, yaw=0.0, measured_source=None):
-        self.marks.append((list(center), list(size), yaw))
+    def mark_placed_box(self, center, size, yaw=0.0, measured_source=None,
+                        verify_anchor=None):
+        self.marks.append((list(center), list(size), yaw, verify_anchor))
         return True
 
     def commit_ledger(self):
@@ -124,6 +125,93 @@ class TestOnAddV2AnchorGate(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertIn("not finite", response.message)
         self.assertEqual(node._mapper.marks, [])
+
+    def test_nan_tolerance_is_rejected_not_silently_legacy(self):
+        """NaN > 0 compares False; without the finite check it would skip
+        the gate entirely and commit un-anchored (probe-confirmed)."""
+        node = self._node([0.53, -0.51, 0.639])   # 0.65 m off
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.53, 0.14, 0.64],
+                                tolerance=float("nan")), response)
+        self.assertFalse(response.success)
+        self.assertIn("must be finite", response.message)
+        self.assertEqual(node._mapper.marks, [])
+
+    def test_infinite_tolerance_is_rejected(self):
+        node = self._node([0.53, -0.51, 0.639])
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.53, 0.14, 0.64],
+                                tolerance=float("inf")), response)
+        self.assertFalse(response.success)
+        self.assertEqual(node._mapper.marks, [])
+
+    def test_tolerance_above_mapper_ceiling_is_rejected(self):
+        node = self._node([0.53, -0.51, 0.639])
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.53, 0.14, 0.64],
+                                tolerance=self.mod
+                                .VERIFY_ANCHOR_TOLERANCE_MAX_M + 0.01),
+            response)
+        self.assertFalse(response.success)
+        self.assertIn("ceiling", response.message)
+        self.assertEqual(node._mapper.marks, [])
+
+    def test_anchored_commit_records_anchor_on_ledger(self):
+        node = self._node([0.53, 0.14, 0.639])
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.53, 0.14, 0.64],
+                                tolerance=0.10), response)
+        self.assertTrue(response.success)
+        _center, _size, _yaw, anchor = node._mapper.marks[0]
+        self.assertEqual(anchor["request_id"], "req-1")
+        self.assertAlmostEqual(anchor["delta_m"], 0.001, places=6)
+        self.assertEqual(anchor["tolerance_m"], 0.10)
+
+    def test_legacy_commit_carries_no_anchor(self):
+        node = self._node([0.53, 0.14, 0.639])
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.0, 0.0, 0.0], tolerance=0.0),
+            response)
+        self.assertTrue(response.success)
+        _center, _size, _yaw, anchor = node._mapper.marks[0]
+        self.assertIsNone(anchor)
+
+
+class TestMapperLedgerVerifyAnchor(unittest.TestCase):
+    """Real CargoVolumeMapper: anchor trail persistence + validation."""
+
+    def _mapper(self):
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+        return CargoVolumeMapper(
+            inner_size=[1.0, 1.0, 1.0],
+            center_base=[0.0, 0.0, 0.5],
+            yaw=0.0,
+            resolution=0.1,
+        )
+
+    def test_ledger_snapshot_carries_verify_anchor(self):
+        mapper = self._mapper()
+        self.assertTrue(mapper.mark_placed_box(
+            [0.0, 0.0, 0.15], [0.2, 0.2, 0.2],
+            measured_source="verify_placed_box",
+            verify_anchor={"request_id": "req-9", "delta_m": 0.04,
+                           "tolerance_m": 0.10}))
+        entry = mapper.commit_ledger()[0]
+        self.assertEqual(entry["verify_anchor"]["request_id"], "req-9")
+        self.assertEqual(entry["measured_source"], "verify_placed_box")
+
+    def test_out_of_tolerance_anchor_is_refused(self):
+        mapper = self._mapper()
+        with self.assertRaises(ValueError):
+            mapper.mark_placed_box(
+                [0.0, 0.0, 0.15], [0.2, 0.2, 0.2],
+                verify_anchor={"delta_m": 0.65, "tolerance_m": 0.10})
+        self.assertEqual(mapper.commit_ledger(), [])
 
 
 if __name__ == "__main__":

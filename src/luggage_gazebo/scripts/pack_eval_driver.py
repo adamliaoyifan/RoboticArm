@@ -321,11 +321,19 @@ class PackEvalDriver(PlaceSmokeDriver):
         was first written. Refresh record/size and the freshest map
         identity available at selection time (witness_02: a 0.65 m
         phantom footprint was committed because this refresh was missing).
+        The corridor audit and container-local center are re-derived too:
+        they feed _committed_ledger_boxes / corridor_audit.json downstream,
+        which must describe the executed slot rather than the preview.
         """
         record = getattr(self, "_frame_slot_record", None)
         box_wdh = getattr(self, "_frame_box_wdh", None)
         if record is None or not box_wdh:
             return
+        slot = getattr(self, "_pending_slot", None)
+        if slot is not None:
+            audit, center_local = self._corridor_audit(slot)
+            self._pending_audit = audit
+            self._pending_center_local = center_local
         surface_msg = getattr(self, "_surface_v2_msg", None)
         self._pending_placed = {
             "record": record,
@@ -347,8 +355,9 @@ class PackEvalDriver(PlaceSmokeDriver):
     def _commit_anchor_kwargs(self, record):
         """[commit anchor] add_placed_box kwargs tying the asserted slot
         to the verify-measured pose. Returns {} when this cycle carries no
-        verify pose (legacy paths keep the un-anchored commit and the
-        mapper-side gate stays optional)."""
+        finite verify pose; production callers then refuse the commit
+        (_typed_commit_add), compat callers keep the un-anchored legacy
+        request."""
         verify = ((getattr(record, "extras", None) or {}).get("verify")) \
             or {}
         pose = (verify.get("box_pose_after_drift_wait")
@@ -367,6 +376,63 @@ class PackEvalDriver(PlaceSmokeDriver):
             "verified_center_container": center,
             "verify_tolerance_m": self._COMMIT_VERIFY_TOLERANCE_M,
         }
+
+    #: [commit anchor] Compat escape for flows without a verify phase
+    #: (replay/harness): keeps the legacy un-anchored commit. Production
+    #: must not set it — measured_source="verify_placed_box" asserts
+    #: geometry the run verified, and an un-anchored commit would write
+    #: exactly the witness_02 class of unverified geometry.
+    _COMMIT_ANCHOR_COMPAT_ENV = "ELFIN_PACK_COMMIT_ANCHOR_COMPAT"
+
+    def _commit_anchor_required(self):
+        return os.environ.get(self._COMMIT_ANCHOR_COMPAT_ENV, "") != "1"
+
+    def _typed_commit_add(self, record, pending):
+        """[commit anchor + ledger convergence] Issue the typed cargo-map
+        commit for one placed box and mirror the mapper's verdict into the
+        driver's local placed ledger. Production requires a verify anchor:
+        a cycle whose executed slot record carries no finite verify pose
+        fails the commit instead of writing unverified geometry. The local
+        _frame_placed_records append happens only on an ACCEPTED commit, so
+        the next compute never sees a box the cargo map rejected (the
+        mapper-side anchor gate can refuse post-hoc). Returns True when
+        committed."""
+        from luggage_description.frame_contracts import ContractError
+        extras = getattr(record, "extras", None)
+        anchor_kwargs = self._commit_anchor_kwargs(record)
+        add = None
+        if not anchor_kwargs and self._commit_anchor_required():
+            if extras is not None:
+                extras["add_placed"] = (
+                    "COMMIT_ANCHOR_MISSING: executed slot record carries "
+                    "no finite verify pose")
+        else:
+            try:
+                add = self._typed.add_placed_box(
+                    slot=pending["record"],
+                    size_wdh=pending["size_wdh"],
+                    measured_source="verify_placed_box",
+                    expected_map_revision=int(
+                        pending.get("map_revision") or 0),
+                    geometry_hash=str(
+                        pending.get("geometry_hash") or ""),
+                    **anchor_kwargs)
+            except ContractError as error:
+                add = None
+                if extras is not None:
+                    extras["add_placed"] = "%s: %s" % (
+                        error.code, error.field)
+        committed = bool(add is not None and add.success)
+        if committed:
+            if not hasattr(self, "_frame_placed_records"):
+                self._frame_placed_records = []
+            self._frame_placed_records.append({
+                "record": pending["record"],
+                "size_wdh": list(pending["size_wdh"])})
+        elif add is not None and extras is not None:
+            extras["add_placed"] = str(
+                getattr(add, "message", "") or "commit rejected")
+        return committed
 
     def _dump_json(self, folder, name, payload):
         os.makedirs(folder, exist_ok=True)
@@ -638,34 +704,13 @@ class PackEvalDriver(PlaceSmokeDriver):
             if commit_ok:
                 if getattr(self, "_typed", None) is not None:
                     pending = getattr(self, "_pending_placed", None) or {}
-                    from luggage_description.frame_contracts import ContractError
-                    anchor_kwargs = self._commit_anchor_kwargs(record)
-                    try:
-                        add = self._typed.add_placed_box(
-                            slot=pending["record"],
-                            size_wdh=pending["size_wdh"],
-                            measured_source="verify_placed_box",
-                            expected_map_revision=int(
-                                pending.get("map_revision") or 0),
-                            geometry_hash=str(
-                                pending.get("geometry_hash") or ""),
-                            **anchor_kwargs)
-                    except ContractError as error:
-                        add = None
-                        trial.extras["add_placed"] = "%s: %s" % (
-                            error.code, error.field)
-                    if add is not None:
-                        if not hasattr(self, "_frame_placed_records"):
-                            self._frame_placed_records = []
-                        self._frame_placed_records.append({
-                            "record": pending["record"],
-                            "size_wdh": list(pending["size_wdh"])})
+                    commit_ok = self._typed_commit_add(record, pending)
                 else:
                     add = self._call(
                         self._add_map,
                         self._add_request(self._slot_world_msg(slot)),
                         timeout=15.0)
-                commit_ok = bool(add and add.success)
+                    commit_ok = bool(add and add.success)
                 if commit_ok:
                     self._committed_ledger_boxes.append(
                         (center_local, [slot.width, slot.depth, slot.height]))

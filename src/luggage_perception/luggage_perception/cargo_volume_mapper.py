@@ -574,7 +574,7 @@ class CargoVolumeMapper:
         return None
 
     def mark_placed_box(self, center, size, yaw=0.0, tolerance=0.05,
-                        measured_source=None):
+                        measured_source=None, verify_anchor=None):
         """Mark an axis/yaw-aligned box as occupied (size: width, depth, height).
 
         Samples at the voxel resolution so thin boxes are not skipped. ``center``
@@ -582,7 +582,10 @@ class CargoVolumeMapper:
         Uses SOURCE_GEOMETRY so the map can distinguish this from sensor data.
         ``measured_source`` records v2 commit provenance when supplied; it is
         absent (not defaulted) for v1 commits, so v1 ledger output is
-        unchanged.
+        unchanged. ``verify_anchor`` ({request_id, delta_m, tolerance_m})
+        records the accepted slot-vs-measurement agreement on the ledger so
+        the commit stays auditable against the request that carried the
+        anchor; absent for un-anchored commits.
         """
         center = [float(v) for v in center]
         size = [float(v) for v in size]
@@ -603,6 +606,18 @@ class CargoVolumeMapper:
         }
         if measured_source is not None:
             record["measured_source"] = str(measured_source)
+        if verify_anchor is not None:
+            delta = float(verify_anchor["delta_m"])
+            tol = float(verify_anchor["tolerance_m"])
+            if not (math.isfinite(delta) and math.isfinite(tol)
+                    and tol > 0.0 and delta <= tol):
+                raise ValueError(
+                    "verify anchor needs a finite delta within tolerance")
+            record["verify_anchor"] = {
+                "request_id": str(verify_anchor.get("request_id") or ""),
+                "delta_m": delta,
+                "tolerance_m": tol,
+            }
         self._placed_boxes.append(record)
         self._rasterize_placed_box(
             record["center"], record["size"], record["yaw"])
@@ -682,6 +697,8 @@ class CargoVolumeMapper:
             }
             if "measured_source" in record:
                 entry["measured_source"] = str(record["measured_source"])
+            if "verify_anchor" in record:
+                entry["verify_anchor"] = dict(record["verify_anchor"])
             snapshot.append(entry)
         return snapshot
 

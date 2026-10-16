@@ -117,6 +117,10 @@ class TestPackCommitSource(unittest.TestCase):
         slot = SimpleNamespace(width=1.0)
         meta = SimpleNamespace(pose_world={})
         self.driver._typed_place_slot = lambda pick, trial: (slot, meta)
+        self.driver._pending_audit = {"preview": True}
+        self.driver._pending_center_local = [9.0, 9.0, 9.0]
+        self.driver._corridor_audit = (
+            lambda s: ({"selected": True}, [0.2, -0.1, 0.14]))
 
         got_slot, _ = self.driver._place_slot_for(
             SimpleNamespace(), SimpleNamespace(),
@@ -129,6 +133,12 @@ class TestPackCommitSource(unittest.TestCase):
         self.assertEqual(self.driver._pending_placed["map_revision"], 7)
         self.assertEqual(self.driver._pending_placed["geometry_hash"],
                          "gh-7")
+        # [local-ledger refresh] audit + container-local center follow the
+        # Select winner too: _committed_ledger_boxes downstream must not
+        # keep the preview slot's center.
+        self.assertEqual(self.driver._pending_audit, {"selected": True})
+        self.assertEqual(self.driver._pending_center_local,
+                         [0.2, -0.1, 0.14])
 
     def test_no_selection_keeps_preview_record(self):
         """A refused Select leaves the provisional record untouched."""
@@ -201,6 +211,97 @@ class TestPackCommitSource(unittest.TestCase):
             [0.53, -0.51, 0.639], [0.53, 0.14, 0.639])
         self.assertTrue(math.isclose(delta, 0.65, abs_tol=1e-6))
         self.assertGreater(delta, self.driver._COMMIT_VERIFY_TOLERANCE_M)
+
+
+class _TypedAdd(object):
+    """typed-adapter recorder for _typed_commit_add."""
+
+    def __init__(self, response):
+        self.response = response
+        self.calls = []
+
+    def add_placed_box(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.response
+
+
+@unittest.skipIf(_load_pack_module() is None, "ROS driver deps unavailable")
+class TestTypedCommitAdd(unittest.TestCase):
+    """[commit anchor + ledger convergence] Production refuses a commit
+    without a verify anchor; the local placed ledger only mirrors ACCEPTED
+    mapper verdicts."""
+
+    def setUp(self):
+        self.module = _load_pack_module()
+        self.env = self.module.PackEvalDriver._COMMIT_ANCHOR_COMPAT_ENV
+        self.driver = self.module.PackEvalDriver.__new__(
+            self.module.PackEvalDriver)
+        self.driver._typed = None
+        self.driver._scene_config = _scene_config()
+        self.pending = {"record": {"request_id": "sel-1"},
+                        "size_wdh": [0.51, 0.33, 0.22],
+                        "map_revision": 7, "geometry_hash": "gh-7"}
+
+    def _env_ctx(self, compat):
+        import unittest.mock as mock
+        return mock.patch.dict(os.environ, {self.env: "1" if compat else ""},
+                               clear=False)
+
+    def test_missing_anchor_rejected_in_production(self):
+        self.driver._typed = _TypedAdd(SimpleNamespace(
+            success=True, message="committed"))
+        record = SimpleNamespace(extras={})
+        with self._env_ctx(compat=False):
+            committed = self.driver._typed_commit_add(record, self.pending)
+        self.assertFalse(committed)
+        self.assertEqual(self.driver._typed.calls, [])
+        self.assertTrue(record.extras["add_placed"].startswith(
+            "COMMIT_ANCHOR_MISSING"))
+        self.assertFalse(hasattr(self.driver, "_frame_placed_records"))
+
+    def test_missing_anchor_compat_env_keeps_legacy(self):
+        self.driver._typed = _TypedAdd(SimpleNamespace(
+            success=True, message="committed"))
+        record = SimpleNamespace(extras={})
+        with self._env_ctx(compat=True):
+            committed = self.driver._typed_commit_add(record, self.pending)
+        self.assertTrue(committed)
+        self.assertEqual(len(self.driver._typed.calls), 1)
+        kwargs = self.driver._typed.calls[0]
+        self.assertNotIn("verified_center_container", kwargs)
+        self.assertNotIn("verify_tolerance_m", kwargs)
+        self.assertEqual(self.driver._frame_placed_records, [{
+            "record": self.pending["record"],
+            "size_wdh": [0.51, 0.33, 0.22]}])
+
+    def test_accepted_anchor_commit_passes_anchor(self):
+        self.driver._typed = _TypedAdd(SimpleNamespace(
+            success=True, message="committed"))
+        record = SimpleNamespace(extras={"verify": {
+            "box_pose_after_drift_wait": [1.2, -0.1, 0.64, 0, 0, 0]}})
+        committed = self.driver._typed_commit_add(record, self.pending)
+        self.assertTrue(committed)
+        kwargs = self.driver._typed.calls[0]
+        self.assertAlmostEqual(kwargs["verified_center_container"][0],
+                               0.20, places=9)
+        self.assertAlmostEqual(kwargs["verified_center_container"][1],
+                               -0.10, places=9)
+        self.assertEqual(kwargs["verify_tolerance_m"], 0.10)
+
+    def test_rejected_service_response_leaves_local_ledger(self):
+        """The mapper refused the commit (e.g. anchor gate): the driver's
+        placed-record ledger must not gain the box."""
+        self.driver._typed = _TypedAdd(SimpleNamespace(
+            success=False,
+            message="verify anchor mismatch: slot 0.650 m from measured "
+                    "pose (tolerance 0.100 m)"))
+        record = SimpleNamespace(extras={"verify": {
+            "box_pose_after_drift_wait": [1.2, -0.1, 0.64, 0, 0, 0]}})
+        committed = self.driver._typed_commit_add(record, self.pending)
+        self.assertFalse(committed)
+        self.assertIn("verify anchor mismatch",
+                      record.extras["add_placed"])
+        self.assertFalse(hasattr(self.driver, "_frame_placed_records"))
 
 
 if __name__ == "__main__":
