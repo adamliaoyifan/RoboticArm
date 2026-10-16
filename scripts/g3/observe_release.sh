@@ -92,17 +92,23 @@ mkdir -p "$OUT/sdf" "$ST09_SELECT_REQUEST_CAPTURE_DIR" "$OUT/dumps/boundaries"
 
 # Wait for the sim to be publishing, then start the synchronized captures.
 # OBS_NO_CAPTURE=1 skips them (bisect control: capture load vs code path).
+# Load discipline (obs_rel_03/05 vs 06 bisect): the full pose/info stream
+# starved the first compute (COMPUTE_TIMEOUT 2/2 with it, pass without).
+# The dynamic window needs ONLY the per-step dynamic_pose stream — the
+# static body's last pose is recorded driver-side in
+# release_dynamic_timing.spawn_pose_world — plus the box contact stream
+# and joint_states (no /tf: robot_state_publisher floods it).
 if [[ -z "${OBS_NO_CAPTURE:-}" ]]; then
   for _ in $(seq 1 60); do
     "$IGN_BIN" topic -l 2>/dev/null | grep -q "pose/info" && break
     sleep 2
   done
   CAPTURE_PIDS=()
-  capture "/world/$WORLD/pose/info" "$OUT/pose_stream.txt"
   capture "/world/$WORLD/dynamic_pose/info" "$OUT/dyn_pose_stream.txt"
   capture "/obs/box_contact" "$OUT/contact_stream.txt"
   sleep 2
-  python3 "$WS/scripts/g3/record_tool_stream.py" "$OUT/tool_stream.jsonl" &
+  OBS_TOOL_JOINTS_ONLY=1 python3 "$WS/scripts/g3/record_tool_stream.py" \
+    "$OUT/tool_stream.jsonl" &
   CAPTURE_PIDS+=("$!")
 else
   CAPTURE_PIDS=()

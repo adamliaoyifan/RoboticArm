@@ -7,6 +7,7 @@ release observation: the box pose stream (gz transport) and these
 stamps share the same simulation clock.
 """
 import json
+import os
 import sys
 
 import rclpy
@@ -56,7 +57,10 @@ def main():
     best = QoSProfile(depth=50, reliability=ReliabilityPolicy.BEST_EFFORT,
                       history=HistoryPolicy.KEEP_LAST)
     node.create_subscription(JointState, "/joint_states", on_joints, best)
-    node.create_subscription(TFMessage, "/tf", on_tf, best)
+    # /tf only when explicitly asked: robot_state_publisher floods it and
+    # the recorder competes with the first placement solve (obs bisect).
+    if not os.environ.get("OBS_TOOL_JOINTS_ONLY"):
+        node.create_subscription(TFMessage, "/tf", on_tf, best)
 
     import time
     try:
