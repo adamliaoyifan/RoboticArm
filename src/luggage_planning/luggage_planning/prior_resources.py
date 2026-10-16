@@ -50,8 +50,8 @@ class ProcessTreeLedger:
     def __init__(self, rows, planner_roots, prior_roots, *, ticks_per_second=None):
         self.ticks_per_second = ticks_per_second or os.sysconf('SC_CLK_TCK')
         roots = list(planner_roots) + list(prior_roots)
-        if not planner_roots or not prior_roots or len(set(roots)) != len(roots):
-            raise ValueError('distinct planner and prior root PIDs required')
+        if not planner_roots or len(set(roots)) != len(roots):
+            raise ValueError('planner roots required and all root PIDs must be distinct')
         if any(pid not in rows for pid in roots):
             raise ValueError('all measured roots must be live at window start')
         self.roots = {rows[pid].identity: ('prior' if pid in prior_roots else 'planner') for pid in roots}
@@ -102,6 +102,7 @@ class ProcessTreeLedger:
         last = self.samples[-1]
         return dict(
             resource_scope='planner_and_prior_process_trees',
+            prior_process_present=any(group == 'prior' for group in self.roots.values()),
             measurement_kind='sampled_proc_stat',
             root_continuity=not self.discontinuities,
             discontinuities=self.discontinuities,

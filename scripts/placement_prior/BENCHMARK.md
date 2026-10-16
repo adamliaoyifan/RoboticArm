@@ -111,3 +111,11 @@ short-lived unobserved process existed. This sampling limitation, shared-page
 RSS accounting and the actual interval must accompany performance results.
 Do not silently turn incomplete resource measurements into zero or feed them
 to a passing benchmark report. This collector is not yet a paired native runner.
+
+An empty prior root list is valid only when no live prior process participates;
+the report explicitly records `prior_process_present=false` and zero prior-only
+resources. `exact_route_replay.py --measure-resources` uses this mode: it measures
+the in-process producer and owned MoveIt descendants over the Select window,
+but a previously captured prior response contributes no measured preparation.
+It cannot supply prior preparation costs for a performance comparison. Capture
+overhead is included; these diagnostic samples are not the clean scored campaign.

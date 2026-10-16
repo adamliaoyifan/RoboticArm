@@ -33,6 +33,8 @@ def main():
     parser.add_argument('--attachment-response',type=Path)
     parser.add_argument('--prior-response',type=Path)
     parser.add_argument('--choice-index',type=int)
+    parser.add_argument('--measure-resources',action='store_true',
+                        help='Record sampled client/producer/MoveIt process-tree resources; no live prior process')
     args=parser.parse_args()
     if args.select_index < 0 or (args.select_index and (not args.surface or not args.scene)):
         parser.error('later Select calls require explicit matching --surface and --scene')
@@ -96,7 +98,7 @@ def main():
              'hardware_plugin:=gz_ros2_control/GazeboSimSystem','xacro_extra:='+xacro_extra]
     (args.output/'command.json').write_text(json.dumps(command,indent=2))
     proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-    node=None;executor=None;spin=None
+    node=None;executor=None;spin=None;resource_window=None
     try:
         rclpy.init();node=rclpy.create_node('exact_route_replay')
         executor=MultiThreadedExecutor(num_threads=4);executor.add_node(node)
@@ -147,6 +149,12 @@ def main():
             site_poses_fn=lambda:None)
         if producer is None or not producer.edge_builder.wait_ready(timeout_sec=30.):
             raise RuntimeError('producer dependencies unavailable')
+        if args.measure_resources:
+            from luggage_planning.prior_resources import ResourceWindow
+            # The producer lives here, and this process owns the MoveIt launch
+            # tree. Captured prior hints are data; no prior process is running.
+            resource_window=ResourceWindow([os.getpid()],[],interval_s=.05)
+            resource_window.__enter__()
         started=time.monotonic()
         if hardware_consumer:
             from rclpy.callback_groups import ReentrantCallbackGroup
@@ -188,14 +196,22 @@ def main():
         else:
             response=fill_select_response_route(request,SelectPlacePathV2.Response(),producer,
                 surface_validity=surface)
+        elapsed=time.monotonic()-started
+        if resource_window is not None:
+            resource_window.__exit__(None,None,None)
+            (args.output/'resources.json').write_text(json.dumps(resource_window.result,indent=2)+'\n')
+            resource_window=None
         (args.output/'response.cdr').write_bytes(serialize_message(response))
         (args.output/'rows.json').write_text(response.rows_json or '[]')
         report.update(success=response.success,reason_code=response.reason_code,
-                      elapsed_s=time.monotonic()-started,stage_timings=response.stage_timings_json)
+                      elapsed_s=elapsed,stage_timings=response.stage_timings_json)
     except Exception as exc:
         import traceback
         report.update(error=str(exc),traceback=traceback.format_exc())
     finally:
+        if resource_window is not None:
+            resource_window.__exit__(None,None,None)
+            (args.output/'resources.json').write_text(json.dumps(resource_window.result,indent=2)+'\n')
         (args.output/'result.json').write_text(json.dumps(report,indent=2)+'\n')
         if executor:executor.shutdown(timeout_sec=5.)
         if spin:spin.join(timeout=5.)

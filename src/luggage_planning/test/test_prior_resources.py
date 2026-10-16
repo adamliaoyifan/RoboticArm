@@ -30,6 +30,15 @@ def test_aggregate_peak_is_not_sum_of_independent_lifetime_peaks():
     assert ledger.report()['peak_rss_bytes'] == 1100
 
 
+def test_baseline_has_no_fabricated_prior_root_or_resource_use():
+    ledger = ProcessTreeLedger({1:p(1,cpu=10)},[1],[],ticks_per_second=100)
+    ledger.add({1:p(1,cpu=20)},elapsed_s=1)
+    report=ledger.report()
+    assert not report['prior_process_present']
+    assert report['cpu_s'] == .1
+    assert report['prior_cpu_s'] == 0 and report['prior_peak_rss_bytes'] == 0
+
+
 def test_live_resource_window_measures_work_and_does_not_terminate_roots():
     # Roots remain alive until AFTER the final sample, so completed CPU work
     # and held memory are measurable without relying on exit timing.
