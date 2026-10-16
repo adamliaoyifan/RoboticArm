@@ -21,60 +21,102 @@ import os
 import re
 
 
-def parse_pose_stream(path, model):
-    """Parse gz protobuf-text Pose_V messages -> [(t_ns, x, y, z, qx..qw)].
+def _tokenize_protobuf_text(path):
+    """Yield flat tokens from gz's protobuf-text output.
 
-    The text format repeats blocks:
-      time { sec: N  nanosec: N }
-      name: "model"  pose { position { x: .. } orientation { x: .. } }
-    Multiple poses per message; we keep only `model`'s entries IN ORDER,
-    tagged with the message time.
+    Handles the real format: nested braces across lines, empty blocks
+    (``position {}`` = all defaults), and long-line wrapping where a
+    key's value lands on the NEXT line (``w:``\\n`` 0.99``).
+    """
+    tokens = []
+    pending_key = None
+    for raw in open(path, encoding="utf-8", errors="replace"):
+        line = raw.strip()
+        if not line:
+            continue
+        # Join a key whose value wrapped to the next line.
+        if pending_key is not None:
+            line = pending_key + " " + line
+            pending_key = None
+        if line.endswith(":"):
+            pending_key = line
+            continue
+        for piece in line.split(" "):
+            piece = piece.strip()
+            if piece:
+                tokens.append(piece)
+    return tokens
+
+
+def parse_pose_stream(path, model):
+    """Parse gz Pose_V protobuf-text -> [(t_ns, x, y, z, (qx,qy,qz,qw))].
+
+    Real shape (verified on a captured stream):
+      header { stamp { sec: N nsec: N } }
+      pose { name: "m" id: N position { x: .. } orientation { w: .. } }
     """
     if not os.path.isfile(path):
         return []
     samples = []
     t_ns = None
-    current_name = None
-    pos = None
-    quat = None
+    in_pose = in_position = in_orientation = False
+    name = None
+    pos = quat = None
 
-    def flush():
-        nonlocal current_name, pos, quat
-        if current_name == model and pos is not None:
-            samples.append((t_ns, pos[0], pos[1], pos[2],
-                            tuple(quat) if quat else None))
-        current_name, pos, quat = None, None, None
+    def flush_pose():
+        nonlocal name, pos, quat, in_pose, in_position, in_orientation
+        if in_pose and name == model:
+            samples.append((t_ns, pos[0], pos[1], pos[2], tuple(quat)))
+        name, pos, quat = None, None, None
+        in_pose = in_position = in_orientation = False
 
-    number = r"[-+0-9.eE]+"
-    for line in open(path, encoding="utf-8", errors="replace"):
-        stripped = line.strip()
-        m = re.match(r"^time \{\s*sec:\s*(" + number + r")", stripped)
-        if m:
-            flush()
-            sec = float(m.group(1))
-            nan = re.search(r"nanosec:\s*(" + number + r")", stripped)
-            t_ns = int(sec * 1_000_000_000 + float(nan.group(1)
-                                                  if nan else 0.0))
+    tokens = _tokenize_protobuf_text(path)
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        # Keys and values are separate tokens; a key ending in ':' takes
+        # the next token as its value.
+        value = None
+        if token.endswith(":") and index + 1 < len(tokens):
+            value = tokens[index + 1].strip('"')
+            index += 1
+        index += 1
+        if token == "}":
+            if in_orientation:
+                in_orientation = False
+            elif in_position:
+                in_position = False
+            elif in_pose:
+                flush_pose()
             continue
-        m = re.match(r'^name:\s*"([^"]+)"', stripped)
-        if m:
-            flush()
-            current_name = m.group(1)
+        if token == "pose":
+            flush_pose()
+            in_pose, pos, quat = True, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]
             continue
-        if current_name == model:
-            if stripped.startswith("pose {"):
-                pos, quat = [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]
-            elif stripped.startswith("position {"):
-                for key, idx in (("x:", 0), ("y:", 1), ("z:", 2)):
-                    mm = re.search(key + r"\s*(" + number + r")", stripped)
-                    if mm:
-                        pos[idx] = float(mm.group(1))
-            elif stripped.startswith("orientation {"):
-                for key, idx in (("x:", 0), ("y:", 1), ("z:", 2), ("w:", 3)):
-                    mm = re.search(key + r"\s*(" + number + r")", stripped)
-                    if mm:
-                        quat[idx] = float(mm.group(1))
-    flush()
+        if token == "position":
+            in_position = True
+            continue
+        if token == "orientation":
+            in_orientation = True
+            continue
+        if value is None:
+            continue  # header/stamp/{ and bare words
+        if token == "sec:" and not in_pose:
+            t_ns = ((t_ns or 0) % 1_000_000_000) \
+                + int(float(value)) * 1_000_000_000
+            continue
+        if token == "nsec:" and not in_pose:
+            t_ns = ((t_ns or 0) // 1_000_000_000) * 1_000_000_000 \
+                + int(float(value))
+            continue
+        if token == "name:":
+            name = value
+            continue
+        if in_position and token in ("x:", "y:", "z:"):
+            pos["xyz".index(token[0])] = float(value)
+        elif in_orientation and token in ("x:", "y:", "z:", "w:"):
+            quat["xyzw".index(token[0])] = float(value)
+    flush_pose()
     return [s for s in samples if s[0] is not None]
 
 
