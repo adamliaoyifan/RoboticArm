@@ -58,3 +58,10 @@
   LEG_DIGEST_UNAVAILABLE——fail-closed 正确行为暴露了存量缺口）。已按
   motion_occ 原版移植。**冻结 HEAD 更新为 a19760fd**；r5–r7 仍零箱放置，
   额度未耗。
+- **r9 里程碑**: 箱 0 全链 COMMIT（134 s：compute→select→B3 verify→pick→
+  carry→descend→release→verify→v2 commit with anchor）。箱 1 死于 B2 门的
+  严格计数——select 路径的第二次 compute 从不携带 placed（既有行为，地图列
+  才是规划真源）。修复 473c028d：门改子集语义（空=顺延账本，幻影/几何
+  分叉仍拒）。**冻结 HEAD 更新为 473c028d**；r8–r9 无箱完成放置序列
+  （r9 箱 0 完成但 n=2 未达成），额度判定：r9 记为部分见证消耗——为守纪
+  律，正式 n=2 见证仍按一次执行，r10 为该次执行。
