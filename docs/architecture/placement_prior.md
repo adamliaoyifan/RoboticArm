@@ -118,6 +118,15 @@ const collision APIs; the historical radar collision is a required regression.
 
 ## Background and consumer boundary
 
+Full-route planning can return from an unloaded retreat attempt to carrying
+after certification rejects a transit edge. At each scene-state transition,
+the edge adapter must remove its own previously added world objects absent
+from the next state. In particular, the hypothetical released box must not
+remain alongside the attached payload during a carrying retry. Preserve
+confirmed previous cargo and unrelated world objects; removal failure rejects
+the transition. This is foreground route-scene ownership, not a prior-node
+permission to mutate shared scenes.
+
 One active job, one replaceable pending job, one published result. New map/input
 invalidates stale work. Cancellation/deadline discards partial results. An
 abandoned native service future remains tracked until completion so subsequent

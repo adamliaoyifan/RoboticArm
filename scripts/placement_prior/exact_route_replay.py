@@ -23,7 +23,15 @@ def main():
     parser.add_argument('--robot-poses',type=Path,required=True)
     parser.add_argument('--observe-pose',required=True)
     parser.add_argument('--output',type=Path,required=True)
+    parser.add_argument('--select-index',type=int,default=0,
+                        help='Zero-based captured Select call to replay')
+    parser.add_argument('--surface',type=Path,
+                        help='Exact matching surface; required for later calls')
+    parser.add_argument('--scene',type=Path,
+                        help='Exact pre-planning scene; required for later calls')
     args=parser.parse_args()
+    if args.select_index < 0 or (args.select_index and (not args.surface or not args.scene)):
+        parser.error('later Select calls require explicit matching --surface and --scene')
     if os.environ.get('ROS_DOMAIN_ID')!='8':raise ValueError('requires isolated domain 8')
     from process_guard import dedicated_domain_processes
     if dedicated_domain_processes('8'):raise RuntimeError('domain 8 occupied')
@@ -41,14 +49,15 @@ def main():
     from luggage_planning.route_producer_factory import build_production_route_producer
     b=args.capture/'dumps/typed_service_boundaries'
     rows=[json.loads(line) for line in (b/'boundaries.jsonl').read_text().splitlines()]
-    select_index=next(i for i,r in enumerate(rows) if r['boundary']=='/trajectory_selector/select_place_path_v2:request')
+    select_indices=[i for i,r in enumerate(rows) if r['boundary']=='/trajectory_selector/select_place_path_v2:request']
+    select_index=select_indices[args.select_index]
     request_path=b/rows[select_index]['file']
     request=deserialize_message(request_path.read_bytes(),SelectPlacePathV2.Request)
     stats_row=next(r for r in reversed(rows[:select_index]) if r['boundary']=='/cargo_map/get_stats:response')
     stats=message_to_ordereddict(deserialize_message((b/stats_row['file']).read_bytes(),GetCargoMapStats.Response))
-    surface_path=next((args.capture/'dumps').glob('trial_*/replay/surface_2d.json'))
+    surface_path=args.surface or next((args.capture/'dumps').glob('trial_*/replay/surface_2d.json'))
     surface=json.loads(surface_path.read_text())
-    scene_path=args.capture/'portal_boundaries/carrying_joint_00/scene.cdr'
+    scene_path=args.scene or args.capture/'portal_boundaries/carrying_joint_00/scene.cdr'
     scene=deserialize_message(scene_path.read_bytes(),PlanningScene)
     document=request_dict(request)
     identity_path=args.capture/'dumps/runtime_identity.json'
@@ -111,7 +120,7 @@ def main():
         replay_ns=int(request.grasp.identity.stamp_ns)+1_000_000_000
         clock_started=time.monotonic()
         clock=lambda:replay_ns+int((time.monotonic()-clock_started)*1e9)
-        original=json.loads((args.capture/'dumps/box_00_paths/candidates.json').read_text())['rows'][0]
+        original=json.loads((args.capture/('dumps/box_%02d_paths/candidates.json'%args.select_index)).read_text())['rows'][0]
         diag=original.get('atlas') or {}
         if diag.get('loaded'):raise ValueError('this replay requires the captured atlas-unavailable case')
         producer=build_production_route_producer(node,str(args.scene_tf),lambda:surface,lambda:stats,

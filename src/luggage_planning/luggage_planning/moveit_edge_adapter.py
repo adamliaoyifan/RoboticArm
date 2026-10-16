@@ -504,12 +504,23 @@ class MoveItEdgeAdapter(object):
         started = time.monotonic()
         world_boxes = tuple(scene.placed_boxes) + (
             (scene.released_box,) if scene.released_box else ())
+        # A certification retry can return from unloaded retreat planning to
+        # carrying. Remove only this adapter's obsolete world objects, otherwise
+        # the hypothetical released box collides with the still-held payload.
+        desired_ids = {str(box.object_id) for box in world_boxes}
+        for object_id in tuple(self._scene_world_ids_added):
+            if object_id not in desired_ids:
+                if not self._scene.remove_object(object_id):
+                    raise RuntimeError("scene remove failed for %s" % object_id)
+                self._scene_world_ids_added.remove(object_id)
+                self._call_counts["scene_apply"] += 1
         for box in world_boxes:
             if not self._scene.add_collision_box(
                     box.object_id, list(box.center), list(box.quaternion_xyzw),
                     list(box.size_whd), frame_id="world"):
                 raise RuntimeError("scene add failed for %s" % box.object_id)
-            self._scene_world_ids_added.append(str(box.object_id))
+            if str(box.object_id) not in self._scene_world_ids_added:
+                self._scene_world_ids_added.append(str(box.object_id))
             self._call_counts["scene_apply"] += 1
         if scene.load_state == "carrying":
             if scene.payload is None:
