@@ -1099,10 +1099,11 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         return super().run_place_from_carry(pick_msg, trial, slot, slot_meta)
 
     def _integrate_after_place(self, trial, slot, slot_meta, pick_msg,
-                               view="lift", record=True, expected_revision=None):
+                               view="lift", record=True, expected_revision=None,
+                               depth_msg=None):
         result = super()._integrate_after_place(
             trial, slot, slot_meta, pick_msg, view=view, record=record,
-            expected_revision=expected_revision)
+            expected_revision=expected_revision, depth_msg=depth_msg)
         self._rehearsal_mark("integration")
         return result
 

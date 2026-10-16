@@ -120,3 +120,28 @@ def test_driver_waits_past_cached_frame_and_pins_each_new_acquisition():
     assert [c['view'] for c in driver.calls] == ['aim', 'aim_frame_2']
     assert driver._post_place_depth_stamp_ns == 102
     assert final['acquisition_burst']['reason'] == 'confirmed'
+
+
+def test_motion_driver_forwards_exact_depth_to_parent(monkeypatch):
+    from types import SimpleNamespace
+    from cargo_map_integrate_eval_driver import CargoMapIntegrateDriver
+    from motion_occ_eval_driver import MotionOccDriver
+
+    calls = []
+    frame = object()
+    result = {'integrated': True}
+
+    def parent(self, *args, **kwargs):
+        calls.append(kwargs)
+        return result
+
+    monkeypatch.setattr(CargoMapIntegrateDriver, '_integrate_after_place', parent)
+    driver = object.__new__(MotionOccDriver)
+    marks = []
+    driver._rehearsal_mark = marks.append
+    actual = driver._integrate_after_place(None, None, None, None,
+                                           expected_revision=13, depth_msg=frame)
+    assert actual is result
+    assert calls[0]['depth_msg'] is frame
+    assert calls[0]['expected_revision'] == 13
+    assert marks == ['integration']
