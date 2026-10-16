@@ -10,6 +10,7 @@ import pytest
 from luggage_planning.placement_prior import compute_prior
 from luggage_planning.placement_prior_prefetch import PrefetchTemplate, reusable_placements
 from luggage_planning.placement_prior_worker import PriorWorker
+from luggage_planning.placement_prior_schedule import SnapshotQuietGate
 from test_placement_prior import request, SensorWall, await_result
 from test_placement_prior_requests import confirmed_grid
 
@@ -56,11 +57,14 @@ def test_old_timeout_cannot_cancel_new_foreground_job():
         assert worker.close()
 
 
-def test_timer_waits_for_confirmation_and_runs_once_per_snapshot():
+@pytest.mark.parametrize('quiet_s', [0., 2.])
+def test_timer_waits_for_confirmation_and_runs_once_per_snapshot(monkeypatch, quiet_s):
     path = Path(__file__).parents[1]/'scripts/place_prior_node.py'
     spec = importlib.util.spec_from_file_location('prior_prefetch_node_test',path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    now=[0.]
+    monkeypatch.setattr(module,'time',SimpleNamespace(monotonic=lambda:now[0]))
     current = [None]
     calls = []
     reader = SimpleNamespace(service_is_ready=lambda: True)
@@ -76,6 +80,9 @@ def test_timer_waits_for_confirmation_and_runs_once_per_snapshot():
         response.reason='READY'
         return response
     fake._prepare=prepare
+    fake._quiet_gate=SnapshotQuietGate(quiet_s)
+    fake._invalidate_if_changed=lambda:fake._quiet_gate.observe(
+        current[0].identity if current[0] else None,now[0])
     tick=lambda:module.PlacePriorNode._prefetch_tick(fake)
     tick()
     assert calls == []
@@ -84,10 +91,19 @@ def test_timer_waits_for_confirmation_and_runs_once_per_snapshot():
     tick()
     assert calls == []
     fake._foreground_active=False
+    if quiet_s:
+        now[0]=quiet_s-.01
+        tick()
+        assert calls==[]
+    now[0]=quiet_s
     tick();tick()
     assert len(calls)==1 and calls[0][1] and not calls[0][0].measured
     current[0]=confirmed_grid(floor=.3)
     tick()
+    if quiet_s:
+        assert len(calls)==1
+        now[0]+=quiet_s
+        tick()
     assert len(calls)==2
 
 

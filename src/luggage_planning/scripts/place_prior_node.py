@@ -28,6 +28,7 @@ from luggage_planning.placement_prior_collision_port import NativeToolCollisionP
 from luggage_planning.placement_prior_requests import decode_request, encode_choices
 from luggage_planning.placement_prior_worker import PriorWorker
 from luggage_planning.placement_prior_prefetch import PrefetchTemplate
+from luggage_planning.placement_prior_schedule import SnapshotQuietGate
 
 
 class PlacePriorNode(Node):
@@ -59,6 +60,8 @@ class PlacePriorNode(Node):
         self._foreground_active=False
         self._prefetched=None
         self._prefetch_attempt=None
+        self._quiet_gate=SnapshotQuietGate(
+            float(self.declare_parameter('prefetch_quiet_s',2.).value))
         enabled=self.declare_parameter('prefetch_enabled',False).value
         size=self.declare_parameter('prefetch_box_wdh',[0.,0.,0.]).value
         grasps=self.declare_parameter('prefetch_grasps_flat',[0.]*7).value
@@ -80,6 +83,7 @@ class PlacePriorNode(Node):
     def _invalidate_if_changed(self):
         confirmed=self._store.current()
         identity=confirmed.identity if confirmed else None
+        self._quiet_gate.observe(identity,time.monotonic())
         if identity!=self._active_snapshot:
             self._active_snapshot=identity
             self._last_request=None;self._last_result=None
@@ -105,7 +109,8 @@ class PlacePriorNode(Node):
             self._invalidate_if_changed()
             confirmed=self._store.current()
             if (confirmed is None or self._foreground_active
-                    or self._prefetch_attempt==confirmed.identity):
+                    or self._prefetch_attempt==confirmed.identity
+                    or not self._quiet_gate.ready(confirmed.identity,time.monotonic())):
                 return
             self._prefetch_attempt=confirmed.identity
         response=self._prepare(self._template.request(confirmed),

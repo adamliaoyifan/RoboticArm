@@ -207,6 +207,16 @@ template completion issues motion or changes map ownership.
 Enable with `prefetch_enabled=true`, `prefetch_box_wdh` (three metres), and
 `prefetch_grasps_flat` (one or more concatenated xyz/xyzw transforms). These
 parameters describe a hypothesis, not a measured payload or approved grasp.
+Background submission also requires the same confirmed snapshot to remain
+admitted for `prefetch_quiet_s` (default 2 seconds, zero disables this delay).
+Repeated identical publications do not restart the interval; changed identity
+or lost confirmation does. The existing 1-second timer determines the next
+eligible poll. This coalesces short-lived observation revisions; it does not
+predict that a stable snapshot will remain unchanged. Running jobs still cancel
+on invalidation. Foreground measured preparation never waits on this gate and
+retains priority. The delay is a scheduling choice, not an OCC confirmation rule
+or execution permission. Evaluate lost overlap as well as discarded work when
+comparing policies; reduced job count alone is not a speedup verdict.
 When evidence capture is enabled, `proposal_context` records template presence,
 strict/ordering-context matches, size equality and the actual slot order. These
 are diagnostic facts, not collision or execution approval. The isolated
