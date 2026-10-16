@@ -237,6 +237,12 @@ claiming successful placement or performance improvement.
 
 Runtime installs must include `st09_contracts` through the planning package's
 explicit dependency. Source-root PYTHONPATH is not installation verification.
+The simulation launch accepts `box_catalog_config` for a frozen spawn-only
+catalog, allowing historical box geometry to be reacquired without changing the
+installed default catalog. This parameter is passed only to the spawner; prior
+and pick authorization must consume the new measured detection and candidates.
+New acquisitions are not exact replays of historical perception.
+
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock
 publisher; it spawns no box and is not a functional pick/place acceptance test.

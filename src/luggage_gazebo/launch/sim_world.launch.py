@@ -107,6 +107,7 @@ def _default_launch_values():
         "semantic_pydeps_dir": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
+        "box_catalog_config": "",
         "yaw_mode": "",
         "yaw_range": "0.0,0.0",
         "xy_jitter_range": "0.0,0.0",
@@ -797,6 +798,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "visual_kind": cfg["visual_kind"],
             "size_mode": cfg["size_mode"],
+            "box_catalog_config": cfg["box_catalog_config"],
             "visual_settle_sec": 2.0,
             "yaw_mode": cfg["yaw_mode"],
             "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
@@ -1265,6 +1267,10 @@ def generate_launch_description():
                 "size_mode",
                 "Pickup size: catalog (small/medium/large) or "
                 "continuous (box visual only)."),
+            profile_arg(
+                "box_catalog_config",
+                "Optional spawn-only box catalog path; empty uses the installed catalog. "
+                "Perception and planning still use measured geometry."),
             profile_arg(
                 "yaw_mode",
                 "Override catalog yaw_mode (discrete/continuous)."),
