@@ -55,6 +55,19 @@ def main():
     sidecar_log = None
     bag_log = None
     try:
+        # Capture startup leases before readiness; late recording misses the
+        # first expiry and cannot distinguish sender gaps from receiver delays.
+        if args.simulate_cycle:
+            bag_log=(out/'bag.log').open('w')
+            bag=subprocess.Popen(['ros2','bag','record','-o',str(out/'bag'),
+                '--max-bag-size','134217728', '/clock','/tf','/tf_static','/joint_states',
+                '/monitored_planning_scene','/luggage/cargo_map/surface_2d',
+                '/luggage/cargo_map/surface_v2','/motion_planner/last_boundary',
+                '/frame_contracts/v2/runtime_identity',
+                '/camera/depth/camera_info',
+                '/luggage/preprocessed/camera/depth/camera_info'],
+                stdout=bag_log,stderr=subprocess.STDOUT,start_new_session=True)
+            result['bag_started_before_readiness'] = True
         import rclpy
         from rclpy.serialization import serialize_message
         from moveit_msgs.srv import GetPlanningScene
@@ -104,13 +117,6 @@ def main():
                     break
                 if sidecar.poll() is not None:raise RuntimeError('prior launch failed')
             else:raise RuntimeError('prior service readiness timeout')
-            bag_log=(out/'bag.log').open('w')
-            bag=subprocess.Popen(['ros2','bag','record','-o',str(out/'bag'),
-                '--max-bag-size','134217728', '/clock','/tf','/tf_static','/joint_states',
-                '/monitored_planning_scene','/luggage/cargo_map/surface_2d',
-                '/luggage/cargo_map/surface_v2','/motion_planner/last_boundary',
-                '/frame_contracts/v2/runtime_identity'],
-                stdout=bag_log,stderr=subprocess.STDOUT,start_new_session=True)
             command=['ros2','run','luggage_gazebo','motion_occ_eval_driver.py',
                 '--frame-runtime','--frame-peer','motion_occ_driver','--placement-prior',
                 '--payload','vacuum','--goto-timeout','60','--observe-pose','pickup_observe_sim',
