@@ -641,7 +641,7 @@ class GraphRoutePlanner(object):
                     break
         return registered
 
-    def _frontier_continuation(self):
+    def _frontier_continuation(self, expired=lambda: False):
         """Short cartesian hops (INSERT, DESCEND, RETREAT) solved from
         the frontier's own q. A region with no registered node falls back
         to its anchor-plan pose (RETREAT holds the frontier orientation)."""
@@ -682,7 +682,17 @@ class GraphRoutePlanner(object):
             diagnostic["branch_rank"] = list(descend_pair_rank(frontier.q, q))
             if diagnostic["branch_rank"][0] != 0:
                 diagnostic["reason"] = "branch_change"
-                return ()
+                if hop.edge_class != "RETREAT":
+                    return ()
+                from luggage_planning.retreat_continuation import refine_retreat
+                q, continuation = refine_retreat(
+                    frontier.tcp_position, position, quaternion, frontier.q,
+                    self._refine_one, expired)
+                diagnostic["incremental"] = continuation
+                if q is None:
+                    return ()
+                diagnostic["reason"] = "incremental_refined"
+                diagnostic["result_q"] = list(q)
             node = self._register(
                 q, position, quaternion, hop.to_region,
                 load_state(hop.load_state), "frontier")
@@ -766,7 +776,7 @@ class GraphRoutePlanner(object):
         if self.urdf is not None and self.tcp_path is not None:
             fk = make_offline_fk(self.urdf, self.tcp_path)
         search = RouteSearch(self.graph, self.edge_builder, budget,
-                             continuation=self._frontier_continuation(),
+                             continuation=self._frontier_continuation(budget.exhausted),
                              scope=self.scope,
                              trace=getattr(self, "trace", None),
                              fk=fk)

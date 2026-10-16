@@ -268,3 +268,15 @@ load and verdict in candidate diagnostics. The endpoint service budget is 2 s
 and checks stop between calls at the candidate deadline. Every connection and
 complete route still requires existing certification; endpoint validity alone
 is insufficient. This does not write OCC or authorize physical movement.
+
+### Long retreat IK continuity
+
+A retreat endpoint whose total joint displacement exceeds the short-hop branch
+heuristic may be refined along the straight TCP segment, holding orientation.
+Use <=10 mm steps, at most 128 solves, the route's existing deadline and the
+existing 1 rad branch threshold per local step. Also reject a raw local joint
+jump above that threshold, including a wrapped full-turn equivalent. A missing
+IK solution, step limit or deadline returns no partial endpoint. INSERT and
+DESCEND keep their existing gate. This only proposes the retreat endpoint;
+Cartesian edge construction and full collision/timing certification remain
+mandatory. Preserve exact incremental seeds/results in bounded failure capture.
