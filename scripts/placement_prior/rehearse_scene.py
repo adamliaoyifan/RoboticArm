@@ -108,7 +108,8 @@ def main():
             bag=subprocess.Popen(['ros2','bag','record','-o',str(out/'bag'),
                 '--max-bag-size','134217728', '/clock','/tf','/tf_static','/joint_states',
                 '/monitored_planning_scene','/luggage/cargo_map/surface_2d',
-                '/luggage/cargo_map/surface_v2','/motion_planner/last_boundary'],
+                '/luggage/cargo_map/surface_v2','/motion_planner/last_boundary',
+                '/frame_contracts/v2/runtime_identity'],
                 stdout=bag_log,stderr=subprocess.STDOUT,start_new_session=True)
             command=['ros2','run','luggage_gazebo','motion_occ_eval_driver.py',
                 '--frame-runtime','--frame-peer','motion_occ_driver','--placement-prior',

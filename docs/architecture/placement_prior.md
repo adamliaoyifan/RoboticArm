@@ -410,3 +410,8 @@ default 3) for independent settled acquisitions at each certified view. Record
 the value with workload inputs. Rotation through a stride of five requires five
 frames at that view; three frames alone do not establish full sampling coverage.
 More samples never authorize fabricated or duplicate acquisition evidence.
+
+Acquisition bags also preserve `/frame_contracts/v2/runtime_identity` so
+readiness-lease failures can be compared with observed peer heartbeat delivery.
+A bag receiver's observations do not prove delivery to another node. Keep
+execution readiness and lease thresholds unchanged while diagnosing starvation.
