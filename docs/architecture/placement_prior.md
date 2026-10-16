@@ -129,6 +129,9 @@ response wait for an already-certified observation leg includes its trajectory
 duration plus the configured response overhead. It does not alter planning or
 certification budgets, trajectory timing, controller limits or collision gates.
 An empty or nonmonotonic trajectory cannot supply an execution wait budget.
+The V2 motion service forwards the node's configured `execute_timeout` to the
+executor, as the legacy service does. A library default must not silently
+override that configured execution limit.
 
 The existing motion/OCC evaluation driver accepts `--placement-prior` only with
 its typed frame runtime. Before pickup it binds one measured candidate without
