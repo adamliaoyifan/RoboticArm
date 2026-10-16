@@ -375,6 +375,9 @@ def surface_map_from_contract(surface: Mapping, request: Mapping) -> dict:
         "inner_size": [float(v) for v in request["inner_size"]],
         "occupancy_confirmed": bool(surface.get("occupancy_confirmed", True)),
         "change_event": str(surface.get("change_event") or ""),
+        # [B1] Snapshot identity the request's surface declares.
+        "epoch": str(surface.get("epoch") or ""),
+        "content_digest": str(surface.get("content_digest") or ""),
     }
     heights = surface.get("height_above_floor")
     if heights is None:
@@ -601,7 +604,10 @@ def _same_admitted_map(admitted, latest):
     """True when latest is still the snapshot frozen at admission.
 
     A different stamp or a different column-height digest is a new
-    observation and is judged on the live clock.
+    observation and is judged on the live clock. [B1] When either side
+    declares the publishing map's epoch or content digest, those must
+    match too — an epoch rotation (reset/restart) or any planning-content
+    change invalidates the admitted route even at equal stamps.
     """
     if int(getattr(admitted, "acquisition_stamp_ns", 0) or 0) != int(
             getattr(latest, "acquisition_stamp_ns", 0) or 0):
@@ -613,6 +619,11 @@ def _same_admitted_map(admitted, latest):
     right = str(getattr(latest, "column_height_digest", "") or "")
     if left and right and left != right:
         return False
+    for field in ("epoch", "content_digest"):
+        left = str(getattr(admitted, field, "") or "")
+        right = str(getattr(latest, field, "") or "")
+        if (left or right) and left != right:
+            return False
     return True
 
 

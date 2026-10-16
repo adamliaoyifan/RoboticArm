@@ -663,6 +663,26 @@ class TrajectorySelectorNode(Node):
         response.detail = json.dumps(detail, default=str)[:2000]
         return response
 
+    @staticmethod
+    def _surface_validity(request, latched):
+        """[B2 single-source] Confirmation verdict source for one select.
+
+        The request's embedded v2 surface carries its own confirmation
+        fields when the publishing map declared a snapshot identity (B1:
+        non-empty epoch) — overriding them from this node's v1 latch was a
+        second verdict source (the two latches can disagree across a
+        commit between them; the req-2b freshness race). The latch is the
+        fallback for pre-B1 surfaces only.
+        """
+        request_surface = getattr(request, "surface", None)
+        if str(getattr(request_surface, "epoch", "") or ""):
+            return None
+        latched = latched or {}
+        return {
+            "occupancy_confirmed": latched.get("occupancy_confirmed", True),
+            "change_event": latched.get("change_event") or "",
+        }
+
     def _select_v2(self, request, response):
         # World poses come from transform_pose. v1 keeps _segments.
         # This callback does not execute motion.
@@ -698,11 +718,7 @@ class TrajectorySelectorNode(Node):
             latched = getattr(self, "_surface", None) or {}
             response = fill_select_response_route(
                 request, response, producer=producer,
-                surface_validity={
-                    "occupancy_confirmed": latched.get(
-                        "occupancy_confirmed", True),
-                    "change_event": latched.get("change_event") or "",
-                })
+                surface_validity=self._surface_validity(request, latched))
         except Exception as error:  # noqa: BLE001 - service boundary
             # A refused request carries its own named reason; an
             # UNEXPECTED exception must still never kill the node (an

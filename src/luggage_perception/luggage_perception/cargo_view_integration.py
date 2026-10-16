@@ -725,6 +725,8 @@ def planning_snapshot_from_surface(surface_map, scene_revision="",
         occupancy_confirmed=bool(
             surface_map.get("occupancy_confirmed", True)),
         change_event=str(surface_map.get("change_event") or ""),
+        epoch=str(surface_map.get("epoch") or ""),
+        content_digest=str(surface_map.get("content_digest") or ""),
     )
 
 

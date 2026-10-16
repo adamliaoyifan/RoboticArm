@@ -130,6 +130,12 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
             "map_revision": int(stats["map_revision"]),
             "commit_revision": int(stats["map_revision"]),
             "geometry_hash": str(stats["geometry_hash"]),
+            # [B1] Snapshot identity: fresh stats win (same-commit), the
+            # latched surface's is the fallback for pre-B1 stat shapes.
+            "epoch": str(stats.get("epoch") or surface.get("epoch") or ""),
+            "content_digest": str(
+                stats.get("content_digest")
+                or surface.get("content_digest") or ""),
         })
         return planning_snapshot_from_surface(
             surface, scene_revision=str(scene_revision or ""),

@@ -85,6 +85,15 @@ class PlanningSnapshot:
     #: ``cargo_edited``, or ``container_pose_changed``. Empty when the
     #: snapshot is still the confirmed one. Excluded from digest().
     change_event: str = ""
+    #: [B1] Publishing map's epoch (a reset or node restart rotates it).
+    #: Empty on pre-B1 constructions — the admission fence compares only
+    #: what both sides declare. Excluded from digest().
+    epoch: str = ""
+    #: [B1] Publishing map's content digest over planning content +
+    #: confirmation state. Empty on pre-B1 constructions; when both sides
+    #: declare it, it subsumes revision + column-height comparisons.
+    #: Excluded from digest().
+    content_digest: str = ""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "geometry_id", nonempty_str(self.geometry_id, "geometry_id"))
