@@ -238,7 +238,9 @@ def main():
                 fields=('box_wdh','surface','inner_size','geometry_hash','map_revision',
                         'start_joints','container_source_frame','container_target_frame',
                         'container_translation','container_quaternion_xyzw','box_id','generation')
-                report['baseline_context_preserved']=all(getattr(wire,key)==getattr(request,key) for key in fields)
+                wire_fields=message_to_ordereddict(wire)
+                captured_fields=message_to_ordereddict(request)
+                report['baseline_context_preserved']=all(wire_fields[key]==captured_fields[key] for key in fields)
                 report['baseline_context_preserved'] &= (wire.grasp.pose==request.grasp.pose
                     and wire.grasp.identity.stamp_ns==request.grasp.identity.stamp_ns
                     and wire.start_tcp.pose==request.start_tcp.pose)
