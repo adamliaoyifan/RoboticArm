@@ -29,6 +29,11 @@ def main():
         raise RuntimeError('existing sim: '+residual.stdout)
     if os.environ.get('ROS_DOMAIN_ID') != '7':
         raise RuntimeError('requires dedicated ROS_DOMAIN_ID=7')
+    from process_guard import dedicated_domain_processes
+    domain_residuals=dedicated_domain_processes()
+    (out/'domain_before.json').write_text(json.dumps(domain_residuals,indent=2))
+    if domain_residuals:
+        raise RuntimeError('dedicated ROS domain is occupied: '+str([row['pid'] for row in domain_residuals]))
     params = shlex.split(Path(args.launch_params_file).read_text())
     result = {'scored': False, 'ok': False, 'revision': subprocess.check_output(['git','rev-parse','HEAD'], cwd=repo, text=True).strip(), 'parameters': params}
     (out/'source.diff').write_bytes(subprocess.check_output(['git','diff'], cwd=repo))
@@ -36,6 +41,7 @@ def main():
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     log = (out/'launch.log').open('w')
     launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT)
+    result['launch_pid']=launch.pid
     Path(os.environ.get('ELFIN_SIM_PIDFILE','/tmp/elfin_humble_sim.pid')).write_text(str(launch.pid))
     start = time.monotonic()
     node = None
@@ -55,7 +61,8 @@ def main():
         future = None
         while time.monotonic()-start < args.timeout:
             if launch.poll() is not None:
-                raise RuntimeError('launch exited before readiness')
+                result['launch_exit_code']=launch.returncode
+                raise RuntimeError('launch exited before readiness: '+str(launch.returncode))
             rclpy.spin_once(node, timeout_sec=.1)
             services = {name for name, _ in node.get_service_names_and_types()}
             if client.service_is_ready() and future is None:
