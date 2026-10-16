@@ -1290,13 +1290,23 @@ class RouteProducer(object):
                         ordered_slots,
                         (index, slot, [], opening_depth, "seed_miss"))
                     continue
-            candidate, _box_target, plan, _seeded, scope_ids = \
-                self._prepare_candidate(
-                base_candidate, attachment, request, start_q,
-                tcp_orientation=prior_targets[0].quaternion_xyzw,
-                tcp_position=prior_targets[0].position,
-                expired=lambda: self._clock_ns() - candidate_started_ns
-                >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9))
+            from luggage_planning.target_ladder import prepare_target_ladder
+            anchor_expired = lambda: self._clock_ns() - candidate_started_ns \
+                >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9)
+            required_regions = {'slot_approach', 'slot_upper'}
+            if (self.opening_info or {}).get('point') is not None:
+                required_regions.add('portal')
+            prepared, prior_targets, ladder_attempts = prepare_target_ladder(
+                prior_targets,
+                lambda target: self._prepare_candidate(
+                    base_candidate, attachment, request, start_q,
+                    tcp_orientation=target.quaternion_xyzw,
+                    tcp_position=target.position, expired=anchor_expired),
+                lambda prepared: {node.region for node in self.graph.nodes.values()
+                    if node.node_id in prepared[4] and str(node.load_state) == 'carrying'},
+                required=required_regions, expired=anchor_expired)
+            candidate, _box_target, plan, _seeded, scope_ids = prepared
+            row['target_ladders'] = ladder_attempts
             self._log("route: anchors %s home %s" % (
                 [(n.region, [round(v, 3) for v in n.q])
                  for n in self.graph.nodes.values()
@@ -1428,8 +1438,7 @@ class RouteProducer(object):
                         scene_states={load: graph_states["graph-" + load]
                                       for load in ("carrying", "unloaded")})
                 planner.trace = getattr(self, "search_trace", None)
-                targets = self._expand_targets(
-                    candidate, attachment, request)
+                targets = prior_targets
                 if not targets:
                     row["reason"] = "TARGET_SYNTHESIS_EMPTY"
                     self._close_row(rows, row)

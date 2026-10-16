@@ -41,6 +41,14 @@ pickup detection must not overwrite that transform or its acquisition stamp.
 Only a new attach attempt resets the estimate; successful release clears it.
 Vacuum success without a measured attachment cannot authorize place planning.
 
+Allowed symmetric placement targets may have different TCP positions for an
+off-centre grasp. If the first target cannot seed the required portal/approach/
+upper entry regions, prepare the remaining allowed targets within the same
+candidate deadline. Prefer a target with a complete ladder; retain all allowed
+targets and record each missing region. Do not assume that solving the final
+slot pose proves its higher approach pose reachable. This preparation changes
+neither the requested box geometry nor collision/trajectory certification gates.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
