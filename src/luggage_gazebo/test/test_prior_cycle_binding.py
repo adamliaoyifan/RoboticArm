@@ -74,6 +74,7 @@ def test_acquisition_only_stops_at_detection_even_on_prior_miss():
 def test_bootstrap_uses_certified_named_motion_before_observation_and_return():
     instance=object.__new__(MotionOccDriver);calls=[]
     instance._args=SimpleNamespace(goto_timeout=60.)
+    instance._frame_scene_revision="test-scene"
     instance._goto_named_pose_v2=lambda name,**kw: calls.append(('goto',name)) or (True,'')
     instance._depth_observer=SimpleNamespace(observe_once=lambda name:calls.append(('observe',name)) or {'view':name})
     instance.goto_observe=lambda:calls.append(('return',None)) or (True,'',None)
@@ -87,6 +88,7 @@ def test_bootstrap_refuses_observation_if_certified_route_fails():
     import pytest
     instance=object.__new__(MotionOccDriver);calls=[]
     instance._args=SimpleNamespace(goto_timeout=60.)
+    instance._frame_scene_revision="test-scene"
     instance._goto_named_pose_v2=lambda *args,**kw:(False,'NO_ROUTE')
     instance._depth_observer=SimpleNamespace(observe_once=calls.append)
     with pytest.raises(RuntimeError,match='BOOTSTRAP_OBSERVE_ROUTE'):
