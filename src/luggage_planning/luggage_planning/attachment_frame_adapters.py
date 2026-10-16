@@ -229,6 +229,7 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
         })
         ok, message = backend.attach({
             "attach_record": attachment,
+            "tool_pose": tool,
             "physical_relation": physical_relation,
             "model_name": str(request.box_id),
             "scene_box_size": attachment["size_wdh"],

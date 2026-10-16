@@ -75,6 +75,7 @@ def main():
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
     os.environ['ELFIN_CARRY_REPLACEMENT_TRACE']=str(out/'carry_replacement.jsonl')
+    os.environ['ELFIN_PHYSICAL_ATTACHMENT_TRACE']=str(out/'physical_attachment.jsonl')
     if args.capture_release:
         os.environ['ELFIN_RELEASE_CAPTURE_DIR']=str(out/'release_capture')
         os.environ['ELFIN_BOX_CONTACT_TOPIC']='/placement_prior_release_contacts'

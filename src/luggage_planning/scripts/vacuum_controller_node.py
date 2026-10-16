@@ -18,6 +18,7 @@ from __future__ import division
 
 import json
 import math
+import os
 import threading
 import time
 
@@ -284,7 +285,8 @@ class VacuumControllerNode(Node):
                 gz_client, scene,
                 follow_rate_hz=float(
                     self.get_parameter("follow_rate_hz").value),
-                carry_filter=carry_filter)
+                carry_filter=carry_filter,
+                physical_relation_provider=self._resolve_physical_attachment)
 
         self._vacuum_on = False
         self._last_fail_reason = ""
@@ -348,6 +350,20 @@ class VacuumControllerNode(Node):
                     % (self._identity[0], self._identity[1]))
         else:
             self.get_logger().info("current_box cleared")
+
+    def _resolve_physical_attachment(self, model, generation, tool):
+        from luggage_planning.sim_physical_attachment import freeze_physical_relation
+        # This provider is installed only on the sim actuator backend. The
+        # response, scene attachment and prior continue to use measured data.
+        relation = freeze_physical_relation(
+            model, generation, tool,
+            read_identity=lambda: (str(self._identity[0]), int(self._identity[1])))
+        trace = os.environ.get('ELFIN_PHYSICAL_ATTACHMENT_TRACE', '').strip()
+        if trace:
+            with open(trace, 'a') as handle:
+                handle.write(json.dumps(dict(wall=time.time(), monotonic=time.monotonic(),
+                    tool_pose=tool, physical_relation=relation))+'\n')
+        return relation
 
     def _pull_gt_box(self, timeout=5.0):
         """Pull the GT spawn record for the CURRENT instance epoch.

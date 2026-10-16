@@ -85,6 +85,15 @@ pickup detection must not overwrite that transform or its acquisition stamp.
 Only a new attach attempt resets the estimate; successful release clears it.
 Vacuum success without a measured attachment cannot authorize place planning.
 
+The simulation controller separately freezes the physical tool-to-model relation
+using a fresh named Gazebo model pose and the admitted attach TCP. It checks
+the current model/generation before and after observation. This relation drives
+only the simulated actuator; measured attachment, scene dimensions and returned
+grasp remain unchanged. Perception body axes need not equal mesh model axes.
+The production simulation provider refuses unavailable physical pose/identity
+before scene attachment; it must not fall back to applying measured body pose
+directly to a physical mesh. Hardware never installs this simulation provider.
+
 Allowed symmetric placement targets may have different TCP positions for an
 off-centre grasp. If the first target cannot seed the required portal/approach/
 upper entry regions, prepare the remaining allowed targets within the same
