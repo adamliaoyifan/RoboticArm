@@ -23,6 +23,8 @@ def main():
     parser.add_argument('--surface-directory', type=Path, required=True)
     parser.add_argument('--scene-tf', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--requested-slot', type=Path,
+                        help='Explicit PoseContractV2 CDR target for a derived same-target experiment; preserves measured detection')
     parser.add_argument('--negative-checks', action='store_true',
                         help='Inject stale revision and unconfirmed-map negatives after cold/cache checks')
     args = parser.parse_args()
@@ -40,7 +42,7 @@ def main():
     from rcl_interfaces.msg import ParameterValue
     from moveit_msgs.msg import PlanningScene
     from moveit_msgs.srv import GetPlanningScene
-    from luggage_msgs.msg import SurfaceContractV2
+    from luggage_msgs.msg import SurfaceContractV2, PoseContractV2
     from luggage_msgs.srv import PreparePlacementPriorV2, GetCargoVolumeV2
     from luggage_planning.prior_resources import ResourceWindow
     boundary = args.capture / 'prior_boundaries'
@@ -57,6 +59,8 @@ def main():
     def captured(name, message_type):
         return read(boundary / next(row['file'] for row in segment if row['boundary'] == name), message_type)
     request = captured('prepare_request', PreparePlacementPriorV2.Request)
+    if args.requested_slot:
+        request.slots = [read(args.requested_slot, PoseContractV2)]
     historical = captured('prepare_response', PreparePlacementPriorV2.Response)
     scene = captured('baseline_scene', PlanningScene)
     volume_request = captured('volume_request', GetCargoVolumeV2.Request)
@@ -84,6 +88,9 @@ def main():
         assumptions=['require_confirmed_map=true fixture owner setting; not a live-owner read'],
         inputs=inputs, revision=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
         dirty=subprocess.check_output(['git','status','--porcelain'],text=True), results=[])
+    if args.requested_slot:
+        report['scope'] = 'derived explicit-target experiment with unchanged measured detection; not exact historical request replay'
+        report['request_changes'] = ['slots replaced by one explicit target']
     (args.output / 'replay_script.py').write_bytes(Path(__file__).read_bytes())
     rclpy.init()
     node = rclpy.create_node('recorded_prior_inputs')

@@ -246,6 +246,13 @@ New acquisitions are not exact replays of historical perception. The explicit
 verified by the same asset size/visual/collision checks as normal tiers; it is
 not added to the default spawn catalog.
 
+`exact_prior_replay.py --requested-slot <PoseContractV2.cdr>` runs a derived
+explicit-target experiment. Only the request's slot list is replaced; measured
+detection, contact candidates, scene and OCC bindings are retained. The output
+hashes the target artifact and saves the submitted CDR, and labels this as a
+derived experiment rather than an exact historical request replay. A successful
+tool-placement check remains distinct from full-route or executed-cycle success.
+
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock
 publisher; it spawns no box and is not a functional pick/place acceptance test.
