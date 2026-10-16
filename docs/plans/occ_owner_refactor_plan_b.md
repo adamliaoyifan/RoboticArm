@@ -101,10 +101,11 @@ OccupancyMap 独占地图写入和状态转换，以不可变快照贯穿 placem
 全链至最终几何 verify 差 2.8 mm（0.0428>0.04）。误差拆分（追记一）：释放
 前 ≤0.03 mm，误差 100% 在释放后（51 mm 悬停/66 mm 落程/落地横向 38–43 mm，
 两箱同签名）；机制归因数据不足（失败路径不持久化落定位姿）。40 mm 门维持。
-**新缺口（追记二）**：verify 失败的落地箱被物理删除（ClearCurrentBox 回滚）
-且地图无 pending——不满足规格"真实障碍仍须进入地图"。待派：失败路径记
-待确认占用（fact/观测），保留实体；以及 verify 失败路径补持久化
-after_release/drift 位姿（归因数据）。判定书：
+**失败路径合同已修（5796f4fb，追记四）**：释放即 pending（box_released
+事实＋新服务 /cargo_map/note_occupancy_event，fail-closed）、锚即确认
+（带锚提交清除匹配事实）、落箱保留（释放后失败不清箱）、证据同路（含侧向
+方向向量、detach 时序，先落盘后判门）。16 离线测试关闭。待派：非计分观测
+运行分辨释放窗口内机制。判定书：
 docs/status/evidence/occ_owner_b1/gate3_witness/VERDICT.md。
 
 ## 决策记录（不变）
