@@ -64,12 +64,12 @@ def test_cleanup_failure_never_emits_executable_route(monkeypatch, planning_rais
 
 
 def test_scene_digest_is_stable_and_covers_real_field_changes():
-    from moveit_msgs.msg import PlanningScene
+    from moveit_msgs.msg import CollisionObject, PlanningScene
     from luggage_planning.moveit_state_validity import _scene_digest
     from luggage_planning.planning_scene_client import build_collision_object
     scene = PlanningScene()
     scene.world.collision_objects = [build_collision_object(
-        'box', [0., 0., 1.], [0., 0., 0., 1.], [0.5, 0.3, 0.2], 'world', 0)]
+        'box', [0., 0., 1.], [0., 0., 0., 1.], [0.5, 0.3, 0.2], 'world', CollisionObject.ADD)]
     original = _scene_digest([scene])
     assert {_scene_digest([scene]) for _ in range(100)} == {original}
     scene.world.collision_objects[0].primitive_poses[0].position.x = 1e-12
