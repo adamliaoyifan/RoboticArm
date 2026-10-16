@@ -262,6 +262,7 @@ class HardwarePickDriver(Node):
         self._vacuum_state = {}
         self._scene_box = None
         self._placement_prior_client = None
+        self._planning_recorder = None
         self._placement_prior_result = None
         self._placement_prior_choice = None
         self._measured_attachment = None
@@ -310,6 +311,16 @@ class HardwarePickDriver(Node):
                 runtime.identity["scene_revision"])
             self._typed = TypedDriverAdapter(self, runtime,
                                              group=self._group)
+            evidence_dir = str(getattr(args, 'planning_evidence_dir', '') or '')
+            if evidence_dir:
+                from pathlib import Path
+                from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+                root = Path(evidence_dir)
+                root.mkdir(parents=True, exist_ok=False)
+                (root / 'runtime_identity.json').write_text(
+                    json.dumps(runtime.identity, indent=2) + '\n')
+                self._planning_recorder = PriorEvidenceRecorder(root / 'boundaries')
+                self._typed.set_boundary_recorder(self._planning_recorder)
             self._current_box_identity = None
             self.create_subscription(
                 String, "/luggage/current_box", self._on_current_box,
@@ -738,6 +749,8 @@ class HardwarePickDriver(Node):
             try:
                 prior = self._placement_prior_client.prepare(
                     box, 'hardware-prior-%d' % detection.stamp_ns)
+                if self._planning_recorder is not None and prior is not None:
+                    self._planning_recorder('/placement_prior/prepare:response', prior)
                 detection, choice = self._placement_prior_client.bind(
                     prior, detection, str(getattr(self, "_frame_scene_revision", "")
                                           or self._args.frame_scene_revision))
@@ -862,6 +875,8 @@ def main(argv=None):
     parser.add_argument("--ready-timeout", type=float, default=90.0)
     parser.add_argument("--placement-prior", action="store_true",
                         help="Use read-only placement prior to choose the measured pickup candidate.")
+    parser.add_argument("--planning-evidence-dir", default="",
+        help="New directory for exact typed request/response CDR and runtime identity; requires --frame-runtime.")
     parser.add_argument("--plan-place-after-pick", action="store_true",
                         help="After successful pickup, plan a complete place route from measured attachment; do not execute it.")
     parser.add_argument("--max-candidates", type=int, default=3)
@@ -891,6 +906,8 @@ def main(argv=None):
         help="Driver node name registered in the v2 graph.")
     parser.set_defaults(use_vacuum=True)
     args = parser.parse_args(args=argv)
+    if args.planning_evidence_dir and not args.frame_runtime:
+        parser.error('--planning-evidence-dir requires --frame-runtime')
 
     rclpy.init()
     node = HardwarePickDriver(args)

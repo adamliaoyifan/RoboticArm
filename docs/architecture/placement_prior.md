@@ -18,6 +18,23 @@ certify the current physical cell. Offline hardware-interface rehearsals use
 `plan_only:=true start_d555:=false start_perception:=false` and supply recorded
 state/observations separately; launch does not fabricate a measured grasp.
 
+`hardware_pick_driver --planning-evidence-dir <new-dir> --frame-runtime`
+records the exact typed service boundaries and runtime identity. In particular,
+retain the successful vacuum enable request/response separately from Select:
+a proposed grasp in Select is not proof of measured attachment. The existing
+driver `--plan-only` branch only constructs pick waypoints, so its exit status
+does not certify place planning.
+
+`scripts/placement_prior/hardware_place_replay.py` calls the production
+`plan_attached_box` consumer with captured Select context, the separate vacuum
+request/response and optional prior response/choice. It requires the exact live
+runtime identity, queries MoveIt's execution-disabled setting, and captures
+GetPlanningScene plus outbound service request/response CDR. It does not restore
+scene, map or joints: the isolated harness must supply the matching recorded
+context. With no bound prior it calls ordinary ComputePlacement before Select;
+it does not claim byte-identical historical candidate replay in that mode.
+Successful invocation alone does not satisfy the full F2 case matrix.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
