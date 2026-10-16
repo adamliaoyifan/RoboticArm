@@ -35,3 +35,11 @@
   launch 缺 frame_runtime:=true）。无运动、无箱。修复为运行脚本补
   `frame_runtime:=true`（与驱动 --frame-runtime 同一接线类，代码零改动）。
   冻结定义更新为包含此两处运行开关的 HEAD（见最终哈希）。
+- **尝试 0d（中止）**: pack_to_full_run.sh 栈起来后首 goto 即 SCENE_STALE——
+  该脚本的 launch 未携带部署匹配的 scene_tf/atlas/robot_poses 三件套
+  （G3 计分运行的既有接线）。无运动、无箱。**执行载体改为
+  scripts/g3/run.sh score**（score_run01 同源：n=2、inch20、全链路参数、
+  worktree install 身份校验内置）——车辆更换，非规则变更。
+- **正式见证（尝试 1，计额度）**: `bash scripts/g3/run.sh score gate3_*`，
+  冻结代码 = worktree HEAD（含两处运行开关提交），MAIN 侧冻结资产按
+  run.sh 既有指向。
