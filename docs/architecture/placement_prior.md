@@ -262,6 +262,13 @@ return bounds: terminal-band exclusion can leave near-wall cells unknown even
 with dense measured returns. An offline reconstructed volume is diagnostic data,
 never a replacement for the owner's confirmed OCC snapshot.
 
+`tool_heading_replay.py` compares up to four exact rigid-tool requests with a
+local TCP Z half-turn, preserving their tool origins, box poses and frozen
+scene. It checks the live model hash and retains both request/response pairs.
+This is a diagnostic for whether a directed grasp alternative merits integration;
+it neither modifies measured contact records nor authorizes alternate pickup,
+IK, complete trajectories or execution.
+
 The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
 objects, static synchronization, selector/validator discovery and a single clock
 publisher; it spawns no box and is not a functional pick/place acceptance test.
