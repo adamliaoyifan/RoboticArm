@@ -12,6 +12,12 @@ int64 expected_map_revision
 string geometry_hash
 bool settled
 int32 frame_count
+
+# [B1 transaction] Idempotency key + undeclared premise legs are not
+# checked (revision stays mandatory above).
+string operation_id
+string expected_epoch
+string expected_content_digest
 ---
 uint32 schema_version
 bool success
@@ -21,3 +27,6 @@ float64 unknown_ratio
 float64 occupancy_ratio
 int64 resulting_map_revision
 builtin_interfaces/Time integrated_acquisition_stamp
+string status
+string epoch
+string content_digest

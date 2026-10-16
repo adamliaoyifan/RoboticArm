@@ -5,7 +5,18 @@ luggage_msgs/PoseContractV2 slot_pose
 float64[3] size_wdh
 uint64 expected_map_revision
 string geometry_hash
+
+# [B1 transaction] A removal is a FACT: on a stale premise it is recorded
+# as a pending change (status recorded_pending) rather than dropped when
+# the confirmation gate is on.
+string operation_id
+string expected_epoch
+string expected_content_digest
 ---
 bool success
 string message
 uint64 resulting_map_revision
+string status
+string reason
+string epoch
+string content_digest

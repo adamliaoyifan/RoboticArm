@@ -15,7 +15,19 @@ string geometry_hash
 # compute slot committed 0.65 m from the verified box).
 float64[3] verified_center_container
 float64 verify_tolerance_m
+
+# [B1 transaction] Idempotency key and the full snapshot-identity premise
+# (with expected_map_revision above). Empty operation_id = pre-B1 caller
+# (a key is synthesized from the normalized content). status is one of
+# accepted/already_processed/rejected/recorded_pending.
+string operation_id
+string expected_epoch
+string expected_content_digest
 ---
 bool success
 string message
 uint64 resulting_map_revision
+string status
+string reason
+string epoch
+string content_digest
