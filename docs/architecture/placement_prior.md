@@ -299,6 +299,16 @@ It does not acquire authoritative geometry or publish occupancy. Owner-side
 geometry acquisition, bounded local map storage and query integration remain
 required before online use.
 
+`depth_boundary_assets.load_boundary_assets` resolves the same installed
+container collision resource as scene publication (or an explicit deployment
+override), requires expected scene revision, geometry hash and resource SHA256,
+and bounds resource reads. It uses the shared ROS-free STL decoder also used by
+MoveIt's scene publisher; no perception-to-planning dependency is introduced.
+Raw resource identity and canonical container-frame triangle identity remain
+distinct. Deployment overrides/decimation must be reflected in owner identity;
+matching a default file alone does not attest to a live overridden scene.
+The loader is tested offline and is not yet wired into the live map owner.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
