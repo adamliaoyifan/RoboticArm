@@ -18,9 +18,12 @@ from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_perception.depth_view_rays import admit_depth_ray
 
 
-def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_points=2000):
+def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_points=2000,
+            probe_resolutions=()):
     if not np.isfinite(resolution) or resolution <= 0:
         raise ValueError('resolution must be positive and finite')
+    if len(probe_resolutions) > 4 or any(not np.isfinite(v) or v <= 0 for v in probe_resolutions):
+        raise ValueError('at most four positive finite diagnostic resolutions required')
     geometry = descriptor_from_scene_config(yaml.safe_load(scene_config.read_text()))
     mapper = None
     if volume_output is not None:
@@ -64,12 +67,32 @@ def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_po
                             free_end_bounds=None if not free_ends else [np.min(free_ends,axis=0).tolist(),np.max(free_ends,axis=0).tolist()],
                             endpoint_percentiles=np.percentile(points,[0,5,50,95,100],axis=0).tolist(),
                             accepted_bounds=None if not accepted else [np.min(accepted,axis=0).tolist(),np.max(accepted,axis=0).tolist()]))
+        if probe_resolutions:
+            probes = []
+            near_back = np.abs(points[:,0]-geometry.half_x) <= resolution
+            for candidate_resolution in probe_resolutions:
+                rays = [admit_depth_ray(geometry, origin, point, np.sqrt(3)*candidate_resolution)
+                        for point in points]
+                valid = [ray for ray in rays if ray is not None]
+                probes.append(dict(resolution_m=candidate_resolution, admitted=len(valid),
+                    obstacle_returns=sum(ray.obstacle is not None for ray in valid),
+                    near_back_return_count=int(np.count_nonzero(near_back)),
+                    near_back_admitted=sum(ray is not None and bool(near)
+                                           for ray,near in zip(rays,near_back)),
+                    free_end_max_x=None if not valid else max(ray.free_end[0] for ray in valid)))
+            results[-1]['terminal_resolution_probes'] = probes
         if mapper is not None:
             detail = mapper.integrate_depth_view(points, origin)
             results[-1]['integration'] = {key:value for key,value in detail.items() if key!='observed_points'}
             results[-1]['stats'] = mapper.stats()
     report = dict(frame='container_link', resolution_m=resolution,
                   terminal_band_m=float(np.sqrt(3)*resolution), views=results)
+    if probe_resolutions:
+        report['probe_scope'] = 'Ray admission sensitivity only; no alternate map, scene, or execution authorization'
+        report['near_back_definition'] = 'Measured return x within baseline resolution of usable hull +X; not a physical wall label'
+        report['uniform_grid_sizes'] = [dict(resolution_m=value, cells=int(np.prod(np.ceil(
+            np.array([geometry.length,geometry.width,geometry.height])/value))))
+            for value in probe_resolutions]
     if mapper is not None:
         # x-fastest storage, then y, then z, matching CargoVolumeMapper._index.
         shape = (mapper.nz, mapper.ny, mapper.nx)
@@ -96,8 +119,11 @@ if __name__ == '__main__':
     parser.add_argument('--replay-volume', type=Path,
                         help='Save reconstructed owner grid; diagnostic only, never an online map')
     parser.add_argument('--max-raycast-points', type=int, default=2000)
+    parser.add_argument('--probe-resolutions', type=float, nargs='*', default=[],
+                        help='Up to four offline terminal-band sensitivities; does not allocate alternate grids')
     args = parser.parse_args()
     result = inspect(args.run, args.scene_config, args.resolution,
-                     volume_output=args.replay_volume, max_raycast_points=args.max_raycast_points)
+                     volume_output=args.replay_volume, max_raycast_points=args.max_raycast_points,
+                     probe_resolutions=args.probe_resolutions)
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))

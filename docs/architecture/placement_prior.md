@@ -262,6 +262,15 @@ return bounds: terminal-band exclusion can leave near-wall cells unknown even
 with dense measured returns. An offline reconstructed volume is diagnostic data,
 never a replacement for the owner's confirmed OCC snapshot.
 
+The inspector's `--probe-resolutions` evaluates at most four alternative
+terminal bands on the same measured rays and reports corresponding uniform
+grid sizes without allocating those grids. Near-back-return counts describe
+coordinates near the usable hull, not verified physical-wall classifications.
+These diagnostics cannot authorize finer maps, change collision margins or
+replace the owner's geometry/confirmation contracts. Semantic usable bounds
+and physical collision surfaces must not be assumed identical merely because
+they share a frame.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
