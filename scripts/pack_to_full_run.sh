@@ -93,6 +93,7 @@ launch_stack() {
       sequence_ids:="$SEQUENCE_IDS" \
       observe_pose_name:=pickup_observe \
       semantic_require_backend:=bbox_fill \
+      frame_runtime:=true \
       > "$OUT/launch.log" 2>&1 &)
   sleep 3
   local pid
