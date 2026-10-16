@@ -139,3 +139,22 @@ r10 日志实证（launch.log）：
 运行（同仿真时钟同步捕获：静/动体位姿与首物理步速度、工具位姿速度、箱
 线/角速度姿态、接触双方/时间/深度/力、删除/生成/真空关闭/retreat 请求与
 完成时刻），首答"横向位移从哪个物理步开始、与何事件/接触同时"。
+
+## 追记六：观测工具链就绪；执行被并行战役占位（2026-10-17）
+
+- 工具链（f6ecde88+解析器修正）：observe_release.sh（同步捕获 pose/
+  dynamic_pose/接触/工具流，同仿真时钟）＋ record_tool_stream.py ＋
+  analyze_release_window.py（首步速度由逐帧位姿差分；解析器已对真实流
+  2722 样本验证）。
+- obs_rel_02：流捕获正常（pose 9.2MB/dyn 1.9MB/tool 286KB），驱动就绪段
+  中止（无箱）。obs_rel_03：全栈起、运动开始，首个 compute 30s 超时
+  （COMPUTE_TIMEOUT，规划器零请求日志——疑与并行栈共享 ROS_DOMAIN 7 的
+  干扰或冷加载有关，未定）。obs_rel_04：槽位忙。
+- **槽位现被并行战役占用**（bounded_cartesian/g1＋placement_prior/
+  observation_ik01，require_confirmed_map:=true——B1/B2 的确认门已被该
+  战役启用）。已停止观测尝试以免杀其栈。
+- **如实披露**：17:30–18:40 我的重试期间多次调用 stop_sim，可能打断过
+  该战役的某次启动；其 bounded_cartesian 采集 14:46 已标 complete（早于
+  我的窗口，大概率无损），placement_prior 观测是否受扰无法完全核实。
+- 待槽位释放：单命令重跑（observe_release.sh obs_rel_05），分析自动
+  产出"横向位移起始物理步＋共时事件/接触"。
