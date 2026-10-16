@@ -188,6 +188,13 @@ template completion issues motion or changes map ownership.
 Enable with `prefetch_enabled=true`, `prefetch_box_wdh` (three metres), and
 `prefetch_grasps_flat` (one or more concatenated xyz/xyzw transforms). These
 parameters describe a hypothesis, not a measured payload or approved grasp.
+When evidence capture is enabled, `proposal_context` records template presence,
+strict/ordering-context matches, size equality and the actual slot order. These
+are diagnostic facts, not collision or execution approval. The isolated
+`exact_prior_replay.py --prefetch-template <json> --foreground-joints <cdr>`
+functional check waits for real automatic timer completion before submitting
+measured input; it records derived joint-state changes explicitly. It does not
+replace the live-background or paired performance acceptance gates.
 
 Before pick, bind the selected slot, candidate and grasp. Picking another candidate
 requires a new matching binding; a prior for candidate A cannot follow a retry

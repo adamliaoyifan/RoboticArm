@@ -27,7 +27,13 @@ def main():
                         help='Explicit PoseContractV2 CDR target for a derived same-target experiment; preserves measured detection')
     parser.add_argument('--negative-checks', action='store_true',
                         help='Inject stale revision and unconfirmed-map negatives after cold/cache checks')
+    parser.add_argument('--prefetch-template', type=Path,
+                        help='Explicit hypothetical box_wdh/grasps_flat JSON; wait for automatic background preparation')
+    parser.add_argument('--foreground-joints', type=Path,
+                        help='Captured JointState CDR applied only after template completion; derived motion-context check')
     args = parser.parse_args()
+    if args.foreground_joints and not args.prefetch_template:
+        parser.error('foreground-joints requires prefetch-template')
     from process_guard import dedicated_domain_processes
     if os.environ.get('ROS_DOMAIN_ID') != '8' or dedicated_domain_processes('8'):
         raise RuntimeError('empty dedicated ROS domain 8 required')
@@ -126,6 +132,16 @@ def main():
         'scene_tf_config:=' + str(args.scene_tf), 'frame_scene_revision:=' + scene_revision,
         'map_parameter_service:=/recorded_occ/get_parameters',
         'evidence_dir:=' + str(args.output / 'boundaries')]
+    if args.prefetch_template:
+        from luggage_planning.placement_prior_prefetch import PrefetchTemplate
+        data=args.prefetch_template.read_bytes()
+        template=json.loads(data)
+        validated=PrefetchTemplate(template['box_wdh'],template['grasps_flat'])
+        inputs[str(args.prefetch_template.resolve())]=hashlib.sha256(data).hexdigest()
+        command.extend(['prefetch_enabled:=true',
+            'prefetch_box_wdh:='+json.dumps(list(validated.box_wdh)),
+            'prefetch_grasps_flat:='+json.dumps(template['grasps_flat'])])
+        report['scope']='functional automatic template prefetch followed by genuine measured input; not performance scoring'
     (args.output / 'command.json').write_text(json.dumps(command, indent=2))
     log = (args.output / 'prior.log').open('w')
     proc = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
@@ -142,7 +158,33 @@ def main():
         typed_pub.publish(typed)
         legacy_pub.publish(legacy)
         time.sleep(.2)
-        labels = ['cold', 'cached'] + (['stale_revision', 'unconfirmed'] if args.negative_checks else [])
+        if args.prefetch_template:
+            # Observe the real timer completion, never manufacture a cache entry.
+            deadline=time.monotonic()+25.
+            background=None
+            journal=args.output/'boundaries/boundaries.jsonl'
+            while time.monotonic()<deadline and background is None:
+                if proc.poll() is not None:raise RuntimeError('prior exited during prefetch')
+                if journal.exists():
+                    for line in journal.read_text().splitlines():
+                        try:row=json.loads(line)
+                        except json.JSONDecodeError:continue
+                        if row['boundary']!='prepare_response':continue
+                        candidate=deserialize_message((journal.parent/row['file']).read_bytes(),PreparePlacementPriorV2.Response)
+                        if not candidate.measured:
+                            background=candidate
+                            break
+                if background is None:time.sleep(.05)
+            if background is None:raise TimeoutError('automatic prefetch did not complete')
+            (args.output/'template.response.cdr').write_bytes(serialize_message(background))
+            report['template']={'success':background.success,'reason':background.reason,
+                'choices':len(background.choices),'elapsed_s':background.elapsed_s}
+            if not background.success:raise ValueError('template prefetch failed: '+background.reason)
+            if args.foreground_joints:
+                from sensor_msgs.msg import JointState
+                scene.robot_state.joint_state=read(args.foreground_joints,JointState)
+                report['derived_scene_change']='only robot_state.joint_state replaced after template completion'
+        labels = ['after_prefetch' if args.prefetch_template else 'cold', 'cached'] + (['stale_revision', 'unconfirmed'] if args.negative_checks else [])
         for label in labels:
             submitted = deepcopy(request)
             if label == 'stale_revision':
@@ -177,7 +219,7 @@ def main():
                 raise ValueError('prior preparation failed: ' + response.reason)
             if response.model_sha256 != historical.model_sha256:
                 raise ValueError('native prior model differs from captured model')
-            if (label == 'cold' and response.cache_hit) or (label == 'cached' and not response.cache_hit):
+            if (label in ('cold','after_prefetch') and response.cache_hit) or (label == 'cached' and not response.cache_hit):
                 raise ValueError('unexpected cache state')
         report['success'] = True
     except Exception as exc:

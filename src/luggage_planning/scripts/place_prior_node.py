@@ -193,6 +193,21 @@ class PlacePriorNode(Node):
             request=decode_request(message,snapshot,confirmed,fallback_yaw=self._fallback_yaw,
                                    prefetched=prefetched if message.measured else None,
                                    volume=volume,margin=self._margin)
+            if self._recorder:
+                # Diagnostic eligibility/order, never an execution authorization.
+                previous=prefetched[0] if prefetched is not None else None
+                preferred=({c.placement.slot_id for c in prefetched[1].choices}
+                           if prefetched is not None else set())
+                self._recorder('proposal_context',String(data=json.dumps({
+                    'request_id':request.request_id,'measured':request.measured,
+                    'template_present':previous is not None,
+                    'same_full_scene':bool(previous and previous.snapshot.identity==snapshot.identity),
+                    'same_ordering_context':bool(previous and previous.snapshot.proposal_identity==snapshot.proposal_identity),
+                    'same_dimensions':bool(previous and previous.box_wdh==request.box_wdh),
+                    'explicit_slots':bool(message.slots),
+                    'slot_order':[p.slot_id for p in request.placements],
+                    'template_preferred_slots':sorted(preferred),
+                })))
             with self._lock:
                 if background and self._foreground_active:
                     raise ValueError('PREFETCH_SUPERSEDED_BY_FOREGROUND')
