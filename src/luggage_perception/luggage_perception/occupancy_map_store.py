@@ -979,10 +979,15 @@ def _freeze(rows):
 
 
 def _freeze_norm(rows):
-    """Nested projection with per-cell height normalization (digest-stable)."""
+    """Nested projection frozen WITHOUT value rounding: the wire bounds
+    check (floor <= z <= ceiling) must see the mapper's exact floats —
+    quantizing floor+0.0 to fewer digits once moved a boundary cell
+    1e-16 BELOW the floor and the v2 publication self-rejected
+    (SURFACE_HEIGHT_OUT_OF_RANGE). Digest quantization is independent
+    (_content_digest applies _norm_height itself)."""
     if rows is None:
         return ()
-    return tuple(tuple(_norm_height(v) for v in row) for row in rows)
+    return tuple(tuple(v for v in row) for row in rows)
 
 
 def _freeze_flat(values):

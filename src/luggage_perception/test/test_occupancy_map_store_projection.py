@@ -7,6 +7,7 @@ byte-stability of the v1 JSON across rebuilds, and identity agreement
 across all three projections.
 """
 import json
+import os
 import unittest
 
 from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
@@ -16,6 +17,9 @@ from luggage_perception.occupancy_map_store import (
     SnapshotIdentity,
     UpdateKind,
 )
+
+_ROOT = os.path.normpath(os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", ".."))
 
 
 def _store(require_confirmation=True):
@@ -154,6 +158,43 @@ class TestProjections(unittest.TestCase):
                    v2_second["content_digest"],
                    committed_last["content_digest"]}
         self.assertEqual(digests, {held.identity.content_digest})
+
+
+class TestV2RecordWireBounds(unittest.TestCase):
+    """[witness r3 finding] Freezing must not quantize: rounding
+    floor+0.0 (0.5300000000001) to 0.53 pushed a boundary cell 1e-16
+    below the floor and the v2 publication self-rejected with
+    SURFACE_HEIGHT_OUT_OF_RANGE — the planner then never saw the v2
+    surface and compute failed STALE_MAP_REVISION."""
+
+    def test_v2_record_validates_on_deploy_hull(self):
+        from luggage_description.scene_tf_config_utils import (
+            container_hull_local_inside_fn,
+            container_inner_ceiling_z,
+            container_inner_dimensions,
+            container_inner_floor_z,
+            container_inner_geometry_descriptor,
+            load_scene_tf_config,
+        )
+        config = os.path.join(_ROOT, "src", "luggage_description",
+                              "config", "scene_tf_deploy_update.yaml")
+        if not os.path.isfile(config):
+            self.skipTest("deploy scene config absent")
+        scene = load_scene_tf_config(config)
+        inner = container_inner_dimensions(scene)
+        floor_z = container_inner_floor_z(scene)
+        ceiling_z = container_inner_ceiling_z(scene)
+        mapper = CargoVolumeMapper(
+            (inner[0], inner[1], ceiling_z - floor_z),
+            (0.0, 0.0, floor_z + 0.5 * (ceiling_z - floor_z)), 0.0,
+            resolution=0.05,
+            hull_local_inside=container_hull_local_inside_fn(scene),
+            geometry_descriptor=container_inner_geometry_descriptor(scene))
+        store = OccupancyMapStore(mapper)
+        record = store.v2_record("snap", "r")
+        from luggage_description.frame_contracts import validate_surface
+        validate_surface(record, "snap", record["geometry_hash"],
+                         record["map_revision"])  # must not raise
 
 
 if __name__ == "__main__":
