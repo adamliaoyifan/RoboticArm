@@ -191,7 +191,8 @@ class PlacePriorNode(Node):
             with self._lock:
                 prefetched=self._prefetched
             request=decode_request(message,snapshot,confirmed,fallback_yaw=self._fallback_yaw,
-                                   prefetched=prefetched if message.measured else None)
+                                   prefetched=prefetched if message.measured else None,
+                                   volume=volume,margin=self._margin)
             with self._lock:
                 if background and self._foreground_active:
                     raise ValueError('PREFETCH_SUPERSEDED_BY_FOREGROUND')

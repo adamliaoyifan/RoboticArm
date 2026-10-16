@@ -24,7 +24,7 @@ def measured_detection_view(box):
         box_size=tuple(size), stamp_ns=int(box.header.stamp.sec)*1000000000+int(box.header.stamp.nanosec))
 
 
-def enumerate_placements(confirmed, box_wdh, max_slots):
+def enumerate_placements(confirmed, box_wdh, max_slots, *, volume=None, margin=.05):
     from luggage_packing.placement_solver import generate_candidates
     from luggage_planning.occupancy_place_paths import (
         OccupancySnapshot, _legacy_view_of_surface_contract,
@@ -47,7 +47,14 @@ def enumerate_placements(confirmed, box_wdh, max_slots):
         raise ValueError('placement solver requires a centered container grid')
     # Existing solver performs support/hull/clearance checks. No catalogue or
     # perfect geometry enters the production ComputePlacement service.
-    candidates = generate_candidates(surface, box_wdh, params={'top_n':max_slots})
+    # Bounded cheap pool, not extra native planning attempts. A deep first
+    # prefix can otherwise spend every check on one unobserved column.
+    candidates = generate_candidates(surface, box_wdh,
+                                     params={'top_n':2048 if volume is not None else max_slots})
+    candidates = [candidate for candidate in candidates if candidate['feasible']]
+    if volume is not None:
+        from luggage_planning.placement_prior_ranking import rank_payload_clearance
+        candidates = rank_payload_clearance(candidates, box_wdh, volume, margin)
     result = []
     for candidate in candidates:
         if not candidate['feasible']:
@@ -60,7 +67,8 @@ def enumerate_placements(confirmed, box_wdh, max_slots):
     return tuple(result)
 
 
-def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched=None):
+def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched=None,
+                   volume=None, margin=.05):
     from luggage_description.frame_diagnostics import BoundaryContext
     from luggage_description.ros_frame_bindings.poses import pose_from_message
     if not message.request_id or not 1 <= message.max_slots <= 32:
@@ -91,7 +99,8 @@ def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched
         from luggage_planning.placement_prior_prefetch import reusable_placements
         placements = reusable_placements(prefetched, snapshot, dimensions, message.max_slots)
     if not placements:
-        placements=enumerate_placements(confirmed,dimensions,message.max_slots)
+        placements=enumerate_placements(confirmed,dimensions,message.max_slots,
+                                       volume=volume,margin=margin)
     if not placements:
         raise ValueError('no geometric placement candidate')
     return PriorRequest(message.request_id,snapshot,dimensions,tuple(placements),grasps,

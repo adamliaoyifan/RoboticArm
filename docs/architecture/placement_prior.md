@@ -232,3 +232,12 @@ edge and full-route certification. A failed branch may advance to the next
 within the existing route wall budget. The first certified route is returned;
 no endpoint-distance score substitutes for a measured path. Attempted seeds and
 refusals are included in route diagnostic rows.
+
+When deriving slots from an admitted volume, prior enumerates at most 2048
+geometrically feasible solver candidates before truncation. A prefix-sum query
+ranks payload AABBs clear of active unknown/occupied voxels ahead of blocked
+AABBs, including the configured collision margin. Solver order is preserved
+within both groups; blocked candidates remain eligible because an AABB can
+overestimate a rotated payload. The requested slot count, 32-pair native budget,
+tool collision checks and full-route certification are unchanged. Explicit
+caller targets are not shifted or replaced by this ranking.
