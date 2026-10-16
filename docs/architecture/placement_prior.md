@@ -309,6 +309,18 @@ distinct. Deployment overrides/decimation must be reflected in owner identity;
 matching a default file alone does not attest to a live overridden scene.
 The loader is tested offline and is not yet wired into the live map owner.
 
+`local_depth_volume.LocalDepthVolume` is an unwired owner-side local observation
+kernel. A whole-voxel ROI must fit entirely inside the convex usable hull and
+contain at most one million cells; a frame contains at most 2000 measured rays.
+It reuses `LogOddsGrid` thresholds, deduplicates hits/misses within each frame,
+lets hits win, and admits only strictly increasing exact acquisition stamps.
+Mesh/scene mismatch, invalid input or deadline expiry before commit leaves the
+frame unapplied. Unknown remains unknown without measured ray evidence.
+Exports explicitly carry `confirmed=false`: online owner locking, epoch/reset,
+snapshot identity, confirmation and service integration remain necessary.
+Offline fine-voxel coverage must be checked over the complete required envelope;
+neither accepted rays nor a partially observed ROI certify a free trajectory.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
