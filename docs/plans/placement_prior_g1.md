@@ -135,3 +135,11 @@ on unavailable/duplicate input, failed integration, or exhaustion. Explicit dept
 crop failure cannot fall back to an unrelated semantic frame. Each frame retains
 its own raw depth and integration trace. This is an unscored rehearsal repair;
 confirmation thresholds, OCC ownership and F3 acceptance remain unchanged.
+
+The fresh_views_cycle02 rehearsal exposed a 117.295207-second certified transit
+submitted with a 60-second result wait. Certified place execution now uses the
+same duration-plus-existing-response-overhead rule as observation execution,
+without changing planning or certification budgets or controller tolerances.
+Missing/invalid certified times refuse before submission. Submitted-leg evidence
+records response_wait_s. This addresses client premature cancellation only;
+long-path selection cost and full-cycle success still require measurement.

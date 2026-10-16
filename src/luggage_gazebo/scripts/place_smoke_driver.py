@@ -1403,6 +1403,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "message": str(message or ""),
             "submit_wall": submit_times.get("submit_wall"),
             "submit_sim_stamp": submit_times.get("submit_sim_stamp"),
+            "response_wait_s": submit_times.get("response_wait_s"),
             "result_wall": time.time(),
             "result_sim_stamp": float(self.ros_now_sec()),
             "trajectory": trajectory_dump(motion_segment),
@@ -1712,8 +1713,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     "submit_mono": time.monotonic(),
                     "submit_sim_stamp": float(self.ros_now_sec()),
                 }
+                from luggage_gazebo.observation_execution_budget import certified_execution_wait
+                try:
+                    response_wait = certified_execution_wait(
+                        motion_segment, self._args.plan_timeout)
+                except (ValueError, AttributeError) as exc:
+                    return False, "INVALID_CERTIFIED_TIMING:%s" % exc, None
+                submit_times["response_wait_s"] = response_wait
                 ok, message, result = self._typed.plan_motion(
-                    motion_segment, self._args.plan_timeout,
+                    motion_segment, response_wait,
                     name="PlanMotionV2:%s" % name,
                     admission=leg_admission,
                     should_abort=(

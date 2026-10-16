@@ -257,6 +257,8 @@ class _Flow(object):
     _set_place_touch = PlaceSmokeDriver._set_place_touch
     _abort = PlaceSmokeDriver._abort
     _slot_world_msg = PlaceSmokeDriver._slot_world_msg
+    _contact_capture_gate = PlaceSmokeDriver._contact_capture_gate
+    _commit_to_cargo_map = PlaceSmokeDriver._commit_to_cargo_map
     run_place_from_carry = PlaceSmokeDriver.run_place_from_carry
 
 

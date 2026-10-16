@@ -2,13 +2,13 @@
 import math
 
 
-def observation_execution_wait(segment, overhead_s):
+def certified_execution_wait(segment, overhead_s):
     overhead_s=float(overhead_s)
     if not math.isfinite(overhead_s) or overhead_s<=0:
         raise ValueError('positive finite execution response overhead required')
     points=segment.joint_trajectory.trajectory.points
     if not points:
-        raise ValueError('certified observation trajectory is empty')
+        raise ValueError('certified trajectory is empty')
     last_ns=-1
     for point in points:
         duration=point.time_from_start
@@ -19,3 +19,7 @@ def observation_execution_wait(segment, overhead_s):
             raise ValueError('trajectory time must increase')
         last_ns=current_ns
     return last_ns/1_000_000_000+overhead_s
+
+
+# Existing observation callers use the same certified-trajectory contract.
+observation_execution_wait = certified_execution_wait
