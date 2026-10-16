@@ -2743,6 +2743,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             observation_gate_name=gate, selected_frame=selected,
             scene_size=scene_size)
 
+    def _capture_pick_readiness_failure(self, trial, decision):
+        """Save the gated frame, not a later image after a failed YOLO wait."""
+        bundle = self.freeze_failure_bundle(decision)
+        dump_dir = str(getattr(self._args, 'dump_dir', '') or '')
+        if not dump_dir:
+            return
+        images, metadata, arrays = self.decoded_dump()
+        metadata.update(capture_complete=bool(bundle.get('capture_complete')),
+                        missing=list(bundle.get('missing') or []),
+                        decision_record=decision,
+                        replay_possible=bool(bundle.get('replay_possible')))
+        dest = write_trial_dump(os.path.join(dump_dir, 'perception'),
+            trial_to_dict(trial), images=images, extras=metadata, arrays=arrays)
+        trial.extras['perception_failure_capture'] = {
+            'directory': dest, 'capture_complete': metadata['capture_complete'],
+            'missing': metadata['missing'], 'replay_possible': metadata['replay_possible']}
+
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
         self._join_trace.clear()
@@ -2811,6 +2828,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._seg_stats["payload"])
             trial.extras["seg_stats"] = decision
             trial.extras["decision_record"] = decision
+            self._capture_pick_readiness_failure(trial, decision)
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):

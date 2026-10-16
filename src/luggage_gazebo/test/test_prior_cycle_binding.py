@@ -170,3 +170,29 @@ def test_release_pose_query_preserves_unparseable_output(monkeypatch):
     assert instance._gz_box_pose() is None
     assert instance._last_gz_pose_probe['output']=='world missing'
     assert instance._last_gz_pose_probe['parsed'] is None
+
+
+def test_readiness_failure_saves_the_frozen_frame_without_resampling(monkeypatch,tmp_path):
+    import numpy as np
+    import place_smoke_driver as module
+    instance=object.__new__(module.PlaceSmokeDriver)
+    instance._args=SimpleNamespace(dump_dir=str(tmp_path))
+    decision={'image_stamp':12.3,'detection_count':0}
+    calls=[]
+    instance.freeze_failure_bundle=lambda record:(calls.append(('freeze',record)) or
+        dict(capture_complete=False,missing=['cargo'],replay_possible=False))
+    rgb=np.zeros((2,2,3),dtype=np.uint8);depth=np.ones((2,2),dtype=np.float32)
+    instance.decoded_dump=lambda:(calls.append(('decode',None)) or
+        ({'color':rgb},{'join_stamp':12.3},{'depth_m':depth}))
+    def write(directory,fields,**kwargs):
+        calls.append(('write',directory))
+        assert kwargs['images']['color'] is rgb
+        assert kwargs['arrays']['depth_m'] is depth
+        assert kwargs['extras']['decision_record'] is decision
+        assert kwargs['extras']['missing']==['cargo']
+        return directory+'/trial'
+    monkeypatch.setattr(module,'write_trial_dump',write)
+    trial=module.PlaceTrial(index=0);trial.fail_code='YOLO_NOT_READY';trial.extras={}
+    instance._capture_pick_readiness_failure(trial,decision)
+    assert [item[0] for item in calls]==['freeze','decode','write']
+    assert not trial.extras['perception_failure_capture']['capture_complete']
