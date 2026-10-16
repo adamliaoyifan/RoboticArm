@@ -335,3 +335,10 @@ The caller and executor share duration validation; neither retimes the certified
 trajectory to fit a fixed RPC wait. Planning/certification budgets and trajectory
 limits are unchanged. Preserve the controller result and distinguish an
 execution timeout from a planning failure in run evidence.
+
+Hardware interface evaluation must launch `hardware_pick.launch.py plan_only:=true`.
+This mode suppresses the CPS executor include, disables MoveIt trajectory
+execution, and selects a vacuum stub. Stub responses are transport-test evidence,
+not measurements of a physical grasp. Replay inputs retain their measured source
+identity; passing this mode never authorizes motion. The MoveIt launch keeps
+Humble's scalar plugin configuration and uses the array overlay only on Jazzy.

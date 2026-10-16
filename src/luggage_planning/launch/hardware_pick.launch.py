@@ -41,6 +41,17 @@ def _bool_text(value):
     return str(value).strip().lower() in ("true", "1", "yes", "on")
 
 
+def _plan_only(context):
+    return _bool_text(LaunchConfiguration("plan_only", default="false").perform(context))
+
+
+def _execution_gate(context, *args, **kwargs):
+    """Plan-only launch must not start the CPS hardware owner."""
+    if _plan_only(context):
+        return [SetLaunchConfiguration("start_executor", "false")]
+    return []
+
+
 _RAW_COLOR = "/camera/d555/color/image_raw"
 _RAW_DEPTH = "/camera/d555/aligned_depth_to_color/image_raw"
 
@@ -195,7 +206,7 @@ def _frame_nodes(context, *args, **kwargs):
             output="screen",
             parameters=[{
                 "use_sim_time": False,
-                "backend": "hardware",
+                "backend": "stub" if _plan_only(context) else "hardware",
                 "seal_timeout_sec": 8.0,
                 "follow_rate_hz": 10.0,
                 **frame,
@@ -342,20 +353,21 @@ def _move_group(context, *args, **kwargs):
     params = dict(moveit_config.to_dict())
     # Humble sim yaml uses scalar plugin keys nested under ompl.
     # Jazzy move_group rejects those; overlay the site string-array file.
-    jazzy_ompl = os.path.join(
-        get_package_share_directory("elfin_moveit_config"),
-        "config",
-        "ompl_planning.jazzy.yaml",
-    )
-    with open(jazzy_ompl, "r", encoding="utf-8") as handle:
-        overlay = yaml.safe_load(handle) or {}
-    params.pop("planning_plugin", None)
-    params.pop("request_adapters", None)
-    ompl = dict(params.get("ompl") or {})
-    ompl.pop("planning_plugin", None)
-    ompl.pop("request_adapters", None)
-    ompl.update(overlay)
-    params["ompl"] = ompl
+    if os.environ.get("ROS_DISTRO", "") == "jazzy":
+        jazzy_ompl = os.path.join(
+            get_package_share_directory("elfin_moveit_config"),
+            "config",
+            "ompl_planning.jazzy.yaml",
+        )
+        with open(jazzy_ompl, "r", encoding="utf-8") as handle:
+            overlay = yaml.safe_load(handle) or {}
+        params.pop("planning_plugin", None)
+        params.pop("request_adapters", None)
+        ompl = dict(params.get("ompl") or {})
+        ompl.pop("planning_plugin", None)
+        ompl.pop("request_adapters", None)
+        ompl.update(overlay)
+        params["ompl"] = ompl
     return [
         Node(
             package="moveit_ros_move_group",
@@ -367,7 +379,7 @@ def _move_group(context, *args, **kwargs):
                 _semantic_srdf(),
                 {
                     "publish_robot_description_semantic": True,
-                    "allow_trajectory_execution": True,
+                    "allow_trajectory_execution": not _plan_only(context),
                     "use_sim_time": False,
                 },
             ],
@@ -461,6 +473,9 @@ def _launch_description():
             ),
             DeclareLaunchArgument("start_d555", default_value="true"),
             DeclareLaunchArgument("start_executor", default_value="true"),
+            DeclareLaunchArgument(
+                "plan_only", default_value="false",
+                description="Disable CPS startup and MoveIt execution; use a vacuum stub for offline interface checks."),
             DeclareLaunchArgument("start_placement_prior", default_value="false"),
             DeclareLaunchArgument(
                 "start_scene",
@@ -550,6 +565,7 @@ def _launch_description():
             # a missing/ambiguous/sim-named/hash-mismatched asset fails
             # the whole launch instead of starting on the wrong cell.
             OpaqueFunction(function=_deploy_profile_gate),
+            OpaqueFunction(function=_execution_gate),
             IncludeLaunchDescription(
                 PythonLaunchDescriptionSource(
                     os.path.join(exec_share, "launch", "jazzy_real.launch.py")
