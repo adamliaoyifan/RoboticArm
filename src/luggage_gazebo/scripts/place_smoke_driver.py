@@ -601,6 +601,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._probe_joints = None
         self._follow_skipped0 = 0
         self._last_joint_state = None
+        #: [B3] Live per-leg execution admission (armed only by a
+        #: successful ValidateSelectedRoute after Select; None = no leg
+        #: may claim a certified scope).
+        self._execution_admission = None
+        self._verify_route_client = None
+        self._map_stats_client = None
         self._joint_ring = deque()
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._segment_exec_t0 = None
@@ -1037,7 +1043,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         A certified route that is refused fails the box with the
         producer's reason. It does not fall back to the fixture slot.
         """
-        import math as _math
+        import math as _math  # noqa: F401 - legacy local alias
+        # [B3] A stale admission from a previous cycle must never arm the
+        # next cycle's legs; the new one is armed only after re-verify.
+        self._execution_admission = None
         from luggage_description.frame_contracts import ContractError
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_description.ros_frame_bindings.poses import (
@@ -1152,6 +1161,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._frame_slot_record = record
         self._selected_carry_v2 = list(selection.motion_segments)
         self._selected_carry_v1 = list(selection.carry_segments)
+        # [B3 execution invalidation] With verify_selected_route on (the
+        # production launches), the selected route must be re-verified and
+        # carry a live per-leg admission before any leg executes: handoff
+        # polling, the release transition, and the executor's
+        # pre-submission gate all read _execution_admission, which stayed
+        # None on this path before (every check no-oped). Legacy harnesses
+        # keep the pre-B3 behavior with the flag off.
+        if getattr(self._args, "verify_selected_route", False):
+            ok, reason = self._verify_selected_admission(
+                selection, request_id)
+            if not ok:
+                trial.fail_code = trial.fail_code or reason
+                trial.extras["verify_selected"] = reason
+                self._execution_admission = None
+                self._selected_carry_v2 = None
+                self._selected_carry_v1 = None
+                return None, None
         self._selected_path = {
             "method": str(selection.path_source),
             "selection_id": str(selection.selection_id),
@@ -1361,6 +1387,86 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if index < len(states):
                 admission["load_state"] = str(states[index])
         return admission
+
+    def _call_srv_sync(self, client, request, timeout=30.0):
+        """Minimal synchronous service call (event-wait, None on timeout)."""
+        import threading
+        if not client.wait_for_service(timeout_sec=timeout):
+            return None
+        event = threading.Event()
+        future = client.call_async(request)
+        future.add_done_callback(lambda _f: event.set())
+        if not event.wait(timeout):
+            return None
+        return future.result()
+
+    def _verify_selected_admission(self, selection, request_id):
+        """[B3] Re-verify the selected route and arm the leg admission.
+
+        Certify A, execute A: the selector re-checks identity, start
+        state, and live map admission, re-certifies the exact edges, and
+        the returned per-leg digests must match what this driver holds.
+        Only then does _execution_admission arm — handoff polling, the
+        release transition, and the executor's pre-submission gate all
+        become live (they read the same record and no-oped while it was
+        None). Wiring mirrors motion_occ_eval_driver._verify_selected_route.
+        Returns (True, "") or (False, reason).
+        """
+        client = getattr(self, "_verify_route_client", None)
+        if client is None:
+            from luggage_msgs.srv import ValidateSelectedRoute
+            client = self.create_client(
+                ValidateSelectedRoute,
+                "/trajectory_selector/validate_selected_route")
+            self._verify_route_client = client
+        if not client.wait_for_service(timeout_sec=5.0):
+            return False, "VERIFY_UNAVAILABLE"
+        from luggage_msgs.srv import ValidateSelectedRoute, GetCargoMapStats
+        stats_client = getattr(self, "_map_stats_client", None)
+        if stats_client is None:
+            stats_client = self.create_client(
+                GetCargoMapStats, "/cargo_map/get_stats")
+            self._map_stats_client = stats_client
+        # Fail-closed on the LATEST map: a failed stats fetch never falls
+        # back to the selection-time revision.
+        stats_response = self._call_srv_sync(
+            stats_client, GetCargoMapStats.Request(), timeout=5.0)
+        if stats_response is None or not stats_response.success:
+            return False, "MAP_STATUS_UNAVAILABLE"
+        live = getattr(self, "_last_joint_state", None) or {}
+        request = ValidateSelectedRoute.Request()
+        request.request_id = str(request_id)
+        request.scene_revision = str(self._frame_scene_revision or "")
+        request.route_digest = str(
+            getattr(selection, "path_hash", "") or "")
+        request.current_joint_state = [float(v) for v in
+                                       (live.get("position")
+                                        or live.get("positions") or [])]
+        request.latest_map_revision = int(stats_response.map_revision)
+        result = self._call_srv_sync(client, request, timeout=30.0)
+        if result is None:
+            return False, "VERIFY_UNAVAILABLE"
+        if not result.valid:
+            return False, str(result.reason_code or "VERIFY_REJECTED")
+        digest_fn = getattr(self, "_leg_trajectory_digest", None)
+        if not callable(digest_fn):
+            return False, "LEG_DIGEST_UNAVAILABLE"
+        local = [digest_fn(segment)
+                 for segment in (selection.motion_segments or [])]
+        certified = [str(digest) for digest in (result.leg_digests or [])]
+        if local != certified or any(not digest for digest in local):
+            return False, "LEG_DIGEST_MISMATCH"
+        self._execution_admission = {
+            "route_digest": str(
+                getattr(selection, "path_hash", "") or ""),
+            "certification_id": str(result.certification_id or ""),
+            "admission_map_revision": int(
+                result.validated_map_revision or 0),
+            "leg_digests": list(certified),
+            "leg_load_states": [
+                str(state) for state in (result.leg_load_states or [])],
+        }
+        return True, ""
 
     def _peek_leg_load_state(self, segment):
         """Certified load_state for this leg, without consuming the index."""

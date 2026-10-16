@@ -53,6 +53,7 @@ from luggage_msgs.srv import (
     ClearCurrentBox,
     ComputePlacement,
     FinalizeCurrentBox,
+    GetCargoMapStats,
     SpawnNextBox,
     RemovePlacedBox,
 )
@@ -103,6 +104,8 @@ class PackEvalDriver(PlaceSmokeDriver):
             RemovePlacedBox, "/cargo_map/remove_placed_box")
         self._finalize = self.create_client(
             FinalizeCurrentBox, "/pickup_box_spawner/finalize_current_box")
+        self._map_stats = self.create_client(
+            GetCargoMapStats, "/cargo_map/get_stats")
         latch = QoSProfile(
             depth=1, reliability=ReliabilityPolicy.RELIABLE,
             durability=DurabilityPolicy.TRANSIENT_LOCAL)
@@ -313,6 +316,32 @@ class PackEvalDriver(PlaceSmokeDriver):
             trial.fail_code = trial.fail_code or "PLACEMENT_FAILED"
             return None, None
         return self._pending_slot, self._pending_slot_meta
+
+    def _await_map_confirmed(self, timeout_s=10.0):
+        """[B3] The next box waits for occupancy confirmation.
+
+        下一箱始终等待占用确认：a placed box leaves the map pending until
+        a settled view (or the gate-off semantics) confirms it; planning
+        the next box against an unconfirmed map violates the frozen-
+        snapshot contract. Reads the B1 GetCargoMapStats confirmation
+        headline; a missing/unavailable stats service (offline harnesses)
+        is not a blocker — the mapper itself gates what it publishes.
+        Returns "" or a fail code.
+        """
+        if not self._map_stats.wait_for_service(timeout_sec=1.0):
+            # No mapper stats in this harness: the mapper gates what it
+            # publishes, the wait is not this harness's contract.
+            return ""
+        deadline = time.time() + max(0.0, float(timeout_s))
+        while True:
+            stats = self._call(self._map_stats, GetCargoMapStats.Request(),
+                               timeout=5.0)
+            if stats is not None and stats.success \
+                    and bool(getattr(stats, "occupancy_confirmed", True)):
+                return ""
+            if time.time() >= deadline:
+                return "OCCUPANCY_UNCONFIRMED"
+            time.sleep(0.2)
 
     def _refresh_pending_placed_from_selection(self):
         """[commit-source fix] The Select winner is the slot that will be
@@ -626,23 +655,35 @@ class PackEvalDriver(PlaceSmokeDriver):
             self._last_result = {}
             args.dump_dir = self._box_dump_dir(seq, "pending")
             args.dump_exact = True
-            try:
-                record = self.run_trial(
-                    seq, slot=None, slot_meta=None,
-                    already_spawned=True, keep_placed=True)
-                commit_ok = place_ok(record)
-                fail = getattr(record, "fail_code", "") or ""
-                if fail and fail not in RETURN_FAIL_CODES:
-                    dump_slug = fail
+            record = None
+            fail = ""
+            commit_ok = True
+            if getattr(args, "await_map_confirmed", True):
+                # [B3] 下一箱始终等待占用确认：plan the next box only
+                # against a confirmed map (B1 confirmation headline).
+                wait_fail = self._await_map_confirmed()
+                if wait_fail:
                     commit_ok = False
-            except Exception as exc:  # noqa: BLE001 - ledger boundary
-                dump_slug = "DRIVER_EXC_%s" % type(exc).__name__
-                commit_ok = False
-                record = None
-                fail = dump_slug
-                self.get_logger().error("trial %d raised %s" % (seq, exc))
-                import traceback
-                self.get_logger().error(traceback.format_exc())
+                    fail = wait_fail
+                    dump_slug = wait_fail
+            if commit_ok:
+                try:
+                    record = self.run_trial(
+                        seq, slot=None, slot_meta=None,
+                        already_spawned=True, keep_placed=True)
+                    commit_ok = place_ok(record)
+                    fail = getattr(record, "fail_code", "") or ""
+                    if fail and fail not in RETURN_FAIL_CODES:
+                        dump_slug = fail
+                        commit_ok = False
+                except Exception as exc:  # noqa: BLE001 - ledger boundary
+                    dump_slug = "DRIVER_EXC_%s" % type(exc).__name__
+                    commit_ok = False
+                    record = None
+                    fail = dump_slug
+                    self.get_logger().error("trial %d raised %s" % (seq, exc))
+                    import traceback
+                    self.get_logger().error(traceback.format_exc())
 
             slot = self._pending_slot
             slot_meta = self._pending_slot_meta
@@ -949,6 +990,26 @@ def merge_args(argv=None):
                            "motion come from ComputePlacementV2 -> "
                            "SelectPlacePathV2 certified routes")
     pack.add_argument("--frame-peer", default="pack_eval_driver")
+    pack.add_argument(
+        "--verify-selected-route", dest="verify_selected_route",
+        action="store_true", default=True,
+        help="[B3] Re-verify the selected route (ValidateSelectedRoute) "
+             "and arm the per-leg execution admission before any leg "
+             "executes; a failed re-verify refuses the placement.")
+    pack.add_argument(
+        "--no-verify-selected-route", dest="verify_selected_route",
+        action="store_false",
+        help="Legacy harness mode: keep the pre-B3 no-admission behavior.")
+    pack.add_argument(
+        "--await-map-confirmed", dest="await_map_confirmed",
+        action="store_true", default=True,
+        help="[B3] The next box waits for the map's occupancy "
+             "confirmation before planning (OCCUPANCY_UNCONFIRMED on "
+             "timeout).")
+    pack.add_argument(
+        "--no-await-map-confirmed", dest="await_map_confirmed",
+        action="store_false",
+        help="Legacy harness mode: plan without the confirmation wait.")
     pack.add_argument("--stop-on-first-failure", action="store_true",
                       help="End the suite when the first box fails to commit")
     known, rest = pack.parse_known_args(argv)
