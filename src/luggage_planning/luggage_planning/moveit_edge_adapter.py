@@ -661,7 +661,10 @@ class MoveItEdgeAdapter(object):
             | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
             | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
-            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
+            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX
+            | PlanningSceneComponents.TRANSFORMS
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
         return self._scene.get_scene(parts, timeout=3.0)
 
     def _keep_portal_failure(self, from_node, to_node, code, scene_msg,
@@ -847,6 +850,12 @@ class MoveItEdgeAdapter(object):
             "from_q": [round(float(v), 6) for v in from_node.q],
             "to_q": [round(float(v), 6) for v in to_node.q],
             "error_code": int(result.error_code.val) if result else -1})
+        if submission_scene is not None and str(from_node.load_state) == "carrying":
+            from luggage_planning.joint_boundary_capture import capture_boundary
+            capture_index = getattr(self, "_carrying_capture_index", 0)
+            if capture_boundary(os.environ.get("ST09_PORTAL_CAPTURE_DIR"),
+                                capture_index, submission_scene, goal, result):
+                self._carrying_capture_index = capture_index + 1
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
         joint_trajectory = getattr(trajectory, "joint_trajectory", None) \
