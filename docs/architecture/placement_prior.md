@@ -317,3 +317,14 @@ typed placement reads the authoritative container-frame slot and measured
 box dimensions directly; physics command dimensions must not select sensor
 points. A crop with sufficient points is not occupancy confirmation: mapper
 filtering, raster hits, measured height and confirmation gates remain required.
+
+## Rejected joint-path recovery
+
+Final certification identifies the failed edge and whether the first failing
+sample is a trajectory knot or an interior sample. An interior collision on a
+PORTAL_TRANSIT or RETURN joint connection may discard that edge and rebuild the
+route at most twice, sharing the existing candidate and Select wall budgets.
+Keep target, measured attachment and snapshot unchanged. Certify the complete
+replacement route before admission. Endpoint/unknown-location collisions and
+Cartesian failures do not receive this redraw. Discard a known colliding graph
+edge even when the retry budget is exhausted; no rejected edge is reusable.

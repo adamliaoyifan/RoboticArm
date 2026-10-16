@@ -242,6 +242,13 @@ class RouteGraph(object):
     def drop_candidate(self, edge_id):
         self._candidates.pop(str(edge_id), None)
 
+    def discard_edge(self, edge_id):
+        """Remove an in-session edge rejected by final certification."""
+        edge = self._edges.pop(str(edge_id))
+        self._out[edge.source_node_id].remove(edge.edge_id)
+        self._incoming[edge.destination_node_id].remove(edge.edge_id)
+        return edge
+
     def outgoing(self, node_id):
         return tuple(self._edges[eid] for eid in self._out.get(str(node_id), ())
                      if eid in self._edges)

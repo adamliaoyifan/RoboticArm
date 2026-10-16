@@ -1478,7 +1478,10 @@ class RouteProducer(object):
                 # One OMPL redraw after a sampler miss. A named candidate
                 # failure (IK, fraction, excursion, collision, missing
                 # exit) does not get that redraw.
-                remaining = self.budget_ns - (self._clock_ns() - started_ns)
+                now_ns = self._clock_ns()
+                remaining = min(
+                    self.budget_ns - (now_ns - started_ns),
+                    candidate_budget_ns - (now_ns - candidate_started_ns))
                 route = None
                 if exc.code == "NO_FEASIBLE_ROUTE" and not named_failure \
                         and cert_rebuilds_left > 0 and remaining > 0:
@@ -1547,11 +1550,15 @@ class RouteProducer(object):
                     "pass" if certification is not None
                     and certification.passed else "fail"))
                 if certification is not None and certification.passed:
+                    row.pop("cert_detail", None)
                     break
                 reason = certify_failure if certification is None \
                     else certification.reason.value
                 if certification is not None:
                     row["cert_detail"] = {
+                        "failed_edge_id": certification.failed_edge_id,
+                        "failed_sample_index": certification.failed_sample_index,
+                        "failed_sample_is_knot": certification.failed_sample_is_knot,
                         "min_clearance_m": certification.min_clearance_m,
                         "contacts": [
                             dict(contact) if isinstance(contact, Mapping)
@@ -1562,9 +1569,42 @@ class RouteProducer(object):
                     self._log("route: cert fail %s clearance=%s" % (
                         certification.reason.value,
                         certification.min_clearance_m))
-                # Collision, like a short Cartesian refusal, finishes
-                # this candidate. Another sample of the same slot does
-                # not clear a placed box or a swept payload.
+                # An interior collision on an OMPL connection is a rejected
+                # path, not proof that the fixed placement goal is blocked.
+                # Redraw only that graph connection, retaining the same target,
+                # attachment and snapshot; every rebuilt route is certified.
+                failed_edge = self.graph.edges.get(
+                    getattr(certification, "failed_edge_id", ""))
+                now_ns = self._clock_ns()
+                remaining = min(
+                    self.budget_ns - (now_ns - started_ns),
+                    candidate_budget_ns - (now_ns - candidate_started_ns))
+                if reason == "CERT_COLLISION" and failed_edge is not None:
+                    self.graph.discard_edge(failed_edge.edge_id)
+                if (reason == "CERT_COLLISION"
+                        and getattr(certification, "failed_sample_is_knot", None) is False
+                        and failed_edge is not None
+                        and failed_edge.attributes.get("edge_class") in (
+                            "PORTAL_TRANSIT", "RETURN")
+                        and self.corridor_planner == "graph"
+                        and cert_rebuilds_left > 0 and remaining > 0):
+                    cert_rebuilds_left -= 1
+                    retry = dict(row["cert_detail"])
+                    row.setdefault("certification_rebuilds", []).append(retry)
+                    try:
+                        route = planner.plan_route(
+                            snapshot, attachment, candidate, targets,
+                            budget_ns=int(remaining))
+                    except (RoutePlanningError, ContractViolation) as exc:
+                        row["detail"] = {"rebuild_failure": getattr(exc, "code", str(exc)),
+                                         "candidate_failure": reason}
+                    else:
+                        row["route_build_count"] += 1
+                        row["route_id"] = route.route_id
+                        self.last_budget_snapshot = planner.last_budget_snapshot
+                        continue
+                # Endpoint collisions and Cartesian failures still finish the
+                # candidate; retry exhaustion never admits the rejected route.
                 if reason == "CERT_COLLISION":
                     row["detail"] = {"candidate_failure": "CERT_COLLISION"}
                 row["reason"] = reason

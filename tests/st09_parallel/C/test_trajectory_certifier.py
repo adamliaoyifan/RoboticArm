@@ -134,6 +134,8 @@ def test_attachment_negatives_have_named_reasons(attachment_kwargs, route_from_o
     attachment = make_attachment("centered", **attachment_kwargs)
     ctx = _context(attachment=original if route_from_original else attachment, now_ns=20_000_000_000)
     ctx = dataclasses.replace(ctx, attachment=attachment)
+    if reason is Reason.ATTACHMENT_EXPIRED:
+        ctx = dataclasses.replace(ctx, now_ns=attachment.acquisition_stamp_ns + ctx.policy.attachment_max_age_ns + 1)
     result = TrajectoryCertifier().certify(ctx)
     assert result.reason is reason
 
@@ -225,3 +227,23 @@ def test_classify_unloaded_admission_and_missing_stay_distinct():
         make_attachment("centered"), unloaded_route, 0,
         load_state=LoadState.UNLOADED) \
         is Reason.ATTACHMENT_REQUEST_MISMATCH
+
+
+@pytest.mark.parametrize('sample_index,is_knot', [(0, True), (1, False)])
+def test_collision_reports_exact_edge_and_sample_location(sample_index, is_knot):
+    context = _context()
+    adapter = _adapter_for(context.edges)
+    edge = context.edges[0]
+    # Use the real certifier sampling loop with one invalid native-style report.
+    original = adapter.validate_sample
+    def validate(edge_id, index):
+        if edge_id == edge.edge_id and index == sample_index:
+            return ValiditySample(edge_id=edge_id, sample_index=index,
+                                  valid=False, min_clearance_m=0.0, contacts=())
+        return original(edge_id, index)
+    adapter.validate_sample = validate
+    result = TrajectoryCertifier().certify(dataclasses.replace(context, validity_adapter=adapter))
+    assert result.reason is Reason.CERT_COLLISION
+    assert result.failed_edge_id == edge.edge_id
+    assert result.failed_sample_index == sample_index
+    assert result.failed_sample_is_knot is is_knot

@@ -2031,3 +2031,68 @@ def test_measured_corridor_height_raises_transit_not_placement():
     assert plan.corridor_height_evidence['top_world_z'] == pytest.approx(.5)
     assert attachment.t_tcp_box_translation == grasp_before
     assert result[0].position_container == candidate.position_container
+
+
+@pytest.mark.parametrize('failures,at_knot,edge_class,expected_success,expected_calls', [
+    (1, False, 'RETURN', True, 2),
+    (10, False, 'RETURN', False, 3),
+    (1, True, 'RETURN', False, 1),
+    (1, False, 'DESCEND', False, 1),
+])
+def test_cert_collision_rebuild_is_bounded_and_only_for_joint_interiors(
+        failures, at_knot, edge_class, expected_success, expected_calls):
+    from st09_contracts.reasons import Reason
+    producer, clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    calls = []
+    rejected = []
+
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        calls.append(tuple(e.edge_id for e in edges))
+        # A rejected edge may never be reused in the next certification.
+        assert not set(rejected).intersection(calls[-1])
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        if len(calls) <= failures:
+            edge = next(e for e in edges if e.attributes.get('edge_class') == edge_class)
+            rejected.append(edge.edge_id)
+            result = dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+                failed_edge_id=edge.edge_id, failed_sample_index=1,
+                failed_sample_is_knot=at_knot)
+        return result, failure
+
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert result['success'] is expected_success, result['rows']
+    assert len(calls) == expected_calls
+    if expected_success:
+        assert result['certification'].passed
+        assert result['rows'][0]['route_build_count'] == 2
+        assert result['rows'][0]['certification_rebuilds'][0]['failed_sample_index'] == 1
+
+
+def test_cert_collision_never_restarts_expired_select_budget():
+    from st09_contracts.reasons import Reason
+    producer, clock = build_producer()
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    original = producer._certify
+    calls = []
+    failed_ids = []
+    def certify(route, snapshot, attachment, edges, candidate, req):
+        calls.append(route.route_id)
+        result, failure = original(route, snapshot, attachment, edges, candidate, req)
+        edge = next(e for e in edges if e.attributes.get('edge_class') == 'RETURN')
+        failed_ids.append(edge.edge_id)
+        clock.advance_s(producer.budget_ns / 1e9 + 1)
+        return dataclasses.replace(result, passed=False, reason=Reason.CERT_COLLISION,
+            failed_edge_id=edge.edge_id, failed_sample_index=1,
+            failed_sample_is_knot=False), failure
+    producer._certify = certify
+    result = producer.plan_place_route(request)
+    assert not result['success']
+    assert len(calls) == 1
+    assert failed_ids[0] not in producer.graph.edges
