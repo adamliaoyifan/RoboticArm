@@ -224,10 +224,3 @@ Failure to reach the observation pose prevents capture. It does not promise full
 coverage: measured unknown/occupancy ratios are preserved. Input images, camera
 calibration, joint stability samples, clouds and owner requests/replies are
 captured; raw named-motion service calls are also captured when dumps are on.
-
-For observation goals, a solved bounded revolute-joint angle may be replaced by
-its nearest limit-valid full-turn equivalent relative to the actual start.
-The producer records both representations; it never wraps prismatic joints or
-changes the requested camera pose. MoveIt still builds the connection and the
-full route still requires certification. A shorter angular displacement alone
-is not evidence of collision-free motion or a shorter certified trajectory.
