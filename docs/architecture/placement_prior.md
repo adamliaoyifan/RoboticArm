@@ -425,3 +425,8 @@ When support capture is enabled, detector diagnostics retain a bounded
 256-event estimate-queue trace (submit/replacement/discard/take, acquisition
 stamp, cloud-carried source and monotonic receipt time). The trace contains
 no cloud payload and must not alter queue scheduling or authorization policy.
+
+Measured-estimate retention follows `sensor_data_pipeline.md`: a fresh same-box
+measurement may survive a newer continuity-only update in the single pending
+slot. Capture `retain_measure` events to distinguish scheduling coverage from
+a successful full pickup/place cycle. Prior never authorizes stale held geometry.

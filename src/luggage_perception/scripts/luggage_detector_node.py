@@ -263,12 +263,14 @@ _cap_loaded_blas(1)
 class LatestEstimateQueue(object):
     """One in-flight estimate, and at most one newer pair waiting.
 
-    Callbacks only submit. A later pair replaces the one still waiting, and
+    Callbacks only submit. A later pair normally replaces the one waiting.
+    An optional policy retains fresh measured work across held-only updates, and
     an older stamp cannot overwrite a newer one. ``take`` blocks until a
     pair is waiting or ``close`` is called.
     """
 
-    def __init__(self, trace_enabled=False):
+    def __init__(self, trace_enabled=False, retain_pending=None):
+        self._retain_pending = retain_pending
         self._cond = threading.Condition()
         self._pending = None
         self._stop = False
@@ -306,6 +308,10 @@ class LatestEstimateQueue(object):
                 self._coalesced += 1
                 if (key is not None and old_key is not None and key < old_key):
                     self._record('discard_older', key, cloud_msg)
+                    return
+                if (self._retain_pending is not None and
+                        self._retain_pending(self._pending[1:], (yolo_msg, cloud_msg))):
+                    self._record('retain_measure', key, cloud_msg, old_key)
                     return
             self._record('submit', key, cloud_msg, old_key)
             self._pending = (key, yolo_msg, cloud_msg)
@@ -597,7 +603,8 @@ class LuggageDetector(Node):
         self._ready_joins = deque()
         self._join_emit_lock = threading.Lock()
         self._estimates = LatestEstimateQueue(
-            trace_enabled=bool(os.environ.get("ELFIN_SUPPORT_CAPTURE")))
+            trace_enabled=bool(os.environ.get("ELFIN_SUPPORT_CAPTURE")),
+            retain_pending=self._retain_measured_estimate)
         self._estimate_thread = None
         self._support_wait_timeout = float(
             self.get_parameter("support_wait_timeout_sec").value)
@@ -793,6 +800,32 @@ class LuggageDetector(Node):
         if thread is not None and thread.is_alive():
             thread.join(timeout=3.0)
         return super().destroy_node()
+
+    def _retain_measured_estimate(self, pending, incoming):
+        from luggage_perception.estimate_queue_policy import (
+            EstimateEvidence, retain_measured_pending)
+        from luggage_perception.semantic_segmenter import observation_source_for_detections
+
+        def evidence(pair):
+            yolo, cloud = pair
+            key = stamp_key(cloud.header.stamp)
+            if key is None:
+                return None
+            source = observation_source_for_detections(
+                yolo.detections, adapters.source_from_cloud_msg(cloud))
+            return EstimateEvidence(
+                key[0]*1_000_000_000+key[1], int(yolo.generation),
+                str(yolo.instance_id), source,
+                sum(int(det.label) == 2 for det in yolo.detections))
+
+        old = evidence(pending)
+        if old is None or (old.generation, old.instance_id) != (
+                int(self._box_generation), str(self._box_id)):
+            return False
+        return retain_measured_pending(
+            old, evidence(incoming),
+            now_ns=self.get_clock().now().nanoseconds,
+            max_age_ns=int(self._cloud_max_age*1_000_000_000))
 
     def _estimate_worker(self):
         while True:

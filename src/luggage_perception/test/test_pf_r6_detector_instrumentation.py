@@ -239,6 +239,36 @@ class TestLatestEstimateQueue(unittest.TestCase):
         trace[0]["event"] = "mutated"
         self.assertNotEqual(queue.trace_snapshot()[0]["event"], "mutated")
 
+    def test_live_policy_keeps_measure_then_releases_on_expiry_and_epoch_change(self):
+        import numpy as np
+        from types import SimpleNamespace
+        now = [1_200_000_000]
+        node = SimpleNamespace(_cloud_max_age=1., _box_generation=2, _box_id="box",
+            get_clock=lambda: SimpleNamespace(now=lambda: SimpleNamespace(nanoseconds=now[0])))
+        measured = SimpleNamespace(generation=2, instance_id="box",
+            detections=[SimpleNamespace(label=2, held=False, prompt="box")])
+        held = SimpleNamespace(generation=2, instance_id="box", detections=[])
+        # Use the real generated stamp type without depending on node aliases.
+        from builtin_interfaces.msg import Time
+        def cloud(nsec, source):
+            return self.mod.adapters.cloud_msg_from_points(np.array([[1.,2.,3.]]),
+                Time(sec=1,nanosec=nsec), "world", source=source)
+        queue = self.mod.LatestEstimateQueue(trace_enabled=True,
+            retain_pending=lambda old,new:self.mod.LuggageDetector._retain_measured_estimate(node,old,new))
+        queue.submit(measured,cloud(0,"measure"))
+        queue.submit(held,cloud(100_000_000,"hold_track"))
+        self.assertIs(queue.take()[0],measured)
+        self.assertEqual(queue.trace_snapshot()[-2]["event"],"retain_measure")
+        queue.submit(measured,cloud(0,"measure"))
+        now[0]=2_100_000_000
+        queue.submit(held,cloud(100_000_000,"hold_track"))
+        self.assertIs(queue.take()[0],held)
+        now[0]=1_200_000_000
+        queue.submit(measured,cloud(0,"measure"))
+        node._box_generation=3
+        queue.submit(held,cloud(100_000_000,"hold_track"))
+        self.assertIs(queue.take()[0],held)
+
     def test_close_unblocks_take(self):
         queue = self.mod.LatestEstimateQueue()
         holder = []

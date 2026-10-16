@@ -329,3 +329,16 @@ Segmenter ingest is not a second pairer. It binds the latest `current_box`
 epoch onto an already stamp-joined preprocessed RGB frame
 (`SegmenterIngest.assemble`). Filter and detector keep their own epoch reset
 from the same topic; mask `sensor_msgs/Image` cannot carry generation.
+
+## Bounded measured-estimate scheduling
+
+The detector retains one pending measured cargo/depth pair when a newer pair
+contains only continuity (`hold_track`) for the same explicit box ID and
+generation. Retention requires a single cargo target on the measured pair, no
+multiple-cargo ambiguity on the incoming pair, current task identity, and the
+existing acquisition-age limit (including rejection of future timestamps).
+New measurements, rejected/unknown evidence, changed identity and age expiry
+restore latest-only replacement. The queue remains one pending plus one in
+flight. This scheduling preference does not authorize a pick: normal exact-stamp
+support fitting, five-fit stability, current-generation and freshness checks
+still run; DetectLuggage still selects the latest produced frame.
