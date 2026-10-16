@@ -415,3 +415,8 @@ Acquisition bags also preserve `/frame_contracts/v2/runtime_identity` so
 readiness-lease failures can be compared with observed peer heartbeat delivery.
 A bag receiver's observations do not prove delivery to another node. Keep
 execution readiness and lease thresholds unchanged while diagnosing starvation.
+
+Opt-in support diagnosis also preserves up to eight failed same-acquisition
+measured support fits (16 MiB input-array cap each), with exact cargo/raw arrays,
+fit outcome and support history. Tracked clouds are not relabelled as fresh
+measurements. Diagnostic capture does not change the five-fit stability gate.

@@ -31,3 +31,19 @@ def test_byte_budget_and_missing_raw_refuse_capture(tmp_path):
     with pytest.raises(ValueError,match='byte budget'):
         capture.capture(('box',1),42,np.zeros((2,3)),np.zeros((2,3)),TopSupportConfig(),result(),[])
     assert not list(tmp_path.iterdir())
+
+
+def test_failed_fit_requires_opt_in_and_preserves_status_and_history(tmp_path):
+    fitted=result();fitted.height_valid=False
+    fitted.support.reason='DETECT_SUPPORT_UNSTABLE'
+    capture=SupportGeometryCapture(tmp_path,max_cases=1)
+    points=np.array([[.1,.2,.86]],dtype=np.float64)
+    history=[.86,.8601]
+    assert not capture.capture(('box',1,42),42,points,points,TopSupportConfig(),fitted,history)
+    assert capture.capture(('box',1,42),42,points,points,TopSupportConfig(),fitted,history,allow_invalid=True)
+    saved=json.loads((tmp_path/'case-00/record.json').read_text())
+    assert saved['height_valid'] is False
+    assert saved['support']['reason']=='DETECT_SUPPORT_UNSTABLE'
+    assert saved['support_history']==history
+    assert not capture.capture(('box',1,43),43,points,points,TopSupportConfig(),fitted,history,allow_invalid=True)
+    assert fitted.height_valid is False and history==[.86,.8601]

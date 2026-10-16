@@ -1680,6 +1680,21 @@ class LuggageDetector(Node):
                     self._pipeline._stability._history)
             except Exception as error:
                 self._warn_throttled('support geometry capture failed: %s'%error)
+        if (support_capture_root and source == "measure" and result.top_valid
+                and not result.height_valid and raw_world is not None):
+            try:
+                from luggage_perception.support_geometry_capture import SupportGeometryCapture
+                if not hasattr(self, '_support_failure_capture'):
+                    self._support_failure_capture = SupportGeometryCapture(
+                        os.path.join(support_capture_root, 'failures'),
+                        max_cases=8, max_case_bytes=16*1024*1024)
+                acquisition_ns = int(stamp.sec)*1_000_000_000+int(stamp.nanosec)
+                self._support_failure_capture.capture(
+                    (str(self._box_id), int(self._box_generation), acquisition_ns),
+                    acquisition_ns, pts_world, raw_world, self._pipeline.config,
+                    result, self._pipeline._stability._history, allow_invalid=True)
+            except Exception as error:
+                self._warn_throttled('failed support geometry capture failed: %s'%error)
         support_fields = self._support_fields(result)
 
         if not result.top_valid:
