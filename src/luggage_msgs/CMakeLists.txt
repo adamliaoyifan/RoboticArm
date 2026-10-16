@@ -41,6 +41,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/AddSceneBoxV2.srv"
   "srv/RemoveSceneBoxV2.srv"
   "srv/VacuumCommandV2.srv"
+  "srv/NotifyOccupancyEvent.srv"
   "msg/DetectedLuggage.msg"
   "msg/SuctionCandidate.msg"
   "msg/YoloBox.msg"

@@ -167,6 +167,42 @@ class PendingConfirmation(object):
                 self._last_settle = record
         return cleared
 
+    def settle_matching(self, event, center, size, yaw, tolerance=0.10,
+                        evidence=None):
+        """Clear pending records of ``event`` whose footprint matches the
+        given box (center within ``tolerance``).
+
+        [release-failure contract] Used when a measurement itself is the
+        confirming evidence (an accepted, anchored commit proves the box
+        occupies its commanded pose — the anchor IS the observation), so
+        a ``box_released`` fact resolves without waiting for a camera
+        view. ``evidence`` rides into ``last_settle`` for the audit trail.
+        """
+        cleared = []
+        with self._lock:
+            for change in list(self._changes):
+                if change["event"] != str(event):
+                    continue
+                footprint = change["footprint"]
+                if footprint is None:
+                    continue
+                delta = sum(
+                    (float(center[axis]) - float(footprint[0][axis])) ** 2
+                    for axis in range(3)) ** 0.5
+                if delta > float(tolerance):
+                    continue
+                self._changes.remove(change)
+                cleared.append(change["token"])
+            if cleared:
+                record = dict(self._last_settle)
+                record["settle_matching"] = {
+                    "event": str(event),
+                    "cleared": list(cleared),
+                    "evidence": dict(evidence or {}),
+                }
+                self._last_settle = record
+        return cleared
+
     def clear(self):
         with self._lock:
             self._changes = []

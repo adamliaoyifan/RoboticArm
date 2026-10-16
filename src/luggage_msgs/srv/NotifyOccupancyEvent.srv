@@ -1,0 +1,18 @@
+# [release-failure contract] Report a world-side occupancy fact the map
+# did not observe itself. Primary producer: the place driver at
+# vacuum-off ("box_released" + the commanded footprint) — the map must
+# enter pending the moment the box leaves the tool, so a later verify
+# failure cannot leave that spot readable as free. The response echoes
+# the transaction status and the confirmation headline (a pending fact
+# blocks next-box planning through the confirmation gate).
+string event
+float64[3] box_center_container
+float64[3] box_size_wdh
+float64 box_yaw
+string source
+---
+string status
+string reason
+string epoch
+string content_digest
+bool occupancy_confirmed

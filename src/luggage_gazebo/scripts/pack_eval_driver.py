@@ -317,6 +317,22 @@ class PackEvalDriver(PlaceSmokeDriver):
             return None, None
         return self._pending_slot, self._pending_slot_meta
 
+    def _failure_cleanup(self, seq, fail):
+        """[release-failure contract] Post-failure box cleanup decision.
+
+        Returns "retained" (the box physically left the tool: it stays in
+        the world and pending on the map — only an explicit, recorded
+        sim-reset operation may remove it) or "cleared" (pre-release
+        failure: ClearCurrentBox ran).
+        """
+        if getattr(self, "_frame_released", False):
+            self.get_logger().error(
+                "trial %d failed %s AFTER release: landed box retained "
+                "(map pending holds the obstacle)" % (seq, fail))
+            return "retained"
+        self._call(self._clear, self._clear_request(), timeout=15.0)
+        return "cleared"
+
     def _await_map_confirmed(self, timeout_s=10.0):
         """[B3] The next box waits for occupancy confirmation.
 
@@ -727,8 +743,7 @@ class PackEvalDriver(PlaceSmokeDriver):
                     size_wdh=size, mass_kg=self._mass(spawn),
                     t_ros_spawn=t_spawn, volume_m3=volume,
                     message=fail, dump=dump_path)
-                self._call(self._clear, ClearCurrentBox.Request(),
-                           timeout=15.0)
+                self._failure_cleanup(seq, fail)
                 break
 
             if slot is None or slot_meta is None:
@@ -784,7 +799,7 @@ class PackEvalDriver(PlaceSmokeDriver):
             else:
                 self._consecutive_failures += 1
                 if fail not in RETURN_FAIL_CODES:
-                    self._call(self._clear, self._clear_request(), timeout=15.0)
+                    self._failure_cleanup(seq, fail)
 
             if commit_ok:
                 self._consecutive_failures = 0

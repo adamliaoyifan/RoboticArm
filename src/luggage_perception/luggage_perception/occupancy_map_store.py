@@ -644,7 +644,7 @@ class OccupancyMapStore(object):
                 measured_source=(update.measured_source or None),
                 verify_anchor=anchor)
             details["committed_now"] = bool(added)
-            self._adopt_release(bool(added), update.box)
+            self._adopt_release(bool(added), update.box, anchor=anchor)
         elif update.kind in (UpdateKind.REMOVE_BOX_V1,
                              UpdateKind.REMOVE_BOX_V2):
             center, size, yaw = update.box
@@ -701,7 +701,8 @@ class OccupancyMapStore(object):
                         "fact kind %s needs an event name"
                         % update.kind.value)
             token = self._pending.record(
-                event, update.event_stamp_ns or self._clock_ns())
+                event, update.event_stamp_ns or self._clock_ns(),
+                self._fact_footprint(update))
             details["recorded"] = bool(token)
             if token:
                 # A real confirmation transition with no voxel mutation:
@@ -794,10 +795,15 @@ class OccupancyMapStore(object):
             return fixed
         return str(update.event or "") or None
 
+    @staticmethod
+    def _fact_footprint(update):
+        """Footprint payload for footprint-carrying facts (box_released)."""
+        return tuple(update.box) if update.box is not None else None
+
     # ------------------------------------------------------------------
     # Adoption logic (ported verbatim from the node, same semantics)
 
-    def _adopt_release(self, committed_now, footprint):
+    def _adopt_release(self, committed_now, footprint, anchor=None):
         """A placed box leaves the static-empty identity.
 
         Confirmation gate on: a new commit records a pending change whose
@@ -805,6 +811,13 @@ class OccupancyMapStore(object):
         stamp (a map with no sensor acquisition keeps stamp <= 0). Gate
         off: a new commit stamps the clock; a duplicate keeps the existing
         release stamp.
+
+        [release-failure contract] An ANCHORED accepted commit does not
+        add a box_placed pending: the verify anchor IS the measured-
+        occupancy evidence (delta within tolerance proves the box sits at
+        its commanded pose), recorded on the ledger trail. It instead
+        CLEARS the matching box_released fact recorded at vacuum-off.
+        Unanchored commits keep the legacy box_placed pending.
         """
         if len(self._mapper.commit_ledger()) <= 0:
             return
@@ -814,6 +827,14 @@ class OccupancyMapStore(object):
         self._map_source = source
         if self._pending.require_confirmation:
             if committed_now:
+                if anchor is not None and footprint is not None:
+                    cleared = self._pending.settle_matching(
+                        "box_released", footprint[0], footprint[1],
+                        float(footprint[2]),
+                        evidence={"source": "verify_anchor",
+                                  "delta_m": float(anchor["delta_m"])})
+                    if cleared:
+                        return
                 self._pending.record("box_placed", now_ns, footprint)
             return
         if committed_now or int(self._last_acquisition_ns) <= 0 \

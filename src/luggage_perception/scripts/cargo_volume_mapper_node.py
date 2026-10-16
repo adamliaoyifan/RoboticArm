@@ -46,6 +46,7 @@ from luggage_msgs.srv import (
     AddPlacedBoxV2,
     GetCargoMapStats,
     IntegrateCargoView,
+    NotifyOccupancyEvent,
     RemovePlacedBox,
     RemovePlacedBoxV2,
     ResetCargoMap,
@@ -219,6 +220,12 @@ class CargoVolumeMapperNode(Node):
         self.create_service(
             IntegrateCargoView, "/cargo_map/integrate_cargo_view",
             self._on_integrate, callback_group=group)
+        # [release-failure contract] World-side occupancy facts (the
+        # place driver's vacuum-off box_released) enter the map here —
+        # before any acceptance decision.
+        self.create_service(
+            NotifyOccupancyEvent, "/cargo_map/note_occupancy_event",
+            self._on_note_event, callback_group=group)
 
         self._frame_scene_revision = str(
             self.get_parameter("frame_scene_revision").value or "")
@@ -455,6 +462,34 @@ class CargoVolumeMapperNode(Node):
         response.occupancy_ratio = float(stats["occupancy_ratio"])
         response.resulting_map_revision = int(snapshot.identity.revision)
         response.integrated_acquisition_stamp = record["stamp"]
+        return response
+
+    def _on_note_event(self, request, response):
+        """[release-failure contract] Adapter for world-side occupancy
+        facts: build a NOTE_EVENT MapUpdate (footprint-carrying when the
+        caller supplies box geometry) and run it through the one
+        transaction. ``box_released`` at vacuum-off is the primary
+        producer."""
+        event = str(request.event or "")
+        center = [float(v) for v in request.box_center_container]
+        size = [float(v) for v in request.box_size_wdh]
+        has_box = bool(event) and all(
+            v == v and abs(v) != float("inf") for v in center + size) \
+            and all(v > 0.0 for v in size)
+        result = self._store.apply_update(MapUpdate(
+            operation_id="event:%s:%s:%d" % (
+                event, str(request.source or "external"), self._node_clock_ns()),
+            kind=UpdateKind.NOTE_EVENT,
+            event=event,
+            box=((center, size, float(request.box_yaw))
+                 if has_box else None)))
+        response.status = result.status.value
+        response.reason = result.reason or (
+            "" if result.accepted else result.status.value)
+        response.epoch = result.identity.epoch
+        response.content_digest = result.identity.content_digest
+        response.occupancy_confirmed = bool(
+            result.snapshot.occupancy_confirmed)
         return response
 
     def _on_add(self, request, response):

@@ -137,11 +137,20 @@ def select_fresh_record(
 
 OCCUPANCY_CHANGE_EVENTS = (
     "box_placed",
+    "box_released",
     "box_removed",
     "box_disturbed",
     "cargo_edited",
     "container_pose_changed",
 )
+#: [release-failure contract] ``box_released`` is the fact recorded at
+#: vacuum-off, BEFORE any acceptance decision: the map must know the
+#: world changed the moment the box leaves the tool, so a later verify
+#: failure cannot leave the spot readable as free. It carries the
+#: commanded footprint and is confirmable like box_placed (the box is
+#: physically there whatever the acceptance verdict); an anchored,
+#: accepted commit clears the matching record (the verify anchor IS the
+#: measured-occupancy evidence).
 #: Motion around the container does not edit the cargo that was integrated.
 NON_INVALIDATING_EVENTS = (
     "return",

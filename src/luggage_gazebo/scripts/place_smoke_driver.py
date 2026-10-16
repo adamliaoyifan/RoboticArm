@@ -607,6 +607,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._execution_admission = None
         self._verify_route_client = None
         self._map_stats_client = None
+        #: [release-failure contract] True from vacuum-off until the next
+        #: cycle: a physically released box stays in the world (and in
+        #: the map as pending) whatever the acceptance verdict.
+        self._frame_released = False
+        self._note_event_client = None
         self._joint_ring = deque()
         self._joint_ring_horizon_sec = JOINT_RING_FLOOR_SEC
         self._segment_exec_t0 = None
@@ -1047,6 +1052,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         # [B3] A stale admission from a previous cycle must never arm the
         # next cycle's legs; the new one is armed only after re-verify.
         self._execution_admission = None
+        # [release-failure contract] per-cycle release boundary.
+        self._frame_released = False
         from luggage_description.frame_contracts import ContractError
         from luggage_description.frame_diagnostics import BoundaryContext
         from luggage_description.ros_frame_bindings.poses import (
@@ -1387,6 +1394,89 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if index < len(states):
                 admission["load_state"] = str(states[index])
         return admission
+
+    def _evaluate_place_verify(self, trial, expected, actual, pose_release,
+                               pose_drift):
+        """[release-failure contract] Fill trial metrics + the SHARED
+        verify-evidence dict, then judge the gates.
+
+        The evidence (poses, direction, errors, inside flag) is written
+        BEFORE any gate decision, so a failing verify dumps exactly what
+        a passing one would. Returns the failing gate name or None.
+        """
+        trial.err_xy = math.hypot(
+            actual[0] - expected[0], actual[1] - expected[1])
+        trial.err_z = actual[2] - expected[2]
+        rel = _xyz3(pose_release)
+        drift = _xyz3(pose_drift)
+        if rel and drift:
+            trial.drift = math.sqrt(sum(
+                (drift[i] - rel[i]) ** 2 for i in range(3)))
+        if pose_drift is not None and len(pose_drift) >= 5:
+            trial.roll = float(pose_drift[3])
+            trial.pitch = float(pose_drift[4])
+        base_actual = xyz_world_to_base_link(self._scene_config, actual)
+        trial.inside_inner_box = point_inside_container_inner_box(
+            base_actual, self._scene_config, margin=0.0)
+        trial.extras["verify"].update({
+            "err_xy": trial.err_xy, "err_z": trial.err_z,
+            "drift": trial.drift,
+            "release_drift_direction_world": [
+                actual[0] - expected[0], actual[1] - expected[1]],
+            "inside_inner_box": trial.inside_inner_box,
+        })
+        if trial.err_xy > 0.04:
+            return "PLACE_VERIFY_XY"
+        if abs(trial.err_z) > 0.03:
+            return "PLACE_VERIFY_Z"
+        if trial.drift is not None and trial.drift > 0.02:
+            return "PLACE_VERIFY_DRIFT"
+        if trial.roll is not None and abs(trial.roll) > math.radians(2.0):
+            return "PLACE_VERIFY_TIP"
+        if trial.pitch is not None and abs(trial.pitch) > math.radians(2.0):
+            return "PLACE_VERIFY_TIP"
+        if not trial.inside_inner_box:
+            return "PLACE_VERIFY_XY"
+        return None
+
+    def _notify_box_released(self):
+        """[release-failure contract] Record the box_released fact with
+        the commanded footprint on the cargo map at vacuum-off.
+
+        Returns (ok, message). The map enters pending immediately; the
+        confirmation gate then blocks next-box planning until the fact
+        resolves (anchored accepted commit, or an observing view).
+        """
+        record = getattr(self, "_frame_slot_record", None) or {}
+        box_wdh = getattr(self, "_frame_box_wdh", None) or []
+        position = [float(v) for v in (record.get("position")
+                                       or [0.0, 0.0, 0.0])]
+        if len(position) < 3 or len(box_wdh) < 3 \
+                or any(v <= 0.0 for v in box_wdh[:3]):
+            return False, "no commanded footprint to report"
+        yaw = 2.0 * math.atan2(
+            float((record.get("quaternion_xyzw") or [0, 0, 0, 1])[2]),
+            float((record.get("quaternion_xyzw") or [0, 0, 0, 1])[3]))
+        client = getattr(self, "_note_event_client", None)
+        if client is None:
+            from luggage_msgs.srv import NotifyOccupancyEvent
+            client = self.create_client(
+                NotifyOccupancyEvent, "/cargo_map/note_occupancy_event")
+            self._note_event_client = client
+        from luggage_msgs.srv import NotifyOccupancyEvent
+        request = NotifyOccupancyEvent.Request()
+        request.event = "box_released"
+        request.box_center_container = position[:3]
+        request.box_size_wdh = [float(v) for v in box_wdh[:3]]
+        request.box_yaw = float(yaw)
+        request.source = "place_smoke_driver"
+        response = self._call_srv_sync(client, request, timeout=10.0)
+        if response is None:
+            return False, "service unavailable"
+        if response.status != "accepted":
+            return False, "%s: %s" % (response.status, response.reason)
+        return True, ("pending=%s epoch=%s" % (
+            not response.occupancy_confirmed, response.epoch[:8]))
 
     def _leg_trajectory_digest(self, segment):
         """Rebuild the certified trajectory digest from a v2 leg message.
@@ -2841,6 +2931,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # retreat never submits (named stop, zero controller
                 # submissions past the release boundary).
                 return self._abort(trial, "VACUUM_DETACH", True, extra=extras)
+            # [release-failure contract] The world changed the instant
+            # the box left the tool — notify the map BEFORE any
+            # acceptance decision so a later verify failure can never
+            # leave this spot readable as free. The commanded footprint
+            # (slot record + box wdh) is container_link, matching the
+            # mapper's frame. Fail-closed: no notification = the map is
+            # blind to a landed box; stop the session by name rather
+            # than continue.
+            self._frame_released = True
+            notify_ok, notify_msg = self._notify_box_released()
+            trial.extras["release_notify"] = notify_msg
+            if not notify_ok:
+                return self._abort(
+                    trial, "RELEASE_NOTIFY_FAILED", False, extra=extras)
             dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
             trial.extras["dynamic_body"] = dyn_msg
             trial.extras["box_pose_at_release"] = release_pose
@@ -2907,50 +3011,42 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         self._set_state("VERIFIED")
         expected = slot_meta["pose_world"]["position"]
         actual = _xyz3(pose_drift or pose_release)
-        if (actual is None
-                and getattr(self._args, "use_vacuum", False)
-                and not self._args.plan_only):
-            return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
-        if actual is not None:
-            trial.err_xy = math.hypot(
-                actual[0] - expected[0], actual[1] - expected[1])
-            trial.err_z = actual[2] - expected[2]
-            rel = _xyz3(pose_release)
-            drift = _xyz3(pose_drift)
-            if rel and drift:
-                trial.drift = math.sqrt(sum(
-                    (drift[i] - rel[i]) ** 2 for i in range(3)))
-            if pose_drift is not None and len(pose_drift) >= 5:
-                trial.roll = float(pose_drift[3])
-                trial.pitch = float(pose_drift[4])
-            base_actual = xyz_world_to_base_link(self._scene_config, actual)
-            trial.inside_inner_box = point_inside_container_inner_box(
-                base_actual, self._scene_config, margin=0.0)
-            if trial.err_xy > 0.04:
-                return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
-            if abs(trial.err_z) > 0.03:
-                return self._abort(trial, "PLACE_VERIFY_Z", False, extra=extras)
-            if trial.drift is not None and trial.drift > 0.02:
-                return self._abort(
-                    trial, "PLACE_VERIFY_DRIFT", False, extra=extras)
-            if trial.roll is not None and abs(trial.roll) > math.radians(2.0):
-                return self._abort(trial, "PLACE_VERIFY_TIP", False, extra=extras)
-            if trial.pitch is not None and abs(trial.pitch) > math.radians(2.0):
-                return self._abort(trial, "PLACE_VERIFY_TIP", False, extra=extras)
-            if not trial.inside_inner_box:
-                return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
+        # [release-failure contract] Evidence lands BEFORE the gates:
+        # success and failure share one dump path, and a failing verify
+        # must not discard the poses/direction/timing that explain it
+        # (witness r10: box 1's settled direction was lost exactly here).
         trial.extras["verify"] = {
             "box_pose_after_release": pose_release,
             "box_pose_after_drift_wait": pose_drift,
             "box_pose_at_release": trial.extras.get("box_pose_at_release"),
-            "err_xy": trial.err_xy, "err_z": trial.err_z,
-            "drift": trial.drift,
+            "expected_pose_world": expected,
+            "err_xy": None, "err_z": None, "drift": None,
+            "release_drift_direction_world": None,
             "fall_m": trial.extras.get("fall_m"),
             "settled": bool(settle.get("settled")),
-            "inside_inner_box": trial.inside_inner_box,
+            "inside_inner_box": None,
+            "detach_request_stamp": locals().get("detach_request_stamp"),
+            "detach_response_stamp": locals().get("detach_response_stamp"),
+            "verdict": "pending",
+        }
+        if (actual is None
+                and getattr(self._args, "use_vacuum", False)
+                and not self._args.plan_only):
+            trial.extras["verify"]["verdict"] = "PLACE_VERIFY_XY"
+            return self._abort(trial, "PLACE_VERIFY_XY", False, extra=extras)
+        if actual is not None:
+            gate = self._evaluate_place_verify(
+                trial, expected, actual, pose_release, pose_drift)
+            if gate is not None:
+                trial.extras["verify"]["verdict"] = gate
+                return self._abort(trial, gate, False, extra=extras)
+        # Success completes the shared evidence record (same path the
+        # failures already wrote; only the verdict flips).
+        trial.extras["verify"].update({
             "roll": trial.roll, "pitch": trial.pitch,
             "support_rest": list(expected) if expected is not None else None,
-        }
+            "verdict": "ok",
+        })
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
 
