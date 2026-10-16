@@ -290,6 +290,15 @@ original admission path. Wiring requires an authoritative identity-bound mesh
 provider and bounded owner-side representation; a successful ray test alone
 does not establish voxel coverage, map confirmation or motion feasibility.
 
+`depth_boundary_mesh.StaticBoundaryMesh` is the ROS-free static query component
+for that kernel. It copies and hashes container-frame triangles, requires an
+expected mesh identity and scene revision, caps input at 20000 triangles, and
+queries a bounded AABB tree without discarding faces. First-hit results bind the
+ray and identities; deadline expiry raises rather than returning a clear ray.
+It does not acquire authoritative geometry or publish occupancy. Owner-side
+geometry acquisition, bounded local map storage and query integration remain
+required before online use.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
