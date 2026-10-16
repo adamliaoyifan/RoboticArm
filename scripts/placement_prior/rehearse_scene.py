@@ -28,6 +28,8 @@ def main():
     parser.add_argument('--acquire-inputs', action='store_true')
     parser.add_argument('--capture-release', action='store_true',
                         help='Bounded raw Gazebo pose/contact diagnostic around each release; unscored only')
+    parser.add_argument('--capture-suction', action='store_true',
+                        help='Capture bounded exact measured suction-evaluator inputs; unscored only')
     parser.add_argument('--prefetch-template', type=Path,
                         help='Explicit hypothetical box_wdh and grasps_flat JSON for automatic background preparation')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
@@ -74,6 +76,8 @@ def main():
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(out/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
+    if args.capture_suction:
+        os.environ['ELFIN_SUCTION_INPUT_CAPTURE']=str(out/'suction_inputs')
     os.environ['ELFIN_CARRY_REPLACEMENT_TRACE']=str(out/'carry_replacement.jsonl')
     os.environ['ELFIN_PHYSICAL_ATTACHMENT_TRACE']=str(out/'physical_attachment.jsonl')
     if args.capture_release:

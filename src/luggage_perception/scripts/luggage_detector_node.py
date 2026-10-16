@@ -1094,6 +1094,18 @@ class LuggageDetector(Node):
             generation=int(getattr(yolo_msg, "generation", 0) or 0),
             timing=self._timing)
         suction = self._suction_evaluator.copy_output()
+        capture_root = os.environ.get('ELFIN_SUCTION_INPUT_CAPTURE', '').strip()
+        if capture_root:
+            try:
+                from luggage_perception.suction_input_capture import SuctionInputCapture
+                if not hasattr(self, '_suction_input_capture'):
+                    self._suction_input_capture = SuctionInputCapture(capture_root)
+                self._suction_input_capture.capture(
+                    depth, intr, mat4, result, instance_region,
+                    self._suction_evaluator.contact_model, suction,
+                    stamp_ns=int(key[0])*1000000000+int(key[1]))
+            except Exception as error:
+                self._warn_throttled('suction input capture failed: %s' % error)
         self._last_plane_detail = ""
         self._timing["suction_mode"] = "validated_footprint"
         self._timing["dynamic_top_ms"] = (time.monotonic() - _t0) * 1000.0
