@@ -280,3 +280,11 @@ IK solution, step limit or deadline returns no partial endpoint. INSERT and
 DESCEND keep their existing gate. This only proposes the retreat endpoint;
 Cartesian edge construction and full collision/timing certification remain
 mandatory. Preserve exact incremental seeds/results in bounded failure capture.
+
+### Carrying scene parity
+
+GraphRoutePlanner must populate placed_boxes from the same admitted snapshot
+for carrying and unloaded SceneState. Attaching the payload does not replace
+OCC obstacles. A collision-free MoveGroup result in a scene that omitted those
+obstacles cannot establish a feasible carry route. Full certification remains
+required after planning against the occupied scene.

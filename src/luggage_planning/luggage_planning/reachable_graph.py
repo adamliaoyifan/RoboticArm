@@ -729,7 +729,9 @@ class GraphRoutePlanner(object):
             payload=PayloadSpec(
                 dimensions_wdh=attachment.dimensions_wdh,
                 t_tcp_box_translation=attachment.t_tcp_box_translation,
-                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw))
+                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw),
+            placed_boxes=scene_boxes_from_snapshot(snapshot)
+            if snapshot is not None else ())
         unloaded = SceneState(
             load_state="unloaded",
             released_box=self._released_box(attachment, candidate),
