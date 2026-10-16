@@ -474,12 +474,27 @@ class MoveItEdgeAdapter(object):
         Idempotent; the success path's real release re-adds its own
         world geometry through the vacuum/placement surfaces.
         """
-        if self._scene is not None:
-            self._scene.detach_and_remove(box_id=payload_id)
-            for object_id in tuple(self._scene_world_ids_added):
-                self._scene.remove_object(object_id)
-        self._scene_world_ids_added = []
+        # Invalidate cached admission even when cleanup only partially succeeds.
         self._scene_state_applied = None
+        failures = []
+        if self._scene is not None:
+            operations = [(payload_id, lambda: self._scene.detach_and_remove(box_id=payload_id))]
+            operations.extend((object_id, lambda obj=object_id: self._scene.remove_object(obj))
+                              for object_id in tuple(self._scene_world_ids_added))
+            for index, (object_id, operation) in enumerate(operations):
+                try:
+                    ok, reason = operation()
+                except Exception as exc:
+                    ok, reason = False, repr(exc)
+                if not ok:
+                    failures.append({"object_id": object_id, "reason": str(reason)})
+                elif index > 0:
+                    self._scene_world_ids_added.remove(object_id)
+        else:
+            self._scene_world_ids_added = []
+        if failures:
+            self._record_failure("CLEANUP", "scene_cleanup_failed", failures=failures)
+            raise RuntimeError("scene cleanup failed: " + json.dumps(failures))
 
     def _ensure_scene(self, scene, payload_id="b-payload"):
         """Idempotent scene diff for the edge's load state (fail closed).

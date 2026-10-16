@@ -183,6 +183,11 @@ Every add/remove/attach/detach must inspect `ok` before the next mutation or
 motion search; tuple truthiness does not establish acceptance. A rejection
 retains its reason as a scene-apply failure and must not cache the scene as
 applied. Full route certification remains required after successful updates.
+Cleanup acknowledgements are checked too: failed object removals remain tracked
+for retry, invalidate the cached scene, and refuse Select output with
+`SCENE_CLEANUP_FAILED`. Scene certification digests cover all ROS message fields
+in canonical JSON, with no numeric rounding; CDR alignment padding is excluded
+because repeated serialization of identical fields can produce different bytes.
 
 Budget-exhausted Select responses retain stage timing attribution and the
 attempt summary, including untried candidates. A missing terminal response or
