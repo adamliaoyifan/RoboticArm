@@ -21,6 +21,7 @@ def main():
                         help='Measured cycles in the same scene; placed occupancy is retained')
     parser.add_argument('--bootstrap-depth-map', action='store_true')
     parser.add_argument('--bootstrap-depth-targets', default='')
+    parser.add_argument('--bootstrap-depth-samples', type=int, choices=range(3,9), default=3)
     parser.add_argument('--acquire-inputs', action='store_true')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
@@ -115,7 +116,8 @@ def main():
                 '--scene-tf-config',scene,'--out',str(out/'cycle'),'--dump-dir',str(out/'dumps'),
                 '--rehearsal',str(out/'cycle'),'--n',str(args.cycle_count)]
             if args.bootstrap_depth_map:
-                command.append('--bootstrap-depth-map')
+                command.extend(['--bootstrap-depth-map', '--bootstrap-depth-samples',
+                                str(args.bootstrap_depth_samples)])
             if args.bootstrap_depth_targets:
                 command.extend(['--bootstrap-depth-targets',args.bootstrap_depth_targets])
             if args.acquire_inputs:

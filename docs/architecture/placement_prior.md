@@ -404,3 +404,9 @@ stride phase so identical cloud ordering cannot permanently starve a measured
 ray. The map owner still admits fresh observations and applies unchanged
 terminal bands, hit/miss rules and confirmation thresholds. The prior remains
 read-only; no sampling policy can substitute hypothetical free cells for rays.
+
+The unscored depth bootstrap harness accepts `--bootstrap-depth-samples` (3..8,
+default 3) for independent settled acquisitions at each certified view. Record
+the value with workload inputs. Rotation through a stride of five requires five
+frames at that view; three frames alone do not establish full sampling coverage.
+More samples never authorize fabricated or duplicate acquisition evidence.

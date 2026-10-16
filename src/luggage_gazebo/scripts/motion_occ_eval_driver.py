@@ -420,6 +420,9 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         """Explicit unloaded observation, through normal certified motion."""
         if self._depth_observer is None:
             return []
+        samples=getattr(self._args, 'bootstrap_depth_samples', 3)
+        if type(samples) is not int or not 3 <= samples <= 8:
+            raise ValueError('bootstrap depth samples must be an integer in [3,8]')
         from luggage_gazebo.depth_observation_targets import load_depth_targets
         targets=load_depth_targets(getattr(self._args,'bootstrap_depth_targets',''),
                                    self._frame_scene_revision)
@@ -427,14 +430,14 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         if not ok:
             raise RuntimeError('BOOTSTRAP_OBSERVE_ROUTE: '+str(reason))
         views=[]
-        for index in range(3):
+        for index in range(samples):
             views.append(self._depth_observer.observe_once('bootstrap-depth-%d'%index))
         for view_index,(xyz,quaternion) in enumerate(targets):
             ok,reason=self._execute_observation_route(
                 'bootstrap-depth-view-%d'%view_index,xyz,quaternion)
             if not ok:
                 raise RuntimeError('BOOTSTRAP_ADDITIONAL_ROUTE: '+str(reason))
-            for sample_index in range(3):
+            for sample_index in range(samples):
                 views.append(self._depth_observer.observe_once(
                     'bootstrap-depth-view-%d-sample-%d'%(view_index,sample_index)))
         ok, reason, _ = self.goto_observe()
@@ -1145,6 +1148,8 @@ def parse_args(argv=None):
     local.add_argument("--frame-peer", default="motion_occ_driver")
     local.add_argument("--bootstrap-depth-map", action="store_true",
                        help="Observe container depth from certified portal pose before pickup")
+    local.add_argument("--bootstrap-depth-samples", type=int, choices=range(3,9), default=3,
+                       help="Fresh settled acquisitions per view, bounded to 3..8")
     local.add_argument("--bootstrap-depth-targets", default="",
                        help="Scene-bound world camera intents; each uses certified observation routing")
     local.add_argument("--prior-acquisition-only", action="store_true",
@@ -1169,6 +1174,7 @@ def parse_args(argv=None):
     args.placement_prior = local_ns.placement_prior
     args.bootstrap_depth_map = local_ns.bootstrap_depth_map
     args.bootstrap_depth_targets = local_ns.bootstrap_depth_targets
+    args.bootstrap_depth_samples = local_ns.bootstrap_depth_samples
     args.prior_acquisition_only = local_ns.prior_acquisition_only
     if args.prior_acquisition_only and not (args.placement_prior and local_ns.rehearsal):
         local.error("--prior-acquisition-only requires --placement-prior and --rehearsal")

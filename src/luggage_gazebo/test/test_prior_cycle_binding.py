@@ -1,3 +1,4 @@
+import pytest
 """Measured prior binding in the existing full-cycle eval driver."""
 from copy import deepcopy
 from pathlib import Path
@@ -71,17 +72,18 @@ def test_acquisition_only_stops_at_detection_even_on_prior_miss():
     assert not trial.extras['placement_prior']['adopted']
 
 
-def test_bootstrap_uses_certified_named_motion_before_observation_and_return():
+@pytest.mark.parametrize("samples", [3, 5, 8])
+def test_bootstrap_uses_certified_named_motion_before_observation_and_return(samples):
     instance=object.__new__(MotionOccDriver);calls=[]
-    instance._args=SimpleNamespace(goto_timeout=60.)
+    instance._args=SimpleNamespace(goto_timeout=60., bootstrap_depth_samples=samples)
     instance._frame_scene_revision="test-scene"
     instance._goto_named_pose_v2=lambda name,**kw: calls.append(('goto',name)) or (True,'')
     instance._depth_observer=SimpleNamespace(observe_once=lambda name:calls.append(('observe',name)) or {'view':name})
     instance.goto_observe=lambda:calls.append(('return',None)) or (True,'',None)
     views=instance.bootstrap_depth_map()
-    assert len(views)==3
+    assert len(views)==samples
     assert calls[0]==('goto','portal_observe_sim') and calls[-1]==('return',None)
-    assert [kind for kind,_ in calls]==['goto','observe','observe','observe','return']
+    assert [kind for kind,_ in calls]==['goto']+['observe']*samples+['return']
 
 
 def test_bootstrap_refuses_observation_if_certified_route_fails():
