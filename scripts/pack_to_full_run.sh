@@ -116,4 +116,5 @@ setsid ros2 run luggage_gazebo pack_eval_driver.py \
   --sequence-ids "$SEQUENCE_IDS" \
   --max-boxes "$MAX_BOXES" \
   --goto-timeout 60 \
+  --frame-runtime \
   --out "$OUT"
