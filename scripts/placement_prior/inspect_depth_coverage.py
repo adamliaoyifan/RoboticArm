@@ -18,10 +18,17 @@ from luggage_description.container_geometry import descriptor_from_scene_config
 from luggage_perception.depth_view_rays import admit_depth_ray
 
 
-def inspect(run, scene_config, resolution):
+def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_points=2000):
     if not np.isfinite(resolution) or resolution <= 0:
         raise ValueError('resolution must be positive and finite')
     geometry = descriptor_from_scene_config(yaml.safe_load(scene_config.read_text()))
+    mapper = None
+    if volume_output is not None:
+        from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+        mapper = CargoVolumeMapper(
+            (geometry.length, geometry.width, geometry.height),
+            (0., 0., (geometry.floor_z+geometry.ceiling_z)/2), 0., resolution,
+            geometry_descriptor=geometry.descriptor(), max_raycast_points=max_raycast_points)
     buffer = Buffer(cache_time=Duration(seconds=300))
     database = sqlite3.connect('file:' + str(run / 'bag/bag_0.db3') + '?mode=ro', uri=True)
     query = ('SELECT topics.name, messages.data FROM messages JOIN topics '
@@ -55,8 +62,26 @@ def inspect(run, scene_config, resolution):
                             obstacle_returns=sum(ray is not None and ray.obstacle is not None for ray in admitted),
                             endpoint_percentiles=np.percentile(points,[0,5,50,95,100],axis=0).tolist(),
                             accepted_bounds=None if not accepted else [np.min(accepted,axis=0).tolist(),np.max(accepted,axis=0).tolist()]))
-    return dict(frame='container_link', resolution_m=resolution,
-                terminal_band_m=float(np.sqrt(3)*resolution), views=results)
+        if mapper is not None:
+            detail = mapper.integrate_depth_view(points, origin)
+            results[-1]['integration'] = {key:value for key,value in detail.items() if key!='observed_points'}
+            results[-1]['stats'] = mapper.stats()
+    report = dict(frame='container_link', resolution_m=resolution,
+                  terminal_band_m=float(np.sqrt(3)*resolution), views=results)
+    if mapper is not None:
+        # x-fastest storage, then y, then z, matching CargoVolumeMapper._index.
+        shape = (mapper.nz, mapper.ny, mapper.nx)
+        states = np.asarray(mapper._grid, dtype=np.uint8).reshape(shape)
+        active = np.asarray(mapper._active, dtype=bool).reshape(shape)
+        np.savez_compressed(volume_output, states=states, active=active,
+                            origin_container=[-geometry.half_x,-geometry.half_y,geometry.floor_z],
+                            resolution_m=resolution)
+        report['replay_volume'] = dict(file=str(volume_output), max_raycast_points=max_raycast_points,
+            state_encoding={'unknown':0,'free':1,'occupied':2},
+            unknown_by_z=[int(np.count_nonzero(active[z] & (states[z]==0))) for z in range(mapper.nz)],
+            free_by_z=[int(np.count_nonzero(active[z] & (states[z]==1))) for z in range(mapper.nz)],
+            surface=mapper.surface_map_2d())
+    return report
 
 
 if __name__ == '__main__':
@@ -66,7 +91,11 @@ if __name__ == '__main__':
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--resolution', type=float, required=True,
                         help='Recorded mapper voxel resolution in metres')
+    parser.add_argument('--replay-volume', type=Path,
+                        help='Save reconstructed owner grid; diagnostic only, never an online map')
+    parser.add_argument('--max-raycast-points', type=int, default=2000)
     args = parser.parse_args()
-    result = inspect(args.run, args.scene_config, args.resolution)
+    result = inspect(args.run, args.scene_config, args.resolution,
+                     volume_output=args.replay_volume, max_raycast_points=args.max_raycast_points)
     args.output.write_text(json.dumps(result, indent=2) + '\n')
     print(json.dumps(result))
