@@ -128,3 +128,11 @@ the in-process producer and owned MoveIt descendants over the Select window,
 but a previously captured prior response contributes no measured preparation.
 It cannot supply prior preparation costs for a performance comparison. Capture
 overhead is included; these diagnostic samples are not the clean scored campaign.
+
+`exact_route_replay.py` also retains request-local `work_counters`, including on
+failure after producer construction. These count Python refinement attempts
+(and exceptions), MoveIt edge boundary attempts, and their recorded durations.
+A refinement attempt can contain multiple numerical iterations. Native internal
+IK calls and collision checks, and total service calls across all collaborators,
+remain unknown (`null`); these observations are not complete benchmark counters
+and must not be substituted for those metrics or converted to zero.

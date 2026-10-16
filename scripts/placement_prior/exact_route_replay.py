@@ -117,6 +117,7 @@ def main():
     (args.output/'command.json').write_text(json.dumps(command,indent=2))
     proc=subprocess.Popen(command,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
     node=None;executor=None;spin=None;resource_window=None;placement_node=None
+    producer=None;work_counters=None
     try:
         rclpy.init();node=rclpy.create_node('exact_route_replay')
         executor=MultiThreadedExecutor(num_threads=4);executor.add_node(node)
@@ -156,6 +157,8 @@ def main():
         original=json.loads((args.capture/('dumps/box_%02d_paths/candidates.json'%args.select_index)).read_text())['rows'][0]
         diag=original.get('atlas') or {}
         if diag.get('loaded'):raise ValueError('this replay requires the captured atlas-unavailable case')
+        from luggage_planning.planning_work_counters import PlanningWorkCounters
+        work_counters=PlanningWorkCounters()
         producer=build_production_route_producer(node,str(args.scene_tf),lambda:surface,lambda:stats,
             scene=load_scene_tf_config(str(args.scene_tf)),
             scene_tf_hash=hashlib.md5(args.scene_tf.read_bytes()).hexdigest(),
@@ -164,7 +167,7 @@ def main():
             runtime_atlas=lambda:(None,diag),scene_revision=document['scene_revision'],
             box_count=1,corridor_planner='graph',clock_ns=clock,
             vacuum_state_fn=lambda:{'attached':True,'vacuum_on':True,'received_ns':clock()},
-            site_poses_fn=lambda:None)
+            site_poses_fn=lambda:None,work_counters=work_counters)
         if producer is None or not producer.edge_builder.wait_ready(timeout_sec=30.):
             raise RuntimeError('producer dependencies unavailable')
         if hardware_consumer:
@@ -268,6 +271,8 @@ def main():
         with (args.output/'exception_threads.txt').open('w') as threads:
             faulthandler.dump_traceback(file=threads,all_threads=True)
     finally:
+        if producer is not None and work_counters is not None:
+            report['work_counters']=work_counters.snapshot(producer.edge_builder)
         if resource_window is not None:
             resource_window.__exit__(None,None,None)
             (args.output/'resources.json').write_text(json.dumps(resource_window.result,indent=2)+'\n')
