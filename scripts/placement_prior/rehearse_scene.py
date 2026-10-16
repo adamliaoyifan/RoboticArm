@@ -42,7 +42,7 @@ def main():
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
     log = (out/'launch.log').open('w')
-    launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT)
+    launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     result['launch_pid']=launch.pid
     Path(os.environ.get('ELFIN_SIM_PIDFILE','/tmp/elfin_humble_sim.pid')).write_text(str(launch.pid))
     start = time.monotonic()
@@ -147,7 +147,7 @@ def main():
             node.destroy_node()
             rclpy.try_shutdown()
         with (out/'stop.log').open('w') as stop:
-            subprocess.run(['bash',str(repo/'scripts/stop_sim.sh')], cwd=repo, stdout=stop, stderr=subprocess.STDOUT, timeout=60)
+            subprocess.run(['bash',str(repo/'scripts/stop_sim.sh'), '--owned-pgid', str(launch.pid)], cwd=repo, stdout=stop, stderr=subprocess.STDOUT, timeout=60)
         log.close()
     print(json.dumps({key:value for key,value in result.items() if key not in ('parameters','services')}))
     return 0 if result['ok'] else 1
