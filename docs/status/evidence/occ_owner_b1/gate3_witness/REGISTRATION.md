@@ -31,3 +31,7 @@
   pydeps-frozen 前缀（均 gitignored、主工作区持有）。修复同为安装/环境层
   符号链接（install share models/yolov8s-world.pt、ws 根 pydeps-frozen），
   代码零改动。逐门失败均为 launch 即断，无运动、无箱、见证未发生。
+- **尝试 0c（中止）**: 栈已起但驱动启动即拒（MISSING_PEER——栈侧心跳未开：
+  launch 缺 frame_runtime:=true）。无运动、无箱。修复为运行脚本补
+  `frame_runtime:=true`（与驱动 --frame-runtime 同一接线类，代码零改动）。
+  冻结定义更新为包含此两处运行开关的 HEAD（见最终哈希）。
