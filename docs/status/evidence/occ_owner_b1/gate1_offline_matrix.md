@@ -38,3 +38,19 @@ adopt-release 4 + live 12 + anchor 原语 4 = 77 项（含并发×60 次重复�
 | P2 stamp 去重先于幂等破坏统一合同（原样重试误报 STAMP_ALREADY；指纹缺 points/pose） | 次序改为：精确重放→ALREADY_PROCESSED；integrate+stamp 已整合→STAMP_ALREADY；同 id 异内容→OPERATION_ID_CONFLICT；指纹覆盖点云(shape+bytes)与确认位姿 | test_integrate_literal_retry_is_already_processed / test_different_operation_same_stamp_is_stamp_already / test_same_operation_id_different_points_rejected |
 
 回归：72 离线 + 12 live 全绿；gazebo+perception+planning 三包全套本轮零失败。
+
+## B2/B3/B4-gate2 追记（2026-10-16 三审晚，1c821f11→7b735fbb+gate2）
+
+- **B2**（1c821f11/83e32150/60938f8c）：selector v1 覆盖 bug 关闭（B1 声明面
+  自证、v1 latch 仅回退）；admission 栅栏换 epoch+content_digest（Planning-
+  Snapshot 增字段、一证 fail-closed、legacy 腿不变）；释放 observed-free 确认
+  规则（每列 free 正证据、遮挡不确认）——正常释放行矩阵过；planner placed
+  单源（committed 账本订阅+PLACED_LEDGER_MISMATCH 门+witness 级幻影拒）。
+- **B3**（7b735fbb）：place/pack 路径 `_verify_selected_admission` 接线
+  （ValidateSelectedRoute 再认证+逐腿摘要匹配→arm `_execution_admission`，
+  handoff/释放转换/executor 预提交闸全部激活；失败拒本次放置）；下一箱等待
+  占用确认门（OCCUPANCY_UNCONFIRMED 超时）；生产旗标默认开、legacy harness
+  可关。
+- **B4 Gate-2**（本提交）：4 场景×3 全绿（发布一致性/字面重试/节点重启
+  epoch 拒/订阅者版本一致），ELFIN_B4_GATE2=1 显式开启。
+- **Gate-3（n=2 见证）未执行**：按纪律需用户明示授权后预登记执行。
