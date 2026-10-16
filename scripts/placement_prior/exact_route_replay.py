@@ -29,9 +29,17 @@ def main():
                         help='Exact matching surface; required for later calls')
     parser.add_argument('--scene',type=Path,
                         help='Exact pre-planning scene; required for later calls')
+    parser.add_argument('--attachment-request',type=Path)
+    parser.add_argument('--attachment-response',type=Path)
+    parser.add_argument('--prior-response',type=Path)
+    parser.add_argument('--choice-index',type=int)
     args=parser.parse_args()
     if args.select_index < 0 or (args.select_index and (not args.surface or not args.scene)):
         parser.error('later Select calls require explicit matching --surface and --scene')
+    consumer_inputs=(args.attachment_request,args.attachment_response,args.prior_response,args.choice_index)
+    hardware_consumer=any(value is not None for value in consumer_inputs)
+    if hardware_consumer and any(value is None for value in consumer_inputs):
+        parser.error('hardware consumer requires attachment request/response, prior response and choice index')
     if os.environ.get('ROS_DOMAIN_ID')!='8':raise ValueError('requires isolated domain 8')
     from process_guard import dedicated_domain_processes
     if dedicated_domain_processes('8'):raise RuntimeError('domain 8 occupied')
@@ -75,6 +83,11 @@ def main():
                                 args.robot_poses,identity_path]}}
     (args.output/'source.diff').write_bytes(subprocess.check_output(['git','diff']))
     (args.output/'replay_script.py').write_bytes(Path(__file__).read_bytes())
+    if hardware_consumer:
+        for path in consumer_inputs[:3]:
+            report['inputs'][str(path.resolve())]=hashlib.sha256(path.read_bytes()).hexdigest()
+        report['scope']='captured inputs through hardware consumer and live ROS Select; not hardware deployment F2'
+        report['F2']='not_evaluated'
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(args.output/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(args.output/'portal_boundaries')
     log=(args.output/'moveit.log').open('w')
@@ -135,8 +148,46 @@ def main():
         if producer is None or not producer.edge_builder.wait_ready(timeout_sec=30.):
             raise RuntimeError('producer dependencies unavailable')
         started=time.monotonic()
-        response=fill_select_response_route(request,SelectPlacePathV2.Response(),producer,
-            surface_validity=surface)
+        if hardware_consumer:
+            from rclpy.callback_groups import ReentrantCallbackGroup
+            from luggage_msgs.srv import VacuumCommandV2,PreparePlacementPriorV2
+            from luggage_planning.hardware_place_replay import replay_place
+            from luggage_planning.typed_driver_adapter import TypedDriverAdapter
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            recorder=PriorEvidenceRecorder(args.output/'consumer_boundaries')
+            received=[]
+            def select_callback(wire,reply):
+                recorder('select_server:request',wire)
+                received.append(wire)
+                result=fill_select_response_route(wire,reply,producer,surface_validity=surface)
+                recorder('select_server:response',result)
+                return result
+            service=node.create_service(SelectPlacePathV2,'/trajectory_selector/select_place_path_v2',
+                select_callback,callback_group=ReentrantCallbackGroup())
+            client=node.create_client(SelectPlacePathV2,'/trajectory_selector/select_place_path_v2',
+                callback_group=ReentrantCallbackGroup())
+            # This diagnostic supplies transport only. It does not emulate the
+            # deployment runtime registry, claim readiness, or authorize motion.
+            adapter=object.__new__(TypedDriverAdapter)
+            adapter._select=client
+            def transport(port,wire,timeout):
+                recorder('hardware_consumer:request',wire)
+                result=call(port,wire,timeout)
+                recorder('hardware_consumer:response',result)
+                return result
+            adapter._call=transport
+            response=replay_place(adapter,request,
+                deserialize_message(args.attachment_response.read_bytes(),VacuumCommandV2.Response),
+                attachment_request=deserialize_message(args.attachment_request.read_bytes(),VacuumCommandV2.Request),
+                scene_revision=document['scene_revision'],
+                prior=deserialize_message(args.prior_response.read_bytes(),PreparePlacementPriorV2.Response),
+                choice_index=args.choice_index)
+            report['consumer_request_matches_capture']=len(received)==1 and received[0]==request
+            if not report['consumer_request_matches_capture']:
+                raise ValueError('hardware consumer changed captured Select request')
+        else:
+            response=fill_select_response_route(request,SelectPlacePathV2.Response(),producer,
+                surface_validity=surface)
         (args.output/'response.cdr').write_bytes(serialize_message(response))
         (args.output/'rows.json').write_text(response.rows_json or '[]')
         report.update(success=response.success,reason_code=response.reason_code,

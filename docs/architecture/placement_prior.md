@@ -60,6 +60,14 @@ captures whose atlas was unavailable and does not stand in for hardware F2 or
 the F3 motion/OCC campaign. It preserves response, native boundary captures,
 input hashes, model bytes, script revision and teardown evidence.
 
+With explicit attachment request/response, prior response and choice index,
+the same native harness routes captured inputs through `replay_place` and the
+hardware `plan_attached_box` consumer to a live ROS Select service. It records
+both client and server boundaries and requires the generated Select to equal
+the captured request. This verifies the consumer/serialization/native-planner
+chain; its diagnostic transport does not exercise deployment runtime readiness
+and must not be reported as the hardware F2 gate.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
