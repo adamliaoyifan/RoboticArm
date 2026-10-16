@@ -603,6 +603,10 @@ class TypedDriverAdapter:
         request = BuildMotionSequenceV2.Request()
         request.phase = "pick"
         request.pick = pick_message
+        candidates = list(getattr(pick_message, "suction_candidates", ()) or ())
+        if candidates:
+            selected = min(candidates, key=lambda item: (item.rank, item.candidate_id))
+            request.suction_candidate_id = str(selected.candidate_id)
         request.request_id = str(request_id)
         request.scene_revision = str(scene_revision)
         request.pick_pose = pose_message(detection_record_from_box(

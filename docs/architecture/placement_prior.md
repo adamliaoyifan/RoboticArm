@@ -241,3 +241,11 @@ within both groups; blocked candidates remain eligible because an AABB can
 overestimate a rotated payload. The requested slot count, 32-pair native budget,
 tool collision checks and full-route certification are unchanged. Explicit
 caller targets are not shifted or replaced by this ranking.
+
+The typed pick caller sends the selected measured `suction_candidate_id`.
+BuildMotionSequenceV2 resolves that exact candidate on the same observation and
+passes it to the timed pick encoder. Candidate contact/normal generates the
+waypoint ladder; box-centre waypoints are used only when no candidate list was
+supplied. Missing or ambiguous candidate IDs on a candidate-bearing observation
+are refused. Candidate paths retain the normal edge builder and full pick
+certification; merely narrowing the message's candidate list is insufficient.

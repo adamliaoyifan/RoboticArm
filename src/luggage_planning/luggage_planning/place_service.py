@@ -410,13 +410,30 @@ def handle_build_v2(request, response, pick=None, pick_encoder=None):
                     "timed pick legs require the edge builder", None)
             legs = None
             from luggage_planning.grid_path_search import RoutePlanningError
+            candidate_kwargs = {}
+            candidate_id = str(request.suction_candidate_id or "")
+            if candidate_id or request.pick.suction_candidates:
+                from luggage_planning.placement_prior_requests import measured_detection_view
+                from luggage_planning.placement_prior_pick import candidates_for_prior
+                # Validate frame/stamp/object/contact-model identity before
+                # passing any selected contact to the timed path encoder.
+                try:
+                    detection = measured_detection_view(request.pick)
+                    candidates_for_prior(detection)
+                except ValueError as error:
+                    raise ContractError("INVALID_RECORD", "suction_candidate", "measured coherent candidates", str(error))
+                selected = [c for c in detection.candidates if c.candidate_id == candidate_id]
+                if len(selected) != 1:
+                    raise ContractError("INVALID_RECORD", "suction_candidate_id", "one explicit measured candidate", candidate_id)
+                candidate_kwargs["suction_candidate"] = selected[0]
 
             try:
                 legs = pick_encoder(
                     pick,
                     request_id=str(request.request_id),
                     scene_revision=str(request.scene_revision),
-                    stamp_ns=int(pick_record.get("stamp_ns") or 0))
+                    stamp_ns=int(pick_record.get("stamp_ns") or 0),
+                    **candidate_kwargs)
             except RoutePlanningError as error:
                 # [ST09-I S5.7-4] a refused pick keeps its own named
                 # reason (IK/edge/certification) — the CERT_* codes must
