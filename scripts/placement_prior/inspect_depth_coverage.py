@@ -57,10 +57,13 @@ def inspect(run, scene_config, resolution, *, volume_output=None, max_raycast_po
         rotation = Rotation.from_quat([quaternion.x, quaternion.y, quaternion.z, quaternion.w])
         points = np.array([tuple(p) for p in read_points(cloud, field_names=('x','y','z'), skip_nans=True)])
         points = rotation.apply(points) + origin
+        near_back_points = points[np.abs(points[:,0]-geometry.half_x) <= resolution]
         admitted = [admit_depth_ray(geometry, origin, point, np.sqrt(3) * resolution) for point in points]
         accepted = [point for point, ray in zip(points, admitted) if ray is not None]
         free_ends = [ray.free_end for ray in admitted if ray is not None]
         results.append(dict(file=row['file'], stamp_ns=Time.from_msg(cloud.header.stamp).nanoseconds,
+                            near_back_return_x_percentiles=None if not len(near_back_points) else
+                                np.percentile(near_back_points[:,0],[0,5,50,95,100]).tolist(),
                             camera_container=origin.tolist(), optical_forward_container=rotation.apply([0,0,1]).tolist(),
                             points=len(points), admitted=len(accepted),
                             obstacle_returns=sum(ray is not None and ray.obstacle is not None for ray in admitted),

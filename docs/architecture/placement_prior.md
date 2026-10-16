@@ -271,6 +271,12 @@ replace the owner's geometry/confirmation contracts. Semantic usable bounds
 and physical collision surfaces must not be assumed identical merely because
 they share a frame.
 
+`inspect_boundary_mesh.py` transforms the captured full container collision
+mesh into container coordinates and compares nine interior rear-face ray
+intersections with the usable hull. Its synthetic geometric rays are diagnostics
+only, never measurement or occupancy evidence. The nearest positive mesh hit
+is retained; parallel, missed and behind-origin intersections provide no hit.
+
 `tool_heading_replay.py` compares up to four exact rigid-tool requests with a
 local TCP Z half-turn, preserving their tool origins, box poses and frozen
 scene. It checks the live model hash and retains both request/response pairs.
