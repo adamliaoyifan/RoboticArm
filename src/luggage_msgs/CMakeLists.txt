@@ -25,6 +25,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/RouteLegV2.msg"
   "msg/RouteLegResultV2.msg"
   "srv/ValidateRouteV2.srv"
+  "srv/CheckPlacementToolV2.srv"
   "srv/ValidateSelectedRoute.srv"
   "srv/PlanObservationRouteV2.srv"
   "srv/CheckExecutionAdmission.srv"

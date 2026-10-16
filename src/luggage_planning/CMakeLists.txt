@@ -22,6 +22,13 @@ target_link_libraries(validate_route_node OpenSSL::Crypto)
 target_compile_options(validate_route_node PRIVATE -Wall -Wextra)
 install(TARGETS validate_route_node DESTINATION lib/${PROJECT_NAME})
 
+add_executable(placement_tool_check_node src/placement_tool_check_node.cpp)
+target_include_directories(placement_tool_check_node PRIVATE include)
+ament_target_dependencies(placement_tool_check_node rclcpp moveit_core moveit_msgs geometry_msgs urdf srdfdom luggage_msgs)
+target_link_libraries(placement_tool_check_node OpenSSL::Crypto)
+target_compile_options(placement_tool_check_node PRIVATE -Wall -Wextra)
+install(TARGETS placement_tool_check_node DESTINATION lib/${PROJECT_NAME})
+
 ament_python_install_package(${PROJECT_NAME})
 
 install(DIRECTORY data
