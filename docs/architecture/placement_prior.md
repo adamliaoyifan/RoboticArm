@@ -60,6 +60,15 @@ captures whose atlas was unavailable and does not stand in for hardware F2 or
 the F3 motion/OCC campaign. It preserves response, native boundary captures,
 input hashes, model bytes, script revision and teardown evidence.
 
+Successful trial dumps can contain the post-placement surface. Do not relabel
+that map for an earlier Select. `extract_replay_surface.py --capture <run>
+--select-index <n> --output <new-directory>` reads the preserved sqlite bag,
+requires a typed publication exactly equal to Select's embedded surface, and
+joins one unambiguous legacy publication against its grid and preceding map
+stats. It preserves original JSON/CDR, source timestamps and hashes. Pass the
+resulting `surface_2d.json` explicitly to replay with `--surface`. Extraction
+does not restore a live map or confer execution/confirmation authority.
+
 With explicit attachment request/response, prior response and choice index,
 the same native harness routes captured inputs through `replay_place` and the
 hardware `plan_attached_box` consumer to a live ROS Select service. It records
