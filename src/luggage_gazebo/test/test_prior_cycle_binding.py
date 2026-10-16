@@ -107,3 +107,42 @@ def test_raw_service_boundaries_include_named_motion_requests():
     client=SimpleNamespace(srv_name='/goto',wait_for_service=lambda **kw:True,call_async=lambda req:future)
     assert instance.call_srv(client,request,1.) is response
     assert captured==[('/goto:request',request),('/goto:response',response)]
+
+
+def test_confirmed_attachment_survives_later_tcp_capture_and_clears_on_release():
+    from pick_retreat_eval_driver import PickRetreatEvalDriver
+    from luggage_msgs.srv import VacuumCommandV2
+    from luggage_planning.typed_driver_adapter import grasp_record
+    from luggage_planning.place_service import pose_message
+    instance=object.__new__(PickRetreatEvalDriver)
+    instance._frame_scene_revision='scene'
+    instance._frame_box_identity=lambda:('box',1)
+    instance._frame_request_id=lambda name:'attach'
+    response=VacuumCommandV2.Response(success=True,has_measured_attachment=True)
+    response.measured_grasp=pose_message(grasp_record('attach','scene',
+        [.02,.03,.1],[1.,0.,0.,0.],stamp_ns=1000))
+    response.attached_box_wdh=[.4,.3,.2]
+    instance._typed=SimpleNamespace(vacuum_command=lambda **kw:response)
+    instance._frame_capture_grasp=lambda box:setattr(instance,'_frame_grasp',None)
+    assert instance.vacuum_command(True,measured_box())[0]
+    frozen=deepcopy(instance._frame_grasp)
+    # No TF buffer exists: a recapture would fail rather than quietly pass.
+    PickRetreatEvalDriver._frame_capture_grasp(instance,measured_box())
+    assert instance._frame_grasp==frozen
+    assert instance._frame_grasp_stamp_ns==1000
+    assert instance.vacuum_command(False,measured_box())[0]
+    assert instance._frame_grasp is None
+    assert not instance._frame_attachment_confirmed
+
+
+def test_successful_vacuum_without_attachment_cannot_authorize_place():
+    from pick_retreat_eval_driver import PickRetreatEvalDriver
+    from luggage_msgs.srv import VacuumCommandV2
+    instance=object.__new__(PickRetreatEvalDriver)
+    instance._frame_scene_revision='scene'
+    instance._frame_box_identity=lambda:('box',1)
+    instance._frame_request_id=lambda name:'attach'
+    instance._typed=SimpleNamespace(vacuum_command=lambda **kw:VacuumCommandV2.Response(success=True))
+    instance._frame_capture_grasp=lambda box:None
+    assert instance.vacuum_command(True,measured_box())==(False,'MEASURED_ATTACHMENT_MISSING')
+    assert instance._frame_grasp is None

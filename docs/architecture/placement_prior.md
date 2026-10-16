@@ -35,6 +35,12 @@ context. With no bound prior it calls ordinary ComputePlacement before Select;
 it does not claim byte-identical historical candidate replay in that mode.
 Successful invocation alone does not satisfy the full F2 case matrix.
 
+Both hardware and simulation consumers must preserve the controller-confirmed
+attachment for the carrying phase. A later TCP sample combined with the old
+pickup detection must not overwrite that transform or its acquisition stamp.
+Only a new attach attempt resets the estimate; successful release clears it.
+Vacuum success without a measured attachment cannot authorize place planning.
+
 ## Snapshot boundary
 
 OCC's v2 surface is the authoritative typed grid. Its existing v1 publication

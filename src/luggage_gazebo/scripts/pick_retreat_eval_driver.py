@@ -668,6 +668,10 @@ class PickRetreatEvalDriver(Node):
         zero stamp is left as zero so the selector can refuse it; it is
         not replaced with the clock.
         """
+        # A confirmed attachment is frozen for this carrying phase. Combining
+        # a later TCP with the pre-pick detection would invent a new grasp.
+        if getattr(self, '_frame_attachment_confirmed', False):
+            return
         try:
             tf_msg = self._tf_buffer.lookup_transform(
                 "world", "suction_contact_frame", rclpy.time.Time(),
@@ -720,6 +724,8 @@ class PickRetreatEvalDriver(Node):
                 pick_msg, request_id, self._frame_scene_revision)
             grasp = None
             if enable:
+                self._frame_attachment_confirmed = False
+                self._frame_grasp = None
                 # Lock at contact: live TCP versus the still-on-platform box.
                 self._frame_capture_grasp(pick_msg)
                 grasp = getattr(self, "_frame_grasp", None)
@@ -734,7 +740,10 @@ class PickRetreatEvalDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum command timeout"
-            if enable and response.success and getattr(response, 'has_measured_attachment', False):
+            if enable and response.success:
+                if not getattr(response, 'has_measured_attachment', False):
+                    self._frame_grasp = None
+                    return False, 'MEASURED_ATTACHMENT_MISSING'
                 from luggage_planning.hardware_place_planning import attachment_from_response
                 from luggage_planning.typed_driver_adapter import grasp_record
                 actual = attachment_from_response(response, request_id=request_id,
@@ -743,6 +752,11 @@ class PickRetreatEvalDriver(Node):
                     actual.box_from_tcp.translation, actual.box_from_tcp.quaternion_xyzw,
                     stamp_ns=actual.stamp_ns)
                 self._frame_grasp.update(box_id=actual.box_id, generation=actual.generation)
+                self._frame_grasp_stamp_ns = actual.stamp_ns
+                self._frame_attachment_confirmed = True
+            if not enable and response.success:
+                self._frame_attachment_confirmed = False
+                self._frame_grasp = None
             if not response.success:
                 stamp = pick_msg.header.stamp
                 self._last_vacuum_attach_evidence = vacuum_attach_revision_dump(
@@ -2097,8 +2111,6 @@ class PickRetreatEvalDriver(Node):
                         failures.append(("vacuum_attach", vac_msg))
                         fields["fail_code"] = "VACUUM_ATTACH"
                         break
-                    if self._typed is not None:
-                        self._frame_capture_grasp(pick_msg)
             if segment.name == "pick_retreat":
                 retreat_xyz, tf_err = self.suction_xyz()
                 if retreat_xyz is None:

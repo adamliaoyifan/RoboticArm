@@ -2898,8 +2898,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # the previous cycle's exit proof is void from here —
                 # it must never carry across a new carrying phase.
                 self._start_new_cycle()
-                if self._typed is not None:
-                    self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:
             state = dict(self._vacuum_state or {})
             if not (state.get("attached") and not state.get("fail_reason")):
