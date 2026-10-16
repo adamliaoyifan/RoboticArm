@@ -147,6 +147,19 @@ class TestOnAddV2AnchorGate(unittest.TestCase):
         self.assertFalse(response.success)
         self.assertEqual(node._mapper.marks, [])
 
+    def test_negative_tolerance_is_rejected(self):
+        """tolerance=-0.1 skipped the `> 0` gate and committed un-anchored
+        (probe-confirmed with a 0.65 m slot-anchor delta). 0 is the only
+        legacy mode; negatives are refused outright."""
+        node = self._node([0.53, -0.51, 0.639])   # 0.65 m off
+        response = self._response()
+        self.mod.CargoVolumeMapperNode._on_add_v2(
+            node, self._request(verified=[0.53, 0.14, 0.64],
+                                tolerance=-0.1), response)
+        self.assertFalse(response.success)
+        self.assertIn("must not be negative", response.message)
+        self.assertEqual(node._mapper.marks, [])
+
     def test_tolerance_above_mapper_ceiling_is_rejected(self):
         node = self._node([0.53, -0.51, 0.639])
         response = self._response()

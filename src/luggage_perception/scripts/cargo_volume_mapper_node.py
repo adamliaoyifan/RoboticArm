@@ -741,6 +741,16 @@ class CargoVolumeMapperNode(Node):
                 "verify_tolerance_m must be finite (got %r)"
                 % request.verify_tolerance_m)
             return response
+        if tolerance < 0.0:
+            # [commit anchor] A negative tolerance must not silently fall
+            # into the tolerance == 0 legacy path (probe-confirmed: -0.1
+            # accepted a slot 0.65 m from the anchor). 0 is the ONLY
+            # un-anchored compat mode.
+            response.success = False
+            response.message = (
+                "verify_tolerance_m must not be negative (got %r); 0 is the "
+                "un-anchored legacy mode" % request.verify_tolerance_m)
+            return response
         if tolerance > VERIFY_ANCHOR_TOLERANCE_MAX_M:
             response.success = False
             response.message = (
