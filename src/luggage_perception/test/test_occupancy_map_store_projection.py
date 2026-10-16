@@ -114,6 +114,47 @@ class TestProjections(unittest.TestCase):
             [cell for row in v1["state"] for cell in row],
             [cell for row in v2["state"] for cell in row])
 
+    def test_projectors_use_the_passed_snapshot(self):
+        """[P2 gap] Projections defaulting to the LATEST snapshot let a
+        concurrent transaction between two of them mix revisions (v1 rev
+        2, v2 rev 3). The explicit argument pins all three to one
+        snapshot object."""
+        store = _store()
+        empty = store.snapshot()
+        _add(store)
+        self.assertEqual(store.snapshot().placed_count, 1)
+        v1 = store.v1_surface_dict(empty)
+        committed = store.committed_dict("container_link", {}, empty)
+        v2 = store.v2_record("scene-1", "r", empty)
+        for payload in (v1, committed, v2):
+            self.assertEqual(payload["map_revision"],
+                             empty.identity.revision)
+            self.assertEqual(payload["content_digest"],
+                             empty.identity.content_digest)
+        self.assertEqual(v1["placed_count"], 0)
+        self.assertEqual(committed["boxes"], [])
+        # Default (no argument) still tracks the current snapshot.
+        self.assertEqual(store.v1_surface_dict()["placed_count"], 1)
+
+    def test_publish_mid_update_stays_consistent(self):
+        """Simulate a transaction landing between two projector calls:
+        every projection built from the held snapshot reports the held
+        identity, never a mixture."""
+        store = _store()
+        held = store.snapshot()
+        v1_first = store.v1_surface_dict(held)
+        _add(store)  # the "mid-publish" update
+        v2_second = store.v2_record("scene-1", "r", held)
+        committed_last = store.committed_dict("container_link", {}, held)
+        revisions = {v1_first["map_revision"],
+                     v2_second["map_revision"],
+                     committed_last["map_revision"]}
+        self.assertEqual(revisions, {held.identity.revision})
+        digests = {v1_first["content_digest"],
+                   v2_second["content_digest"],
+                   committed_last["content_digest"]}
+        self.assertEqual(digests, {held.identity.content_digest})
+
 
 if __name__ == "__main__":
     unittest.main()

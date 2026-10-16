@@ -106,6 +106,51 @@ def _norm_height(value):
     return round(float(value), 6) + 0.0
 
 
+_JSON_DICT = "\x00dict"
+_JSON_LIST = "\x00list"
+
+
+def _freeze_json(value):
+    """Recursively convert lists/dicts into tagged tuples so nothing
+    reachable from a frozen snapshot is mutable (and so an empty dict
+    stays distinguishable from an empty list). ``_thaw_json``
+    reconstructs the JSON-shaped copy for publication."""
+    if isinstance(value, dict):
+        return (_JSON_DICT, tuple(sorted(
+            (str(k), _freeze_json(v)) for k, v in value.items())))
+    if isinstance(value, (list, tuple)):
+        return (_JSON_LIST, tuple(_freeze_json(v) for v in value))
+    if isinstance(value, float):
+        return round(value, 9) + 0.0
+    return value
+
+
+def _thaw_json(value):
+    """Inverse of _freeze_json: fresh mutable JSON-shaped structures."""
+    if isinstance(value, tuple) and len(value) == 2 \
+            and value[0] in (_JSON_DICT, _JSON_LIST):
+        tag, items = value
+        if tag is _JSON_DICT or tag == _JSON_DICT:
+            return {k: _thaw_json(v) for k, v in items}
+        return [_thaw_json(v) for v in items]
+    return value
+
+
+def _points_fingerprint(points):
+    """Content digest of the point payload (shape + bytes)."""
+    if points is None:
+        return None
+    try:
+        import numpy as np
+        array = np.ascontiguousarray(points, dtype=float)
+        if array.size == 0:
+            return ("empty",)
+        return (tuple(int(v) for v in array.shape),
+                _digest_of(array.tobytes()))
+    except (TypeError, ValueError):  # non-numeric payload: classify only
+        return ("opaque", type(points).__name__)
+
+
 class SnapshotIdentity(NamedTuple):
     epoch: str
     revision: int
@@ -154,12 +199,12 @@ class MapUpdate:
     event_stamp_ns: int = 0
 
     def content_fingerprint(self):
-        """Digest over the canonical content of this update.
+        """Digest over the FULL canonical content of this update.
 
-        ``points`` is fingerprinted through its stamp key and origin, not
-        its raw values: a literal retry of the same view carries the same
-        stamp, and a different cloud under one operation id is caught by
-        the stamp-key dedup anyway.
+        Includes the point payload and the confirm pose: "same operation
+        id, different content" must be detectable exactly — a retry is a
+        byte-identical request, anything else under the same id is a
+        conflict (subject to the stamp-dedup override for integrate).
         """
         return _digest_of(
             self.kind.value,
@@ -179,8 +224,10 @@ class MapUpdate:
             int(self.acquisition_stamp_ns),
             bool(self.settled),
             int(self.schema_version),
+            _freeze_json(self.pose_at_confirm),
             self.event,
             int(self.event_stamp_ns),
+            _points_fingerprint(self.points),
         )
 
 
@@ -260,6 +307,10 @@ class OccupancyMapStore(object):
         self._epoch = str(epoch) if epoch else uuid.uuid4().hex
         self._processed = OrderedDict()
         self._processed_cap = max(1, int(processed_cap))
+        # RESET outcomes are never evicted: an evicted-and-retried reset
+        # would wipe a newer map (probe-confirmed with cap=1). Resets are
+        # rare, so pinning them cannot grow unboundedly in practice.
+        self._pinned = set()
         # State moved under the transaction lock from the node:
         self._integrated = set()
         self._last_acquisition_ns = 0
@@ -302,18 +353,22 @@ class OccupancyMapStore(object):
         return self._snapshot
 
     # ------------------------------------------------------------------
-    # Deterministic projections (all three derive from the ONE snapshot)
+    # Deterministic projections (all three derive from ONE snapshot —
+    # the publisher passes the SAME snapshot explicitly; defaulting to
+    # the current one is for read paths only)
 
-    def v1_surface_dict(self):
+    def v1_surface_dict(self, snapshot=None):
         """The v1 JSON surface payload (deterministic projection).
 
         Superset of the historical ``surface_map_2d()`` keys plus the
         node-added identity/provenance/confirmation fields — including
         ``commit_revision`` (fixes the downstream default-to-1 bug where
         ``planning_snapshot_from_surface`` read
-        ``surface_map.get("commit_revision", 1)``).
+        ``surface_map.get("commit_revision", 1)``). Every nested value is
+        reconstructed fresh: mutating the returned structure can never
+        reach the snapshot.
         """
-        s = self._snapshot
+        s = snapshot if snapshot is not None else self._snapshot
         return {
             "frame": "container_local",
             "map_revision": s.identity.revision,
@@ -344,13 +399,17 @@ class OccupancyMapStore(object):
             "occupancy_confirmed": s.occupancy_confirmed,
             "change_event": s.change_event,
             "change_token": s.change_token,
-            "last_settle": dict(s.last_settle),
-            "pending_changes": [dict(c) for c in s.pending_details],
+            "last_settle": _thaw_json(s.last_settle),
+            "pending_changes": [
+                {"token": token, "event": event, "stamp_ns": stamp_ns,
+                 "confirmable": confirmable}
+                for token, event, stamp_ns, confirmable
+                in s.pending_details],
         }
 
-    def v2_record(self, scene_revision, request_id):
+    def v2_record(self, scene_revision, request_id, snapshot=None):
         """The SurfaceContractV2 record (deterministic projection)."""
-        s = self._snapshot
+        s = snapshot if snapshot is not None else self._snapshot
         record = {
             "contract_version": 2,
             "frame_id": "container_link",
@@ -381,13 +440,26 @@ class OccupancyMapStore(object):
                                             s.height_above_floor]
         return record
 
-    def committed_dict(self, frame, container_in_world):
+    def committed_dict(self, frame, container_in_world, snapshot=None):
         """The /committed ledger JSON payload (deterministic projection)."""
-        s = self._snapshot
+        s = snapshot if snapshot is not None else self._snapshot
+        boxes = []
+        for center, size, yaw, source, anchor in s.ledger_details:
+            box = {"center": list(center), "size": list(size),
+                   "yaw": yaw}
+            if source:
+                box["measured_source"] = source
+            if anchor is not None:
+                box["verify_anchor"] = {
+                    "request_id": anchor[0],
+                    "delta_m": anchor[1],
+                    "tolerance_m": anchor[2],
+                }
+            boxes.append(box)
         return {
             "frame": frame,
             "container_in_world": container_in_world,
-            "boxes": [dict(box) for box in s.ledger_details],
+            "boxes": boxes,
             "map_revision": s.identity.revision,
             "geometry_hash": s.geometry_hash,
             "epoch": s.identity.epoch,
@@ -405,38 +477,43 @@ class OccupancyMapStore(object):
 
     def _apply_locked(self, update):
         # 1. IDEMPOTENCY ---------------------------------------------
+        # Order matters and is pinned by tests:
+        #   (a) same id + full-content match   -> ALREADY_PROCESSED
+        #   (b) integrate + stamp integrated   -> STAMP_ALREADY_INTEGRATED
+        #       (another operation re-submitting one physical acquisition,
+        #       or a same-id retry whose premise moved — the physical fact
+        #       dominates either way)
+        #   (c) same id + different content    -> OPERATION_ID_CONFLICT
         key = str(update.operation_id or "")
         if not key:
             return self._reject(REASON_OPERATION_ID_CONFLICT,
                                 "operation_id is required")
-        if (update.kind is UpdateKind.INTEGRATE_VIEW
-                and tuple(update.stamp_key or ()) in self._integrated):
-            # The stamp dedup precedes the idempotency ledger: a repeated
-            # VIEW is the same physical acquisition whatever key the
-            # caller synthesized (pre-B1 callers derive keys per request).
-            return self._reject(
-                REASON_STAMP_ALREADY_INTEGRATED,
-                "cloud stamp %r already integrated" % (update.stamp_key,))
         stored = self._processed.get(key)
         if stored is not None:
             fingerprint, identity, status, reason = stored
-            if fingerprint != update.content_fingerprint():
-                return self._reject(
-                    REASON_OPERATION_ID_CONFLICT,
-                    "operation_id %r reused with different content" % key)
-            # Exactly-once replay: the write already happened (whatever the
-            # map has been through since, including a reset — a retried
-            # pre-reset write must NOT re-apply onto the fresh epoch). The
-            # verdict is ALREADY_PROCESSED against the CURRENT identity;
-            # the original outcome rides in details.
-            return UpdateResult(
-                status=UpdateStatus.ALREADY_PROCESSED, reason="",
-                identity=self._snapshot.identity,
-                snapshot=self._snapshot,
-                details={"operation_id": key, "replay": True,
-                         "original_status": status.value,
-                         "original_reason": reason,
-                         "original_identity": identity})
+            if fingerprint == update.content_fingerprint():
+                # Exactly-once replay: the write already happened (whatever
+                # the map has been through since, including a reset — a
+                # retried pre-reset write must NOT re-apply onto the fresh
+                # epoch). The verdict is ALREADY_PROCESSED against the
+                # CURRENT identity; the original outcome rides in details.
+                return UpdateResult(
+                    status=UpdateStatus.ALREADY_PROCESSED, reason="",
+                    identity=self._snapshot.identity,
+                    snapshot=self._snapshot,
+                    details={"operation_id": key, "replay": True,
+                             "original_status": status.value,
+                             "original_reason": reason,
+                             "original_identity": identity})
+        if (update.kind is UpdateKind.INTEGRATE_VIEW
+                and tuple(update.stamp_key or ()) in self._integrated):
+            return self._reject(
+                REASON_STAMP_ALREADY_INTEGRATED,
+                "cloud stamp %r already integrated" % (update.stamp_key,))
+        if stored is not None:
+            return self._reject(
+                REASON_OPERATION_ID_CONFLICT,
+                "operation_id %r reused with different content" % key)
 
         # 2. PREMISE ---------------------------------------------------
         current = self._snapshot.identity
@@ -743,8 +820,17 @@ class OccupancyMapStore(object):
         self._processed[key] = (
             update.content_fingerprint(), self._snapshot.identity,
             status, reason)
+        if update.kind is UpdateKind.RESET:
+            self._pinned.add(key)
         while len(self._processed) > self._processed_cap:
-            self._processed.popitem(last=False)
+            for candidate in self._processed:
+                if candidate not in self._pinned:
+                    del self._processed[candidate]
+                    break
+            else:
+                # Everything left is pinned: exceed the cap rather than
+                # make a reset re-executable.
+                break
 
     # ------------------------------------------------------------------
     # Snapshot construction + digest
@@ -753,11 +839,27 @@ class OccupancyMapStore(object):
         base = self._mapper.surface_map_2d()
         contract = self._mapper.surface_contract_v2("snap", "snap")
         fields = self._pending.surface_fields()
+
+        def frozen_anchor(anchor):
+            if anchor is None:
+                return None
+            return (str(anchor["request_id"]), float(anchor["delta_m"]),
+                    float(anchor["tolerance_m"]))
+
+        # Frozen record shapes (nothing reachable from the snapshot is
+        # mutable; projectors reconstruct fresh JSON-shaped copies):
+        #   ledger record:  (center, size, yaw, measured_source, anchor)
+        #   pending record: (token, event, stamp_ns, confirmable)
         ledger = tuple(
             (tuple(r["center"]), tuple(r["size"]), float(r["yaw"]),
              str(r.get("measured_source") or ""),
-             r.get("verify_anchor"))
+             frozen_anchor(r.get("verify_anchor")))
             for r in self._mapper.commit_ledger())
+        ledger_details = ledger
+        pending_details = tuple(
+            (int(c["token"]), str(c["event"]), int(c["stamp_ns"]),
+             bool(c.get("confirmable")))
+            for c in fields["pending_changes"])
         snapshot = MapSnapshot(
             identity=None,  # set below once the digest exists
             geometry_hash=str(base.get("geometry_hash") or ""),
@@ -783,17 +885,15 @@ class OccupancyMapStore(object):
             known_ratio=_freeze_flat(base.get("known_ratio")),
             origin_local=tuple(float(v) for v in base.get("origin_local")),
             ledger=ledger,
-            ledger_details=tuple(
-                self._mapper.commit_ledger()),
+            ledger_details=ledger_details,
             occupancy_confirmed=bool(fields["occupancy_confirmed"]),
             change_event=str(fields["change_event"] or ""),
             change_token=int(fields["change_token"]),
             pending_changes=tuple(
                 (c["event"], int(c["token"]))
                 for c in fields["pending_changes"]),
-            pending_details=tuple(
-                dict(c) for c in fields["pending_changes"]),
-            last_settle=dict(fields.get("last_settle") or {}),
+            pending_details=pending_details,
+            last_settle=_freeze_json(fields.get("last_settle") or {}),
             acquisition_stamp_ns=int(self._last_acquisition_ns),
             map_source=str(self._map_source),
             placed_count=len(ledger),

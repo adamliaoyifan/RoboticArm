@@ -236,6 +236,51 @@ class TestIdempotency(_StoreCase):
         self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
         self.assertEqual(self.store.snapshot().placed_count, 0)
 
+    def test_reset_survives_cap_eviction(self):
+        """[P1 gap] An evicted RESET re-executing would wipe a newer map
+        (probe: cap=1, reset -> add -> retry reset cleared the box).
+        RESET outcomes are pinned and never evicted."""
+        store = _store(cap=1)
+        reset = MapUpdate(operation_id="reset-1", kind=UpdateKind.RESET)
+        self.assertTrue(store.apply_update(reset).accepted)
+        store.apply_update(MapUpdate(
+            operation_id="op-2", kind=UpdateKind.ADD_BOX_V1,
+            box=((0.1, 0.1, 0.15), (0.2, 0.2, 0.2), 0.0)))
+        self.assertEqual(store.snapshot().placed_count, 1)
+        replay = store.apply_update(reset)
+        self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
+        self.assertEqual(store.snapshot().placed_count, 1)
+
+    def test_integrate_literal_retry_is_already_processed(self):
+        """[P2 gap] A byte-identical retry of one successful integration
+        is an OPERATION retry (ALREADY_PROCESSED), not a duplicate-frame
+        submission."""
+        update = self._integrate("i1", [(0.0, 0.0, 0.5)],
+                                 stamp_key=(11, 0))
+        self.assertTrue(self.store.apply_update(update).accepted)
+        replay = self.store.apply_update(update)
+        self.assertIs(replay.status, UpdateStatus.ALREADY_PROCESSED)
+        self.assertTrue(replay.details["replay"])
+
+    def test_different_operation_same_stamp_is_stamp_already(self):
+        self.assertTrue(self.store.apply_update(self._integrate(
+            "i1", [(0.0, 0.0, 0.5)], stamp_key=(11, 0))).accepted)
+        other = self.store.apply_update(self._integrate(
+            "i2", [(0.0, 0.0, 0.5)], stamp_key=(11, 0)))
+        self.assertIs(other.status, UpdateStatus.REJECTED)
+        self.assertEqual(other.reason, "STAMP_ALREADY_INTEGRATED")
+
+    def test_same_operation_id_different_points_rejected(self):
+        """Same id + different content (points differ, fresh stamp) is an
+        operation-id conflict, now detectable because the fingerprint
+        covers the point payload."""
+        self.assertTrue(self.store.apply_update(self._integrate(
+            "i1", [(0.0, 0.0, 0.5)], stamp_key=(11, 0))).accepted)
+        clash = self.store.apply_update(self._integrate(
+            "i1", [(0.4, 0.4, 0.5)], stamp_key=(12, 0)))
+        self.assertIs(clash.status, UpdateStatus.REJECTED)
+        self.assertEqual(clash.reason, "OPERATION_ID_CONFLICT")
+
 
 class TestPremiseAndEpoch(_StoreCase):
 
@@ -349,6 +394,46 @@ class TestSnapshotFreeze(_StoreCase):
         self.assertEqual(_content_digest(held), held_digest)
         self.assertEqual(held.placed_count, 1)
         self.assertEqual(self.store.snapshot().placed_count, 2)
+
+    def test_exports_cannot_reach_the_snapshot(self):
+        """[P1 gap] Deep immutability: mutating any exported projection
+        (probe: committed_dict box center -> 99 leaked into the cached
+        snapshot while digest stayed put) must never touch the snapshot
+        or the mapper."""
+        self.require_confirmation = True
+        self.setUp()
+        self.store.apply_update(self._add("op-1", (0.0, 0.0, 0.15)))
+        snap = self.store.snapshot()
+        digest = snap.identity.content_digest
+
+        committed = self.store.committed_dict("container_link", {})
+        committed["boxes"][0]["center"][0] = 99.0
+        committed["boxes"][0]["verify_anchor"]["delta_m"] = 9.9
+
+        v1 = self.store.v1_surface_dict()
+        v1["pending_changes"][0]["stamp_ns"] = 1
+        v1["last_settle"]["forged"] = True
+        v1["height"][0][0] = 99.0
+
+        v2 = self.store.v2_record("scene", "r")
+        v2["surface_z_container"][0][0] = 99.0
+
+        snap_after = self.store.snapshot()
+        self.assertIs(snap_after, snap)
+        self.assertEqual(snap.ledger_details[0][0][0], 0.0)
+        self.assertAlmostEqual(snap.ledger_details[0][4][1], 0.0)
+        self.assertEqual(snap.pending_details[0][2], snap.pending_details[0][2])
+        # last_settle stays an empty frozen dict (tagged pair, no entries).
+        self.assertEqual(snap.last_settle[1], ())
+        self.assertEqual(_content_digest(snap), digest)
+        # A second export sees the untampered values.
+        again = self.store.committed_dict("container_link", {})
+        self.assertEqual(again["boxes"][0]["center"][0], 0.0)
+        self.assertAlmostEqual(again["boxes"][0]["verify_anchor"]["delta_m"],
+                               0.0)
+        # The live mapper is untouched.
+        self.assertEqual(
+            self.store.mapper.commit_ledger()[0]["center"][0], 0.0)
 
 
 class TestConcurrency(_StoreCase):

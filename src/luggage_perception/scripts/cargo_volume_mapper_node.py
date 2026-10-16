@@ -623,20 +623,24 @@ class CargoVolumeMapperNode(Node):
         # [B1] Single-snapshot publish: v1 JSON, committed ledger, and the
         # v2 contract are deterministic projections of ONE immutable
         # snapshot handed in by the transaction that just ran (or the
-        # current one on read-only paths).
-        snapshot = snapshot or self._store.snapshot()
+        # current one on read-only paths) — the SAME object is passed to
+        # every projector, so a concurrent transaction between two
+        # projections cannot produce a mixed-revision publication set.
+        snapshot = snapshot if snapshot is not None \
+            else self._store.snapshot()
         self._surface_pub.publish(String(data=json.dumps(
-            self._store.v1_surface_dict(), sort_keys=True)))
+            self._store.v1_surface_dict(snapshot), sort_keys=True)))
         self._ledger_pub.publish(String(data=json.dumps(
             self._store.committed_dict(
-                self._frame, self._world_from_container),
+                self._frame, self._world_from_container, snapshot),
             sort_keys=True)))
         # ST04 F06: scene-bound v2 surface beside the byte-stable v1 JSON.
         if self._surface_v2_pub is not None:
             try:
                 record = self._store.v2_record(
                     self._frame_scene_revision,
-                    SURFACE_V2_REQUEST_TEMPLATE % snapshot.identity.revision)
+                    SURFACE_V2_REQUEST_TEMPLATE % snapshot.identity.revision,
+                    snapshot)
                 self._surface_v2_pub.publish(
                     measured_surface_to_message(record, self._surface_context()))
             except BoundaryContractError as error:

@@ -52,9 +52,16 @@ class TestStoreAnchorGate(unittest.TestCase):
                  (0.1, 0.1, 0.19), 0.10)
         self.assertTrue(r.accepted, r.details)
         anchor = self._ledger_anchor()
-        self.assertEqual(anchor["request_id"], "op-1")
-        self.assertAlmostEqual(anchor["delta_m"], 0.04, places=6)
-        self.assertEqual(anchor["tolerance_m"], 0.10)
+        # Frozen trail record: (request_id, delta_m, tolerance_m).
+        self.assertEqual(anchor[0], "op-1")
+        self.assertAlmostEqual(anchor[1], 0.04, places=6)
+        self.assertEqual(anchor[2], 0.10)
+        # The committed projection reconstructs the dict shape.
+        committed = self.store.committed_dict("container_link", {})
+        exported = committed["boxes"][0]["verify_anchor"]
+        self.assertEqual(exported["request_id"], "op-1")
+        self.assertAlmostEqual(exported["delta_m"], 0.04, places=6)
+        self.assertEqual(exported["tolerance_m"], 0.10)
 
     def test_witness02_phantom_is_rejected(self):
         """The exact witness_02 geometry: a slot 0.65 m from the verified
