@@ -146,6 +146,14 @@ def _world_to_map(scene, xyz):
 class MotionOccDriver(CargoMapIntegrateDriver):
     def __init__(self, args):
         super().__init__(args)
+        self._placement_prior_client = None
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        if bool(getattr(args, 'placement_prior', False)):
+            if self._typed is None:
+                raise ValueError('placement prior evaluation requires frame-runtime')
+            from luggage_planning.placement_prior_client import PlacementPriorClient
+            self._placement_prior_client = PlacementPriorClient(self, group=getattr(self,'_group',None))
         self._atlas = None
         self._atlas_diag = {}
         try:
@@ -392,6 +400,34 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         }
         return True, ""
 
+    def on_detected_luggage(self, pick_msg, trial, spawn):
+        reason = super().on_detected_luggage(pick_msg, trial, spawn)
+        self._placement_prior_result = None
+        self._placement_prior_choice = None
+        if reason or self._placement_prior_client is None:
+            return reason
+        self._typed.set_placement_prior(None)
+        from luggage_planning.placement_prior_requests import measured_detection_view
+        try:
+            response = self._placement_prior_client.prepare(pick_msg,self._frame_request_id('prior'))
+            _, choice = self._placement_prior_client.bind(response,measured_detection_view(pick_msg),
+                                                         self._frame_scene_revision)
+            selected = [candidate for candidate in pick_msg.suction_candidates
+                        if candidate.candidate_id == choice.candidate_id]
+            if len(selected) != 1:
+                raise ValueError('selected measured suction candidate is not unique')
+            # Retain the original measured contact and rank; only narrow the
+            # candidate list consumed by the existing pick builder.
+            pick_msg.suction_candidates = selected
+            self._placement_prior_result = response
+            self._placement_prior_choice = choice
+            self._typed.set_placement_prior(response)
+            trial.extras['placement_prior'] = dict(adopted=True,slot_id=choice.slot_id,
+                candidate_id=choice.candidate_id,elapsed_s=response.elapsed_s,cache_hit=response.cache_hit)
+        except Exception as exc:
+            trial.extras['placement_prior'] = dict(adopted=False,reason=str(exc))
+        return reason
+
     def _frame_place_slot(self, pick_msg, trial):
         """Typed v2 chain: ComputePlacementV2 -> SelectPlacePathV2 -> probe.
 
@@ -426,33 +462,46 @@ class MotionOccDriver(CargoMapIntegrateDriver):
         # What the release commit needs later (see _commit_to_cargo_map).
         self._frame_box_wdh = list(box_wdh)
         request_id = self._frame_request_id("place")
+        from luggage_planning.placement_prior_adoption import bound_target_slots
         try:
-            placement = self._typed.compute_placement(
-                request_id=request_id, box_wdh=box_wdh,
-                height_measured=True,
-                scene_revision=self._frame_scene_revision,
-                geometry_hash=geometry_hash,
-                expected_map_revision=int(surface_msg.map_revision),
-                # Deep-first placement keeps the back wall in the first
-                # handful of slots. Those container-x cells are outside
-                # the arm (run10: world TCP x=-2.06, IK residual 0.5 m).
-                # The route producer reorders by increasing depth, so it
-                # needs the shallow end of the feasible list in hand.
-                max_candidates=2000)
-        except ContractError as error:
-            trial.fail_code = trial.fail_code or error.code
-            trial.extras["compute_placement"] = "%s: %s" % (
-                error.code, error.field)
+            bound = bound_target_slots(getattr(self, '_placement_prior_result', None),
+                getattr(self, '_placement_prior_choice', None), surface_msg, box_wdh,
+                self._frame_scene_revision, request_id)
+        except ValueError as error:
+            trial.fail_code = 'PRIOR_TARGET_STALE'
+            trial.extras['placement_prior_error'] = str(error)
             return None, None
-        if placement is None or not placement.success:
-            trial.fail_code = trial.fail_code or (
-                getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
-            trial.extras["compute_placement"] = (
-                placement.message if placement else "timeout")
-            return None, None
-        trial.extras["compute_placement"] = placement.message
-        slot_messages = list(placement.candidates) or [placement.slot]
-        scores = list(placement.candidate_scores) or [0.0]
+        if bound is not None:
+            slot_messages, scores = bound
+            trial.extras['compute_placement'] = 'bound measured prior target'
+        else:
+            try:
+                placement = self._typed.compute_placement(
+                    request_id=request_id, box_wdh=box_wdh,
+                    height_measured=True,
+                    scene_revision=self._frame_scene_revision,
+                    geometry_hash=geometry_hash,
+                    expected_map_revision=int(surface_msg.map_revision),
+                    # Deep-first placement keeps the back wall in the first
+                    # handful of slots. Those container-x cells are outside
+                    # the arm (run10: world TCP x=-2.06, IK residual 0.5 m).
+                    # The route producer reorders by increasing depth, so it
+                    # needs the shallow end of the feasible list in hand.
+                    max_candidates=2000)
+            except ContractError as error:
+                trial.fail_code = trial.fail_code or error.code
+                trial.extras["compute_placement"] = "%s: %s" % (
+                    error.code, error.field)
+                return None, None
+            if placement is None or not placement.success:
+                trial.fail_code = trial.fail_code or (
+                    getattr(placement, "reason_code", None) or "PLACEMENT_FAILED")
+                trial.extras["compute_placement"] = (
+                    placement.message if placement else "timeout")
+                return None, None
+            trial.extras["compute_placement"] = placement.message
+            slot_messages = list(placement.candidates) or [placement.slot]
+            scores = list(placement.candidate_scores) or [0.0]
         # ComputePlacementV2 has no request id field; the planner stamps
         # the slots. Select, grasp, and the start TCP join that id.
         slot_request = str(slot_messages[0].identity.request_id or "")
@@ -1046,6 +1095,8 @@ def parse_args(argv=None):
     local.add_argument("--frame-runtime", action="store_true",
                        help="Adopt the v2 runtime chain from the stack graph")
     local.add_argument("--frame-peer", default="motion_occ_driver")
+    local.add_argument("--placement-prior", action="store_true",
+                       help="Bind measured pickup candidate and target using the read-only prior service")
     local.add_argument("--rehearsal", default="",
                        help="Write non-scoring rehearsal evidence to this directory")
     local.add_argument("--rehearsal-fault", choices=("", "pre_pick", "pre_place"),
@@ -1061,6 +1112,7 @@ def parse_args(argv=None):
     args.place_probe = local_ns.place_probe
     args.frame_runtime = local_ns.frame_runtime
     args.frame_peer = local_ns.frame_peer
+    args.placement_prior = local_ns.placement_prior
     args.rehearsal_dir = str(local_ns.rehearsal or "")
     args.rehearsal_fault = str(local_ns.rehearsal_fault or "")
     return args

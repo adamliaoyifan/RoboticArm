@@ -734,6 +734,15 @@ class PickRetreatEvalDriver(Node):
                 return False, "%s: %s" % (error.code, error.field)
             if response is None:
                 return False, "vacuum command timeout"
+            if enable and response.success and getattr(response, 'has_measured_attachment', False):
+                from luggage_planning.hardware_place_planning import attachment_from_response
+                from luggage_planning.typed_driver_adapter import grasp_record
+                actual = attachment_from_response(response, request_id=request_id,
+                    box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
+                self._frame_grasp = grasp_record(request_id, actual.scene_revision,
+                    actual.box_from_tcp.translation, actual.box_from_tcp.quaternion_xyzw,
+                    stamp_ns=actual.stamp_ns)
+                self._frame_grasp.update(box_id=actual.box_id, generation=actual.generation)
             if not response.success:
                 stamp = pick_msg.header.stamp
                 self._last_vacuum_attach_evidence = vacuum_attach_revision_dump(

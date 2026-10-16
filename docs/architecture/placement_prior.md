@@ -105,3 +105,19 @@ joint curve. Recheck nanosecond wire-time rounding before returning a trajectory
 Velocity/acceleration limits remain unchanged. This correction is not a collision
 or complete-route certificate; the existing route checks still apply. Report
 increased motion duration separately from prior planning latency.
+
+## Full-cycle simulation binding
+
+The existing motion/OCC evaluation driver accepts `--placement-prior` only with
+its typed frame runtime. Before pickup it binds one measured candidate without
+changing its contact pose or rank; after pickup it preserves the selected box
+slot and uses the controller-admitted actual attachment. Stale target bindings
+fail instead of silently changing the desired placement. A prior miss preserves
+the ordinary candidate path. This wiring requires full-cycle evidence before
+claiming successful placement or performance improvement.
+
+Runtime installs must include `st09_contracts` through the planning package's
+explicit dependency. Source-root PYTHONPATH is not installation verification.
+The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
+objects, static synchronization, selector/validator discovery and a single clock
+publisher; it spawns no box and is not a functional pick/place acceptance test.

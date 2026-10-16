@@ -5,6 +5,29 @@ fields remain untouched. A changed grasp/map/dimension makes this an ordinary
 Select. Return an index map so caller-visible slot indices keep their meaning.
 """
 import math
+from copy import deepcopy
+
+
+def bound_target_slots(prior, choice, surface, box_wdh, scene_revision, request_id):
+    """Resolve a chosen target without changing it after pickup.
+
+    None means no target was bound. A stale bound target is an error, not
+    permission to silently select a different placement for that pickup.
+    """
+    if choice is None:
+        return None
+    if (prior is None or not prior.success or not prior.measured
+            or prior.map_revision != surface.map_revision
+            or prior.geometry_hash != surface.geometry_hash
+            or prior.surface != surface or tuple(prior.box_wdh) != tuple(box_wdh)
+            or choice not in prior.choices
+            or choice.slot.identity.scene_revision != scene_revision
+            or choice.slot.identity.frame_id != 'container_link'
+            or choice.slot.reference != 'box_center'):
+        raise ValueError('selected prior target is stale or unbound')
+    slot = deepcopy(choice.slot)
+    slot.identity.request_id = request_id
+    return [slot], [0.]
 
 
 def _pose_equal(left, right):

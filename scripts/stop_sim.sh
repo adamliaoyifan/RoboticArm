@@ -22,6 +22,17 @@ WAIT_INT="${WAIT_INT:-12}"
 WAIT_TERM="${WAIT_TERM:-4}"
 ALL=0
 
+# A rehearsal command may mention installed resource paths in its launch
+# arguments. It is an ancestor of this stopper, not an orphan stack process.
+# Never let fallback command-line matching terminate our caller/supervisor.
+STOPPER_ANCESTORS=" $$ "
+stopper_parent="$PPID"
+while [[ "$stopper_parent" =~ ^[0-9]+$ ]] && (( stopper_parent > 1 )); do
+  STOPPER_ANCESTORS+="$stopper_parent "
+  stopper_parent="$(ps -o ppid= -p "$stopper_parent" 2>/dev/null || true)"
+  stopper_parent="${stopper_parent// /}"
+done
+
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --all) ALL=1; shift ;;
@@ -110,6 +121,7 @@ stack_pids() {
   local pid cmd
   while read -r pid cmd; do
     [[ -n "${pid:-}" ]] || continue
+    [[ "$STOPPER_ANCESTORS" == *" $pid "* ]] && continue
     case "$cmd" in
       *stop_sim.sh*) continue ;;
     esac
@@ -119,7 +131,7 @@ stack_pids() {
     pgrep -a -f 'ros2 launch luggage_gazebo' 2>/dev/null || true
     pgrep -a -f 'luggage_gazebo/rviz/sim_full\.rviz' 2>/dev/null || true
     pgrep -a -f 'ign gazeb[o]' 2>/dev/null || true
-    pgrep -a -f '/install/luggage_(gazebo|perception|planning|description|packing)/' 2>/dev/null || true
+    pgrep -a -f '/install[^/]*/luggage_(gazebo|perception|planning|description|packing)/lib/' 2>/dev/null || true
   ) | awk 'NF && !seen[$1]++'
 }
 

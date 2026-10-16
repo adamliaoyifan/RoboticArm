@@ -49,19 +49,11 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
     if len(start_joints) != 6:
         raise ValueError('complete measured six-joint start required')
     finite_tuple(start_joints, 6, 'start joints')
+    from luggage_planning.placement_prior_adoption import bound_target_slots
+    bound = bound_target_slots(prior, selected_choice, surface, attachment.box_wdh,
+                               attachment.scene_revision, request_id)
     if selected_choice is not None:
-        # A stale speculative target must be recomputed, never silently moved
-        # while pretending the old target was attained.
-        if (prior is None or not prior.success or not prior.measured
-                or prior.map_revision != surface.map_revision
-                or prior.geometry_hash != surface.geometry_hash
-                or prior.surface != surface
-                or tuple(prior.box_wdh) != attachment.box_wdh
-                or selected_choice not in prior.choices):
-            raise ValueError('selected prior target is stale or unbound')
-        slots = [deepcopy(selected_choice.slot)]
-        slots[0].identity.request_id = request_id
-        scores = [0.]
+        slots, scores = bound
     else:
         placement = adapter.compute_placement(request_id=request_id,
             box_wdh=attachment.box_wdh, height_measured=True,
