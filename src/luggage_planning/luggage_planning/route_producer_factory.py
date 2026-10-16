@@ -182,8 +182,9 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
         adapter.load_edges(edges, scene_states=scene_states)
         return adapter
 
-    def lattice_checker_factory(*, scene_states, start_q):
-        return LatticeStateChecker(node, scene_client, scene_states, start_q)
+    def lattice_checker_factory(*, scene_states, start_q, service_budget_s=5.0):
+        return LatticeStateChecker(
+            node, scene_client, scene_states, start_q, service_budget_s=service_budget_s)
 
     budget_ns = route_budget_ns(int(box_count))
     logger("route budget %.0fs for %d box(es)" % (budget_ns / 1e9, box_count))

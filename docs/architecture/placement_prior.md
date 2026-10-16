@@ -249,3 +249,22 @@ waypoint ladder; box-centre waypoints are used only when no candidate list was
 supplied. Missing or ambiguous candidate IDs on a candidate-bearing observation
 are refused. Candidate paths retain the normal edge builder and full pick
 certification; merely narrowing the message's candidate list is insufficient.
+
+### Bounded staging alternatives
+
+The transit staging pose is a proposal, not proof of payload clearance. Seed
+at most six positions: the original, +/-0.15 m along each container horizontal
+axis, and +0.20 m in world Z. These are search extents, not collision margins;
+reject proposals that lower the original world transit height. Preserve the
+placement target, attachment and corridor anchors. IK preparation consumes the
+existing candidate budget.
+
+Before graph connections, check staging joints for both carrying and unloaded
+states using the same SceneState/FrozenSceneComposer path as certification.
+Only explicitly valid endpoints enter the candidate's graph scope. Missing
+verdicts or no surviving state for either load refuse that candidate; they must
+not silently remove the required staging hop. Retain endpoint positions, joints,
+load and verdict in candidate diagnostics. The endpoint service budget is 2 s
+and checks stop between calls at the candidate deadline. Every connection and
+complete route still requires existing certification; endpoint validity alone
+is insufficient. This does not write OCC or authorize physical movement.

@@ -840,7 +840,7 @@ class RouteProducer(object):
             q_frame_container=transform["quaternion_xyzw"])
 
     def _prepare_candidate(self, base_candidate, attachment, request,
-                           start_q, tcp_orientation, tcp_position):
+                           start_q, tcp_orientation, tcp_position, expired=lambda: False):
         """Depth-annotate the candidate and seed the region ladder.
 
         Anchor nodes are graph NODES ONLY: their poses seed the portal /
@@ -888,10 +888,16 @@ class RouteProducer(object):
             # Carrying staging is the joint target of home -> staging.
             # The unloaded twin is the joint target of the free-space
             # return; Cartesian retreat stops at the portal.
-            anchor_rows.insert(0, ("staging", plan.staging,
-                                   LoadState.CARRYING))
-            anchor_rows.insert(1, ("staging", plan.staging,
-                                   LoadState.UNLOADED))
+            from luggage_planning.staging_candidates import staging_positions
+            staging_rows = [
+                ("staging", position, load)
+                for position in staging_positions(
+                    plan.staging,
+                    request["container_transform"]["quaternion_xyzw"])
+                for load in (LoadState.CARRYING, LoadState.UNLOADED)]
+            # Seed the fixed corridor first so bounded transit exploration
+            # cannot consume its entire IK preparation window.
+            anchor_rows.extend(staging_rows)
         if not has_opening:
             # The collapsed portal shares the approach pose; registering
             # it would steal the approach node's (load, q) key.
@@ -903,6 +909,8 @@ class RouteProducer(object):
             # collision awareness, and the per-hop search needs the
             # alternative when one branch's interpolated edge collides.
             for seed in self._seed_candidates(seed_q):
+                if expired():
+                    break
                 q, _info = self._refine_to(position, orientation, seed)
                 if q is not None:
                     node_ids.add(graph.register_node(
@@ -1192,6 +1200,7 @@ class RouteProducer(object):
                 candidate_budget_ns = int(remaining - reserve_ns)
             else:
                 candidate_budget_ns = int(remaining)
+            candidate_started_ns = self._clock_ns()
             cert_rebuilds_left = CERT_COLLISION_REBUILDS
             tried_indices.append(index)
             note = (getattr(self, "_slot_notes", None) or {}).get(index) or {}
@@ -1258,7 +1267,9 @@ class RouteProducer(object):
                 self._prepare_candidate(
                 base_candidate, attachment, request, start_q,
                 tcp_orientation=prior_targets[0].quaternion_xyzw,
-                tcp_position=prior_targets[0].position)
+                tcp_position=prior_targets[0].position,
+                expired=lambda: self._clock_ns() - candidate_started_ns
+                >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9))
             self._log("route: anchors %s home %s" % (
                 [(n.region, [round(v, 3) for v in n.q])
                  for n in self.graph.nodes.values()
@@ -1267,7 +1278,45 @@ class RouteProducer(object):
             row["candidate_id"] = candidate.candidate_id
             row["depth_m"] = candidate.depth_m
             row["_scope_ids"] = scope_ids
+            targets = prior_targets
             try:
+                staging_nodes = [
+                    node for node in self.graph.nodes_by_region("staging")
+                    if node.node_id in scope_ids]
+                if staging_nodes and self.lattice_checker_factory is not None:
+                    from luggage_planning.lattice_route import LatticeCheckError
+                    from types import SimpleNamespace
+                    endpoint_edges = [SimpleNamespace(
+                        edge_id="staging-" + load, load_state=load)
+                        for load in ("carrying", "unloaded")]
+                    endpoint_states = self.edge_scene_states(
+                        None, endpoint_edges, snapshot, attachment,
+                        candidate, request)
+                    checker = self.lattice_checker_factory(
+                        scene_states={load: endpoint_states["staging-" + load]
+                                      for load in ("carrying", "unloaded")},
+                        start_q=start_q, service_budget_s=2.0)
+                    try:
+                        verdicts = checker.validate(
+                            [(tuple(n.q), str(n.load_state)) for n in staging_nodes],
+                            expired=lambda: self._clock_ns() - candidate_started_ns
+                            >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9))
+                    except LatticeCheckError as exc:
+                        raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                            "stage": "staging_endpoint", "error": str(exc)})
+                    row["staging_endpoints"] = [{
+                        "node_id": n.node_id, "position": list(n.tcp_position),
+                        "q": list(n.q), "load": str(n.load_state),
+                        "valid": verdicts.get((tuple(n.q), str(n.load_state)))}
+                        for n in staging_nodes]
+                    for node in staging_nodes:
+                        if verdicts.get((tuple(node.q), str(node.load_state))) is not True:
+                            scope_ids.discard(node.node_id)
+                    if any(not any(n.node_id in scope_ids and str(n.load_state) == load
+                                   for n in staging_nodes)
+                           for load in ("carrying", "unloaded")):
+                        raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                            "stage": "staging_endpoint", "reason": "no_valid_staging"})
                 # Without an opening datum the portal collapses onto the
                 # approach anchor, so the portal hop is dropped rather
                 # than seeded with a duplicated node.
@@ -1277,7 +1326,8 @@ class RouteProducer(object):
                     hop for hop in DEFAULT_ENTRY_HOPS
                     if hop[0] != "portal")
                 has_staging = bool(
-                    self.graph.nodes_by_region("staging"))
+                    [node for node in self.graph.nodes_by_region("staging")
+                     if node.node_id in scope_ids])
                 if has_staging:
                     # Free space outside the portal may detour. Both
                     # home -> staging and staging -> portal are joint
@@ -1354,7 +1404,8 @@ class RouteProducer(object):
                     row.get("route_build_count") or 0) + 1
                 route = planner.plan_route(
                     snapshot, attachment, candidate, targets,
-                    budget_ns=candidate_budget_ns)
+                    budget_ns=max(0, candidate_budget_ns -
+                                  (self._clock_ns() - candidate_started_ns)))
                 self._log("route: candidate %d planned %s"
                           % (index, route.route_id))
             except RoutePlanningError as exc:

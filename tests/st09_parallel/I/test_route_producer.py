@@ -9,6 +9,7 @@ revalidator, and the frozen v2 segment admission the legs must survive.
 from __future__ import division
 
 import dataclasses
+import pytest
 from pathlib import Path
 import sys
 
@@ -1917,3 +1918,58 @@ class TestLatticeCorridorPlanner:
                 attachment_provider=make_provider(None),
                 fk=fake_fk, refine=fake_refine,
                 corridor_planner="lattice")
+
+
+@pytest.mark.parametrize("available", [True, False, None])
+def test_staging_collision_can_use_alternate_transit_position(available):
+    """Real graph/route pipeline must escape a rejected staging centerline."""
+    producer, _clock = build_producer()
+    producer.opening_info = {
+        "point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)}
+    producer.transit_clearance_z = 5.0
+    original = producer.edge_builder
+    rejected, accepted = [], []
+
+    class RejectCenterline:
+        def __getattr__(self, name):
+            return getattr(original, name)
+
+        def __call__(self, source, destination, edge_class, **kwargs):
+            if destination.region == "staging":
+                if abs(destination.tcp_position[1]) < 0.01:
+                    rejected.append(destination.tcp_position)
+                    raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                        "kind": "collision", "edge_class": edge_class})
+                accepted.append(destination.tcp_position)
+            return original(source, destination, edge_class, **kwargs)
+
+    producer.edge_builder = RejectCenterline()
+    checked = []
+
+    class EndpointChecker:
+        def validate(self, states, expired):
+            verdicts = {}
+            for q, load in states:
+                node = next(n for n in producer.graph.nodes_by_region("staging")
+                            if tuple(n.q) == q and str(n.load_state) == load)
+                verdicts[(q, load)] = (abs(node.tcp_position[1]) >= 0.01
+                                       if available is True else available)
+                checked.append(verdicts[(q, load)])
+            return verdicts
+
+    producer.lattice_checker_factory = lambda **kwargs: EndpointChecker()
+    request = make_request()
+    register_attach_from_request(
+        producer.attachment_provider, request, box_wdh=request["box_wdh"])
+    result = producer.plan_place_route(request)
+    if available is not True:
+        assert not result["success"]
+        assert not rejected and not accepted
+        assert any(r.get("detail", {}).get("stage") == "staging_endpoint"
+                   for r in result.get("rows", []))
+        return
+    assert result["success"], [(r.get("reason"), r.get("failure"), r.get("detail")) for r in result.get("rows", [])]
+    assert False in checked and True in checked
+    assert not rejected  # Invalid endpoints never spend a connection attempt.
+    assert accepted
+    assert all(abs(p[1]) >= 0.01 for p in accepted)
