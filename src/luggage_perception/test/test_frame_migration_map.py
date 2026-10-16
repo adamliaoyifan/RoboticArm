@@ -707,12 +707,15 @@ class FrameMigrationMap(unittest.TestCase):
             SCENE, 'container_link', 'box_center', 'scene')
 
         def make_node(mapper):
+            from luggage_perception.occupancy_map_store import (
+                OccupancyMapStore)
             published = []
             node = types_module.SimpleNamespace(
                 _mapper=mapper, _geometry_hash=mapper.geometry_hash,
                 _frame_scene_revision=SCENE,
-                _publish_all=lambda: published.append(True))
-            for name in ('_decode_slot_v2', '_ledger_guard', '_on_add_v2'):
+                _store=OccupancyMapStore(mapper, epoch="t"),
+                _publish_all=lambda snapshot=None: published.append(True))
+            for name in ('_decode_slot_v2', '_finish_v2', '_on_add_v2'):
                 setattr(node, name, types_module.MethodType(
                     getattr(MapperNode, name), node))
             return node, published

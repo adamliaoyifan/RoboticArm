@@ -209,15 +209,20 @@ class MapSnapshot:
     surface_z_container: tuple
     contract_confidence: tuple
     height_above_floor: tuple
+    floor_z_container: float
+    ceiling_z_container: float
     known_ratio: tuple
     origin_local: tuple
-    # Placed ledger (detached, digest-relevant):
+    # Placed ledger: digest-relevant geometry triples + full records for
+    # the committed-ledger projection.
     ledger: tuple
+    ledger_details: tuple
     # Confirmation (PendingConfirmation.surface_fields() projection):
     occupancy_confirmed: bool
     change_event: str
     change_token: int
     pending_changes: tuple
+    pending_details: tuple = ()
     last_settle: dict = field(default_factory=dict)
     # Acquisition identity (provenance; excluded from the digest):
     acquisition_stamp_ns: int = 0
@@ -271,6 +276,16 @@ class OccupancyMapStore(object):
         return self._mapper
 
     @property
+    def pending(self):
+        """The confirmation machine (owned; exposed for diagnostics)."""
+        return self._pending
+
+    @property
+    def pose_at_confirm(self):
+        """Container pose captured at the last integration (facts)."""
+        return self._pose_at_confirm
+
+    @property
     def epoch(self):
         return self._epoch
 
@@ -287,6 +302,99 @@ class OccupancyMapStore(object):
         return self._snapshot
 
     # ------------------------------------------------------------------
+    # Deterministic projections (all three derive from the ONE snapshot)
+
+    def v1_surface_dict(self):
+        """The v1 JSON surface payload (deterministic projection).
+
+        Superset of the historical ``surface_map_2d()`` keys plus the
+        node-added identity/provenance/confirmation fields — including
+        ``commit_revision`` (fixes the downstream default-to-1 bug where
+        ``planning_snapshot_from_surface`` read
+        ``surface_map.get("commit_revision", 1)``).
+        """
+        s = self._snapshot
+        return {
+            "frame": "container_local",
+            "map_revision": s.identity.revision,
+            "geometry_hash": s.geometry_hash,
+            "geometry_descriptor": self._mapper.geometry_descriptor,
+            "resolution": s.resolution,
+            "nx": s.nx,
+            "ny": s.ny,
+            "inner_size": list(s.inner_size),
+            "floor_z": 0.0,
+            "origin_local": list(s.origin_local),
+            "center_base": list(s.center_base),
+            "yaw": s.yaw,
+            "height": [list(row) for row in s.height],
+            "clearance": [list(row) for row in s.clearance],
+            "state": [list(row) for row in s.state],
+            "known_ratio": list(s.known_ratio),
+            "confidence": [list(row) for row in s.confidence],
+            "semantic_label": [list(row) for row in s.semantic_label],
+            # Single-source identity + provenance:
+            "epoch": s.identity.epoch,
+            "content_digest": s.identity.content_digest,
+            "commit_revision": s.identity.revision,
+            "acquisition_stamp_ns": s.acquisition_stamp_ns,
+            "map_source": s.map_source,
+            "placed_count": s.placed_count,
+            "cargo_observed": s.cargo_observed,
+            "occupancy_confirmed": s.occupancy_confirmed,
+            "change_event": s.change_event,
+            "change_token": s.change_token,
+            "last_settle": dict(s.last_settle),
+            "pending_changes": [dict(c) for c in s.pending_details],
+        }
+
+    def v2_record(self, scene_revision, request_id):
+        """The SurfaceContractV2 record (deterministic projection)."""
+        s = self._snapshot
+        record = {
+            "contract_version": 2,
+            "frame_id": "container_link",
+            "length_unit": "m",
+            "stamp_ns": 0,
+            "time_basis": "scene",
+            "scene_revision": str(scene_revision),
+            "request_id": str(request_id),
+            "kind": "surface",
+            "map_revision": s.identity.revision,
+            "geometry_hash": s.geometry_hash,
+            "epoch": s.identity.epoch,
+            "content_digest": s.identity.content_digest,
+            "occupancy_confirmed": s.occupancy_confirmed,
+            "change_event": s.change_event,
+            "height_datum": "container_origin",
+            "origin_xy_container": list(s.origin_local),
+            "resolution_m": s.resolution,
+            "floor_z_container": s.floor_z_container,
+            "ceiling_z_container": s.ceiling_z_container,
+            "surface_z_container": [list(row) for row in
+                                    s.surface_z_container],
+            "state": [list(row) for row in s.state],
+            "confidence": [list(row) for row in s.contract_confidence],
+        }
+        if s.height_above_floor:
+            record["height_above_floor"] = [list(row) for row in
+                                            s.height_above_floor]
+        return record
+
+    def committed_dict(self, frame, container_in_world):
+        """The /committed ledger JSON payload (deterministic projection)."""
+        s = self._snapshot
+        return {
+            "frame": frame,
+            "container_in_world": container_in_world,
+            "boxes": [dict(box) for box in s.ledger_details],
+            "map_revision": s.identity.revision,
+            "geometry_hash": s.geometry_hash,
+            "epoch": s.identity.epoch,
+            "content_digest": s.identity.content_digest,
+        }
+
+    # ------------------------------------------------------------------
     # The one mutating entry point
 
     def apply_update(self, update):
@@ -301,6 +409,14 @@ class OccupancyMapStore(object):
         if not key:
             return self._reject(REASON_OPERATION_ID_CONFLICT,
                                 "operation_id is required")
+        if (update.kind is UpdateKind.INTEGRATE_VIEW
+                and tuple(update.stamp_key or ()) in self._integrated):
+            # The stamp dedup precedes the idempotency ledger: a repeated
+            # VIEW is the same physical acquisition whatever key the
+            # caller synthesized (pre-B1 callers derive keys per request).
+            return self._reject(
+                REASON_STAMP_ALREADY_INTEGRATED,
+                "cloud stamp %r already integrated" % (update.stamp_key,))
         stored = self._processed.get(key)
         if stored is not None:
             fingerprint, identity, status, reason = stored
@@ -326,6 +442,12 @@ class OccupancyMapStore(object):
         current = self._snapshot.identity
         is_fact = update.kind.value in FACT_KINDS
         if not is_fact:
+            want = str(update.geometry_hash or "")
+            if want and want != self._mapper.geometry_hash:
+                return self._reject(
+                    REASON_GEOMETRY_HASH_MISMATCH,
+                    "request hull %r is not this map (%r)"
+                    % (want, self._mapper.geometry_hash))
             reason = self._premise_violation(update, current)
             if reason is not None:
                 return self._reject(reason, self._premise_message(
@@ -385,10 +507,6 @@ class OccupancyMapStore(object):
                 self._mapper.map_revision)
             if reason is not None:
                 return self._reject(reason, "integrate premise failed")
-            if tuple(update.stamp_key or ()) in self._integrated:
-                return self._reject(
-                    REASON_STAMP_ALREADY_INTEGRATED,
-                    "cloud stamp %r already integrated" % (update.stamp_key,))
             # Read BEFORE any mutation: an integration already running when
             # a change arrived must not clear that change.
             token_at_start = self._pending.begin()
@@ -659,15 +777,22 @@ class OccupancyMapStore(object):
             contract_confidence=_freeze(contract.get("confidence")),
             height_above_floor=_freeze_norm(
                 contract.get("height_above_floor")),
+            floor_z_container=float(contract.get("floor_z_container") or 0.0),
+            ceiling_z_container=float(
+                contract.get("ceiling_z_container") or 0.0),
             known_ratio=_freeze_flat(base.get("known_ratio")),
             origin_local=tuple(float(v) for v in base.get("origin_local")),
             ledger=ledger,
+            ledger_details=tuple(
+                self._mapper.commit_ledger()),
             occupancy_confirmed=bool(fields["occupancy_confirmed"]),
             change_event=str(fields["change_event"] or ""),
             change_token=int(fields["change_token"]),
             pending_changes=tuple(
                 (c["event"], int(c["token"]))
                 for c in fields["pending_changes"]),
+            pending_details=tuple(
+                dict(c) for c in fields["pending_changes"]),
             last_settle=dict(fields.get("last_settle") or {}),
             acquisition_stamp_ns=int(self._last_acquisition_ns),
             map_source=str(self._map_source),

@@ -1,75 +1,97 @@
-"""Commit-clock labelling in CargoVolumeMapperNode._adopt_release (gate on).
+"""Commit-clock labelling for placed-box commits (B1: inside the store).
 
-Offline: the method is called on a stand-in object, no ROS graph. The
-contract: with ``require_confirmed_map`` a commit records a pending change,
-labels a map that has no stamp yet with the commit clock, and never
-refreshes an existing sensor stamp.
+The node's _adopt_release moved into OccupancyMapStore._adopt_release and
+runs inside apply_update. Contract unchanged: with the confirmation gate
+on, a commit records a pending change, labels a map that has no stamp yet
+with the commit clock, and never refreshes an existing sensor stamp.
+Offline: a real store with an injected clock, no ROS graph.
 """
-import importlib.util
-import os
 import unittest
-from types import SimpleNamespace
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_NODE = os.path.normpath(os.path.join(
-    _HERE, "..", "scripts", "cargo_volume_mapper_node.py"))
-
-
-def _load():
-    try:
-        spec = importlib.util.spec_from_file_location("mapper_node_t", _NODE)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-    except ImportError as exc:
-        raise unittest.SkipTest("mapper node imports unavailable: %s" % exc)
-    return module
+from luggage_perception.cargo_volume_mapper import CargoVolumeMapper
+from luggage_perception.occupancy_map_store import (
+    MapUpdate,
+    OccupancyMapStore,
+    SnapshotIdentity,
+    UpdateKind,
+)
 
 
-class _Pending(object):
+class _Clock(object):
     def __init__(self):
-        self.recorded = []
+        self.now = 7_000_000_000
 
-    def record(self, event, now_ns, footprint=None):
-        self.recorded.append((event, now_ns, footprint))
+    def __call__(self):
+        return self.now
 
 
-def _fake(module, *, stamp, gate=True, ledger=1, source="static_empty"):
-    return SimpleNamespace(
-        _mapper=SimpleNamespace(commit_ledger=lambda: [object()] * ledger),
-        _map_source=source,
-        _require_confirmed_map=gate,
-        _last_acquisition_ns=stamp,
-        _pending=_Pending(),
-        _node_clock_ns=lambda: 7_000_000_000)
+def _store(gate):
+    return OccupancyMapStore(
+        CargoVolumeMapper(inner_size=[1.0, 1.0, 1.0],
+                          center_base=[0.0, 0.0, 0.5], yaw=0.0,
+                          resolution=0.1),
+        require_confirmation=gate, clock_ns=_Clock(), epoch="e1")
+
+
+def _add(store, op, center=(0.1, 0.1, 0.15)):
+    return store.apply_update(MapUpdate(
+        operation_id=op, kind=UpdateKind.ADD_BOX_V1,
+        box=(list(center), [0.2, 0.2, 0.2], 0.0)))
+
+
+def _integrate(store, op, stamp_ns):
+    return store.apply_update(MapUpdate(
+        operation_id=op, kind=UpdateKind.INTEGRATE_VIEW,
+        geometry_hash=store.mapper.geometry_hash,
+        expected_snapshot=SnapshotIdentity("", store.map_revision, ""),
+        settled=True, schema_version=1,
+        points=[[0.0, 0.0, 0.8]], origin=(2.0, 0.0, 1.0),
+        stamp_key=(int(stamp_ns // 1_000_000_000), 0),
+        acquisition_stamp_ns=stamp_ns))
 
 
 class TestAdoptReleaseCommitStamp(unittest.TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.mod = _load()
-        cls.adopt = staticmethod(
-            cls.mod.CargoVolumeMapperNode._adopt_release)
-
     def test_gate_on_first_commit_keeps_stamp_absent_and_records_commit_clock(self):
-        fake = _fake(self.mod, stamp=0)
-        self.adopt(fake, True, "footprint")
-        self.assertEqual(fake._last_acquisition_ns, 0)
-        self.assertEqual(fake._map_source, self.mod.MAP_RELEASE_INTEGRATED)
-        self.assertEqual(
-            fake._pending.recorded, [("box_placed", 7_000_000_000, "footprint")])
+        store = _store(gate=True)
+        result = _add(store, "op-1")
+        self.assertTrue(result.accepted)
+        snap = store.snapshot()
+        self.assertEqual(snap.acquisition_stamp_ns, 0)
+        self.assertEqual(snap.map_source, "release_integrated")
+        self.assertEqual(snap.pending_changes, (("box_placed", 1),))
+        self.assertEqual(snap.pending_details[0]["stamp_ns"],
+                         7_000_000_000)
 
     def test_gate_on_commit_never_refreshes_an_existing_sensor_stamp(self):
-        fake = _fake(self.mod, stamp=3_000_000_000, source="measured")
-        self.adopt(fake, True, "footprint")
-        self.assertEqual(fake._last_acquisition_ns, 3_000_000_000)
-        self.assertEqual(len(fake._pending.recorded), 1)
+        store = _store(gate=True)
+        _integrate(store, "i1", stamp_ns=3_000_000_000)
+        self.assertEqual(store.snapshot().acquisition_stamp_ns,
+                         3_000_000_000)
+        _add(store, "op-1", center=(0.4, 0.4, 0.15))
+        snap = store.snapshot()
+        self.assertEqual(snap.acquisition_stamp_ns, 3_000_000_000)
+        self.assertEqual(snap.map_source, "release_integrated")
+        self.assertEqual(snap.pending_changes, (("box_placed", 1),))
 
     def test_gate_on_duplicate_commit_records_nothing_and_keeps_stamp(self):
-        fake = _fake(self.mod, stamp=0)
-        self.adopt(fake, False, "footprint")
-        self.assertEqual(fake._last_acquisition_ns, 0)
-        self.assertEqual(fake._pending.recorded, [])
+        store = _store(gate=True)
+        _add(store, "op-1")
+        pending_after_first = store.snapshot().pending_changes
+        result = _add(store, "op-2")  # same box, new operation id
+        self.assertTrue(result.accepted)
+        self.assertFalse(result.details["committed_now"])
+        snap = store.snapshot()
+        self.assertEqual(snap.pending_changes, pending_after_first)
+        self.assertEqual(snap.acquisition_stamp_ns, 0)
+
+    def test_gate_off_commit_stamps_the_clock(self):
+        store = _store(gate=False)
+        _add(store, "op-1")
+        snap = store.snapshot()
+        self.assertEqual(snap.acquisition_stamp_ns, 7_000_000_000)
+        self.assertEqual(snap.map_source, "release_integrated")
+        self.assertTrue(snap.occupancy_confirmed)  # nothing recorded
 
 
 if __name__ == "__main__":

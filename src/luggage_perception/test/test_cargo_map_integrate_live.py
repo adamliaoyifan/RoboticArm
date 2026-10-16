@@ -80,7 +80,11 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         from tf2_ros import StaticTransformBroadcaster
 
         self.rclpy = rclpy
-        rclpy.init()
+        # A prior suite in the same pytest process may have left the
+        # default context initialized; reuse it instead of raising
+        # "Context.init() must only be called once".
+        if not rclpy.ok():
+            rclpy.init()
         self.executor = MultiThreadedExecutor(num_threads=4)
         self.nodes = []
         self.mapper = _construct(self.mod.CargoVolumeMapperNode, self.scene_path)
@@ -106,7 +110,8 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
             node.destroy_node()
         if hasattr(self.mapper, "shutdown_tf"):
             self.mapper.shutdown_tf()
-        self.rclpy.shutdown()
+        if self.rclpy.ok():
+            self.rclpy.shutdown()
 
     def _publish_tf(self, parent, child, xyz=(0.0, 0.0, 0.0), stamp=None):
         msg = TransformStamped()
@@ -144,6 +149,10 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         request.geometry_hash = str(fields.get("geometry_hash", self.hash))
         request.settled = bool(fields.get("settled", True))
         request.frame_count = int(fields.get("frame_count", 1))
+        request.operation_id = str(fields.get("operation_id", ""))
+        request.expected_epoch = str(fields.get("expected_epoch", ""))
+        request.expected_content_digest = str(
+            fields.get("expected_content_digest", ""))
         future = client.call_async(request)
         deadline = time.monotonic() + 10.0
         while time.monotonic() < deadline and not future.done():
@@ -246,9 +255,15 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         self.assertGreater(right, 0.0)
 
     def test_geometry_lock_then_integrate(self):
-        self.mapper._mapper.mark_placed_box(
-            [0.0, 0.0, self.mapper._mapper.center[2]],
-            [0.2, 0.2, 0.2])
+        # [B1] The store is the sole writer: the geometry seed goes through
+        # a transaction (a direct mark_placed_box would leave the store's
+        # snapshot at a stale identity and the next premise would fail).
+        from luggage_perception.occupancy_map_store import (
+            MapUpdate, UpdateKind)
+        center_z = self.mapper._mapper.center[2]
+        self.mapper._store.apply_update(MapUpdate(
+            operation_id="seed:geometry-lock", kind=UpdateKind.ADD_BOX_V1,
+            box=([0.0, 0.0, center_z], [0.2, 0.2, 0.2], 0.0)))
         stamp = self._stamp(20)
         self._publish_cloud(stamp, self._patch(0.0, 0.0, n=80))
         resp = self._call(stamp=stamp)
@@ -261,6 +276,53 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
             if surface["state"][ix][iy] == "occupied"
         }
         self.assertIn("geometry", confs)
+
+    def test_operation_id_retry_is_processed_once(self):
+        """[B1] A literal retry of one integration (same operation id,
+        same stamp) is refused as already-integrated with the current
+        identity echoed — never re-applied."""
+        from luggage_msgs.srv import ResetCargoMap
+        stamp = self._stamp(30)
+        self._publish_cloud(stamp, self._patch(0.1, 0.1, n=80))
+        first = self._call(stamp=stamp, operation_id="op-live-1")
+        self.assertTrue(first.success, first.message)
+        self.assertEqual(first.status, "accepted")
+        self.assertTrue(first.epoch)
+        self.assertTrue(first.content_digest)
+        revision = int(first.resulting_map_revision)
+        second = self._call(stamp=stamp, operation_id="op-live-1",
+                            expected_map_revision=revision)
+        self.assertFalse(second.success)
+        self.assertEqual(second.reason_code,
+                         REASON_STAMP_ALREADY_INTEGRATED)
+        self.assertEqual(int(second.resulting_map_revision), revision)
+        self.assertEqual(second.epoch, first.epoch)
+
+    def test_reset_rotates_epoch(self):
+        """[B1] Reset rotates the epoch: a write carrying the pre-reset
+        identity is refused with EPOCH_MISMATCH, never silently applied."""
+        from luggage_msgs.srv import ResetCargoMap
+        client = self.helper.create_client(
+            ResetCargoMap, "/cargo_map/reset")
+        self.assertTrue(client.wait_for_service(timeout_sec=5.0))
+        before_epoch = self.mapper._store.epoch
+        future = client.call_async(ResetCargoMap.Request())
+        deadline = time.monotonic() + 10.0
+        while time.monotonic() < deadline and not future.done():
+            time.sleep(0.02)
+        self.assertTrue(future.done())
+        reset = future.result()
+        self.assertTrue(reset.success)
+        self.assertNotEqual(reset.epoch, before_epoch)
+        self.assertTrue(reset.content_digest)
+        stamp = self._stamp(31)
+        self._publish_cloud(stamp, self._patch(-0.1, 0.1, n=60))
+        stale = self._call(
+            stamp=stamp, expected_epoch=before_epoch,
+            expected_map_revision=int(
+                self.mapper._mapper.stats()["map_revision"]))
+        self.assertFalse(stale.success)
+        self.assertEqual(stale.reason_code, "EPOCH_MISMATCH")
 
 
 if __name__ == "__main__":
