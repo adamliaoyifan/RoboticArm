@@ -1394,9 +1394,9 @@ def main(argv=None):
             return 1
         return 0 if records and _place_reached(records[-1]) else 1
     finally:
-        executor.remove_node(driver)
-        driver.destroy_node()
-        rclpy.shutdown()
+        from luggage_gazebo.eval_lifecycle import close_driver_workers
+        close_driver_workers(driver, executor, spinner)
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

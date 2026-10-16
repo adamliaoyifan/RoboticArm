@@ -144,3 +144,21 @@ unchanged by this integration.
 rehearsal and prior enabled. It returns at the detected-input hook before pickup;
 it is an input capture tool, not a successful cycle. `--dump-dir` also captures
 exact typed service requests/responses before client-side slot-index remapping.
+
+## Initial measured-map prerequisite
+
+An empty cargo semantic cloud cannot establish that the container is empty.
+The existing cargo-view integration consumes cargo endpoints and drops endpoints
+below floor + 0.05 m. A static-empty initial grid therefore remains insufficient
+for measured prior adoption; do not change its source label or confirmation flag.
+A settled full-depth container observation must be handled by perception and the
+map owner, with exact acquisition/TF identity and explicit observation provenance.
+Keep it separate from cargo-only clouds so equal-stamp callbacks cannot overwrite
+one another. Static-wall returns may establish free ray interiors but must not be
+added as cargo occupancy. Unseen/occluded cells remain unknown; another view may
+be required. The prior consumes the owner's resulting snapshot only.
+
+Evaluation drivers must stop and join both the main executor spinner and the
+TransformListener's dedicated executor/thread before destroying either node.
+Worker shutdown is a prerequisite to rclpy context shutdown, not interpreter
+finalizer work.
