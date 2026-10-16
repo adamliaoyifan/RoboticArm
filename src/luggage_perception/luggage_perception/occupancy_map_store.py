@@ -200,6 +200,15 @@ class MapUpdate:
     # Fact payloads:
     event: str = ""
     event_stamp_ns: int = 0
+    # [release-failure contract] Correlation identity: the released
+    # box's box_id, carried by BOTH the box_released fact and the later
+    # anchored commit that confirms it (clearing matches identity +
+    # ordering, never footprint proximity alone).
+    box_id: str = ""
+    # Declared source of the verify measurement (e.g. "sim_gt_pose" for
+    # the Gazebo readback; the deploy path must declare its real
+    # observation source). Recorded on the ledger trail.
+    verify_source: str = ""
 
     def content_fingerprint(self):
         """Digest over the FULL canonical content of this update.
@@ -234,6 +243,8 @@ class MapUpdate:
             _freeze_json(self.pose_at_confirm),
             self.event,
             int(self.event_stamp_ns),
+            self.box_id,
+            self.verify_source,
             _points_fingerprint(self.points),
         )
 
@@ -416,8 +427,8 @@ class OccupancyMapStore(object):
             "last_settle": _thaw_json(s.last_settle),
             "pending_changes": [
                 {"token": token, "event": event, "stamp_ns": stamp_ns,
-                 "confirmable": confirmable}
-                for token, event, stamp_ns, confirmable
+                 "confirmable": confirmable, "box_id": box_id}
+                for token, event, stamp_ns, confirmable, box_id
                 in s.pending_details],
         }
 
@@ -468,6 +479,7 @@ class OccupancyMapStore(object):
                     "request_id": anchor[0],
                     "delta_m": anchor[1],
                     "tolerance_m": anchor[2],
+                    "verify_source": anchor[3],
                 }
             boxes.append(box)
         return {
@@ -639,12 +651,22 @@ class OccupancyMapStore(object):
         """
         if update.kind in (UpdateKind.ADD_BOX_V1, UpdateKind.ADD_BOX_V2):
             center, size, yaw = update.box
+            # [release-failure contract] 确认后使用实测占用: when an
+            # anchor is supplied the MAP WRITES THE MEASURED POSE (the
+            # verified center), not the planned slot — the written
+            # envelope is then the real box location by construction and
+            # coverage does not rest on "delta < tolerance". The planned
+            # pose and the delta stay on the ledger trail as provenance.
+            write_center = (list(anchor["verified_center"])
+                            if anchor is not None else list(center))
             added = self._mapper.mark_placed_box(
-                list(center), list(size), yaw=float(yaw),
+                write_center, list(size), yaw=float(yaw),
                 measured_source=(update.measured_source or None),
                 verify_anchor=anchor)
             details["committed_now"] = bool(added)
-            self._adopt_release(bool(added), update.box, anchor=anchor)
+            self._adopt_release(
+                bool(added), update.box, anchor=anchor,
+                box_id=update.box_id)
         elif update.kind in (UpdateKind.REMOVE_BOX_V1,
                              UpdateKind.REMOVE_BOX_V2):
             center, size, yaw = update.box
@@ -702,7 +724,8 @@ class OccupancyMapStore(object):
                         % update.kind.value)
             token = self._pending.record(
                 event, update.event_stamp_ns or self._clock_ns(),
-                self._fact_footprint(update))
+                self._fact_footprint(update),
+                identity=update.box_id or None)
             details["recorded"] = bool(token)
             if token:
                 # A real confirmation transition with no voxel mutation:
@@ -769,8 +792,10 @@ class OccupancyMapStore(object):
             return REASON_EVIDENCE_ANCHOR_MISMATCH
         return {
             "request_id": str(update.operation_id),
+            "verified_center": [float(v) for v in verified],
             "delta_m": float(delta),
             "tolerance_m": tolerance,
+            "verify_source": str(update.verify_source or "undeclared"),
         }
 
     @staticmethod
@@ -803,7 +828,8 @@ class OccupancyMapStore(object):
     # ------------------------------------------------------------------
     # Adoption logic (ported verbatim from the node, same semantics)
 
-    def _adopt_release(self, committed_now, footprint, anchor=None):
+    def _adopt_release(self, committed_now, footprint, anchor=None,
+                       box_id=""):
         """A placed box leaves the static-empty identity.
 
         Confirmation gate on: a new commit records a pending change whose
@@ -812,11 +838,11 @@ class OccupancyMapStore(object):
         off: a new commit stamps the clock; a duplicate keeps the existing
         release stamp.
 
-        [release-failure contract] An ANCHORED accepted commit does not
-        add a box_placed pending: the verify anchor IS the measured-
-        occupancy evidence (delta within tolerance proves the box sits at
-        its commanded pose), recorded on the ledger trail. It instead
-        CLEARS the matching box_released fact recorded at vacuum-off.
+        [release-failure contract] An ANCHORED accepted commit clears the
+        box_released fact it confirms — matched by box_id IDENTITY with
+        the evidence strictly LATER than the release event (footprint
+        proximity is only a guard; an old same-location evidence must not
+        clear a new event). It adds no box_placed pending of its own.
         Unanchored commits keep the legacy box_placed pending.
         """
         if len(self._mapper.commit_ledger()) <= 0:
@@ -827,15 +853,23 @@ class OccupancyMapStore(object):
         self._map_source = source
         if self._pending.require_confirmation:
             if committed_now:
-                if anchor is not None and footprint is not None:
+                if anchor is not None and footprint is not None \
+                        and box_id:
+                    measured = anchor.get("verified_center") or footprint[0]
                     cleared = self._pending.settle_matching(
-                        "box_released", footprint[0], footprint[1],
+                        "box_released", measured, footprint[1],
                         float(footprint[2]),
-                        evidence={"source": "verify_anchor",
-                                  "delta_m": float(anchor["delta_m"])})
+                        tolerance=max(float(anchor["tolerance_m"]), 0.10),
+                        identity=box_id, before_stamp_ns=now_ns,
+                        evidence={
+                            "source": str(anchor.get("verify_source")
+                                          or "verify_anchor"),
+                            "delta_m": float(anchor["delta_m"]),
+                        })
                     if cleared:
                         return
-                self._pending.record("box_placed", now_ns, footprint)
+                self._pending.record("box_placed", now_ns, footprint,
+                                     identity=box_id or None)
             return
         if committed_now or int(self._last_acquisition_ns) <= 0 \
                 or previous_source != MAP_RELEASE_INTEGRATED:
@@ -928,7 +962,8 @@ class OccupancyMapStore(object):
             if anchor is None:
                 return None
             return (str(anchor["request_id"]), float(anchor["delta_m"]),
-                    float(anchor["tolerance_m"]))
+                    float(anchor["tolerance_m"]),
+                    str(anchor.get("verify_source") or "undeclared"))
 
         # Frozen record shapes (nothing reachable from the snapshot is
         # mutable; projectors reconstruct fresh JSON-shaped copies):
@@ -942,7 +977,7 @@ class OccupancyMapStore(object):
         ledger_details = ledger
         pending_details = tuple(
             (int(c["token"]), str(c["event"]), int(c["stamp_ns"]),
-             bool(c.get("confirmable")))
+             bool(c.get("confirmable")), str(c.get("box_id") or ""))
             for c in fields["pending_changes"])
         snapshot = MapSnapshot(
             identity=None,  # set below once the digest exists

@@ -23,6 +23,12 @@ float64 verify_tolerance_m
 string operation_id
 string expected_epoch
 string expected_content_digest
+# [release-failure contract] Correlation identity of the released box
+# (must match the box_released fact's box_id) and the DECLARED source of
+# the verify measurement ("sim_gt_pose" in sim; deployment declares its
+# real observation source).
+string box_id
+string verify_source
 ---
 bool success
 string message

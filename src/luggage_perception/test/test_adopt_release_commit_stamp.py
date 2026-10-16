@@ -60,9 +60,10 @@ class TestAdoptReleaseCommitStamp(unittest.TestCase):
         self.assertEqual(snap.acquisition_stamp_ns, 0)
         self.assertEqual(snap.map_source, "release_integrated")
         self.assertEqual(snap.pending_changes, (("box_placed", 1),))
-        # Frozen pending record: (token, event, stamp_ns, confirmable).
+        # Frozen pending record: (token, event, stamp_ns, confirmable,
+        # identity).
         self.assertEqual(snap.pending_details[0],
-                         (1, "box_placed", 7_000_000_000, True))
+                         (1, "box_placed", 7_000_000_000, True, ""))
 
     def test_gate_on_commit_never_refreshes_an_existing_sensor_stamp(self):
         store = _store(gate=True)

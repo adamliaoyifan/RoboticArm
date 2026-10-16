@@ -397,6 +397,19 @@ class PackEvalDriver(PlaceSmokeDriver):
     #: measured 0.033-0.038 m.
     _COMMIT_VERIFY_TOLERANCE_M = 0.10
 
+    #: [release-failure contract] Declared source of the verify
+    #: measurement feeding the commit anchor. The sim driver reads the
+    #: Gazebo ground-truth model pose — a valid SIM-ONLY confirmation
+    #: source. A deployment driver MUST declare its real observation
+    #: source; the ledger trail records it on every anchored commit.
+    _COMMIT_VERIFY_SOURCE = "sim_gt_pose"
+
+    def _current_box_id(self):
+        """[release-failure contract] Correlation id shared by the
+        box_released fact and the confirming anchored commit."""
+        return str((getattr(self, "_frame_grasp", None) or {}).get(
+            "box_id") or "")
+
     def _commit_anchor_kwargs(self, record):
         """[commit anchor] add_placed_box kwargs tying the asserted slot
         to the verify-measured pose. Returns {} when this cycle carries no
@@ -420,6 +433,7 @@ class PackEvalDriver(PlaceSmokeDriver):
         return {
             "verified_center_container": center,
             "verify_tolerance_m": self._COMMIT_VERIFY_TOLERANCE_M,
+            "verify_source": self._COMMIT_VERIFY_SOURCE,
         }
 
     #: [commit anchor] Compat escape for flows without a verify phase
@@ -461,6 +475,11 @@ class PackEvalDriver(PlaceSmokeDriver):
                         pending.get("map_revision") or 0),
                     geometry_hash=str(
                         pending.get("geometry_hash") or ""),
+                    # [release-failure contract] Same box_id the
+                    # box_released fact carried — the store clears that
+                    # fact by IDENTITY (+ this evidence being later),
+                    # never by footprint proximity alone.
+                    box_id=self._current_box_id(),
                     **anchor_kwargs)
             except ContractError as error:
                 add = None

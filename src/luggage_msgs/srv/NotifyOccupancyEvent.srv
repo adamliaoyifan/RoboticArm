@@ -6,6 +6,10 @@
 # the transaction status and the confirmation headline (a pending fact
 # blocks next-box planning through the confirmation gate).
 string event
+# Correlation identity: the released box's box_id; the later anchored
+# commit must carry the SAME id to clear this fact (identity + ordering,
+# never footprint proximity alone).
+string box_id
 float64[3] box_center_container
 float64[3] box_size_wdh
 float64 box_yaw

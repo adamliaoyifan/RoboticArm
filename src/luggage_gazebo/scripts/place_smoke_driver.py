@@ -1466,6 +1466,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         from luggage_msgs.srv import NotifyOccupancyEvent
         request = NotifyOccupancyEvent.Request()
         request.event = "box_released"
+        request.box_id = str(
+            (getattr(self, "_frame_grasp", None) or {}).get("box_id")
+            or "")
         request.box_center_container = position[:3]
         request.box_size_wdh = [float(v) for v in box_wdh[:3]]
         request.box_yaw = float(yaw)

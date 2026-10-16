@@ -31,10 +31,19 @@ from luggage_perception.occupancy_map_store import (  # noqa: E402
 
 
 class _Clock(object):
-    now = 1_000_000_000_000000000
+    """Advancing clock: the confirming evidence must be strictly LATER
+    than the release event, so each call moves time forward."""
+
+    def __init__(self):
+        self.now = 1_000_000_000_000000000
 
     def __call__(self):
-        return self.now
+        value = self.now
+        self.now += 1
+        return value
+
+
+clock = _Clock()
 
 
 def _store():
@@ -42,24 +51,28 @@ def _store():
         CargoVolumeMapper(inner_size=[1.0, 1.0, 1.0],
                           center_base=[0.0, 0.0, 0.5], yaw=0.0,
                           resolution=0.1),
-        require_confirmation=True, clock_ns=_Clock(), epoch="e1")
+        require_confirmation=True, clock_ns=clock, epoch="e1")
 
 
-def _release_fact(store, center=(0.1, 0.1, 0.15), op="rel-1"):
+def _release_fact(store, center=(0.1, 0.1, 0.15), op="rel-1",
+                  box_id="box-A"):
     return store.apply_update(MapUpdate(
         operation_id=op, kind=UpdateKind.NOTE_EVENT, event="box_released",
+        box_id=box_id,
         box=((center[0], center[1], center[2]), (0.4, 0.4, 0.2), 0.0)))
 
 
-def _anchored_add(store, center=(0.1, 0.1, 0.15), tol=0.10, op="a1"):
+def _anchored_add(store, center=(0.1, 0.1, 0.15), tol=0.10, op="a1",
+                  box_id="box-A", source="sim_gt_pose"):
     return store.apply_update(MapUpdate(
         operation_id=op, kind=UpdateKind.ADD_BOX_V2,
         expected_snapshot=SnapshotIdentity("e1", store.map_revision, ""),
         geometry_hash=store.mapper.geometry_hash,
         box=((center[0], center[1], center[2]), (0.4, 0.4, 0.2), 0.0),
+        box_id=box_id,
         measured_source="verify_placed_box",
         verified_center=(center[0], center[1], center[2] + tol * 0.4),
-        verify_tolerance_m=tol))
+        verify_tolerance_m=tol, verify_source=source))
 
 
 def _observe_upper_half(store, tag, stamp_ns):
@@ -88,22 +101,63 @@ class TestReleaseFailureContract(unittest.TestCase):
         self.assertEqual(snap.pending_changes,
                          (("box_released", 1),))
         self.assertEqual(snap.pending_details[0],
-                         (1, "box_released", _Clock.now, True))
+                         (1, "box_released", clock.now - 1, True, "box-A"))
 
     def test_anchored_commit_confirms_and_clears_release_fact(self):
         """Anchor = measured-occupancy evidence: an accepted anchored
-        commit clears the matching box_released fact without adding a
-        box_placed pending (no camera view needed on the success path)."""
+        commit clears the box_released fact it confirms — matched by
+        box_id identity (sim GT is a DECLARED sim-only source; deployment
+        must declare a real observation source) — and writes the
+        MEASURED pose (see test_anchored_commit_writes_measured_pose)."""
         store = _store()
-        _release_fact(store)
-        result = _anchored_add(store)
+        _release_fact(store, box_id="box-A")
+        result = _anchored_add(store, box_id="box-A")
         self.assertTrue(result.accepted, result.details)
         snap = store.snapshot()
         self.assertTrue(snap.occupancy_confirmed)
         self.assertEqual(snap.pending_changes, ())
         self.assertEqual(snap.placed_count, 1)
 
-    def test_unanchored_commit_keeps_legacy_pending(self):
+    def test_anchored_commit_writes_measured_pose(self):
+        """确认后使用实测占用: the map writes the MEASURED center (the
+        anchor's verified pose), not the planned slot — the written
+        envelope is the real box location by construction, and the
+        planned-vs-measured delta + declared source ride the ledger."""
+        store = _store()
+        _release_fact(store, box_id="box-A")
+        result = _anchored_add(store, box_id="box-A")
+        self.assertTrue(result.accepted, result.details)
+        center, _size, _yaw, _src, anchor = store.snapshot().ledger[0]
+        self.assertEqual(center, (0.1, 0.1, 0.19))  # measured, not 0.15
+        self.assertEqual(anchor[3], "sim_gt_pose")
+        self.assertAlmostEqual(anchor[1], 0.04, places=6)
+
+    def test_identity_mismatch_does_not_clear(self):
+        """An anchored commit clears only ITS box's fact: a same-location
+        old fact under a different box_id survives (an old evidence must
+        never clear a new event)."""
+        store = _store()
+        _release_fact(store, box_id="box-OLD", op="rel-old")
+        result = _anchored_add(store, box_id="box-NEW", op="a-new")
+        self.assertTrue(result.accepted, result.details)
+        snap = store.snapshot()
+        self.assertFalse(snap.occupancy_confirmed)
+        self.assertIn(("box_released", 1), snap.pending_changes)
+
+    def test_unboxed_commit_does_not_clear_unidentified_fact(self):
+        """Without a shared identity the commit cannot claim the fact:
+        proximity alone never clears (falls back to recording its own
+        box_placed pending)."""
+        store = _store()
+        _release_fact(store, box_id="box-A")
+        result = _anchored_add(store, box_id="", op="a-anon")
+        self.assertTrue(result.accepted, result.details)
+        snap = store.snapshot()
+        self.assertFalse(snap.occupancy_confirmed)
+        self.assertEqual(snap.pending_changes,
+                         (("box_released", 1), ("box_placed", 2)))
+
+    def test_unanchored_commit_keeps_legacy_pending(self):  # noqa: F811
         """Legacy (un-anchored) commits keep box_placed pending; the
         release fact stays too — observation resolves both."""
         store = _store()
@@ -132,11 +186,15 @@ class TestReleaseFailureContract(unittest.TestCase):
         self.assertEqual(store.snapshot().pending_changes,
                          (("box_released", 1),))
 
-    def test_nonmatching_anchor_does_not_clear_foreign_fact(self):
-        """The anchor clears only the footprint it matches."""
+    def test_nonmatching_footprint_does_not_clear(self):
+        """Proximity guard: even with the right identity, a commit whose
+        measured pose is far from the fact's footprint does not clear
+        it (the fact describes a different spot)."""
         store = _store()
-        _release_fact(store, center=(0.1, 0.1, 0.15), op="rel-a")
-        result = _anchored_add(store, center=(0.5, -0.5, 0.15), op="a-b")
+        _release_fact(store, center=(0.1, 0.1, 0.15), op="rel-a",
+                      box_id="box-A")
+        result = _anchored_add(store, center=(0.5, -0.5, 0.15), op="a-b",
+                               box_id="box-A")
         self.assertTrue(result.accepted, result.details)
         snap = store.snapshot()
         self.assertFalse(snap.occupancy_confirmed)
@@ -163,18 +221,21 @@ class TestNoteEventAdapter(unittest.TestCase):
 
     def _node(self, require=True):
         node = SimpleNamespace()
+        node._clock = _Clock()
         node._store = OccupancyMapStore(
             CargoVolumeMapper(inner_size=[1.0, 1.0, 1.0],
                               center_base=[0.0, 0.0, 0.5], yaw=0.0,
                               resolution=0.1),
-            require_confirmation=require, clock_ns=_Clock(), epoch="e1")
-        node._node_clock_ns = lambda: _Clock.now
+            require_confirmation=require, clock_ns=node._clock,
+            epoch="e1")
+        node._node_clock_ns = node._clock
         return node
 
     def _request(self, event="box_released", center=(0.1, 0.1, 0.15),
-                 size=(0.4, 0.4, 0.2), yaw=0.0):
+                 size=(0.4, 0.4, 0.2), yaw=0.0, box_id="box-A"):
         return SimpleNamespace(
             event=event,
+            box_id=box_id,
             box_center_container=list(center),
             box_size_wdh=list(size),
             box_yaw=float(yaw),
@@ -205,8 +266,9 @@ class TestNoteEventAdapter(unittest.TestCase):
                 "e1", node._store.map_revision, ""),
             geometry_hash=node._store.mapper.geometry_hash,
             box=((0.1, 0.1, 0.15), (0.4, 0.4, 0.2), 0.0),
-            measured_source="verify_placed_box",
-            verified_center=(0.1, 0.1, 0.19), verify_tolerance_m=0.10))
+            box_id="box-A", measured_source="verify_placed_box",
+            verified_center=(0.1, 0.1, 0.19), verify_tolerance_m=0.10,
+            verify_source="sim_gt_pose"))
         self.assertTrue(result.accepted)
         self.assertTrue(node._store.snapshot().occupancy_confirmed)
 

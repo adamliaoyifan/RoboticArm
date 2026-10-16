@@ -632,6 +632,12 @@ class CargoVolumeMapper:
                 "request_id": str(verify_anchor.get("request_id") or ""),
                 "delta_m": delta,
                 "tolerance_m": tol,
+                # Declared measurement source ("sim_gt_pose" for the
+                # Gazebo readback; the deploy path declares its real
+                # observation source). Provenance only — never a
+                # substitute for a real observation in deployment.
+                "verify_source": str(verify_anchor.get("verify_source")
+                                     or "undeclared"),
             }
         self._placed_boxes.append(record)
         self._rasterize_placed_box(

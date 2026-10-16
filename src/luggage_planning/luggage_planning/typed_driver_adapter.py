@@ -570,7 +570,8 @@ class TypedDriverAdapter:
     def add_placed_box(self, *, slot, size_wdh, measured_source,
                        expected_map_revision, geometry_hash,
                        verified_center_container=None,
-                       verify_tolerance_m=0.0):
+                       verify_tolerance_m=0.0, box_id="",
+                       verify_source=""):
         from luggage_msgs.srv import AddPlacedBoxV2
         request = AddPlacedBoxV2.Request()
         request.slot_pose = pose_message(slot)
@@ -578,6 +579,10 @@ class TypedDriverAdapter:
         request.measured_source = str(measured_source)
         request.expected_map_revision = int(expected_map_revision)
         request.geometry_hash = str(geometry_hash)
+        # [release-failure contract] Correlation identity (must match the
+        # box_released fact) and the DECLARED verify measurement source.
+        request.box_id = str(box_id or "")
+        request.verify_source = str(verify_source or "")
         # [commit anchor] Optional verify-measured pose; tolerance <= 0
         # leaves the legacy un-anchored commit.
         if verified_center_container is not None:

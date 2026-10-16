@@ -481,6 +481,7 @@ class CargoVolumeMapperNode(Node):
                 event, str(request.source or "external"), self._node_clock_ns()),
             kind=UpdateKind.NOTE_EVENT,
             event=event,
+            box_id=str(getattr(request, "box_id", "") or ""),
             box=((center, size, float(request.box_yaw))
                  if has_box else None)))
         response.status = result.status.value
@@ -757,12 +758,15 @@ class CargoVolumeMapperNode(Node):
                 str(request.expected_content_digest or "")),
             geometry_hash=str(request.geometry_hash or ""),
             box=(list(center), list(size), float(yaw_c)),
+            box_id=str(getattr(request, "box_id", "") or ""),
             measured_source=str(request.measured_source or ""),
             verified_center=(
                 None if float(request.verify_tolerance_m or 0.0) <= 0.0
                 else [float(v) for v in
                       request.verified_center_container]),
-            verify_tolerance_m=float(request.verify_tolerance_m or 0.0)))
+            verify_tolerance_m=float(request.verify_tolerance_m or 0.0),
+            verify_source=str(getattr(request, "verify_source", "")
+                              or "")))
         self._finish_v2(response, result, expect="committed")
         return response
 
