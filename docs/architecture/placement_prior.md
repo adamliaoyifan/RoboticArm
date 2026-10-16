@@ -164,6 +164,9 @@ untried candidate must not be reported as a proven infeasible placement.
 Simulation verification retains its raw expected and observed box poses before
 commit or verification can abort. These post-execution diagnostic observations
 are not prior inputs and cannot authorize placement or alter OCC.
+Failure replay bundles prefer the current trial's latest typed submission when
+its stage matches. A previous stage or truncated trajectory cannot substitute
+for the failed stage, and a stale legacy boundary cannot override typed evidence.
 
 Use T_box_tcp, shared with existing pick/place contracts. Measured suction
 contact orientation is an outward surface normal, not a TCP quaternion. Derive

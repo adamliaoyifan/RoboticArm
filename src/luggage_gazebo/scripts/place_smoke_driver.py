@@ -2098,6 +2098,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         boundary = load_latest_boundary(
             os.environ.get("MOTION_BOUNDARY_DUMP", ""))
         fail = str(getattr(trial, "fail_code", "") or "")
+        from luggage_gazebo.motion_replay_boundary import replay_boundary
+        boundary = replay_boundary(
+            trial.extras.get("submitted_legs", []),
+            getattr(self, "_segment_exec_name", None), boundary)
         detect_stage = fail.startswith("DETECT_")
         if boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
@@ -2108,6 +2112,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             artifacts["last_boundary"] = "replay/last_boundary.json"
             if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
                 missing.append("trajectory")
+            elif (boundary.get("trajectory") or {}).get("truncated"):
+                missing.append("trajectory_truncated")
         elif not detect_stage:
             missing.append("last_boundary")
         scene = self._scene_snapshot()
