@@ -17,6 +17,8 @@ def main():
     parser.add_argument('--output', required=True)
     parser.add_argument('--timeout', type=float, default=60.)
     parser.add_argument('--simulate-cycle', action='store_true', help='Run one non-scored measured pick/place cycle with prior')
+    parser.add_argument('--probe-carry-replacement', action='store_true',
+                        help='Spawn one simulation box and verify both carry-mask replacements; no robot motion')
     parser.add_argument('--cycle-timeout', type=float, default=360.)
     parser.add_argument('--cycle-count', type=int, choices=(1, 2), default=1,
                         help='Measured cycles in the same scene; placed occupancy is retained')
@@ -28,6 +30,8 @@ def main():
                         help='Explicit hypothetical box_wdh and grasps_flat JSON for automatic background preparation')
     parser.add_argument('--cycle-fault', choices=('', 'pre_pick', 'pre_place'), default='')
     args = parser.parse_args()
+    if args.probe_carry_replacement and args.simulate_cycle:
+        parser.error('carry replacement probe and motion cycle are mutually exclusive')
     prefetch_parameters = []
     template_bytes = None
     if args.prefetch_template:
@@ -66,6 +70,7 @@ def main():
     os.environ['ST09_I_CERT_CAPTURE_DIR']=str(out/'cert_boundaries')
     os.environ['ST09_PORTAL_CAPTURE_DIR']=str(out/'portal_boundaries')
     os.environ['ELFIN_SUPPORT_CAPTURE']=str(out/'support_geometry')
+    os.environ['ELFIN_CARRY_REPLACEMENT_TRACE']=str(out/'carry_replacement.jsonl')
     log = (out/'launch.log').open('w')
     launch = subprocess.Popen(['ros2','launch','luggage_gazebo','sim_world.launch.py',*params], stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
     result['launch_pid']=launch.pid
@@ -123,6 +128,31 @@ def main():
                 future = None
         if not result['ok']:
             result['reason'] = 'scene_or_service_readiness_timeout'
+        elif args.probe_carry_replacement:
+            from luggage_msgs.srv import SpawnNextBox
+            from std_srvs.srv import SetBool
+            from luggage_planning.placement_prior_evidence import PriorEvidenceRecorder
+            record = PriorEvidenceRecorder(out/'entity_probe_boundaries')
+
+            def call_probe(service_type, name, request):
+                port = node.create_client(service_type, name)
+                if not port.wait_for_service(timeout_sec=5.):
+                    raise RuntimeError('probe service unavailable: '+name)
+                record(name+':request', request)
+                pending = port.call_async(request)
+                rclpy.spin_until_future_complete(node, pending, timeout_sec=15.)
+                if not pending.done():
+                    raise RuntimeError('probe response timeout: '+name)
+                reply = pending.result()
+                record(name+':response', reply)
+                if not reply.success:
+                    raise RuntimeError('probe refused: '+name+' '+reply.message)
+
+            call_probe(SpawnNextBox, '/pickup_box_spawner/spawn_next_box', SpawnNextBox.Request())
+            for enabled in (True, False):
+                call_probe(SetBool, '/pickup_box_spawner/set_p04_carry_filter', SetBool.Request(data=enabled))
+            result['scope'] = 'unscored simulation entity replacement probe; no robot motion'
+            result['carry_replacement_checks'] = 2
         elif args.simulate_cycle:
             from luggage_description.runtime_identity import scene_revision_from_path
             options=dict(item.split(':=',1) for item in params)

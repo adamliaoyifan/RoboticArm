@@ -167,6 +167,11 @@ are not prior inputs and cannot authorize placement or alter OCC.
 Failure replay bundles prefer the current trial's latest typed submission when
 its stage matches. A previous stage or truncated trajectory cannot substitute
 for the failed stage, and a stale legacy boundary cannot override typed evidence.
+Simulation carry-mask replacement confirms the old entity's disappearance
+before creating its replacement, then confirms the replacement's pose persists
+before reporting attach readiness. Service acknowledgements and cached spawn
+poses do not establish entity presence. This simulation lifecycle check does
+not supply geometry to prior or planning and does not mutate OCC.
 
 Use T_box_tcp, shared with existing pick/place contracts. Measured suction
 contact orientation is an outward surface normal, not a TCP quaternion. Derive

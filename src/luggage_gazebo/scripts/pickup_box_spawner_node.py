@@ -309,7 +309,7 @@ class PickupBoxSpawner(Node):
             return None
         return future.result()
 
-    def _spawn_model(self, model_name, pose, sdf=None, sdf_path=None):
+    def _spawn_model(self, model_name, pose, sdf=None, sdf_path=None, timeout=15.0):
         req = SpawnEntity.Request()
         req.entity_factory.name = model_name
         if sdf is not None:
@@ -317,7 +317,7 @@ class PickupBoxSpawner(Node):
         else:
             req.entity_factory.sdf_filename = sdf_path
         req.entity_factory.pose = pose
-        resp = self._call(self._create_cli, req)
+        resp = self._call(self._create_cli, req, timeout=timeout)
         if resp is None or not resp.success:
             return "create failed for '%s'" % model_name
         return None
@@ -456,7 +456,7 @@ class PickupBoxSpawner(Node):
                 time.sleep(self._replace_settle_sec)
         return last_err
 
-    def _delete_model(self, model_name):
+    def _delete_model(self, model_name, timeout=15.0):
         req = DeleteEntity.Request()
         req.entity.name = model_name
         # Default type is NONE=0; Fortress then looks up "name of type 0"
@@ -464,7 +464,7 @@ class PickupBoxSpawner(Node):
         # ROS service can still return success. The model stays in the
         # world, the next spawn stacks on it, and RTF collapses.
         req.entity.type = Entity.MODEL
-        resp = self._call(self._delete_cli, req)
+        resp = self._call(self._delete_cli, req, timeout=timeout)
         if resp is None or not resp.success:
             return "delete failed for '%s'" % model_name
         return None
@@ -793,13 +793,6 @@ class PickupBoxSpawner(Node):
             response.success = False
             response.message = "no current pickup box"
             return response
-        pose = self._read_model_pose(model, timeout=2.0)
-        if pose is None and self._current_box is not None:
-            pose = self._current_box.pose
-        if pose is None:
-            response.success = False
-            response.message = "no pose for %s" % model
-            return response
         try:
             sdf = self._box_sdf(
                 model, size, self._spawn_mass, self._spawn_visual,
@@ -808,15 +801,34 @@ class PickupBoxSpawner(Node):
             response.success = False
             response.message = str(exc)
             return response
-        err = self._delete_model(model)
-        if err:
+        from luggage_gazebo.entity_replacement import probe_model, replace_entity
+
+        def as_pose(values):
+            pose = Pose()
+            pose.position.x, pose.position.y, pose.position.z = values[:3]
+            pose.orientation = _quaternion_from_rpy(*values[3:])
+            return pose
+
+        report = replace_entity(
+            probe=lambda budget: probe_model(model, budget),
+            # _call may spend its timeout on both discovery and response.
+            delete=lambda budget: self._delete_model(model, timeout=budget / 2),
+            create=lambda values, budget: self._spawn_model(
+                model, as_pose(values), sdf=sdf, timeout=budget / 2),
+            pose_matches=lambda actual, expected: self._pose_mismatch(
+                as_pose(actual), as_pose(expected)) is None,
+            persistence=self._place_persist_sec)
+        report.update(model=model, collide_bitmask=mask)
+        path = os.environ.get("ELFIN_CARRY_REPLACEMENT_TRACE", "")
+        if path:
+            try:
+                with open(path, "a", encoding="utf-8") as handle:
+                    handle.write(json.dumps(report) + "\n")
+            except OSError as exc:
+                self.get_logger().warning("carry replacement capture failed: %s" % exc)
+        if not report['success']:
             response.success = False
-            response.message = err
-            return response
-        err = self._spawn_model(model, pose, sdf=sdf)
-        if err:
-            response.success = False
-            response.message = err
+            response.message = "CARRY_ENTITY_%s" % report['reason']
             return response
         self._carry_bitmask = mask
         response.success = True
