@@ -1212,7 +1212,9 @@ class RouteProducer(object):
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
                 rows.append(self._attempt_summary(ordered_slots, tried_indices))
-                return self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+                failed = self._fail("PLANNING_BUDGET_EXHAUSTED", rows)
+                failed["stage_timings"] = self._stage_timings(started_ns, rows)
+                return failed
             # A deterministic short-hop refusal ends this candidate.
             # While another candidate is waiting, leave one complete
             # route (COMPLETE_ROUTE_RESERVE_S) unspent so that refusal

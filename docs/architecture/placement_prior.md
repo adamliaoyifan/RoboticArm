@@ -158,6 +158,10 @@ uses the actual current scene and authoritative attachment.
 
 ## Grasp and tool boundary
 
+Budget-exhausted Select responses retain stage timing attribution and the
+attempt summary, including untried candidates. A missing terminal response or
+untried candidate must not be reported as a proven infeasible placement.
+
 Use T_box_tcp, shared with existing pick/place contracts. Measured suction
 contact orientation is an outward surface normal, not a TCP quaternion. Derive
 the grasp from the attach target produced by build_candidate_pick_segments.

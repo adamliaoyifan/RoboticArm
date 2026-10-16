@@ -1130,6 +1130,11 @@ class TestPlanPlaceRoute:
         assert result["reason_code"] == "PLANNING_BUDGET_EXHAUSTED"
         assert result["n_tried"] == 0
         assert result["n_untried"] == 2
+        timings = result["stage_timings"]
+        assert timings["total_ms"] >= 0
+        assert timings["budget_ms"] == round(producer.budget_ns / 1e6, 1)
+        assert timings["certify_ms"] == 0
+        assert timings["by_reason_ms"] == {}
 
     def test_revalidation_stop_is_named(self):
         from luggage_planning.map_revalidation import (
