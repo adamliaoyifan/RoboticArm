@@ -296,3 +296,15 @@ with scene_boxes_from_snapshot: that legacy helper uses local XY and a fixed
 0.30 m slab, so merely including its boxes does not establish scene parity.
 Rotated/translated container and measured-height regression must observe the
 actual SceneState delivered to the edge builder in both load modes.
+
+### Measured corridor height
+
+Seed transit height from the measured world columns used by planning and
+certification. Intersect their world AABBs with the swept attached-payload AABB
+from portal to approach; distant columns do not set this corridor's height.
+Use the actual TCP-to-box transform and oriented payload extents to derive
+required TCP Z above the maximum intersecting top with the existing corridor
+margin. Raise portal/approach along the container-up ladder when necessary;
+retain the exact contact target and attachment. This is a conservative proposal,
+not a path certificate; all downstream IK/collision/endpoint gates still apply.
+Record intersecting obstacle ids and required world TCP height in each row.

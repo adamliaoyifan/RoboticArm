@@ -2006,3 +2006,28 @@ def test_graph_edges_receive_world_measured_columns_used_by_certifier():
         assert box.center == pytest.approx((.975, 2.025, 3.31))
         assert box.size_whd == pytest.approx((.15, .15, .42))
         assert box.quaternion_xyzw == pytest.approx((0, 0, math.sqrt(.5), math.sqrt(.5)))
+
+
+def test_measured_corridor_height_raises_transit_not_placement():
+    producer, clock = build_producer()
+    producer.opening_info = {'point': (-.5, -.1, .4), 'normal': (-1., 0., 0.)}
+    request = make_request()
+    request['surface'].update(state=[['occupied', 'free'], ['free', 'free']],
+                              floor_z_container=0.,
+                              height_above_floor=[[.5, 0.], [0., 0.]])
+    register_attach_from_request(producer.attachment_provider, request,
+                                 box_wdh=request['box_wdh'])
+    attachment, reason, _ = admit_attachment_for_route(
+        producer.attachment_provider, request, clock())
+    assert reason is None
+    grasp_before = attachment.t_tcp_box_translation
+    candidate = candidate_from_slot(request['slots'][0], 0)
+    result = producer._prepare_candidate(candidate, attachment, request, START_Q,
+                                         (0., 0., 0., 1.), (.2, -.1, .24))
+    plan = result[2]
+    assert plan.slot == (.2, -.1, .24)
+    assert plan.portal[2] == pytest.approx(.75)
+    assert plan.slot_approach[2] == pytest.approx(.75)
+    assert plan.corridor_height_evidence['top_world_z'] == pytest.approx(.5)
+    assert attachment.t_tcp_box_translation == grasp_before
+    assert result[0].position_container == candidate.position_container

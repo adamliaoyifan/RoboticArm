@@ -439,6 +439,7 @@ class RegionAnchorPlan(object):
     #: stays). Seeded above the portal so the payload clears the
     #: pedestal on the approach and only descends past its footprint.
     staging: "Tuple[float, float, float] | None" = None
+    corridor_height_evidence: "dict | None" = None
 
 
 #: Payload-bottom margin kept above the transit clearance (pedestal top)
@@ -865,6 +866,32 @@ class RouteProducer(object):
             opening=(self.opening_info or {}).get("point"),
             inward_normal=self._inward_normal(),
             transit_clearance_z=self.transit_clearance_z)
+        from luggage_planning.corridor_height import required_corridor_height
+        from luggage_planning.moveit_edge_adapter import occupancy_boxes_from_surface
+        columns = occupancy_boxes_from_surface(
+            request.get("surface") or {}, request["container_transform"])
+        height_evidence = required_corridor_height(
+            plan.portal, plan.slot_approach, orientation, attachment,
+            columns, DEFAULT_CORRIDOR_MARGIN)
+        if height_evidence is not None:
+            up = rotate_vector(request["container_transform"]["quaternion_xyzw"],
+                               (0.0, 0.0, 1.0))
+            # Existing anchor ladder lifts along container Z. Requiring a
+            # positive world-Z component avoids lowering a tilted corridor.
+            rise = height_evidence["required_tcp_world_z"] - plan.slot_approach[2]
+            if rise > 0.0 and up[2] > 1e-6:
+                old_lift = sum((plan.slot_approach[i] - plan.slot[i]) * up[i]
+                               for i in range(3))
+                plan = anchor_plan(
+                    tuple(float(v) for v in tcp_position),
+                    request["container_transform"]["quaternion_xyzw"],
+                    float(request["box_wdh"][2]),
+                    corridor_surface_max=self.corridor_surface_max,
+                    place_clearance_z=old_lift + rise / up[2],
+                    opening=(self.opening_info or {}).get("point"),
+                    inward_normal=self._inward_normal(),
+                    transit_clearance_z=self.transit_clearance_z)
+            plan = dataclasses.replace(plan, corridor_height_evidence=height_evidence)
         candidate = dataclasses.replace(base_candidate, depth_m=plan.depth_m)
 
         graph = self.graph
@@ -1277,6 +1304,7 @@ class RouteProducer(object):
                 [round(v, 3) for v in start_q]))
             row["candidate_id"] = candidate.candidate_id
             row["depth_m"] = candidate.depth_m
+            row["corridor_height"] = plan.corridor_height_evidence
             row["_scope_ids"] = scope_ids
             targets = prior_targets
             planner = None
