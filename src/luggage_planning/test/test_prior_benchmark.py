@@ -15,6 +15,7 @@ def fixture():
         sample = dict(item, **{k: manifest[k] for k in ('revision', 'hardware_id', 'profile', 'installed_hash', 'budgets')})
         sample.update({metric: 1. for metric in METRICS})
         sample.update(dirty=False, input_artifacts={'fixture.cdr': 'fixture-hash'},
+            resource_measurement_complete=True,
             artifacts={'output.cdr': 'fixture-output'}, resource_scope='planner_and_prior_process_trees',
             status='infeasible' if item['case_id'].endswith('-infeasible') else 'success',
             cache_hit=item['arm']=='prior', fallback=False, prior_exhausted=False,
@@ -44,7 +45,8 @@ def test_missing_and_empty_samples_cannot_pass():
 
 @pytest.mark.parametrize('key,value', [('dirty', True), ('installed_hash', 'changed'),
     ('cpu_s', None), ('peak_rss_bytes', float('nan')), ('order', 1),
-    ('resource_scope', 'client_only'), ('input_artifacts', {}), ('safety_violations', None)])
+    ('resource_scope', 'client_only'), ('resource_measurement_complete', False),
+    ('input_artifacts', {}), ('safety_violations', None)])
 def test_incomplete_or_mixed_evidence_is_not_evaluated(key, value):
     manifest, samples = fixture()
     samples[0][key] = value

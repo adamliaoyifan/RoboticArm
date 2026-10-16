@@ -40,6 +40,16 @@ def main():
     samples = [json.loads(line) for line in args.samples.read_text().splitlines() if line.strip()] if args.samples else []
     for sample in samples:
         verify_artifacts(sample.get('artifacts'), root)
+        resource_path = sample.get('resource_report')
+        if resource_path not in sample['artifacts']:
+            raise ValueError('resource report must be a hashed outcome artifact')
+        resource = json.loads((root / resource_path).read_text())
+        if (sample.get('resource_measurement_complete') != resource.get('measurement_complete')
+                or sample.get('resource_scope') != resource.get('resource_scope')):
+            raise ValueError('sample and resource report disagree on scope/completeness')
+        for metric in ('cpu_s', 'prior_cpu_s', 'peak_rss_bytes', 'prior_peak_rss_bytes'):
+            if sample.get(metric) != resource.get(metric):
+                raise ValueError('sample and resource report disagree: ' + metric)
     result = analyze(manifest, samples)
     result['schedule'] = schedule(manifest)
     result['manifest_sha256'] = hashlib.sha256(args.manifest.read_bytes()).hexdigest()

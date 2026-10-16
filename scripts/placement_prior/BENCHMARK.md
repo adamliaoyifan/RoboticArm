@@ -57,6 +57,9 @@ There are 60 rows, not 30 rows. Required fields:
   CPU including descendants; peak RSS covers the sampled aggregate, not merely
   the thin client. State collector sample period and measured limitations in
   outcome artifacts. Prior-specific CPU/RSS are also recorded separately.
+- `resource_report`: path in the hashed outcome artifact map, containing the
+  collector's full JSON output; `resource_measurement_complete` copies its
+  completeness result. The CLI checks sample resource totals against that report.
 
 `full_request_s` is the foreground placement request duration, excluding earlier
 prior preparation; `exposed_s` is the observed post-pick wait. `prior_wall_s`
@@ -81,3 +84,30 @@ warm exposed-time statistics. p95 uses linear interpolation at `0.95*(n-1)`;
 five repetitions are a regression comparison, not a fleet reliability estimate.
 Resource and timing coverage must still be audited against raw artifacts: a
 well-formed report cannot prove the collector measured the intended processes.
+
+## Process-tree collection
+
+`luggage_planning.prior_resources.ResourceWindow` is the read-only collector for
+an explicitly delimited request/preparation window. Supply distinct live planner
+and prior root PIDs after startup; the collector follows descendants and retains
+observed ownership across reparenting. Process identity includes start ticks, so
+PID reuse cannot attribute an unrelated process to the workload. Enter before
+the measured operation and exit before stopping any measured processes.
+
+```python
+with ResourceWindow(planner_roots, prior_roots, interval_s=0.05) as resources:
+    # Run the instrumented planning operation here.
+    pass
+report = resources.result
+```
+
+Persist the complete report, including root identities, sample series, read
+errors and lost-process events. CPU is observed user/system deltas; parent
+children-CPU counters are excluded to avoid double counting. Aggregate RSS peak
+is the maximum contemporaneous sum, not the sum of process lifetime peaks.
+`measurement_complete` requires all observed processes to remain measurable
+through the final sample and no read errors. It does not prove that no very
+short-lived unobserved process existed. This sampling limitation, shared-page
+RSS accounting and the actual interval must accompany performance results.
+Do not silently turn incomplete resource measurements into zero or feed them
+to a passing benchmark report. This collector is not yet a paired native runner.

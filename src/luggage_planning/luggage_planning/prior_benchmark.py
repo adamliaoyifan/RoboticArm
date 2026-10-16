@@ -74,6 +74,8 @@ def analyze(manifest, samples):
             problems.append(dict(sample=key, reason='missing terminal outcome'))
         if not sample.get('artifacts') or sample.get('resource_scope') != 'planner_and_prior_process_trees':
             problems.append(dict(sample=key, reason='missing outcome artifacts or complete resource scope'))
+        if sample.get('resource_measurement_complete') is not True:
+            problems.append(dict(sample=key, reason='incomplete process-tree measurement'))
         for field in METRICS:
             value = sample.get(field)
             if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
