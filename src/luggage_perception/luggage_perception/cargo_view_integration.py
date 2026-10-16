@@ -481,6 +481,32 @@ def footprint_sensor_coverage(surface, aabb_xy):
     return float(hit) / float(total), hit, total
 
 
+def footprint_free_coverage(surface, aabb_xy):
+    """Fraction of AABB columns that are observed FREE (miss raycasts).
+
+    [B2] Occlusion-safe free evidence for confirming a removal: only
+    columns whose state is ``free`` count — unknown (unobserved or
+    occluded) columns do not, so "did not see" never reads as free.
+    """
+    xmin, ymin, xmax, ymax = (float(v) for v in aabb_xy)
+    nx = int(surface.get("nx") or 0)
+    ny = int(surface.get("ny") or 0)
+    state = surface.get("state") or []
+    total = 0
+    free = 0
+    for ix in range(nx):
+        for iy in range(ny):
+            x, y = cell_xy_container(surface, ix, iy)
+            if x < xmin or x > xmax or y < ymin or y > ymax:
+                continue
+            total += 1
+            if state[ix][iy] == "free":
+                free += 1
+    if total == 0:
+        return 0.0, 0, 0
+    return float(free) / float(total), free, total
+
+
 def occupied_sensor_aabb(surface):
     """Axis-aligned XY bounds of sensor-occupied cells, or None."""
     nx = int(surface.get("nx") or 0)

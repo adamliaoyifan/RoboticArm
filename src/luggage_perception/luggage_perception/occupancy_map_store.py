@@ -654,7 +654,7 @@ class OccupancyMapStore(object):
                 return (REASON_NO_MATCHING_BOX,
                         "no committed box matches the removal")
             details["removed"] = True
-            self._adopt_after_removal()
+            self._adopt_after_removal(update.box)
         elif update.kind is UpdateKind.INTEGRATE_VIEW:
             outcome = apply_integrate(self._mapper, update.points,
                                       update.origin)
@@ -672,11 +672,17 @@ class OccupancyMapStore(object):
             cleared = self._pending.settle(
                 token_at_start, update.acquisition_stamp_ns,
                 outcome.get("observed_points"), bool(update.settled))
+            # [B2] Removals confirm by positive free evidence: every
+            # footprint column observed free (miss raycasts) by THIS
+            # integration. Occluded columns keep the record pending.
+            freed = self._pending.settle_observed_free(
+                self._mapper.surface_map_2d())
             details.update({
                 "n_finite": outcome.get("n_finite"),
                 "n_kept": outcome.get("n_kept"),
                 "latency_sec": outcome.get("latency_sec"),
                 "cleared_tokens": list(cleared or ()),
+                "cleared_free_tokens": list(freed or ()),
             })
         elif update.kind is UpdateKind.RESET:
             self._mapper.reset()
@@ -814,9 +820,12 @@ class OccupancyMapStore(object):
                 or previous_source != MAP_RELEASE_INTEGRATED:
             self._last_acquisition_ns = int(stamp)
 
-    def _adopt_after_removal(self):
+    def _adopt_after_removal(self, footprint=None):
         placed = len(self._mapper.commit_ledger())
-        self._pending.record("box_removed", self._clock_ns())
+        # [B2] The removed footprint rides on the record: a later settled
+        # view whose miss raycasts sweep the whole footprint confirms the
+        # removal (settle_observed_free); occlusion keeps it pending.
+        self._pending.record("box_removed", self._clock_ns(), footprint)
         if placed > 0:
             self._map_source = MAP_RELEASE_INTEGRATED
             return

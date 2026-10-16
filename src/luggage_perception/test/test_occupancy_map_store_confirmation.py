@@ -83,6 +83,31 @@ def _remove(store, op="rel-1", stale_identity=None):
         box=_BOX))
 
 
+def _free_sweep(store, reps=4):
+    """Coaxial through-rays per footprint column: origin directly above
+    each column, endpoint below the grid — every voxel on the ray takes a
+    miss. Returns True once the removal confirmed."""
+    cleared = False
+    seq = _SEQ
+    for _rep in range(reps):
+        for x in (-0.15, -0.05, 0.05, 0.15):
+            for y in (-0.15, -0.05, 0.05, 0.15):
+                n = next(seq)
+                result = store.apply_update(MapUpdate(
+                    operation_id="free-%d" % n,
+                    kind=UpdateKind.INTEGRATE_VIEW,
+                    geometry_hash=store.mapper.geometry_hash,
+                    settled=True, schema_version=1,
+                    points=[[x, y, -0.2]], origin=(x, y, 1.4),
+                    stamp_key=(n, 0),
+                    acquisition_stamp_ns=n * 10 ** 18))
+                if result.details.get("cleared_free_tokens"):
+                    cleared = True
+        if cleared:
+            return True
+    return cleared
+
+
 class TestConfirmationMachine(unittest.TestCase):
 
     def test_unconfirmed_until_valid_observation(self):
@@ -121,24 +146,39 @@ class TestConfirmationMachine(unittest.TestCase):
         self.assertFalse(snap.occupancy_confirmed)
         self.assertEqual(snap.change_event, "box_disturbed")
 
-    def test_removal_stays_pending_fail_closed(self):
-        """No observation rule for removal yet: a removed box's region
-        must be re-observed before the map claims confirmed again —
-        first version fails closed (stays pending)."""
+    def test_removal_recovers_via_observed_free(self):
+        """[B2] 正常释放: a removal confirms only when a later settled
+        view observes the whole footprint FREE (miss raycasts through
+        every column). The pre-removal observation's hit residue needs a
+        few sweeps to erode — occlusion-free positive evidence."""
         store = _store()
         _add(store)
         _observe(store, _UPPER, op="i1")
-        r = _remove(store)  # matching premise, box exists
+        self.assertTrue(store.snapshot().occupancy_confirmed)
+        r = _remove(store)
         self.assertTrue(r.accepted)
         snap = store.snapshot()
         self.assertFalse(snap.occupancy_confirmed)
         self.assertEqual(snap.placed_count, 0)
-        # Even a covering observation of the region cannot confirm a
-        # removal in this version (no observed-free rule).
-        r2 = _observe(store, _UPPER, op="i2",
-                      stamp_ns=3_000_000_000_000000000)
-        self.assertTrue(r2.accepted)
+        cleared = _free_sweep(store, reps=4)
+        self.assertTrue(cleared)
+        snap = store.snapshot()
+        self.assertTrue(snap.occupancy_confirmed)
+        self.assertEqual(snap.pending_changes, ())
+
+    def test_occluded_removal_stays_pending(self):
+        """A view that looks elsewhere does not confirm a removal —
+        'did not see' is not free-space evidence."""
+        store = _store()
+        _add(store)
+        _observe(store, _UPPER, op="i1")
+        _remove(store)
+        r = _observe(store, _ELSEWHERE, op="i2",
+                     stamp_ns=3_000_000_000_000000000)
+        self.assertTrue(r.accepted)
         self.assertFalse(store.snapshot().occupancy_confirmed)
+        self.assertEqual(store.snapshot().pending_changes,
+                         (("box_removed", 2),))
 
     def test_disturbance_stays_pending_fail_closed_b1(self):
         """B1 semantics: disturbance has no observation rule yet (an

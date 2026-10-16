@@ -123,6 +123,50 @@ class PendingConfirmation(object):
             }
         return cleared
 
+    def settle_observed_free(self, surface):
+        """Clear removal records whose footprint a fresh view observed FREE.
+
+        [B2] Positive free evidence only: every footprint column must be
+        state ``free`` in the post-integration grid (a miss raycast
+        through the region). Occluded or unknown columns keep the record
+        pending — "did not see" is not free-space evidence. Returns the
+        cleared tokens.
+        """
+        from luggage_perception.cargo_view_integration import (
+            footprint_free_coverage,
+            rotated_rect_aabb,
+        )
+        cleared = []
+        evidence = {}
+        with self._lock:
+            for change in list(self._changes):
+                if change["event"] != "box_removed":
+                    continue
+                footprint = change["footprint"]
+                if footprint is None:
+                    continue
+                center, size, yaw = footprint
+                aabb = rotated_rect_aabb(
+                    (center[0], center[1]),
+                    float(size[0]), float(size[1]), float(yaw))
+                fraction, free_count, total = footprint_free_coverage(
+                    surface, aabb)
+                evidence[change["token"]] = {
+                    "free_columns": free_count,
+                    "total_columns": total,
+                }
+                if total > 0 and free_count == total:
+                    self._changes.remove(change)
+                    cleared.append(change["token"])
+            if cleared or evidence:
+                record = dict(self._last_settle)
+                record["observed_free"] = {
+                    "evidence": evidence,
+                    "cleared": list(cleared),
+                }
+                self._last_settle = record
+        return cleared
+
     def clear(self):
         with self._lock:
             self._changes = []
