@@ -2934,6 +2934,74 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         off = entry.get("lid_offset")
         return float(off) if off else None
 
+    def _release_kinematic(self, model, slot_meta):
+        """[planning-verification mode, user directive 2026-10-19]
+
+        Keep the carried body as a STATIC obstacle at the DECLARED
+        release end-state: no delete, no dynamic respawn, no free fall,
+        no ejection — the contact-solver artifacts of the dynamic track
+        are out of scope here by declaration. ONE declared transition:
+        set_pose to the slot's support-rest pose; presence re-read via
+        the fresh-only pose stream ("the released box must not vanish").
+
+        Proves: planning + state-chain feasibility (placement legality,
+        full-route legality incl. payload, multi-box state via the
+        committed ACTUAL pose). Does NOT prove contact-safety, suction
+        reliability, or landing accuracy — those stay on the separate
+        dynamic track. The support/end-state conditions are still
+        checked: the declared pose must match the slot's support rest
+        and the world must confirm it (<=5 mm).
+        """
+        pose_world = (slot_meta or {}).get("pose_world") or {}
+        expected = pose_world.get("position")
+        if not expected or len(expected) < 3:
+            return False, "no declared slot pose", {"mode": "kinematic"}
+        yaw = float(pose_world.get("yaw") or 0.0)
+        declared = [float(expected[0]), float(expected[1]),
+                    float(expected[2]), 0.0, 0.0, yaw]
+        record = {"mode": "kinematic",
+                  "declared_pose_rpy6": [round(v, 6) for v in declared]}
+        ok, msg = self._set_model_pose_declared(model, declared)
+        record["set_pose"] = msg
+        if not ok:
+            return False, "kinematic set_pose refused: %s" % msg, record
+        pose7, evidence = self._release_pose_stream().read_release_pose(
+            model, self.ros_now_sec())
+        record["presence_evidence"] = evidence
+        if pose7 is None:
+            return False, "kinematic presence refused (%s)" % (
+                evidence.get("reason")), record
+        err = math.dist(declared[:3], pose7[:3])
+        record["declared_vs_world_m"] = round(err, 6)
+        if err > 0.005:
+            return False, "kinematic pose mismatch %.4f m" % err, record
+        record["verdict"] = "declared_state_confirmed"
+        return True, "kinematic", record
+
+    def _set_model_pose_declared(self, model, pose_rpy6):
+        """One declared set_pose via the bridged world service (the same
+        channel the spawner/vacuum follow use). Fail-closed message."""
+        from ros_gz_interfaces.srv import SetEntityPose
+        cli = getattr(self, "_set_pose_cli", None)
+        if cli is None:
+            cli = self.create_client(
+                SetEntityPose, "/world/%s/set_pose" % GZ_WORLD)
+            self._set_pose_cli = cli
+        if not cli.wait_for_service(timeout_sec=5.0):
+            return False, "set_pose service unavailable"
+        request = SetEntityPose.Request()
+        request.entity.name = str(model)
+        x, y, z, roll, pitch, yaw = [float(v) for v in pose_rpy6]
+        qx, qy, qz, qw = rpy_to_quaternion([roll, pitch, yaw])
+        request.pose.position.x, request.pose.position.y = x, y
+        request.pose.position.z = z
+        request.pose.orientation.x, request.pose.orientation.y = qx, qy
+        request.pose.orientation.z, request.pose.orientation.w = qz, qw
+        resp = self.call_srv(cli, request, timeout=10.0)
+        if resp is None or not getattr(resp, "success", False):
+            return False, "set_pose rejected"
+        return True, "ok"
+
     def _release_as_dynamic(self):
         """Replace the static carry body with the same mesh, dynamic, in place.
 
@@ -3321,15 +3389,31 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if not notify_ok:
                 return self._abort(
                     trial, "RELEASE_NOTIFY_FAILED", False, extra=extras)
-            dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
-            trial.extras["dynamic_body"] = dyn_msg
-            trial.extras["box_pose_at_release"] = release_pose
-            trial.extras["release_pose"] = getattr(
-                self, "_release_pose_evidence", None)
-            trial.extras["release_dynamic_timing"] = getattr(
-                self, "_release_dynamic_timing", None)
-            if not dyn_ok:
-                return self._abort(trial, "DYNAMIC_BODY", False, extra=extras)
+            release_mode = str(
+                getattr(self._args, "release_mode", "kinematic")
+                or "kinematic").lower()
+            if release_mode == "kinematic":
+                k_ok, k_msg, k_rec = self._release_kinematic(
+                    str(self._box_model or ""), slot_meta)
+                trial.extras["release_kinematic"] = k_rec
+                trial.extras["box_pose_at_release"] =                     k_rec.get("declared_pose_rpy6")
+                if not k_ok:
+                    return self._abort(
+                        trial, "KINEMATIC_RELEASE(%s)" % k_msg,
+                        False, extra=extras)
+                release_pose = list(
+                    k_rec.get("declared_pose_rpy6") or [])
+            else:
+                dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
+                trial.extras["dynamic_body"] = dyn_msg
+                trial.extras["box_pose_at_release"] = release_pose
+                trial.extras["release_pose"] = getattr(
+                    self, "_release_pose_evidence", None)
+                trial.extras["release_dynamic_timing"] = getattr(
+                    self, "_release_dynamic_timing", None)
+                if not dyn_ok:
+                    return self._abort(
+                        trial, "DYNAMIC_BODY", False, extra=extras)
             # [ST09-I S5.7-6] explicit release-boundary phase
             # transition BEFORE any post-release leg: the certifier
             # side activates the UNLOADED phase only against verified
@@ -3344,10 +3428,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                         phase_reason or "TRANSITION_FAILED"),
                     False, extra=extras)
 
-        if retreat_seg is not None and not self._args.plan_only:
-            # [release dwell] The box falls DURING this dwell; the arm
-            # stays on the certified knot the whole time, so the
-            # retreat_start contract below is unchanged.
+        if (retreat_seg is not None and not self._args.plan_only
+                and str(getattr(self._args, "release_mode", "kinematic")
+                        or "kinematic").lower() != "kinematic"):
+            # [release dwell, dynamic mode only] The box falls DURING
+            # this dwell; the arm stays on the certified knot the whole
+            # time, so the retreat_start contract below is unchanged.
+            # Kinematic mode has no dynamic body to wait for.
             timing = getattr(self, "_release_dynamic_timing", None) or {}
             dwell_anchor = timing.get("t_spawn_done_sim") \
                 or detach_response_stamp
@@ -3777,6 +3864,16 @@ def parse_args(argv):
     parser.add_argument("--on-place-fail", default="stop")
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
+    parser.add_argument(
+        "--release-mode", choices=("kinematic", "dynamic"),
+        default="kinematic",
+        help="[planning-verification 2026-10-19] kinematic: keep the "
+             "carried body as a static obstacle at the DECLARED "
+             "release end-state (no delete, no dynamic respawn, no "
+             "free fall) — proves planning+state-chain feasibility, "
+             "NOT contact physics/suction/landing accuracy. dynamic: "
+             "the full physics release (r5 behavior, future "
+             "contact-validation track).")
     parser.add_argument(
         "--release-dwell-s", type=float, default=2.0,
         help="Hold the certified retreat knot this long after the "

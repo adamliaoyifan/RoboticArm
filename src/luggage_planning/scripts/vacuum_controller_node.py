@@ -598,7 +598,24 @@ class VacuumControllerNode(Node):
                 return
             ok, message = self._backend.follow_step(panel[0], panel[1])
             if not ok:
-                self._last_fail_reason = message
+                # [follow grace, r7 lesson] ONE missed 50 ms set_pose
+                # tick (transport transient under load) was latched as
+                # fail_reason and the carrying gate read it as payload
+                # loss — with attached=true and the box following
+                # normally the whole time. A transport blip is not a
+                # seal loss: only N CONSECUTIVE failures publish a
+                # reason, and a success clears it. Detach/attach-gate
+                # reasons are untouched.
+                self._follow_fail_streak = getattr(
+                    self, "_follow_fail_streak", 0) + 1
+                self._follow_fail_msg = str(message)
+                if self._follow_fail_streak >= 3:
+                    self._last_fail_reason = self._follow_fail_msg
+            else:
+                self._follow_fail_streak = 0
+                if getattr(self, "_last_fail_reason", "") == getattr(
+                        self, "_follow_fail_msg", None):
+                    self._last_fail_reason = ""
             self._publish_state()
         finally:
             self._follow_lock.release()
