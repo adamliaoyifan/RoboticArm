@@ -37,10 +37,18 @@ echo "{\"stage\":\"start\",\"n\":$N,\"arm\":\"$ARM\",\"model\":\"$MODEL\",\"ts\"
 # launch process; a plain -f pattern matches monitoring shells whose
 # command line merely CONTAINS the string (aborted run 01 that way).
 if pgrep -x ign >/dev/null 2>&1 || pgrep -x gz >/dev/null 2>&1 \
-    || pgrep -f '^/usr/bin/python3 /opt/ros/humble/bin/ros2 launch luggage_gazebo' >/dev/null 2>&1; then
+    || pgrep -f '^/usr/bin/python3 /opt/ros/humble/bin/ros2 launch luggage_gazebo' >/dev/null 2>&1 \
+    || pgrep -x parameter_bridge >/dev/null 2>&1; then
   echo "sim slot busy; aborting (no re-run without exclusivity)" >&2
   exit 3
 fi
+
+# Clean room: reap THIS experiment's crashed-attempt orphans (ghost
+# parameter bridges publish ghost /clock and answer create requests —
+# they caused 5 straight broadcaster-configure failures). stop_sim.sh
+# only reaps sim processes; bridge PIDs are matched by binary name.
+for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
+sleep 1
 
 set +u
 source /opt/ros/humble/setup.bash
