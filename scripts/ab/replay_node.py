@@ -193,6 +193,7 @@ def main():
                         for _ in iter(lambda: not node.done, True)],
         daemon=True)
     node.done = False
+    spin.start()  # service discovery needs a spinning node
     if not node.wait_services():
         node.report["error"] = "services unavailable"
         node.done = True
