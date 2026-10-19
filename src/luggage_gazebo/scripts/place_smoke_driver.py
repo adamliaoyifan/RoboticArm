@@ -16,6 +16,7 @@ import argparse
 import json
 import math
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -544,6 +545,265 @@ def _yaw_quat(yaw):
     return q
 
 
+class ReleasePoseStream:
+    """[r7 release-boundary fix] Continuous pose/info subscription cache.
+
+    The release boundary used to read the box pose via one-shot
+    `ign model -m <name> --pose` CLI calls — the read failed with no
+    diagnostic twice (r4 box0, r6 box1: "no release pose" 4x fast
+    empty). This class keeps a daemon thread reading
+    `ign topic -e -t /world/<w>/pose/info` and caches the LATEST pose
+    per model with (sim stamp ns, wall receive s).
+
+    Freshness contract (r7 frozen thresholds): sim age <= 100 ms,
+    wall-receive age <= 500 ms; a FUTURE stamp or a stamp older than
+    the epoch floor (first stamp the cache ever observed, minus
+    tolerance) is a previous-instance / time-jump-back message and is
+    REJECTED — never served. A missing or stale sample refuses the
+    release by name; there is no fallback read and no reuse of
+    pre-delete samples after the swap (the frozen pose is the value
+    read BEFORE the static delete).
+    """
+
+    SIM_AGE_MAX_S = 0.100
+    WALL_AGE_MAX_S = 0.500
+    EPOCH_TOL_S = 0.250
+
+    def __init__(self, world=GZ_WORLD, ign_bin=None):
+        self._world = str(world)
+        self._ign = ign_bin or _ign_model_bin()
+        self._lock = threading.Lock()
+        self._latest = {}        # name -> (stamp_ns, pose6, recv_wall)
+        self._epoch_floor_ns = None
+        self._proc = None
+        self._thread = None
+        self._stop = threading.Event()
+        self._pending = None
+        self._pending_sec = 0
+        self._pending_nsec = 0
+        self.errors = []
+
+    # -- lifecycle ------------------------------------------------------
+    def start(self):
+        if self._thread is not None:
+            return self
+        topic = "/world/%s/pose/info" % self._world
+        self._proc = subprocess.Popen(
+            [self._ign, "topic", "-e", "-t", topic],
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            text=True, errors="replace")
+        self._thread = threading.Thread(
+            target=self._read_loop, daemon=True,
+            name="release_pose_stream")
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        if self._proc is not None:
+            try:
+                self._proc.terminate()
+            except OSError:
+                pass
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+
+    def _read_loop(self):
+        try:
+            for line in self._proc.stdout:
+                if self._stop.is_set():
+                    break
+                self._ingest_line(line)
+        except (OSError, ValueError) as exc:  # keep the cache; record why
+            self.errors.append(repr(exc))
+
+    # -- parsing --------------------------------------------------------
+    def _ingest_line(self, line):
+        s = line.strip()
+        if s.startswith("sec:") or s.startswith("nsec:"):
+            try:
+                if s.startswith("sec:"):
+                    self._pending_sec = int(s.split(":", 1)[1])
+                else:
+                    self._pending_nsec = int(s.split(":", 1)[1])
+            except ValueError:
+                pass
+            return
+        if s == "pose {":
+            self._pending = {"name": None, "vals": [], "depth": 1}
+            return
+        if (s.startswith("name:")
+                and self._pending is not None):
+            self._pending["name"] = (
+                s.split('"')[1] if '"' in s else None)
+            return
+        m = re.match(r"^[xyzw]:\s*(-?\d+\.?\d*(?:e-?\d+)?)$", s)
+        if m and self._pending is not None:
+            self._pending["vals"].append(float(m.group(1)))
+            return
+        if s.endswith("{") and self._pending is not None:
+            self._pending["depth"] += 1
+            return
+        if s == "}" and self._pending is not None:
+            self._pending["depth"] -= 1
+            if self._pending["depth"] > 0:
+                return          # closes position/orientation, not the pose
+            pending, self._pending = self._pending, None
+            name = pending["name"]
+            vals = pending["vals"]
+            if name and len(vals) == 7:
+                stamp = (self._pending_sec * 1_000_000_000
+                         + self._pending_nsec)
+                with self._lock:
+                    if (self._epoch_floor_ns is None
+                            or stamp < self._epoch_floor_ns):
+                        self._epoch_floor_ns = (
+                            stamp - int(self.EPOCH_TOL_S * 1e9))
+                    self._latest[name] = (
+                        stamp, list(vals), time.monotonic())
+
+    # -- reads ----------------------------------------------------------
+    def latest(self, model):
+        with self._lock:
+            return self._latest.get(str(model))
+
+    def read_release_pose(self, model, now_sim_s,
+                          timeout_s=2.0, wall_now=None):
+        """(pose6|None, record). Refuses stale/missing/future/old-epoch
+        samples by name; never falls back."""
+        wall = wall_now or time.monotonic
+        deadline = time.monotonic() + float(timeout_s)
+        reason = None
+        while True:
+            with self._lock:
+                entry = self._latest.get(str(model))
+                floor = self._epoch_floor_ns
+            record = {"model": str(model), "epoch_floor_ns": floor}
+            if entry is None:
+                reason = "no_message"
+            else:
+                stamp_ns, pose6, recv_wall = entry
+                now_ns = int(float(now_sim_s) * 1e9)
+                sim_age_s = (now_ns - stamp_ns) / 1e9
+                wall_age_s = wall() - recv_wall
+                record.update({
+                    "stamp_ns": stamp_ns,
+                    "sim_age_ms": round(sim_age_s * 1e3, 1),
+                    "wall_age_ms": round(wall_age_s * 1e3, 1),
+                })
+                if sim_age_s < -self.EPOCH_TOL_S:
+                    reason = "future_stamp"
+                elif floor is not None and stamp_ns < floor:
+                    reason = "old_epoch_stamp"
+                elif sim_age_s > self.SIM_AGE_MAX_S:
+                    reason = "stale_sim_age"
+                elif wall_age_s > self.WALL_AGE_MAX_S:
+                    reason = "stale_wall_age"
+                else:
+                    record["verdict"] = "fresh"
+                    return list(pose6), record
+            if time.monotonic() >= deadline:
+                record["verdict"] = "refused"
+                record["reason"] = reason or "no_message"
+                return None, record
+            time.sleep(0.02)
+
+
+def parse_pose_stream_sample(text, model):
+    """One-shot parse of a `--num N` pose stream capture: [(stamp_ns,
+    pose6)] for `model`, in capture order. Offline testable."""
+    out = []
+    stamp = 0
+    name = None
+    vals = []
+    for raw in str(text).splitlines():
+        s = raw.strip()
+        m = re.match(r"^sec:\s*(\d+)$", s)
+        if m:
+            stamp = int(m.group(1)) * 1_000_000_000
+            continue
+        m = re.match(r"^nsec:\s*(\d+)$", s)
+        if m:
+            stamp += int(m.group(1))
+            continue
+        if s == "pose {":
+            name, vals, depth = None, [], 1
+            continue
+        if s.startswith("name:") and name is None:
+            name = s.split('"')[1] if '"' in s else None
+            continue
+        m = re.match(r"^[xyzw]:\s*(-?\d+\.?\d*(?:e-?\d+)?)$", s)
+        if m and name is not None:
+            vals.append(float(m.group(1)))
+            continue
+        if s.endswith("{") and name is not None:
+            depth += 1
+            continue
+        if s == "}" and name is not None:
+            depth -= 1
+            if depth > 0:
+                continue
+            if name == str(model) and len(vals) == 7:
+                out.append((stamp, list(vals)))
+            name, vals = None, []
+    return out
+
+
+def _quat7_to_rpy6(pose7):
+    """[x,y,z,qx,qy,qz,qw] -> [x,y,z,roll,pitch,yaw] (ZYX, clamped)."""
+    x, y, z, qx, qy, qz, qw = [float(v) for v in pose7]
+    sinr_cosp = 2.0 * (qw * qx + qy * qz)
+    cosr_cosp = 1.0 - 2.0 * (qx * qx + qy * qy)
+    roll = math.atan2(sinr_cosp, cosr_cosp)
+    sinp = 2.0 * (qw * qy - qz * qx)
+    pitch = math.copysign(math.pi / 2.0, 1.0) if abs(sinp) >= 1.0 \
+        else math.asin(sinp)
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return [x, y, z, roll, pitch, yaw]
+
+
+def _quat_angle_deg(qa, qb):
+    """Geodesic angle between two xyzw quaternions, degrees."""
+    dot = abs(sum(float(a) * float(b)
+                  for a, b in zip(qa, qb)))
+    return math.degrees(2.0 * math.acos(min(1.0, max(-1.0, dot))))
+
+
+def _first_dynamic_state(model, timeout_s=3.0, world=GZ_WORLD):
+    """First two dynamic_pose/info samples of `model` after the swap.
+
+    Returns a record with the first pose (spawn-consistency evidence:
+    compare vs the spawn request in the verdict), the finite-difference
+    first-step velocity (the stream carries no twist fields), or a
+    named gap. Evidence-only: it never gates the motion itself.
+    """
+    try:
+        proc = subprocess.run(
+            [_ign_model_bin(), "topic", "-e", "-t",
+             "/world/%s/dynamic_pose/info" % world, "--num", "60"],
+            capture_output=True, text=True, timeout=timeout_s)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": False, "reason": str(exc)}
+    samples = parse_pose_stream_sample(proc.stdout or "", model)
+    if len(samples) < 2:
+        return {"available": False, "reason": "insufficient_samples",
+                "n": len(samples)}
+    (t0, p0), (t1, p1) = samples[0], samples[1]
+    dt = (t1 - t0) / 1e9
+    if dt <= 0:
+        return {"available": False, "reason": "non_monotone_stamps"}
+    vel = [(b - a) / dt for a, b in zip(p0[:3], p1[:3])]
+    return {
+        "available": True, "t_sim_ns": [t0, t1],
+        "pose6": [round(v, 6) for v in p0],
+        "dt_s": round(dt, 4),
+        "first_step_velocity_mps": [round(v, 5) for v in vel],
+        "velocity_method": "finite_difference(pose_stream)",
+    }
+
+
 def _parse_synthetic_size(text):
     parts = [p.strip() for p in str(text or "").split(",") if p.strip()]
     if len(parts) != 3:
@@ -994,6 +1254,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         }
         self._tf_trace.append(sample)
         return sample
+
+    def _release_pose_stream(self):
+        """Lazily started pose/info cache (driver-lifetime: the epoch
+        floor is set at first message, well before any release)."""
+        stream = getattr(self, "_pose_stream", None)
+        if stream is None:
+            stream = ReleasePoseStream().start()
+            self._pose_stream = stream
+        return stream
 
     def _gz_box_pose(self, model=None):
         model = str(model or self._box_model or "") or self.gt_model_name()
@@ -2681,7 +2950,21 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         # [G3 wave3] single source: the tier manifest's registered
         # primitive_collision_size (falls back to the command size).
         size = list(self._placed_primitive_size(visual, size) or size)
-        release = self._gz_box_pose()
+        # [r7] Release pose from the continuous pose/info cache —
+        # fresh-only, instance- and epoch-matched, NO CLI fallback. The
+        # pose is FROZEN here, before the static delete; a refusal is a
+        # named stop that keeps the entity and the pending obstacle
+        # (vacuum is already off; nothing is deleted below this point).
+        release, pose_evidence = self._release_pose_stream(
+            ).read_release_pose(model, self.ros_now_sec())
+        self._release_pose_evidence = pose_evidence
+        if release is None:
+            return False, "release pose refused (%s)" % (
+                pose_evidence.get("reason")), None
+        # The cache speaks quaternion; the release path's frozen record
+        # keeps the historical rpy6 shape (spawn + verify read it).
+        release = _quat7_to_rpy6(release)
+        pose_evidence["pose_rpy6"] = [round(v, 6) for v in release]
         if len(size) != 3 or not visual or mass is None or not model:
             return False, "missing physics identity", release
         try:
@@ -2705,7 +2988,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         except (TypeError, ValueError) as exc:
             return False, str(exc), release
         if release is None or len(release) < 6:
-            return False, "no release pose", release
+            return False, "release pose refused (malformed)", release
         # [release observation] Sim-clock timing of the static->dynamic
         # swap, for the synchronized release-window capture (the pose
         # stream and these stamps share the simulation clock).
@@ -2737,6 +3020,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             self.ros_now_sec())
         self._release_dynamic_timing["spawn_pose_world"] = [
             float(v) for v in release[:3]]
+        # [r7 evidence] First physical state of the dynamic body vs the
+        # spawn request (<=1 mm / <=0.5 deg is a verdict gate, not a
+        # motion gate) + finite-difference first-step velocity.
+        first = _first_dynamic_state(model)
+        if first.get("available"):
+            dx = math.dist(release[:3], first["pose6"][:3])
+            first["spawn_request_rpy6"] = [round(v, 6) for v in release]
+            first["position_delta_m"] = round(dx, 6)
+            first["rotation_delta_deg"] = round(_quat_angle_deg(
+                rpy_to_quaternion(release[3:6]),
+                first["pose6"][3:7]), 4)
+        self._release_dynamic_timing["first_dynamic_state"] = first
         return True, "dynamic", release
 
     def _release_dwell(self, dwell_s, anchor_stamp):
@@ -3029,6 +3324,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             dyn_ok, dyn_msg, release_pose = self._release_as_dynamic()
             trial.extras["dynamic_body"] = dyn_msg
             trial.extras["box_pose_at_release"] = release_pose
+            trial.extras["release_pose"] = getattr(
+                self, "_release_pose_evidence", None)
             trial.extras["release_dynamic_timing"] = getattr(
                 self, "_release_dynamic_timing", None)
             if not dyn_ok:

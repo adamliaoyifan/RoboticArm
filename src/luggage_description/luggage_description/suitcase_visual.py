@@ -700,19 +700,27 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     )
     topic = str(contact_topic or "").strip()
     if topic:
-        # Observation sensor on the existing collision. It does not add a
-        # collision and does not change friction. gz Contact publishes only
-        # when this collision has contacts, so an empty log is not itself
-        # proof that nothing touched.
+        # Observation sensor on the existing collisions. It does not add
+        # collisions and does not change friction. The contact-recess
+        # composition lists ALL five bodies (r7 evidence: every collision
+        # must be attributable); the single-collision kinds keep one
+        # entry. gz Contact publishes only when a listed collision has
+        # contacts, so an empty log is not itself proof that nothing
+        # touched.
+        sensor_names = (
+            ["body_collision", "rim_collision_px", "rim_collision_nx",
+             "rim_collision_py", "rim_collision_ny"]
+            if collision == "box_recess" else ["body_collision"])
         sensor = (
             "      <sensor name=\"box_contact\" type=\"contact\">\n"
             "        <always_on>1</always_on>\n"
             "        <update_rate>50</update_rate>\n"
             "        <contact>\n"
-            "          <collision>body_collision</collision>\n"
-            "          <topic>%s</topic>\n"
-            "        </contact>\n"
-            "      </sensor>\n" % topic)
+            + "".join("          <collision>%s</collision>\n" % n
+                      for n in sensor_names)
+            + "          <topic>%s</topic>\n"
+              "        </contact>\n"
+              "      </sensor>\n" % topic)
         xml = xml.replace(
             "    </link>\n  </model>", sensor + "    </link>\n  </model>", 1)
     return xml

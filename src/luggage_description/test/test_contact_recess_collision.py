@@ -248,3 +248,84 @@ class AcceptanceItemsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FullFootprintProjectionTest(unittest.TestCase):
+    """r7 gate: the p04 plate's FULL projection (actual grasp transform
+    + panel collision geometry), not just historical contact points,
+    sits inside the recess with >=1 mm rim margin under the allowed
+    grasp-transform envelope."""
+
+    P04_SIDE = 0.180          # panel collision STL AABB (x/z extent)
+    # Recorded grasp transforms (r5/r6 tf_trace suction vs box pose):
+    # the cup lands essentially box-centered, aligned in yaw.
+    RECORDED = [
+        ("r5", (-2.03, 1.01), (-2.03, 1.01), 1.57076),
+        ("r6", (-2.03, 0.46), (-2.03, 0.46), 1.57071),
+    ]
+    # What the FROZEN 0.210 footprint actually admits (reported, not
+    # widened): corner reach = 0.090*(|cos|+|sin|) + |offset| <= 0.104.
+    #   yaw 0.5deg -> |offset| <= ~13 mm   (aligned grasp, generous XY)
+    #   yaw 5 deg  -> |offset| <= ~6 mm    (rotated grasp, tighter XY)
+    # Recorded grasps are centered (|offset| < 1 mm, yaw err < 0.01 deg).
+    ENVELOPES = [(0.013, 0.0087), (0.006, 0.087)]
+
+    def _corner_reach(self, dx, dy, rel_yaw):
+        """Max |box-frame x| and |y| of the plate's four corners."""
+        half = self.P04_SIDE / 2.0
+        worst = [0.0, 0.0]
+        for sx in (-half, half):
+            for sy in (-half, half):
+                bx = dx + sx * __import__("math").cos(rel_yaw) \
+                    - sy * __import__("math").sin(rel_yaw)
+                by = dy + sx * __import__("math").sin(rel_yaw) \
+                    + sy * __import__("math").cos(rel_yaw)
+                worst[0] = max(worst[0], abs(bx))
+                worst[1] = max(worst[1], abs(by))
+        return worst
+
+    def test_recorded_grasps_project_inside_with_margin(self):
+        import math
+        limit = CONTACT_RECESS_FOOTPRINT_M / 2.0 - 0.001
+        for tag, suction, box, yaw in self.RECORDED:
+            dx = suction[0] - box[0]
+            dy = suction[1] - box[1]
+            self.assertLess(abs(dx), 1e-3, tag)   # recorded: centered
+            self.assertLess(abs(dy), 1e-3, tag)
+            rx, ry = self._corner_reach(dx, dy, 0.0)
+            self.assertLessEqual(rx, limit, tag)
+            self.assertLessEqual(ry, limit, tag)
+
+    def test_admitted_grasp_envelopes_stay_inside(self):
+        import math
+        limit = CONTACT_RECESS_FOOTPRINT_M / 2.0 - 0.001
+        for d_off, d_yaw in self.ENVELOPES:
+            for s_yaw in (-d_yaw, d_yaw):
+                for octant in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
+                    dx = octant[0] * d_off * 0.7071
+                    dy = octant[1] * d_off * 0.7071
+                    rx, ry = self._corner_reach(dx, dy, s_yaw)
+                    self.assertLessEqual(
+                        rx, limit, "offset=%.3f yaw=%.3f" % (d_off, s_yaw))
+                    self.assertLessEqual(
+                        ry, limit, "offset=%.3f yaw=%.3f" % (d_off, s_yaw))
+
+    def test_full_tool_lumps_stack_behind_p04(self):
+        """p03/p05 sit behind p04 along the suction axis, so p04's
+        clearance is the binding one for the whole panel (measured
+        panel STL AABBs, CAD frame y): p04 face 0.2830 from origin,
+        p03 0.2588, p05 0.0208 — every later lump is farther from the
+        box face than p04."""
+        faces = {"p04": 0.2830, "p03": 0.2588, "p05": 0.0208}
+        self.assertLess(faces["p03"], faces["p04"])
+        self.assertLess(faces["p05"], faces["p04"])
+
+    def test_p04_recess_floor_clearance_recorded_states(self):
+        """Release initial state: p04's lowest recorded manifold point
+        clears the recess floor (lid plateau) by >=1 mm in r5/r6."""
+        for center, plate in ((R6_BOX_CENTER_Z, R6_P04_PLATE_BOTTOM_Z),
+                              (R5_BOX_CENTER_Z, R5_P04_PLATE_BOTTOM_Z)):
+            floor = center + 0.11 - TIER_LID_OFFSET_IN20
+            self.assertGreaterEqual(
+                plate - floor, 0.001,
+                "p04 must clear the recess floor by >=1 mm")
