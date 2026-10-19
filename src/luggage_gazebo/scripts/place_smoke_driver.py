@@ -2700,6 +2700,34 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             float(v) for v in release[:3]]
         return True, "dynamic", release
 
+    def _release_dwell(self, dwell_s, anchor_stamp):
+        """[release dwell, user directive 2026-10-19] Hold the retreat
+        knot while the released box falls clear of the panel.
+
+        r5 evidence: the retreat began 0.39 s after vacuum-off while the
+        box still sat at the release height (top ~= panel underside at
+        zero vacuum-grasp clearance); the first, lateral stroke swept
+        the box top for 20 ms. Sim-clock dwell from the anchor (swap
+        completion if known, else the detach response); the box pose at
+        dwell end is recorded as separation evidence. Never aborts —
+        an unreadable pose is recorded and the caller's existing
+        contracts decide the rest.
+        """
+        record = {"dwell_s": float(dwell_s),
+                  "anchor_sim": float(anchor_stamp or 0.0)}
+        if float(dwell_s) <= 0.0:
+            record["skipped"] = True
+            return record
+        deadline = float(anchor_stamp or 0.0) + float(dwell_s)
+        while True:
+            now = float(self.ros_now_sec())
+            if now >= deadline:
+                break
+            time.sleep(min(0.05, max(deadline - now, 1e-3)))
+        record["t_end_sim"] = float(self.ros_now_sec())
+        record["box_pose_at_dwell_end"] = self._gz_box_pose()
+        return record
+
     def _poses_after_settle(self):
         """Return ``(residual_start, residual_end, verdict)``.
 
@@ -2979,6 +3007,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     trial, "ADMISSION_PHASE_%s" % (
                         phase_reason or "TRANSITION_FAILED"),
                     False, extra=extras)
+
+        if retreat_seg is not None and not self._args.plan_only:
+            # [release dwell] The box falls DURING this dwell; the arm
+            # stays on the certified knot the whole time, so the
+            # retreat_start contract below is unchanged.
+            timing = getattr(self, "_release_dynamic_timing", None) or {}
+            dwell_anchor = timing.get("t_spawn_done_sim") \
+                or detach_response_stamp
+            dwell = self._release_dwell(
+                getattr(self._args, "release_dwell_s", 2.0), dwell_anchor)
+            trial.extras["release_dwell"] = dwell
+            extras["release_dwell.json"] = dwell
 
         if retreat_seg is not None and not self._args.plan_only:
             # The certified retreat knot is descend's final waypoint. Submit
@@ -3401,6 +3441,13 @@ def parse_args(argv):
     parser.add_argument("--on-place-fail", default="stop")
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
+    parser.add_argument(
+        "--release-dwell-s", type=float, default=2.0,
+        help="Hold the certified retreat knot this long after the "
+             "dynamic swap so the box falls clear of the panel before "
+             "the retreat's first stroke (gate3_aprime_r5: 20 ms panel "
+             "graze at 102.84-102.86 s, verify margin eroded to "
+             "3.5 mm). 0 disables the dwell.")
     parser.add_argument("--scene-tf-config", default="")
     parser.add_argument(
         "--synthetic-size", default="",
