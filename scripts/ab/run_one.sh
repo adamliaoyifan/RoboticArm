@@ -93,6 +93,7 @@ capture() { ( exec setsid "$IGN_BIN" topic -e -t "$1" > "$2" 2>/dev/null & echo 
     scene_tf_config:="$SCENE" \
     atlas_runtime_config:="$WS/src/luggage_planning/config/atlas_runtime_deploy_update.yaml" \
     robot_poses_config:="$WS/src/luggage_description/config/robot_poses.baseline_update.yaml" \
+    frame_runtime:=true frame_driver_peer:=pack_eval_driver \
     > "$OUT/launch.log" 2>&1 &
 )
 sleep 2
