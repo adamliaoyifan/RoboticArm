@@ -38,9 +38,14 @@
 A′/B 在落地后一个采样内即低于阈值（残余 0.013 mm）。
 
 五次中止均为启动段基础设施故障（控制器/gz_ros2_control 未起，replay
-从未受理——static_spawn=None，零实验数据）。记录全部保留（分类器亦拒绝
-删除；正确）。是否以续编号 run 10-14 补齐 round 2/3 缺口由用户裁定；
-round-1 数据已具判定力（下）。
+从未受理——static_spawn=None，零实验数据）。**根因已由 2026-10-19 预检
+定位**：launch INT 后节点子进程被 systemd --user 收养成孤儿（累计 107
+个、最老 4 天），作为活 DDS 参与者持有 /dev/shm/fastrtps_port* 锁；新
+boot 的参与者 open_and_lock_file 失败→控制器起不来。boot 纪律 v2
+（run_one.sh）已加孤儿清扫＋SHM 清锁；非计分预检三跑后 PASS（25,063
+接触行、伙伴=airport_container_real、teardown 零残留）。记录全部保留
+（分类器亦拒绝删除；正确）。是否以续编号 run 10-14 补齐 round 2/3 缺口
+由用户裁定；round-1 数据已具判定力（下）。
 
 ## 按预登记判据的判定
 

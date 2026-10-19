@@ -28,3 +28,10 @@ run 1-4 的 per-run 资产哈希见各 `ab_run_NN/asset_record.json`；冻结输
 见 `AB_RUN_ORDER_BATCH2_SKELETON.json`。触发条件：接触桥非计分预检
 通过（`preflight_contact_bridge.sh`）＋用户一次性确定额度与顺序。
 **批 2 不与批 1 数据合并**（分批判定，不拼"三轮"）。
+
+**预检状态（2026-10-19）**：三跑后 **PASS**（preflight_contact_162308：
+25,063 接触行、伙伴 airport_container_real、teardown 零残留；spawn ack
+正常）。链条缺陷两枚已修并入库（Contact 消息形状错、回调抛异常杀整个
+记录器）；五次 infra-abort 的机制根因（孤儿参与者＋/dev/shm fastrtps
+锁）已由 boot 纪律 v2 关闭。批 2 剩余前置仅：用户一次性冻结额度与
+顺序。
