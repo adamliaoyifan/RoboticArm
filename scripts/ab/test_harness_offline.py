@@ -100,12 +100,50 @@ class TestMetricComputation(unittest.TestCase):
         self.assertFalse(m["valid"])
         self.assertEqual(m["reason"], "no_dynamic_samples")
 
-    def test_stop_time_detection(self):
-        pts = _ramp(t_end=44.9, dt=0.2, speed=0.001, t_stop=16.0)
+    def test_stop_time_anchored_at_landing(self):
+        # [stop-metric fix] Fall (vz high) for 0.3 s, then land (vz~0)
+        # and slide laterally for 4 s, then stop: stop_time must be the
+        # LANDING-anchored time, and the spawn-phase zero velocity must
+        # NOT qualify.
+        pts = []
+        t = 0.0
+        x = 0.0
+        z = 0.69
+        landed = False
+        sliding_until = None
+        while t <= 44.9:
+            pts.append((t, x, 0.0, z))
+            if not landed:
+                z -= 0.05 * 0.2          # falling at 0.05 m/s
+                if z <= 0.639:
+                    landed = True
+                    sliding_until = t + 4.0
+            elif t < (sliding_until or 0):
+                x += 0.001 * 0.2          # 1 mm/s lateral slide
+            t += 0.2
         m = compute_metrics(_samples(pts), [], "box", 0.0)
         self.assertTrue(m["valid"], m)
         self.assertIsNotNone(m["stop_time_s"])
-        self.assertGreaterEqual(m["stop_time_s"], 16.0)
+        self.assertGreaterEqual(m["stop_time_s"], (sliding_until or 0))
+        self.assertEqual(m["verdict_scope"],
+                         "displacement_metric_evaluable/"
+                         "contact_contract_not_evaluated")
+        self.assertIn("height_stability", m["stop_method"] or "")
+
+    def test_reslide_after_stop_not_stopped(self):
+        pts = _ramp(t_end=44.9, dt=0.2, speed=0.0)
+        # land, stay still 5 s, then move again until the end
+        out = []
+        for t, x, y, z in pts:
+            if t >= 10.0:
+                x = 0.002 * (t - 10.0)
+            out.append((t, x, y, z))
+        m = compute_metrics(_samples(out), [], "box", 0.0)
+        self.assertTrue(m["valid"], m)
+        self.assertIsNone(m["stop_time_s"])
+        self.assertEqual(m.get("stop_note"),
+                         "lateral motion still above threshold at "
+                         "capture end after landing")
 
     def test_contact_partner_filtering(self):
         contacts = [(1_000_000_000, ["pickup_box_0001_inch20::a",

@@ -33,17 +33,22 @@ mkdir -p "$OUT/dumps"
 echo "{\"stage\":\"start\",\"n\":$N,\"arm\":\"$ARM\",\"model\":\"$MODEL\",\"ts\":\"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
 
 # ---- Clean room, then sim exclusivity. ----
-# Clean room FIRST: reap THIS experiment's crashed-attempt orphans
-# (ghost parameter bridges publish ghost /clock and answer create
-# requests — they caused 5 straight broadcaster-configure failures).
-# Sim binaries (ign/gz) are NOT reaped here: those belong to whoever
-# runs them; the gate below still refuses on any live sim.
+# [boot discipline 2026-10-19, user directive] EVERY new sim boot must
+# first kill the previous sim: repeated boot/kill cycles leaked
+# zombie sims/bridges (ghost /clock publishers, FastRTPS SHM port
+# exhaustion — the 5 round-2/3 infra-aborts). stop_sim.sh reaps the
+# full luggage_gazebo stack (INT→TERM→KILL, leftover sweep); then
+# parameter_bridge stragglers; then we VERIFY emptiness. If anything
+# sim-like survives the sweep, abort — a live foreign experiment is
+# not ours to kill, and exclusivity stays a precondition.
+bash "$WS/scripts/stop_sim.sh" --all >> "$OUT/bootsweep.log" 2>&1 || true
 for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
 sleep 1
 if pgrep -x ign >/dev/null 2>&1 || pgrep -x gz >/dev/null 2>&1 \
     || pgrep -f '^/usr/bin/python3 /opt/ros/humble/bin/ros2 launch luggage_gazebo' >/dev/null 2>&1 \
     || pgrep -x parameter_bridge >/dev/null 2>&1; then
-  echo "sim slot busy; aborting (no re-run without exclusivity)" >&2
+  echo "sim slot still busy AFTER sweep; aborting (no re-run without exclusivity)" >&2
+  pgrep -a -x ign gz 2>/dev/null | head -5 >&2 || true
   exit 3
 fi
 # Match real binaries only: -x on binary names (ign/gz) plus the
@@ -220,6 +225,6 @@ kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
 sleep 3
 RESIDUAL=$(pgrep -f "gz sim.*$WORLD" | wc -l)
 echo "{\"stage\":\"teardown\",\"residual_gz\":$RESIDUAL,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
-wc -c "$OUT/dyn_pose_stream.txt" "$OUT/contact_stream.txt" \
+wc -c "$OUT/dyn_pose_stream.txt" "$OUT/box_contacts.jsonl" \
   "$OUT/tool_stream.jsonl" || true
 echo "RUN $N ($ARM) COMPLETE -> $OUT"

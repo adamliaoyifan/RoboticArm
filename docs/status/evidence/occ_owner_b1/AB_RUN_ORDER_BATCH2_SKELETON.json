@@ -1,0 +1,17 @@
+{
+  "_comment": "BATCH 2 SKELETON — NOT AUTHORIZED FOR EXECUTION. Quota and order are fixed in ONE pass by the user after the contact-bridge preflight passes; no mid-batch fixes (frozen contract). Batch 1 (runs 1-9, ab_run_01..09) is retained as-is; batch-2 data is NEVER merged with batch-1 into a combined 'three rounds' verdict.",
+  "batch": 2,
+  "status": "skeleton_pending_user_freeze",
+  "preconditions": [
+    "preflight_contact_bridge.sh passes (box_contacts.jsonl non-empty from a live sim boot + dynamic box spawn; recorder subscription verified)",
+    "run_one.sh boot discipline v2 verified in that preflight (pre-boot sweep of previous sim via stop_sim.sh --all)",
+    "quota and run order frozen in this file by the user in one pass"
+  ],
+  "open_questions_for_user": [
+    "quota: continue numbering at run 10 (how many runs? which arms/rounds?)",
+    "whether to include any single-defect arm (not in batch-1 contract; would be a NEW frozen baseline decision)",
+    "whether A0 reproduction needs more samples or batch-1's 2/2 stands"
+  ],
+  "frozen_input": "SEE AB_RUN_ORDER.json (batch 1) — identical frozen input bundle is the default assumption unless the user re-freezes",
+  "runs": []
+}

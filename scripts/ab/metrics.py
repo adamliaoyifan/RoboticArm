@@ -29,6 +29,9 @@ CONTACT_PARTNER_MIN_COUNT = 5
 #: frame cannot stand in for 38 s).
 MIN_SPAN_S = 44.0
 MAX_GAP_S = 0.5
+#: [splice guard] A forward stamp gap larger than this is not a
+#: delivery artifact — it is a suspected cross-instance/epoch splice.
+MAX_SPLICE_FORWARD_GAP_S = 5.0
 
 
 def normalize_delivery_reorder(samples):
@@ -38,10 +41,23 @@ def normalize_delivery_reorder(samples):
     reproduced on tmpfs — transport artifact, not simulation time
     travel). Sorting by stamp is lossless for complete messages; the
     guard bounds it to the known artifact signature so any REAL
-    non-monotone (sim anomaly) still trips the validity gate."""
+    non-monotone (sim anomaly) still trips the validity gate.
+
+    [splice guard 2026-10-19] Stamp sorting alone cannot rule out a
+    stream stitched from TWO sim instances/epochs: two later-instance
+    messages with earlier stamps interleave "cleanly" under sort. So
+    beyond the backward-jump bounds, a FORWARD gap larger than any
+    delivery artifact (MAX_SPLICE_FORWARD_GAP_S) marks the stream as
+    a suspected splice and leaves it UNSORTED — the validity gate
+    then rejects it instead of silently merging the instances."""
     ts = [s[0] for s in samples]
     bad = [i for i in range(1, len(ts)) if ts[i] <= ts[i - 1]]
     if not bad:
+        fgap = [ts[i] - ts[i - 1] for i in range(1, len(ts))]
+        if fgap and max(fgap) > MAX_SPLICE_FORWARD_GAP_S * 1e9:
+            return samples, {"violations": 0, "sorted": False,
+                            "guard": "suspected cross-instance splice "
+                                     "(forward gap)"}
         return samples, {"violations": 0, "sorted": False}
     jumps = [ts[i - 1] - ts[i] for i in bad]
     frac = len(bad) / max(len(ts) - 1, 1)
@@ -106,14 +122,60 @@ def compute_metrics(samples, contacts, model, t_spawn_s):
         primary = rows[-1]["xy_offset_m"]
 
     stop_time = None
+    stop_method = None
+    stop_note = None
+    # [stop-metric fix 2026-10-19] The box spawns at ZERO velocity: a
+    # lateral-velocity-only rule matches the spawn/fall phase, not a
+    # landing. Anchor the search at a reliable LANDING EVENT — here the
+    # first time height becomes stable (|dz| below Z_STABLE_MPS for
+    # >=1 s after having fallen) — then require the lateral speed to
+    # stay under threshold from there to the END of the capture (no
+    # re-exceeding). Without contact data this is a HEIGHT-STABILITY
+    # ESTIMATE; the method is labeled in every report.
+    Z_STABLE_MPS = 0.002
+    landing_t = None
+    z_stable_since = None
     for i in range(1, len(rows)):
-        if "v_xy_mps" in rows[i] and rows[i]["v_xy_mps"] < STOP_V_MPS:
-            window = [r for r in rows
-                      if 0.0 <= r["t_rel_s"] - rows[i]["t_rel_s"] <= 1.0
-                      and "v_xy_mps" in r]
-            if window and all(r["v_xy_mps"] < STOP_V_MPS for r in window):
-                stop_time = rows[i]["t_rel_s"]
+        if "v_xy_mps" not in rows[i]:
+            continue
+        s, s_prev = samples[i], samples[i - 1]
+        dt = (s[0] - s_prev[0]) / 1e9
+        if dt <= 0:
+            continue
+        vz = abs((s[3] - s_prev[3]) / dt)
+        if vz < Z_STABLE_MPS:
+            z_stable_since = (z_stable_since or rows[i]["t_rel_s"])
+            if rows[i]["t_rel_s"] - z_stable_since >= 1.0:
+                landing_t = z_stable_since
                 break
+        else:
+            z_stable_since = None
+    if landing_t is not None:
+        # Stop = the FIRST instant of the final quiescent suffix: the
+        # sample after the LAST post-landing excursion at/above the
+        # threshold, so no later sample ever re-exceeds it (a brief
+        # post-landing slide then rest is a valid stop; motion that
+        # lasts to the capture end is not).
+        post = [(i, r) for i, r in enumerate(rows)
+                if r["t_rel_s"] >= landing_t and "v_xy_mps" in r]
+        if post:
+            above = [i for i, r in post
+                     if r["v_xy_mps"] >= STOP_V_MPS]
+            if above:
+                last_i = above[-1]
+                tail = [r for i, r in post if i > last_i]
+                t_end = rows[-1]["t_rel_s"]
+                if tail and t_end - tail[0]["t_rel_s"] >= 1.0:
+                    stop_time = tail[0]["t_rel_s"]
+                    stop_method = (
+                        "height_stability_estimate(no contact data)")
+                else:
+                    stop_note = ("lateral motion still above threshold "
+                                 "at capture end after landing")
+            else:
+                stop_time = landing_t
+                stop_method = (
+                    "height_stability_estimate(no contact data)")
 
     partners = {}
     for t_ns, bodies in contacts:
@@ -124,6 +186,7 @@ def compute_metrics(samples, contacts, model, t_spawn_s):
             partners[key] = partners.get(key, 0) + 1
     partner_changes = sorted(
         k for k, v in partners.items() if v >= CONTACT_PARTNER_MIN_COUNT)
+    contact_contract_evaluated = bool(contacts)
 
     last = samples[-1]
     return {
@@ -132,13 +195,42 @@ def compute_metrics(samples, contacts, model, t_spawn_s):
         "t_span_s": [rows[0]["t_rel_s"], rows[-1]["t_rel_s"]],
         "primary_xy_offset_at_38sim_m": primary,
         "delivery_reorder": reorder,
-        "max_xy_offset_m": max(r["xy_offset_m"] for r in rows),
         "stop_time_s": stop_time,
+        "stop_method": stop_method,
+        "stop_note": stop_note,
+        "landing_t_s": round(landing_t, 3) if landing_t is not None else None,
+        "contact_contract_evaluated": contact_contract_evaluated,
+        "verdict_scope": (
+            "displacement_metric_evaluable"
+            + ("/contact_contract_evaluated"
+               if contact_contract_evaluated
+               else "/contact_contract_not_evaluated")),
+        "final_xy_displacement_from_spawn_m": [round(last[1] - x0, 5),
+                                               round(last[2] - y0, 5)],
+        "max_xy_offset_m": max(r["xy_offset_m"] for r in rows),
         "final_attitude_quat": list(last[4]) if last[4] else None,
-        "final_xy_m": [round(last[1], 5), round(last[2], 5)],
         "contact_partners": partner_changes,
         "series": rows,
     }
+
+
+def parse_box_contacts_jsonl(path):
+    """[contact-bridge fix] record_box_stream.py JSONL -> the same
+    [(t_ns, [names...])] structure parse_contacts returns, so the
+    corrected metrics consume the NEW recorder's output. The banner
+    line ({"recorder": "start"}) carries no contacts and is skipped."""
+    if not os.path.isfile(path):
+        return []
+    events = []
+    for raw in open(path, encoding="utf-8", errors="replace"):
+        try:
+            d = json.loads(raw)
+        except ValueError:
+            continue
+        if "t_sim_ns" not in d:
+            continue
+        events.append((int(d["t_sim_ns"]), list(d.get("partners", []))))
+    return events
 
 
 def main():
@@ -146,14 +238,22 @@ def main():
     parser.add_argument("--run-dir", required=True)
     parser.add_argument("--model", default="pickup_box_0001_inch20")
     parser.add_argument("--t-spawn-sim", type=float, required=True)
+    parser.add_argument("--out", default=None,
+                        help="output filename inside run-dir "
+                             "(default run_metrics.json; use "
+                             "run_metrics_v2.json to keep the original "
+                             "derivation)")
     args = parser.parse_args()
     dyn = parse_pose_stream(
         os.path.join(args.run_dir, "dyn_pose_stream.txt"), args.model)
-    contacts = parse_contacts(
-        os.path.join(args.run_dir, "contact_stream.txt"))
+    contacts = parse_box_contacts_jsonl(
+        os.path.join(args.run_dir, "box_contacts.jsonl"))
+    if not contacts:
+        contacts = parse_contacts(
+            os.path.join(args.run_dir, "contact_stream.txt"))
     metrics = compute_metrics(dyn, contacts, args.model,
                               args.t_spawn_sim)
-    out = os.path.join(args.run_dir, "run_metrics.json")
+    out = os.path.join(args.run_dir, args.out or "run_metrics.json")
     with open(out, "w") as handle:
         json.dump(metrics, handle, indent=2)
     summary = {k: v for k, v in metrics.items() if k != "series"}
