@@ -96,7 +96,7 @@ class TestMetricComputation(unittest.TestCase):
                                      "airport_container_real::b"])] * 10 \
             + [(2_000_000_000, ["S20::arm"])] * 2
         m = compute_metrics(
-            _samples(_ramp(t_end=5.0, dt=0.2, speed=0.0)),
+            _samples(_ramp(t_end=44.9, dt=0.2, speed=0.0)),
             contacts, "pickup_box_0001_inch20", 0.0)
         self.assertIn("airport_container_real", m["contact_partners"])
         self.assertNotIn("S20", m["contact_partners"])
