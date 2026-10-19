@@ -63,6 +63,8 @@ def main():
                     "partners": [n for n in names if model not in n],
                     "positions": [[p.x, p.y, p.z]
                                   for p in contact.positions],
+                    "depths": [round(float(d), 6)
+                               for d in contact.depths],
                 }) + "\n")
             contact_h.flush()
         except Exception as exc:  # noqa: BLE001 - keep recording

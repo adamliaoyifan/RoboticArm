@@ -167,15 +167,13 @@ def compute_metrics(samples, contacts, model, t_spawn_s):
                 t_end = rows[-1]["t_rel_s"]
                 if tail and t_end - tail[0]["t_rel_s"] >= 1.0:
                     stop_time = tail[0]["t_rel_s"]
-                    stop_method = (
-                        "height_stability_estimate(no contact data)")
+                    stop_method = "height_stability_estimate"
                 else:
                     stop_note = ("lateral motion still above threshold "
                                  "at capture end after landing")
             else:
                 stop_time = landing_t
-                stop_method = (
-                    "height_stability_estimate(no contact data)")
+                stop_method = "height_stability_estimate"
 
     partners = {}
     for t_ns, bodies in contacts:
