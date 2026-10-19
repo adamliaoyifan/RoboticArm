@@ -413,6 +413,10 @@ class MotionPlannerNode(Node):
         key = (tuple(round(float(v), 4) for v in wdh),
                self._reachability_scene_hash, self._scene_tf_hash, urdf_hash)
         if key not in self._atlas_cache:
+            # box_size is the payload wdh (key[0]); the whole cache key is
+            # not a size list. Passing it made resolve_atlas_files float()
+            # the size tuple and every seed query die as no_seeds
+            # (2026-10-12 yaw180 run, three identical traverse failures).
             self._atlas_cache[key] = load_runtime_atlas(
                 self._atlas_cfg, box_size=list(key[0]),
                 scene_tf_hash=self._scene_tf_hash,
