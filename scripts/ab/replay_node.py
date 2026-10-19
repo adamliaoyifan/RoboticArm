@@ -66,7 +66,7 @@ class ReplayNode(Node):
         self.delete_cli = self.create_client(
             DeleteEntity, "/world/%s/remove" % spec["world"])
         self.traj_cli = ActionClient(
-            self, FollowJointTrajectory, "/elfin_arm_controller/follow_trajectory")
+            self, FollowJointTrajectory, "/elfin_arm_controller/follow_joint_trajectory")
         self.echo_pub = self.create_publisher(
             JointState, "/obs/replay_joints", 10)
         self.joint_sub = self.create_subscription(
