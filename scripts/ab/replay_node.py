@@ -173,15 +173,24 @@ class ReplayNode(Node):
         traj = JointTrajectory()
         traj.joint_names = JOINTS
         t_live0 = self.now_sim()
+        last_dt = -1.0
         for t_rec, q in rows:
+            dt = max(t_rec - t0_recorded, 0.0)
+            # The controller rejects non-monotonic time_from_start:
+            # recorded samples can repeat a stamp (or the downsampler
+            # keep duplicates) — drop them instead of sending them.
+            if dt <= last_dt:
+                continue
+            last_dt = dt
             point = JointTrajectoryPoint()
             point.positions = [float(v) for v in q]
-            dt = t_rec - t0_recorded
-            if dt < 0.0:
-                dt = 0.0
             point.time_from_start.sec = int(dt)
             point.time_from_start.nanosec = int(
-                (dt - int(dt)) * 1e9)
+                round((dt - int(dt)) * 1e9))
+            # Explicit loose tolerances: the goal is a REPLAY, the
+            # acceptance gate is the validity/deriation bookkeeping,
+            # not the controller's default start-tolerance rejection.
+            point.positions_tolerance = [0.05] * len(JOINTS)
             traj.points.append(point)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = traj
