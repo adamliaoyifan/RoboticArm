@@ -151,7 +151,8 @@ spec = {
     "window_s": 45.0,
     "out_json": out + "/replay_report.json",
 }
-json.dump(spec, open(sys.argv[2] + "/replay_spec.json", "w"), indent=2)
+# The shell redirect writes stdout to replay_spec.json; writing the
+    # file from inside too interleaves two JSON documents (run-01 crash).
 print(json.dumps(spec))
 PY
 
