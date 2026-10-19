@@ -174,6 +174,8 @@ manifest = {
     "goto_timeout_s": 60,
     "plan_timeout_s": 180,
     "container_model": __import__("os").environ.get("G3_CONTAINER_MODEL", ""),
+    "placement_prior": __import__("os").environ.get(
+        "G3_PLACEMENT_PRIOR", "false"),
     "container_model_dir_sha256": (
         sha("$WS/install/luggage_gazebo/share/luggage_gazebo/models/"
             + __import__("os").environ.get("G3_CONTAINER_MODEL", ""))
@@ -200,6 +202,7 @@ echo "{\"stage\":\"launch_begin\",\"ts\":\"$(date -Is)\"}" > "$OUT/lifecycle.jso
     semantic_clip_vendor_dir:="$VENDOR" \
     semantic_pydeps_dir:="$PYDEPS" \
     scene_tf_config:="$SCENE" \
+    start_placement_prior:="${G3_PLACEMENT_PRIOR:-false}" \
     atlas_runtime_config:="$ATLAS" \
     robot_poses_config:="$POSES" \
     > "$OUT/launch.log" 2>&1 &)
@@ -363,6 +366,7 @@ timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.
   --auth-max-attempts 8 \
   --auth-max-elapsed-sec 8 \
   --stop-on-first-failure \
+  ${G3_PLACEMENT_PRIOR:+--placement-prior} \
   --scene-tf-config "$SCENE" \
   --out "$OUT" > "$OUT/driver.log" 2>&1
 driver_rc=$?

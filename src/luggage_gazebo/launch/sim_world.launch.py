@@ -86,6 +86,12 @@ def _default_launch_values():
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
+        # [placement-prior opt-in 2026-10-19] Read-only prior sidecar
+        # (place_prior + grasp/tool local check nodes). OFF = the
+        # original flow with zero prior processes; the pack driver's
+        # --placement-prior must be set to the SAME value for an actual
+        # adoption path.
+        "start_placement_prior": "false",
         # Reachability-atlas runtime wiring (placement gate + motion IK
         # seeds). Empty = the nodes pick the atlas whose stored scene hash
         # matches scene_tf_config. atlas_runtime_config overrides that.
@@ -647,6 +653,68 @@ def _frame_runtime_params(cfg, scene_tf_config, initial_joint_args):
     }
 
 
+def _placement_prior_actions(cfg, frame_scene_revision):
+    """The read-only prior sidecar, explicitly opt-in.
+
+    Same node set and parameters as placement_prior.launch.py; the
+    frame revision comes from the running frame runtime so the prior
+    joins the same scene identity Compute/Select use. OFF by default:
+    no prior processes exist unless start_placement_prior:=true.
+    """
+    if not _bool_text(cfg["start_placement_prior"]):
+        return []
+    import yaml as _yaml
+    from ament_index_python.packages import (
+        get_package_share_directory as _share)
+    from luggage_description.scene_tf_config_utils import (
+        load_scene_tf_config as _load_scene, origin_in_world as _origin)
+    from luggage_description.scene_tf_publisher import (
+        rpy_to_quaternion as _rpy_q)
+    from luggage_description.xacro_robot_with_scene_base import (
+        expand_and_patch as _expand)
+    scene_path = str(cfg["scene_tf_config"])
+    if not frame_scene_revision:
+        raise RuntimeError(
+            "start_placement_prior requires frame_runtime:=true (the "
+            "sidecar joins the running scene identity)")
+    share = _share("luggage_description")
+    xml, _ = _expand(
+        os.path.join(share, "urdf", "elfin_s20_with_camera.urdf.xacro"),
+        config_path=scene_path, xacro_args=[])
+    with open(os.path.join(share, "config", "S20_with_camera.srdf")) as fh:
+        semantic = fh.read().replace(
+            'name="elfin_s20_with_camera"', 'name="S20"', 1)
+    with open(os.path.join(_share("elfin_moveit_config"),
+                           "config", "kinematics.yaml")) as fh:
+        kinematics = _yaml.safe_load(fh)
+    translation, rpy = _origin(_load_scene(scene_path))
+    model = {"robot_description": xml,
+             "robot_description_semantic": semantic}
+    common = {"use_sim_time": True}
+    return [
+        Node(package="luggage_planning",
+             executable="grasp_local_check_node", name="grasp_local_check",
+             output="screen",
+             parameters=[model, common,
+                         {"robot_description_kinematics": kinematics}]),
+        Node(package="luggage_planning",
+             executable="placement_tool_check_node",
+             name="placement_tool_check", output="screen",
+             parameters=[model, common]),
+        Node(package="luggage_planning",
+             executable="place_prior_node.py", name="place_prior",
+             output="screen",
+             parameters=[model, common, {
+                 "frame_scene_revision": frame_scene_revision,
+                 "evidence_dir": "",
+                 "container_translation": [float(v) for v in translation],
+                 "container_quaternion_xyzw": [
+                     float(v) for v in _rpy_q(rpy)],
+                 "collision_margin_m": 0.05,
+             }]),
+    ]
+
+
 def _launch_setup(context):
     _check_renderer()
     cfg = _resolved_launch_config(context)
@@ -1122,6 +1190,8 @@ def _launch_setup(context):
             scene_tf_config, robot_description,
             frame_scene_revision=frame_params.get("frame_scene_revision",
                                                   "")),
+        *_placement_prior_actions(
+            cfg, frame_params.get("frame_scene_revision", "")),
         *_spawn_scene_and_robot(
             scene_tf_config, initial_joint_args,
             watchdog_sec=float(cfg["startup_watchdog_sec"]),

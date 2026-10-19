@@ -1314,9 +1314,88 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
         Pack-eval computes the place slot from this detection. Spawn GT
         must not become ComputePlacement input.
+
+        [placement-prior opt-in] With --placement-prior the measured
+        prior is prepared and bound HERE — strictly BEFORE the grasp —
+        and narrows the measured suction candidates to the chosen one.
+        The typed prior hint only REORDERS Select candidates (Select,
+        admission and route certification are unchanged); the actual
+        attachment after the grasp is the measured attach record, and
+        nothing re-chooses the grasp after it. Any failure is a NAMED
+        fallback to the original flow (adopted=false + reason); a
+        stale/old prior is never used.
         """
-        del pick_msg, trial, spawn
+        if not bool(getattr(self._args, "placement_prior", False)):
+            return ""
+        record = self._apply_placement_prior(pick_msg)
+        if record:
+            trial.extras.setdefault("placement_prior", record)
         return ""
+
+    def _placement_prior_client(self):
+        client = getattr(self, "_placement_prior_client_obj", None)
+        if client is None:
+            from luggage_planning.placement_prior_client import (
+                PlacementPriorClient)
+            client = PlacementPriorClient(
+                self, group=getattr(self, "_group", None))
+            self._placement_prior_client_obj = client
+        return client
+
+    def _apply_placement_prior(self, pick_msg):
+        """One measured prior attempt; returns the evidence record."""
+        started = time.monotonic()
+        self._typed.set_placement_prior(None)   # cycle start: no stale hint
+        record = {"adopted": False}
+        try:
+            client = self._placement_prior_client()
+            response = client.prepare(
+                pick_msg, self._frame_request_id("prior"))
+            if response is None:
+                record["reason"] = "PRIOR_UNAVAILABLE_OR_STALE_SURFACE"
+                self._typed.set_placement_prior(None)  # uniform reset
+                return record
+            from luggage_planning.placement_prior_requests import (
+                measured_detection_view)
+            _bound, choice = client.bind(
+                response, measured_detection_view(pick_msg),
+                self._frame_scene_revision)
+            selected = [candidate for candidate
+                        in pick_msg.suction_candidates
+                        if candidate.candidate_id == choice.candidate_id]
+            if len(selected) != 1:
+                raise ValueError(
+                    "selected measured suction candidate is not unique")
+            # Retain the original measured contact and rank; only narrow
+            # the candidate list consumed by the existing pick builder.
+            pick_msg.suction_candidates = selected
+            self._typed.set_placement_prior(response)
+            surface = getattr(client, "_surface", None)
+            record.update({
+                "adopted": True,
+                "slot_id": choice.slot_id,
+                "candidate_id": choice.candidate_id,
+                "prior_elapsed_s": getattr(response, "elapsed_s", None),
+                "cache_hit": bool(getattr(response, "cache_hit", False)),
+                "driver_hook_s": round(time.monotonic() - started, 4),
+                "snapshot_identity": {
+                    "map_revision": getattr(surface, "map_revision", None),
+                    "geometry_hash": getattr(surface, "geometry_hash", ""),
+                    "epoch": getattr(surface, "epoch", ""),
+                    "content_digest": getattr(
+                        surface, "content_digest", ""),
+                    "scene_revision": getattr(
+                        getattr(surface, "identity", None),
+                        "scene_revision", "")},
+                "grasp_candidate": {
+                    "candidate_id": choice.candidate_id,
+                    "observation_id": getattr(
+                        selected[0], "observation_id", "")},
+            })
+        except Exception as exc:  # noqa: BLE001 - named fallback only
+            record["reason"] = "%s:%s" % (type(exc).__name__, exc)[:200]
+            self._typed.set_placement_prior(None)
+        return record
 
     def _place_slot_for(self, pick_msg, box_msg, trial):
         """Place slot from measured detection, never from GetCurrentBox."""
@@ -3984,6 +4063,15 @@ def parse_args(argv):
     parser.add_argument("--on-place-fail", default="stop")
     parser.add_argument("--release-gap", type=float, default=0.0)
     parser.add_argument("--drift-wait", type=float, default=1.0)
+    parser.add_argument(
+        "--placement-prior", action="store_true",
+        help="[opt-in 2026-10-19] Measured placement-prior adoption "
+             "(read-only sidecar; launch start_placement_prior:=true "
+             "must match). OFF = the original flow with ZERO prior "
+             "calls. The prior only reorders Select candidates and "
+             "narrows the measured suction candidate BEFORE the grasp; "
+             "full route certification is unchanged; failures fall "
+             "back by name (never a stale prior).")
     parser.add_argument(
         "--release-mode", choices=("kinematic", "dynamic"),
         default="kinematic",
