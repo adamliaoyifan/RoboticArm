@@ -45,6 +45,28 @@ stack_pids() {
     | grep -v -e 'run.sh' -e 'pgrep -af' -e 'builtin eval' || true
 }
 
+# ---- Boot discipline v2 (2026-10-19): kill the PREVIOUS sim before a
+# new boot. Launch INT leaves node children orphaned to systemd --user;
+# they accumulate as live DDS participants holding /dev/shm/fastrtps
+# port locks, and new boots then fail open_and_lock_file (the five
+# infra-aborts of the AB batch). With no ros2 launch alive every
+# participant IS an orphan: TERM->KILL, then clear stale SHM locks.
+if [[ "${G3_NO_SWEEP:-0}" != "1" ]]; then
+  bash "$WS/scripts/stop_sim.sh" --all >> "$OUT/bootsweep.log" 2>&1 || true
+  if ! pgrep -f 'ros2 launc[h]' >/dev/null 2>&1; then
+    pkill -TERM -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+    pkill -TERM -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+    sleep 4
+    pkill -KILL -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+    pkill -KILL -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+    N_SHM=$(ls /dev/shm 2>/dev/null | grep -c '^fastrtps' || true)
+    if [[ "${N_SHM:-0}" -gt 0 ]]; then
+      rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null || true
+      echo "{\"stage\":\"shm_sweep\",\"stale_files\":$N_SHM,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+    fi
+  fi
+fi
+
 if [[ -n "$(stack_pids)" || -f "$PIDFILE" ]]; then
   echo "sim slot busy; not launching and not stopping the existing stack" >&2
   stack_pids >&2 || true
@@ -56,6 +78,25 @@ source /opt/ros/humble/setup.bash
 source "$MAIN/install/setup.bash"
 source "$WS/install/setup.bash"
 set -u
+
+# ---- Candidate-fix deployment: container collision model override.
+# G3_CONTAINER_MODEL selects the gazebo container model (A-prime for
+# the fix candidate). A derived scene yaml is written into the run dir
+# (the ONLY yaml the launch AND the driver see) so the frozen manifest
+# records exactly what ran; geometry consumers (planner cavity, cargo
+# grid, TF) read the same yaml — single source, no per-arm divergence.
+if [[ -n "${G3_CONTAINER_MODEL:-}" ]]; then
+  SCENE="$OUT/scene_tf_used.yaml"
+  python3 - "$SCENE" << 'PYSCENE'
+import sys, yaml
+cfg = yaml.safe_load(open(
+    "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/"
+    "scene_tf_deploy_update.yaml"))
+cfg.setdefault("gazebo", {})["container_model"] = \
+    __import__("os").environ["G3_CONTAINER_MODEL"]
+yaml.safe_dump(cfg, open(sys.argv[1], "w"), sort_keys=False)
+PYSCENE
+fi
 
 DRIVER="$(readlink -f "$(ros2 pkg prefix luggage_gazebo)/lib/luggage_gazebo/pack_eval_driver.py")"
 case "$DRIVER" in
@@ -105,6 +146,11 @@ manifest = {
     "ros_domain_id": 7,
     "goto_timeout_s": 60,
     "plan_timeout_s": 180,
+    "container_model": __import__("os").environ.get("G3_CONTAINER_MODEL", ""),
+    "container_model_dir_sha256": (
+        sha("$WS/install/luggage_gazebo/share/luggage_gazebo/models/"
+            + __import__("os").environ.get("G3_CONTAINER_MODEL", ""))
+        if __import__("os").environ.get("G3_CONTAINER_MODEL") else ""),
 }
 (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
 print(json.dumps({"head": rev, "dirty_lines": manifest["dirty_lines"], "driver": manifest["driver"]}))
@@ -240,6 +286,19 @@ if [[ "$MODE" == "rehearsal" ]]; then
 fi
 
 echo "{\"stage\":\"driver_begin\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+
+# ---- Contact capture across the driver window (acceptance evidence:
+# box-vs-container/tool manifold, penetration depths). Bridge gz
+# /obs/box_contact (published by the box contact sensor in release.sdf)
+# and record every contact involving a pickup box.
+IGN_BIN="$(command -v ign || command -v gz)"
+IGN_BIN="$IGN_BIN" python3 "$WS/scripts/ab/spawn_contact_bridge.py" &
+BRIDGE_PID=$!
+sleep 2
+python3 "$WS/scripts/ab/record_box_stream.py" \
+  "$OUT/box_contacts.jsonl" pickup_box_ > "$OUT/recorder.log" 2>&1 &
+REC_PID=$!
+
 set +e
 timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.py \
   --frame-runtime --frame-peer pack_eval_driver \
@@ -256,6 +315,9 @@ timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.
   --out "$OUT" > "$OUT/driver.log" 2>&1
 driver_rc=$?
 set -e
+kill -TERM "$REC_PID" "$BRIDGE_PID" 2>/dev/null || true
+sleep 2
+echo "{\"stage\":\"contact_capture_stopped\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 echo "{\"stage\":\"driver_exit\",\"rc\":$driver_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 bash "$WS/scripts/stop_sim.sh" || true
 echo "{\"stage\":\"teardown\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
