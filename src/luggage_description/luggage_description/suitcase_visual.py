@@ -431,7 +431,8 @@ def _box_geometry_xml(size):
 def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
                       models_root=None, scaled_dir=SCALED_MESH_DIR,
                       static=True, contact_topic=None,
-                      collide_bitmask=None, collision_kind="mesh"):
+                      collide_bitmask=None, collision_kind="mesh",
+                      lid_offset=None):
     """SDF for a pickup spawn: thirdparty suitcase mesh only.
 
     References a pre-scaled ``model://`` URI; it does not write a new STL.
@@ -449,9 +450,14 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
     collision STL with a size-matched box primitive: a resting suitcase
     mesh on the container trimesh drives ODE trimesh-trimesh contact
     pathological (RTF ~0.03); a primitive collision carries the same
-    outer extents and physical truth at a fraction of the cost. Carry
-    and pick stay ``"mesh"`` so vacuum contact/retention fidelity is
-    unchanged.
+    outer extents and physical truth at a fraction of the cost.
+
+    ``collision_kind="box_recess"`` (2026-10-19) is the contact-recess
+    approximation used for BOTH the carry and the released body so the
+    static->dynamic swap adds no volume: full AABB minus the crown band
+    above the lid plateau inside the measured cup footprint
+    (CONTACT_RECESS_FOOTPRINT_M). *lid_offset* is the tier constant —
+    callers must NOT measure geometry online for this.
     """
     del models_root, scaled_dir
     kind = str(visual_kind or "mesh").strip().lower()
@@ -461,10 +467,13 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
             "removed: YOLO-World cannot detect them reliably), got %r"
             % (visual_kind,))
     collision = str(collision_kind or "mesh").strip().lower()
-    if collision not in ("mesh", "box"):
+    if collision not in ("mesh", "box", "box_recess"):
         raise ValueError(
-            "collision_kind must be 'mesh' or 'box', got %r"
+            "collision_kind must be 'mesh', 'box' or 'box_recess', got %r"
             % (collision_kind,))
+    if collision == "box_recess" and lid_offset is None:
+        raise ValueError(
+            "collision_kind='box_recess' requires the tier lid_offset")
     tier = size_tier_name(size)
     if tier is None:
         raise ValueError(
@@ -481,14 +490,68 @@ def pickup_visual_sdf(model_name, size, mass_kg, visual_id, visual_kind="mesh",
         contact_topic=contact_topic,
         collide_bitmask=collide_bitmask,
         collision_kind=collision,
+        lid_offset=lid_offset,
     )
+
+
+#: [contact-recess approximation 2026-10-19, user-frozen scope] The
+#: AABB collision of a placed/carry box keeps its bottom, sides, origin,
+#: mass and inertia, but the crown region above the lid plateau is kept
+#: ONLY outside the cup's actual contact footprint: the p04 suction
+#: plate measures 0.180 x 0.180 (panel-local x/z +-0.090, from the
+#: panel collision STLs), so the recess footprint adds 15 mm/side for
+#: grasp-alignment wander (measured contact offsets +-0.075 in r5/r6).
+#: Depth per tier = lid_offset (observable reference, bottom-shared).
+#: Simulation approximation for the current flat-top grasp flow only;
+#: stacking support geometry is NOT validated by this shape.
+CONTACT_RECESS_FOOTPRINT_M = 0.210
+CONTACT_RECESS_SIDE_MARGIN_M = 0.015
+
+
+def contact_recess_boxes(size, lid_offset,
+                         footprint=CONTACT_RECESS_FOOTPRINT_M):
+    """Box list [(name, size_xyz, pose_xyz)] for the recess composition.
+
+    body_collision keeps the sensor-bearing name and the FULL bottom
+    and side extents up to the lid plateau; four rim strips keep the
+    crown band outside the cup footprint. The union equals the AABB
+    minus the recess column (plateau->crown inside the footprint).
+    """
+    length, width, height = [float(v) for v in size]
+    off = float(lid_offset)
+    if not 0.0 < off < height / 2.0:
+        raise ValueError(
+            "lid_offset must be in (0, height/2), got %r" % (lid_offset,))
+    fp = float(footprint)
+    if fp >= min(length, width):
+        raise ValueError(
+            "recess footprint %r must stay inside the box extents %s"
+            % (footprint, list(size)))
+    slab_h = height - off
+    band_h = off
+    z_slab = -off / 2.0
+    z_band = height / 2.0 - band_h / 2.0
+    rim_x = (length - fp) / 2.0
+    rim_y = (width - fp) / 2.0
+    return [
+        ("body_collision", (length, width, slab_h), (0.0, 0.0, z_slab)),
+        ("rim_collision_px", (rim_x, width, band_h),
+         (+(length - rim_x) / 2.0, 0.0, z_band)),
+        ("rim_collision_nx", (rim_x, width, band_h),
+         (-(length - rim_x) / 2.0, 0.0, z_band)),
+        ("rim_collision_py", (fp, rim_y, band_h),
+         (0.0, +(width - rim_y) / 2.0, z_band)),
+        ("rim_collision_ny", (fp, rim_y, band_h),
+         (0.0, -(width - rim_y) / 2.0, z_band)),
+    ]
 
 
 def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
                  mesh_already_scaled=False, visual_kind="mesh",
                  static=False, collision_uri_override=None,
                  use_mesh_material=False, contact_topic=None,
-                 collide_bitmask=None, collision_kind="mesh"):
+                 collide_bitmask=None, collision_kind="mesh",
+                 lid_offset=None):
     """SDF at the link origin.
 
     Default mesh mode shares one STL URI for visual and collision.
@@ -500,6 +563,15 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
     ``collision_kind="box"`` replaces the collision STL with a box
     primitive of the same outer extents (visual mesh unchanged); the
     inertia model is the cuboid either way.
+
+    ``collision_kind="box_recess"`` (2026-10-19) replaces it with the
+    contact-recess composition: full AABB minus the crown band above
+    the lid plateau inside the cup footprint (see
+    CONTACT_RECESS_FOOTPRINT_M). *lid_offset* is REQUIRED for this
+    kind (tier constant; no online measurement). Bottom, sides, model
+    origin, mass and inertia are unchanged; every collision carries
+    the same collide_bitmask; the contact sensor stays on
+    body_collision.
     """
     length, width, height = [float(v) for v in size]
     mass = float(mass_kg)
@@ -512,19 +584,80 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
             "visual_kind must be 'mesh' (primitive-box visuals were "
             "removed), got %r" % (visual_kind,))
     collision = str(collision_kind or "mesh").strip().lower()
-    if collision not in ("mesh", "box"):
+    if collision not in ("mesh", "box", "box_recess"):
         raise ValueError(
-            "collision_kind must be 'mesh' or 'box', got %r"
+            "collision_kind must be 'mesh', 'box' or 'box_recess', got %r"
             % (collision_kind,))
+    if collision == "box_recess" and lid_offset is None:
+        raise ValueError(
+            "collision_kind='box_recess' requires the tier lid_offset "
+            "(bottom-shared observable constant; no online measurement)")
     uri = mesh_uri_override if mesh_uri_override else mesh_uri(visual_id)
     collision_uri = collision_uri_override if collision_uri_override else uri
     mesh_scale = (1.0, 1.0, 1.0) if mesh_already_scaled else (
         length, width, height)
     geometry = _mesh_geometry_xml(uri, mesh_scale)
+
+    def _collision_xml(name, box_size, pose):
+        return (
+            "      <collision name=\"%s\">\n"
+            "        <pose>%.6f %.6f %.6f 0 0 0</pose>\n"
+            "        <geometry>\n"
+            "          <box>\n"
+            "            <size>%.6f %.6f %.6f</size>\n"
+            "          </box>\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                name, pose[0], pose[1], pose[2],
+                box_size[0], box_size[1], box_size[2],
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
+
     if collision == "box":
         collision_geom = _box_geometry_xml((length, width, height))
+        collision_blocks = (
+            "      <collision name=\"body_collision\">\n"
+            "        <geometry>\n"
+            "%s\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                collision_geom,
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
+    elif collision == "box_recess":
+        collision_blocks = "".join(
+            _collision_xml(name, box_size, pose)
+            for name, box_size, pose in contact_recess_boxes(
+                (length, width, height), lid_offset))
     else:
         collision_geom = _mesh_geometry_xml(collision_uri, mesh_scale)
+        collision_blocks = (
+            "      <collision name=\"body_collision\">\n"
+            "        <geometry>\n"
+            "%s\n"
+            "        </geometry>\n"
+            "        <surface>\n"
+            "          <contact><collide_bitmask>%d</collide_bitmask>"
+            "</contact>\n"
+            "          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode>"
+            "</friction>\n"
+            "        </surface>\n"
+            "      </collision>\n" % (
+                collision_geom,
+                BOX_FULL_MASK if collide_bitmask is None
+                else int(collide_bitmask)))
     comment_kind = visual_id
     static_xml = "    <static>true</static>\n" if static else ""
     if use_mesh_material:
@@ -554,16 +687,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
 %s
         </geometry>
 %s      </visual>
-      <collision name="body_collision">
-        <geometry>
-%s
-        </geometry>
-        <surface>
-          <contact><collide_bitmask>%d</collide_bitmask></contact>
-          <friction><ode><mu>0.6</mu><mu2>0.6</mu2></ode></friction>
-        </surface>
-      </collision>
-    </link>
+%s    </link>
   </model>
 </sdf>
 """ % (
@@ -572,8 +696,7 @@ def suitcase_sdf(model_name, size, mass_kg, visual_id, mesh_uri_override=None,
         model_name,
         geometry,
         material_xml,
-        collision_geom,
-        BOX_FULL_MASK if collide_bitmask is None else int(collide_bitmask),
+        collision_blocks,
     )
     topic = str(contact_topic or "").strip()
     if topic:
@@ -775,12 +898,16 @@ def sized_asset_records(models_root):
                 continue
             # measure_size keeps the historical mesh_top_footprint
             # schema (top-band W/D + full height); the GT observable
-            # reference (mesh_observable_reference) is computed live by
-            # the spawner and is NOT stored here.
+            # reference's lid_offset IS stored (2026-10-19): the
+            # contact-recess collision consumes it as a tier constant
+            # so no runtime path re-measures geometry.
             w, d, h = mesh_top_footprint(stl)
+            _ow, _od, lid_off, _fh = mesh_observable_reference(stl)
             records[name] = {
                 "catalog_id": catalog_id,
                 "collision_uri": "model://%s/%s" % (name, MESH_FILE),
+                "contact_recess_footprint": CONTACT_RECESS_FOOTPRINT_M,
+                "lid_offset": round(float(lid_off), 6),
                 "mass_kg": mass_kg,
                 "measure_size": [w, d, h],
                 "primitive_collision_size": [float(v) for v in size],

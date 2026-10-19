@@ -2628,6 +2628,43 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             return None
         return [float(v) for v in primitive]
 
+    def _placed_lid_offset(self, visual, command_size):
+        """Tier lid_offset for the contact-recess collision (manifest
+        constant, same loader as _placed_primitive_size; None makes the
+        SDF builder fail closed rather than measure online)."""
+        try:
+            from luggage_description.suitcase_visual import (
+                sized_model_name,
+                sized_suitcases_manifest_path,
+                size_tier_name,
+            )
+        except ImportError:
+            return None
+        tier = size_tier_name(command_size)
+        if not tier:
+            return None
+        root = getattr(self, "_placed_models_root", None)
+        if root is None:
+            try:
+                from ament_index_python.packages import (
+                    get_package_share_directory)
+                root = os.path.join(
+                    get_package_share_directory("luggage_gazebo"), "models")
+                self._placed_models_root = root
+            except Exception:  # noqa: BLE001 - share dir absent offline
+                return None
+        path = sized_suitcases_manifest_path(root)
+        if not os.path.isfile(path):
+            return None
+        manifest = getattr(self, "_placed_manifest", None)
+        if manifest is None:
+            with open(path, "r", encoding="utf-8") as handle:
+                manifest = json.load(handle)
+            self._placed_manifest = manifest
+        entry = manifest.get(sized_model_name(str(visual), tier)) or {}
+        off = entry.get("lid_offset")
+        return float(off) if off else None
+
     def _release_as_dynamic(self):
         """Replace the static carry body with the same mesh, dynamic, in place.
 
@@ -2637,6 +2674,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         """
         physics = getattr(self, "_release_physics", None) or {}
         size = list(physics.get("command_size") or [])
+        command_size = list(size)
         visual = str(physics.get("visual_id") or "")
         mass = physics.get("mass_kg")
         model = str(self._box_model or physics.get("model_name") or "")
@@ -2658,7 +2696,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             sdf = pickup_visual_sdf(
                 model, size, mass_kg, visual, static=False,
                 contact_topic=topic, collide_bitmask=BOX_FULL_MASK,
-                collision_kind="box")
+                collision_kind="box_recess",
+                lid_offset=self._placed_lid_offset(visual, command_size))
             release_dump = os.environ.get("ELFIN_BOX_RELEASE_SDF", "").strip()
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:

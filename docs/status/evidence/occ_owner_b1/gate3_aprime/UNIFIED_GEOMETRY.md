@@ -63,3 +63,34 @@
 测试范围（用户第 4 项）：共心 vs 共底参考判定、多 tier（inch22 lid_off
 12.0mm）、实录检测误差情形、释放初态零穿插断言、支撑面独立核对
 （settle z＝floor＋底半高）。
+
+---
+
+## 实现（2026-10-19 同日，用户冻结范围：局部接触区近似）
+
+按用户指令**不采用全箱削顶**，改为仅移除吸盘实际接触区的冠部虚构体积：
+
+- `contact_recess_boxes(size, lid_offset)`：5 盒组合——`body_collision`
+  （全 XY、共底、顶=lid 平台，0.208967m@inch20）＋4 条 rim 条带
+  （冠部带、足迹以外）。足迹 0.210m＝p04 实测 0.180＋每侧 15mm 对准
+  余量；深度＝tier `lid_offset`（manifest 常量，无在线测量）。
+- 调用方一致化：**carry（spawner）与 release（driver）同用
+  `box_recess`**——swap 不再新增体积（原 mesh→AABB 跳变移除）。
+- tier manifest（sync-manifest 再生，+28 行纯增量）新增
+  `lid_offset`（inch20 11.03 / 22 12.04 / 24 12.54 / 26 13.54 / medium
+  14.04 / large 16.05 mm）与 `contact_recess_footprint`。
+- 不变：感知尺寸、触底目标、placement、bitmask 方案、40mm 门、
+  质量/惯量/模型原点/底/侧。sensor 仍挂 `body_collision`。
+
+四项验收（离线断言，`test_contact_recess_collision.py` 11 例全绿）：
+
+1. r5/r6 释放初态 p04 板底（0.8006/0.80093）对 recess 顶
+   （0.7915/0.7919）净空 8.7–9.4mm——**无重叠**。
+2. 底/侧范围不变（union=AABB−足迹冠带，逐采样点断言）；静置高度
+   不变（共底，floor+0.110=0.640 实录对账）。
+3. carry 与 release 碰撞块逐字节相同（仅 static 位与掩码差异）。
+4. 掩码未扩大：release 五体全 0xFF（仍撞容器/全臂）；carry 0xFE
+   仅排除 p04（0x01）。
+
+声明边界：本形状是**平放顶抓流程的仿真近似**；叠箱支撑几何未验证
+（穹拱区欠声明 ≤11.5mm）。已知代价，换接触缺陷关闭。

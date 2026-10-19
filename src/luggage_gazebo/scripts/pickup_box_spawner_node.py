@@ -597,11 +597,21 @@ class PickupBoxSpawner(Node):
         still hits p04; ``BOX_CARRY_MASK`` does not.
         """
         topic = os.environ.get("ELFIN_BOX_CONTACT_TOPIC", "").strip() or None
+        # [contact-recess 2026-10-19] The carry/spawn body uses the SAME
+        # collision approximation as the released body (manifest tier
+        # constants; resolved from the SAME observable reference the GT
+        # reporter uses, cached) so the static->dynamic swap adds no
+        # volume. Fail-closed: an unresolvable reference refuses the
+        # spawn rather than falling back to a mismatched shape.
+        recess_lid_offset = self._observable_reference(
+            size, visual_id)["lid_offset"]
         sdf = pickup_visual_sdf(
             model_name, size, mass_kg, visual_id,
             visual_kind=self._visual_kind,
             contact_topic=topic,
             collide_bitmask=collide_bitmask,
+            collision_kind="box_recess",
+            lid_offset=recess_lid_offset,
         )
         dump = os.environ.get("ELFIN_BOX_SDF_DUMP", "").strip()
         if dump:

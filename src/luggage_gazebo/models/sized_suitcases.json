@@ -2,7 +2,9 @@
  "suitcase_loafbrr_inch20": {
   "catalog_id": "inch20",
   "collision_uri": "model://suitcase_loafbrr_inch20/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.011033,
   "mass_kg": 5.67,
   "measure_size": [
    0.3145875483751297,
@@ -28,7 +30,9 @@
  "suitcase_loafbrr_inch22": {
   "catalog_id": "inch22",
   "collision_uri": "model://suitcase_loafbrr_inch22/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.012036,
   "mass_kg": 7.41,
   "measure_size": [
    0.32782238721847534,
@@ -54,7 +58,9 @@
  "suitcase_loafbrr_inch24": {
   "catalog_id": "inch24",
   "collision_uri": "model://suitcase_loafbrr_inch24/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.012537,
   "mass_kg": 9.4,
   "measure_size": [
    0.3544025868177414,
@@ -80,7 +86,9 @@
  "suitcase_loafbrr_inch26": {
   "catalog_id": "inch26",
   "collision_uri": "model://suitcase_loafbrr_inch26/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.01354,
   "mass_kg": 12.02,
   "measure_size": [
    0.37212270498275757,
@@ -106,7 +114,9 @@
  "suitcase_loafbrr_large": {
   "catalog_id": "large",
   "collision_uri": "model://suitcase_loafbrr_large/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.016048,
   "mass_kg": 23.0,
   "measure_size": [
    0.6612416505813599,
@@ -132,7 +142,9 @@
  "suitcase_loafbrr_medium": {
   "catalog_id": "standard",
   "collision_uri": "model://suitcase_loafbrr_medium/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.014042,
   "mass_kg": 15.0,
   "measure_size": [
    0.620204508304596,
@@ -158,7 +170,9 @@
  "suitcase_loafbrr_small": {
   "catalog_id": "carryon",
   "collision_uri": "model://suitcase_loafbrr_small/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.012537,
   "mass_kg": 8.0,
   "measure_size": [
    0.4873035401105881,
@@ -184,7 +198,9 @@
  "suitcase_vintage_inch20": {
   "catalog_id": "inch20",
   "collision_uri": "model://suitcase_vintage_inch20/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.01348,
   "mass_kg": 5.67,
   "measure_size": [
    0.3314480036497116,
@@ -210,7 +226,9 @@
  "suitcase_vintage_inch22": {
   "catalog_id": "inch22",
   "collision_uri": "model://suitcase_vintage_inch22/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.014623,
   "mass_kg": 7.41,
   "measure_size": [
    0.35038788616657257,
@@ -236,7 +254,9 @@
  "suitcase_vintage_inch24": {
   "catalog_id": "inch24",
   "collision_uri": "model://suitcase_vintage_inch24/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.015428,
   "mass_kg": 9.4,
   "measure_size": [
    0.37441684305667877,
@@ -262,7 +282,9 @@
  "suitcase_vintage_inch26": {
   "catalog_id": "inch26",
   "collision_uri": "model://suitcase_vintage_inch26/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.016518,
   "mass_kg": 12.02,
   "measure_size": [
    0.39313769340515137,
@@ -288,7 +310,9 @@
  "suitcase_vintage_large": {
   "catalog_id": "large",
   "collision_uri": "model://suitcase_vintage_large/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.019577,
   "mass_kg": 23.0,
   "measure_size": [
    0.6069081127643585,
@@ -314,7 +338,9 @@
  "suitcase_vintage_medium": {
   "catalog_id": "standard",
   "collision_uri": "model://suitcase_vintage_medium/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.01636,
   "mass_kg": 15.0,
   "measure_size": [
    0.6552294790744781,
@@ -340,7 +366,9 @@
  "suitcase_vintage_small": {
   "catalog_id": "carryon",
   "collision_uri": "model://suitcase_vintage_small/meshes/suitcase.stl",
+  "contact_recess_footprint": 0.21,
   "dae_sha256": null,
+  "lid_offset": 0.015428,
   "mass_kg": 8.0,
   "measure_size": [
    0.5148231685161591,
