@@ -83,10 +83,17 @@ class ReplayNode(Node):
     def wait_services(self, timeout=120.0):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
-            if self.spawn_cli.wait_for_service(timeout_sec=1.0) \
-                    and self.delete_cli.wait_for_service(timeout_sec=1.0) \
-                    and self.traj_cli.wait_for_server(timeout_sec=1.0):
+            if not self.spawn_cli.wait_for_service(timeout_sec=1.0):
+                self._missing = "create"
+                continue
+            self._missing = "remove" if not \
+                self.delete_cli.wait_for_service(timeout_sec=1.0) else \
+                "follow_trajectory"
+            if self._missing != "follow_trajectory":
+                continue
+            if self.traj_cli.wait_for_server(timeout_sec=1.0):
                 return True
+        self.report["missing_service"] = getattr(self, "_missing", "?")
         return False
 
     def spawn_static(self, model, pose6):
