@@ -187,13 +187,14 @@ class ReplayNode(Node):
             point.time_from_start.sec = int(dt)
             point.time_from_start.nanosec = int(
                 round((dt - int(dt)) * 1e9))
-            # Explicit loose tolerances: the goal is a REPLAY, the
-            # acceptance gate is the validity/deriation bookkeeping,
-            # not the controller's default start-tolerance rejection.
-            point.positions_tolerance = [0.05] * len(JOINTS)
             traj.points.append(point)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = traj
+        from trajectory_msgs.msg import JointTolerance
+        goal.path_tolerance = [
+            JointTolerance(name=j, position=0.05) for j in JOINTS]
+        goal.goal_tolerance = [
+            JointTolerance(name=j, position=0.05) for j in JOINTS]
         self.report["t_live_start"] = t_live0
         self.report["t_rec_start"] = t0_recorded
         send_future = self.traj_cli.send_goal_async(goal)
