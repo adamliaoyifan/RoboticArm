@@ -38,3 +38,11 @@
 ## 执行
 
 `G3_CONTAINER_MODEL=airport_container_real_aprime bash scripts/g3/run.sh score gate3_aprime_r1`
+
+## 追记：r5 后修复（用户指令 2026-10-19）＋ r6 复验
+
+r5 揭示的退臂擦碰（面板横扫悬停箱顶 20ms，裕量耗至 3.5mm）按用户
+指令以**释放驻留**修复：`--release-dwell-s`（默认 2.0 仿真秒，锚=动态
+建体完成/真空响应；驻留期间臂停在已认证 retreat 结点，retreat_start
+合同不变；驻留末采样箱位姿作分离证据）。判据不变（40mm 门、占用合同、
+两箱、同冻结输入）；r6 另立 run 号，不与 r5 合并判定。
