@@ -1235,6 +1235,10 @@ def generate_launch_description():
             profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
+                "start_placement_prior",
+                "Read-only placement-prior sidecar (explicit opt-in; "
+                "default false = zero prior processes)."),
+            profile_arg(
                 "startup_watchdog_sec",
                 "Seconds to wait for /controller_manager after the S20 create "
                 "before aborting the launch; 0 disables the gate.",
