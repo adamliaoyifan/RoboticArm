@@ -110,8 +110,17 @@ poses.setdefault("identity", {})["scene_revision"] = scene_md5
 poses["identity"]["_rebind_note"] = (
     "scene_revision re-bound to the G3_CONTAINER_MODEL-derived "
     "scene_tf_used.yaml (md5 %s); joint values unchanged" % scene_md5)
+# Per-pose capture stamps must follow the same re-bind (r3 lesson:
+# validate_site_poses checks scene_revision_at_capture per pose and
+# fails POSE_NOT_VALID otherwise). Same rationale — the container
+# model does not affect any calibrated joint.
+n_poses = 0
+for _name, pose in (poses.get("poses") or {}).items():
+    if isinstance(pose, dict) and pose.get("scene_revision_at_capture"):
+        pose["scene_revision_at_capture"] = scene_md5
+        n_poses += 1
 yaml.safe_dump(poses, open(sys.argv[2], "w"), sort_keys=False)
-print("scene_md5", scene_md5)
+print("scene_md5", scene_md5, "poses_rebound", n_poses)
 PYSCENE
   POSES="$OUT/robot_poses_used.yaml"
 fi
