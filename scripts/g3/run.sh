@@ -325,6 +325,31 @@ IGN_BIN="$(command -v ign || command -v gz)"
 CONTACT_TMP=$(mktemp -p /dev/shm -t g3box.XXXXXX)
 setsid "$IGN_BIN" topic -e -t /obs/box_contact > "$CONTACT_TMP" 2>/dev/null &
 CONTACT_PID=$!
+# Production boxes carry the contact sensor (same as the obs_rel_07
+# observation run) so the captured topic has a real publisher.
+export ELFIN_BOX_CONTACT_TOPIC=/obs/box_contact
+
+# Pose probe (r4 diagnosis): sample the SAME `ign model --pose` CLI the
+# driver's _gz_box_pose uses, logging RAW output — if the release-
+# boundary "no release pose" recurs we get the CLI's actual failure
+# signature instead of a stripped boolean.
+(
+  PROBE_N=0
+  while true; do
+    PROBE_N=$((PROBE_N + 1))
+    echo "=== $(date +%H:%M:%S.%N) sim=$(date +%s)" >> "$OUT/pose_probe.log"
+    timeout 5 "$IGN_BIN" model -m pickup_box_0001_inch20 --pose \
+      >> "$OUT/pose_probe.log" 2>&1
+    timeout 5 "$IGN_BIN" model -m pickup_box_0002_inch20 --pose \
+      >> "$OUT/pose_probe.log" 2>&1
+    if (( PROBE_N % 15 == 0 )); then
+      echo "--- full dump ---" >> "$OUT/pose_probe.log"
+      timeout 8 "$IGN_BIN" model --pose >> "$OUT/pose_probe.log" 2>&1
+    fi
+    sleep 2
+  done
+) &
+PROBE_PID=$!
 
 set +e
 timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.py \
@@ -342,7 +367,7 @@ timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.
   --out "$OUT" > "$OUT/driver.log" 2>&1
 driver_rc=$?
 set -e
-kill -TERM "$CONTACT_PID" 2>/dev/null || true
+kill -TERM "$CONTACT_PID" "$PROBE_PID" 2>/dev/null || true
 sleep 2
 echo "{\"stage\":\"driver_exit\",\"rc\":$driver_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 bash "$WS/scripts/stop_sim.sh" || true
