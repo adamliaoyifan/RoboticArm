@@ -33,8 +33,11 @@ mkdir -p "$OUT/dumps"
 echo "{\"stage\":\"start\",\"n\":$N,\"arm\":\"$ARM\",\"model\":\"$MODEL\",\"ts\":\"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
 
 # ---- Sim exclusivity: refuse if any sim process is alive. ----
-if pgrep -f 'ros2 launch luggage_gazebo|ign gazebo|gz sim' \
-    | grep -v $$ >/dev/null 2>&1; then
+# Match real binaries only: -x on binary names (ign/gz) plus the
+# launch process; a plain -f pattern matches monitoring shells whose
+# command line merely CONTAINS the string (aborted run 01 that way).
+if pgrep -x ign >/dev/null 2>&1 || pgrep -x gz >/dev/null 2>&1 \
+    || pgrep -f '^/usr/bin/python3 /opt/ros/humble/bin/ros2 launch luggage_gazebo' >/dev/null 2>&1; then
   echo "sim slot busy; aborting (no re-run without exclusivity)" >&2
   exit 3
 fi
