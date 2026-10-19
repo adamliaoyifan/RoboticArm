@@ -99,6 +99,7 @@ class GraspCandidate:
     observation_id: str
     contact_model_hash: str
     rank: int
+    pick_references: tuple = ()
 
     def __post_init__(self):
         if not all(isinstance(s, str) and s.strip() for s in
@@ -135,6 +136,7 @@ class PriorRequest:
     measured: bool
     candidate_limit: int = 32
     budget_s: float = 10.0
+    world_from_pick_box: Transform = None
 
     def __post_init__(self):
         size = finite_tuple(self.box_wdh, 3, 'box_wdh')
@@ -162,4 +164,4 @@ class PriorRequest:
     def reuse_key(self):
         # Deliberately omits request_id; adoption binds to the current request.
         return (self.snapshot.identity, self.box_wdh, self.placements,
-                self.grasps, self.measured, self.candidate_limit, self.budget_s)
+                self.grasps, self.measured, self.candidate_limit, self.budget_s, self.world_from_pick_box)

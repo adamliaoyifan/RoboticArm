@@ -692,3 +692,23 @@ Measured-estimate retention follows `sensor_data_pipeline.md`: a fresh same-box
 measurement may survive a newer continuity-only update in the single pending
 slot. Capture `retain_measure` events to distinguish scheduling coverage from
 a successful full pickup/place cycle. Prior never authorizes stale held geometry.
+
+## Measured local joint witnesses
+
+Measured preparation checks all G for a slot and returns that slot's fully witnessed alternatives only
+when the private local checker returns pickup and placement joint branches.
+Production candidate pick references define pickup approach/contact/lift; the
+placement probe covers a 0.10 m container-Z insertion and unloaded retreat.
+This local probe is not the production transit or an execution trajectory.
+Hypothetical templates remain rigid-only hints and cannot authorize pickup.
+The native checker uses configured KDL, up to eight deterministic seeds and two
+branches per end, 5 mm/0.03 rad TCP sampling, 0.01 rad joint interpolation,
+0.15 rad maximum consecutive IK jump, full-arm collision and joint bounds.
+Only suction_panel/payload contact is allowed, matching pickup semantics.
+Scene edits and phase attachment changes exist only in owned private copies;
+existing attachments or reserved-ID conflicts refuse the query. No live scene
+or OCC mutation occurs. Branch paths are untimed and retained in trace_json
+with exact model/snapshot/request identity. A 2 s per-pair limit remains inside
+the existing 10 s preparation budget. Timeout means inconclusive, not globally
+infeasible. Actual attachment and complete carrying route certification remain
+mandatory, and cached results include pickup pose and local references.

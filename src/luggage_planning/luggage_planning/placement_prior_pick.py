@@ -47,7 +47,8 @@ def candidates_for_prior(detection, *, fallback_yaw=0.0):
                     detection.detection_yaw, detection.yaw_valid, fallback_yaw)
         observation_id = hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
         result.append(GraspCandidate(candidate.candidate_id, grasp, observation_id,
-                                     candidate.model_hash, int(candidate.rank)))
+                                     candidate.model_hash, int(candidate.rank),
+                                     tuple(transform_from_pose(s.target_pose) for s in segments)))
     return tuple(result)
 
 

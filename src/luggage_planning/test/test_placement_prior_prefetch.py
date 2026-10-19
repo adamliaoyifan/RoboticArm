@@ -174,7 +174,7 @@ def test_measured_decode_uses_fresh_size_before_prefetch_order(monkeypatch):
     cached=SimpleNamespace(choices=(SimpleNamespace(placement=next(s for s in old if s.slot_id==desired.slot_id)),))
     # Detection admission has its own genuine-patch tests. Isolate the decoder's
     # ordering boundary while retaining the production geometry generator.
-    monkeypatch.setattr(requests,'measured_detection_view',lambda _message:SimpleNamespace(box_size=size))
+    monkeypatch.setattr(requests,'measured_detection_view',lambda _message:SimpleNamespace(box_xyz=(0,0,0),box_quat=(0,0,0,1),box_size=size))
     monkeypatch.setattr(requests,'candidates_for_prior',lambda *args,**kwargs:request().grasps)
     decoded=requests.decode_request(message,snapshot,confirmed,prefetched=(hypothetical,cached))
     assert decoded.measured and decoded.box_wdh==size

@@ -5,6 +5,7 @@ The frame revision must match the running production planning stack.
 """
 import os
 import json
+import yaml
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
@@ -26,8 +27,13 @@ def _nodes(context):
     with open(os.path.join(share, 'config', 'S20_with_camera.srdf')) as stream:
         semantic = stream.read().replace('name="elfin_s20_with_camera"', 'name="S20"', 1)
     translation, rpy = origin_in_world(load_scene_tf_config(scene_path))
+    with open(os.path.join(get_package_share_directory('elfin_moveit_config'), 'config', 'kinematics.yaml')) as stream:
+        kinematics = yaml.safe_load(stream)
     model = {'robot_description': xml, 'robot_description_semantic': semantic}
     return [
+        Node(package='luggage_planning', executable='grasp_local_check_node',
+             name='grasp_local_check', output='screen',
+             parameters=[model, {'robot_description_kinematics': kinematics}]),
         Node(package='luggage_planning', executable='placement_tool_check_node',
              name='placement_tool_check', output='screen', parameters=[model]),
         Node(package='luggage_planning', executable='place_prior_node.py', name='place_prior',

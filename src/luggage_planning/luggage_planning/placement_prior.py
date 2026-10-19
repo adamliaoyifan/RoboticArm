@@ -19,6 +19,7 @@ class CollisionVerdict:
     valid: bool
     reason: str
     contacts: tuple = ()
+    local_paths_json: str = ""
 
     def __post_init__(self):
         object.__setattr__(self, 'contacts', tuple(tuple(p) for p in self.contacts))
@@ -123,5 +124,14 @@ def compute_prior(request: PriorRequest, collision: ToolCollisionPort, *,
                     break
                 refs.append(world_tcp)
             else:
+                if request.world_from_pick_box is not None:
+                    local = collision.check_local(request, placement, grasp, deadline=deadline, cancelled=cancelled)
+                    trace.append(CandidateTrace(placement.slot_id, grasp.candidate_id, -1, local))
+                    if not local.valid:
+                        continue
                 choices.append(PriorChoice(placement, grasp, refs[-1], tuple(refs)))
+        # Evaluate every measured G for this slot, then return its fully
+        # witnessed alternatives before spending budget on another placement.
+        if request.world_from_pick_box is not None and choices:
+            return finish("READY")
     return finish('READY' if choices else 'NO_VALID_GRASP')

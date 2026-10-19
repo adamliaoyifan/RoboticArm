@@ -106,7 +106,8 @@ def decode_request(message, snapshot, confirmed, *, fallback_yaw=0.0, prefetched
     if not placements:
         raise ValueError('no geometric placement candidate')
     return PriorRequest(message.request_id,snapshot,dimensions,tuple(placements),grasps,
-                        bool(message.measured),int(message.candidate_limit),float(message.budget_s))
+                        bool(message.measured),int(message.candidate_limit),float(message.budget_s),
+                        Transform(detection.box_xyz,detection.box_quat) if message.measured else None)
 
 
 def encode_choices(result, request):

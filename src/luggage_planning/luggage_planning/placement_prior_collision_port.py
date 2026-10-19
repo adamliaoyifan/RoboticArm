@@ -16,6 +16,8 @@ class NativeToolCollisionPort:
         from luggage_msgs.srv import CheckPlacementToolV2
         self._service = CheckPlacementToolV2
         self._client = node.create_client(CheckPlacementToolV2, '/placement_prior/check_tool')
+        from luggage_planning.placement_prior_local_paths import NativeLocalPathPort
+        self._local = NativeLocalPathPort(node, recorder=recorder)
         self._payload_id = str(payload_id)
         self._recorder = recorder
         self._inflight = None
@@ -27,7 +29,10 @@ class NativeToolCollisionPort:
         self._decoded_scene = None
 
     def ready(self):
-        return self._client.service_is_ready()
+        return self._client.service_is_ready() and self._local.client.service_is_ready()
+
+    def check_local(self, request, placement, grasp, *, deadline, cancelled):
+        return self._local.check(request, placement, grasp, deadline=deadline, cancelled=cancelled)
 
     def check(self, snapshot, world_from_tcp, world_from_box, box_wdh, *, deadline, cancelled):
         from geometry_msgs.msg import Pose
