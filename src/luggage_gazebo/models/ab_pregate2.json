@@ -9,7 +9,7 @@
         "beyond_0p5mm": 0
       },
       "ceiling": {
-        "points": 5475,
+        "points": 7081,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
@@ -19,19 +19,20 @@
         "beyond_0p5mm": 0
       },
       "wall_pos_y_vertical": {
-        "points": 1241,
+        "points": 3942,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
       "chamfer_slope": {
-        "points": 3942,
+        "points": 1241,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
       "ap_sill_top": {
         "points": 0,
         "max_mm": null,
-        "beyond_0p5mm": 0
+        "beyond_0p5mm": 0,
+        "unsampled": true
       },
       "ap_lintel_bottom": {
         "points": 0,
@@ -55,8 +56,13 @@
       }
     },
     "pass": true,
-    "protrusion_samples": 52,
-    "protruding_beyond_0p5mm": 0
+    "protrusion_samples": 44,
+    "protruding_beyond_0p5mm": 0,
+    "edges": {
+      "samples": 1045,
+      "max_mm": 0.0,
+      "beyond_0p5mm": 0
+    }
   },
   "bprim": {
     "faces": {
@@ -66,7 +72,7 @@
         "beyond_0p5mm": 0
       },
       "ceiling": {
-        "points": 5475,
+        "points": 7081,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
@@ -76,19 +82,20 @@
         "beyond_0p5mm": 0
       },
       "wall_pos_y_vertical": {
-        "points": 1241,
+        "points": 3942,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
       "chamfer_slope": {
-        "points": 3942,
+        "points": 1241,
         "max_mm": 0.0,
         "beyond_0p5mm": 0
       },
       "ap_sill_top": {
         "points": 0,
         "max_mm": null,
-        "beyond_0p5mm": 0
+        "beyond_0p5mm": 0,
+        "unsampled": true
       },
       "ap_lintel_bottom": {
         "points": 0,
@@ -112,8 +119,13 @@
       }
     },
     "pass": true,
-    "protrusion_samples": 6804,
-    "protruding_beyond_0p5mm": 0
+    "protrusion_samples": 6318,
+    "protruding_beyond_0p5mm": 0,
+    "edges": {
+      "samples": 1045,
+      "max_mm": 0.0,
+      "beyond_0p5mm": 0
+    }
   },
   "a0_deviation_map": {
     "floor": {
@@ -122,19 +134,19 @@
     },
     "ceiling": {
       "max_mm": 107.493,
-      "beyond_0p5mm": 5475
+      "beyond_0p5mm": 7081
     },
     "wall_neg_y": {
       "max_mm": 55.811,
       "beyond_0p5mm": 5256
     },
     "wall_pos_y_vertical": {
-      "max_mm": 149.818,
-      "beyond_0p5mm": 1241
+      "max_mm": 17.383,
+      "beyond_0p5mm": 3942
     },
     "chamfer_slope": {
-      "max_mm": 329.533,
-      "beyond_0p5mm": 3928
+      "max_mm": 38.37,
+      "beyond_0p5mm": 1241
     },
     "ap_sill_top": {
       "max_mm": null,
@@ -156,6 +168,21 @@
       "max_mm": null,
       "beyond_0p5mm": 0
     }
+  },
+  "aperture_clearance": {
+    "aprime": {
+      "samples": 63,
+      "blocked": 0
+    },
+    "bprim": {
+      "samples": 315,
+      "blocked": 0
+    }
+  },
+  "cavity_occupancy": {
+    "samples": 31842,
+    "b_solid_hits": 0,
+    "aprime_solid_hits": 0
   },
   "pass": true
 }

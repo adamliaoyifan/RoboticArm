@@ -39,23 +39,24 @@ def read_mu(a_model_dir):
 
 
 def wedge_trimesh(w, b):
-    """Exact trapezoid prism for the chamfer wall (A')."""
+    """Exact trapezoid prism for the chamfer wall (A') — BOTTOM chamfer:
+    slope from (floor_y, floor_z) to (y_hi, wall_z)."""
     y_hi, wall_z = b["y_hi"], b["chamfer_wall_z"]
-    floor_y, cz = b["chamfer_floor_y"], b["ceiling_z"]
+    floor_y, fz = b["chamfer_floor_y"], b["floor_z"]
     oy = b["o_y_hi"]
     x0, x1 = w["x_span"]
-    cross = [(y_hi, wall_z), (floor_y, cz), (oy, cz), (oy, wall_z)]
+    cross = [(floor_y, fz), (y_hi, wall_z), (oy, wall_z), (oy, fz)]
     return _prism(x0, x1, cross)
 
 
 def end_wedge_trimesh(w, b):
-    """Exact triangle prism for the end-wall cavity corner (A'):
-    triangle (floor_y, wall_z), (y_hi, wall_z), (floor_y, cz)."""
+    """Exact triangle prism for the end-wall corner in the chamfer zone
+    (A'): triangle (floor_y, floor_z), (y_hi, floor_z), (y_hi, wall_z)."""
     y_hi, wall_z = b["y_hi"], b["chamfer_wall_z"]
-    floor_y, cz = b["chamfer_floor_y"], b["ceiling_z"]
+    floor_y, fz = b["chamfer_floor_y"], b["floor_z"]
     x0, x1 = w["x_span"]
-    return _prism(x0, x1, [(floor_y, wall_z), (y_hi, wall_z),
-                           (floor_y, cz)])
+    return _prism(x0, x1, [(floor_y, fz), (y_hi, wall_z),
+                           (y_hi, fz)])
 
 
 def _prism(x0, x1, cross):
@@ -77,25 +78,25 @@ def _prism(x0, x1, cross):
 
 
 def wedge_box(w, b):
-    """B's chamfer as ONE rotated box: inner face exactly on the slope
-    plane, corners kept inside the outer +Y face."""
+    """B's chamfer wedge as ONE rotated box: inner face exactly on the
+    slope plane (bottom chamfer: (floor_y, floor_z) -> (y_hi, wall_z)),
+    corners kept inside the outer +Y face and the subfloor solid."""
     y_hi, wall_z = b["y_hi"], b["chamfer_wall_z"]
-    floor_y, cz = b["chamfer_floor_y"], b["ceiling_z"]
-    dy, dz = y_hi - floor_y, cz - wall_z
+    floor_y, fz = b["chamfer_floor_y"], b["floor_z"]
+    dy, dz = y_hi - floor_y, wall_z - fz
     slope_len = (dy * dy + dz * dz) ** 0.5
-    ny, nz = dz / slope_len, dy / slope_len   # outward plane normal (yz)
+    # Outward normal (into the wall): the slope direction is
+    # (dy, dz)/L, so the normal is (dz, -dy)/L (perpendicular!).
+    ny, nz = dz / slope_len, -dy / slope_len
     roll = float(np.arctan2(nz, ny))
-    # Thickness bound: the outer corners must stay within o_y_hi.
-    t_max = 2.0 * (b["o_y_hi"] - floor_y) * dz / slope_len
+    # Thickness bound: the upper outer corner stays within o_y_hi.
+    t_max = 2.0 * (b["o_y_hi"] - y_hi) / max(ny, 1e-6)
     t = min(0.7 * t_max, 0.09)
-    mid = np.array([0.0, (y_hi + floor_y) / 2, (wall_z + cz) / 2])
+    mid = np.array([0.0, (floor_y + y_hi) / 2, (fz + wall_z) / 2])
     center = mid + np.array([0.0, ny, nz]) * (t / 2)
-    # Shrink along the slope so the outer corners stay inside the shell.
-    shrink = t * dy / (2.0 * dz) if dz else 0.0
-    length = max(slope_len - 2.0 * shrink, 0.05)
-    return {"name": "chamfer_wedge_box",
+    return {"name": "%s_box" % w["name"],
             "center": [float(center[0]), float(center[1]), float(center[2])],
-            "size": [w["x_span"][1] - w["x_span"][0], t, length],
+            "size": [w["x_span"][1] - w["x_span"][0], t, slope_len],
             "roll": roll}
 
 

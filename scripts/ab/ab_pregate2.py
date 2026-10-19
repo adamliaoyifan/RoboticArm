@@ -51,12 +51,12 @@ def baseline_face_grids(b, step=0.02):
         return np.array(pts)
 
     grids["floor"] = grid("z", fz, x_lo, x_hi, y_lo, y_hi)
-    grids["ceiling"] = grid("z", cz, x_lo, x_hi, y_lo, b["chamfer_floor_y"])
+    grids["ceiling"] = grid("z", cz, x_lo, x_hi, y_lo, y_hi)
     grids["wall_neg_y"] = grid("y", y_lo, x_lo, x_hi, fz, cz)
-    grids["wall_pos_y_vertical"] = grid("y", y_hi, x_lo, x_hi, fz, wz)
-    # Chamfer slope: parametrize by z, y = chamfer_y(z).
+    grids["wall_pos_y_vertical"] = grid("y", y_hi, x_lo, x_hi, wz, cz)
+    # Chamfer slope (BOTTOM chamfer): z from floor_z to wall_z.
     pts = []
-    for z in np.arange(wz + step, cz - step, step):
+    for z in np.arange(fz + step, wz - step, step):
         y = chamfer_y(b, z)
         for x in np.arange(x_lo + step, x_hi - step, step):
             pts.append([x, y, z])
@@ -117,6 +117,116 @@ def asset_inner_samples(mesh_path):
     fn /= (np.linalg.norm(fn, axis=1, keepdims=True) + 1e-12)
     inward = ((fn * (v.mean(axis=0) - cen)).sum(axis=1) > 0)
     return cen[inward]
+
+
+def hull_edge_samples(b, step=0.02, margin=0.0025):
+    """Dense samples along the AUTHORITATIVE 7-face hull edges
+    (container_inner_hull_edges_in_container), pulled margin inside the
+    cavity: edges, panel seams and corners must meet the 0.5 mm gate too
+    — face-grid insets alone cannot certify the boundary."""
+    try:
+        import yaml as _yaml
+        from luggage_description.scene_tf_config_utils import (
+            container_inner_hull_edges_in_container)
+    except ImportError:
+        return None
+    edges = container_inner_hull_edges_in_container(b["_scene_cfg"])
+    pts = []
+    for seg in edges:
+        a, c = np.array(seg[0]), np.array(seg[-1])
+        length = float(np.linalg.norm(c - a))
+        n = max(int(length / step) + 1, 2)
+        for t in np.linspace(0.0, 1.0, n):
+            pts.append(a + t * (c - a))
+    return np.array(pts)
+
+
+def aperture_clearance(b, aprime_stl, boxes):
+    """The aperture opening must be CLEAR through the wall: rays from
+    outside through the aperture rect hit nothing before the inner face
+    plane (A'), and no B box occupies the aperture tunnel."""
+    ap = b["aperture"]
+    result = {}
+    ys = np.linspace(ap["y_lo"] + 0.03, ap["y_hi"] - 0.03, 7)
+    zs = np.linspace(ap["z_lo"] + 0.03, ap["z_hi"] - 0.03, 9)
+    pts = np.array([[ap["x"] - 0.15, y, z] for y in ys for z in zs])
+    scene = o3d.t.geometry.RaycastingScene()
+    scene.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(
+        o3d.io.read_triangle_mesh(aprime_stl)))
+    rays = o3d.core.Tensor(
+        [[*p, 1.0, 0.0, 0.0] for p in pts], dtype=o3d.core.Dtype.Float32)
+    t = scene.cast_rays(rays)['t_hit'].numpy()
+    first_x = pts[:, 0] + t
+    # Clear passage: the first hit lies PAST the inner face (the far
+    # wall) or there is no hit at all. Blocked: stopped inside the -X
+    # wall band.
+    blocked = np.isfinite(t) & (first_x < b["x_lo"] - 0.005)
+    result["aprime"] = {"samples": len(pts),
+                        "blocked": int(blocked.sum())}
+    tunnel = np.array([[x, y, z] for x in np.linspace(
+        b["o_x_lo"] + 0.005, b["x_lo"] - 0.005, 5)
+        for y in ys for z in zs])
+    inside_any = np.zeros(len(tunnel), bool)
+    for bxx in boxes:
+        c = np.array(bxx["center"])
+        s = np.array(bxx["size"]) / 2
+        roll = bxx.get("roll") or 0.0
+        local = tunnel - c
+        if roll:
+            cr, sr = np.cos(roll), np.sin(roll)
+            rot = np.array([[1, 0, 0], [0, cr, sr], [0, -sr, cr]])
+            local = local.dot(rot.T)
+        inside_any |= np.all(np.abs(local) <= s + 1e-9, axis=1)
+    result["bprim"] = {"samples": len(tunnel),
+                       "blocked": int(inside_any.sum())}
+    return result
+
+
+def cavity_occupancy(b, aprime_stl, boxes):
+    """The cavity interior must be EMPTY: no sampled interior point may
+    lie inside a B box or inside an odd number of A' panels (ray-parity
+    on the concatenated closed panels). Guards against solid-fill
+    mistakes the surface checks cannot see (found once: a mis-bounded
+    wall panel filled the whole cavity while every face grid read 0)."""
+    step = 0.05
+    xs = np.arange(b["x_lo"] + 0.03, b["x_hi"] - 0.03, step)
+    ys = np.arange(b["y_lo"] + 0.03, b["y_hi"] - 0.03, step)
+    zs = np.arange(b["floor_z"] + 0.03, b["ceiling_z"] - 0.03, step)
+    pts = np.array([[x, y, z] for x in xs for y in ys for z in zs
+                    if y < chamfer_y(b, z) - 0.03])
+    inside_b = np.zeros(len(pts), bool)
+    for bxx in boxes:
+        c = np.array(bxx["center"])
+        s = np.array(bxx["size"]) / 2
+        roll = bxx.get("roll") or 0.0
+        local = pts - c
+        if roll:
+            cr, sr = np.cos(roll), np.sin(roll)
+            rot = np.array([[1, 0, 0], [0, cr, sr], [0, -sr, cr]])
+            local = local.dot(rot.T)
+        inside_b |= np.all(np.abs(local) <= s + 1e-9, axis=1)
+    scene_a = o3d.t.geometry.RaycastingScene()
+    scene_a.add_triangles(o3d.t.geometry.TriangleMesh.from_legacy(
+        o3d.io.read_triangle_mesh(aprime_stl)))
+    origins = pts.astype(np.float32).copy()
+    dirs = np.tile(np.array([1.0, 0.0, 0.0], dtype=np.float32),
+                   (len(pts), 1))
+    counts = np.zeros(len(pts), dtype=int)
+    active = np.arange(len(pts))
+    for _ in range(12):  # a ray crosses <= 12 panels in +x
+        if not len(active):
+            break
+        res = scene_a.cast_rays(o3d.core.Tensor(
+            np.concatenate([origins[active], dirs[active]], axis=1)))
+        t = res['t_hit'].numpy()
+        finite = np.isfinite(t)
+        counts[active[finite]] += 1
+        origins[active[finite], 0] += t[finite] + 0.002
+        active = active[finite]
+    inside_aprime = (counts % 2) == 1
+    return {"samples": int(len(pts)),
+            "b_solid_hits": int(inside_b.sum()),
+            "aprime_solid_hits": int(inside_aprime.sum())}
 
 
 def main():
@@ -204,6 +314,46 @@ def main():
             a0[name] = {"max_mm": round(float(d.max()) * 1000, 3),
                         "beyond_0p5mm": int((d > LIMIT).sum())}
         report["a0_deviation_map"] = a0
+
+    # Edges / seams / corners (authoritative hull edges, dense samples).
+    b["_scene_cfg"] = None
+    try:
+        from luggage_description.scene_tf_config_utils import (
+            load_scene_tf_config)
+        b["_scene_cfg"] = load_scene_tf_config(b["source"])
+    except ImportError:
+        pass
+    edge_pts = hull_edge_samples(b) if b["_scene_cfg"] is not None else None
+    if edge_pts is not None and len(edge_pts):
+        for arm, dist_fn in (("aprime", lambda p: dist_to_mesh(scene, p)),
+                             ("bprim", lambda p: dist_to_b(boxes, p))):
+            d = dist_fn(edge_pts)
+            report[arm]["edges"] = {
+                "samples": int(len(edge_pts)),
+                "max_mm": round(float(d.max()) * 1000, 3),
+                "beyond_0p5mm": int((d > LIMIT).sum()),
+            }
+            report[arm]["pass"] = bool(
+                report[arm]["pass"] and (d > LIMIT).sum() == 0)
+    else:
+        for arm in ("aprime", "bprim"):
+            report[arm]["edges"] = {"samples": 0, "unsampled": True}
+
+    # Aperture clearance (explicit; the face grids record 'unsampled'
+    # for the aperture frame at this step size).
+    ap_clear = aperture_clearance(b, args.aprime_stl, boxes)
+    report["aperture_clearance"] = ap_clear
+    for arm in ("aprime", "bprim"):
+        if ap_clear[arm]["blocked"] > 0:
+            report[arm]["pass"] = False
+        if report[arm]["faces"].get("ap_sill_top", {}).get("points", 0) == 0:
+            report[arm]["faces"]["ap_sill_top"]["unsampled"] = True
+
+    occ = cavity_occupancy(b, args.aprime_stl, boxes)
+    report["cavity_occupancy"] = occ
+    if occ["b_solid_hits"] or occ["aprime_solid_hits"]:
+        report["aprime"]["pass"] = False
+        report["bprim"]["pass"] = False
 
     report["pass"] = bool(report["aprime"]["pass"]
                           and report["bprim"]["pass"])

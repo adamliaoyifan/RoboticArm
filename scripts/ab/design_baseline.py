@@ -88,65 +88,71 @@ def panels(b):
     panels_ = [
         box("floor", (ox_lo, oy_lo, oz_lo), (ox_hi, oy_hi, fz)),
         box("ceiling", (ox_lo, oy_lo, cz), (ox_hi, oy_hi, oz_hi)),
-        box("wall_neg_y", (ox_lo, y_lo, oz_lo), (ox_hi, oy_hi, oz_hi)),
-        # +Y vertical wall up to the chamfer start.
-        box("wall_pos_y_vertical", (ox_lo, y_hi, oz_lo),
-            (ox_hi, oy_hi, wall_z)),
-        # -X face: aperture frame. The +Y-side pillar is split at the
-        # chamfer start (the clipped cavity corner above z=wall_z must
-        # stay open); the triangular remainder is carried by the -X end
-        # wedge below.
+        box("wall_neg_y", (ox_lo, oy_lo, oz_lo), (ox_hi, y_lo, oz_hi)),
+        # +Y vertical wall ABOVE the chamfer (full width from wall_z up).
+        box("wall_pos_y_vertical", (ox_lo, y_hi, wall_z),
+            (ox_hi, oy_hi, oz_hi)),
+        # -X face: aperture frame. The +Y-side pillar above the chamfer
+        # is a plain box; the sloped zone z[floor_z, wall_z] is carried
+        # by the -X end wedge.
         box("sill", (ox_lo, oy_lo, oz_lo),
             (x_lo, oy_hi, ap["z_lo"])),
         box("lintel", (ox_lo, ap["y_lo"], ap["z_hi"]),
             (x_lo, oy_hi, oz_hi)),
         box("pillar_neg_y", (ox_lo, oy_lo, ap["z_lo"]),
             (x_lo, ap["y_lo"], ap["z_hi"])),
-        box("pillar_pos_y_lower", (ox_lo, ap["y_hi"], ap["z_lo"]),
-            (x_lo, y_hi, wall_z)),
-        box("pillar_pos_y_upper", (ox_lo, ap["y_hi"], wall_z),
-            (x_lo, floor_y, ap["z_hi"])),
-        # +X end wall: lower full band + upper band clipped at the
-        # chamfer's ceiling edge.
-        box("end_pos_x_lower", (x_hi, oy_lo, oz_lo),
-            (ox_hi, oy_hi, wall_z)),
+        box("pillar_pos_y", (ox_lo, ap["y_hi"], wall_z),
+            (x_lo, y_hi, ap["z_hi"])),
+        # +X end wall: band below the chamfer start (clipped at
+        # floor_y) + full-width band above it; the sloped corner is the
+        # +X end wedge.
+        box("end_pos_x_band", (x_hi, oy_lo, fz),
+            (ox_hi, floor_y, wall_z)),
         box("end_pos_x_upper", (x_hi, oy_lo, wall_z),
-            (ox_hi, floor_y, oz_hi)),
+            (ox_hi, oy_hi, oz_hi)),
     ]
-    # Chamfer wedge (+Y upper wall): inner face on the slope plane
-    # through (y=y_hi, z=wall_z) and (y=floor_y, z=cz), full x span.
+    # Chamfer wedge (+Y lower wall): inner face on the slope plane
+    # through (y=floor_y, z=floor_z) and (y=y_hi, z=wall_z), full x.
     slope_dy = y_hi - floor_y
-    slope_dz = cz - wall_z
+    slope_dz = wall_z - fz
     panels_.append({
         "name": "chamfer_wedge", "kind": "wedge",
-        "point": (0.0, y_hi, wall_z),
+        "point": (0.0, floor_y, fz),
         "slope": (slope_dy, slope_dz),
         "x_span": (ox_lo, ox_hi),
-        "outer_y": oy_hi, "ceiling_z": cz,
+        "outer_y": oy_hi, "floor_z": fz,
     })
-    # End wedges: the triangular cavity-corner remainder at BOTH end
-    # walls above z=wall_z between y=floor_y and the slope line
-    # ((floor_y, wall_z), (y_hi, wall_z), (floor_y, cz) triangle).
+    # End wedges: the triangular wall corner at BOTH end walls in the
+    # chamfer zone — triangle (floor_y, floor_z), (y_hi, floor_z),
+    # (y_hi, wall_z) in (y, z).
     panels_.append({
         "name": "end_wedge_neg_x", "kind": "end_wedge",
-        "x_span": (ox_lo, x_lo), "outer_y": oy_hi, "ceiling_z": cz,
-        "point": (0.0, y_hi, wall_z), "slope": (slope_dy, slope_dz),
+        "x_span": (ox_lo, x_lo), "outer_y": oy_hi,
+        "floor_z": fz, "point": (0.0, floor_y, fz),
+        "slope": (slope_dy, slope_dz),
     })
     panels_.append({
         "name": "end_wedge_pos_x", "kind": "end_wedge",
-        "x_span": (x_hi, ox_hi), "outer_y": oy_hi, "ceiling_z": cz,
-        "point": (0.0, y_hi, wall_z), "slope": (slope_dy, slope_dz),
+        "x_span": (x_hi, ox_hi), "outer_y": oy_hi,
+        "floor_z": fz, "point": (0.0, floor_y, fz),
+        "slope": (slope_dy, slope_dz),
     })
     return panels_
 
 
 def chamfer_y(b, z):
-    """Inner +Y boundary at height z (vertical wall below wall_z)."""
-    if z <= b["chamfer_wall_z"]:
+    """Inner +Y boundary at height z — BOTTOM chamfer per the frozen
+    YAML (authoritative docstring: floor_y is the usable +Y limit ON
+    THE CARGO FLOOR; wall_z is where the cut meets the full wall; the
+    LOWER +Y edge is the slanted face). Narrow at the floor, full
+    width from wall_z up."""
+    fz, wz = b["floor_z"], b["chamfer_wall_z"]
+    if z >= wz:
         return b["y_hi"]
-    t = (z - b["chamfer_wall_z"]) / (b["ceiling_z"]
-                                    - b["chamfer_wall_z"])
-    return b["y_hi"] + t * (b["chamfer_floor_y"] - b["y_hi"])
+    if z <= fz:
+        return b["chamfer_floor_y"]
+    t = (z - fz) / (wz - fz)
+    return b["chamfer_floor_y"] + t * (b["y_hi"] - b["chamfer_floor_y"])
 
 
 def inside_cavity(b, p, eps=0.0):
