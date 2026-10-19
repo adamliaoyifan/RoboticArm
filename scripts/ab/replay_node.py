@@ -36,6 +36,33 @@ JOINTS = ["elfin_joint%d" % i for i in range(1, 7)]
 CMD_RATE_HZ = 100.0
 
 
+def load_approach(tool_stream, t_window_lo):
+    """The COMPLETE recorded arm path before the window head: restores
+    the robot's release-boundary joints along the recorded (hence
+    collision-free-by-construction) motion instead of an unchecked
+    point-to-point jump the controller would reject anyway
+    (allowed_start_tolerance)."""
+    rows = []
+    for line in open(tool_stream):
+        d = json.loads(line)
+        if d["kind"] != "joint_states":
+            continue
+        t = d["t_sim_ns"] / 1e9
+        if t >= t_window_lo:
+            continue
+        names = d.get("name") or []
+        if names and set(JOINTS) <= set(names):
+            q = [d["position"][names.index(j)] for j in JOINTS]
+        else:
+            q = [float(v) for v in d["position"][:6]]
+        rows.append((t, q))
+    rows.sort()
+    # Downsample to <=10 Hz for the approach (command bandwidth; the
+    # window stays at the recorded density)."""
+    step = max(1, int(0.1 / 0.02))
+    return rows[::step]
+
+
 def load_window(tool_stream, t_lo, t_hi):
     rows = []
     for line in open(tool_stream):
@@ -216,13 +243,32 @@ def main():
         print(json.dumps(node.report))
         return 2
 
-    # 1) static carry box at the frozen pose
+    # 1) approach along the recorded path to the release-boundary
+    # joints (no box in the world yet).
+    approach = load_approach(spec["tool_stream"],
+                              spec["t_release"] - 1.0)
+    node.report["approach_rows"] = len(approach)
+    if approach:
+        approach_handle = node.send_trajectory(approach, approach[0][0])
+        if not node.report.get("trajectory_accepted"):
+            node.report["error"] = "approach_trajectory_rejected"
+            node.done = True
+            print(json.dumps(node.report))
+            return 2
+        result_future = approach_handle.get_result_async()
+        rclpy.spin_until_future_complete(node, result_future,
+                                         timeout_sec=400.0)
+        node.report["approach_result"] = int(getattr(
+            result_future.result().result, "error_code", -1))
+
+    # 2) static carry box at the frozen pose (world now matches the
+    # release boundary: arm joints + tool + box), then the window.
     res = node.spawn_static(spec["model"], spec["pose6"])
     node.report["static_spawn"] = bool(
         res and getattr(res, "success", False))
 
-    # 2) time-parameterized trajectory (starts at window head; includes
-    # the descend tail before the release boundary)
+    # 3) window replay (descend tail + release + retreat)
+    node.report["trajectory_accepted"] = False
     handle = node.send_trajectory(rows, rows[0][0])
     stop_event = threading.Event()
     echo = threading.Thread(
