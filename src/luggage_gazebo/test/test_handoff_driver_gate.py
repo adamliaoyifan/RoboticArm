@@ -99,6 +99,12 @@ def _offset(joint, value):
 
 
 class _Driver(object):
+    def _release_capture_event(self, event, **_k):
+        pass  # prior-g1 provenance hook (env-gated no-op)
+
+    def _stop_release_capture(self):
+        pass
+
     _execute_segment = PlaceSmokeDriver._execute_segment
     _await_leg_handoff = PlaceSmokeDriver._await_leg_handoff
     _note_leg_submitted = PlaceSmokeDriver._note_leg_submitted

@@ -1298,6 +1298,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._last_gz_pose_probe.update(
                     output=out[-16000:], parsed=pose)
                 return pose
+            # Unparseable-but-returned output is recorded too (the prior
+            # branch's forensic contract: the raw text must survive).
+            # Empty `out` means the exception path already recorded the
+            # raw text — do not clobber it.
+            if out:
+                self._last_gz_pose_probe.update(
+                    output=out[-16000:], parsed=None)
             if attempt < 3:
                 time.sleep(0.5)
         return None

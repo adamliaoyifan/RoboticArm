@@ -15,7 +15,7 @@ from luggage_description.scene_tf_config_utils import (
 from luggage_description.suitcase_visual import (
     DEFAULT_MODEL_VISUAL,
     SIZE_TIERS,
-    HISTORICAL_SIZE_TIERS,
+    INCH_SIZE_TIERS,
     VISUAL_LOAFBRR,
     VISUAL_VINTAGE,
     cuboid_inertia,
@@ -276,7 +276,7 @@ class TestSizedPickupAssets(unittest.TestCase):
     def test_all_supported_models_exist_with_matching_visual_collision(self):
         uris = set()
         for visual in (VISUAL_LOAFBRR, VISUAL_VINTAGE):
-            for tier, size, _mass, _cid in SIZE_TIERS + HISTORICAL_SIZE_TIERS:
+            for tier, size, _mass, _cid in SIZE_TIERS + INCH_SIZE_TIERS:
                 name = sized_model_name(visual, tier)
                 stl = sized_stl_path(visual, tier, GAZEBO_MODELS)
                 sdf_path = os.path.join(GAZEBO_MODELS, name, "model.sdf")
@@ -313,7 +313,7 @@ class TestSizedPickupAssets(unittest.TestCase):
                 self.assertIn("<up_axis>Z_UP</up_axis>", dae)
                 self.assertNotIn(vis_uri, uris)
                 uris.add(vis_uri)
-        self.assertEqual(len(uris), 2 * (len(SIZE_TIERS) + len(HISTORICAL_SIZE_TIERS)))
+        self.assertEqual(len(uris), 2 * (len(SIZE_TIERS) + len(INCH_SIZE_TIERS)))
 
     def test_top_footprint_uses_lid_band_not_full_aabb(self):
         """Vintage GT is the lid XY, not the handle/body vertex AABB."""

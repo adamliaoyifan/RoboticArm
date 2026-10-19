@@ -725,8 +725,13 @@ class MotionExecutor:
         handle = self._wait_future(future, 10.0)
         if handle is None or not handle.accepted:
             return self._result(False, "ExecuteTrajectory goal rejected", 1.0)
-        wrapped = self._wait_goal(handle, execute_wait_timeout_sec(
-            execute_timeout, points))
+        # [merge semantics] The certified trajectory duration bounds the
+        # wait (prior-g1 contract, consistent with the driver-side
+        # certified_execution_wait); execute_wait_timeout_sec stays the
+        # upper bound for degenerate/untimed records.
+        wrapped = self._wait_goal(handle, min(
+            response_wait,
+            execute_wait_timeout_sec(execute_timeout, points)))
         if wrapped is None:
             handle.cancel_goal()
             return self._result(False, "ExecuteTrajectory timeout", 1.0)

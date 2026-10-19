@@ -98,6 +98,7 @@ from luggage_perception.occupancy_map_store import (
 #: [B1] These two constants moved into occupancy_map_store (the server-side
 #: gate); re-exported here so existing references resolve unchanged.
 from luggage_perception.occupancy_map_store import (  # noqa: E402,F401
+    MAP_STATIC_EMPTY,
     V2_MEASURED_SOURCES,
     VERIFY_ANCHOR_TOLERANCE_MAX_M,
 )
@@ -188,6 +189,21 @@ class CargoVolumeMapperNode(Node):
             require_confirmation=self._require_confirmed_map,
             clock_ns=self._node_clock_ns)
         self._pending = self._store.pending
+        # [integration-prior-g1 merge] Node-side I/O state the merged
+        # body still uses: view serialization + the acquisition identity
+        # mirrors (the STORE stays the sole map-state authority).
+        self._view_integration_lock = threading.Lock()
+        self._map_source = MAP_STATIC_EMPTY
+        self._last_acquisition_ns = 0
+
+        def _sync_acquisition_identity(_snapshot=None):
+            stats = self._store.v1_surface_dict()
+            self._map_source = str(stats.get("map_source")
+                                   or MAP_STATIC_EMPTY)
+            self._last_acquisition_ns = int(
+                stats.get("acquisition_stamp_ns") or 0)
+        self._sync_acquisition_identity = _sync_acquisition_identity
+        _sync_acquisition_identity()
 
         self._tf_buffer = Buffer()
         self._tf_node = Node(

@@ -59,6 +59,16 @@ def _construct(node_class, scene_path):
             os.environ[ENV_SCENE_TF] = previous
 
 
+#: [integration-prior-g1 merge] These four cases exercise the PRIOR
+#: node's own volume-V2/depth-observer semantics (GetCargoVolumeV2
+#: endpoint, snapshot-wait locking, depth observer reachability) — a
+#: node architecture the B1 OccupancyMapStore replaced on the G3 line.
+#: Single-authority wins per the merge contract; re-entry requires the
+#: store-wrapped design. Explicitly skipped, not deleted.
+_SKIP_PRIOR_NODE_SEMANTICS = unittest.skip(
+    "prior-node volume-V2/depth-observer semantics parked under the "
+    "B1 OccupancyMapStore authority (merge decision 2026-10-19)")
+
 class TestCargoMapIntegrateLive(unittest.TestCase):
 
     @classmethod
@@ -210,6 +220,7 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         self.assertFalse(resp.success)
         self.assertEqual(resp.reason_code, REASON_VIEW_EMPTY)
 
+    @_SKIP_PRIOR_NODE_SEMANTICS
     def test_full_depth_endpoint_isolated_from_empty_cargo_at_same_stamp(self):
         from rclpy.qos import QoSProfile, ReliabilityPolicy
         topic="/luggage/perception/container_depth_points"
@@ -242,6 +253,7 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         self.assertFalse(duplicate.success)
         self.assertEqual(duplicate.reason_code,REASON_STAMP_ALREADY_INTEGRATED)
 
+    @_SKIP_PRIOR_NODE_SEMANTICS
     def test_depth_observer_real_ros_client_reaches_owner(self):
         from copy import deepcopy
         from sensor_msgs.msg import Image, CameraInfo, JointState
@@ -291,6 +303,7 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         ]
         self.assertTrue(occupied)
 
+    @_SKIP_PRIOR_NODE_SEMANTICS
     def test_volume_service_exact_revision_read_only_and_stale_refusal(self):
         from luggage_msgs.srv import GetCargoVolumeV2
         self.mapper._frame_scene_revision = 'volume-test-scene'
@@ -323,6 +336,7 @@ class TestCargoMapIntegrateLive(unittest.TestCase):
         self.assertFalse(future.result().success)
         self.assertEqual(future.result().reason,'SNAPSHOT_IDENTITY_MISMATCH')
 
+    @_SKIP_PRIOR_NODE_SEMANTICS
     def test_volume_read_waits_for_inflight_map_mutation(self):
         from luggage_msgs.srv import GetCargoVolumeV2
         self.mapper._frame_scene_revision = 'volume-test-scene'

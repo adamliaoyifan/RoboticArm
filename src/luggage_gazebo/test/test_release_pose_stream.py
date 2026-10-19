@@ -231,6 +231,9 @@ class ReleaseOrderAndRefusalTest(unittest.TestCase):
             def _gz_delete(self):
                 raise AssertionError("delete service must not be touched")
 
+            def _release_capture_event(self, event, **_k):
+                pass  # prior-g1 provenance hook (env-gated no-op)
+
             def call_srv(self, cli, req, timeout=0.0):
                 _Stub.calls.append(("call_srv", cli))
                 return None

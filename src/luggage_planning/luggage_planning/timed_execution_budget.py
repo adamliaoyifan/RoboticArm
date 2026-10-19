@@ -10,7 +10,11 @@ def timed_execution_wait(points, overhead_s):
         raise ValueError('certified trajectory is empty')
     last_ns=-1
     for point in points:
-        duration=point.time_from_start
+        duration=getattr(point,'time_from_start',None)
+        if duration is None and isinstance(point,dict):
+            duration=point.get('time_from_start')
+        if duration is None:
+            raise ValueError('point without time_from_start')
         if duration.sec<0 or not 0<=duration.nanosec<1_000_000_000:
             raise ValueError('invalid trajectory duration')
         current_ns=duration.sec*1_000_000_000+duration.nanosec

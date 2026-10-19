@@ -57,10 +57,20 @@ class _Typed(object):
         return True, "timed joint path", result
 
 
+def _dur(sec):
+    import types
+    return types.SimpleNamespace(sec=int(sec), nanosec=int((sec % 1) * 1e9))
+
+
 def _knots(first, last):
+    # Certified segments carry increasing time_from_start (the prior-g1
+    # certified-wait contract; G3 stubs upgraded to the merged truth).
     return {
         "joint_names": list(CANONICAL_ARM_JOINTS),
-        "points": [{"positions": list(first)}, {"positions": list(last)}],
+        "points": [
+            {"positions": list(first), "time_from_start": _dur(0.0)},
+            {"positions": list(last), "time_from_start": _dur(2.5)},
+        ],
     }
 
 

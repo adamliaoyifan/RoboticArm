@@ -175,6 +175,35 @@ class _Flow(object):
     def ros_now_sec(self):
         return 1.0
 
+    def _notify_box_released(self):
+        # G3 release-failure contract hook (map notify) — stubbed ok.
+        return True, "stub-notified"
+
+    def _release_kinematic(self, model, slot_meta):
+        # G3 planning-verification release (default mode): declared
+        # end-state confirmation stubbed as succeeding exactly.
+        rest = list(self._rest)
+        return True, "kinematic", {
+            "mode": "kinematic",
+            "declared_pose_rpy6": rest,
+            "declared_vs_world_m": 0.0,
+            "verdict": "declared_state_confirmed"}
+    def _evaluate_place_verify(self, trial, expected, actual,
+                               pose_release, pose_drift):
+        # G3 verify gate hook: fills trial.extras["verify"] and returns
+        # the failing gate name or None (exact placement -> pass).
+        trial.err_xy = 0.0
+        trial.err_z = 0.0
+        trial.roll = 0.0
+        trial.pitch = 0.0
+        trial.drift = 0.0
+        trial.inside_inner_box = True
+        trial.extras.setdefault("verify", {}).update({
+            "err_xy": trial.err_xy, "err_z": trial.err_z, "drift": 0.0,
+            "settled": True, "verdict": "ok"})
+        return None
+
+
     def get_logger(self):
         return _Log()
 

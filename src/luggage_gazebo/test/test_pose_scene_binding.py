@@ -10,6 +10,10 @@ sys.path.insert(0, os.path.join(REPO, "scripts"))
 from frame_migration_st09_rehearsal import cell_binding  # noqa: E402
 
 
+@unittest.skipUnless(
+    os.path.isdir(os.path.join(REPO, "install-st09")),
+    "install-st09 (the prior branch's isolated cell install) is absent "
+    "in this integration worktree; environment-gated")
 class PoseSceneBinding(unittest.TestCase):
     def test_installed_sim_deploy_pair_is_bound(self):
         binding = cell_binding(os.path.join(REPO, "install-st09"))
