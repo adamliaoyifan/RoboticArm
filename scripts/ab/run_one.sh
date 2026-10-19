@@ -199,6 +199,14 @@ timeout 520 python3 "$WS/scripts/ab/replay_node.py" \
 
 echo "{\"stage\":\"replay_done\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 
+# ---- Halt captures, materialize the tmpfs pose stream, then metric.
+kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
+sleep 3
+if [[ -n "${POSE_TMP_FILE:-}" && -f "$POSE_TMP_FILE" ]]; then
+  cp "$POSE_TMP_FILE" "$OUT/dyn_pose_stream.txt"
+  rm -f "$POSE_TMP_FILE"
+fi
+
 # ---- Metric + validity gate (sim-clock). ----
 T_SPAWN=$(python3 -c "import json;print(json.load(open('$OUT/replay_spec.json'))['t_spawn'])")
 python3 "$WS/scripts/ab/metrics.py" --run-dir "$OUT" \
@@ -210,10 +218,6 @@ kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 8
 kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
 sleep 3
-if [[ -n "${POSE_TMP_FILE:-}" && -f "$POSE_TMP_FILE" ]]; then
-  cp "$POSE_TMP_FILE" "$OUT/dyn_pose_stream.txt"
-  rm -f "$POSE_TMP_FILE"
-fi
 RESIDUAL=$(pgrep -f "gz sim.*$WORLD" | wc -l)
 echo "{\"stage\":\"teardown\",\"residual_gz\":$RESIDUAL,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 wc -c "$OUT/dyn_pose_stream.txt" "$OUT/contact_stream.txt" \
