@@ -91,6 +91,9 @@ def compute_prior(request: PriorRequest, collision: ToolCollisionPort, *,
         return PriorResult(request.request_id, request.reuse_key, status, usable,
                            tuple(trace), clock()-started, pairs)
 
+    if request.measured and request.world_from_pick_box is None:
+        return finish("MISSING_PICK_CONTEXT")
+
     for placement in request.placements:
         for grasp in sorted(request.grasps, key=lambda g: (g.rank, g.candidate_id)):
             if cancelled():
@@ -124,7 +127,7 @@ def compute_prior(request: PriorRequest, collision: ToolCollisionPort, *,
                     break
                 refs.append(world_tcp)
             else:
-                if request.world_from_pick_box is not None:
+                if request.measured:
                     local = collision.check_local(request, placement, grasp, deadline=deadline, cancelled=cancelled)
                     trace.append(CandidateTrace(placement.slot_id, grasp.candidate_id, -1, local))
                     if not local.valid:
@@ -132,6 +135,6 @@ def compute_prior(request: PriorRequest, collision: ToolCollisionPort, *,
                 choices.append(PriorChoice(placement, grasp, refs[-1], tuple(refs)))
         # Evaluate every measured G for this slot, then return its fully
         # witnessed alternatives before spending budget on another placement.
-        if request.world_from_pick_box is not None and choices:
+        if request.measured and choices:
             return finish("READY")
     return finish('READY' if choices else 'NO_VALID_GRASP')

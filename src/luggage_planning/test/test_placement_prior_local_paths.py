@@ -94,3 +94,9 @@ def test_local_witness_rejects_truncation_and_discontinuity(damage):
     if damage == "names":
         branch.outgoing.joint_names = ["other"]
     assert valid_branch_paths([branch]) == (damage == "none")
+
+
+def test_measured_request_cannot_bypass_local_checks_by_omitting_pickup():
+    result = compute_prior(replace(measured(), world_from_pick_box=None), object())
+    assert result.status == "MISSING_PICK_CONTEXT"
+    assert not result.choices

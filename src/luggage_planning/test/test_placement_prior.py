@@ -22,7 +22,7 @@ def request():
         GraspCandidate('offset', Transform((-.04, 0, .1), (0, 0, 0, 1)), 'obs', 'cup', 1),
     )
     return PriorRequest('req', snapshot, (.4, .3, .2),
-                        (PlacementCandidate('slot', I),), grasps, True)
+                        (PlacementCandidate('slot', I),), grasps, True, world_from_pick_box=I)
 
 
 class SensorWall:
@@ -33,6 +33,10 @@ class SensorWall:
     """
     def __init__(self):
         self.calls = []
+
+    def check_local(self, *args, **kwargs):
+        # Analytic orchestration fixture, not native reachability evidence.
+        return CollisionVerdict(True, "FIXTURE_LOCAL_VALID")
 
     def check(self, snapshot, tcp, box, size, **kwargs):
         self.calls.append((snapshot.identity, tcp, box, size))

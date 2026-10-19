@@ -107,6 +107,10 @@ class GraspCandidate:
             raise ValueError('candidate provenance required')
         if type(self.rank) is not int or self.rank < 0:
             raise ValueError('invalid candidate rank')
+        refs = tuple(self.pick_references)
+        if len(refs) not in (0, 4) or not all(isinstance(p, Transform) for p in refs):
+            raise ValueError('invalid pick references')
+        object.__setattr__(self, 'pick_references', refs)
 
 
 @dataclass(frozen=True)
@@ -139,6 +143,8 @@ class PriorRequest:
     world_from_pick_box: Transform = None
 
     def __post_init__(self):
+        if self.world_from_pick_box is not None and not isinstance(self.world_from_pick_box, Transform):
+            raise ValueError('invalid pickup box transform')
         size = finite_tuple(self.box_wdh, 3, 'box_wdh')
         if min(size) <= 0:
             raise ValueError('box dimensions must be positive')
