@@ -67,12 +67,16 @@ cleanup() {
   for pid in "${OWN_PIDS[@]:-}"; do
     kill -KILL "$pid" 2>/dev/null || true
   done
-  # Experiment-owned cleanup ONLY: the launch tree we started.
+  # Experiment-owned cleanup: the launch tree we started, then the
+  # workspace's proven sim reaper (launch INT leaves bridges/ign alive —
+  # the orphans then trip the NEXT run's gate; verified exclusive before
+  # launch, so every sim process at cleanup is ours).
   if [[ -n "${LAUNCH_PID:-}" ]]; then
     kill -INT "$LAUNCH_PID" 2>/dev/null || true
     sleep 6
   fi
-  pkill -KILL -f "gz sim.*$WORLD" 2>/dev/null || true
+  bash "$WS/scripts/stop_sim.sh" >/dev/null 2>&1 || true
+  for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
   exit $status
 }
 trap cleanup EXIT INT TERM
