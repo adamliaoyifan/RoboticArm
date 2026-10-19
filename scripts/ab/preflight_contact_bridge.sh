@@ -26,6 +26,23 @@ if pgrep -x ign >/dev/null 2>&1 || pgrep -x gz >/dev/null 2>&1 \
 fi
 LOG "slot clean"
 
+# Orphan participant sweep + FastRTPS SHM residue (root cause of
+# runs 5-9; see run_one.sh boot discipline for the full rationale).
+if ! pgrep -f 'ros2 launc[h]' >/dev/null 2>&1; then
+  pkill -TERM -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+  pkill -TERM -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+  sleep 4
+  pkill -KILL -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+  pkill -KILL -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+  N_SHM=$(ls /dev/shm 2>/dev/null | grep -c '^fastrtps' || true)
+  if [[ "${N_SHM:-0}" -gt 0 ]]; then
+    rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null || true
+    LOG "swept $N_SHM stale fastrtps shm files"
+  fi
+else
+  LOG "SKIP sweep: foreign ros2 launch alive"
+fi
+
 set +u
 source /opt/ros/humble/setup.bash
 source "$MAIN/install/setup.bash"
@@ -86,28 +103,39 @@ kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 8
 bash "$WS/scripts/stop_sim.sh" --all >> "$OUT/bootsweep.log" 2>&1 || true
 for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
-RESID=$(pgrep -x ign | wc -l)
+RESID=$(( $(pgrep -x ign | wc -l || true) ))
 
 python3 - "$OUT" "$SUB_OK" "$RESID" << 'PY' | tee -a "$OUT/preflight.log"
 import json, sys
 out, sub_ok, resid = sys.argv[1], int(sys.argv[2]), int(sys.argv[3])
 path = out + "/box_contacts.jsonl"
-lines, contact_rows = 0, 0
+lines, contact_rows, partners = 0, 0, set()
 try:
     for raw in open(path):
         lines += 1
-        if '"t_sim_ns"' in raw:
-            contact_rows += 1
+        if '"t_sim_ns"' not in raw:
+            continue
+        contact_rows += 1
+        for p in json.loads(raw).get("partners", []):
+            partners.add(p.split("::")[0])
 except FileNotFoundError:
     pass
+spawned = json.load(open(out + "/spawn.json"))["spawned"]
+# GATE = content: the chain box-sensor -> gz -> bridge -> ROS ->
+# recorder must carry real rows naming a physical partner. The
+# spawn-ack and node-info checks are informational: the SpawnEntity
+# response can time out client-side while the entity IS created
+# (observed: 53,861 rows with spawned:false), and `ros2 node info`
+# is unreliable right after a daemon restart (killed by the sweep).
 verdict = {
-    "pass": bool(lines >= 1 and contact_rows >= 1 and sub_ok >= 1
-                 and json.load(open(out + "/spawn.json"))["spawned"]
-                 and resid == 0),
-    "recorder_file_lines": lines,
+    "pass": bool(contact_rows >= 100 and partners and resid == 0),
     "contact_rows": contact_rows,
-    "recorder_subscribed": sub_ok >= 1,
-    "spawned": json.load(open(out + "/spawn.json"))["spawned"],
+    "partners": sorted(partners),
+    "recorder_file_lines": lines,
+    "recorder_nodeinfo_subscribed": sub_ok >= 1,
+    "spawn_ack": spawned,
+    "spawn_note": ("ack=false but entity created is a known "
+                   "client-timeout signature; non-gating"),
     "residual_ign_after_teardown": resid,
 }
 json.dump(verdict, open(out + "/verdict.json", "w"), indent=2)

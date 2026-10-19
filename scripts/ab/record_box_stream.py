@@ -45,19 +45,30 @@ def main():
             header.stamp.nanosec)
 
     def on_contacts(msg):
-        for contact in msg.contacts:
-            names = [c.name for c in
-                     (contact.collision1, contact.collision2)
-                     if c is not None and c.name]
-            if not any(model in n for n in names):
-                continue
-            contact_h.write(json.dumps({
-                "t_sim_ns": stamp_ns(contact.header),
-                "partners": [n for n in names if model not in n],
-                "positions": [[p.x, p.y, p.z]
-                              for p in contact.positions],
-            }) + "\n")
-        contact_h.flush()
+        # [preflight-found defect] ros_gz_interfaces/Contact has NO
+        # header and collision1/2 are Entity (id/name/type); the stamp
+        # lives on the message-level header. Never raise from the
+        # callback — a raised exception kills spin_once and takes the
+        # whole recorder (and the run's contact record) with it.
+        try:
+            stamp = stamp_ns(msg.header)
+            for contact in msg.contacts:
+                names = [e.name for e in
+                         (contact.collision1, contact.collision2)
+                         if e is not None and e.name]
+                if not any(model in n for n in names):
+                    continue
+                contact_h.write(json.dumps({
+                    "t_sim_ns": stamp,
+                    "partners": [n for n in names if model not in n],
+                    "positions": [[p.x, p.y, p.z]
+                                  for p in contact.positions],
+                }) + "\n")
+            contact_h.flush()
+        except Exception as exc:  # noqa: BLE001 - keep recording
+            contact_h.write(json.dumps(
+                {"recorder_error": repr(exc)}) + "\n")
+            contact_h.flush()
 
     node.create_subscription(Contacts, "/obs/box_contact",
                             on_contacts, best)

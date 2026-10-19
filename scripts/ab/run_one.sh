@@ -55,6 +55,30 @@ fi
 # launch process; a plain -f pattern matches monitoring shells whose
 # command line merely CONTAINS the string (aborted run 01 that way).
 
+# ---- Orphan participant sweep + FastRTPS SHM residue (root cause
+# of runs 5-9, found by the 2026-10-19 preflight). Launch INT leaves
+# node children reparented to systemd --user: they accumulate (107
+# orphans up to 4 days old observed), stay live DDS participants, and
+# hold /dev/shm/fastrtps_port* locks; new boots then fail
+# open_and_lock_file (controllers never come up). With NO ros2
+# launch alive, every participant node IS an orphan: TERM -> KILL,
+# then clear the stale SHM locks. A live foreign launch (rare, none
+# of ours) is guarded by refusing to touch anything then.
+if ! pgrep -f 'ros2 launc[h]' >/dev/null 2>&1; then
+  pkill -TERM -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+  pkill -TERM -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+  sleep 4
+  pkill -KILL -f 'opt/ros/humble/li[b]' 2>/dev/null || true
+  pkill -KILL -f 'install/luggage_.*/li[b]' 2>/dev/null || true
+  N_SHM=$(ls /dev/shm 2>/dev/null | grep -c '^fastrtps' || true)
+  if [[ "${N_SHM:-0}" -gt 0 ]]; then
+    rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null || true
+    echo "{\"stage\":\"shm_sweep\",\"stale_files\":$N_SHM,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+  fi
+else
+  echo "foreign ros2 launch alive; skipping orphan/shm sweep" >&2
+fi
+
 
 set +u
 source /opt/ros/humble/setup.bash
@@ -223,7 +247,7 @@ kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 8
 kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
 sleep 3
-RESIDUAL=$(pgrep -f "gz sim.*$WORLD" | wc -l)
+RESIDUAL=$(( $(pgrep -f "gz sim.*$WORLD" | wc -l || true) ))
 echo "{\"stage\":\"teardown\",\"residual_gz\":$RESIDUAL,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 wc -c "$OUT/dyn_pose_stream.txt" "$OUT/box_contacts.jsonl" \
   "$OUT/tool_stream.jsonl" || true
