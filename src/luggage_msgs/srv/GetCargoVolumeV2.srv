@@ -2,12 +2,20 @@
 string scene_revision
 string geometry_hash
 uint64 expected_map_revision
+# [integration-prior-g1 2026-10-19] Full B1 snapshot identity: when the
+# caller pins expected_epoch/expected_content_digest (the same pair
+# Select's admission uses), the owner must serve that exact snapshot
+# or refuse — a volume read can never cross a snapshot boundary.
+string expected_epoch
+string expected_content_digest
 ---
 bool success
 string reason
 string scene_revision
 string geometry_hash
 uint64 map_revision
+string epoch
+string content_digest
 string frame_id
 uint64 acquisition_stamp_ns
 string map_source

@@ -41,3 +41,36 @@
 - 模式：kinematic（显式 `--release-mode kinematic` 记入 manifest 参数）；
   判据=上表三结果＋原 40mm 门/占用合同；判权=用户裁定箱数（多箱 n 待定）。
 - 预检沿用 preflight_r7 模式（位姿流/服务/清扫归属）；运动开始即计额度。
+
+---
+
+## 记录修正（用户指令 2026-10-19）
+
+1. **实施偏离声明**：独立集成分支 `agent/eng/integration-prior-g1` 是
+   实施选择，非用户指令顺序；用户指定的工作分支是当前 G3 分支
+   （agent/eng/master-pack-baseline-g3）。集成分支保留用于验证；
+   合回 G3 分支未经用户下达，须待其明示。
+2. **回归口径修正**：此前"零回归"准确表述为——**已执行测试中零新增失败
+   ID**（对照 ce361117 逐项复现）；同时明示：4 个 prior-node 语义测试
+   显式 skip（记为**能力缺口**，不计入"prior 功能全过"）、depth-view
+   通道停用、install-st09 环境测试未执行、2 项组合批伪影、st09 B/I
+   进程隔离套件未并入组合运行。1697 通过不能替代缺失能力的验证。
+
+## prior 实际接线检查（n=2 前置门，进行中）
+
+已关闭（离线只读链路检查 7 测全绿，test_prior_occ_chain_offline.py）：
+- **GetCargoVolumeV2 可用且数据出自 OccupancyMapStore**：身份绑定改为
+  store 快照（epoch+revision+content_digest 请求钉死/响应回显；裸读
+  mapper revision 与仅初始化镜像已废除）；错 revision/epoch/digest、
+  跨快照（快照钉死后地图再变更）、未确认态全部具名拒绝
+  （SNAPSHOT_IDENTITY_MISMATCH / NO_CONFIRMED_MEASURED_VOLUME）。
+- **prior 可从 owner 体积生成**（真实 store→volume→ConfirmedSurface→
+  build_private_snapshot 链；碰撞端口为离线桩——链路与身份合同已证，
+  碰撞正确性不在此证）；准备时长独立字段（elapsed_s/cache_hit）；
+  失败具名回退（adopted=false+reason）合同钉死。
+
+**尚未关闭（n=2 前必须）**：实际采用路径——`place_prior_node` 未在
+sim launch 启动；pack 计分驱动（PlaceSmokeDriver）无 prior 客户端接线
+（现仅 motion_occ_eval_driver --placement-prior 可达）。需把 prior 客户端
+按同一 opt-in 接入 pack 路径＋launch 启动 sidecar，形成**新冻结版本**，
+n=2 才能同时报告"两箱流程＋prior 是否真正采用＋准备/规划分别耗时"。

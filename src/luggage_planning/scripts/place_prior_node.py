@@ -184,10 +184,18 @@ class PlacePriorNode(Node):
             baseline=self._call(self._get_scene,get_request,2.).scene
             if self._recorder:self._recorder('baseline_scene',baseline)
             surface_record=confirmed.record()
+            # [integration-prior-g1 2026-10-19] Pin the FULL B1 snapshot
+            # identity when the confirmed surface record carries it: the
+            # volume must come from the exact epoch+digest Select's
+            # admission uses, or the read refuses (never crosses a
+            # snapshot boundary).
             volume_request=GetCargoVolumeV2.Request(
                 scene_revision=surface_record['scene_revision'],
                 geometry_hash=surface_record['geometry_hash'],
-                expected_map_revision=surface_record['map_revision'])
+                expected_map_revision=surface_record['map_revision'],
+                expected_epoch=str(surface_record.get('epoch') or ''),
+                expected_content_digest=str(
+                    surface_record.get('content_digest') or ''))
             if self._recorder:self._recorder('volume_request',volume_request)
             volume=self._call(self._get_volume,volume_request,2.)
             if self._recorder:self._recorder('volume_response',volume)

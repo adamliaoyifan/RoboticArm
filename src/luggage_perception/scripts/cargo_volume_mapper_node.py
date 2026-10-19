@@ -631,13 +631,30 @@ class CargoVolumeMapperNode(Node):
         return response
 
     def _on_volume(self, request, response):
-        """Read only; same callback group as every owner map mutation."""
+        """Read only; same callback group as every owner map mutation.
+
+        [integration-prior-g1 2026-10-19] The snapshot identity is the
+        STORE's (epoch + revision + content_digest) — the same pair
+        Select's admission pins. Raw mapper revision reads and init-only
+        acquisition mirrors are gone: the identity and the acquisition
+        provenance come from the store's own projection on EVERY read,
+        so a volume can never be served across a snapshot boundary.
+        """
         from luggage_perception.cargo_volume_snapshot import copy_volume
         response.success = False
+        snapshot = self._store.snapshot()
+        identity = snapshot.identity
+        self._sync_acquisition_identity()
         if (not self._frame_scene_revision or
                 request.scene_revision != self._frame_scene_revision or
                 request.geometry_hash != self._geometry_hash or
-                request.expected_map_revision != self._mapper._revision):
+                request.expected_map_revision != identity.revision):
+            response.reason = "SNAPSHOT_IDENTITY_MISMATCH"
+            return response
+        if ((request.expected_epoch and
+                request.expected_epoch != identity.epoch) or
+                (request.expected_content_digest and
+                 request.expected_content_digest != identity.content_digest)):
             response.reason = "SNAPSHOT_IDENTITY_MISMATCH"
             return response
         confirmation = self._pending.surface_fields()
@@ -658,7 +675,9 @@ class CargoVolumeMapperNode(Node):
             return response
         response.scene_revision = self._frame_scene_revision
         response.geometry_hash = self._geometry_hash
-        response.map_revision = self._mapper._revision
+        response.map_revision = identity.revision
+        response.epoch = identity.epoch
+        response.content_digest = identity.content_digest
         response.frame_id = self._frame
         response.acquisition_stamp_ns = self._last_acquisition_ns
         response.map_source = self._map_source
