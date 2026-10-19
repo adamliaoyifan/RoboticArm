@@ -134,15 +134,25 @@ PY
 export ELFIN_BOX_SDF_DUMP="$OUT/sdf/spawn.sdf"
 export ELFIN_BOX_RELEASE_SDF="$OUT/sdf/release.sdf"
 mkdir -p "$OUT/sdf"
+# Capture-discipline v2 (run-01 lesson: 3 backward stamp jumps
+# invalidated the run — disk contention from two GB-scale echo writes
+# reordering deliveries). Pose echo stays RAW (no filtering) but writes
+# to tmpfs; contacts move into an in-process Contacts bridge recorder
+# (ROS-side, filtered to the box) removing the 4.8 MB/s pipe entirely.
 CAP_PIDS=()
+POSE_TMP=$(mktemp -p /dev/shm -t abpose.XXXXXX)
 setsid "$IGN_BIN" topic -e -t "/world/$WORLD/dynamic_pose/info" \
-  > "$OUT/dyn_pose_stream.txt" 2>/dev/null &
+  > "$POSE_TMP" 2>/dev/null &
 CAP_PIDS+=($!)
-setsid "$IGN_BIN" topic -e -t "/obs/box_contact" \
-  > "$OUT/contact_stream.txt" 2>/dev/null &
-CAP_PIDS+=($!)
+POSE_TMP_FILE="$POSE_TMP"
 OBS_TOOL_JOINTS_ONLY=1 python3 "$WS/scripts/g3/record_tool_stream.py" \
   "$OUT/tool_stream.jsonl" &
+CAP_PIDS+=($!)
+IGN_BIN="$IGN_BIN" python3 "$WS/scripts/ab/spawn_contact_bridge.py" &
+CAP_PIDS+=($!)
+sleep 1
+python3 "$WS/scripts/ab/record_box_stream.py" \
+  "$OUT/box_contacts.jsonl" pickup_box_0001_inch20 &
 CAP_PIDS+=($!)
 OWN_PIDS+=("${CAP_PIDS[@]}")
 
@@ -199,7 +209,11 @@ python3 "$WS/scripts/ab/metrics.py" --run-dir "$OUT" \
 kill -INT "$LAUNCH_PID" 2>/dev/null || true
 sleep 8
 kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
-sleep 2
+sleep 3
+if [[ -n "${POSE_TMP_FILE:-}" && -f "$POSE_TMP_FILE" ]]; then
+  cp "$POSE_TMP_FILE" "$OUT/dyn_pose_stream.txt"
+  rm -f "$POSE_TMP_FILE"
+fi
 RESIDUAL=$(pgrep -f "gz sim.*$WORLD" | wc -l)
 echo "{\"stage\":\"teardown\",\"residual_gz\":$RESIDUAL,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 wc -c "$OUT/dyn_pose_stream.txt" "$OUT/contact_stream.txt" \
