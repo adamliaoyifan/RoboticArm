@@ -190,7 +190,7 @@ class ReplayNode(Node):
             traj.points.append(point)
         goal = FollowJointTrajectory.Goal()
         goal.trajectory = traj
-        from trajectory_msgs.msg import JointTolerance
+        from control_msgs.msg import JointTolerance
         goal.path_tolerance = [
             JointTolerance(name=j, position=0.05) for j in JOINTS]
         goal.goal_tolerance = [
