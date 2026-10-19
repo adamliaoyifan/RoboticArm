@@ -28,7 +28,6 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
 from control_msgs.action import FollowJointTrajectory
-from control_msgs.msg import FollowJointTrajectoryGoal
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from sensor_msgs.msg import JointState
 from ros_gz_interfaces.srv import SpawnEntity, DeleteEntity
@@ -150,7 +149,7 @@ class ReplayNode(Node):
             point.time_from_start.nanosec = int(
                 (dt - int(dt)) * 1e9)
             traj.points.append(point)
-        goal = FollowJointTrajectoryGoal()
+        goal = FollowJointTrajectory.Goal()
         goal.trajectory = traj
         self.report["t_live_start"] = t_live0
         self.report["t_rec_start"] = t0_recorded
