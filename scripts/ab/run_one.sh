@@ -32,23 +32,24 @@ PY
 mkdir -p "$OUT/dumps"
 echo "{\"stage\":\"start\",\"n\":$N,\"arm\":\"$ARM\",\"model\":\"$MODEL\",\"ts\":\"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
 
-# ---- Sim exclusivity: refuse if any sim process is alive. ----
-# Match real binaries only: -x on binary names (ign/gz) plus the
-# launch process; a plain -f pattern matches monitoring shells whose
-# command line merely CONTAINS the string (aborted run 01 that way).
+# ---- Clean room, then sim exclusivity. ----
+# Clean room FIRST: reap THIS experiment's crashed-attempt orphans
+# (ghost parameter bridges publish ghost /clock and answer create
+# requests — they caused 5 straight broadcaster-configure failures).
+# Sim binaries (ign/gz) are NOT reaped here: those belong to whoever
+# runs them; the gate below still refuses on any live sim.
+for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
+sleep 1
 if pgrep -x ign >/dev/null 2>&1 || pgrep -x gz >/dev/null 2>&1 \
     || pgrep -f '^/usr/bin/python3 /opt/ros/humble/bin/ros2 launch luggage_gazebo' >/dev/null 2>&1 \
     || pgrep -x parameter_bridge >/dev/null 2>&1; then
   echo "sim slot busy; aborting (no re-run without exclusivity)" >&2
   exit 3
 fi
+# Match real binaries only: -x on binary names (ign/gz) plus the
+# launch process; a plain -f pattern matches monitoring shells whose
+# command line merely CONTAINS the string (aborted run 01 that way).
 
-# Clean room: reap THIS experiment's crashed-attempt orphans (ghost
-# parameter bridges publish ghost /clock and answer create requests —
-# they caused 5 straight broadcaster-configure failures). stop_sim.sh
-# only reaps sim processes; bridge PIDs are matched by binary name.
-for pid in $(pgrep -x parameter_bridge); do kill -KILL "$pid" 2>/dev/null || true; done
-sleep 1
 
 set +u
 source /opt/ros/humble/setup.bash
