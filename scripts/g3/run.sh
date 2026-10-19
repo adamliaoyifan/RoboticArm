@@ -288,16 +288,16 @@ fi
 echo "{\"stage\":\"driver_begin\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 
 # ---- Contact capture across the driver window (acceptance evidence:
-# box-vs-container/tool manifold, penetration depths). Bridge gz
-# /obs/box_contact (published by the box contact sensor in release.sdf)
-# and record every contact involving a pickup box.
+# box-vs-container/tool manifold, penetration depths). The box SDF's
+# contact sensor publishes gz /obs/box_contact; record via gz echo on
+# TMPFS (no parameter_bridge: the driver's frozen graph audit counts
+# parameter_bridge processes and allows only the launch's 3 — a 4th
+# bridge aborts the run before box 0; learned in gate3_aprime_r1).
+# parse_contacts() reads this protobuf-text format offline.
 IGN_BIN="$(command -v ign || command -v gz)"
-IGN_BIN="$IGN_BIN" python3 "$WS/scripts/ab/spawn_contact_bridge.py" &
-BRIDGE_PID=$!
-sleep 2
-python3 "$WS/scripts/ab/record_box_stream.py" \
-  "$OUT/box_contacts.jsonl" pickup_box_ > "$OUT/recorder.log" 2>&1 &
-REC_PID=$!
+CONTACT_TMP=$(mktemp -p /dev/shm -t g3box.XXXXXX)
+setsid "$IGN_BIN" topic -e -t /obs/box_contact > "$CONTACT_TMP" 2>/dev/null &
+CONTACT_PID=$!
 
 set +e
 timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.py \
@@ -315,10 +315,15 @@ timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.
   --out "$OUT" > "$OUT/driver.log" 2>&1
 driver_rc=$?
 set -e
-kill -TERM "$REC_PID" "$BRIDGE_PID" 2>/dev/null || true
+kill -TERM "$CONTACT_PID" 2>/dev/null || true
 sleep 2
-echo "{\"stage\":\"contact_capture_stopped\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 echo "{\"stage\":\"driver_exit\",\"rc\":$driver_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 bash "$WS/scripts/stop_sim.sh" || true
+# Materialize the tmpfs contact stream AFTER teardown (disk contention
+# during the run is what reordered delivery in the AB batch).
+if [[ -f "$CONTACT_TMP" ]]; then
+  cp "$CONTACT_TMP" "$OUT/contact_stream.txt"
+  rm -f "$CONTACT_TMP"
+fi
 echo "{\"stage\":\"teardown\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
 exit "$driver_rc"
