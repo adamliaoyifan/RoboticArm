@@ -73,14 +73,25 @@ capture() { ( exec setsid "$IGN_BIN" topic -e -t "$1" > "$2" 2>/dev/null & echo 
 
 # ---- Launch with the arm's container (light: no perception/packing). ----
 (
+  # PROVEN bring-up path: the observation launch arg set (obs_rel_07
+  # succeeded on it 5x). The light set raced the broadcaster spawner
+  # past the robot's gz_ros2_control bring-up ("Failed to configure
+  # controller", S20 never created) twice — not a run variable, so the
+  # harness uses the proven args and varies ONLY the container model
+  # via scene_tf_config.
   ros2 launch luggage_gazebo sim_world.launch.py \
     gui:=false use_rviz:=false \
-    use_semantic:=false use_motion:=false use_vacuum:=false \
-    use_cargo_map:=false use_packing:=false \
+    use_semantic:=true use_motion:=true use_vacuum:=true \
+    use_cargo_map:=true use_packing:=true \
     visual_kind:=mesh size_mode:=catalog \
-    sequence_ids:=inch20 \
+    sequence_ids:=inch20 yaw_mode:=discrete random_seed:=0 \
     observe_pose_name:=pickup_observe_sim \
+    semantic_require_backend:=bbox_fill \
+    semantic_model_name:="$MAIN/yolov8s-world.pt" \
+    semantic_clip_vendor_dir:="$MAIN/src/luggage_perception/vendor" \
+    semantic_pydeps_dir:="$MAIN/pydeps-frozen" \
     scene_tf_config:="$SCENE" \
+    atlas_runtime_config:="$WS/src/luggage_planning/config/atlas_runtime_deploy_update.yaml" \
     robot_poses_config:="$WS/src/luggage_description/config/robot_poses.baseline_update.yaml" \
     > "$OUT/launch.log" 2>&1 &
 )
