@@ -184,7 +184,7 @@ PY
 # Seed the recorded release.sdf (the exact production SDF).
 cp "$OBS/sdf/release.sdf" "$OUT/sdf/release.sdf"
 
-timeout 300 python3 "$WS/scripts/ab/replay_node.py" \
+timeout 520 python3 "$WS/scripts/ab/replay_node.py" \
   "$(cat "$OUT/replay_spec.json")" > "$OUT/replay.log" 2>&1 || true
 
 echo "{\"stage\":\"replay_done\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
