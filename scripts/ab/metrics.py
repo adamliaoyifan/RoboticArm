@@ -31,14 +31,39 @@ MIN_SPAN_S = 44.0
 MAX_GAP_S = 0.5
 
 
+def normalize_delivery_reorder(samples):
+    """[capture-layer fix, uniform for all arms] The gz `topic -e`
+    pipe delivers a small number of complete, correctly-stamped
+    messages late (run-01: 3 backward jumps < 1 s in 3,830 samples,
+    reproduced on tmpfs — transport artifact, not simulation time
+    travel). Sorting by stamp is lossless for complete messages; the
+    guard bounds it to the known artifact signature so any REAL
+    non-monotone (sim anomaly) still trips the validity gate."""
+    ts = [s[0] for s in samples]
+    bad = [i for i in range(1, len(ts)) if ts[i] <= ts[i - 1]]
+    if not bad:
+        return samples, {"violations": 0, "sorted": False}
+    jumps = [ts[i - 1] - ts[i] for i in bad]
+    frac = len(bad) / max(len(ts) - 1, 1)
+    if max(jumps) > 2_000_000_000 or frac > 0.01:
+        return samples, {"violations": len(bad), "sorted": False,
+                        "guard": "exceeds artifact signature"}
+    return sorted(samples, key=lambda s: s[0]), {
+        "violations": len(bad), "sorted": True,
+        "max_backward_ms": round(max(jumps) / 1e6, 1),
+        "fraction": round(frac, 5)}
+
+
 def compute_metrics(samples, contacts, model, t_spawn_s):
     """samples: [(t_ns, x, y, z, quat)] for `model`; contacts: parsed."""
     if not samples:
         return {"valid": False, "reason": "no_dynamic_samples"}
+    samples, reorder = normalize_delivery_reorder(samples)
     # Validity gate: span, monotonicity, max gap up to the primary.
     ts = [s[0] for s in samples]
     if any(b <= a for a, b in zip(ts, ts[1:])):
-        return {"valid": False, "reason": "time_not_monotone"}
+        return {"valid": False, "reason": "time_not_monotone",
+                "delivery_reorder": reorder}
     t0 = ts[0] / 1e9
     span = (ts[-1] - ts[0]) / 1e9
     if span < MIN_SPAN_S:
@@ -106,6 +131,7 @@ def compute_metrics(samples, contacts, model, t_spawn_s):
         "model": model,
         "t_span_s": [rows[0]["t_rel_s"], rows[-1]["t_rel_s"]],
         "primary_xy_offset_at_38sim_m": primary,
+        "delivery_reorder": reorder,
         "max_xy_offset_m": max(r["xy_offset_m"] for r in rows),
         "stop_time_s": stop_time,
         "final_attitude_quat": list(last[4]) if last[4] else None,

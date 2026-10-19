@@ -67,6 +67,21 @@ class TestMetricComputation(unittest.TestCase):
         self.assertFalse(m["valid"])
         self.assertEqual(m["reason"], "span_short")
 
+    def test_delivery_reorder_normalized_with_guard(self):
+        pts = _ramp(t_end=44.9, dt=0.2, speed=0.001, t_stop=30.0)
+        swapped = list(pts)
+        swapped[100], swapped[101] = swapped[101], swapped[100]
+        m = compute_metrics(_samples(swapped), [], "box", 0.0)
+        self.assertTrue(m["valid"], m)
+        self.assertTrue(m["delivery_reorder"]["sorted"])
+
+    def test_real_non_monotone_still_rejected(self):
+        pts = _ramp(t_end=44.9, dt=0.2, speed=0.0)
+        bad = pts[:200] + [(pts[200][0] - 5.0, 0.0, 0.0, 0.6)] + pts[200:]
+        m = compute_metrics(_samples(bad), [], "box", 0.0)
+        self.assertFalse(m["valid"])
+        self.assertEqual(m["reason"], "time_not_monotone")
+
     def test_validity_gate_sample_gap(self):
         pts = [(float(i) * 5.0, 0.0, 0.0, 0.6) for i in range(10)]
         m = compute_metrics(_samples(pts), [], "box", 0.0)
@@ -74,6 +89,7 @@ class TestMetricComputation(unittest.TestCase):
         self.assertEqual(m["reason"], "sample_gap")
 
     def test_non_monotone_rejected(self):
+        # 1 s backward at ONE point = artifact; MANY points = anomaly.
         pts = _ramp(t_end=44.9, dt=0.2, speed=0.0)
         bad = pts[:100] + [(pts[100][0] - 1.0, 0.0, 0.0, 0.6)] + pts[100:]
         m = compute_metrics(_samples(bad), [], "box", 0.0)
