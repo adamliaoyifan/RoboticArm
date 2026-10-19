@@ -121,30 +121,48 @@ def parse_pose_stream(path, model):
 
 
 def parse_contacts(path):
-    """gz Contacts text -> [(t_ns, [other_body,...])]."""
+    """gz Contacts protobuf text -> [(t_ns, [collision names...])].
+
+    Actual format (obs_rel_07): message header stamp, then repeated
+    contact blocks each with an inner header stamp and collision1/2
+    { name: "model::link::col" } — names and stamps at various indents,
+    so parse positionally: every sec:/nsec: updates the running stamp,
+    every name: accumulates into the current contact, and a new
+    `contact {` flushes the previous one.
+    """
     if not os.path.isfile(path):
         return []
     events = []
-    t_ns = None
-    bodies = []
-    for line in open(path, encoding="utf-8", errors="replace"):
-        stripped = line.strip()
-        m = re.match(r"^time \{\s*sec:\s*([-+0-9.eE]+).*nanosec:\s*"
-                     r"([-+0-9.eE]+)", stripped)
-        if m:
-            if bodies:
-                events.append((t_ns, list(bodies)))
-            t_ns = int(float(m.group(1)) * 1_000_000_000
-                       + float(m.group(2)))
-            bodies = []
+    sec = nsec = None
+    names = []
+    in_contact = False
+
+    def flush():
+        nonlocal names, in_contact
+        if in_contact and names:
+            t = int(sec or 0) * 1_000_000_000 + int(nsec or 0)
+            events.append((t, list(names)))
+        names = []
+        in_contact = False
+
+    for raw in open(path, encoding="utf-8", errors="replace"):
+        line = raw.strip()
+        if line.startswith("contact {"):
+            flush()
+            in_contact = True
             continue
-        for m in re.finditer(r'body_1_name:\s*"([^"]+)"|'
-                             r'body_2_name:\s*"([^"]+)"', stripped):
-            name = m.group(1) or m.group(2)
-            if name:
-                bodies.append(name)
-    if bodies:
-        events.append((t_ns, list(bodies)))
+        m = re.match(r"^sec:\s*([-+0-9.eE]+)", line)
+        if m:
+            sec = float(m.group(1))
+            continue
+        m = re.match(r"^nsec:\s*([-+0-9.eE]+)", line)
+        if m:
+            nsec = float(m.group(1))
+            continue
+        nm = re.match(r'^name:\s*"([^"]+)"', line)
+        if nm and in_contact:
+            names.append(nm.group(1))
+    flush()
     return events
 
 

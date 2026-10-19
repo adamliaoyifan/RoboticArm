@@ -1,0 +1,178 @@
+#!/usr/bin/env bash
+# One A0/A'/B control run (frozen 2026-10-19 contract).
+# usage: run_one.sh <n>  (n = 1..9 per AB_RUN_ORDER.json)
+set -euo pipefail
+N="${1:?run number}"
+WS="/tmp/elfin-master-pack-baseline-g3"
+MAIN="/home/adamliao/work/elfin_humble_ws"
+EVID="$MAIN/docs/status/evidence/master_pack_recovery/2026-10-14_g3"
+ORDER="$WS/docs/status/evidence/occ_owner_b1/AB_RUN_ORDER.json"
+OBS="$EVID/obs_rel_07"
+OUT="$EVID/ab_run_$(printf '%02d' "$N")"
+WORLD="airport_loading"
+[[ -e "$OUT" ]] && { echo "run dir exists (no re-runs): $OUT" >&2; exit 2; }
+
+read -r ARM MODEL SCENE < <(python3 - "$N" << 'PY'
+import json, sys, yaml, copy, os
+order = json.load(open("docs/status/evidence/occ_owner_b1/AB_RUN_ORDER.json"))
+run = next(r for r in order["runs"] if r["n"] == int(sys.argv[1]))
+arm = run["arm"]
+model = {"A0": "airport_container_real",
+         "APRIME": "airport_container_real_aprime",
+         "B": "airport_container_real_bprim"}[arm]
+out = "/tmp/ab_scene_%d.yaml" % int(sys.argv[1])
+cfg = yaml.safe_load(open("src/luggage_description/config/"
+                          "scene_tf_deploy_update.yaml"))
+cfg.setdefault("gazebo", {})["container_model"] = model
+# Keep the same robot-poses source the observation used.
+yaml.safe_dump(cfg, open(out, "w"), sort_keys=False)
+print(arm, model, out)
+PY
+)
+mkdir -p "$OUT/dumps"
+echo "{\"stage\":\"start\",\"n\":$N,\"arm\":\"$ARM\",\"model\":\"$MODEL\",\"ts\":\"$(date -Is)\"}" > "$OUT/lifecycle.jsonl"
+
+# ---- Sim exclusivity: refuse if any sim process is alive. ----
+if pgrep -f 'ros2 launch luggage_gazebo|ign gazebo|gz sim' \
+    | grep -v $$ >/dev/null 2>&1; then
+  echo "sim slot busy; aborting (no re-run without exclusivity)" >&2
+  exit 3
+fi
+
+set +u
+source /opt/ros/humble/setup.bash
+source "$MAIN/install/setup.bash"
+source "$WS/install/setup.bash"
+set -u
+export ROS_DOMAIN_ID=7
+
+OWN_PIDS=()
+cleanup() {
+  local status=$?
+  for pid in "${OWN_PIDS[@]:-}"; do
+    kill -TERM "$pid" 2>/dev/null || true
+  done
+  for pid in "${OWN_PIDS[@]:-}"; do
+    kill -KILL "$pid" 2>/dev/null || true
+  done
+  # Experiment-owned cleanup ONLY: the launch tree we started.
+  if [[ -n "${LAUNCH_PID:-}" ]]; then
+    kill -INT "$LAUNCH_PID" 2>/dev/null || true
+    sleep 6
+  fi
+  pkill -KILL -f "gz sim.*$WORLD" 2>/dev/null || true
+  exit $status
+}
+trap cleanup EXIT INT TERM
+
+IGN_BIN="$(command -v ign || command -v gz)"
+capture() { ( exec setsid "$IGN_BIN" topic -e -t "$1" > "$2" 2>/dev/null & echo $! > /dev/stderr ) ; }
+
+# ---- Launch with the arm's container (light: no perception/packing). ----
+(
+  ros2 launch luggage_gazebo sim_world.launch.py \
+    gui:=false use_rviz:=false \
+    use_semantic:=false use_motion:=false use_vacuum:=false \
+    use_cargo_map:=false use_packing:=false \
+    visual_kind:=mesh size_mode:=catalog \
+    sequence_ids:=inch20 \
+    observe_pose_name:=pickup_observe_sim \
+    scene_tf_config:="$SCENE" \
+    robot_poses_config:="$WS/src/luggage_description/config/robot_poses.baseline_update.yaml" \
+    > "$OUT/launch.log" 2>&1 &
+)
+sleep 2
+LAUNCH_PID="$(pgrep -f 'ros2 launch luggage_gazebo' | head -1 || true)"
+[[ -n "$LAUNCH_PID" ]] || { echo "launch failed" >&2; exit 1; }
+OWN_PIDS+=("$LAUNCH_PID")
+
+# ---- Record the runtime-loaded collision asset (hash + params). ----
+MODELS_SHARE="$WS/install/luggage_gazebo/share/luggage_gazebo/models"
+python3 - "$MODEL" "$MODELS_SHARE" "$OUT/asset_record.json" << 'PY'
+import hashlib, json, os, sys
+model, share, out = sys.argv[1:4]
+d = os.path.join(share, model)
+rec = {"model": model, "dir": d, "files": {}}
+for name in sorted(os.listdir(d)) + (
+    ["meshes/" + f for f in sorted(os.listdir(os.path.join(d, "meshes")))]
+    if os.path.isdir(os.path.join(d, "meshes")) else []):
+    p = os.path.join(d, name)
+    if os.path.isfile(p):
+        rec["files"][name] = hashlib.sha256(open(p, "rb").read()).hexdigest()
+json.dump(rec, open(out, "w"), indent=2)
+PY
+
+# ---- Captures (light discipline: dynamic stream + contacts + joints). ----
+export ELFIN_BOX_SDF_DUMP="$OUT/sdf/spawn.sdf"
+export ELFIN_BOX_RELEASE_SDF="$OUT/sdf/release.sdf"
+mkdir -p "$OUT/sdf"
+CAP_PIDS=()
+setsid "$IGN_BIN" topic -e -t "/world/$WORLD/dynamic_pose/info" \
+  > "$OUT/dyn_pose_stream.txt" 2>/dev/null &
+CAP_PIDS+=($!)
+setsid "$IGN_BIN" topic -e -t "/obs/box_contact" \
+  > "$OUT/contact_stream.txt" 2>/dev/null &
+CAP_PIDS+=($!)
+OBS_TOOL_JOINTS_ONLY=1 python3 "$WS/scripts/g3/record_tool_stream.py" \
+  "$OUT/tool_stream.jsonl" &
+CAP_PIDS+=($!)
+OWN_PIDS+=("${CAP_PIDS[@]}")
+
+# ---- Wait for controllers, then run the frozen replay. ----
+for _ in $(seq 1 120); do
+  grep -q "Controller manager: loaded" "$OUT/launch.log" 2>/dev/null && break
+  sleep 2
+done
+sleep 5
+
+python3 - "$N" "$OUT" << 'PY' > "$OUT/replay_spec.json"
+import json, sys
+n, out = sys.argv[1:3]
+order = json.load(open("docs/status/evidence/occ_owner_b1/AB_RUN_ORDER.json"))
+fi = order["frozen_input"]
+spec = {
+    "n": int(n), "world": "airport_loading",
+    "model": "pickup_box_0001_inch20",
+    "pose6": fi["spawn_pose_world"]
+    + [-fi["spawn_quat_xyzw"][3], *fi["spawn_quat_xyzw"][:3]]
+    if False else
+    list(fi["spawn_pose_world"]) + [
+        fi["spawn_quat_xyzw"][3], fi["spawn_quat_xyzw"][0],
+        fi["spawn_quat_xyzw"][1], fi["spawn_quat_xyzw"][2]],
+    "release_sdf": out + "/sdf/release.sdf",
+    "tool_stream": "/home/adamliao/work/elfin_humble_ws/docs/status/"
+    "evidence/master_pack_recovery/2026-10-14_g3/obs_rel_07/"
+    "tool_stream.jsonl",
+    "t_release": fi["t_release_sim_s"],
+    "t_spawn": fi["t_spawn_sim_s"],
+    "window_s": 45.0,
+    "out_json": out + "/replay_report.json",
+}
+json.dump(spec, open(sys.argv[2] + "/replay_spec.json", "w"), indent=2)
+print(json.dumps(spec))
+PY
+
+# Seed the recorded release.sdf (the exact production SDF).
+cp "$OBS/sdf/release.sdf" "$OUT/sdf/release.sdf"
+
+timeout 300 python3 "$WS/scripts/ab/replay_node.py" \
+  "$(cat "$OUT/replay_spec.json")" > "$OUT/replay.log" 2>&1 || true
+
+echo "{\"stage\":\"replay_done\",\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+
+# ---- Metric + validity gate (sim-clock). ----
+T_SPAWN=$(python3 -c "import json;print(json.load(open('$OUT/replay_spec.json'))['t_spawn'])")
+python3 "$WS/scripts/ab/metrics.py" --run-dir "$OUT" \
+  --model pickup_box_0001_inch20 --t-spawn-sim "$T_SPAWN" \
+  > "$OUT/metrics.log" 2>&1 || true
+
+# ---- Teardown (own processes only) + record residual check. ----
+kill -INT "$LAUNCH_PID" 2>/dev/null || true
+sleep 8
+kill -TERM "${CAP_PIDS[@]}" 2>/dev/null || true
+sleep 2
+RESIDUAL=$(pgrep -f "gz sim.*$WORLD" | wc -l)
+echo "{\"stage\":\"teardown\",\"residual_gz\":$RESIDUAL,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
+wc -c "$OUT/dyn_pose_stream.txt" "$OUT/contact_stream.txt" \
+  "$OUT/tool_stream.jsonl" || true
+echo "RUN $N ($ARM) COMPLETE -> $OUT"
