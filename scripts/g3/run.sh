@@ -87,15 +87,33 @@ set -u
 # grid, TF) read the same yaml — single source, no per-arm divergence.
 if [[ -n "${G3_CONTAINER_MODEL:-}" ]]; then
   SCENE="$OUT/scene_tf_used.yaml"
-  python3 - "$SCENE" << 'PYSCENE'
-import sys, yaml
+  python3 - "$SCENE" "$OUT/robot_poses_used.yaml" << 'PYSCENE'
+import hashlib, os, sys, yaml
 cfg = yaml.safe_load(open(
     "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/"
     "scene_tf_deploy_update.yaml"))
 cfg.setdefault("gazebo", {})["container_model"] = \
-    __import__("os").environ["G3_CONTAINER_MODEL"]
+    os.environ["G3_CONTAINER_MODEL"]
 yaml.safe_dump(cfg, open(sys.argv[1], "w"), sort_keys=False)
+# The container-model override changes md5(scene_tf) -> the frame
+# runtime scene id changes -> GoToRobotPoseV2 SCENE_STALE against the
+# poses file's embedded identity.scene_revision. Re-bind ONLY the
+# identity stamp (same precedented overlay as the pickup_platform
+# height change recorded in the file header): the container model
+# does not move the robot base, camera target, or the calibrated
+# joints, so the pose values are NOT re-solved.
+scene_md5 = hashlib.md5(open(sys.argv[1], "rb").read()).hexdigest()
+poses = yaml.safe_load(open(
+    "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/"
+    "robot_poses.baseline_update.yaml"))
+poses.setdefault("identity", {})["scene_revision"] = scene_md5
+poses["identity"]["_rebind_note"] = (
+    "scene_revision re-bound to the G3_CONTAINER_MODEL-derived "
+    "scene_tf_used.yaml (md5 %s); joint values unchanged" % scene_md5)
+yaml.safe_dump(poses, open(sys.argv[2], "w"), sort_keys=False)
+print("scene_md5", scene_md5)
 PYSCENE
+  POSES="$OUT/robot_poses_used.yaml"
 fi
 
 DRIVER="$(readlink -f "$(ros2 pkg prefix luggage_gazebo)/lib/luggage_gazebo/pack_eval_driver.py")"
