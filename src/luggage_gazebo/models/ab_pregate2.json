@@ -1,0 +1,161 @@
+{
+  "limit_mm": 0.5,
+  "baseline_source": "/tmp/elfin-master-pack-baseline-g3/src/luggage_description/config/scene_tf_deploy_update.yaml",
+  "aprime": {
+    "faces": {
+      "floor": {
+        "points": 7081,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "ceiling": {
+        "points": 5475,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "wall_neg_y": {
+        "points": 5256,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "wall_pos_y_vertical": {
+        "points": 1241,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "chamfer_slope": {
+        "points": 3942,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "ap_sill_top": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_lintel_bottom": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_side_neg_y": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_side_pos_y": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "end_pos_x": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      }
+    },
+    "pass": true,
+    "protrusion_samples": 52,
+    "protruding_beyond_0p5mm": 0
+  },
+  "bprim": {
+    "faces": {
+      "floor": {
+        "points": 7081,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "ceiling": {
+        "points": 5475,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "wall_neg_y": {
+        "points": 5256,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "wall_pos_y_vertical": {
+        "points": 1241,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "chamfer_slope": {
+        "points": 3942,
+        "max_mm": 0.0,
+        "beyond_0p5mm": 0
+      },
+      "ap_sill_top": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_lintel_bottom": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_side_neg_y": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "ap_side_pos_y": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      },
+      "end_pos_x": {
+        "points": 0,
+        "max_mm": null,
+        "beyond_0p5mm": 0
+      }
+    },
+    "pass": true,
+    "protrusion_samples": 6804,
+    "protruding_beyond_0p5mm": 0
+  },
+  "a0_deviation_map": {
+    "floor": {
+      "max_mm": 128.145,
+      "beyond_0p5mm": 7081
+    },
+    "ceiling": {
+      "max_mm": 107.493,
+      "beyond_0p5mm": 5475
+    },
+    "wall_neg_y": {
+      "max_mm": 55.811,
+      "beyond_0p5mm": 5256
+    },
+    "wall_pos_y_vertical": {
+      "max_mm": 149.818,
+      "beyond_0p5mm": 1241
+    },
+    "chamfer_slope": {
+      "max_mm": 329.533,
+      "beyond_0p5mm": 3928
+    },
+    "ap_sill_top": {
+      "max_mm": null,
+      "beyond_0p5mm": 0
+    },
+    "ap_lintel_bottom": {
+      "max_mm": null,
+      "beyond_0p5mm": 0
+    },
+    "ap_side_neg_y": {
+      "max_mm": null,
+      "beyond_0p5mm": 0
+    },
+    "ap_side_pos_y": {
+      "max_mm": null,
+      "beyond_0p5mm": 0
+    },
+    "end_pos_x": {
+      "max_mm": null,
+      "beyond_0p5mm": 0
+    }
+  },
+  "pass": true
+}
