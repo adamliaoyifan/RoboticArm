@@ -30,7 +30,7 @@ from collections import OrderedDict
 
 import numpy as np
 import rclpy
-from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.callback_groups import ReentrantCallbackGroup, MutuallyExclusiveCallbackGroup
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException, MultiThreadedExecutor
 from rclpy.node import Node
@@ -45,6 +45,7 @@ from luggage_msgs.srv import (
     AddPlacedBox,
     AddPlacedBoxV2,
     GetCargoMapStats,
+    GetCargoVolumeV2,
     IntegrateCargoView,
     NotifyOccupancyEvent,
     RemovePlacedBox,
@@ -116,12 +117,15 @@ class CargoVolumeMapperNode(Node):
     def __init__(self):
         super().__init__("cargo_volume_mapper")
         group = ReentrantCallbackGroup()
+        # All map services serialize mutations and snapshot export together.
+        map_group = MutuallyExclusiveCallbackGroup()
 
         self.declare_parameter("scene_tf_config", "")
         self.declare_parameter("resolution", 0.05)
         self.declare_parameter("occupancy_params_yaml", "")
         self.declare_parameter(
             "cargo_cloud_topic", "/luggage/semantic/cargo_points_untracked")
+        self.declare_parameter("container_depth_topic", "/luggage/perception/container_depth_points")
         self.declare_parameter("base_frame", "container_link")
         self.declare_parameter("cloud_buffer_size", 12)
         self.declare_parameter("freshness_window_sec", 0.20)
@@ -205,18 +209,25 @@ class CargoVolumeMapperNode(Node):
             str(self.get_parameter("cargo_cloud_topic").value),
             self._on_cloud, sensor_qos, callback_group=group)
 
+        # [integration-prior-g1 merge] The prior branch's depth-view
+        # acquisition channel (/cargo_map/integrate_container_depth_view
+        # + container_depth_topic buffer) is PARKED: it wrote the mapper
+        # directly (integrate_depth_acquisition), bypassing the
+        # OccupancyMapStore. Re-entering requires an apply_update
+        # INTEGRATE wrapper; until then single-authority wins.
+
         self.create_service(
             AddPlacedBox, "/cargo_map/add_placed_box",
-            self._on_add, callback_group=group)
+            self._on_add, callback_group=map_group)
         self.create_service(
             RemovePlacedBox, "/cargo_map/remove_placed_box",
-            self._on_remove, callback_group=group)
+            self._on_remove, callback_group=map_group)
         self.create_service(
             ResetCargoMap, "/cargo_map/reset",
-            self._on_reset, callback_group=group)
+            self._on_reset, callback_group=map_group)
         self.create_service(
             GetCargoMapStats, "/cargo_map/get_stats",
-            self._on_stats, callback_group=group)
+            self._on_stats, callback_group=map_group)
         self.create_service(
             IntegrateCargoView, "/cargo_map/integrate_cargo_view",
             self._on_integrate, callback_group=group)
@@ -236,10 +247,14 @@ class CargoVolumeMapperNode(Node):
                 str(self.get_parameter("surface_v2_topic").value), transient)
             self.create_service(
                 AddPlacedBoxV2, "/cargo_map/add_placed_box_v2",
-                self._on_add_v2, callback_group=group)
+                self._on_add_v2, callback_group=map_group)
             self.create_service(
                 RemovePlacedBoxV2, "/cargo_map/remove_placed_box_v2",
-                self._on_remove_v2, callback_group=group)
+                self._on_remove_v2, callback_group=map_group)
+
+        self.create_service(
+            GetCargoVolumeV2, "/cargo_map/get_volume_v2",
+            self._on_volume, callback_group=map_group)
 
         # ST09 F21: identity heartbeat + peer readiness. Map commits (v1
         # and v2) and surface publications are gated; off = legacy.
@@ -328,9 +343,10 @@ class CargoVolumeMapperNode(Node):
             "n_points": int(finite.shape[0]),
         }
         with self._lock:
-            self._clouds[key] = record
-            while len(self._clouds) > self._buffer_size:
-                self._clouds.popitem(last=False)
+            buffer = self._clouds  # depth_view channel parked (see note above)
+            buffer[key] = record
+            while len(buffer) > self._buffer_size:
+                buffer.popitem(last=False)
 
     def _lookup_rt(self, target, source, stamp):
         if not source:
@@ -378,6 +394,10 @@ class CargoVolumeMapperNode(Node):
         return True
 
     def _on_integrate(self, request, response):
+        with self._view_integration_lock:
+            return self._integrate_view(request, response)
+
+    def _integrate_view(self, request, response):
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(response):
             return response
@@ -592,6 +612,44 @@ class CargoVolumeMapperNode(Node):
         response.status = result.status.value
         response.epoch = result.identity.epoch
         response.content_digest = result.identity.content_digest
+        return response
+
+    def _on_volume(self, request, response):
+        """Read only; same callback group as every owner map mutation."""
+        from luggage_perception.cargo_volume_snapshot import copy_volume
+        response.success = False
+        if (not self._frame_scene_revision or
+                request.scene_revision != self._frame_scene_revision or
+                request.geometry_hash != self._geometry_hash or
+                request.expected_map_revision != self._mapper._revision):
+            response.reason = "SNAPSHOT_IDENTITY_MISMATCH"
+            return response
+        confirmation = self._pending.surface_fields()
+        if (self._frame != "container_link" or self._map_source != "measured" or
+                self._last_acquisition_ns <= 0 or
+                not confirmation["occupancy_confirmed"] or
+                confirmation["pending_changes"] or
+                (self._mapper.commit_ledger() and not self._require_confirmed_map)):
+            response.reason = "NO_CONFIRMED_MEASURED_VOLUME"
+            return response
+        try:
+            volume = copy_volume(self._mapper)
+            for name, value in volume.items():
+                setattr(response, name, list(value) if name in (
+                    "states", "active", "dimensions_xyz", "origin_container") else value)
+        except ValueError as error:
+            response.reason = str(error)
+            return response
+        response.scene_revision = self._frame_scene_revision
+        response.geometry_hash = self._geometry_hash
+        response.map_revision = self._mapper._revision
+        response.frame_id = self._frame
+        response.acquisition_stamp_ns = self._last_acquisition_ns
+        response.map_source = self._map_source
+        response.occupancy_confirmed = True
+        response.has_pending_changes = False
+        response.success = True
+        response.reason = "OK"
         return response
 
     def _on_stats(self, _request, response):

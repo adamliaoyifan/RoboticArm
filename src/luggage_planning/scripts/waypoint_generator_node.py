@@ -525,7 +525,8 @@ class WaypointGeneratorNode(Node):
 
     def _pick_leg_encoder(self):
         """Encode the frozen pick waypoint ladder as timed joint legs."""
-        def encode(pick, *, request_id, scene_revision, stamp_ns):
+        def encode(pick, *, request_id, scene_revision, stamp_ns,
+                   suction_candidate=None):
             from luggage_planning.grid_path_search import RoutePlanningError
             from luggage_planning.route_producer import pick_leg_records
 
@@ -576,9 +577,15 @@ class WaypointGeneratorNode(Node):
                 raise RoutePlanningError(
                     "PICK_CONTRACT_UNAVAILABLE", {"leg": "pick"})
             waypoints = []
-            for segment in build_sequence(
-                    pick, None, "pick",
-                    pick_clearances=self._clearances()):
+            if suction_candidate is not None:
+                from luggage_planning.suction_candidate_waypoints import build_candidate_pick_segments
+                segments = build_candidate_pick_segments(
+                    suction_candidate, pick_clearances=self._clearances(),
+                    detection_yaw=pick.yaw, yaw_valid=pick.yaw_valid)
+            else:
+                segments = build_sequence(pick, None, "pick",
+                                          pick_clearances=self._clearances())
+            for segment in segments:
                 pose = segment.target_pose
                 waypoints.append((
                     str(segment.name),

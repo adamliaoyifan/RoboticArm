@@ -774,7 +774,8 @@ class MotionPlannerNode(Node):
         handle_plan_v2(
             self._executor_client, goal_handle.request.segment,
             self._scene_tf_hash, result, self._prepare_occupancy,
-            link=self._executor_client._link, current_joints=start)
+            link=self._executor_client._link, current_joints=start,
+            execute_timeout=float(self.get_parameter("execute_timeout").value))
         if not result.success:
             mismatch = (self._executor_client.last_boundary() or {}).get(
                 "qp_start_state_mismatch")

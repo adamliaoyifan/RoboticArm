@@ -14,3 +14,8 @@ luggage_msgs/PoseContractV2 grasp
 bool success
 string message
 luggage_msgs/BoundaryDiagnosticV2 diagnostic
+# Successful enable returns the exact admitted measured attachment. A planned
+# prior grasp is not an attachment observation. Disable/failure leaves false.
+bool has_measured_attachment
+luggage_msgs/PoseContractV2 measured_grasp
+float64[3] attached_box_wdh

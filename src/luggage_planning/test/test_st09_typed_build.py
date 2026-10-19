@@ -115,7 +115,8 @@ def test_adopt_v2_identity_keeps_selected_path():
     assert adopted.waypoints[0].pose.position.x == pytest.approx(0.86)
 
 
-def test_handle_plan_v2_forwards_live_joints():
+@pytest.mark.parametrize('configured_timeout',[12.5,90.])
+def test_handle_plan_v2_forwards_live_joints_and_execution_timeout(configured_timeout):
     from types import SimpleNamespace
     from luggage_msgs.action import PlanMotionV2
     from luggage_planning.motion_v2_service import handle_plan_v2
@@ -126,8 +127,9 @@ def test_handle_plan_v2_forwards_live_joints():
     class _Executor(object):
         def execute_segment_v2(self, record, context, current_joints=None,
                                feedback_cb=None, execute_timeout=45.0):
-            del record, context, feedback_cb, execute_timeout
+            del record, context, feedback_cb
             captured["joints"] = list(current_joints or [])
+            captured["execute_timeout"] = execute_timeout
             return SimpleNamespace(
                 success=True, message="ok", fraction=1.0,
                 used_ompl_fallback=False, moveit_error_code=1)
@@ -138,6 +140,8 @@ def test_handle_plan_v2_forwards_live_joints():
     response = PlanMotionV2.Result()
     handle_plan_v2(
         _Executor(), segment, "scene-a", response, None,
-        current_joints=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6])
+        current_joints=[0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+        execute_timeout=configured_timeout)
     assert response.success
     assert captured["joints"] == [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+    assert captured["execute_timeout"] == configured_timeout

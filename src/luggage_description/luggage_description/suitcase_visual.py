@@ -5,7 +5,7 @@ Unit-AABB sources live in ``luggage_gazebo/models/suitcase_loafbrr`` and
 two: Fortress ogre2 caches GPU meshes by URI, so sharing one STL with SDF
 ``<scale>`` makes later boxes render at the first scale.
 
-Pickup mesh assets are six pre-scaled models (each visual x small/medium/large).
+Pickup mesh assets have unique pre-scaled models for each visual and size tier.
 Collision is the scaled STL. Visual is a copy of the family DAE with the
 same vertex scale, ``Z_UP``, and a diffuse texture pointing at the copied
 ``suitcase.png``. Spawn references those per-model URIs at scale 1 1 1.
@@ -977,7 +977,7 @@ def check_sized_assets(models_root, atol=1e-3):
 
 
 def write_sized_suitcase_models(models_root):
-    """Write the six pre-scaled pickup models and a measure_size manifest.
+    """Write supported pre-scaled pickup models and a measure_size manifest.
 
     Collision size is the scaled STL. Visual is the textured DAE at the
     same size. Catalog size, mass, and measure_size are unchanged.

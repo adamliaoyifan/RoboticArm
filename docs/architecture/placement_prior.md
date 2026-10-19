@@ -1,0 +1,714 @@
+# Placement prior ownership and adoption
+
+A prior is a read-only speculative hint, never an execution certificate. The
+nominal orchestration cycle and operator/motion/vacuum authority are unchanged.
+The simulation driver's explicit `--prior-functional-rehearsal` mode reports
+unscored prior motion/OCC coverage for exactly the requested number of cycles.
+It requires frame-runtime, placement-prior, rehearsal, motion and route
+verification; acquisition-only and injected-fault runs remain separate. The
+legacy fixed two-box rehearsal document is preserved. The dedicated
+`prior-functional-evidence.json` controls this mode's exit status and requires
+every cycle's typed route verification, successful submitted legs, authorized
+pick, retained payload, settled placement and confirmed measured occupancy.
+Missing cycles or any failed cycle reject the rehearsal. This report never
+passes the frozen F3 campaign or performance gates.
+The isolated `rehearse_scene.py --prefetch-template <json>` option supplies
+explicit hypothetical `box_wdh` and `grasps_flat` to the background sidecar.
+The input is validated before launching and preserved with its hash. It does
+not wait for prefetch or delay pickup to manufacture overlap. Measured detection,
+grasp checks and foreground planning proceed normally. Opt-in prior/typed-service
+boundary journals include host monotonic and wall timestamps taken after
+serialization, before artifact writes, so preparation and foreground intervals
+can be joined on the same host. These are capture boundaries, not controller
+execution timestamps or clean performance measurements.
+The prior worker owns only private copies and bounded temporary computation.
+It must not call ApplyPlanningScene, modify OCC, commit cargo or issue motion.
+
+The rehearsal-only `--capture-release` switch records raw Gazebo pose/contact
+streams around release, with a 90-second and 8-MiB-per-stream bound. Driver
+events identify vacuum-off, pre-recreation pose, delete/create responses,
+post-release motion and settled verification. The pre-recreation sample is not
+a post-spawn observation. Entity IDs and simulation stamps remain in raw topic
+bytes; host timestamps and byte offsets allow joining capture chunks to events.
+Reader readiness is not publisher readiness. Empty contacts do not prove absence;
+early EOF, limits and intervals outside capture must remain incomplete evidence.
+These truth observations are never planning inputs, and diagnostic timings are
+not eligible for the clean performance comparison.
+
+Hardware launch enables the complete placement provider graph with
+`start_placement:=true`; `start_placement_prior:=true` also enables it. This
+requires `frame_runtime`, `start_planning`, `start_scene` and `use_moveit`.
+The mapper, placement planner, selector and pick nodes share one identity and
+peer registry. The mapper owns measured occupancy with confirmation required;
+the sidecar only reads it. The native route validator uses the same model as
+MoveIt and starts with the planning chain, including pick-only operation.
+An explicit `deploy_asset_manifest` may select a frozen deployment profile,
+but all existing asset/hash checks still apply. A historical profile cannot
+certify the current physical cell. Offline hardware-interface rehearsals use
+`plan_only:=true start_d555:=false start_perception:=false` and supply recorded
+state/observations separately; launch does not fabricate a measured grasp.
+
+`hardware_pick_driver --planning-evidence-dir <new-dir> --frame-runtime`
+records the exact typed service boundaries and runtime identity. In particular,
+retain the successful vacuum enable request/response separately from Select:
+a proposed grasp in Select is not proof of measured attachment. The existing
+driver `--plan-only` branch only constructs pick waypoints, so its exit status
+does not certify place planning.
+
+`scripts/placement_prior/hardware_place_replay.py` calls the production
+`plan_attached_box` consumer with captured Select context, the separate vacuum
+request/response and optional prior response/choice. It requires the exact live
+runtime identity, queries MoveIt's execution-disabled setting, and captures
+GetPlanningScene plus outbound service request/response CDR. It does not restore
+scene, map or joints: the isolated harness must supply the matching recorded
+context. With no bound prior it calls ordinary ComputePlacement before Select;
+it does not claim byte-identical historical candidate replay in that mode.
+Successful invocation alone does not satisfy the full F2 case matrix.
+
+The isolated native replay's explicit `--baseline-consumer` mode uses the
+production ComputePlacementV2 node and hardware consumer before Select, with
+captured actual attachment and map/start context. An explicit
+`--placement-parameters` JSON pins the diagnostic placement policy; effective
+solver parameters are recorded. Recorded surface admission uses the production
+subscriber callback. The fixture disables runtime registry admission and does
+not claim deployment F2. It never supplies a prior response to the baseline.
+Recomputed slots and request IDs may differ from the historical prior-selected
+request; physical attachment, payload, map and start context must remain equal.
+Node construction precedes the measured request window. Capture both placement
+and Select boundaries. This measures planning conditional on the same actual
+grasp; it does not measure the effects of changing the earlier pick. Different
+allowed targets and policy profiles must be disclosed before paired comparison.
+
+Both hardware and simulation consumers must preserve the controller-confirmed
+attachment for the carrying phase. A later TCP sample combined with the old
+pickup detection must not overwrite that transform or its acquisition stamp.
+Only a new attach attempt resets the estimate; successful release clears it.
+Vacuum success without a measured attachment cannot authorize place planning.
+
+The simulation controller separately freezes the physical tool-to-model relation
+using a fresh named Gazebo model pose and the admitted attach TCP. It checks
+the current model/generation before and after observation. This relation drives
+only the simulated actuator; measured attachment, scene dimensions and returned
+grasp remain unchanged. Perception body axes need not equal mesh model axes.
+The production simulation provider refuses unavailable physical pose/identity
+before scene attachment; it must not fall back to applying measured body pose
+directly to a physical mesh. Hardware never installs this simulation provider.
+
+Allowed symmetric placement targets may have different TCP positions for an
+off-centre grasp. If the first target cannot seed the required portal/approach/
+upper entry regions, prepare the remaining allowed targets within the same
+candidate deadline. Prefer a target with a complete ladder; retain all allowed
+targets and record each missing region. Do not assume that solving the final
+slot pose proves its higher approach pose reachable. This preparation changes
+neither the requested box geometry nor collision/trajectory certification gates.
+
+For diagnosis independent of perception, `scripts/placement_prior/exact_route_replay.py`
+loads the exact Select CDR, preceding map stats, unchanged surface metadata and
+captured carrying PlanningScene into an owned domain-8 MoveIt process. It checks
+scene/model hashes against the captured runtime identity and disables execution.
+The fixture clock advances with elapsed wall time from recorded attachment time;
+route/certification budgets remain active. Vacuum retention is a pinned replay
+assumption, not a live physical observation. This tool currently supports only
+captures whose atlas was unavailable and does not stand in for hardware F2 or
+the F3 motion/OCC campaign. It preserves response, native boundary captures,
+input hashes, model bytes, script revision and teardown evidence.
+
+Successful trial dumps can contain the post-placement surface. Do not relabel
+that map for an earlier Select. `extract_replay_surface.py --capture <run>
+--select-index <n> --output <new-directory>` reads the preserved sqlite bag,
+requires a typed publication exactly equal to Select's embedded surface, and
+joins one unambiguous legacy publication against its grid and preceding map
+stats. It preserves original JSON/CDR, source timestamps and hashes. Pass the
+resulting `surface_2d.json` explicitly to replay with `--surface`. Extraction
+does not restore a live map or confer execution/confirmation authority.
+
+With explicit attachment request/response, prior response and choice index,
+the same native harness routes captured inputs through `replay_place` and the
+hardware `plan_attached_box` consumer to a live ROS Select service. It records
+both client and server boundaries and requires the generated Select to equal
+the captured request. This verifies the consumer/serialization/native-planner
+chain; its diagnostic transport does not exercise deployment runtime readiness
+and must not be reported as the hardware F2 gate.
+
+`exact_prior_replay.py` replays a measured Prepare request, captured baseline
+scene, exact volume response and extracted pre-Select surface publications
+through isolated production prior/checker nodes. Its fixture providers expose
+reads only and explicitly pin the owner confirmation-required setting to true;
+that setting is a replay assumption, not a fresh measured owner configuration.
+It checks model identity and cold/cache-hit outcomes, captures native boundaries
+and process-tree resources, and tears down the owned nodes. It neither starts
+MoveIt execution nor provides hardware-deployment or paired speedup acceptance.
+Optional `--negative-checks` explicitly perturbs the requested map revision and
+then the fixture confirmation flag. Both cases must return no choices and the
+corresponding identity/unconfirmed refusal. These injected test inputs are
+preserved separately and never relabeled as measured map changes.
+
+## Snapshot boundary
+
+OCC's v2 surface is the authoritative typed grid. Its existing v1 publication
+carries acquisition and confirmation metadata absent from v2; join both by map
+revision, geometry identity and matching grid data. Require measured source,
+positive acquisition stamp, confirmed occupancy and no pending changes. For
+committed cargo, also require the owner's require_confirmed_map gate to be on;
+its default-off "confirmed" flag is insufficient evidence. Read that setting
+through a read-only parameter query. Never fabricate a measured next box from
+catalog dimensions. Old revisions must not replace newer accepted input.
+
+GetPlanningScene provides a baseline world for a private copy. The prior reads
+`/cargo_map/get_volume_v2` for the exact admitted surface revision. The owner
+serializes this read with all map service mutations; a read never integrates,
+confirms or commits data. Join scene/geometry/map identity, acquisition stamp,
+confirmation, grid origin/resolution/dimensions and explicit container frame.
+Require measured confirmed provenance and no pending changes. Reject mismatches.
+
+Append unknown and occupied active voxel runs using the explicit
+container-to-world transform. Merge only consecutive blocked vertical cells;
+never bridge an observed-free interval. Inactive hull cells do not establish
+observed free space; the static container geometry remains present. Bounds:
+at most 1,000,000 volume cells and 20,000 private obstacle runs, otherwise refuse.
+The 2D surface remains the support/candidate interface; its full-column unknown
+classification must not erase measured 3D free intervals. The conservative
+column adapter remains for offline legacy callers; the online prior requires
+the exact volume and cannot silently fall back if acquisition fails.
+Unknown cells remain blocked for prior screening. Retain unrelated world
+obstacles; only replace the prior's own reserved column IDs. Never publish the
+composed scene. Missing/full-scene identity or invalid occupied heights reject
+adoption rather than falling back to an empty world. Final route checking still
+uses the actual current scene and authoritative attachment.
+
+## Grasp and tool boundary
+
+Unscored rehearsal may enable `--capture-suction` to preserve exact evaluator
+inputs via `ELFIN_SUCTION_INPUT_CAPTURE`. The detector records depth, intrinsics,
+acquisition TF, instance region, fitted top/labels, effective contact model and
+accepted/rejected candidates with the original nanosecond acquisition stamp.
+An eight-frame private input buffer owns copies of the latest evaluator inputs;
+the selected detection frame pins only its exact instance/generation/nanosecond
+stamp. A missing or evicted frame is explicitly recorded, never replaced by a
+nearby acquisition. Persistent capture is bounded to four identities and four
+distinct stamps per identity, eight MiB of uncompressed arrays/metadata per
+case; selection diagnostics are capped at 64 events. It never authorizes a new
+contact or changes candidate selection. An absent center in a bounded candidate
+list does not establish that the center failed footprint evaluation. Replay
+must check matching captured acquisition/model before drawing that conclusion.
+
+The native collision transport retains at most one private decoded PlanningScene
+for repeated checks. It matches full immutable scene CDR contents, not identity
+labels alone; changed geometry, ACM or state bytes require fresh decoding. The
+decoded message is read-only and never applied to a shared scene. Requests still
+carry the full scene and receive independent native collision verdicts.
+
+Edge scene mutations use the PlanningSceneClient `(ok, reason)` contract.
+Every add/remove/attach/detach must inspect `ok` before the next mutation or
+motion search; tuple truthiness does not establish acceptance. A rejection
+retains its reason as a scene-apply failure and must not cache the scene as
+applied. Full route certification remains required after successful updates.
+Cleanup acknowledgements are checked too: failed object removals remain tracked
+for retry, invalidate the cached scene, and refuse Select output with
+`SCENE_CLEANUP_FAILED`. Scene certification digests cover all ROS message fields
+in canonical JSON, with no numeric rounding; CDR alignment padding is excluded
+because repeated serialization of identical fields can produce different bytes.
+Optional release diagnostics must accept a missing segment execution record on
+admission refusal. Recording the event must preserve the original refusal and
+must not submit later return/settle work or replace it with a logging exception.
+
+Budget-exhausted Select responses retain stage timing attribution and the
+attempt summary, including untried candidates. A missing terminal response or
+untried candidate must not be reported as a proven infeasible placement.
+Simulation verification retains its raw expected and observed box poses before
+commit or verification can abort. These post-execution diagnostic observations
+are not prior inputs and cannot authorize placement or alter OCC.
+Failure replay bundles prefer the current trial's latest typed submission when
+its stage matches. A previous stage or truncated trajectory cannot substitute
+for the failed stage, and a stale legacy boundary cannot override typed evidence.
+Simulation carry-mask replacement confirms the old entity's disappearance
+before creating its replacement, then confirms the replacement's pose persists
+before reporting attach readiness. Service acknowledgements and cached spawn
+poses do not establish entity presence. This simulation lifecycle check does
+not supply geometry to prior or planning and does not mutate OCC.
+
+Use T_box_tcp, shared with existing pick/place contracts. Measured suction
+contact orientation is an outward surface normal, not a TCP quaternion. Derive
+the grasp from the attach target produced by build_candidate_pick_segments.
+Choose a validated candidate ID and retain its observation/contact-model identity;
+do not shift an accepted suction patch without re-evaluation. Keep the selected
+directed box axes, including the pi heading branch, across pick and place.
+
+Rigid tool screening positions the fixed component containing suction_contact_frame
+in a PRIVATE RobotState and explicitly refreshes collision-body transforms.
+Check all its robot collision shapes and supplied box against the frozen world.
+Do not infer clearance from TCP clearance, skip the radar/camera, or exempt a
+colliding tool/world pair. The arm outside this rigid component is intentionally
+not evaluated by this screening query; whole-arm IK and collision certification
+remain mandatory. Critical transit/entry endpoints matter as well as final place.
+
+The CheckPlacementToolV2 service is bounded and returns contacts plus model and
+snapshot identities. It has no live scene subscription or scene-update clients.
+Its successful verdict means only rigid-tool/world screening, not executable
+trajectory feasibility. Native pointer/geometry caches must be updated before
+const collision APIs; the historical radar collision is a required regression.
+
+## Background and consumer boundary
+
+Full-route planning can return from an unloaded retreat attempt to carrying
+after certification rejects a transit edge. At each scene-state transition,
+the edge adapter must remove its own previously added world objects absent
+from the next state. In particular, the hypothetical released box must not
+remain alongside the attached payload during a carrying retry. Preserve
+confirmed previous cargo and unrelated world objects; removal failure rejects
+the transition. This is foreground route-scene ownership, not a prior-node
+permission to mutate shared scenes.
+
+One active job, one replaceable pending job, one published result. New map/input
+invalidates stale work. Cancellation/deadline discards partial results. An
+abandoned native service future remains tracked until completion so subsequent
+jobs cannot create an unbounded service backlog. Templates and measured requests
+have distinct provenance and cannot be adopted interchangeably.
+
+Optional automatic prefetch requires explicit template dimensions and full
+box-to-TCP transforms. It triggers once per confirmed snapshot, after read-only
+dependencies are ready. Templates remain hypothetical. Matching geometry may
+reuse generated slot proposals and their ordering, but measured contact
+candidates undergo collision screening again. Changed size, model, scene or
+snapshot regenerates proposals. If only size changes, preferences for grid
+anchors/headings may order the freshly generated legal candidates. The current
+measured dimensions determine every pose and support/clearance check; template
+poses and missing or now-infeasible anchors are never inserted. Scene/model/map
+identity changes disable this ordering hint. Measured contact collision checks
+still run, including for template-preferred slots. The ordering-only identity
+excludes scalar joint positions/velocities/efforts and their acquisition stamp;
+moving the arm must not discard a preference for a freshly regenerated slot.
+It retains joint names/frame, multi-DOF transforms, attached bodies, complete
+world geometry, ACM, padding, and all model/OCC identities. The strict full-scene
+identity remains required for result caching and adoption; it is never replaced
+by the ordering identity. A joint-state change therefore regenerates geometry
+and performs measured collision checks even when ordering hints survive.
+Foreground preparation supersedes background
+work; an old timeout cannot cancel a newer generation. Neither timer nor
+template completion issues motion or changes map ownership.
+
+Enable with `prefetch_enabled=true`, `prefetch_box_wdh` (three metres), and
+`prefetch_grasps_flat` (one or more concatenated xyz/xyzw transforms). These
+parameters describe a hypothesis, not a measured payload or approved grasp.
+Background submission also requires the same confirmed snapshot to remain
+admitted for `prefetch_quiet_s` (default 2 seconds, zero disables this delay).
+Repeated identical publications do not restart the interval; changed identity
+or lost confirmation does. The existing 1-second timer determines the next
+eligible poll. This coalesces short-lived observation revisions; it does not
+predict that a stable snapshot will remain unchanged. Running jobs still cancel
+on invalidation. Foreground measured preparation never waits on this gate and
+retains priority. The delay is a scheduling choice, not an OCC confirmation rule
+or execution permission. Evaluate lost overlap as well as discarded work when
+comparing policies; reduced job count alone is not a speedup verdict.
+When evidence capture is enabled, `proposal_context` records template presence,
+strict/ordering-context matches, size equality and the actual slot order. These
+are diagnostic facts, not collision or execution approval. The isolated
+`exact_prior_replay.py --prefetch-template <json> --foreground-joints <cdr>`
+functional check waits for real automatic timer completion before submitting
+measured input; it records derived joint-state changes explicitly. It does not
+replace the live-background or paired performance acceptance gates.
+
+Before pick, bind the selected slot, candidate and grasp. Picking another candidate
+requires a new matching binding; a prior for candidate A cannot follow a retry
+that picked B. After attach, measured attachment and actual joints remain
+canonical. Reconnect/replan as required and pass the existing complete route
+certifier. On prior miss, mismatch or failure use ordinary planning; do not
+relax limits or replay a cached trajectory blindly.
+
+## Hardware place planning boundary
+
+Successful VacuumCommandV2 enable returns `has_measured_attachment`, the
+controller-admitted `measured_grasp`, and `attached_box_wdh`. Encode the reply
+before the attach effect and expose it only after backend success. Disable and
+failure never claim an attachment. The reply retains the actual attach TCP
+stamp and scene/request identity; do not replace it with the requested prior.
+
+`hardware_pick_driver --frame-runtime --placement-prior
+--plan-place-after-pick` binds that measured reply, reads six current joints and
+TCP/container TF at the joint stamp, and calls complete SelectPlacePathV2 after
+pickup. A matching selected prior fixes the box target; the measured attachment
+determines its TCP target. Stale maps, changed pickup candidate, missing attach
+proof or changed box identity refuse this binding. Without a prior, the ordinary
+ComputePlacementV2 then Select chain remains available. This option plans only;
+it does not execute the place route. It requires retained vacuum and rejects
+`--release`. Planning failure reports carry fault and does not release payload.
+Actual selector/OCC services and a healthy typed runtime must be running; the
+pick-only launch does not imply that a complete place graph exists.
+
+## Recovered trajectory timing
+
+Cartesian timing must bound the controller's interpolated trajectory, not only
+its knot derivatives. The site retimer evaluates quintic velocity/acceleration
+extrema between knots and uniformly dilates time when necessary. Derivative
+fields scale by 1/k and 1/k² along with times by k, preserving the interpolated
+joint curve. Recheck nanosecond wire-time rounding before returning a trajectory.
+Velocity/acceleration limits remain unchanged. This correction is not a collision
+or complete-route certificate; the existing route checks still apply. Report
+increased motion duration separately from prior planning latency.
+
+## Full-cycle simulation binding
+
+Depth bootstrap may declare up to three additional scene-bound world-camera
+intents. Each uses the existing certified observation route and execution
+admission; only the map owner integrates settled depth acquisitions. The
+response wait for an already-certified observation leg includes its trajectory
+duration plus the configured response overhead. It does not alter planning or
+certification budgets, trajectory timing, controller limits or collision gates.
+An empty or nonmonotonic trajectory cannot supply an execution wait budget.
+The V2 motion service forwards the node's configured `execute_timeout` to the
+executor, as the legacy service does. A library default must not silently
+override that configured execution limit.
+
+The existing motion/OCC evaluation driver accepts `--placement-prior` only with
+its typed frame runtime. Before pickup it binds one measured candidate without
+changing its contact pose or rank; after pickup it preserves the selected box
+slot and uses the controller-admitted actual attachment. Stale target bindings
+fail instead of silently changing the desired placement. A prior miss preserves
+the ordinary candidate path. This wiring requires full-cycle evidence before
+claiming successful placement or performance improvement.
+
+Runtime installs must include `st09_contracts` through the planning package's
+explicit dependency. Source-root PYTHONPATH is not installation verification.
+The simulation launch accepts `box_catalog_config` for a frozen spawn-only
+catalog, allowing historical box geometry to be reacquired without changing the
+installed default catalog. This parameter is passed only to the spawner; prior
+and pick authorization must consume the new measured detection and candidates.
+New acquisitions are not exact replays of historical perception. The explicit
+`inch20` fixture tier (0.35 x 0.53 x 0.22 m) has baked unique mesh URIs,
+verified by the same asset size/visual/collision checks as normal tiers; it is
+not added to the default spawn catalog.
+
+`exact_prior_replay.py --requested-slot <PoseContractV2.cdr>` runs a derived
+explicit-target experiment. Only the request's slot list is replaced; measured
+detection, contact candidates, scene and OCC bindings are retained. The output
+hashes the target artifact and saves the submitted CDR, and labels this as a
+derived experiment rather than an exact historical request replay. A successful
+tool-placement check remains distinct from full-route or executed-cycle success.
+
+For missing observation diagnosis, `find_observation_candidates.py --views`
+accepts a bounded JSON list of container-frame eyes and targets (one to three
+each), records its hash, and proposes IK only. Native endpoint screening and
+normal route certification remain necessary before motion. The depth-coverage
+inspector reports admitted free-ray endpoint bounds separately from measured
+return bounds: terminal-band exclusion can leave near-wall cells unknown even
+with dense measured returns. An offline reconstructed volume is diagnostic data,
+never a replacement for the owner's confirmed OCC snapshot.
+
+The inspector's `--probe-resolutions` evaluates at most four alternative
+terminal bands on the same measured rays and reports corresponding uniform
+grid sizes without allocating those grids. Near-back-return counts describe
+coordinates near the usable hull, not verified physical-wall classifications.
+These diagnostics cannot authorize finer maps, change collision margins or
+replace the owner's geometry/confirmation contracts. Semantic usable bounds
+and physical collision surfaces must not be assumed identical merely because
+they share a frame.
+
+`inspect_boundary_mesh.py` transforms the captured full container collision
+mesh into container coordinates and compares nine interior rear-face ray
+intersections with the usable hull. Its synthetic geometric rays are diagnostics
+only, never measurement or occupancy evidence. The nearest positive mesh hit
+is retained; parallel, missed and behind-origin intersections provide no hit.
+
+`depth_physical_boundary.admit_physical_depth_ray` is an offline-validated,
+currently unwired owner-side admission kernel. Its physical first-hit record
+must match scene revision, mesh identity, ray origin and normalized direction.
+Missing evidence refuses the ray; mismatched evidence raises an error. It
+rejects entry through closed usable faces and returns behind the first physical
+surface beyond the unchanged terminal band. Free evidence stops before the
+nearer measured/physical surface, then clips to usable volume; it does not
+subtract a second band from an inset semantic boundary. Short measured returns
+are never extended to mesh walls. Existing online integration still uses its
+original admission path. Wiring requires an authoritative identity-bound mesh
+provider and bounded owner-side representation; a successful ray test alone
+does not establish voxel coverage, map confirmation or motion feasibility.
+
+`depth_boundary_mesh.StaticBoundaryMesh` is the ROS-free static query component
+for that kernel. It copies and hashes container-frame triangles, requires an
+expected mesh identity and scene revision, caps input at 20000 triangles, and
+queries a bounded AABB tree without discarding faces. First-hit results bind the
+ray and identities; deadline expiry raises rather than returning a clear ray.
+It does not acquire authoritative geometry or publish occupancy. Owner-side
+geometry acquisition, bounded local map storage and query integration remain
+required before online use.
+
+`depth_boundary_assets.load_boundary_assets` resolves the same installed
+container collision resource as scene publication (or an explicit deployment
+override), requires expected scene revision, geometry hash and resource SHA256,
+and bounds resource reads. It uses the shared ROS-free STL decoder also used by
+MoveIt's scene publisher; no perception-to-planning dependency is introduced.
+Raw resource identity and canonical container-frame triangle identity remain
+distinct. Deployment overrides/decimation must be reflected in owner identity;
+matching a default file alone does not attest to a live overridden scene.
+The loader is tested offline and is not yet wired into the live map owner.
+
+`local_depth_volume.LocalDepthVolume` is an unwired owner-side local observation
+kernel. A whole-voxel ROI must fit entirely inside the convex usable hull and
+contain at most one million cells; a frame contains at most 2000 measured rays.
+It reuses `LogOddsGrid` thresholds, deduplicates hits/misses within each frame,
+lets hits win, and admits only strictly increasing exact acquisition stamps.
+Mesh/scene mismatch, invalid input or deadline expiry before commit leaves the
+frame unapplied. Unknown remains unknown without measured ray evidence.
+Exports explicitly carry `confirmed=false`: online owner locking, epoch/reset,
+snapshot identity, confirmation and service integration remain necessary.
+Offline fine-voxel coverage must be checked over the complete required envelope;
+neither accepted rays nor a partially observed ROI certify a free trajectory.
+
+`tool_heading_replay.py` compares up to four exact rigid-tool requests with a
+local TCP Z half-turn, preserving their tool origins, box poses and frozen
+scene. It checks the live model hash and retains both request/response pairs.
+This is a diagnostic for whether a directed grasp alternative merits integration;
+it neither modifies measured contact records nor authorizes alternate pickup,
+IK, complete trajectories or execution.
+
+The non-scored `scripts/placement_prior/rehearse_scene.py` checks actual scene
+objects, static synchronization, selector/validator discovery and a single clock
+publisher; it spawns no box and is not a functional pick/place acceptance test.
+
+Prior experiments may opt into `evidence_dir` on the sidecar. It captures exact
+prepare requests/responses, baseline scene, and native collision boundaries in a
+new directory with a 256 MiB limit. Exhaustion refuses adoption and must be
+reported as incomplete evidence. No capture directory means capture is disabled.
+
+Simulation must explicitly select `top_surface_mode:=dynamic` to obtain measured
+suction candidates. The existing legacy detector produces no such candidates.
+An initial `static_empty` map is not a measured snapshot: acquire a settled cargo
+view through the map owner's normal observation workflow before expecting prior
+adoption. The read-only prior must never promote static geometry to measured data.
+
+Dynamic perception must run `SuctionPatchEvaluator` on the joined depth,
+instance region and top estimate before publishing grasp candidates. A fitted
+centre produced by `center_suction_evaluation` bypasses footprint validation and
+must not be used as offset-grasp acceptance evidence. Zero accepted patches
+remain zero; do not mint a centre fallback. Contact model thresholds remain
+unchanged by this integration.
+
+`--prior-acquisition-only` in the motion/OCC driver requires a non-scored
+rehearsal and prior enabled. It returns at the detected-input hook before pickup;
+it is an input capture tool, not a successful cycle. `--dump-dir` also captures
+exact typed service requests/responses before client-side slot-index remapping.
+
+## Initial measured-map prerequisite
+
+An empty cargo semantic cloud cannot establish that the container is empty.
+The existing cargo-view integration consumes cargo endpoints and drops endpoints
+below floor + 0.05 m. A static-empty initial grid therefore remains insufficient
+for measured prior adoption; do not change its source label or confirmation flag.
+A settled full-depth container observation must be handled by perception and the
+map owner, with exact acquisition/TF identity and explicit observation provenance.
+Keep it separate from cargo-only clouds so equal-stamp callbacks cannot overwrite
+one another. Static-wall returns may establish free ray interiors but must not be
+added as cargo occupancy. Unseen/occluded cells remain unknown; another view may
+be required. The prior consumes the owner's resulting snapshot only.
+
+Evaluation drivers must stop and join both the main executor spinner and the
+TransformListener's dedicated executor/thread before destroying either node.
+Worker shutdown is a prerequisite to rclpy context shutdown, not interpreter
+finalizer work.
+
+The mapper now provides `/cargo_map/integrate_container_depth_view` using the
+existing `IntegrateCargoView` settled-acquisition request contract. It consumes
+`/luggage/perception/container_depth_points` (configurable `container_depth_topic`)
+in an independent buffer. The acquisition stamp ledger is shared with cargo
+integration, so the same frame cannot count twice through different endpoints.
+Both view handlers serialize through the same view lock and retain existing
+runtime readiness, geometry hash, expected revision, settled, freshness and
+exact-stamp TF checks. No topic producer is started by the prior.
+
+Full-depth ray processing uses the authoritative hull (including its chamfer),
+permits entry only through its -X aperture, and rejects returns inconsistent
+with closed faces. One voxel diagonal before a return remains unobserved;
+interior returns outside that closed-face band become sensor occupancy. Near-door
+obstacles remain hits even when no preceding free voxel can be established.
+Static boundary returns create free-ray evidence only, never cargo hits. Missing
+or rejected rays create no evidence. Surface columns remain unknown until the
+existing mapper has sufficient observations; no unknown-to-free shortcut is
+introduced. A zero-cargo measured depth view may initialize provenance, but that
+alone does not establish enough free columns for a prior placement.
+
+`ContainerDepthObserver` is the explicit client for that owner service. It joins
+preprocessed depth images and depth CameraInfo by exact positive stamp, equal
+optical frame and image dimensions; unsupported distortion is rejected. It uses
+the existing six-joint MotionStabilityGate at the samples' sensor times, so stale
+joint arrivals cannot refresh stability. It preserves the image stamp on optical
+points and checks the owner's schema, integrated stamp and advancing map revision
+before accepting a result. Call it from an orchestration worker while the ROS
+executor continues processing its subscriptions and service replies.
+
+The simulation driver opt-in `--bootstrap-depth-map` uses the existing certified
+GoToRobotPoseV2 path to `portal_observe_sim`, integrates three settled depth frames,
+and returns through the certified pickup-observe path before starting a box.
+Failure to reach the observation pose prevents capture. It does not promise full
+coverage: measured unknown/occupancy ratios are preserved. Input images, camera
+calibration, joint stability samples, clouds and owner requests/replies are
+captured; raw named-motion service calls are also captured when dumps are on.
+
+Observation route search tries the actual joint-state IK seed, four wrist-seed
+perturbations (J6 and J4, minus/plus pi), then the legacy tool-down seed. These
+are solver inputs only; unique solved goals each require the ordinary MoveIt
+edge and full-route certification. A failed branch may advance to the next
+within the existing route wall budget. The first certified route is returned;
+no endpoint-distance score substitutes for a measured path. Attempted seeds and
+refusals are included in route diagnostic rows.
+
+When deriving slots from an admitted volume, prior enumerates at most 2048
+geometrically feasible solver candidates before truncation. A prefix-sum query
+ranks payload AABBs clear of active unknown/occupied voxels ahead of blocked
+AABBs, including the configured collision margin. Solver order is preserved
+within both groups; blocked candidates remain eligible because an AABB can
+overestimate a rotated payload. The requested slot count, 32-pair native budget,
+tool collision checks and full-route certification are unchanged. Explicit
+caller targets are not shifted or replaced by this ranking.
+
+The typed pick caller sends the selected measured `suction_candidate_id`.
+BuildMotionSequenceV2 resolves that exact candidate on the same observation and
+passes it to the timed pick encoder. Candidate contact/normal generates the
+waypoint ladder; box-centre waypoints are used only when no candidate list was
+supplied. Missing or ambiguous candidate IDs on a candidate-bearing observation
+are refused. Candidate paths retain the normal edge builder and full pick
+certification; merely narrowing the message's candidate list is insufficient.
+
+### Bounded staging alternatives
+
+The transit staging pose is a proposal, not proof of payload clearance. Seed
+at most six positions: the original, +/-0.15 m along each container horizontal
+axis, and +0.20 m in world Z. These are search extents, not collision margins;
+reject proposals that lower the original world transit height. Preserve the
+placement target, attachment and corridor anchors. IK preparation consumes the
+existing candidate budget.
+
+Before graph connections, check staging joints for both carrying and unloaded
+states using the same SceneState/FrozenSceneComposer path as certification.
+Only explicitly valid endpoints enter the candidate's graph scope. Missing
+verdicts or no surviving state for either load refuse that candidate; they must
+not silently remove the required staging hop. Retain endpoint positions, joints,
+load and verdict in candidate diagnostics. The endpoint service budget is 2 s
+and checks stop between calls at the candidate deadline. Every connection and
+complete route still requires existing certification; endpoint validity alone
+is insufficient. This does not write OCC or authorize physical movement.
+
+### Long retreat IK continuity
+
+A retreat endpoint whose total joint displacement exceeds the short-hop branch
+heuristic may be refined along the straight TCP segment, holding orientation.
+Use <=10 mm steps, at most 128 solves, the route's existing deadline and the
+existing 1 rad branch threshold per local step. Also reject a raw local joint
+jump above that threshold, including a wrapped full-turn equivalent. A missing
+IK solution, step limit or deadline returns no partial endpoint. INSERT and
+DESCEND keep their existing gate. This only proposes the retreat endpoint;
+Cartesian edge construction and full collision/timing certification remain
+mandatory. Preserve exact incremental seeds/results in bounded failure capture.
+
+### Carrying scene parity
+
+GraphRoutePlanner must populate placed_boxes from the same admitted snapshot
+for carrying and unloaded SceneState. Attaching the payload does not replace
+OCC obstacles. A collision-free MoveGroup result in a scene that omitted those
+obstacles cannot establish a feasible carry route. Full certification remains
+required after planning against the occupied scene.
+
+Production graph planning receives carrying/unloaded SceneState directly from
+RouteProducer.edge_scene_states, the same world-frame measured-column builder
+used by endpoint validation and certification. Do not rebuild production OCC
+with scene_boxes_from_snapshot: that legacy helper uses local XY and a fixed
+0.30 m slab, so merely including its boxes does not establish scene parity.
+Rotated/translated container and measured-height regression must observe the
+actual SceneState delivered to the edge builder in both load modes.
+
+### Measured corridor height
+
+Seed transit height from the measured world columns used by planning and
+certification. Intersect their world AABBs with the swept attached-payload AABB
+from portal to approach; distant columns do not set this corridor's height.
+Use the actual TCP-to-box transform and oriented payload extents to derive
+required TCP Z above the maximum intersecting top with the existing corridor
+margin. Raise portal/approach along the container-up ladder when necessary;
+retain the exact contact target and attachment. This is a conservative proposal,
+not a path certificate; all downstream IK/collision/endpoint gates still apply.
+Record intersecting obstacle ids and required world TCP height in each row.
+
+### Post-release observation geometry
+
+The typed placement caller's legacy SlotSpec view must transform orientation
+as well as position from container_link to robot base. Depth selection for a
+typed placement reads the authoritative container-frame slot and measured
+box dimensions directly; physics command dimensions must not select sensor
+points. A crop with sufficient points is not occupancy confirmation: mapper
+filtering, raster hits, measured height and confirmation gates remain required.
+
+## Rejected joint-path recovery
+
+Final certification identifies the failed edge and whether the first failing
+sample is a trajectory knot or an interior sample. An interior collision on a
+PORTAL_TRANSIT or RETURN joint connection may discard that edge and rebuild the
+route at most twice, sharing the existing candidate and Select wall budgets.
+Keep target, measured attachment and snapshot unchanged. Certify the complete
+replacement route before admission. Endpoint/unknown-location collisions and
+Cartesian failures do not receive this redraw. Discard a known colliding graph
+edge even when the retry budget is exhausted; no rejected edge is reusable.
+
+Certified timed joint execution uses the transmitted trajectory duration plus
+the configured result-response overhead when waiting for the controller action.
+The caller and executor share duration validation; neither retimes the certified
+trajectory to fit a fixed RPC wait. Planning/certification budgets and trajectory
+limits are unchanged. Preserve the controller result and distinguish an
+execution timeout from a planning failure in run evidence.
+
+Hardware interface evaluation must launch `hardware_pick.launch.py plan_only:=true`.
+This mode suppresses the CPS executor include, disables MoveIt trajectory
+execution, and selects a vacuum stub. Stub responses are transport-test evidence,
+not measurements of a physical grasp. Replay inputs retain their measured source
+identity; passing this mode never authorizes motion. The MoveIt launch keeps
+Humble's scalar plugin configuration and uses the array overlay only on Jazzy.
+
+Depth acquisition uses bounded rotating ray subsampling when admitted returns
+exceed the per-frame limit. Successive fresh acquisitions vary the selected
+stride phase so identical cloud ordering cannot permanently starve a measured
+ray. The map owner still admits fresh observations and applies unchanged
+terminal bands, hit/miss rules and confirmation thresholds. The prior remains
+read-only; no sampling policy can substitute hypothetical free cells for rays.
+
+The unscored depth bootstrap harness accepts `--bootstrap-depth-samples` (3..8,
+default 3) for independent settled acquisitions at each certified view. Record
+the value with workload inputs. Rotation through a stride of five requires five
+frames at that view; three frames alone do not establish full sampling coverage.
+More samples never authorize fabricated or duplicate acquisition evidence.
+
+Acquisition bags also preserve `/frame_contracts/v2/runtime_identity` so
+readiness-lease failures can be compared with observed peer heartbeat delivery.
+A bag receiver's observations do not prove delivery to another node. Keep
+execution readiness and lease thresholds unchanged while diagnosing starvation.
+
+Opt-in support diagnosis also preserves up to eight failed same-acquisition
+measured support fits (16 MiB input-array cap each), with exact cargo/raw arrays,
+fit outcome and support history. Tracked clouds are not relabelled as fresh
+measurements. Diagnostic capture does not change the five-fit stability gate.
+
+When support capture is enabled, detector diagnostics retain a bounded
+256-event estimate-queue trace (submit/replacement/discard/take, acquisition
+stamp, cloud-carried source and monotonic receipt time). The trace contains
+no cloud payload and must not alter queue scheduling or authorization policy.
+
+Measured-estimate retention follows `sensor_data_pipeline.md`: a fresh same-box
+measurement may survive a newer continuity-only update in the single pending
+slot. Capture `retain_measure` events to distinguish scheduling coverage from
+a successful full pickup/place cycle. Prior never authorizes stale held geometry.
+
+## Measured local joint witnesses
+
+Measured preparation checks all G for a slot and returns that slot's fully witnessed alternatives only
+when the private local checker returns pickup and placement joint branches.
+Production candidate pick references define pickup approach/contact/lift; the
+placement probe covers a 0.10 m container-Z insertion and unloaded retreat.
+This local probe is not the production transit or an execution trajectory.
+Hypothetical templates remain rigid-only hints and cannot authorize pickup.
+The native checker uses configured KDL, up to eight deterministic seeds and two
+branches per end, 5 mm/0.03 rad TCP sampling, 0.01 rad joint interpolation,
+0.15 rad maximum consecutive IK jump, full-arm collision and joint bounds.
+Only suction_panel/payload contact is allowed, matching pickup semantics.
+Scene edits and phase attachment changes exist only in owned private copies;
+existing attachments or reserved-ID conflicts refuse the query. No live scene
+or OCC mutation occurs. Branch paths are untimed and retained in trace_json
+with exact model/snapshot/request identity. A 2 s per-pair limit remains inside
+the existing 10 s preparation budget. Timeout means inconclusive, not globally
+infeasible. Actual attachment and complete carrying route certification remain
+mandatory, and cached results include pickup pose and local references.

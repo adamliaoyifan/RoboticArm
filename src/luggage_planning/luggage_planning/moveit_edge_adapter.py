@@ -513,12 +513,27 @@ class MoveItEdgeAdapter(object):
         Idempotent; the success path's real release re-adds its own
         world geometry through the vacuum/placement surfaces.
         """
-        if self._scene is not None:
-            self._scene.detach_and_remove(box_id=payload_id)
-            for object_id in tuple(self._scene_world_ids_added):
-                self._scene.remove_object(object_id)
-        self._scene_world_ids_added = []
+        # Invalidate cached admission even when cleanup only partially succeeds.
         self._scene_state_applied = None
+        failures = []
+        if self._scene is not None:
+            operations = [(payload_id, lambda: self._scene.detach_and_remove(box_id=payload_id))]
+            operations.extend((object_id, lambda obj=object_id: self._scene.remove_object(obj))
+                              for object_id in tuple(self._scene_world_ids_added))
+            for index, (object_id, operation) in enumerate(operations):
+                try:
+                    ok, reason = operation()
+                except Exception as exc:
+                    ok, reason = False, repr(exc)
+                if not ok:
+                    failures.append({"object_id": object_id, "reason": str(reason)})
+                elif index > 0:
+                    self._scene_world_ids_added.remove(object_id)
+        else:
+            self._scene_world_ids_added = []
+        if failures:
+            self._record_failure("CLEANUP", "scene_cleanup_failed", failures=failures)
+            raise RuntimeError("scene cleanup failed: " + json.dumps(failures))
 
     def _ensure_scene(self, scene, payload_id="b-payload"):
         """Idempotent scene diff for the edge's load state (fail closed).
@@ -544,12 +559,25 @@ class MoveItEdgeAdapter(object):
         self._scene_apply_began = started  # [G1] for stage timing
         world_boxes = tuple(scene.placed_boxes) + (
             (scene.released_box,) if scene.released_box else ())
+        # A certification retry can return from unloaded retreat planning to
+        # carrying. Remove only this adapter's obsolete world objects, otherwise
+        # the hypothetical released box collides with the still-held payload.
+        desired_ids = {str(box.object_id) for box in world_boxes}
+        for object_id in tuple(self._scene_world_ids_added):
+            if object_id not in desired_ids:
+                ok, reason = self._scene.remove_object(object_id)
+                if not ok:
+                    raise RuntimeError("scene remove failed for %s: %s" % (object_id, reason))
+                self._scene_world_ids_added.remove(object_id)
+                self._call_counts["scene_apply"] += 1
         for box in world_boxes:
-            if not self._scene.add_collision_box(
+            ok, reason = self._scene.add_collision_box(
                     box.object_id, list(box.center), list(box.quaternion_xyzw),
-                    list(box.size_whd), frame_id="world"):
-                raise RuntimeError("scene add failed for %s" % box.object_id)
-            self._scene_world_ids_added.append(str(box.object_id))
+                    list(box.size_whd), frame_id="world")
+            if not ok:
+                raise RuntimeError("scene add failed for %s: %s" % (box.object_id, reason))
+            if str(box.object_id) not in self._scene_world_ids_added:
+                self._scene_world_ids_added.append(str(box.object_id))
             self._call_counts["scene_apply"] += 1
         if scene.load_state == "carrying":
             if scene.payload is None:
@@ -566,20 +594,23 @@ class MoveItEdgeAdapter(object):
             # carrying edge refused on phantom collisions (live:
             # pedestal x pickup_box contacts at the world origin while
             # the arm stood over the platform).
-            if not self._scene.detach_and_remove(box_id=BOX_OBJECT_ID):
-                raise RuntimeError("live payload detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=BOX_OBJECT_ID)
+            if not ok:
+                raise RuntimeError("live payload detach failed: %s" % reason)
             attach_diff = build_attach_scene(
                 payload_id,
                 list(scene.payload.t_tcp_box_translation),
                 list(scene.payload.t_tcp_box_quaternion_xyzw),
                 list(scene.payload.dimensions_wdh),
                 self._link)
-            if not self._scene.apply_diff(attach_diff, timeout=5.0):
-                raise RuntimeError("scene attach failed")
+            ok, reason = self._scene.apply_diff(attach_diff, timeout=5.0)
+            if not ok:
+                raise RuntimeError("scene attach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         elif self._scene_state_applied is not None:
-            if not self._scene.detach_and_remove(box_id=payload_id):
-                raise RuntimeError("scene detach failed")
+            ok, reason = self._scene.detach_and_remove(box_id=payload_id)
+            if not ok:
+                raise RuntimeError("scene detach failed: %s" % reason)
             self._call_counts["scene_apply"] += 1
         self._verify_scene(scene.load_state, payload_id)
         self._scene_state_applied = marker
@@ -645,9 +676,9 @@ class MoveItEdgeAdapter(object):
             waypoints_hint = [
                 (tuple(row["position"]), tuple(row["quaternion_xyzw"]))
                 for row in candidate.attributes["waypoints"]]
-        if scene is not None:
-            self._ensure_scene(scene)
         try:
+            if scene is not None:
+                self._ensure_scene(scene)
             if klass.planner == "joint":
                 trajectory, outcome = self._plan_joint(from_node, to_node,
                                                        klass)
@@ -703,7 +734,10 @@ class MoveItEdgeAdapter(object):
             | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
             | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
-            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
+            | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX
+            | PlanningSceneComponents.TRANSFORMS
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.LINK_PADDING_AND_SCALING)
         return self._scene.get_scene(parts, timeout=3.0)
 
     def _keep_portal_failure(self, from_node, to_node, code, scene_msg,
@@ -968,6 +1002,12 @@ class MoveItEdgeAdapter(object):
             "server_planning_time_s": (
                 float(getattr(result, "planning_time", 0.0) or 0.0)
                 if result else None)})  # [G1]
+        if submission_scene is not None and str(from_node.load_state) == "carrying":
+            from luggage_planning.joint_boundary_capture import capture_boundary
+            capture_index = getattr(self, "_carrying_capture_index", 0)
+            if capture_boundary(os.environ.get("ST09_PORTAL_CAPTURE_DIR"),
+                                capture_index, submission_scene, goal, result):
+                self._carrying_capture_index = capture_index + 1
         trajectory = getattr(result, "planned_trajectory", None) if result \
             else None
         joint_trajectory = getattr(trajectory, "joint_trajectory", None) \
@@ -1080,9 +1120,19 @@ class MoveItEdgeAdapter(object):
                 x=float(quaternion[0]), y=float(quaternion[1]),
                 z=float(quaternion[2]), w=float(quaternion[3]))
             request.waypoints.append(pose)
+        insert_capture_index = getattr(self, "_insert_capture_index", 0)
+        capture_insert = (klass == EdgeClass.INSERT and insert_capture_index < 4
+                          and os.environ.get("ST09_PORTAL_CAPTURE_DIR"))
+        submission_scene = self._portal_submission_scene() if capture_insert else None
         self._call_counts["cartesian"] += 1
         began = time.monotonic()
         response = self._send_cartesian_request(request)
+        if capture_insert:
+            from luggage_planning.joint_boundary_capture import capture_insert_boundary
+            if capture_insert_boundary(
+                    os.environ.get("ST09_PORTAL_CAPTURE_DIR"), insert_capture_index,
+                    submission_scene, request, response):
+                self._insert_capture_index = insert_capture_index + 1
         self._call_durations["cartesian"].append(
             round(time.monotonic() - began, 6))
         self._request_dumps.append({

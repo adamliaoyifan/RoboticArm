@@ -52,7 +52,9 @@ from luggage_description.scene_tf_config_utils import (
     load_scene_tf_config,
     pedestal_enabled,
     pickup_platform_enabled,
+    pickup_platform_config,
 )
+from luggage_gazebo.platform_model import platform_sdf
 from luggage_description.xacro_robot_with_scene_base import expand_and_patch
 
 WORLD_NAME = "airport_loading"
@@ -75,6 +77,7 @@ def _default_launch_values():
         "gui": "true",
         "use_rviz": "true",
         "use_perception": "true",
+        "top_surface_mode": "legacy",
         "hull_margin": "0.0",
         "min_support_ratio": "0.6",
         "last_result_max_candidates": "24",
@@ -104,6 +107,7 @@ def _default_launch_values():
         "semantic_pydeps_dir": "",
         "visual_kind": "mesh",
         "size_mode": "catalog",
+        "box_catalog_config": "",
         "yaw_mode": "",
         "yaw_range": "0.0,0.0",
         "xy_jitter_range": "0.0,0.0",
@@ -400,7 +404,7 @@ def _move_group_node(robot_description, use_moveit):
     )
 
 
-def _create_node(model_name: str, sdf_path: str, spawn: dict):
+def _create_node(model_name: str, sdf_path: str, spawn: dict, *, sdf_xml=None):
     """One ros_gz_sim create process per scene model.
 
     A single persistent service bridge for /world/<w>/create would die with
@@ -413,7 +417,7 @@ def _create_node(model_name: str, sdf_path: str, spawn: dict):
         output="screen",
         arguments=[
             "-world", WORLD_NAME,
-            "-file", sdf_path,
+            *(["-string", sdf_xml] if sdf_xml is not None else ["-file", sdf_path]),
             "-name", model_name,
             "-x", "%.6f" % float(spawn["x"]),
             "-y", "%.6f" % float(spawn["y"]),
@@ -436,14 +440,16 @@ def _scene_model_actions(scene_tf_config: str):
         spawns.append(("pickup_platform", gazebo_pickup_platform_spawn_pose(config)))
     container_model = gazebo_container_model(config)
     spawns.append((container_model, gazebo_container_spawn_pose(config)))
-    return [
-        _create_node(
-            model,
-            os.path.join(gz_share, "models", model, "model.sdf"),
-            spawn,
-        )
-        for model, spawn in spawns
-    ]
+    actions = []
+    for model, spawn in spawns:
+        sdf_path = os.path.join(gz_share, "models", model, "model.sdf")
+        sdf_xml = None
+        if model == "pickup_platform":
+            with open(sdf_path, encoding="utf-8") as template:
+                sdf_xml = platform_sdf(
+                    template.read(), pickup_platform_config(config)["size"])
+        actions.append(_create_node(model, sdf_path, spawn, sdf_xml=sdf_xml))
+    return actions
 
 
 def _robot_create_node(scene_tf_config, initial_joint_args):
@@ -792,6 +798,7 @@ def _launch_setup(context):
             "scene_tf_config": scene_tf_config,
             "visual_kind": cfg["visual_kind"],
             "size_mode": cfg["size_mode"],
+            "box_catalog_config": cfg["box_catalog_config"],
             "visual_settle_sec": 2.0,
             "yaw_mode": cfg["yaw_mode"],
             "yaw_range": _csv_floats(cfg["yaw_range"], (0.0, 0.0)),
@@ -818,6 +825,7 @@ def _launch_setup(context):
         parameters=[{
             "scene_tf_config": scene_tf_config,
             "use_semantic": use_semantic,
+            "top_surface_mode": cfg["top_surface_mode"],
             "use_sim_time": True,
             "depth_topic": "/luggage/preprocessed/camera/depth/image",
             # The semantic chain (preprocessor 4-6 Hz + YOLO + point filter)
@@ -1154,6 +1162,7 @@ def generate_launch_description():
                 "use_moveit",
                 "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
+            profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "startup_watchdog_sec",
@@ -1261,6 +1270,10 @@ def generate_launch_description():
                 "size_mode",
                 "Pickup size: catalog (small/medium/large) or "
                 "continuous (box visual only)."),
+            profile_arg(
+                "box_catalog_config",
+                "Optional spawn-only box catalog path; empty uses the installed catalog. "
+                "Perception and planning still use measured geometry."),
             profile_arg(
                 "yaw_mode",
                 "Override catalog yaw_mode (discrete/continuous)."),

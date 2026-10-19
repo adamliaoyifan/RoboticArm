@@ -111,6 +111,32 @@ def test_matching_live_revision_attaches():
     assert result.success, result.message
     assert captured
     assert captured[0]["attach_record"]["scene_revision"] == LIVE
+    assert result.has_measured_attachment
+    assert result.measured_grasp.identity.stamp_ns == 2000
+    assert result.measured_grasp.pose.position.z == pytest.approx(.1235)
+    assert list(result.attached_box_wdh) == pytest.approx([.516,.390,.247])
+
+
+def test_attach_returns_actual_offset_instead_of_requested_grasp():
+    from luggage_planning.typed_driver_adapter import grasp_record
+    request = _request(LIVE)
+    request.has_grasp = True
+    request.grasp = pose_message(grasp_record('attach', LIVE,
+        [0.,0.,.1235], [1.,0.,0.,0.], stamp_ns=2000))
+    backend = SimpleNamespace(attach=lambda payload: (True, 'attached'))
+    response = handle_vacuum_command_v2(request, VacuumCommandV2.Response(),
+        scene_revision=LIVE, generation=2, backend=backend,
+        resolve_tool=lambda stamp: _tool(LIVE, position=[-.995,0.,1.107]))
+    assert response.success and response.has_measured_attachment
+    assert response.measured_grasp.pose.position.x == pytest.approx(.005)
+    assert request.grasp.pose.position.x == 0.
+
+
+def test_backend_failure_does_not_return_measured_attachment():
+    response = handle_vacuum_command_v2(_request(LIVE), VacuumCommandV2.Response(),
+        scene_revision=LIVE, generation=2, resolve_tool=lambda stamp: _tool(LIVE),
+        backend=SimpleNamespace(attach=lambda payload: (False, 'failed')))
+    assert not response.success and not response.has_measured_attachment
 
 
 def test_run8_stale_tool_bind_is_refused_with_both_revisions():

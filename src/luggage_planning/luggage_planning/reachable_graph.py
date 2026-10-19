@@ -242,6 +242,13 @@ class RouteGraph(object):
     def drop_candidate(self, edge_id):
         self._candidates.pop(str(edge_id), None)
 
+    def discard_edge(self, edge_id):
+        """Remove an in-session edge rejected by final certification."""
+        edge = self._edges.pop(str(edge_id))
+        self._out[edge.source_node_id].remove(edge.edge_id)
+        self._incoming[edge.destination_node_id].remove(edge.edge_id)
+        return edge
+
     def outgoing(self, node_id):
         return tuple(self._edges[eid] for eid in self._out.get(str(node_id), ())
                      if eid in self._edges)
@@ -496,14 +503,16 @@ class GraphRoutePlanner(object):
                  q_frame_container=(0.0, 0.0, 0.0, 1.0),
                  certifier=None, refine=None, urdf=None, tcp_path=None,
                  region_poses=None, scope_node_ids=None, payload_screen=None,
-                 occupancy_boxes=()):
+                 occupancy_boxes=(), scene_states=None):
         from luggage_planning.grid_path_search import RouteBudgetPolicy
         #: Optional ``node -> bool`` (True = the carried payload hits the
         #: arm at this node's q). Nodes this planner registers while
         #: carrying are screened with it before they can join the scope.
         self.payload_screen = payload_screen
         #: region -> world TCP position from the anchor plan.
+        self.scene_states = None if scene_states is None else dict(scene_states)
         self.region_poses = dict(region_poses or {})
+        self.continuation_diagnostics = []
         #: Node ids of the current candidate (None = whole graph). Nodes
         #: this planner registers join it; earlier candidates' do not.
         self.scope = None if scope_node_ids is None \
@@ -671,7 +680,7 @@ class GraphRoutePlanner(object):
                     break
         return registered
 
-    def _frontier_continuation(self):
+    def _frontier_continuation(self, expired=lambda: False):
         """Short cartesian hops (INSERT, DESCEND, RETREAT) solved from
         the frontier's own q. A region with no registered node falls back
         to its anchor-plan pose (RETREAT holds the frontier orientation)."""
@@ -779,6 +788,8 @@ class GraphRoutePlanner(object):
             quaternion_xyzw=quaternion)
 
     def _scenes(self, attachment, candidate, snapshot):
+        if self.scene_states is not None:
+            return self.scene_states["carrying"], self.scene_states["unloaded"]
         from luggage_planning.moveit_edge_adapter import (
             PayloadSpec,
             SceneState,
@@ -835,7 +846,7 @@ class GraphRoutePlanner(object):
         if self.urdf is not None and self.tcp_path is not None:
             fk = make_offline_fk(self.urdf, self.tcp_path)
         search = RouteSearch(self.graph, self.edge_builder, budget,
-                             continuation=self._frontier_continuation(),
+                             continuation=self._frontier_continuation(budget.exhausted),
                              scope=self.scope,
                              trace=getattr(self, "trace", None),
                              fk=fk)

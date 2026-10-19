@@ -79,8 +79,12 @@ class TrajectoryTimingTest(unittest.TestCase):
         self.assertAlmostEqual(timed.a_decel, HARDWARE_DECEL_RAD)
         end_acc = max(abs(a) for a in timed.accelerations_rad[-1])
         start_acc = max(abs(a) for a in timed.accelerations_rad[0])
-        self.assertAlmostEqual(start_acc, HARDWARE_ACC_RAD, places=6)
-        self.assertAlmostEqual(end_acc, HARDWARE_DECEL_RAD, places=6)
+        # Knot accelerations may need to be lower so the controller's spline
+        # also stays below the cap between knots.
+        self.assertGreater(start_acc, 0.)
+        self.assertGreater(end_acc, 0.)
+        self.assertLessEqual(start_acc, HARDWARE_ACC_RAD)
+        self.assertLessEqual(end_acc, HARDWARE_DECEL_RAD)
 
 
 if __name__ == "__main__":

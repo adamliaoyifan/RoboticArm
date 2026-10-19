@@ -1266,22 +1266,37 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
     def _gz_box_pose(self, model=None):
         model = str(model or self._box_model or "") or self.gt_model_name()
+        self._last_gz_pose_probe = {"model": model}
         if not model:
+            self._last_gz_pose_probe["error"] = "missing model name"
             return None
         # G3 wave4 (multi_run01): a single ign CLI read raced the sim and
         # returned nothing right at the release boundary ("no release
         # pose"), aborting a healthy cycle. Bounded retry over ~2 s;
-        # the caller's own semantics are unchanged.
+        # the caller's own semantics are unchanged. [prior-g1 merge]
+        # Each probe also feeds the prior branch's diagnostic record
+        # (_last_gz_pose_probe) — observability only.
+        command = [_ign_model_bin(), "model", "-m", model, "--pose"]
         for attempt in range(4):
+            self._last_gz_pose_probe["command"] = command
             try:
                 out = subprocess.check_output(
-                    [_ign_model_bin(), "model", "-m", model, "--pose"],
+                    command,
                     text=True, timeout=5.0, stderr=subprocess.STDOUT)
             except (OSError, subprocess.CalledProcessError,
-                    subprocess.TimeoutExpired):
+                    subprocess.TimeoutExpired) as exc:
+                output = getattr(exc, "output", "") or ""
+                if isinstance(output, bytes):
+                    output = output.decode(errors="replace")
+                self._last_gz_pose_probe.update(
+                    error=type(exc).__name__, detail=str(exc),
+                    output=str(output)[-16000:],
+                    returncode=getattr(exc, "returncode", None))
                 out = ""
             pose = parse_ign_model_pose(out) if out else None
             if pose is not None:
+                self._last_gz_pose_probe.update(
+                    output=out[-16000:], parsed=pose)
                 return pose
             if attempt < 3:
                 time.sleep(0.5)
@@ -2057,6 +2072,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             "message": str(message or ""),
             "submit_wall": submit_times.get("submit_wall"),
             "submit_sim_stamp": submit_times.get("submit_sim_stamp"),
+            "response_wait_s": submit_times.get("response_wait_s"),
             "result_wall": time.time(),
             "result_sim_stamp": float(self.ros_now_sec()),
             "trajectory": trajectory_dump(motion_segment),
@@ -2381,8 +2397,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                     "submit_mono": time.monotonic(),
                     "submit_sim_stamp": float(self.ros_now_sec()),
                 }
+                from luggage_gazebo.observation_execution_budget import certified_execution_wait
+                try:
+                    response_wait = certified_execution_wait(
+                        motion_segment, self._args.plan_timeout)
+                except (ValueError, AttributeError) as exc:
+                    return False, "INVALID_CERTIFIED_TIMING:%s" % exc, None
+                submit_times["response_wait_s"] = response_wait
                 ok, message, result = self._typed.plan_motion(
-                    motion_segment, self._args.plan_timeout,
+                    motion_segment, response_wait,
                     name="PlanMotionV2:%s" % name,
                     admission=leg_admission,
                     should_abort=(
@@ -2748,6 +2771,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         boundary = load_latest_boundary(
             os.environ.get("MOTION_BOUNDARY_DUMP", ""))
         fail = str(getattr(trial, "fail_code", "") or "")
+        from luggage_gazebo.motion_replay_boundary import replay_boundary
+        boundary = replay_boundary(
+            trial.extras.get("submitted_legs", []),
+            getattr(self, "_segment_exec_name", None), boundary,
+            typed=getattr(self, "_typed", None) is not None)
         detect_stage = fail.startswith("DETECT_")
         if boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
@@ -2758,6 +2786,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             artifacts["last_boundary"] = "replay/last_boundary.json"
             if not (boundary.get("trajectory") or boundary.get("fjt_trajectory")):
                 missing.append("trajectory")
+            elif (boundary.get("trajectory") or {}).get("truncated"):
+                missing.append("trajectory_truncated")
         elif not detect_stage:
             missing.append("last_boundary")
         scene = self._scene_snapshot()
@@ -3033,6 +3063,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         # keeps the historical rpy6 shape (spawn + verify read it).
         release = _quat7_to_rpy6(release)
         pose_evidence["pose_rpy6"] = [round(v, 6) for v in release]
+        # [prior-g1 merge] measured-replay provenance hook (record-only)
+        self._release_capture_event('pre_recreation_pose', pose=release)
         if len(size) != 3 or not visual or mass is None or not model:
             return False, "missing physics identity", release
         try:
@@ -3053,6 +3085,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             if release_dump:
                 with open(release_dump, "w", encoding="utf-8") as handle:
                     handle.write(sdf)
+            if getattr(self, '_release_capture_directory', None):
+                with open(os.path.join(self._release_capture_directory, 'release.sdf'), 'w') as handle:
+                    handle.write(sdf)
         except (TypeError, ValueError) as exc:
             return False, str(exc), release
         if release is None or len(release) < 6:
@@ -3066,6 +3101,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         delete.entity.name = model
         delete.entity.type = Entity.MODEL
         removed = self.call_srv(self._gz_delete, delete, timeout=15.0)
+        self._release_capture_event('delete_response', success=bool(removed and removed.success))
         if removed is None or not getattr(removed, "success", False):
             return False, "delete failed", release
         self._release_dynamic_timing["t_delete_done_sim"] = float(
@@ -3082,6 +3118,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         spawn.entity_factory.pose.orientation.z = float(qz)
         spawn.entity_factory.pose.orientation.w = float(qw)
         created = self.call_srv(self._gz_create, spawn, timeout=15.0)
+        self._release_capture_event('create_response', success=bool(created and created.success))
         if created is None or not getattr(created, "success", False):
             return False, "create failed", release
         self._release_dynamic_timing["t_spawn_done_sim"] = float(
@@ -3174,6 +3211,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         return start, last, verdict
 
     def _abort(self, trial, code, carrying, extra=None):
+        self._release_capture_event('abort', code=code)
+        self._stop_release_capture()
         trial.fail_code = code
         pending_handoff = getattr(self, "_handoff_failure_record", None)
         if pending_handoff is not None:
@@ -3361,10 +3400,12 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         detach_request_stamp = None
         detach_response_stamp = None
         if getattr(self._args, "use_vacuum", False) and not self._args.plan_only:
+            self._start_release_capture()
             joints_before_detach = self._joint_sample()
             detach_request_stamp = float(self.ros_now_sec())
             # Unlock follow at this instant, before retreat plans a new TCP.
             off_ok, off_msg = self.vacuum_command(False)
+            self._release_capture_event('vacuum_off_response', success=off_ok)
             detach_response_stamp = float(self.ros_now_sec())
             trial.extras["vac_detach"] = off_msg
             if off_ok:
@@ -3461,13 +3502,26 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if retreat_seg is not None:
             self._set_state("PLACE_RETREAT")
             for post_seg in post_release:
+                self._release_capture_event('post_release_segment_start')
                 ok, code, rec = self._execute_segment(post_seg, trial)
+                self._release_capture_event('post_release_segment_end', success=ok, code=code,
+                                           name=(rec or {}).get('name'))
                 if ok:
                     trial.segments_succeeded += 1
                 else:
                     return self._abort(trial, code, False, extra=extras)
 
         pose_release, pose_drift, settle = self._poses_after_settle()
+        self._release_capture_event('settle_complete', pose=pose_drift, verdict=settle)
+        self._stop_release_capture()
+        # Preserve the raw comparison inputs before commit or verification can
+        # abort. The success-only summary below cannot diagnose a failed gate.
+        trial.extras["verify_inputs"] = {
+            "box_pose_after_release": pose_release,
+            "box_pose_after_drift_wait": pose_drift,
+            "box_pose_at_release": trial.extras.get("box_pose_at_release"),
+            "expected_box_position_world": list(slot_meta["pose_world"]["position"]),
+        }
         trial.extras["settle"] = {
             "settled": bool(settle.get("settled")),
             "window_move_m": settle.get("window_move_m"),
@@ -3656,6 +3710,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             observation_gate_name=gate, selected_frame=selected,
             scene_size=scene_size)
 
+    def _capture_pick_readiness_failure(self, trial, decision):
+        """Save the gated frame, not a later image after a failed YOLO wait."""
+        bundle = self.freeze_failure_bundle(decision)
+        dump_dir = str(getattr(self._args, 'dump_dir', '') or '')
+        if not dump_dir:
+            return
+        images, metadata, arrays = self.decoded_dump()
+        metadata.update(capture_complete=bool(bundle.get('capture_complete')),
+                        missing=list(bundle.get('missing') or []),
+                        decision_record=decision,
+                        replay_possible=bool(bundle.get('replay_possible')))
+        dest = write_trial_dump(os.path.join(dump_dir, 'perception'),
+            trial_to_dict(trial), images=images, extras=metadata, arrays=arrays)
+        trial.extras['perception_failure_capture'] = {
+            'directory': dest, 'capture_complete': metadata['capture_complete'],
+            'missing': metadata['missing'], 'replay_possible': metadata['replay_possible']}
+
     def _pick_carry(self, index, trial, already_spawned=False):
         """Pick through vacuum-follow. Returns (pick_msg, box_msg) or None."""
         self._join_trace.clear()
@@ -3724,6 +3795,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._seg_stats["payload"])
             trial.extras["seg_stats"] = decision
             trial.extras["decision_record"] = decision
+            self._capture_pick_readiness_failure(trial, decision)
             return None
         if not self.wait_tracked_cargo(
                 generation, self._args.geometry_timeout, spawn.box.id):
@@ -3824,8 +3896,6 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 # the previous cycle's exit proof is void from here —
                 # it must never carry across a new carrying phase.
                 self._start_new_cycle()
-                if self._typed is not None:
-                    self._frame_capture_grasp(pick_msg)
         if self._args.use_vacuum:
             state = dict(self._vacuum_state or {})
             if not (state.get("attached") and not state.get("fail_reason")):

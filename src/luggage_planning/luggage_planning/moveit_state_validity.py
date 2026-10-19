@@ -214,12 +214,15 @@ def sample_states(trajectory) -> Tuple[Tuple[float, ...], ...]:
 
 
 def _scene_digest(scenes) -> str:
-    """Byte-exact digest over the frozen scene material."""
-    from rclpy.serialization import serialize_message
+    """Digest every scene field, excluding nondeterministic CDR padding bytes."""
+    from rosidl_runtime_py.convert import message_to_ordereddict
 
     digest = hashlib.sha256()
     for scene in scenes:
-        digest.update(serialize_message(scene))
+        material = json.dumps(message_to_ordereddict(scene), sort_keys=True,
+                              separators=(",", ":"), allow_nan=False).encode("utf-8")
+        digest.update(len(material).to_bytes(8, "big"))
+        digest.update(material)
     return digest.hexdigest()
 
 

@@ -56,10 +56,12 @@ class _Typed(object):
 
     def __init__(self):
         self.submitted = []
+        self.timeouts = []
 
     def plan_motion(self, motion_segment, timeout_sec, name="", admission=None,
                     should_abort=None):
         self.submitted.append(str(motion_segment.name))
+        self.timeouts.append(timeout_sec)
         result = type("Result", (), {
             "fraction": 1.0, "used_ompl_fallback": False,
             "moveit_error_code": 1, "settle_json": "", "success": True,
@@ -68,10 +70,10 @@ class _Typed(object):
 
 
 def _knots(first, last):
-    return {
-        "joint_names": list(CANONICAL_ARM_JOINTS),
-        "points": [{"positions": list(first)}, {"positions": list(last)}],
-    }
+    from types import SimpleNamespace as NS
+    return NS(trajectory=NS(joint_names=list(CANONICAL_ARM_JOINTS), points=[
+        NS(positions=list(q), velocities=[], time_from_start=NS(sec=t, nanosec=0))
+        for q, t in ((first, 0), (last, 117))]))
 
 
 class _Leg(object):
@@ -263,6 +265,7 @@ class TestHandoffGate(unittest.TestCase):
         self.assertTrue(ok, code)
         self.assertEqual(driver._typed.submitted, ["transit"])
         self.assertNotIn("handoffs", trial.extras)
+        self.assertEqual(driver._typed.timeouts, [122.0])
 
     def test_settled_arm_submits_exactly_one_next_leg(self):
         driver = _Driver(_two_legs())
@@ -353,14 +356,16 @@ class TestHandoffGate(unittest.TestCase):
         self.assertEqual(driver._typed.submitted, ["transit"])
         self.assertGreaterEqual(driver.admission_calls, 1)
 
-    def test_leg_without_a_timed_endpoint_is_recorded_not_waited(self):
+    def test_leg_without_a_timed_endpoint_is_refused_before_submission(self):
         first = _Leg("transit", _offset(1, 0.3), TARGET)
         second = _Leg("traverse", TARGET, TARGET)
         second.joint_trajectory = None
         driver = _Driver([first, second])
         trial, ok, code, _rec = self._run_two(
             driver, lambda t: _offset(1, -0.2))
-        self.assertTrue(ok, code)
+        self.assertFalse(ok)
+        self.assertIn("INVALID_CERTIFIED_TIMING", code)
+        self.assertEqual(driver._typed.submitted, ["transit"])
         handoff = trial.extras["handoffs"][0]
         self.assertEqual(handoff["status"], "skipped")
         self.assertEqual(handoff["reason"], "no_timed_endpoint")

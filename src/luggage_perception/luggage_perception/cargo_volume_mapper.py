@@ -155,6 +155,7 @@ class CargoVolumeMapper:
         self._grid = None
         self._occupancy = None
         self._revision = 0
+        self._depth_ray_phase = 0
         self._placed_boxes = []
         self._build_active_mask()
         self.reset()
@@ -503,6 +504,54 @@ class CargoVolumeMapper:
             )
         if hit_records or miss_indices:
             self._revision += 1
+
+    def integrate_depth_view(self, points, origin):
+        """Integrate full-depth returns, keeping model walls out of cargo hits.
+
+        This owner-side operation consumes measured points, never synthetic
+        floor/geometry rays. Rejected or terminal bands remain unobserved.
+        It does not stamp/confirm the map; the settled-view adapter owns that.
+        """
+        from luggage_perception.depth_view_rays import admit_depth_ray
+        mid_z=0.5*(self._hull.floor_z+self._hull.ceiling_z)
+        def hull_point(point):
+            x,y,z=self._world_to_local(*point)
+            return x,y,z+mid_z
+        def world_point(point):
+            return self._local_to_world(point[0],point[1],point[2]-mid_z)
+        camera=hull_point(origin)
+        rays=[];hits={};rejected=0
+        for point in points:
+            ray=admit_depth_ray(self._hull,camera,hull_point(point),math.sqrt(3.)*self.resolution)
+            if ray is None:
+                rejected+=1
+                continue
+            rays.append(world_point(ray.free_end))
+            if ray.obstacle is not None:
+                hit=world_point(ray.obstacle)
+                voxel=self._local_to_voxel(*self._world_to_local(*hit))
+                if voxel is not None:hits[self._index(*voxel)]=hit
+        if self.max_raycast_points and len(rays)>self.max_raycast_points:
+            stride=int(math.ceil(len(rays)/self.max_raycast_points))
+            # A fixed prefix repeats the same blind spots in ordered depth
+            # clouds. Rotate across fresh admitted acquisitions, retaining the
+            # same per-frame ray budget and all terminal/hit safety rules.
+            phase = self._depth_ray_phase % stride
+            rays=rays[phase::stride]
+            self._depth_ray_phase += 1
+        misses=set()
+        for end in rays:misses.update(self._raycast_indices(origin,end))
+        misses.difference_update(hits)
+        for index in misses:
+            self._grid[index]=self._occupancy.apply_miss(index)
+            self._record_sensor_miss(index)
+            if self._grid[index]==FREE and self._source[index]!=SOURCE_GEOMETRY:
+                self._source[index]=SOURCE_NONE
+                self._labels[index]=0;self._instance_ids[index]=0
+        for hit in hits.values():self.mark_occupied_world(*hit)
+        if hits or misses:self._revision+=1
+        return dict(rays=len(rays),hits=len(hits),free_voxels=len(misses),
+                    rejected=rejected,observed_points=list(hits.values()))
 
     def state_at(self, index):
         return self._occupancy.state_at(index)

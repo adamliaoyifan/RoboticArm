@@ -44,6 +44,23 @@ dimension, frame, or intrinsics mismatch rejects the whole acquisition and
 produces no geometry (fail-closed, named reason counter). Aligned depth is
 the **mandatory** pair gate: an acquisition without it is not emitted.
 
+The Fortress Ogre2 simulated RGBD camera reports the projection actually used
+by its renderer, independently of the real D555 calibration. With the current
+640x360, HFOV 1.56005 profile, pixel-index coordinates use
+`fx=fy=320/tan(HFOV/2)`, `cx=319.5`, `cy=179.5`; both K and P describe this grid.
+Rendering6 6.6.4 depth cameras ignore custom projection matrices, so copying
+the hardware's off-centre K into SDF produces false geometry. The simulated K
+remains within the existing 2% hardware-profile tolerance; hardware calibration
+and fixed sensor transforms are unchanged. Changes to the backend must rerun
+`scripts/placement_prior/check_depth_projection.py --output <new-directory>`:
+all nine pixels on a native rendered tilted plane must agree with the expanded
+camera configuration within 0.1 mm, and the previous hardware-K negative control
+must fail. This isolated renderer gate does not replace live CameraInfo and
+whole-scene acquisition verification.
+The gate also loads the expanded camera through native sdformat's Camera DOM:
+projection uses `p_fx/p_fy/p_cx/p_cy`, whereas intrinsics uses `fx/fy/cx/cy`.
+Checking XML text alone misses ignored fields and silently selected defaults.
+
 Backend bindings are configuration, never algorithm constants:
 
 | Backend | Colour | Canonical depth | Optical frame |
@@ -329,3 +346,16 @@ Segmenter ingest is not a second pairer. It binds the latest `current_box`
 epoch onto an already stamp-joined preprocessed RGB frame
 (`SegmenterIngest.assemble`). Filter and detector keep their own epoch reset
 from the same topic; mask `sensor_msgs/Image` cannot carry generation.
+
+## Bounded measured-estimate scheduling
+
+The detector retains one pending measured cargo/depth pair when a newer pair
+contains only continuity (`hold_track`) for the same explicit box ID and
+generation. Retention requires a single cargo target on the measured pair, no
+multiple-cargo ambiguity on the incoming pair, current task identity, and the
+existing acquisition-age limit (including rejection of future timestamps).
+New measurements, rejected/unknown evidence, changed identity and age expiry
+restore latest-only replacement. The queue remains one pending plus one in
+flight. This scheduling preference does not authorize a pick: normal exact-stamp
+support fitting, five-fit stability, current-generation and freshness checks
+still run; DetectLuggage still selects the latest produced frame.

@@ -128,8 +128,8 @@ def jsonable_candidate(candidate):
 
 class PlacementPlannerNode(Node):
 
-    def __init__(self):
-        super().__init__("placement_planner")
+    def __init__(self, **node_options):
+        super().__init__("placement_planner", **node_options)
         group = ReentrantCallbackGroup()
 
         self.declare_parameter("scene_tf_config", "")
