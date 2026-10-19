@@ -2964,6 +2964,49 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         off = entry.get("lid_offset")
         return float(off) if off else None
 
+    def _release_capture_event(self, event, **details):
+        """[prior-g1 merge] Measured-replay provenance (env-gated, inert
+        unless ELFIN_RELEASE_CAPTURE_DIR is set)."""
+        directory = getattr(self, '_release_capture_directory', None)
+        if directory:
+            with open(os.path.join(directory, 'events.jsonl'), 'a') as handle:
+                handle.write(json.dumps(dict(event=event, wall=time.time(),
+                    monotonic=time.monotonic(), ros=self.ros_now_sec(),
+                    model=self._box_model, details=details))+'\n')
+
+    def _stop_release_capture(self):
+        recorder = getattr(self, '_release_capture_process', None)
+        if recorder is not None:
+            if recorder.poll() is None:
+                recorder.terminate()
+            recorder.wait(timeout=5.)
+            self._release_capture_process = None
+
+    def _start_release_capture(self):
+        root = os.environ.get('ELFIN_RELEASE_CAPTURE_DIR', '').strip()
+        if not root:
+            return
+        directory = os.path.join(root, str(self._box_model))
+        os.makedirs(directory, exist_ok=False)
+        self._release_capture_directory = directory
+        topic = os.environ.get('ELFIN_BOX_CONTACT_TOPIC', '').strip()
+        if not topic:
+            raise RuntimeError('release capture requires contact topic')
+        # Owned child remains in the driver process group and also self-expires.
+        with open(os.path.join(directory, 'recorder.log'), 'w') as log:
+            self._release_capture_process = subprocess.Popen([
+                sys.executable, '-m', 'luggage_gazebo.release_capture',
+                '--output', directory, '--contact-topic', topic],
+                stdout=log, stderr=subprocess.STDOUT)
+        deadline = time.monotonic()+3.
+        while not os.path.isfile(os.path.join(directory, 'ready.json')):
+            if self._release_capture_process.poll() is not None or time.monotonic() >= deadline:
+                self._release_capture_process.terminate()
+                self._release_capture_process.wait(timeout=5.)
+                raise RuntimeError('release recorder failed to start')
+            time.sleep(.02)
+        self._release_capture_event('before_vacuum_off')
+
     def _release_kinematic(self, model, slot_meta):
         """[planning-verification mode, user directive 2026-10-19]
 
