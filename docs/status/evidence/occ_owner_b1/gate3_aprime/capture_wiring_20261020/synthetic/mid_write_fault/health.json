@@ -1,0 +1,21 @@
+{
+  "received": 2,
+  "enqueued": 2,
+  "written": 0,
+  "dropped": 0,
+  "failed": 2,
+  "written_bytes": 0,
+  "errors": [
+    {
+      "name": "CAPTURE_WRITE_FAILED",
+      "detail": "[Errno 28] synthetic mid-write failure"
+    }
+  ],
+  "closed": true,
+  "queued_bytes": 0,
+  "run_id": "mid-write",
+  "worker_alive": false,
+  "pending": 0,
+  "recorder_io_complete": false,
+  "run_capture_complete": false
+}

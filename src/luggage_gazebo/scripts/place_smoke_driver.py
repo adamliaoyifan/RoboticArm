@@ -3494,7 +3494,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._set_state("DESCEND")
             elif segment.name in state_by_name:
                 self._set_state(state_by_name[segment.name])
+            diagnostic = getattr(self, "_transit_capture_exit", None)
+            if diagnostic is not None:
+                reason = diagnostic.before(segment.name)
+                if reason:
+                    return self._abort(trial, reason, True, extra=extras)
             ok, code, rec = self._execute_segment(segment, trial)
+            if diagnostic is not None:
+                if ok:
+                    trial.segments_succeeded += 1
+                return diagnostic.finish(self, trial, ok, code, extras)
             if rec and segment.name == "descend":
                 trial.descend_fraction = rec.get("fraction")
                 trial.used_ompl_fallback_descend = rec.get("used_ompl_fallback")

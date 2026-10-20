@@ -1,0 +1,29 @@
+{
+  "synthetic_only": true,
+  "mode": "capture_fault",
+  "status": 6,
+  "executor_uuid": "03030303030303030303030303030303",
+  "fjt_uuid": "07070707070707070707070707070707",
+  "source": "actual_stub_action_boundary",
+  "health": {
+    "received": 22,
+    "enqueued": 12,
+    "written": 12,
+    "dropped": 10,
+    "failed": 0,
+    "written_bytes": 6715,
+    "errors": [
+      {
+        "name": "SYNTHETIC_DISK_FAULT",
+        "detail": "injected during execution"
+      }
+    ],
+    "closed": true,
+    "queued_bytes": 0,
+    "run_id": "synthetic-capture_fault",
+    "worker_alive": false,
+    "pending": 0,
+    "recorder_io_complete": false,
+    "run_capture_complete": false
+  }
+}

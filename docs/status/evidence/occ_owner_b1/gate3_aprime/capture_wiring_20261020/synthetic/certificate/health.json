@@ -1,0 +1,16 @@
+{
+  "received": 2,
+  "enqueued": 2,
+  "written": 2,
+  "dropped": 0,
+  "failed": 0,
+  "written_bytes": 1297,
+  "errors": [],
+  "closed": true,
+  "queued_bytes": 0,
+  "run_id": "synthetic-certificate",
+  "worker_alive": false,
+  "pending": 0,
+  "recorder_io_complete": true,
+  "run_capture_complete": false
+}

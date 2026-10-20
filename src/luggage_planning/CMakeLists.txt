@@ -52,6 +52,7 @@ install(DIRECTORY config
 
 install(PROGRAMS
   scripts/waypoint_generator_node.py
+  scripts/diagnostic_capture_node.py
   scripts/motion_planner_node.py
   scripts/trajectory_selector_node.py
   scripts/vacuum_controller_node.py

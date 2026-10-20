@@ -19,6 +19,7 @@ install(PROGRAMS
   scripts/pick_retreat_eval_driver.py
   scripts/place_smoke_driver.py
   scripts/pack_eval_driver.py
+  scripts/diagnostic_transit_driver.py
   scripts/place_only_eval_driver.py
   scripts/cargo_map_integrate_eval_driver.py
   scripts/motion_occ_eval_driver.py

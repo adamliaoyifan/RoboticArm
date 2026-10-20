@@ -43,6 +43,7 @@ from launch.substitutions import Command, EnvironmentVariable, LaunchConfigurati
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from moveit_configs_utils import MoveItConfigsBuilder
+from luggage_planning.diagnostic_capture_routes import action_remappings, EXECUTE, FJT
 
 from luggage_description.scene_tf_config_utils import (
     gazebo_container_model,
@@ -86,6 +87,7 @@ def _default_launch_values():
         "use_packing": "false",
         "use_vacuum": "false",
         "use_motion": "false",
+        "diagnostic_capture": "false",
         # [placement-prior opt-in 2026-10-19] Read-only prior sidecar
         # (place_prior + grasp/tool local check nodes). OFF = the
         # original flow with zero prior processes; the pack driver's
@@ -380,7 +382,7 @@ def _gazebo_semantic_description():
     return {"robot_description_semantic": xml}
 
 
-def _move_group_node(robot_description, use_moveit):
+def _move_group_node(robot_description, use_moveit, diagnostic_capture=False):
     """MoveIt 2 move_group with sim time and the gazebo robot_description."""
     moveit_config = (
         MoveItConfigsBuilder("S20", package_name="elfin_moveit_config")
@@ -397,6 +399,8 @@ def _move_group_node(robot_description, use_moveit):
         executable="move_group",
         name="move_group",
         output="screen",
+        remappings=action_remappings(FJT)
+        if diagnostic_capture else [],
         parameters=[
             moveit_config.to_dict(),
             _gazebo_semantic_description(),
@@ -1050,6 +1054,8 @@ def _launch_setup(context):
             executable="motion_planner_node.py",
             name="motion_planner",
             output="screen",
+            remappings=action_remappings(EXECUTE)
+            if _as_bool(cfg["diagnostic_capture"]) else [],
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
@@ -1070,6 +1076,8 @@ def _launch_setup(context):
             executable="trajectory_selector_node.py",
             name="trajectory_selector",
             output="screen",
+            remappings=[("/validate_route_v2", "/diagnostic_capture/validate_route_v2")]
+            if _as_bool(cfg["diagnostic_capture"]) else [],
             parameters=[{
                 "use_sim_time": True,
                 "scene_tf_config": scene_tf_config,
@@ -1100,7 +1108,8 @@ def _launch_setup(context):
     )
 
     robot_description = _robot_description_param(scene_tf_config, initial_joint_args)
-    move_group = _move_group_node(robot_description, cfg["use_moveit"])
+    move_group = _move_group_node(robot_description, cfg["use_moveit"],
+                                  _as_bool(cfg["diagnostic_capture"]))
     # Same URDF/SRDF move_group plans with. Pick certification calls
     # /validate_route_v2; without this node the first authorized detect
     # dies as BUILD_FAILED / CERT_SERVICE_UNAVAILABLE.
@@ -1233,6 +1242,7 @@ def generate_launch_description():
                 "Start move_group after the arm controller (needed for IK / pose targets).",
             ),
             profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
+            profile_arg("diagnostic_capture", "Opt-in diagnostic action/service boundary routing; requires capture node."),
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "start_placement_prior",

@@ -727,6 +727,12 @@ class PackEvalDriver(PlaceSmokeDriver):
                     import traceback
                     self.get_logger().error(traceback.format_exc())
 
+            diagnostic_exit = getattr(self, "_diagnostic_trial_exit", None)
+            if diagnostic_exit is not None:
+                # Opt-in capture run: preserve the ordinary startup/pick path,
+                # then return before commit, cleanup, retry or a second box.
+                return diagnostic_exit(record, fail, seq)
+
             slot = self._pending_slot
             slot_meta = self._pending_slot_meta
             audit = self._pending_audit or {}

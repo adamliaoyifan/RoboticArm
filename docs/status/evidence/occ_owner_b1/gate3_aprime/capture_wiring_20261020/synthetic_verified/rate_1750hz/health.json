@@ -1,0 +1,16 @@
+{
+  "received": 7000,
+  "enqueued": 7000,
+  "written": 7000,
+  "dropped": 0,
+  "failed": 0,
+  "written_bytes": 3232893,
+  "errors": [],
+  "closed": true,
+  "queued_bytes": 0,
+  "run_id": "synthetic-1750hz",
+  "worker_alive": false,
+  "pending": 0,
+  "recorder_io_complete": true,
+  "run_capture_complete": false
+}

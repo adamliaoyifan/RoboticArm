@@ -1,0 +1,181 @@
+Arguments (pass arguments as '<name>:=<value>'):
+
+    'profile_config':
+        Optional grouped YAML profile. CLI launch args override profile values.
+        (default: '')
+
+    'scene_tf_config':
+        Scene TF YAML path. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_moveit':
+        Start move_group after the arm controller (needed for IK / pose targets). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'top_surface_mode':
+        Detector top surface mode: legacy or dynamic measured suction candidates. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'diagnostic_capture':
+        Opt-in diagnostic action/service boundary routing; requires capture node. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'gui':
+        Start Gazebo GUI. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'start_placement_prior':
+        Read-only placement-prior sidecar (explicit opt-in; default false = zero prior processes). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'startup_watchdog_sec':
+        Seconds to wait for /controller_manager after the S20 create before aborting the launch; 0 disables the gate. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_rviz':
+        Start RViz. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_cargo_map':
+        Start cargo_volume_mapper (geometry-commit occupancy grid + surface_2d). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'require_confirmed_map':
+        A placed box leaves the cargo map pending until an integrated view confirms it (two-box rehearsal profile). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_packing':
+        Start placement_planner (ComputePlacement with aperture + corridor gates). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_vacuum':
+        Start vacuum_controller (sim backend: gz kinematic follow + PlanningScene attach). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_motion':
+        Start waypoint_generator + motion_planner (pick/retreat shells; move_group must also be on via use_moveit). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'named_pose_duration':
+        Max GoToRobotPose FJT duration in seconds (was 8; actual time is min of this and max joint delta / named_pose_max_vel). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'named_pose_max_vel':
+        GoToRobotPose nominal joint speed in rad/s (joint_limits max is 1.57). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'velocity_scaling':
+        Motion planning trajectory velocity scaling factor (default 0.3). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'acceleration_scaling':
+        Motion planning trajectory acceleration scaling factor (default 0.3). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_semantic':
+        Start the YOLO semantic chain (segmenter + point filter) and feed the detector the cargo cloud. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'use_perception':
+        Start the perception stack (preprocessor, camera bridge, depth republisher, detector). Place-only eval profiles set false so perception nodes are absent. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'hull_margin':
+        Placement planner inward hull clearance in metres (default 0 = flush-wall, historical behavior). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'min_support_ratio':
+        Placement planner stacking support ratio (default 0.6). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'last_result_max_candidates':
+        Candidates kept in the placement last_result dump (default 24). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'semantic_require_backend':
+        If set, segmenter startup fails unless stats['backend'] starts with this prefix (e.g. bbox_fill). Empty disables the guard. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'semantic_model_name':
+        YOLO-World checkpoint for the segmenter. Empty (the default) resolves the colcon-installed copy under the luggage_perception package share; an explicit path overrides. A bare filename must never be used: it resolves against the launch CWD and falls back to a network download. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'semantic_clip_vendor_dir':
+        Offline CLIP vendor dir (clip_pkg/ + deps/ + clip_models/) exported to the segmenter as LUGGAGE_CLIP_VENDOR_DIR. Empty (the default) resolves the colcon-installed copy under the luggage_perception package share. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'semantic_pydeps_dir':
+        Frozen python deps prefix for the segmenter (torch/ultralytics/cuda). Empty (the default) resolves <candidate ws>/pydeps-frozen, deployed by scripts/st09_i/deploy_python_deps.sh; the user site is never an allowed source. Missing prefix = named launch failure when use_semantic is on. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'visual_kind':
+        Pickup visual: box (primitive AABB) or mesh (pre-scaled suitcase STL, visual=collision). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'size_mode':
+        Pickup size: catalog (small/medium/large) or continuous (box visual only). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'box_catalog_config':
+        Optional spawn-only box catalog path; empty uses the installed catalog. Perception and planning still use measured geometry. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'yaw_mode':
+        Override catalog yaw_mode (discrete/continuous). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'yaw_range':
+        Yaw range used when yaw_mode is continuous. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'xy_jitter_range':
+        Pickup XY jitter half-widths in metres. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'sequence_ids':
+        Comma-separated catalog ids for SpawnNextBox (e.g. carryon,standard). Empty = weighted random. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'random_seed':
+        Pickup spawner RNG seed (-1 = entropy). Fixed seeds make catalog mass sampling deterministic. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'spawn_at_observe':
+        Spawn gz_ros2_control at the named observe pose. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'observe_pose_name':
+        Key in robot_poses YAML (observe or pickup_observe). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'robot_poses_config':
+        Robot named-pose YAML path. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'atlas_runtime_config':
+        Reachability-atlas runtime YAML path (empty = installed atlas_runtime.yaml). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'atlas_enabled':
+        Force the atlas chain on/off for placement and motion (empty = yaml default). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'corridor_planner':
+        trajectory_selector route planner: graph (hop search) or lattice (corridor lattice, MoveIt joint transit/return). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'box_count':
+        Route budget scale: 60 s times this box count (1 box 60 s, 3 boxes 180 s). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'frame_runtime':
+        Start the typed v2 runtime chain (identity heartbeats + readiness gating; requires the full stack on). Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'frame_calibration_revision':
+        Calibration identity label stamped into the runtime identity. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')
+
+    'frame_driver_peer':
+        Driver node name that joins the v2 graph as the client peer. Default is taken from profile_config, then built-in fallback.
+        (default: '__profile__')

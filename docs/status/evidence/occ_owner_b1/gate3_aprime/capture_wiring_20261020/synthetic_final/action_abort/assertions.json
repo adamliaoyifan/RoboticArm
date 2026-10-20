@@ -1,0 +1,24 @@
+{
+  "synthetic_only": true,
+  "mode": "abort",
+  "status": 6,
+  "executor_uuid": "03030303030303030303030303030303",
+  "fjt_uuid": "07070707070707070707070707070707",
+  "source": "actual_stub_action_boundary",
+  "health": {
+    "received": 18,
+    "enqueued": 18,
+    "written": 18,
+    "dropped": 0,
+    "failed": 0,
+    "written_bytes": 9327,
+    "errors": [],
+    "closed": true,
+    "queued_bytes": 0,
+    "run_id": "synthetic-abort",
+    "worker_alive": false,
+    "pending": 0,
+    "recorder_io_complete": true,
+    "run_capture_complete": false
+  }
+}
