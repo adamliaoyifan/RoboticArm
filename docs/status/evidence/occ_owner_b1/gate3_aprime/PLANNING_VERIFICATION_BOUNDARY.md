@@ -74,3 +74,15 @@ sim launch 启动；pack 计分驱动（PlaceSmokeDriver）无 prior 客户端�
 （现仅 motion_occ_eval_driver --placement-prior 可达）。需把 prior 客户端
 按同一 opt-in 接入 pack 路径＋launch 启动 sidecar，形成**新冻结版本**，
 n=2 才能同时报告"两箱流程＋prior 是否真正采用＋准备/规划分别耗时"。
+
+## 追记（2026-10-20）：吸附机制两处边界修正＋r8 诊断授权范围
+
+1. **box_released → pending 只证明地图知道一次未确认释放**，不自动
+   证明退臂规划场景已有正确箱体障碍——该转换须单独核对（列入待验）。
+2. **真机无 Gazebo 跟随，但规划仍需正确的载荷附着/解除状态**：
+   "HardwareVacuumBackend 不操作场景"≠"真机链不需要场景挂接"。
+3. r8 判定层级：直接中止原因=driver 节点发现门失败（已证）；底层根因
+   未确认（DDS 发现在该次启动的偶发失效 vs 一次性瞬态，均未证）。
+   外部探针的事后复现不构成同步证据。本轮仅授权有界启动诊断（已在
+   driver 落记录＋外部同步探针＋wait_graph 审计），未授权任何吸附/
+   规划逻辑变更；未证实的"加 spin/独立客户端"不作为修复。
