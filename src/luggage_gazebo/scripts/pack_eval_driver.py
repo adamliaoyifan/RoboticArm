@@ -185,7 +185,14 @@ class PackEvalDriver(PlaceSmokeDriver):
 
     def on_detected_luggage(self, pick_msg, trial, spawn):
         """ComputePlacement from DetectLuggage, not GetCurrentBox / catalog."""
-        del spawn
+        # [placement-prior opt-in] The measured prior hook lives on the
+        # PLACE base (prepare+bind strictly BEFORE the grasp); this pack
+        # override must run it first or it shadows the wiring (r10: the
+        # hook never fired, no placement_prior evidence). Any named
+        # refusal stops the trial as usual.
+        prior_err = super().on_detected_luggage(pick_msg, trial, spawn)
+        if prior_err:
+            return prior_err
         if getattr(self, "_typed", None) is not None:
             return self._frame_on_detected(pick_msg, trial)
         request = self._compute_request(pick_msg)
