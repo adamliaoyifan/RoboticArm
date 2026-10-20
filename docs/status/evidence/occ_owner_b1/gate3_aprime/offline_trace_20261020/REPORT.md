@@ -150,4 +150,5 @@ source /tmp/elfin-master-pack-baseline-g3/install/setup.bash
 [FJT handle 2.5.9](https://github.com/moveit/moveit2/blob/2.5.9/moveit_plugins/moveit_simple_controller_manager/src/follow_joint_trajectory_controller_handle.cpp)。
 
 后续输入完整性复核：见 [2c重放草案](REPLAY_DRAFT.md) 与
-`2c_field_audit.json`。257点全部缺少加速度，当前未通过完整输入准入门。
+`2c_field_audit.json`。257点日志均省略加速度字段；历史实际数组空/非空未知，不能据此认为轨迹字段有错。
+显式空数组本身是有效原始语义。历史原样重放继续未准入，后续转为一次新生产边界捕获。

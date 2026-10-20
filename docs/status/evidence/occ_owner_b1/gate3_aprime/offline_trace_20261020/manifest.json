@@ -74,9 +74,19 @@
   ],
   "artifact_inventory": [
     {
+      "path": "2c_field_audit.json",
+      "bytes": 1614,
+      "sha256": "44c3324c70dadf69bdc803d87855444888a5ee910caed3cf884a3431f2f15283"
+    },
+    {
+      "path": "REPLAY_DRAFT.md",
+      "bytes": 6762,
+      "sha256": "ca84c6cc19f6a2796fcabd99c99bf6e80720e556d418ad7c07a5313e994b4b02"
+    },
+    {
       "path": "REPORT.md",
-      "bytes": 11320,
-      "sha256": "a8f26ee84b4917b49a75a5aef085e638d79bb89eb157701f5b29bf1551ce1cb1"
+      "bytes": 11657,
+      "sha256": "1668060cba96c0696eceb1d30d54787cd22800a56c36a1ecb33071ce58423295"
     },
     {
       "path": "analyze.py",
@@ -140,5 +150,15 @@
     }
   ],
   "clock_domains": "driver uses message header simulation stamp; watcher mixed receive wall time and cached clock",
-  "retention": "preserve diagnostic failed-case snapshots; no cleanup or overwrite of original runs"
+  "retention": "preserve diagnostic failed-case snapshots; no cleanup or overwrite of original runs",
+  "analysis_document_corrections": {
+    "reason": "Correct omitted log field vs explicit empty array; historical input remains unresolved, production capture is the next experiment.",
+    "changed": [
+      {
+        "path": "REPORT.md",
+        "previous_sha256": "a8f26ee84b4917b49a75a5aef085e638d79bb89eb157701f5b29bf1551ce1cb1",
+        "current_sha256": "1668060cba96c0696eceb1d30d54787cd22800a56c36a1ecb33071ce58423295"
+      }
+    ]
+  }
 }

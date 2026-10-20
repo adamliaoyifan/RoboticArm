@@ -3,7 +3,7 @@
 - base_revision: 89142b4f
 - dispatch_ready: no
 - simulation_started: no
-- input_gate: failed_missing_accelerations
+- input_gate: unresolved_historical_goal_evidence
 
 ## 已完成的输入检查
 
@@ -17,27 +17,33 @@
 | 点数 | 257/257，未截断 |
 | positions (`q`) | 每点6个有限数值 |
 | velocities (`v`) | 每点6个有限数值；末点全零 |
-| accelerations | **0/257点存在，缺失** |
+| accelerations | **日志未保存（0/257字段存在）；历史实际数组空/非空未知** |
 | time_from_start (`t`) | 每点存在、有限、严格递增；0至111.137935s |
 | 时间精度 | driver舍入至六位小数，原始整数ns缺失 |
 | header | 缺失 |
 
 机械检查结果见 `2c_field_audit.json`。源码
 `src/luggage_gazebo/scripts/place_smoke_driver.py:334` 的 `trajectory_dump`
-只生成 q/v/t，故加速度不是解码遗漏。另针对该2c原始 `trials.jsonl`
+只生成 q/v/t，因此可确认导出省略该字段，不能据此判断历史实际请求携带空数组还是非空数组。另针对该2c原始 `trials.jsonl`
 和失败目录 `segments.jsonl` 检查：未发现 accelerations/a/joint_trajectory/
 trajectory 字段；该检查不是对所有未归档文件的穷尽搜索。
 
-**当前不能进入所要求的完整字段原样重放。** 不补零、不用差分推导加速度、
+**历史实际输入未能确定，历史原样重放维持未准入。这里缺失的是证据，未发现轨迹字段有错。**
+若实际数组显式为 `[]`，它就是完整的原始语义，可以保持空数组重放；不能仅因
+数组长度为零而拒绝。现有typed序列化/提交代码确实支持并保留空数组，但代码
+不能替代历史实际goal。此次不再追猜旧日志，下一步转为新的一次生产边界捕获，
+详见 [生产捕获准备](../production_capture_prep_20261020/PLAN.md)。
+
+不补零、不用差分推导加速度、
 不借用r10/r11字段，也不默认为空数组；这些都会新定义输入或插值语义。
-若同运行完整段不能追回，需先在另一次明确标识的新运行捕获完整边界；
+不再尝试补猜此次日志；另一次明确标识的新运行应捕获完整边界；
 新运行的完整轨迹不能追认成此次2c的257点原始轨迹。本轮不启动该捕获运行。
 
 ## 输入补齐后的实验设计（尚未冻结或准入）
 
 1. 将完整输入另存为不可变CDR及规范JSON，记录 names、每点 q/v/a/effort、
    整数ns、header、字段摘要和哈希。新实验设置的header与历史未知header
-   分别记载；不得宣称历史实际goal已恢复。若只得到q/v/t实验输入，应另立
+   分别记载；不得宣称历史实际goal已恢复。若日志仅剩q/v/t且不能证明原始a为空，应另立
    明确的实验定义，不能复用“完整原样重放”的结论。
 2. 沿既有2b隔离环境、MoveGroup ExecuteTrajectory链路执行，场景/附着/
    控制器配置、定位过程与60仿真秒保持窗保持2b定义。不改staging、速度、
@@ -86,4 +92,4 @@ trajectory 字段；该检查不是对所有未归档文件的穷尽搜索。
   输入上定位；不自动证明历史实际goal相同，亦不自动证明变换层有缺陷。
 - 未出现异常只说明该条件下未触发；生产上下文差异仍开放。
 - 输入缺字段、字段传递不符、源时钟无法对齐、缺关键action事件：
-  `not_evaluated`，不算复现或未复现。当前即停在完整输入门。
+  `not_evaluated`，不算复现或未复现。当前停在历史输入证据门，转入新生产捕获准备；数组显式为空并非不完整。
