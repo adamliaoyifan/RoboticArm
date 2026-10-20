@@ -148,3 +148,6 @@ source /tmp/elfin-master-pack-baseline-g3/install/setup.bash
 [JTC 2.53.3](https://github.com/ros-controls/ros2_controllers/blob/2.53.3/joint_trajectory_controller/src/joint_trajectory_controller.cpp)，
 [TEM 2.5.9](https://github.com/moveit/moveit2/blob/2.5.9/moveit_ros/planning/trajectory_execution_manager/src/trajectory_execution_manager.cpp)，
 [FJT handle 2.5.9](https://github.com/moveit/moveit2/blob/2.5.9/moveit_plugins/moveit_simple_controller_manager/src/follow_joint_trajectory_controller_handle.cpp)。
+
+后续输入完整性复核：见 [2c重放草案](REPLAY_DRAFT.md) 与
+`2c_field_audit.json`。257点全部缺少加速度，当前未通过完整输入准入门。
