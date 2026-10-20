@@ -945,17 +945,110 @@ class PickRetreatEvalDriver(Node):
                 n_bridge)
         return ""
 
+    def _graph_diag_sample(self, t0):
+        """[r8 bounded boot diagnostics 2026-10-20, recording only]
+
+        One observation of THIS process's own graph view: full node
+        names AND namespaces, self visibility, and the /vacuum/command
+        SERVICE discovery state — distinguishing a node-name audit
+        failure from actual communication unavailability. Never a fix.
+        """
+        try:
+            names_ns = sorted(
+                (ns, n) for n, ns in
+                self.get_node_names_and_namespaces())
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            names_ns = [("ERROR", repr(exc)[:120])]
+        vacuum_service = None
+        try:
+            client = getattr(self, "_vacuum_cmd_diag_client", None)
+            if client is None:
+                from luggage_msgs.srv import VacuumCommand
+                client = self.create_client(
+                    VacuumCommand, "/vacuum/command")
+                self._vacuum_cmd_diag_client = client
+            vacuum_service = bool(client.service_is_ready())
+        except Exception as exc:  # noqa: BLE001 - diagnostics only
+            vacuum_service = "ERROR:%s" % repr(exc)[:80]
+        return {
+            "elapsed_s": round(time.monotonic() - t0, 2),
+            "n_nodes": len(names_ns),
+            "nodes_namespaced": ["%s%s" % (ns, n) for ns, n in names_ns],
+            "self_visible": any(
+                n == self.get_name() for _ns, n in names_ns),
+            "vacuum_command_service_ready": vacuum_service,
+        }
+
+    def _dump_graph_diagnostics(self, verdict, samples, last_error=None):
+        env = dict(os.environ)
+        dds_env = {k: v for k, v in env.items() if (
+            k.startswith("ROS_") or k.startswith("RMW_")
+            or k.startswith("FASTRTPS") or k.startswith("FASTDDS")
+            or k.startswith("CYCLONEDDS"))}
+        record = {
+            "verdict": verdict,
+            "last_error": last_error,
+            "required_nodes": list(REQUIRED_NODES) + (
+                ["vacuum_controller"]
+                if getattr(self._args, "use_vacuum", False) else []),
+            "dds_env": dds_env,
+            "executor_thread_alive": None,
+            "samples": samples,
+        }
+        try:
+            record["executor_thread_alive"] = bool(
+                self._diag_spinner_thread.is_alive())
+        except AttributeError:
+            pass
+        out_dir = str(getattr(self._args, "out", "") or "")
+        try:
+            json_path = os.path.join(out_dir, "graph_diagnostics.json")
+            with open(json_path, "w", encoding="utf-8") as handle:
+                json.dump(record, handle, indent=1)
+            self.get_logger().info(
+                "graph diagnostics: %s -> %s (%d samples)" % (
+                    verdict, json_path, len(samples)))
+        except (OSError, ValueError) as exc:
+            self.get_logger().warning(
+                "graph diagnostics dump failed: %s" % exc)
+        return record
+
     def wait_graph(self, timeout=90.0):
         deadline = time.time() + timeout
         last = "not checked"
+        samples = []
+        t0 = time.monotonic()
+        next_sample = t0
         while time.time() < deadline:
             err = self.graph_error()
             last = err
             if err.startswith("duplicate"):
+                self._dump_graph_diagnostics("duplicate_process",
+                                             samples, err)
                 return err
             if not err:
+                self._dump_graph_diagnostics("graph_ok", samples)
                 return ""
+            if time.monotonic() >= next_sample:
+                samples.append(self._graph_diag_sample(t0))
+                next_sample += 5.0     # one observation per 5 s
             time.sleep(1.0)
+        self._dump_graph_diagnostics("graph_wait_failed", samples, last)
+        # [r8 diagnostics] Bounded hold so an EXTERNAL probe can observe
+        # the SAME moment (synchronous control, not a replacement for
+        # this process's own evidence). No behavior change; the abort
+        # still returns after the window.
+        hold = float(getattr(self._args, "graph_diag_hold_sec", 30.0)
+                     or 0.0)
+        if hold > 0.0:
+            self.get_logger().info(
+                "holding %ss diagnostic window (external probe)" % hold)
+            hold_until = time.monotonic() + hold
+            while time.monotonic() < hold_until:
+                time.sleep(1.0)
+                samples.append(self._graph_diag_sample(t0))
+            self._dump_graph_diagnostics(
+                "graph_wait_failed_post_hold", samples, last)
         return last or "graph wait timeout"
 
     def goto_observe(self):
@@ -2372,6 +2465,11 @@ def parse_args(argv):
         help="Spawn-visual vs GT height (m).")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-graph-check", action="store_true")
+    parser.add_argument(
+        "--graph-diag-hold-sec", type=float, default=30.0,
+        help="[r8 diagnostics] Hold window after a failed graph wait so "
+             "an external probe can observe the same moment; 0 "
+             "disables. Recording only.")
     parser.add_argument(
         "--strict-gt", action="store_true",
         help="Abort on DETECT_GATE and SPAWN_VISUAL_MISMATCH (old behavior).")

@@ -354,6 +354,12 @@ export ELFIN_BOX_CONTACT_TOPIC=/obs/box_contact
 ) &
 PROBE_PID=$!
 
+# [r8 diagnostics] Synchronous external graph probe during the driver
+# window (control evidence for any driver-side discovery blind spot).
+python3 "$WS/scripts/g3/graph_probe_loop.py" \
+  "$OUT/graph_probe_external.jsonl" 3 &
+GRAPH_PROBE_PID=$!
+
 set +e
 timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.py \
   --frame-runtime --frame-peer pack_eval_driver \
@@ -371,6 +377,7 @@ timeout --signal=INT "$DRIVER_TIMEOUT" ros2 run luggage_gazebo pack_eval_driver.
   --out "$OUT" > "$OUT/driver.log" 2>&1
 driver_rc=$?
 set -e
+kill -TERM "$GRAPH_PROBE_PID" 2>/dev/null || true
 kill -TERM "$CONTACT_PID" "$PROBE_PID" 2>/dev/null || true
 sleep 2
 echo "{\"stage\":\"driver_exit\",\"rc\":$driver_rc,\"ts\":\"$(date -Is)\"}" >> "$OUT/lifecycle.jsonl"
