@@ -1,0 +1,389 @@
+diff -ru '--exclude=.git' '--exclude=PROVENANCE.md' '--exclude=patches' /tmp/gz_ros2_control_fetch/gz_ros2_control/CMakeLists.txt /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/CMakeLists.txt
+--- /tmp/gz_ros2_control_fetch/gz_ros2_control/CMakeLists.txt	2026-10-21 10:34:23.831804588 +0800
++++ /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/CMakeLists.txt	2026-10-21 10:53:24.650638728 +0800
+@@ -23,6 +23,8 @@
+ find_package(pluginlib REQUIRED)
+ find_package(rclcpp REQUIRED)
+ find_package(yaml_cpp_vendor REQUIRED)
++# VENDOR PATCH: recorder core (ROS/Gazebo-free) for boundary capture.
++find_package(joint_command_capture REQUIRED)
+ 
+ set(GZ_PLUGIN)
+ set(GZ_SIM)
+@@ -57,6 +59,7 @@
+ target_link_libraries(${PROJECT_NAME}-system
+   ${GZ_SIM}
+   ${GZ_PLUGIN}
++  joint_command_capture::joint_command_capture_core
+ )
+ ament_target_dependencies(${PROJECT_NAME}-system
+   ament_index_cpp
+@@ -80,6 +83,7 @@
+ )
+ target_link_libraries(gz_hardware_plugins
+   ${GZ_SIM}
++  joint_command_capture::joint_command_capture_core
+ )
+ 
+ ## Install
+@@ -104,6 +108,7 @@
+ target_link_libraries(ign_ros2_control-system
+   ${GZ_SIM}
+   ${GZ_PLUGIN}
++  joint_command_capture::joint_command_capture_core
+ )
+ ament_target_dependencies(ign_ros2_control-system
+   ament_index_cpp
+diff -ru '--exclude=.git' '--exclude=PROVENANCE.md' '--exclude=patches' /tmp/gz_ros2_control_fetch/gz_ros2_control/package.xml /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/package.xml
+--- /tmp/gz_ros2_control_fetch/gz_ros2_control/package.xml	2026-10-21 10:34:23.831804588 +0800
++++ /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/package.xml	2026-10-21 10:53:57.296203722 +0800
+@@ -17,6 +17,8 @@
+   <depend condition="$GZ_VERSION == '' or $GZ_VERSION == fortress">ignition-plugin</depend>
+ 
+   <depend>ament_index_cpp</depend>
++  <!-- VENDOR PATCH: recorder core for boundary capture -->
++  <depend>joint_command_capture</depend>
+   <depend>controller_manager</depend>
+   <depend>hardware_interface</depend>
+   <depend>pluginlib</depend>
+diff -ru '--exclude=.git' '--exclude=PROVENANCE.md' '--exclude=patches' /tmp/gz_ros2_control_fetch/gz_ros2_control/src/gz_ros2_control_plugin.cpp /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/src/gz_ros2_control_plugin.cpp
+--- /tmp/gz_ros2_control_fetch/gz_ros2_control/src/gz_ros2_control_plugin.cpp	2026-10-21 10:34:23.831804588 +0800
++++ /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/src/gz_ros2_control_plugin.cpp	2026-10-21 10:53:09.010368255 +0800
+@@ -23,6 +23,10 @@
+ #include <utility>
+ #include <vector>
+ 
++// VENDOR PATCH (joint command boundary capture, see PROVENANCE.md):
++// observation-only instrumentation; no behavior change.
++#include "joint_command_capture/recorder.hpp"
++
+ #ifdef GZ_HEADERS
+ #include <gz/sim/components/Joint.hh>
+ #include <gz/sim/components/JointType.hh>
+@@ -578,6 +582,31 @@
+     this->dataPtr->last_update_sim_time_ros_ = sim_time_ros;
+     this->dataPtr->controller_manager_->read(sim_time_ros, sim_period);
+     this->dataPtr->controller_manager_->update(sim_time_ros, sim_period);
++
++    // VENDOR PATCH: one heartbeat record per gated control cycle: gz
++    // iteration counter <-> sim time mapping + pause state transitions.
++    static joint_command_capture::Recorder & jcc_recorder =
++      joint_command_capture::Recorder::instance();
++    static uint64_t jcc_iter_seq = 0;
++    static bool jcc_prev_paused = _info.paused;
++    if (jcc_recorder.enabled()) {
++      joint_command_capture::IterationRecord jcc_rec{};
++      jcc_rec.seq = ++jcc_iter_seq;
++      jcc_rec.iterations = _info.iterations;
++      jcc_rec.sim_time_ns = static_cast<uint64_t>(sim_time_ros.nanoseconds());
++      jcc_rec.real_time_ns = static_cast<uint64_t>(
++        std::chrono::duration_cast<std::chrono::nanoseconds>(_info.realTime).count());
++      jcc_rec.dt_ns = static_cast<uint64_t>(
++        std::chrono::duration_cast<std::chrono::nanoseconds>(_info.dt).count());
++      jcc_rec.paused = _info.paused ? 1 : 0;
++      jcc_recorder.record_iteration(jcc_rec);
++      if (jcc_prev_paused != _info.paused) {
++        jcc_recorder.record_event_internal(
++          joint_command_capture::EventKind::PAUSE_CHANGE,
++          _info.paused ? "paused" : "resumed");
++      }
++    }
++    jcc_prev_paused = _info.paused;
+   }
+ }
+ }  // namespace gz_ros2_control
+diff -ru '--exclude=.git' '--exclude=PROVENANCE.md' '--exclude=patches' /tmp/gz_ros2_control_fetch/gz_ros2_control/src/gz_system.cpp /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/src/gz_system.cpp
+--- /tmp/gz_ros2_control_fetch/gz_ros2_control/src/gz_system.cpp	2026-10-21 10:34:23.831804588 +0800
++++ /tmp/elfin-master-pack-baseline-g3/src/vendor/gz_ros2_control/src/gz_system.cpp	2026-10-21 10:52:34.406770355 +0800
+@@ -15,6 +15,7 @@
+ #include "gz_ros2_control/gz_system.hpp"
+ 
+ #include <array>
++#include <chrono>
+ #include <cstddef>
+ #include <limits>
+ #include <map>
+@@ -24,6 +25,11 @@
+ #include <utility>
+ #include <vector>
+ 
++// VENDOR PATCH (joint command boundary capture, see PROVENANCE.md):
++// observation-only instrumentation; no behavior change. Inert unless the
++// recorder singleton is configured via JOINT_CAPTURE_* environment.
++#include "joint_command_capture/recorder.hpp"
++
+ #ifdef GZ_HEADERS
+ #include <gz/msgs/imu.pb.h>
+ #include <gz/msgs/wrench.pb.h>
+@@ -239,8 +245,25 @@
+ 
+   /// \brief Gain which converts position error to a velocity command
+   double position_proportional_gain_;
++
++  // VENDOR PATCH: instrumentation-only counters (no behavior coupling).
++  uint64_t jcc_write_seq = 0;
++  uint64_t jcc_read_seq = 0;
+ };
+ 
++namespace
++{
++inline joint_command_capture::Recorder & jcc_recorder()
++{
++  return joint_command_capture::Recorder::instance();
++}
++inline uint64_t jcc_mono_now_ns()
++{
++  return std::chrono::duration_cast<std::chrono::nanoseconds>(
++    std::chrono::steady_clock::now().time_since_epoch()).count();
++}
++}  // namespace
++
+ namespace gz_ros2_control
+ {
+ bool GazeboSimSystem::initSim(
+@@ -278,6 +301,21 @@
+     "The position_proportional_gain has been set to: " <<
+       this->dataPtr->position_proportional_gain_);
+ 
++  // VENDOR PATCH: configure the boundary capture recorder once per process
++  // from the environment (JOINT_CAPTURE_*). OFF by default; a refused
++  // configuration is logged, never fatal.
++  {
++    const auto cfg = joint_command_capture::Recorder::Config::from_env();
++    const bool active = jcc_recorder().configure(cfg);
++    std::string faults;
++    for (const auto & f : jcc_recorder().faults()) {faults += f + " ";}
++    RCLCPP_INFO_STREAM(
++      this->nh_->get_logger(),
++      "[jcc] capture mode='" << cfg.mode << "' active=" << (active ? 1 : 0) <<
++        " dir='" << cfg.run_dir << "'"
++        << (faults.empty() ? "" : " faults='" + faults + "'"));
++  }
++
+   if (this->dataPtr->n_dof_ == 0) {
+     RCLCPP_ERROR_STREAM(this->nh_->get_logger(), "There is no joint available");
+     return false;
+@@ -690,11 +728,29 @@
+ }
+ 
+ hardware_interface::return_type GazeboSimSystem::read(
+-  const rclcpp::Time & /*time*/,
++  const rclcpp::Time & time,
+   const rclcpp::Duration & /*period*/)
+ {
++  // VENDOR PATCH: per-call observation record (NaN-preserved; skipped joints
++  // keep NaN rather than being coerced to zeros).
++  const bool jcc_on = jcc_recorder().enabled();
++  joint_command_capture::PluginReadRecord jcc_rec{};
++  if (jcc_on) {
++    const double nan = std::numeric_limits<double>::quiet_NaN();
++    for (std::size_t k = 0; k < joint_command_capture::kMaxJoints; ++k) {
++      jcc_rec.position[k] = nan;
++      jcc_rec.velocity[k] = nan;
++      jcc_rec.effort[k] = nan;
++    }
++    jcc_rec.sim_time_ns = static_cast<uint64_t>(time.nanoseconds());
++    jcc_rec.wall_mono_ns = jcc_mono_now_ns();
++    jcc_rec.n_joints = static_cast<uint32_t>(this->dataPtr->joints_.size());
++  }
+   for (unsigned int i = 0; i < this->dataPtr->joints_.size(); ++i) {
+     if (this->dataPtr->joints_[i].sim_joint == sim::kNullEntity) {
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.flags[i] = joint_command_capture::READ_SKIP_NULL;
++      }
+       continue;
+     }
+ 
+@@ -714,6 +770,9 @@
+       this->dataPtr->joints_[i].sim_joint);
+ 
+     if (!jointPositions || !jointVelocity || !jointWrench) {
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.flags[i] = joint_command_capture::READ_MISSING_COMPONENT;
++      }
+       continue;
+     }
+ 
+@@ -732,6 +791,15 @@
+       GZ_PHYSICS_NAMESPACE Vector3d{this->dataPtr->joints_[i].joint_axis.Xyz()[0],
+         this->dataPtr->joints_[i].joint_axis.Xyz()[1],
+         this->dataPtr->joints_[i].joint_axis.Xyz()[2]});
++    if (jcc_on && i < joint_command_capture::kMaxJoints) {
++      jcc_rec.position[i] = this->dataPtr->joints_[i].joint_position;
++      jcc_rec.velocity[i] = this->dataPtr->joints_[i].joint_velocity;
++      jcc_rec.effort[i] = this->dataPtr->joints_[i].joint_effort;
++    }
++  }
++  if (jcc_on) {
++    jcc_rec.seq = ++this->dataPtr->jcc_read_seq;
++    jcc_recorder().record_read(jcc_rec);
+   }
+ 
+   for (unsigned int i = 0; i < this->dataPtr->imus_.size(); ++i) {
+@@ -807,18 +875,44 @@
+ }
+ 
+ hardware_interface::return_type GazeboSimSystem::write(
+-  const rclcpp::Time & /*time*/,
++  const rclcpp::Time & time,
+   const rclcpp::Duration & /*period*/)
+ {
++  // VENDOR PATCH: per-call observation record. Values are captured exactly
++  // where the upstream code computes/applies them; no branch logic changes.
++  const bool jcc_on = jcc_recorder().enabled();
++  joint_command_capture::PluginWriteRecord jcc_rec{};
++  if (jcc_on) {
++    jcc_rec.sim_time_ns = static_cast<uint64_t>(time.nanoseconds());
++    jcc_rec.wall_mono_ns = jcc_mono_now_ns();
++    jcc_rec.n_joints = static_cast<uint32_t>(this->dataPtr->joints_.size());
++    jcc_rec.update_rate = this->dataPtr->update_rate ? *this->dataPtr->update_rate : 0;
++  }
+   for (unsigned int i = 0; i < this->dataPtr->joints_.size(); ++i) {
+     if (this->dataPtr->joints_[i].sim_joint == sim::kNullEntity) {
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.branch[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteBranch::SKIP_NULL_ENTITY);
++        jcc_rec.outcome[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteOutcome::SKIPPED);
++      }
+       continue;
+     }
+ 
+     if (this->dataPtr->joints_[i].joint_control_method & VELOCITY) {
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.branch[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteBranch::VELOCITY);
++        jcc_rec.cmd_received[i] = this->dataPtr->joints_[i].joint_velocity_cmd;
++        jcc_rec.write_applied[i] = this->dataPtr->joints_[i].joint_velocity_cmd;
++      }
+       if (!this->dataPtr->ecm->Component<sim::components::JointVelocityCmd>(
+           this->dataPtr->joints_[i].sim_joint))
+       {
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::CREATED);
++        }
+         this->dataPtr->ecm->CreateComponent(
+           this->dataPtr->joints_[i].sim_joint,
+           sim::components::JointVelocityCmd({0}));
+@@ -828,6 +922,10 @@
+           this->dataPtr->joints_[i].sim_joint);
+         *jointVelCmd = sim::components::JointVelocityCmd(
+           {this->dataPtr->joints_[i].joint_velocity_cmd});
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::WRITTEN);
++        }
+       }
+     } else if (this->dataPtr->joints_[i].joint_control_method & POSITION) {
+       // Get error in position
+@@ -838,21 +936,53 @@
+       // Calculate target velcity
+       double target_vel = -this->dataPtr->position_proportional_gain_ * error;
+ 
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.branch[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteBranch::POSITION_PV);
++        jcc_rec.cmd_received[i] = this->dataPtr->joints_[i].joint_position_cmd;
++        jcc_rec.position_used[i] = this->dataPtr->joints_[i].joint_position;
++        jcc_rec.write_applied[i] = target_vel;
++      }
+       auto vel =
+         this->dataPtr->ecm->Component<sim::components::JointVelocityCmd>(
+         this->dataPtr->joints_[i].sim_joint);
+ 
+       if (vel == nullptr) {
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::CREATED);
++        }
+         this->dataPtr->ecm->CreateComponent(
+           this->dataPtr->joints_[i].sim_joint,
+           sim::components::JointVelocityCmd({target_vel}));
+       } else if (!vel->Data().empty()) {
+         vel->Data()[0] = target_vel;
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::WRITTEN);
++        }
++      } else {
++        // Component exists but its data is empty: upstream writes nothing,
++        // the previous velocity command is retained.
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::RETAINED_EMPTY);
++        }
+       }
+     } else if (this->dataPtr->joints_[i].joint_control_method & EFFORT) {
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.branch[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteBranch::EFFORT);
++        jcc_rec.cmd_received[i] = this->dataPtr->joints_[i].joint_effort_cmd;
++        jcc_rec.write_applied[i] = this->dataPtr->joints_[i].joint_effort_cmd;
++      }
+       if (!this->dataPtr->ecm->Component<sim::components::JointForceCmd>(
+           this->dataPtr->joints_[i].sim_joint))
+       {
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::CREATED);
++        }
+         this->dataPtr->ecm->CreateComponent(
+           this->dataPtr->joints_[i].sim_joint,
+           sim::components::JointForceCmd({0}));
+@@ -862,24 +992,55 @@
+           this->dataPtr->joints_[i].sim_joint);
+         *jointEffortCmd = sim::components::JointForceCmd(
+           {this->dataPtr->joints_[i].joint_effort_cmd});
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::WRITTEN);
++        }
+       }
+     } else if (this->dataPtr->joints_[i].is_actuated) {
+       // Fallback case is a velocity command of zero (only for actuated joints)
+       double target_vel = 0.0;
++      if (jcc_on && i < joint_command_capture::kMaxJoints) {
++        jcc_rec.branch[i] = static_cast<uint8_t>(
++          joint_command_capture::WriteBranch::FALLBACK_ZERO_VEL);
++        jcc_rec.write_applied[i] = target_vel;
++      }
+       auto vel =
+         this->dataPtr->ecm->Component<sim::components::JointVelocityCmd>(
+         this->dataPtr->joints_[i].sim_joint);
+ 
+       if (vel == nullptr) {
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::CREATED);
++        }
+         this->dataPtr->ecm->CreateComponent(
+           this->dataPtr->joints_[i].sim_joint,
+           sim::components::JointVelocityCmd({target_vel}));
+       } else if (!vel->Data().empty()) {
+         vel->Data()[0] = target_vel;
++        if (jcc_on && i < joint_command_capture::kMaxJoints) {
++          jcc_rec.outcome[i] = static_cast<uint8_t>(
++            joint_command_capture::WriteOutcome::WRITTEN);
++        }
+       }
++    } else if (jcc_on && i < joint_command_capture::kMaxJoints) {
++      // Instrumentation-only else: joint not actuated, upstream writes
++      // nothing for it.
++      jcc_rec.branch[i] = static_cast<uint8_t>(
++        joint_command_capture::WriteBranch::NO_METHOD);
++      jcc_rec.outcome[i] = static_cast<uint8_t>(
++        joint_command_capture::WriteOutcome::SKIPPED);
+     }
+   }
+ 
++  // VENDOR PATCH: one record per write() call (uninstrumented: mimic joints
++  // are not used by the elfin model; upstream loop left untouched above).
++  if (jcc_on) {
++    jcc_rec.seq = ++this->dataPtr->jcc_write_seq;
++    jcc_recorder().record_write(jcc_rec);
++  }
++
+   // set values of all mimic joints with respect to mimicked joint
+   for (const auto & mimic_joint : this->dataPtr->mimic_joints_) {
+     for (const auto & mimic_interface : mimic_joint.interfaces_to_mimic) {

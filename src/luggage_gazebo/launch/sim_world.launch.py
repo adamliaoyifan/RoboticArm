@@ -88,6 +88,10 @@ def _default_launch_values():
         "use_vacuum": "false",
         "use_motion": "false",
         "diagnostic_capture": "false",
+        # [joint command boundary capture 2026-10-21] opt-in per-cycle
+        # plugin instrumentation (off = zero wiring, zero perturbation).
+        "joint_capture_mode": "off",
+        "joint_capture_run_dir": "",
         # [placement-prior opt-in 2026-10-19] Read-only prior sidecar
         # (place_prior + grasp/tool local check nodes). OFF = the
         # original flow with zero prior processes; the pack driver's
@@ -152,6 +156,37 @@ def _resolved_launch_config(context):
 
 def _as_bool(value):
     return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _joint_capture_env(context):
+    """[joint command boundary capture] env wiring, opt-in via launch args.
+
+    mode=off (default) wires nothing. Otherwise the run dir must be fresh
+    (created here; a non-empty existing dir is a loud refusal), and
+    JOINT_CAPTURE_* is set for all children — only the instrumented
+    plugin and the vacuum follow-trace hook read them. ELFIN_FOLLOW_TRACE
+    lands in the same run dir (context layer).
+    """
+    mode = LaunchConfiguration("joint_capture_mode").perform(context).strip()
+    if mode == "off" or not mode:
+        return []
+    if mode not in ("armed", "window"):
+        raise RuntimeError(
+            f"joint_capture_mode must be off|armed|window, got {mode!r}")
+    run_dir = LaunchConfiguration("joint_capture_run_dir").perform(context).strip()
+    if not run_dir:
+        raise RuntimeError(
+            "joint_capture_run_dir is required when joint_capture_mode != off")
+    if os.path.isdir(run_dir) and os.listdir(run_dir):
+        raise RuntimeError(
+            f"joint_capture_run_dir must be fresh, {run_dir} is not empty")
+    os.makedirs(os.path.join(run_dir, "ctl"), exist_ok=True)
+    follow_trace = os.path.join(run_dir, "follow_trace.jsonl")
+    return [
+        SetEnvironmentVariable("JOINT_CAPTURE_MODE", mode),
+        SetEnvironmentVariable("JOINT_CAPTURE_DIR", run_dir),
+        SetEnvironmentVariable("ELFIN_FOLLOW_TRACE", follow_trace),
+    ]
 
 
 def _semantic_asset_paths(cfg):
@@ -1243,6 +1278,8 @@ def generate_launch_description():
             ),
             profile_arg("top_surface_mode", "Detector top surface mode: legacy or dynamic measured suction candidates."),
             profile_arg("diagnostic_capture", "Opt-in diagnostic action/service boundary routing; requires capture node."),
+            profile_arg("joint_capture_mode", "Joint-command boundary capture: off | armed | window (requires instrumented gz_ros2_control overlay)."),
+            profile_arg("joint_capture_run_dir", "Fresh run directory for joint-command capture streams."),
             profile_arg("gui", "Start Gazebo GUI."),
             profile_arg(
                 "start_placement_prior",
@@ -1424,6 +1461,7 @@ def generate_launch_description():
             ),
             SetEnvironmentVariable("GZ_SIM_RESOURCE_PATH", _resource_path()),
             SetEnvironmentVariable("IGN_GAZEBO_RESOURCE_PATH", _resource_path()),
+            OpaqueFunction(function=_joint_capture_env),
             OpaqueFunction(function=_launch_setup),
         ]
     )
