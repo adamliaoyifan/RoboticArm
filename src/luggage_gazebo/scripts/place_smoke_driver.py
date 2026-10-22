@@ -1505,6 +1505,20 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             budget_override_s if budget_override_s > 0.0
             else route_budget_s(box_count))
         select_timeout_s = service_budget_s + 30.0
+        from luggage_gazebo.selection_capture import capture_selection
+        capture_root = os.environ.get("ELFIN_SELECTION_CAPTURE_DIR", "").strip()
+        selection_only = bool(getattr(self._args, "diagnostic_selection_only", False))
+        if selection_only and not capture_root:
+            capture_root = os.path.join(self._args.out, "selection_boundary")
+        selection_boundary = dict(
+            request_id=request_id, scene_revision=self._frame_scene_revision,
+            box_wdh=box_wdh, grasp=grasp, start_tcp=start_tcp,
+            start_joints=start_joints, geometry_hash=geometry_hash,
+            map_revision=int(surface_msg.map_revision),
+            box_id=str(grasp.get("box_id") or ""),
+            generation=int(grasp.get("generation") or 0),
+            mono=time.monotonic(), sim=float(self.ros_now_sec()))
+        capture_selection(capture_root, selection_boundary)
         try:
             selection = self._typed.select_place_path(
                 request_id=request_id, box_wdh=box_wdh,
@@ -1527,6 +1541,11 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             trial.fail_code = trial.fail_code or error.code
             trial.extras["selector_error"] = "%s: %s" % (
                 error.code, error.field)
+            return None, None
+        capture_selection(capture_root, selection_boundary, selection)
+        if selection_only and selection is not None and selection.success:
+            trial.fail_code = "DIAGNOSTIC_SELECTION_CAPTURED"
+            trial.extras["selection_boundary"] = selection_boundary
             return None, None
         if selection is None or not selection.success:
             trial.fail_code = trial.fail_code or (
@@ -4072,6 +4091,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
 
 def parse_args(argv):
     parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--diagnostic-selection-only", action="store_true",
+        help="Capture the real post-pick selection response and stop before "
+             "carry execution; diagnostic result is never a packing pass.")
     parser.add_argument("--n", type=int, default=3)
     parser.add_argument("--out", default=DEFAULT_OUT)
     parser.add_argument("--dump-dir", default="")

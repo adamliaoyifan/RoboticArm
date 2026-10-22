@@ -1,0 +1,14 @@
+{
+  "overlap": {
+    "collision": true,
+    "distance": -1.0
+  },
+  "clear": {
+    "collision": false,
+    "distance": 1.0
+  },
+  "same_center": {
+    "collision": true,
+    "distance": -1.0
+  }
+}

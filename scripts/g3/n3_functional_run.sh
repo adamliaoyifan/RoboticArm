@@ -100,6 +100,8 @@ PYDEPS="$MAIN/pydeps-frozen"
 export ELFIN_BOX_CONTACT_TOPIC=/obs/box_contact
 export ELFIN_BOX_SDF_DUMP="$OUT/spawn.sdf"
 export ELFIN_HANDOFF_FAILURE_CAPTURE_DIR="$OUT/handoff_failure"
+export ELFIN_SELECTION_CAPTURE_DIR="$OUT/selection_boundary"
+export ELFIN_PHYSICAL_ATTACHMENT_TRACE="$OUT/physical_attachment.jsonl"
 
 set +u
 source /opt/ros/humble/setup.bash
@@ -109,7 +111,7 @@ set -u
 # No PYTHONPATH src prefixes — driver identity must report INSTALL overlay
 # paths (src prefixes triggered WRONG_OVERLAY in the 10-22 attempts).
 python3 - "$WS" "$OUT" <<'PYMANIFEST'
-import datetime, hashlib, json, pathlib, subprocess, sys
+import datetime, hashlib, json, os, pathlib, subprocess, sys
 ws, out = map(pathlib.Path, sys.argv[1:])
 paths = ["scripts/pack_eval_driver.py", "scripts/place_smoke_driver.py"]
 hashes = {}
@@ -130,7 +132,11 @@ manifest = dict(
     lifecycle_module=lifecycle.__file__,
     acceptance="all three boxes verified, committed and map-confirmed; MAX_BOXES; exit 0; no executor runtime failure",
     aggregation="AND over three boxes in one suite; no success-rate estimate from one suite",
+    diagnostic_selection_only=os.environ.get("PHASE2_SELECTION_ONLY", "0") == "1",
 )
+if manifest["diagnostic_selection_only"]:
+    manifest["mode"] = "non-scored post-pick selection-boundary diagnostic"
+    manifest["acceptance"] = "request JSON and original response CDR captured; no carry execution; never n=3 PASS"
 (out / "manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
 PYMANIFEST
 if [[ $? -ne 0 ]]; then log "installed identity gate failed"; exit 6; fi
@@ -187,7 +193,13 @@ export JOINT_CAPTURE_DIR="$OUT/joint_capture"
 export JOINT_CAPTURE_MODE="window"
 export JOINT_CAPTURE_POST_S="5"
 log "driver start (n=3)"
+driver_diagnostic_args=()
+if [[ "${PHASE2_SELECTION_ONLY:-0}" == "1" ]]; then
+  driver_diagnostic_args+=(--diagnostic-selection-only)
+  log "selection-only diagnostic: stop after selection before carry"
+fi
 timeout --signal=INT 4200 ros2 run luggage_gazebo pack_eval_driver.py \
+  "${driver_diagnostic_args[@]}" \
   --frame-runtime --frame-peer pack_eval_driver \
   --observe-pose pickup_observe_sim \
   --sequence-ids inch20 \
