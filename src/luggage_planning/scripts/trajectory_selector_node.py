@@ -152,6 +152,12 @@ class TrajectorySelectorNode(Node):
         # Route wall budget is 60 s times this count (1 box 60 s,
         # 3 boxes 180 s). Default 1 keeps a single select at 60 s.
         self.declare_parameter("box_count", 1)
+        # [Functional diagnostic, 2026-10-22] Explicit per-Select wall
+        # budget override that reaches the searcher. 0.0 (default) keeps
+        # the frozen n*60s contract — production behavior is unchanged.
+        # Non-scoring diagnostics only; per-edge budgets and every safety
+        # gate stay frozen.
+        self.declare_parameter("diagnostic_route_budget_s", 0.0)
         self.declare_parameter("frame_scene_revision", "")
         # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
         # the service refuses POSE_FILE_MISSING — never a default).

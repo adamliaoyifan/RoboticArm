@@ -7,6 +7,13 @@
 set -o pipefail
 export AMENT_TRACE_SETUP_FILES=0
 
+# [Phase-1 functional diagnostic, 2026-10-22] One explicit knob feeding
+# BOTH sides: the searcher (selector param diagnostic_route_budget_s)
+# and the client wait (driver --select-budget-s = budget + 30 s comm
+# overhead). 180 s per Select; per-edge budgets, retries, and all safety
+# gates unchanged. Non-scoring — no performance claim.
+DIAG_ROUTE_BUDGET_S=180
+
 WS="/tmp/elfin-master-pack-baseline-g3"
 MAIN="/home/adamliao/work/elfin_humble_ws"
 OUT="/tmp/jcc_runs/transit_diag_$(date +%Y%m%d_%H%M%S)"
@@ -95,6 +102,7 @@ set -u
     start_placement_prior:=false \
     robot_poses_config:="$POSES_OUT" \
     diagnostic_capture:=true \
+    diagnostic_route_budget_s:=$DIAG_ROUTE_BUDGET_S \
     joint_capture_mode:=window joint_capture_run_dir:="$OUT/joint_capture" \
     > "$OUT/launch.log" 2>&1 &)
 sleep 2
@@ -170,6 +178,7 @@ timeout 1200 python3 "$WS/src/luggage_gazebo/scripts/diagnostic_transit_driver.p
   --out "$OUT/driver_out" --dump-dir "$OUT/dumps" \
   --sequence-ids inch20 --observe-pose pickup_observe_sim \
   --plan-timeout 180 --goto-timeout 60 --auth-max-elapsed-sec 8 \
+  --select-budget-s "$DIAG_ROUTE_BUDGET_S" \
   --frame-runtime --frame-peer pack_eval_driver \
   --stop-on-first-failure \
   > "$OUT/diag_driver.log" 2>&1

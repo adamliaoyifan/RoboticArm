@@ -1302,6 +1302,11 @@ class RouteProducer(object):
         self._log("route: select %s slots=%d hash=%s" % (
             request["request_id"], len(request["slots"]),
             str(request.get("geometry_hash") or "")[:12]))
+        # [Functional diagnostic, 2026-10-22] Explicit preparation stage:
+        # started_ns (request entry) through candidate-loop entry. The
+        # search stage in _stage_timings is the residue AFTER this,
+        # certify, and revalidate — no stage borrows another's time.
+        self._stage_ns["prep"] = self._clock_ns() - started_ns
         tried_indices = []
         for index, slot, atlas_seeds, opening_depth, verdict in ordered_slots:
             if index and index % 100 == 0:
@@ -1905,11 +1910,13 @@ class RouteProducer(object):
                 + float(row.get("elapsed_ms") or 0.0), 1)
         total_ms = round(total_ns / 1e6, 1)
         accounted_ms = round(sum(by_reason.values()), 1)
+        prep_ns = stages.get("prep", 0)
         return {
             "total_ms": total_ms,
             "budget_ms": round(self.budget_ns / 1e6, 1),
+            "prep_ms": round(prep_ns / 1e6, 1),
             "search_ms": round(max(
-                0, total_ns - stages["certify"]
+                0, total_ns - prep_ns - stages["certify"]
                 - stages["revalidate"]) / 1e6, 1),
             "certify_ms": round(stages["certify"] / 1e6, 1),
             "revalidate_ms": round(stages["revalidate"] / 1e6, 1),

@@ -108,6 +108,9 @@ def _default_launch_values():
         "corridor_planner": "graph",
         # Route budget is 60 s times this count.
         "box_count": "1",
+        # [Functional diagnostic] Per-Select route budget override that
+        # reaches the searcher; 0.0 keeps the frozen n*60s contract.
+        "diagnostic_route_budget_s": "0.0",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -1127,6 +1130,8 @@ def _launch_setup(context):
                 "robot_poses_config": poses_path,
                 "corridor_planner": str(cfg["corridor_planner"]),
                 "box_count": int(cfg["box_count"]),
+                "diagnostic_route_budget_s": float(
+                    cfg["diagnostic_route_budget_s"]),
                 **frame_params,
             }, atlas_params],
             condition=IfCondition(_bool_text(cfg["use_motion"])),
@@ -1448,6 +1453,13 @@ def generate_launch_description():
                 "box_count",
                 "Route budget scale: 60 s times this box count "
                 "(1 box 60 s, 3 boxes 180 s).",
+            ),
+            profile_arg(
+                "diagnostic_route_budget_s",
+                "Functional-diagnostic per-Select route budget override "
+                "(s). 0 keeps the frozen n*60s contract (production "
+                "default); the driver must mirror it via "
+                "--select-budget-s so the client wait covers the search.",
             ),
             profile_arg(
                 "frame_runtime",

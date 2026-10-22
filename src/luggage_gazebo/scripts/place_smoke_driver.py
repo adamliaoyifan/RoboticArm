@@ -1492,7 +1492,18 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         start_joints = [float(v) for v in (live.get("position")
                                            or live.get("positions") or [])]
         box_count = max(1, int(getattr(self._args, "max_boxes", 1) or 1))
-        select_timeout_s = route_budget_s(box_count) + 30.0
+        # Client wait = the SERVICE-side select budget (which must match
+        # what the searcher actually enforces) plus an explicit 30 s
+        # communication overhead. --select-budget-s > 0 mirrors the
+        # selector's diagnostic_route_budget_s override so the client
+        # never cuts a diagnostic search short; 0 (default) keeps the
+        # frozen n*60s formula — production behavior unchanged.
+        budget_override_s = float(
+            getattr(self._args, "select_budget_s", 0.0) or 0.0)
+        service_budget_s = (
+            budget_override_s if budget_override_s > 0.0
+            else route_budget_s(box_count))
+        select_timeout_s = service_budget_s + 30.0
         try:
             selection = self._typed.select_place_path(
                 request_id=request_id, box_wdh=box_wdh,
@@ -1522,6 +1533,16 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 or "PLANNING_ROUTE_REQUIRED")
             trial.extras["selector_error"] = (
                 selection.reason_code if selection else "timeout")
+            # [Functional diagnostic, 2026-10-22] Keep the selector's own
+            # per-candidate/per-edge failure rows and stage timings
+            # (prep/search/certify/revalidate/total) with the trial —
+            # budget exhaustion closes with named evidence, not just the
+            # terminal reason code.
+            if selection is not None:
+                trial.extras["selector_stage_timings"] = json.loads(
+                    getattr(selection, "stage_timings_json", None) or "{}")
+                trial.extras["selector_rows"] = json.loads(
+                    getattr(selection, "rows_json", None) or "[]")
             return None, None
 
         winner_index = int(selection.slot_index)
@@ -4049,6 +4070,12 @@ def parse_args(argv):
     parser.add_argument("--dump-dir", default="")
     parser.add_argument("--observe-pose", default="pickup_observe")
     parser.add_argument("--plan-timeout", type=float, default=60.0)
+    parser.add_argument(
+        "--select-budget-s", type=float, default=0.0,
+        help="Functional-diagnostic Select budget override (s). 0 keeps "
+             "the frozen n*60s service budget; >0 must equal the "
+             "selector's diagnostic_route_budget_s so the client wait "
+             "(budget + 30 s comm overhead) covers the real search.")
     parser.add_argument("--goto-timeout", type=float, default=30.0)
     parser.add_argument("--detect-timeout", type=float, default=15.0)
     parser.add_argument("--geometry-timeout", type=float, default=15.0)
