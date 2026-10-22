@@ -9,7 +9,7 @@
 # (reported separately as NOT adopted). Pass = "relaxed-budget n=3
 # functional closed-loop pass" ONLY.
 set -o pipefail
-export AMENT_TRACE_SETUP_FILES=0
+unset AMENT_TRACE_SETUP_FILES
 
 WS="/tmp/elfin-master-pack-baseline-g3"
 MAIN="/home/adamliao/work/elfin_humble_ws"
@@ -26,6 +26,27 @@ log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/runner.log"; }
 if pgrep -f 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/[p]arameter_bridge' >/dev/null; then
   log "sim slot or residual bridge busy"; exit 2
 fi
+# Existing ROS peers can poison identity even when Gazebo/bridges are gone.
+python3 - <<'PYPEERS'
+from pathlib import Path
+import os
+busy = []
+for proc in Path('/proc').iterdir():
+    if not proc.name.isdigit():
+        continue
+    try:
+        argv = proc.joinpath('cmdline').read_bytes().split(b'\0')
+        env = proc.joinpath('environ').read_bytes().split(b'\0')
+    except (OSError, ProcessLookupError):
+        continue
+    if b'ROS_DOMAIN_ID=7' not in env:
+        continue
+    if any(b'/install/' in arg and b'/lib/' in arg for arg in argv[:2]):
+        busy.append((proc.name, b' '.join(argv[:2]).decode(errors='replace')))
+if busy:
+    raise SystemExit('live domain-7 peers: ' + repr(busy))
+PYPEERS
+if [[ $? -ne 0 ]]; then log "ROS peer slot busy"; exit 2; fi
 LPID=""
 cleanup() {
   local status=$?
