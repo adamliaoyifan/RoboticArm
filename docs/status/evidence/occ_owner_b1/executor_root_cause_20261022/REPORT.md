@@ -123,3 +123,63 @@ The historical truncated executor exception remains unknown. The separate
 ordered-teardown defect is repaired; it has not been claimed as the proven
 historical exception type/cause. No input-error or arithmetic-error theory has
 been established by these runs.
+
+## Original selection input explains the certified/physical discrepancy
+
+Offline FCL 0.7 mesh/box replay of `live_20261022_145336` finds three nominal
+knots colliding with the physical box body, first #510 at elapsed258.215s.
+All 515 knots are preserved, not truncated. Thus a physical collision is
+possible on the commanded path itself, not solely after tracking deviation.
+The constant tool-to-physical-box relation is reconstructed from the follow
+trace and the actual five-collision spawn SDF, never fed into planning.
+Unit-box overlap/separation controls pass for the standalone FCL probe.
+
+The original summary lacked the exact measured grasp orientation, so do not
+infer it from a tool quaternion. `live_20261022_151711` at 06e2088a captured
+the actual post-pick selection request JSON plus original successful response
+CDR. It ended DIAGNOSTIC_SELECTION_CAPTURED with zero carry submissions,
+zero packed boxes and normal executor shutdown. This is one non-scored
+boundary diagnostic, not an n=3 functional acceptance attempt.
+
+On that SAME original successful response's first leg (337 nominal knots):
+
+| Payload representation against the same link2 mesh | Result at sampled knots |
+|---|---|
+| Physical SDF body and captured constant tool/box relation | 15 colliding knots |
+| Exact request box_wdh and inverse of exact request grasp | Zero colliding knots; minimum separation 0.003840092m |
+
+Physical body extents are 0.35x0.53x0.208967m, centered -0.005516m in the
+physical box frame (plus four upper rim boxes). The measured full-box
+dimensions are 0.51432696x0.33252629x0.21754086m in a DIFFERENT box-axis frame.
+Both transforms are explicitly applied in the comparison; raw dimensions
+must not be compared without their axis frames. Measured center is nearly
+on the TCP normal; physical relation has lateral offsets 5.928/7.746mm and
+a slightly different axis orientation. These are distinct central-estimate
+and physical geometries. Padding neither model was used in this diagnosis.
+
+Classification now supported by evidence:
+
+- Input is structurally valid and consistent with the typed measured
+  contract, but its point-estimate geometry does not conservatively contain
+  the physical suitcase. No malformed input/NaN or callback arithmetic error
+  has been observed.
+- Collision computation on that declared measured geometry is consistent
+  with a narrow positive gap. This is not proof of clearance between knots,
+  nor a claim that the certifier universally implements every check correctly.
+- The physical simulator sees box/link2 self-contact that the smaller,
+  shifted point-estimate model misses. Input/model uncertainty is the
+  established discrepancy; planner/certification robustness to that uncertainty
+  remains unfixed. Exact historical truncated thread exception is still unknown.
+- Do not solve this by allowing link2 contact, altering the real box to fit
+  perception, injecting catalog/GT dimensions into planning, or extending the
+  settle gate. Establish a measured uncertainty bound and conservative
+  collision envelope separately from nominal packing dimensions, bind it to
+  scene/certificate identity, and validate its behaviour before the n=3 gate.
+
+Source still checks positive clearance, not an established sensor-uncertainty
+bound. The `min_positive_clearance_m=0.02` policy field is currently unused;
+that observation does not authorize silently treating it as a frozen 2cm
+clearance gate. A correction must state its geometric meaning and tests.
+
+All raw data remain preserved in the primary workspace evidence tree. The
+functional objective remains active and unachieved.

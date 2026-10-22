@@ -60,13 +60,32 @@ def main():
     tool_from_box = offsets[0]
     dump = next((args.run/"driver_out/dumps").glob("box_*"))
     trial = json.loads((dump/"trial.json").read_text())
-    leg = trial["extras"]["submitted_legs"][0]
+    submitted = trial["extras"].get("submitted_legs") or []
+    boundary_files = list((args.run/"selection_boundary").glob("*/request.json"))
+    boundary = json.loads(boundary_files[0].read_text()) if boundary_files else None
+    if submitted:
+        leg = submitted[0]
+    elif boundary is not None:
+        from rclpy.serialization import deserialize_message
+        from luggage_msgs.srv import SelectPlacePathV2
+        response = deserialize_message(
+            (boundary_files[0].parent/"response.cdr").read_bytes(),
+            SelectPlacePathV2.Response)
+        if not response.success:
+            raise ValueError("selection was not successful")
+        segment = response.motion_segments[0].joint_trajectory.trajectory
+        leg = dict(trajectory=dict(truncated=False, points=[dict(
+            q=list(point.positions),
+            t=point.time_from_start.sec+point.time_from_start.nanosec*1e-9)
+            for point in segment.points]))
+    else:
+        raise ValueError("no submitted or original selected trajectory")
     if leg["trajectory"]["truncated"]:
         raise ValueError("nominal trajectory is incomplete")
     datasets = [("nominal", index, point["q"], point["t"])
                 for index, point in enumerate(leg["trajectory"]["points"])]
     actual = load_run(args.run/"joint_capture")["plugin_read"].records
-    actual = actual[actual["sim_time_ns"] >= int(leg["submit_sim_stamp"]*1e9)]
+    actual = actual[actual["sim_time_ns"] >= int(leg.get("submit_sim_stamp", float("inf"))*1e9)] if submitted else actual[:0]
     for index in range(0, len(actual), 50):
         row = actual[index]
         datasets.append(("actual", index, row["position"][:6].tolist(),
@@ -81,6 +100,16 @@ def main():
             cases.append(" ".join(map(str, [label, *mesh_tf.flat, *size, *(box_tf @ origin).flat])))
             metadata[label] = dict(kind=kind, index=index, time=stamp, collision=name,
                                    joints=joints)
+        if kind == "nominal" and boundary is not None:
+            grasp = boundary["grasp"]
+            measured_tool_from_box = np.linalg.inv(pose(
+                grasp["position"], grasp["quaternion_xyzw"]))
+            measured_tf = transforms["suction_contact_frame"] @ measured_tool_from_box
+            label = "nominal_measured_%d" % index
+            cases.append(" ".join(map(str, [label, *mesh_tf.flat,
+                                           *boundary["box_wdh"], *measured_tf.flat])))
+            metadata[label] = dict(kind="nominal_measured", index=index,
+                                   time=stamp, collision="measured_payload", joints=joints)
     lines = ["%d %d" % (len(mesh.vertices), len(mesh.faces))]
     lines.extend(" ".join(map(str, v)) for v in mesh.vertices)
     lines.extend(" ".join(map(str, face)) for face in mesh.faces)
@@ -102,7 +131,8 @@ def main():
         cases=len(cases), dataset_counts=dict(Counter(row[0] for row in datasets)),
         hit_counts=dict(Counter(row["kind"] for row in hits)), minimum_distance=minimum,
         first_hits={kind: next((row for row in hits if row["kind"] == kind), None)
-                    for kind in ("nominal", "actual")}, hits=hits)
+                    for kind in ("nominal", "actual", "nominal_measured")},
+        measured_boundary_available=boundary is not None, hits=hits)
     (args.run/"offline_box_arm_collision.json").write_text(json.dumps(result, indent=2)+"\n")
     result.pop("hits")
     print(json.dumps(result, indent=2))
