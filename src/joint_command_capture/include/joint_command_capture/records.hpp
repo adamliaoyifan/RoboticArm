@@ -103,7 +103,6 @@ struct EventRecord
   uint8_t reserved[7];
   char text[kEventTextLen];
 };
-#pragma pack(pop)
 
 enum class EventKind : uint8_t
 {
@@ -118,7 +117,9 @@ enum class EventKind : uint8_t
 
 constexpr uint64_t kInternalEventIdBit = 0x8000000000000000ULL;
 
-// Binary file header written once per stream file.
+// Binary file header written once per stream file. INSIDE the packed
+// region: an aligned layout wrote 144/24-byte header/footer where every
+// reader (and the Python schema) expects 140/20 — pinned by static_assert.
 struct BinFileHeader
 {
   char magic[4];                         // "JCC1"
@@ -131,6 +132,12 @@ struct BinFileHeader
   char watermark[64];                    // version + git sha (NUL padded)
   char epoch[40];                        // uuid hex (NUL padded)
 };
+static_assert(sizeof(BinFileHeader) == 140, "reader schema expects 140");
+static_assert(sizeof(PluginWriteRecord) == 456, "reader schema expects 456");
+static_assert(sizeof(PluginReadRecord) == 436, "reader schema expects 436");
+static_assert(sizeof(IterationRecord) == 41, "reader schema expects 41");
+static_assert(sizeof(EventRecord) == 128, "reader schema expects 128");
+#pragma pack(pop)
 
 }  // namespace joint_command_capture
 

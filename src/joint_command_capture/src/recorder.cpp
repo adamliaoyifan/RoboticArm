@@ -379,6 +379,7 @@ bool Recorder::open_stream_files()
 
 void Recorder::close_stream_files(const char * reason)
 {
+#pragma pack(push, 1)
   struct Footer
   {
     char magic[4];                         // "JCCF"
@@ -386,6 +387,8 @@ void Recorder::close_stream_files(const char * reason)
     uint64_t records_written;
     uint32_t close_reason_code;            // 0 ok, 1 truncated
   };
+  static_assert(sizeof(Footer) == 20, "reader schema expects 20");
+#pragma pack(pop)
   for (auto & f : files_) {
     if (!f.open) {continue;}
     Footer foot{};
