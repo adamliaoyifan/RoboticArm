@@ -23,6 +23,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 from collections import deque
 
 import rclpy
@@ -4158,7 +4159,23 @@ def main(argv=None):
     driver = PlaceSmokeDriver(args)
     executor = MultiThreadedExecutor(num_threads=4)
     executor.add_node(driver)
-    spinner = threading.Thread(target=executor.spin, daemon=True)
+
+    def _spin_with_crash_log():
+        # [n3 functional, 2026-10-22] An exception escaping a callback kills
+        # this thread (and the executor); as a daemon thread its traceback
+        # gets truncated by interpreter teardown (n3_functional_20261022_
+        # 130429 lost the frames exactly that way while the handoff settle
+        # gate went evidence-blind). Persist the full traceback FIRST, then
+        # re-raise. Observability only — no behavior change.
+        try:
+            executor.spin()
+        except BaseException:
+            with open(os.path.join(args.out, "executor_crash.txt"), "w",
+                      encoding="utf-8") as handle:
+                handle.write(traceback.format_exc())
+            raise
+
+    spinner = threading.Thread(target=_spin_with_crash_log, daemon=True)
     spinner.start()
 
     records = []
