@@ -230,7 +230,7 @@ def main():
     old_result['selected_state_id'] = old_sid
     (out/'original_g2_replay.json').write_text(json.dumps(old_result, indent=2)+'\n')
     with (out/'state_collision_table.csv').open('w') as stream:
-        writer = csv.writer(stream)
+        writer = csv.writer(stream, lineterminator="\n")
         writer.writerow(['run', 'state_id', 'node_id', 'slot_indices', 'geometry', 'colliding_links'])
         for name, data in [('g4_live02', result), ('original_g2_live03', old_result)]:
             for state in data['states']:
@@ -250,6 +250,9 @@ def main():
         ax.set(xlabel=names[0]+' [mm]', ylabel=names[1]+' [mm]'); ax.legend(fontsize=8)
     fig.suptitle('Frozen geometry in tool frame | attachment and planning input coincide\nTool +Z points world -Z in these tool-down poses; contact face unchanged')
     fig.tight_layout(); fig.savefig(out/'envelope_comparison.png', dpi=170); plt.close(fig)
+    # Normalize generated vendor text for repository whitespace checks.
+    js = out/'plotly.min.js'
+    js.write_text('\n'.join(line.rstrip() for line in js.read_text().splitlines())+'\n')
     print(json.dumps({'g4_states':len(result['states']), 'g4_counts':result['counts'],
         'scene_center_delta_m':result['scene_vs_attachment_center_distance_m'],
         'scene_rotation_delta_deg':result['scene_vs_attachment_rotation_deg'],
