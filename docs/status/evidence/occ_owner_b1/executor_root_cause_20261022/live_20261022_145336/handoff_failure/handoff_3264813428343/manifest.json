@@ -1,0 +1,15 @@
+{
+  "verdict": "HANDOFF_SETTLE_TIMEOUT",
+  "gate_deadline_mono": 3264813.402919962,
+  "started_mono": 3264813.428432041,
+  "started_sim": 301.552,
+  "sim_limit_s": 5.0,
+  "wall_limit_s": 30.0,
+  "contact_topic": "/obs/box_contact",
+  "changes_to_motion_or_verdict": false,
+  "end_reason": "sim_window_complete",
+  "ended_mono": 3264835.13732482,
+  "ended_sim": 306.554,
+  "sample_count": 434,
+  "contact_absence_proven": false
+}

@@ -1,0 +1,83 @@
+{
+  "revision": "58827abb",
+  "end": "2026-10-22T15:03:32.167086+08:00",
+  "result": "HANDOFF_SETTLE_TIMEOUT; 1 attempted, 0 packed; no executor exception",
+  "teardown": "owned stack stopped; no residual process after inspection",
+  "artifacts": [
+    {
+      "path": "spawn.sdf",
+      "bytes": 3283,
+      "sha256": "64e8d008db03c27081d62178e9865aaeed954ef627456b71fd6093a3e1e81a42"
+    },
+    {
+      "path": "driver.log",
+      "bytes": 2643,
+      "sha256": "6d17e51c677b26dd31fe5548df3df8183c9d83c6acf6b1a97a341845c6649e7a"
+    },
+    {
+      "path": "launch.log",
+      "bytes": 124768,
+      "sha256": "c996d0524521caf0959f0e2ddd6aef768eead2bb3ccc662ff14aaff46dc89e61"
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 943,
+      "sha256": "c9ef3b5060039b29945d15298f2ab407b64076321233081b9beb33ad6733d7b7"
+    },
+    {
+      "path": "driver_out/executor_lifecycle.jsonl",
+      "bytes": 419,
+      "sha256": "be947951e2d30c99ab6b3df9894f82e03bd785ad6b182b029335cdd7c068d6e6"
+    },
+    {
+      "path": "driver_out/suite.json",
+      "bytes": 1410,
+      "sha256": "cb692ad38783bf3ebc28ec16d3b089c5af29f575aa36bfb32538174a3deb8c80"
+    },
+    {
+      "path": "contact_result.json",
+      "bytes": 1560,
+      "sha256": "2be6c703fe94ac7a8a81fbcdf0665e3c5e18bb3409526727dff682d9e8f302d4"
+    },
+    {
+      "path": "handoff_failure/handoff_3264813428343/manifest.json",
+      "bytes": 429,
+      "sha256": "f26d4063f61eab7150188f009e950c0da712ab68b41b8e269934f3304ca91e87"
+    },
+    {
+      "path": "handoff_failure/handoff_3264813428343/transport/manifest.json",
+      "bytes": 525,
+      "sha256": "60f7f8c9e66f0defda5bdc1d5cba0ffa2b2874bed61c45481367a9f69127d441"
+    },
+    {
+      "path": "handoff_failure/handoff_3264813428343/transport/contacts.raw",
+      "bytes": 8388608,
+      "sha256": "261943a4f14e868e318c20ff165ffb39ea93bce4e3415b4a105e975762565467"
+    },
+    {
+      "path": "handoff_failure/handoff_3264813428343/transport/poses.raw",
+      "bytes": 8388608,
+      "sha256": "adeba2e9d1747524d3023b76a412740a267f34705986b380122ee31961450c6a"
+    },
+    {
+      "path": "joint_capture/events.bin",
+      "bytes": 288,
+      "sha256": "ddb6e616fc6550589fc2df455e7694c25c9ecc795fc616015d9692c22fc2c504"
+    },
+    {
+      "path": "joint_capture/plugin_write.bin",
+      "bytes": 140631928,
+      "sha256": "13b12eba460369bbddf041fcb93c9cc748e30e277eeddb85f0cff460b2b3d3fd"
+    },
+    {
+      "path": "joint_capture/plugin_read.bin",
+      "bytes": 13446400,
+      "sha256": "9680a171b8c5bf621133e6fc63862d54d7f397a5a1df29b717406dfc967a80cc"
+    },
+    {
+      "path": "joint_capture/iteration.bin",
+      "bytes": 1264600,
+      "sha256": "cdcabf46c1f2e9d19c510869b61c6a9e1177816aff0ffdd51ab13b7f0adad453"
+    }
+  ]
+}

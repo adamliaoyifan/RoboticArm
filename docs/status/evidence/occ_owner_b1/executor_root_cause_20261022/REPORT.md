@@ -83,3 +83,43 @@ Two startup failures preceded it: old attempt-E peer identities survived
 URDF request stalled and controller broadcaster exited. Neither attempted a
 box; neither demonstrates a product/executor failure. Raw startup logs and
 cleanups are preserved under their live directories.
+
+## Pre-cleanup physical boundary: direct box/arm contact
+
+`live_20261022_145336` at 58827abb again failed the first handoff with a
+healthy executor. The post-verdict window retained the same box for 5.002
+sim-s (21.709 wall-s), without a goal, release or cleanup. All 434 observed
+vacuum records remained attached. Across 500 plugin physical rows, maximum
+joint error grew from 0.152440 to 0.286922rad; zero rows met 0.01rad tolerance.
+This rules out the earlier interpretation of quick loaded convergence.
+
+The actual spawned SDF includes the existing observation sensor on all five
+box collisions. Raw Gazebo contacts explicitly report:
+
+```
+pickup_box_0001_inch20::suitcase_link::body_collision
+S20::elfin_link2::elfin_link2_collision
+```
+
+There are 542 complete contact blocks for this pair in the preserved prefix,
+covering sim 301.571..302.112. Both raw transport streams reached their 8MiB
+caps, so **contact evidence covers only this 0.541s prefix**, not the entire
+five-second window. No penetration-depth number was recovered; do not infer
+one from the geometry. The continuous joint/plugin stream covers the full
+window. Lifecycle again ends normally with spin_return(failed=false), and
+the owned sim/ROS stack is stopped.
+
+This directly locates a real simulation interaction at the failed physical
+boundary. It does not establish whether nominal certified geometry already
+collides, tracking error first brought the box into the arm, or planning and
+simulation use differing geometry/grasp transforms. Source touch-link lists
+do not exempt elfin_link2 (`SUCTION_INTERFACE_TOUCH_LINKS` contains only the
+suction seal; default attach links additionally contain elfin_link5/6).
+These alternatives must be compared with the exact certified trajectory and
+payload before changing control, collision allowances, geometry, or planning.
+
+Phase two is still **not passed** (both actual suites: 1 attempted, 0 packed).
+The historical truncated executor exception remains unknown. The separate
+ordered-teardown defect is repaired; it has not been claimed as the proven
+historical exception type/cause. No input-error or arithmetic-error theory has
+been established by these runs.
