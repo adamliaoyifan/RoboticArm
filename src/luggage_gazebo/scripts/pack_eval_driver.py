@@ -251,6 +251,12 @@ class PackEvalDriver(PlaceSmokeDriver):
         placed_flat = [entry["size_wdh"] for entry in
                        getattr(self, "_frame_placed_records", None) or []]
         placed_flat = [float(v) for entry in placed_flat for v in entry]
+        placement_error = None
+        trial.extras["placement_request"] = dict(
+            request_id=request_id, scene_revision=self._frame_scene_revision,
+            box_wdh=box_wdh, height_measured=bool(pick_msg.height_valid),
+            placed=placed, placed_wdh_flat=placed_flat,
+            geometry_hash=geometry_hash, expected_map_revision=map_revision)
         try:
             placement = self._typed.compute_placement(
                 request_id=request_id, box_wdh=box_wdh,
@@ -261,10 +267,12 @@ class PackEvalDriver(PlaceSmokeDriver):
                 expected_map_revision=map_revision)
         except ContractError as error:
             placement = None
-            trial.extras["placement"] = "%s: %s" % (error.code, error.field)
+            placement_error = error
+            trial.extras["placement_error"] = error.as_dict()
         if placement is None or not placement.success:
-            reason = (placement.message if placement else "COMPUTE_TIMEOUT")
-            reason_code = (
+            reason = (str(placement_error) if placement_error is not None else
+                      placement.message if placement else "COMPUTE_TIMEOUT")
+            reason_code = (placement_error.code if placement_error is not None else
                 str(getattr(placement, "reason_code", "") or "")
                 if placement else "COMPUTE_TIMEOUT")
             last = dict(self._last_result or {})

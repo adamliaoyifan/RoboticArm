@@ -306,3 +306,26 @@ class TestTypedCommitAdd(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_compute_contract_error_preserves_exact_cause():
+    from luggage_description.frame_contracts import ContractError
+    module = _load_pack_module()
+    assert module is not None
+    driver = module.PackEvalDriver.__new__(module.PackEvalDriver)
+    driver._frame_scene_revision = _SCENE
+    driver._frame_request_id = lambda kind: 'compute-1'
+    driver._surface_v2_msg = SimpleNamespace(map_revision=7, geometry_hash='geo')
+    driver._surface_2d = {}
+    driver._frame_placed_records = []
+    driver._last_result = {}
+    def fail(**kwargs):
+        raise ContractError('GRAPH_NOT_READY', 'peers', ['ready'], ['stale'])
+    driver._typed = SimpleNamespace(compute_placement=fail)
+    pick = SimpleNamespace(width=.5,depth=.3,height=.2,height_valid=True)
+    trial = SimpleNamespace(extras={},index=0)
+    reason = driver._frame_on_detected(pick, trial)
+    assert reason == 'GRAPH_NOT_READY'
+    assert driver._last_rejected['reason_code'] == 'GRAPH_NOT_READY'
+    assert trial.extras['placement_error']['received'] == ['stale']
+    assert trial.extras['placement_request']['expected_map_revision'] == 7
