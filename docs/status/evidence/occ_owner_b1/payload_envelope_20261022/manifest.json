@@ -1,0 +1,110 @@
+{
+  "timestamp": "2026-10-22T16:37:28.292629+08:00",
+  "revision": "9fd5829ed867a39e7bfb3b029d922c5f4c880a3a",
+  "dirty": [
+    "?? pydeps-frozen"
+  ],
+  "mode": "offline diagnostic; no live run",
+  "case_id": "live_20261022_151711",
+  "config": "payload_envelope.yaml",
+  "truth_usage": "offline verification only",
+  "outcomes": {
+    "continuous_yaw_construction": "pass",
+    "physical_solid_coverage": "pass",
+    "old_physical_collision_knots_rejected": "15/15",
+    "old_goal_hull_containment": "fail: below_floor_0.100013323m",
+    "new_route": "not_evaluated",
+    "new_route_inter_knot_physics": "not_evaluated",
+    "n3": "not_evaluated"
+  },
+  "tests": {
+    "focused_suite": 237,
+    "additional_positive_propagation_test": 1,
+    "physical_knots": 337,
+    "physical_cuboid_vertices": 40
+  },
+  "inputs": [
+    {
+      "path": "src/luggage_planning/config/payload_envelope.yaml",
+      "sha256": "7848704acb7296d211fc43fd8d3e46637cd125c1285f7b0169884c18bc63822d",
+      "bytes": 565
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/robot_expanded.urdf",
+      "sha256": "7c2add789d3c8b167a7bf597ab6cd8725f9e58d6c4bfb013a49d3079ba9b8cbf",
+      "bytes": 22298
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_20261022_151711/spawn.sdf",
+      "sha256": "64e8d008db03c27081d62178e9865aaeed954ef627456b71fd6093a3e1e81a42",
+      "bytes": 3283
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_20261022_151711/scene_tf_used.yaml",
+      "sha256": "fa2af81a47a0946581faf5bd69ed28f942baabff90ad0c87b191d6d457d1e960",
+      "bytes": 1499
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_20261022_151711/joint_capture/follow_trace.jsonl",
+      "sha256": "5ad53a6631ae64d52611cbc349e7edc49e7c068c3228baee3f1a0f863b89dfb7",
+      "bytes": 199872
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_20261022_151711/selection_boundary/place-v2-2/response.cdr",
+      "sha256": "f1c38897ad4bf15b22c9b9dab17a29342d5ff062ea8c0481f26ed9fd0a6ec127",
+      "bytes": 292468
+    },
+    {
+      "path": "docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_20261022_151711/selection_boundary/place-v2-2/request.json",
+      "sha256": "7092e1d4b22715c6ade9387c4468f9c0f354a764b17930db64dd14a5e9c9ce1b",
+      "bytes": 1682
+    }
+  ],
+  "artifact_inventory": [
+    {
+      "path": "build_contract_final.log",
+      "bytes": 5224
+    },
+    {
+      "path": "original_goal.json",
+      "bytes": 1935
+    },
+    {
+      "path": "propagation_tests.txt",
+      "bytes": 113
+    },
+    {
+      "path": "baseline_scene_test.txt",
+      "bytes": 2686
+    },
+    {
+      "path": "payload_envelope.yaml",
+      "bytes": 565
+    },
+    {
+      "path": "build.log",
+      "bytes": 100526
+    },
+    {
+      "path": "pytest.txt",
+      "bytes": 340
+    },
+    {
+      "path": "REPORT.md",
+      "bytes": 5120
+    },
+    {
+      "path": "offline_original/offline_box_arm_collision.json",
+      "bytes": 76979
+    }
+  ],
+  "capture_complete": true,
+  "replay_possible": true,
+  "missing_coverage": [
+    "No newly certified physical route",
+    "No inter-knot new-route physical validation",
+    "No n=3 functional run",
+    "Historical request JSON contains measured geometry/grasp but not all candidate slots/surface"
+  ],
+  "teardown": "not_applicable; no simulation launched"
+}
