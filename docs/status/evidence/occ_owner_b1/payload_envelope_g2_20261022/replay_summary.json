@@ -1,0 +1,118 @@
+{
+  "geometry": "URDF elfin_link2 mesh vs all five physical SDF boxes",
+  "tool_from_box": [
+    [
+      -0.016965425529584074,
+      0.999856076811358,
+      1.4418770142979102e-11,
+      0.005927767649425153
+    ],
+    [
+      0.9998560768113579,
+      0.016965425529584074,
+      5.4780164324533784e-12,
+      0.00774590711488532
+    ],
+    [
+      5.232607447772085e-12,
+      1.4509631827438451e-11,
+      -1.0,
+      0.10747282362461774
+    ],
+    [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "max_follow_offset_matrix_delta": 1.1449174941446927e-16,
+  "cases": 2359,
+  "dataset_counts": {
+    "nominal": 337
+  },
+  "hit_counts": {
+    "envelope": 153,
+    "nominal": 15
+  },
+  "minimum_distance": {
+    "nominal": -1.0,
+    "envelope": -1.0,
+    "nominal_measured": 0.0038400924213643673
+  },
+  "first_hits": {
+    "nominal": {
+      "kind": "nominal",
+      "index": 133,
+      "time": 102.552756739,
+      "collision": "body_collision",
+      "joints": [
+        -1.4402752843715623,
+        -0.5830820305341208,
+        -0.56930912297,
+        3.172111984536015,
+        1.3356398355225014,
+        3.797074119452105
+      ],
+      "distance": -1.0
+    },
+    "actual": null,
+    "nominal_measured": null,
+    "envelope": {
+      "kind": "envelope",
+      "index": 102,
+      "time": 77.569744946,
+      "collision": "payload_envelope",
+      "joints": [
+        -0.5923286227601583,
+        -0.7379247062043212,
+        -1.15264790626897,
+        3.4679982693855878,
+        2.007141145698859,
+        2.5803241194522553
+      ],
+      "distance": -1.0
+    }
+  },
+  "measured_boundary_available": true,
+  "envelope": {
+    "dimensions_wdh": [
+      0.849686410114948,
+      0.6844225183075175,
+      0.3275408646384565
+    ],
+    "t_tcp_box_translation": [
+      -5.391287416500745e-10,
+      8.07509059619349e-11,
+      0.10877043044061717
+    ],
+    "t_tcp_box_quaternion_xyzw": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "limits": {
+      "yaw_half_range_deg": 5.0,
+      "size_margin_per_face_m": [
+        0.05,
+        0.05,
+        0.05
+      ],
+      "position_half_range_tool_m": [
+        0.1,
+        0.1,
+        0.005
+      ]
+    },
+    "nominal_digest": "9525ec715f0a36c3a46aa36bb8edc9c26a20ff0dfa986b95ab35b421552cd8eb"
+  },
+  "envelope_digest": "aa54098c2a35731bfa68e1bb7f01e0097af454295a7ac26890a8e1bdfd7dedfc",
+  "physical_coverage": {
+    "all_covered": true,
+    "min_slack_m": 0.05247232549846807
+  },
+  "all_physical_hits_rejected": true,
+  "physical_hit_knots": 15,
+  "envelope_hit_knots": 153
+}
