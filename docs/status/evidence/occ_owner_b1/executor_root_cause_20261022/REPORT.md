@@ -70,5 +70,16 @@ python3 -m pytest -q src/luggage_gazebo/test/test_driver_executor.py src/luggage
 
 ## Live continuation
 
-In progress. Startup failures before any attempted box are tracked separately
-and do not demonstrate either an executor runtime failure or a packing pass.
+Live `live_20261022_144145` at 62e3e9ca reproduced HANDOFF_SETTLE_TIMEOUT
+with 1 box attempted, 0 packed, but **no executor exception**. Lifecycle is
+start -> stop_requested -> spin_return(failed=false) -> nodes_destroyed.
+140 samples, last receive 8.101ms before deadline, final error 0.129308rad,
+only 1.395 sim-s in the gate. This is a fresh reproduction of loaded physical
+nonarrival independent of a callback crash. Full suite is not passed. Prior
+is disabled. Owned stack stopped and no ROS/simulator residuals remain.
+
+Two startup failures preceded it: old attempt-E peer identities survived
+(19 nodes and 3 bridges confirmed by PID in its launch log), then a plugin
+URDF request stalled and controller broadcaster exited. Neither attempted a
+box; neither demonstrates a product/executor failure. Raw startup logs and
+cleanups are preserved under their live directories.

@@ -2320,6 +2320,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 self._CONTROLLER_STATE_SUCCESS_ROWS
                 if record.get("status") == "ready" else None))
         record["controller_state"] = window
+        if record.get("status") != "ready":
+            from luggage_gazebo.handoff_failure_capture import retain_failure
+            record["post_verdict_capture"] = retain_failure(self, record)
         self.get_logger().info(
             "handoff %s->%s status=%s waited=%.3fs samples=%d" % (
                 previous.get("name"), name, record.get("status"),
