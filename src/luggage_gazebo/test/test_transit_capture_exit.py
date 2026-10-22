@@ -201,3 +201,34 @@ def test_installed_driver_hooks_capture_typed_boundaries_and_fault_health(tmp_pa
     records = list(read_stream(recorder.root))
     assert len(records) == 1
     assert deserialize_message(records[0][1], SelectPlacePathV2.Request) == message
+
+
+def test_hold_failure_retains_bounded_post_window_then_aborts(monkeypatch):
+    """[2026-10-21 ruling] settle failure keeps <=5 sim-s for the capture
+    post-window, then aborts via the normal safety flow (no 60 s wait)."""
+    monkeypatch.setattr(production, 'point_inside_container_inner_box', lambda *a, **k: True)
+    driver = Driver('payload_lost')
+    trial = PlaceTrial(index=0)
+    trial.extras = {}
+    slot = NS(place_pose=NS(position=NS(x=0., y=0., z=0.)))
+    returned = driver.run_place_from_carry(None, trial, slot, {})
+    assert returned is trial
+    assert trial.fail_code == 'PAYLOAD_LOST'
+    hold = trial.extras['diagnostic_hold']
+    # advance() gives 1 sim-s per sleep; retention stops at the 5 s cap.
+    assert 5 * 10**9 <= hold['retained_after_fail_ns'] <= 6 * 10**9
+    assert hold['reason'] == 'PAYLOAD_LOST'
+    assert trial.place_state == 'ABORT_CARRYING'
+
+
+def test_hold_ns_env_override():
+    import luggage_gazebo.transit_capture_exit as mod
+    import os
+    os.environ['JOINT_DIAG_HOLD_NS'] = '5e9'
+    try:
+        d = Driver('success')
+        assert d._transit_capture_exit.hold_ns == 5 * 10**9
+    finally:
+        del os.environ['JOINT_DIAG_HOLD_NS']
+    d2 = Driver('success')
+    assert d2._transit_capture_exit.hold_ns == HOLD_NS
