@@ -747,8 +747,13 @@ class PickRetreatEvalDriver(Node):
                     return False, 'MEASURED_ATTACHMENT_MISSING'
                 from luggage_planning.hardware_place_planning import attachment_from_response
                 from luggage_planning.typed_driver_adapter import grasp_record
-                actual = attachment_from_response(response, request_id=request_id,
-                    box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
+                try:
+                    actual = attachment_from_response(response, request_id=request_id,
+                        box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
+                except ValueError as error:
+                    self._frame_grasp = None
+                    self._frame_attachment_geometry = None
+                    return False, 'ATTACHMENT_GEOMETRY_INVALID: %s' % error
                 self._frame_attachment_geometry = actual.geometry
                 self._frame_grasp = grasp_record(request_id, actual.scene_revision,
                     actual.box_from_tcp.translation, actual.box_from_tcp.quaternion_xyzw,

@@ -140,6 +140,14 @@ def _select_message(slot_scenes, surface_scene):
     message.container_stamp_ns = 0
     message.container_stamp_is_null = True
     message.excluded_ids = []
+    from st09_contracts.attachment_geometry import freeze_geometry
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    from st09_contracts.attachment import invert_transform
+    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    p, q = message.grasp.pose.position, message.grasp.pose.orientation
+    message.conservative_geometry = geometry_to_message(freeze_geometry(
+        message.box_wdh, *invert_transform((p.x,p.y,p.z), (q.x,q.y,q.z,q.w)),
+        EnvelopeLimits(5, (.1,)*3, (0,0), .005)))
     return message
 
 

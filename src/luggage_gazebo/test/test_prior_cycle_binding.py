@@ -124,6 +124,13 @@ def test_confirmed_attachment_survives_later_tcp_capture_and_clears_on_release()
     response.measured_grasp=pose_message(grasp_record('attach','scene',
         [.02,.03,.1],[1.,0.,0.,0.],stamp_ns=1000))
     response.attached_box_wdh=[.4,.3,.2]
+    from st09_contracts.attachment import invert_transform
+    from st09_contracts.attachment_geometry import freeze_geometry
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    response.conservative_geometry = geometry_to_message(freeze_geometry(
+        response.attached_box_wdh, *invert_transform((.02,.03,.1), (1.,0.,0.,0.)),
+        EnvelopeLimits(5, (.1,)*3, (0,0), .005)))
     instance._typed=SimpleNamespace(vacuum_command=lambda **kw:response)
     instance._frame_capture_grasp=lambda box:setattr(instance,'_frame_grasp',None)
     assert instance.vacuum_command(True,measured_box())[0]
@@ -132,9 +139,11 @@ def test_confirmed_attachment_survives_later_tcp_capture_and_clears_on_release()
     PickRetreatEvalDriver._frame_capture_grasp(instance,measured_box())
     assert instance._frame_grasp==frozen
     assert instance._frame_grasp_stamp_ns==1000
+    assert instance._frame_attachment_geometry is not None
     assert instance.vacuum_command(False,measured_box())[0]
     assert instance._frame_grasp is None
     assert not instance._frame_attachment_confirmed
+    assert instance._frame_attachment_geometry is None
 
 
 def test_successful_vacuum_without_attachment_cannot_authorize_place():

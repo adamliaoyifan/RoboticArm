@@ -195,6 +195,13 @@ if [[ -z "$GAIN_OK" ]]; then
 fi
 log "gain verify OK (0.8)"
 
+python3 "$WS/scripts/g3/attachment_preflight.py" "$OUT" > "$OUT/preflight.log" 2>&1
+if [[ $? -ne 0 ]]; then log "pre-case capture/readiness gate failed"; exit 7; fi
+if [[ "${PHASE2_STARTUP_ONLY:-0}" == "1" ]]; then
+  log "startup-only rehearsal complete; no box attempted"
+  exit 0
+fi
+
 # ---- Driver: production n=3 + functional-diagnostic budget ----
 export JOINT_CAPTURE_DIR="$OUT/joint_capture"
 export JOINT_CAPTURE_MODE="window"

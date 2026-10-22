@@ -257,6 +257,9 @@ class PackEvalDriver(PlaceSmokeDriver):
             box_wdh=box_wdh, height_measured=bool(pick_msg.height_valid),
             placed=placed, placed_wdh_flat=placed_flat,
             geometry_hash=geometry_hash, expected_map_revision=map_revision)
+        # This pre-contact query is only a nominal capacity preview. Actual
+        # place candidates are regenerated after confirmed Attachment geometry.
+        trial.extras['placement_geometry_stage'] = 'pre_attach_nominal_preview'
         try:
             placement = self._typed.compute_placement(
                 request_id=request_id, box_wdh=box_wdh,
