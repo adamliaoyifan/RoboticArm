@@ -58,12 +58,26 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
         raise ValueError('placement map and attachment scene mismatch')
     if len(start_joints) != 6:
         raise ValueError('complete measured six-joint start required')
+    if attachment.geometry is None:
+        raise ValueError('ATTACHMENT_GEOMETRY_MISSING')
     finite_tuple(start_joints, 6, 'start joints')
     from luggage_planning.placement_prior_adoption import bound_target_slots
     bound = bound_target_slots(prior, selected_choice, surface, attachment.box_wdh,
                                attachment.scene_revision, request_id)
     if selected_choice is not None:
         slots, scores = bound
+        # A pre-contact target remains binding, but must also be feasible for
+        # the actual conservative attachment. Never silently move that target.
+        placement = adapter.compute_placement(request_id=request_id,
+            box_wdh=attachment.box_wdh, height_measured=True,
+            conservative_geometry=attachment.geometry,
+            scene_revision=attachment.scene_revision, geometry_hash=surface.geometry_hash,
+            expected_map_revision=surface.map_revision, max_candidates=2000)
+        from luggage_planning.placement_prior_adoption import _pose_equal
+        candidates = [] if placement is None or not placement.success else (
+            list(placement.candidates) or [placement.slot])
+        if not any(_pose_equal(slots[0].pose, candidate.pose) for candidate in candidates):
+            raise ValueError('BOUND_TARGET_NOT_IN_CONSERVATIVE_CANDIDATES')
     else:
         placement = adapter.compute_placement(request_id=request_id,
             box_wdh=attachment.box_wdh, height_measured=True,

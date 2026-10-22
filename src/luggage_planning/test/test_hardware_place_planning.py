@@ -47,6 +47,8 @@ def test_full_select_uses_controller_offset_and_keeps_target_fixed():
     measured, kwargs = inputs()
     calls = []
     adapter = object.__new__(TypedDriverAdapter)
+    adapter.compute_placement = lambda **values: SimpleNamespace(
+        success=True, candidates=[deepcopy(kwargs['selected_choice'].slot)])
     adapter._select = object()
     adapter._call = lambda client, request, timeout: (
         calls.append(deepcopy(request)) or SelectPlacePathV2.Response(success=True,slot_index=0))
@@ -88,3 +90,15 @@ def test_no_prior_calls_ordinary_placement_then_full_select():
     assert [kind for kind, _ in calls] == ['compute','select']
     assert calls[-1][1]['grasp']['request_id'] == 'generated'
     assert calls[-1][1]['grasp']['position'][0] == pytest.approx(.005)
+
+
+def test_bound_nominal_target_cannot_bypass_conservative_capacity():
+    measured, kwargs = inputs()
+    seen = []
+    adapter = SimpleNamespace(
+        compute_placement=lambda **values: (seen.append(values) or
+            SimpleNamespace(success=False)),
+        select_place_path=lambda **values: pytest.fail('must refuse before Select'))
+    with pytest.raises(ValueError, match='BOUND_TARGET_NOT_IN_CONSERVATIVE_CANDIDATES'):
+        plan_attached_box(adapter, measured, **kwargs)
+    assert seen[0]['conservative_geometry'] is measured.geometry

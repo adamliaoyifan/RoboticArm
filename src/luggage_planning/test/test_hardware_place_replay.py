@@ -15,6 +15,8 @@ def capture():
     attachment,kwargs=inputs()
     calls=[]
     adapter=object.__new__(TypedDriverAdapter)
+    adapter.compute_placement=lambda **values: SimpleNamespace(
+        success=True,candidates=[deepcopy(kwargs['selected_choice'].slot)])
     adapter._select=object()
     adapter._call=lambda client,request,timeout: calls.append(deepcopy(request))
     plan_attached_box(adapter,attachment,**kwargs)
@@ -29,6 +31,8 @@ def test_replay_uses_actual_attachment_and_preserves_bound_target():
     request,response,prior=capture()
     calls=[]
     adapter=object.__new__(TypedDriverAdapter);adapter._select=object()
+    adapter.compute_placement=lambda **values: SimpleNamespace(
+        success=True,candidates=[deepcopy(prior.choices[0].slot)])
     adapter._call=lambda client,req,timeout:(calls.append(deepcopy(req)) or
         SelectPlacePathV2.Response(success=True))
     result=replay_place(adapter,request,response,attachment_request=_request(LIVE),scene_revision=LIVE,

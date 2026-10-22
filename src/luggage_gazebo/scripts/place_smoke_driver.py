@@ -1448,6 +1448,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]
         self._frame_box_wdh = list(box_wdh)
+        self._frame_selection_capture_dir = None
         attachment_geometry = getattr(self, '_frame_attachment_geometry', None)
         if attachment_geometry is None:
             trial.fail_code = trial.fail_code or 'ATTACHMENT_GEOMETRY_MISSING'
@@ -1533,7 +1534,13 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
                 inner_size=list(container_usable_dimensions(self._scene_config)),
                 container_transform=container_transform_fields(self._scene_config),
                 excluded_ids=[])
-        capture_selection(capture_root, selection_boundary)
+        self._frame_selection_capture_dir = capture_selection(capture_root, selection_boundary)
+        if self._frame_selection_capture_dir:
+            snapshot = self._scene_snapshot(raw_capture_path=os.path.join(
+                self._frame_selection_capture_dir, 'planning_scene.cdr'))
+            if snapshot.get('error'):
+                trial.fail_code = trial.fail_code or 'SELECTION_SCENE_CAPTURE_FAILED'
+                return None, None
         try:
             selection = self._typed.select_place_path(
                 request_id=request_id, box_wdh=box_wdh,
@@ -1679,17 +1686,23 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         out.place_pose.orientation = _yaw_quat(slot_meta["pose_world"]["yaw"])
         return out
 
-    def _scene_snapshot(self):
+    def _scene_snapshot(self, raw_capture_path=None):
         request = GetPlanningScene.Request()
         request.components.components = int(
             PlanningSceneComponents.WORLD_OBJECT_NAMES
             | PlanningSceneComponents.WORLD_OBJECT_GEOMETRY
             | PlanningSceneComponents.ROBOT_STATE
             | PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
+            | PlanningSceneComponents.OCTOMAP
+            | PlanningSceneComponents.TRANSFORMS
             | PlanningSceneComponents.ALLOWED_COLLISION_MATRIX)
         response = self.call_srv(self._get_scene, request, timeout=5.0)
         if response is None:
             return {"error": "get_planning_scene timeout"}
+        if raw_capture_path:
+            from rclpy.serialization import serialize_message
+            with open(raw_capture_path, 'wb') as handle:
+                handle.write(serialize_message(response))
         scene = response.scene
         acm = scene.allowed_collision_matrix
         summary = summarize_planning_scene(scene)
@@ -2926,7 +2939,14 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             getattr(self, "_segment_exec_name", None), boundary,
             typed=getattr(self, "_typed", None) is not None)
         detect_stage = fail.startswith("DETECT_")
-        if boundary and not detect_stage:
+        from luggage_gazebo.selection_capture import preserve_failed_selection
+        selection_failure = preserve_failed_selection(
+            getattr(self, '_frame_selection_capture_dir', None), replay_dir)
+        if selection_failure is not None and not detect_stage:
+            selection_artifacts, selection_missing = selection_failure
+            artifacts.update(selection_artifacts)
+            missing.extend(selection_missing)
+        elif boundary and not detect_stage:
             with open(os.path.join(replay_dir, "last_boundary.json"), "w",
                       encoding="utf-8") as handle:
                 json.dump(boundary, handle, indent=2, sort_keys=True,
@@ -3009,7 +3029,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             handle.write("\n")
         artifacts["perception_refs"] = "replay/perception_refs.json"
         stage = "motion"
-        if detect_stage:
+        if selection_failure is not None and not detect_stage:
+            stage = 'selection'
+        elif detect_stage:
             stage = "detect"
         elif fail.startswith("PLACE_PLAN_"):
             stage = fail[len("PLACE_PLAN_"):]
