@@ -3,7 +3,8 @@
 # Pivot: suction_contact_frame origin; axis: its local Z/contact normal.
 # Roll/pitch exact; box Z parallel/antiparallel to contact normal required.
 yaw_half_range_deg: 5.0
-# Box-axis outward margin on EACH face (full dimension grows by twice this).
-size_margin_per_face_m: [0.050, 0.050, 0.050]
-# Tool-axis +/- translation uncertainty, applied AFTER yaw rotation.
-position_half_range_tool_m: [0.100, 0.100, 0.005]
+# Total measured-size growth. W/D are symmetric; H grows only away from contact.
+size_growth_fraction_wdh: [0.10, 0.10, 0.10]
+# Remaining tool-axis translation bounds. XY are symmetric; Z is one-sided.
+position_half_range_tool_xy_m: [0.0, 0.0]
+away_from_contact_position_error_m: 0.005

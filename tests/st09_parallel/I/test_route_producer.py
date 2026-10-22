@@ -2129,7 +2129,7 @@ def test_cert_rebuild_failure_retains_secondary_cause():
 def test_diagnostic_envelope_refuses_floor_slots_before_building_edges():
     from st09_contracts.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,)*3)
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
     request = make_request(slots=[{'position':[0,0,.1],
@@ -2138,14 +2138,14 @@ def test_diagnostic_envelope_refuses_floor_slots_before_building_edges():
     result = producer.plan_place_route(request)
     assert not result['success']
     assert result['reason_code'] == 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
-    assert result['rows'][0]['envelope_bottom_container'] == pytest.approx(-.15)
+    assert result['rows'][0]['envelope_bottom_container'] == pytest.approx(-.025)
     assert producer._builder.calls == []
 
 
 def test_envelope_identity_reaches_certification_with_nominal_targets():
     from st09_contracts.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,)*3)
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
     request = make_request()
@@ -2173,7 +2173,7 @@ def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
     from st09_contracts.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
     producer.diagnostic_skip_slot_envelope_check = True
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,.1,.005))
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
     request = make_request(slots=[{'position':[0,0,.1],

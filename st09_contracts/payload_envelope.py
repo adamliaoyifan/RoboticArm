@@ -17,22 +17,29 @@ from ._base import ContractViolation, digest_of, finite_tuple, positive_dimensio
 @dataclass(frozen=True)
 class EnvelopeLimits:
     yaw_half_range_deg: float
-    size_margin_per_face_m: tuple
-    position_half_range_tool_m: tuple
+    size_growth_fraction_wdh: tuple
+    position_half_range_tool_xy_m: tuple
+    away_from_contact_position_error_m: float
 
     def __post_init__(self):
         yaw = self.yaw_half_range_deg
         if isinstance(yaw, bool) or not isinstance(yaw, (int, float)) or not math.isfinite(yaw) or not 0 <= yaw <= 180:
             raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: yaw must be in [0,180] degrees')
-        for name in ('size_margin_per_face_m', 'position_half_range_tool_m'):
+        for name, length in (('size_growth_fraction_wdh', 3),
+                             ('position_half_range_tool_xy_m', 2)):
             raw = getattr(self, name)
-            if not isinstance(raw, (list, tuple)) or len(raw) != 3 or any(
+            if not isinstance(raw, (list, tuple)) or len(raw) != length or any(
                     isinstance(v, bool) or not isinstance(v, (int, float)) for v in raw):
-                raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: three numeric margins required')
-            values = finite_tuple(raw, 3, name)
+                raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: %d numeric values required for %s' % (length, name))
+            values = finite_tuple(raw, length, name)
             if any(v < 0 for v in values):
                 raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: negative margin')
+            if name == 'size_growth_fraction_wdh' and any(v > 1 for v in values):
+                raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: size growth fraction exceeds 1')
             object.__setattr__(self, name, values)
+        error = self.away_from_contact_position_error_m
+        if isinstance(error, bool) or not isinstance(error, (int, float)) or not math.isfinite(error) or error < 0:
+            raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: invalid away-from-contact position error')
 
 
 @dataclass(frozen=True)
@@ -71,10 +78,30 @@ def build_envelope(dimensions, translation, quaternion, limits):
     if math.hypot(axis[0], axis[1]) > 1e-9:
         raise ContractViolation('PAYLOAD_ENVELOPE_UNSUPPORTED_TILT: box Z must be parallel to contact normal')
     radius = math.radians(limits.yaw_half_range_deg)
-    half = [d / 2 + m for d, m in zip(dimensions, limits.size_margin_per_face_m)]
+    growth = limits.size_growth_fraction_wdh
+    half_xy = [dimensions[i] * (1 + growth[i]) / 2 for i in range(2)]
+    z_faces = []
+    for sign in (-1, 1):
+        z_faces.append(transform_point(translation, quaternion, (0., 0., sign * dimensions[2] / 2))[2])
+    # Measured contact transforms commonly leave nanometre-scale residuals on
+    # the face that is physically at the suction origin.
+    z_faces = [0. if abs(value) <= 1e-6 else value for value in z_faces]
+    if (z_faces[0] * z_faces[1] < 0 or
+            abs(abs(z_faces[0]) - abs(z_faces[1])) <= 1e-9):
+        raise ContractViolation('PAYLOAD_ENVELOPE_CONTACT_FACE_AMBIGUOUS: cannot identify face away from suction origin')
+    away_face_index = 0 if abs(z_faces[0]) > abs(z_faces[1]) else 1
+    near_face_index = 1 - away_face_index
+    away_local_sign = -1 if away_face_index == 0 else 1
+    away_tool_sign = (-1 if z_faces[away_face_index] < z_faces[near_face_index]
+                      else 1)
+    z_low, z_high = -dimensions[2] / 2, dimensions[2] / 2
+    if away_local_sign < 0:
+        z_low -= dimensions[2] * growth[2]
+    else:
+        z_high += dimensions[2] * growth[2]
     low, high = [math.inf] * 3, [-math.inf] * 3
-    for signs in product((-1, 1), repeat=3):
-        corner = tuple(s * h for s, h in zip(signs, half))
+    for sx, sy, z in product((-1, 1), (-1, 1), (z_low, z_high)):
+        corner = (sx * half_xy[0], sy * half_xy[1], z)
         x, y, z = transform_point(translation, quaternion, corner)
         bounds = (sinusoid_bounds(x, -y, -radius, radius),
                   sinusoid_bounds(y, x, -radius, radius), (z, z))
@@ -82,9 +109,13 @@ def build_envelope(dimensions, translation, quaternion, limits):
             low[i] = min(low[i], lo)
             high[i] = max(high[i], hi)
     # Outward arithmetic allowance, not a physical uncertainty margin.
-    for i, margin in enumerate(limits.position_half_range_tool_m):
+    for i, margin in enumerate(limits.position_half_range_tool_xy_m):
         low[i] -= margin + 1e-12
         high[i] += margin + 1e-12
+    if away_tool_sign < 0:
+        low[2] -= limits.away_from_contact_position_error_m + 1e-12
+    else:
+        high[2] += limits.away_from_contact_position_error_m + 1e-12
     return PayloadEnvelope(
         tuple(hi - lo for lo, hi in zip(low, high)),
         tuple((hi + lo) / 2 for lo, hi in zip(low, high)),

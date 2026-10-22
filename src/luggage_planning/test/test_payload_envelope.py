@@ -9,8 +9,8 @@ from st09_contracts.payload_envelope import EnvelopeLimits, build_envelope, sinu
 from luggage_planning.payload_envelope_config import load_envelope_limits
 
 
-def limits(yaw=5, size=(0., 0., 0.), position=(0., 0., 0.)):
-    return EnvelopeLimits(yaw, size, position)
+def limits(yaw=5, growth=(0., 0., 0.), position_xy=(0., 0.), away_error=0.):
+    return EnvelopeLimits(yaw, growth, position_xy, away_error)
 
 
 def inside(envelope, point):
@@ -29,17 +29,20 @@ def test_stationary_extremum_not_at_zero_or_endpoints():
 @pytest.mark.parametrize('quaternion', [(0,0,0,1), (1,0,0,0), (0,0,math.sin(.7),math.cos(.7))])
 def test_eccentric_continuous_family_crosscheck(yaw, quaternion):
     dimensions, translation = (.5,.3,.2), (.2,-.13,-.15)
-    cfg = limits(yaw, (.05,.03,.02), (.1,.08,.06))
+    cfg = limits(yaw, (.1,.2,.2), (.1,.08), .06)
     env = build_envelope(dimensions, translation, quaternion, cfg)
-    half = [d/2+m for d,m in zip(dimensions, cfg.size_margin_per_face_m)]
-    for signs in product((-1,1), repeat=3):
-        x,y,z = transform_point(translation, quaternion, tuple(s*h for s,h in zip(signs,half)))
+    half = (dimensions[0]*.55, dimensions[1]*.6)
+    # The translation puts the -box-Z face farther from the suction origin.
+    z_values = (-dimensions[2]/2-dimensions[2]*.2, dimensions[2]/2)
+    for sx,sy,z_local in product((-1,1),(-1,1),z_values):
+        x,y,z = transform_point(translation, quaternion, (sx*half[0],sy*half[1],z_local))
         for step in range(101):
             a = math.radians(-yaw+2*yaw*step/100)
             p = (x*math.cos(a)-y*math.sin(a), x*math.sin(a)+y*math.cos(a),z)
-            for error in product((-1,1), repeat=3):
-                assert inside(env, [v+s*m for v,s,m in zip(p,error,cfg.position_half_range_tool_m)])
-    assert env.dimensions_wdh[2] == pytest.approx(.36, abs=1e-10)
+            for ex,ey in product((-1,1),repeat=2):
+                # quaternion identity and negative translation => away is tool -Z.
+                assert inside(env, (p[0]+ex*.1,p[1]+ey*.08,p[2]-.06))
+    assert env.dimensions_wdh[2] == pytest.approx(.30, abs=1e-10)
 
 
 def test_off_center_pivot_moves_center_and_far_corner():
@@ -53,6 +56,31 @@ def test_tilt_refused():
         build_envelope((.5,.3,.2), (0,0,0), (math.sin(.01),0,0,math.cos(.01)), limits())
 
 
+@pytest.mark.parametrize('quaternion,translation,expected_center,unchanged_face', [
+    ((0,0,0,1), (0,0,-.1), -.1125, 0.),
+    ((1,0,0,0), (0,0,.1), .1125, 0.),
+])
+def test_ten_percent_xy_and_one_sided_height_growth(
+        quaternion, translation, expected_center, unchanged_face):
+    env = build_envelope((.5,.3,.2), translation, quaternion,
+                         limits(0,(.1,.1,.1),(0,0),.005))
+    assert env.dimensions_wdh == pytest.approx((.55,.33,.225))
+    # Near face remains at the suction origin; only the world-down/tool-away
+    # face moves, so the box centre shifts by half of 20mm+5mm.
+    assert env.t_tcp_box_translation[2] == pytest.approx(expected_center)
+    near = (env.t_tcp_box_translation[2] + env.dimensions_wdh[2]/2
+            if expected_center < 0 else
+            env.t_tcp_box_translation[2] - env.dimensions_wdh[2]/2)
+    assert near == pytest.approx(unchanged_face)
+
+
+def test_ambiguous_contact_face_refused():
+    with pytest.raises(ContractViolation, match='CONTACT_FACE_AMBIGUOUS'):
+        build_envelope((.5,.3,.2), (0,0,0), (0,0,0,1), limits())
+    with pytest.raises(ContractViolation, match='CONTACT_FACE_AMBIGUOUS'):
+        build_envelope((.5,.3,.2), (0,0,.02), (0,0,0,1), limits())
+
+
 @pytest.mark.parametrize('yaw', [-1, 181, float('nan'), True])
 def test_invalid_angle(yaw):
     with pytest.raises(ContractViolation):
@@ -61,10 +89,12 @@ def test_invalid_angle(yaw):
 
 def test_config_and_identity(tmp_path):
     path = tmp_path/'limits.yaml'
-    path.write_text('yaw_half_range_deg: 5\nsize_margin_per_face_m: [0.05,0.05,0.05]\nposition_half_range_tool_m: [0.1,0.1,0.1]\n')
+    path.write_text('yaw_half_range_deg: 5\nsize_growth_fraction_wdh: [0.1,0.1,0.1]\nposition_half_range_tool_xy_m: [0,0]\naway_from_contact_position_error_m: 0.005\n')
     cfg = load_envelope_limits(path)
     a = build_envelope((.5,.3,.2), (.02,.03,-.1), (1,0,0,0), cfg)
-    b = build_envelope((.5,.3,.2), (.02,.03,-.1), (1,0,0,0), limits(6,cfg.size_margin_per_face_m,cfg.position_half_range_tool_m))
+    b = build_envelope((.5,.3,.2), (.02,.03,-.1), (1,0,0,0),
+        limits(6,cfg.size_growth_fraction_wdh,cfg.position_half_range_tool_xy_m,
+               cfg.away_from_contact_position_error_m))
     assert a.digest() != b.digest()
     path.write_text('yaw_half_range_deg: 5\n')
     with pytest.raises(ContractViolation, match='CONFIG_INVALID'):
@@ -76,7 +106,7 @@ def envelope_attachment(kind='eccentric'):
     from st09_contracts.fixtures import make_attachment
     nominal = make_attachment(kind)
     env = build_envelope(nominal.dimensions_wdh, nominal.t_tcp_box_translation,
-        nominal.t_tcp_box_quaternion_xyzw, limits(5,(.05,)*3,(.1,)*3))
+        nominal.t_tcp_box_quaternion_xyzw, limits(5,(.1,)*3,(0,0),.005))
     return nominal, replace(nominal, collision_envelope=env)
 
 
@@ -89,10 +119,11 @@ def test_attachment_binding_and_nominal_target_preserved():
     assert nominal.t_tcp_box_translation == attached.t_tcp_box_translation
     assert nominal.digest() != attached.digest()
     with pytest.raises(ContractViolation, match='BINDING_MISMATCH'):
-        replace(attached, t_tcp_box_translation=(0,0,0))
+        replace(attached, dimensions_wdh=(attached.dimensions_wdh[0] * 1.01,
+                                         *attached.dimensions_wdh[1:]))
     placed = geometry_at_box_pose(attached, (1,2,3), (0,0,0,1))
     assert placed[2] == attached.collision_envelope.dimensions_wdh
-    assert placed[0][2] == pytest.approx(3)
+    assert placed[0][2] == pytest.approx(3-(attached.dimensions_wdh[2]*.1+.005)/2)
 
 
 def test_slot_refuses_floor_penetration_and_accepts_interior():
@@ -105,7 +136,7 @@ def test_slot_refuses_floor_penetration_and_accepts_interior():
                                 quaternion_xyzw_container=(0,0,0,1))
     result = slot_envelope_check(attachment,candidate,geometry)
     assert not result['inside']
-    assert result['envelope_bottom_container'] == pytest.approx(-.15)
+    assert result['envelope_bottom_container'] == pytest.approx(-.0327)
     candidate.position_container = (0,0,1)
     assert slot_envelope_check(attachment,candidate,geometry)['inside']
 
@@ -133,10 +164,23 @@ def test_scenes_and_graph_identity_share_geometry():
     assert identity.t_tcp_box_translation == env.t_tcp_box_translation
 
 
-@pytest.mark.parametrize('values', [(True,0,0), ('0.1',0,0), (-.1,0,0), (float('nan'),0,0), (0,0)])
-def test_invalid_margin(values):
+@pytest.mark.parametrize('values', [(True,0), ('0.1',0), (-.1,0), (float('nan'),0), (0,)])
+def test_invalid_xy_margin(values):
     with pytest.raises(ContractViolation):
-        limits(position=values)
+        limits(position_xy=values)
+
+
+@pytest.mark.parametrize('values', [(True,0,0), ('0.1',0,0), (-.1,0,0),
+                                     (float('nan'),0,0), (1.1,0,0), (0,0)])
+def test_invalid_growth(values):
+    with pytest.raises(ContractViolation):
+        limits(growth=values)
+
+
+@pytest.mark.parametrize('value', [True, '0.1', -.1, float('nan')])
+def test_invalid_away_error(value):
+    with pytest.raises(ContractViolation):
+        limits(away_error=value)
 
 
 def test_missing_measured_relation_is_never_centered():

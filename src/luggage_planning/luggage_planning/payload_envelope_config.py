@@ -8,7 +8,9 @@ from st09_contracts.payload_envelope import EnvelopeLimits
 def load_envelope_limits(path):
     try:
         data = yaml.safe_load(Path(path).read_text())
-        keys = {'yaw_half_range_deg', 'size_margin_per_face_m', 'position_half_range_tool_m'}
+        keys = {'yaw_half_range_deg', 'size_growth_fraction_wdh',
+                'position_half_range_tool_xy_m',
+                'away_from_contact_position_error_m'}
         if not isinstance(data, dict) or set(data) != keys:
             raise ValueError('expected exactly ' + ', '.join(sorted(keys)))
         return EnvelopeLimits(**data)

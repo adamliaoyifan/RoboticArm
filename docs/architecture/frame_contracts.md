@@ -340,3 +340,14 @@ closed-hull prefilter. Defaultfalse retains it. Record this diagnostic mode in
 candidate rows/manifests; full-arm trajectory collision certification and
 actual post-place verification remain authoritative. The exception does not
 claim hull containment and does not authorize link2 collision.
+
+G3 diagnostic profile (user-directed 2026-10-22) replaces the fixed per-face
+size margins and XY100mm translation range. Width/depth grow by10 percent total
+and symmetrically. Height grows by10 percent only on the face away from the
+suction origin; the5mm Z attachment error is applied on that same face. For
+the supported tool-down, box-vertical carrying contract this face extends in
+world `-Z`. The contact-facing height face is unchanged. XY attachment error is
+zero in this diagnostic profile. Continuous yaw+/-5deg remains, so its exact
+union may exceed1.10 times nominal width/depth. An attachment for which the
+near/far height faces cannot be distinguished from the suction origin is
+refused instead of choosing a direction implicitly.
