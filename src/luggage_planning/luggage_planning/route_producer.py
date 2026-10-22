@@ -651,9 +651,11 @@ class RouteProducer(object):
                  atlas_prior=None, vacuum_state_fn=None,
                  site_poses_fn=None, scene_config=None,
                  scene_revision_binding="", corridor_planner="graph",
-                 lattice_checker_factory=None):
+                 lattice_checker_factory=None,
+                 diagnostic_skip_slot_envelope_check=False):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
+        self.diagnostic_skip_slot_envelope_check = bool(diagnostic_skip_slot_envelope_check)
         self.graph = graph
         self.edge_builder = edge_builder
         self.certifier = certifier
@@ -1314,7 +1316,8 @@ class RouteProducer(object):
                     index, len(request["slots"]),
                     (self._clock_ns() - started_ns) / 1e9, last_reason))
             base_candidate = candidate_from_slot(slot, index)
-            if getattr(attachment, "collision_envelope", None) is not None:
+            if (getattr(attachment, "collision_envelope", None) is not None
+                    and not self.diagnostic_skip_slot_envelope_check):
                 from luggage_description.container_geometry import descriptor_from_scene_config
                 from luggage_planning.payload_envelope_geometry import slot_envelope_check
                 if not self.scene_config:
@@ -1355,6 +1358,7 @@ class RouteProducer(object):
             row = {
                 "slot_index": index,
                 "candidate_id": base_candidate.candidate_id,
+                "diagnostic_skip_slot_envelope_check": self.diagnostic_skip_slot_envelope_check,
                 "depth_m": float(opening_depth),
                 "reachability": str(verdict),
                 "seed_count": len(atlas_seeds),

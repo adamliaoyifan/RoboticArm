@@ -6,4 +6,4 @@ yaw_half_range_deg: 5.0
 # Box-axis outward margin on EACH face (full dimension grows by twice this).
 size_margin_per_face_m: [0.050, 0.050, 0.050]
 # Tool-axis +/- translation uncertainty, applied AFTER yaw rotation.
-position_half_range_tool_m: [0.100, 0.100, 0.100]
+position_half_range_tool_m: [0.100, 0.100, 0.005]

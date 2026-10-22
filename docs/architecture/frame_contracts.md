@@ -331,3 +331,12 @@ Configuration changes require a selector restart/new frozen attachment and
 new certification. Out-of-bound observed slip retains the existing invalidation
 and stop/reconfirmation behaviour; this change adds no slip sensor or claim
 that unobserved motion is detected.
+
+
+G2 diagnostic exception (user-directed 2026-10-22): tool-Z translation bound
+is now5mm (XY100mm and per-face50mm unchanged). Explicit
+`diagnostic_skip_slot_envelope_check=true` bypasses only the placement
+closed-hull prefilter. Defaultfalse retains it. Record this diagnostic mode in
+candidate rows/manifests; full-arm trajectory collision certification and
+actual post-place verification remain authoritative. The exception does not
+claim hull containment and does not authorize link2 collision.

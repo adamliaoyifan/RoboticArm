@@ -225,7 +225,10 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
                                      "config", "payload_envelope.yaml")
     envelope_limits = load_envelope_limits(envelope_path)
     logger("payload envelope diagnostic limits: %s" % envelope_limits)
+    skip_slot_envelope = bool(node.get_parameter("diagnostic_skip_slot_envelope_check").value)
+    logger("diagnostic_skip_slot_envelope_check=%s; trajectory collision checks retained" % skip_slot_envelope)
     producer = RouteProducer(
+        diagnostic_skip_slot_envelope_check=skip_slot_envelope,
         graph=RouteGraph(static_identity=static_identity or (
             "st09-i-route:%s" % scene_tf_hash)),
         edge_builder=MoveItEdgeAdapter(node, scene_client=scene_client),

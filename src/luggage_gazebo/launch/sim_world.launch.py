@@ -112,6 +112,7 @@ def _default_launch_values():
         # reaches the searcher; 0.0 keeps the frozen n*60s contract.
         "diagnostic_route_budget_s": "0.0",
         "payload_envelope_config": "",
+        "diagnostic_skip_slot_envelope_check": "false",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -1132,6 +1133,7 @@ def _launch_setup(context):
                 "corridor_planner": str(cfg["corridor_planner"]),
                 "box_count": int(cfg["box_count"]),
                 "payload_envelope_config": str(cfg["payload_envelope_config"]),
+                "diagnostic_skip_slot_envelope_check": _as_bool(cfg["diagnostic_skip_slot_envelope_check"]),
                 "diagnostic_route_budget_s": float(
                     cfg["diagnostic_route_budget_s"]),
                 **frame_params,
@@ -1456,6 +1458,8 @@ def generate_launch_description():
                 "Route budget scale: 60 s times this box count "
                 "(1 box 60 s, 3 boxes 180 s).",
             ),
+            profile_arg("diagnostic_skip_slot_envelope_check",
+                        "Skip slot envelope hull filter for diagnostic placement; retain trajectory checks."),
             profile_arg("payload_envelope_config",
                         "Diagnostic payload envelope YAML; empty uses planning package config."),
             profile_arg(

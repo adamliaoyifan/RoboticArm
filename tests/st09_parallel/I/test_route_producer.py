@@ -2166,3 +2166,31 @@ def test_envelope_identity_reaches_certification_with_nominal_targets():
     assert all(p.dimensions_wdh == attachment.collision_envelope.dimensions_wdh for p in payloads)
     assert all(p.t_tcp_box_translation == attachment.collision_envelope.t_tcp_box_translation for p in payloads)
     assert tuple(request['box_wdh']) == attachment.dimensions_wdh
+
+
+@pytest.mark.parametrize('collision', [False, True])
+def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    producer, _clock = build_producer()
+    producer.diagnostic_skip_slot_envelope_check = True
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,.1,.005))
+    producer.scene_config = {'container': {'inner': {
+        'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+    request = make_request(slots=[{'position':[0,0,.1],
+        'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+    if collision:
+        def factory(*, scene_states, edges):
+            return StaticMoveItValidityAdapter({
+                (str(edge.edge_id), index): ValiditySample(
+                    edge_id=str(edge.edge_id), sample_index=index,
+                    valid=False, min_clearance_m=0.0, contacts=())
+                for edge in edges for index in range(len(sample_states(edge.trajectory)))})
+        producer.validity_adapter_factory = factory
+    result = producer.plan_place_route(request)
+    assert result['success'] is (not collision), result['rows']
+    assert producer._builder.calls
+    assert any(row.get('diagnostic_skip_slot_envelope_check') for row in result['rows'])
+    assert result['reason_code'] != 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
+    if collision:
+        assert any(row.get('reason') == 'CERT_COLLISION' for row in result['rows'])

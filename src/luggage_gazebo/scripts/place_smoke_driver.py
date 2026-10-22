@@ -1518,6 +1518,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             box_id=str(grasp.get("box_id") or ""),
             generation=int(grasp.get("generation") or 0),
             mono=time.monotonic(), sim=float(self.ros_now_sec()))
+        if capture_root:
+            from rosidl_runtime_py.convert import message_to_ordereddict
+            selection_boundary.update(
+                slots=[message_to_ordereddict(slot) for slot in slot_messages],
+                slot_scores=list(scores),
+                surface=message_to_ordereddict(surface_msg),
+                inner_size=list(container_usable_dimensions(self._scene_config)),
+                container_transform=container_transform_fields(self._scene_config),
+                excluded_ids=[])
         capture_selection(capture_root, selection_boundary)
         try:
             selection = self._typed.select_place_path(
