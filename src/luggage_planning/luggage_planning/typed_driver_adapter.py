@@ -512,11 +512,16 @@ class TypedDriverAdapter:
     def compute_placement(self, *, request_id, box_wdh, height_measured,
                           scene_revision, placed=(), placed_wdh_flat=(),
                           geometry_hash="", expected_map_revision=0,
-                          max_candidates=5):
+                          max_candidates=5, conservative_geometry=None):
         """ComputePlacementV2 with an empty (first-box) placed list by default."""
         from luggage_msgs.srv import ComputePlacementV2
         request = ComputePlacementV2.Request()
-        request.box_wdh = [float(v) for v in box_wdh]
+        dimensions = box_wdh
+        if conservative_geometry is not None:
+            if tuple(float(v) for v in box_wdh) != conservative_geometry.measured_dimensions_wdh:
+                raise ValueError('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
+            dimensions = conservative_geometry.conservative.dimensions_wdh
+        request.box_wdh = [float(v) for v in dimensions]
         request.height_measured = bool(height_measured)
         for record in placed:
             request.placed.append(pose_message(record))
@@ -524,18 +529,26 @@ class TypedDriverAdapter:
         request.geometry_hash = str(geometry_hash)
         request.expected_map_revision = int(expected_map_revision)
         request.max_candidates = int(max_candidates)
-        return self._call(self._compute, request, 30.0)
+        response = self._call(self._compute, request, 30.0)
+        if conservative_geometry is None:
+            return response
+        from luggage_planning.attachment_placement_adapter import nominal_placement_response
+        return nominal_placement_response(response, conservative_geometry)
 
     # -- selection ---------------------------------------------------------
     def select_place_path(self, *, request_id, box_wdh, slots, slot_scores,
                           surface_message, inner_size, geometry_hash,
                           map_revision, start_tcp, start_joints, grasp,
                           container_transform, excluded_ids=(),
-                          box_id="", generation=0, timeout_sec=30.0, placement_prior=None):
+                          box_id="", generation=0, timeout_sec=30.0, placement_prior=None,
+                          conservative_geometry=None):
         """SelectPlacePathV2; the mapper's surface message rides verbatim."""
         from luggage_msgs.srv import SelectPlacePathV2
         source, target, translation, quaternion = container_transform
         request = SelectPlacePathV2.Request()
+        if conservative_geometry is not None:
+            from luggage_planning.attachment_geometry_transport import geometry_to_message
+            request.conservative_geometry = geometry_to_message(conservative_geometry)
         request.request_id = str(request_id)
         request.box_wdh = [float(v) for v in box_wdh]
         from luggage_msgs.msg import PoseContractV2

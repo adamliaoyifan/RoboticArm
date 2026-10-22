@@ -179,6 +179,9 @@ class VacuumControllerNode(Node):
         group = ReentrantCallbackGroup()
 
         self.declare_parameter("backend", "sim")  # sim | stub | hardware
+        from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+        geometry_path = self.declare_parameter('attachment_geometry_config', '').value
+        self._geometry_policy = load_attachment_geometry_policy(geometry_path)
         self.declare_parameter("world", "airport_loading")
         self.declare_parameter("panel_frame", "suction_contact_frame")
         self.declare_parameter("follow_rate_hz", 30.0)
@@ -475,7 +478,8 @@ class VacuumControllerNode(Node):
 
         response = handle_vacuum_command_v2(
             request, response, scene_revision=revision, generation=generation,
-            resolve_tool=resolve_tool, backend=self._backend)
+            resolve_tool=resolve_tool, backend=self._backend,
+            geometry_policy=self._geometry_policy)
         # v1 publishes /vacuum/state before returning. The pick driver treats
         # that latched state as the attach proof, so the v2 path must too.
         self._vacuum_on = bool(request.enable and response.success)

@@ -145,7 +145,8 @@ def _fail(response, context, record, error, evidence=None):
 
 
 def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
-                             resolve_tool, backend, physical_relation=None):
+                             resolve_tool, backend, physical_relation=None,
+                             geometry_policy=None):
     """Admit a measured snapshot, then attach or detach. GT is not read here."""
     require_message(request, VacuumCommandV2.Request)
     response.has_measured_attachment = False
@@ -213,6 +214,21 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
         attachment = admit_attachment(
             tool, box_pose, measured, grasp, int(request.generation),
             int(generation), str(request.box_id), context)
+        from st09_contracts.attachment_geometry import freeze_geometry
+        from st09_contracts._base import ContractViolation
+        from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy
+        from luggage_planning.attachment_geometry_transport import geometry_to_message
+        try:
+            policy = geometry_policy if geometry_policy is not None else load_attachment_geometry_policy()
+            geometry = freeze_geometry(attachment['size_wdh'],
+                attachment['t_tool_box_translation'], attachment['t_tool_box_quaternion'], policy)
+            geometry_message = geometry_to_message(geometry)
+        except ContractViolation as error:
+            raise ContractError('ATTACHMENT_GEOMETRY_INVALID', 'conservative_geometry',
+                                'qualified bounded geometry', str(error)) from error
+        # One fresh record at the attachment boundary. Nominal fields retain
+        # their measured meaning for physical retention and release evidence.
+        attachment = dict(attachment, conservative_geometry=geometry)
         # Encode before the effect, so a conversion error cannot hide an
         # already-successful physical attach. This is the controller's admitted
         # relation, never the request's speculative/desired grasp.
@@ -239,6 +255,7 @@ def handle_vacuum_command_v2(request, response, *, scene_revision, generation,
         if ok:
             response.measured_grasp = measured_grasp
             response.attached_box_wdh = list(attachment['size_wdh'])
+            response.conservative_geometry = geometry_message
             response.has_measured_attachment = True
         response.diagnostic = diagnostic_to_message(box_pose, context, None if ok else None)
         return response

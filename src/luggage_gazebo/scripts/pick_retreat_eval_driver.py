@@ -725,6 +725,7 @@ class PickRetreatEvalDriver(Node):
             grasp = None
             if enable:
                 self._frame_attachment_confirmed = False
+                self._frame_attachment_geometry = None
                 self._frame_grasp = None
                 # Lock at contact: live TCP versus the still-on-platform box.
                 self._frame_capture_grasp(pick_msg)
@@ -748,6 +749,7 @@ class PickRetreatEvalDriver(Node):
                 from luggage_planning.typed_driver_adapter import grasp_record
                 actual = attachment_from_response(response, request_id=request_id,
                     box_id=box_id, generation=generation, scene_revision=self._frame_scene_revision)
+                self._frame_attachment_geometry = actual.geometry
                 self._frame_grasp = grasp_record(request_id, actual.scene_revision,
                     actual.box_from_tcp.translation, actual.box_from_tcp.quaternion_xyzw,
                     stamp_ns=actual.stamp_ns)
@@ -756,6 +758,7 @@ class PickRetreatEvalDriver(Node):
                 self._frame_attachment_confirmed = True
             if not enable and response.success:
                 self._frame_attachment_confirmed = False
+                self._frame_attachment_geometry = None
                 self._frame_grasp = None
             if not response.success:
                 stamp = pick_msg.header.stamp

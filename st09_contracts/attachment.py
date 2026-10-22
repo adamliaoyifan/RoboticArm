@@ -164,11 +164,10 @@ class AttachmentRecord:
             raise ContractViolation("invalidation_reason required when not valid")
 
         if self.collision_envelope is not None:
-            from .payload_envelope import build_envelope
             env = self.collision_envelope
-            if not isinstance(env, PayloadEnvelope) or env != build_envelope(
+            if not isinstance(env, PayloadEnvelope) or env.nominal_digest != digest_of(
                     self.dimensions_wdh, self.t_tcp_box_translation,
-                    self.t_tcp_box_quaternion_xyzw, env.limits):
+                    self.t_tcp_box_quaternion_xyzw):
                 raise ContractViolation("PAYLOAD_ENVELOPE_BINDING_MISMATCH")
 
     @property

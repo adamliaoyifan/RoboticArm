@@ -1448,10 +1448,15 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         box_wdh = [float(pick_msg.width), float(pick_msg.depth),
                    float(pick_msg.height)]
         self._frame_box_wdh = list(box_wdh)
+        attachment_geometry = getattr(self, '_frame_attachment_geometry', None)
+        if attachment_geometry is None:
+            trial.fail_code = trial.fail_code or 'ATTACHMENT_GEOMETRY_MISSING'
+            return None, None
         request_id = self._frame_request_id("place")
         try:
             placement = self._typed.compute_placement(
                 request_id=request_id, box_wdh=box_wdh,
+                conservative_geometry=attachment_geometry,
                 height_measured=True,
                 scene_revision=self._frame_scene_revision,
                 geometry_hash=geometry_hash,
@@ -1512,6 +1517,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
             capture_root = os.path.join(self._args.out, "selection_boundary")
         selection_boundary = dict(
             request_id=request_id, scene_revision=self._frame_scene_revision,
+            conservative_geometry=attachment_geometry.to_dict(),
             box_wdh=box_wdh, grasp=grasp, start_tcp=start_tcp,
             start_joints=start_joints, geometry_hash=geometry_hash,
             map_revision=int(surface_msg.map_revision),
@@ -1531,6 +1537,7 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         try:
             selection = self._typed.select_place_path(
                 request_id=request_id, box_wdh=box_wdh,
+                conservative_geometry=attachment_geometry,
                 slots=slot_messages, slot_scores=scores,
                 surface_message=surface_msg,
                 inner_size=list(

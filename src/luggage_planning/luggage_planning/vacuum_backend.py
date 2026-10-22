@@ -234,9 +234,14 @@ class SimVacuumBackend(VacuumBackend):
             self._physical_relation = physical
             self._model_name = context.get("model_name")
             try:
+                geometry = record.get('conservative_geometry')
+                if geometry is None:
+                    raise ValueError('ATTACHMENT_GEOMETRY_MISSING')
+                scene_position, scene_quaternion = geometry.conservative_pose_at_box(
+                    record['box_pose']['position'], record['box_pose']['quaternion_xyzw'])
                 scene_ok, scene_msg = self._scene.attach_pickup_box(
-                    self._model_name, record["box_pose"]["position"],
-                    record["box_pose"]["quaternion_xyzw"], record["size_wdh"],
+                    self._model_name, scene_position, scene_quaternion,
+                    geometry.conservative.dimensions_wdh,
                     context.get("attach_link", "suction_contact_frame"))
             except Exception as exc:  # noqa: BLE001 - backend boundary
                 self.last_error = str(exc)

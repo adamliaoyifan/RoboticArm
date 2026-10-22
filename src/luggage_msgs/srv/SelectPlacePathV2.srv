@@ -25,6 +25,7 @@ string[] excluded_ids
 # ATTACHMENT_REQUEST_MISMATCH.
 string box_id
 uint64 generation
+luggage_msgs/AttachmentGeometryV2 conservative_geometry
 ---
 bool success
 string reason_code

@@ -25,6 +25,7 @@ class EnvelopeLimits:
         yaw = self.yaw_half_range_deg
         if isinstance(yaw, bool) or not isinstance(yaw, (int, float)) or not math.isfinite(yaw) or not 0 <= yaw <= 180:
             raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: yaw must be in [0,180] degrees')
+        object.__setattr__(self, 'yaw_half_range_deg', float(yaw))
         for name, length in (('size_growth_fraction_wdh', 3),
                              ('position_half_range_tool_xy_m', 2)):
             raw = getattr(self, name)
@@ -40,6 +41,7 @@ class EnvelopeLimits:
         error = self.away_from_contact_position_error_m
         if isinstance(error, bool) or not isinstance(error, (int, float)) or not math.isfinite(error) or error < 0:
             raise ContractViolation('PAYLOAD_ENVELOPE_CONFIG_INVALID: invalid away-from-contact position error')
+        object.__setattr__(self, 'away_from_contact_position_error_m', float(error))
 
 
 @dataclass(frozen=True)
@@ -119,7 +121,9 @@ def build_envelope(dimensions, translation, quaternion, limits):
     return PayloadEnvelope(
         tuple(hi - lo for lo, hi in zip(low, high)),
         tuple((hi + lo) / 2 for lo, hi in zip(low, high)),
-        (0., 0., 0., 1.), limits,
+        # Equivalent cuboid with +Z agreeing with nominal box +Z. This
+        # preserves an upright box when a packing solver places the envelope.
+        ((0., 0., 0., 1.) if axis[2] > 0 else (1., 0., 0., 0.)), limits,
         digest_of(dimensions, translation, quaternion))
 
 

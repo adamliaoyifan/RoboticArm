@@ -111,8 +111,7 @@ def _default_launch_values():
         # [Functional diagnostic] Per-Select route budget override that
         # reaches the searcher; 0.0 keeps the frozen n*60s contract.
         "diagnostic_route_budget_s": "0.0",
-        "payload_envelope_config": "",
-        "diagnostic_skip_slot_envelope_check": "false",
+        "attachment_geometry_config": "",
         "named_pose_duration": "4.0",
         "named_pose_max_vel": "1.0",
         "velocity_scaling": "0.3",
@@ -1132,8 +1131,6 @@ def _launch_setup(context):
                 "robot_poses_config": poses_path,
                 "corridor_planner": str(cfg["corridor_planner"]),
                 "box_count": int(cfg["box_count"]),
-                "payload_envelope_config": str(cfg["payload_envelope_config"]),
-                "diagnostic_skip_slot_envelope_check": _as_bool(cfg["diagnostic_skip_slot_envelope_check"]),
                 "diagnostic_route_budget_s": float(
                     cfg["diagnostic_route_budget_s"]),
                 **frame_params,
@@ -1241,7 +1238,7 @@ def _launch_setup(context):
             executable="vacuum_controller_node.py",
             name="vacuum_controller",
             output="screen",
-            parameters=[{"use_sim_time": True, **frame_params}],
+            parameters=[{"use_sim_time": True, "attachment_geometry_config": str(cfg["attachment_geometry_config"]), **frame_params}],
             condition=IfCondition(_bool_text(cfg["use_vacuum"])),
         ),
         *_robot_state_publisher_actions(
@@ -1458,10 +1455,8 @@ def generate_launch_description():
                 "Route budget scale: 60 s times this box count "
                 "(1 box 60 s, 3 boxes 180 s).",
             ),
-            profile_arg("diagnostic_skip_slot_envelope_check",
-                        "Skip slot envelope hull filter for diagnostic placement; retain trajectory checks."),
-            profile_arg("payload_envelope_config",
-                        "Diagnostic payload envelope YAML; empty uses planning package config."),
+            profile_arg("attachment_geometry_config",
+                        "Attachment-owned diagnostic geometry policy YAML."),
             profile_arg(
                 "diagnostic_route_budget_s",
                 "Functional-diagnostic per-Select route budget override "

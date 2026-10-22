@@ -6,7 +6,7 @@ All transforms map the named child frame into its parent frame.
 """
 from dataclasses import dataclass
 
-from ._base import digest_of, finite_tuple, positive_dimensions, unit_quaternion
+from ._base import ContractViolation, digest_of, finite_tuple, positive_dimensions, unit_quaternion
 from .attachment import compose_transform, invert_transform
 from .payload_envelope import PayloadEnvelope, build_envelope
 
@@ -17,6 +17,23 @@ class AttachmentGeometry:
     t_tool_box_translation: tuple
     t_tool_box_quaternion_xyzw: tuple
     conservative: PayloadEnvelope
+
+    def __post_init__(self):
+        for name, value in (
+                ('measured_dimensions_wdh', positive_dimensions(self.measured_dimensions_wdh, 'measured_dimensions')),
+                ('t_tool_box_translation', finite_tuple(self.t_tool_box_translation, 3, 'tool_box_translation')),
+                ('t_tool_box_quaternion_xyzw', unit_quaternion(self.t_tool_box_quaternion_xyzw, 'tool_box_quaternion'))):
+            object.__setattr__(self, name, value)
+        expected = digest_of(self.measured_dimensions_wdh, self.t_tool_box_translation,
+                             self.t_tool_box_quaternion_xyzw)
+        if self.conservative.nominal_digest != expected:
+            raise ContractViolation('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
+
+    def to_dict(self):
+        return dict(measured_dimensions_wdh=self.measured_dimensions_wdh,
+                    t_tool_box_translation=self.t_tool_box_translation,
+                    t_tool_box_quaternion_xyzw=self.t_tool_box_quaternion_xyzw,
+                    conservative=self.conservative.to_dict(), digest=self.digest())
 
     def digest(self):
         return digest_of('attachment-geometry-v1', self.measured_dimensions_wdh,

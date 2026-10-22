@@ -13,12 +13,10 @@ unset AMENT_TRACE_SETUP_FILES
 
 WS="/tmp/elfin-master-pack-baseline-g3"
 MAIN="/home/adamliao/work/elfin_humble_ws"
-OUT="${PHASE2_RUN_OUT:-$WS/docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_$(date +%Y%m%d_%H%M%S)}"
+OUT="${PHASE2_RUN_OUT:-$WS/docs/status/evidence/occ_owner_b1/attachment_geometry_g4_20261022/live_$(date +%Y%m%d_%H%M%S)}"
 RUN_ID="n3func_$(date +%H%M%S)"
 DEADLINE=$(( $(date +%s) + 5400 ))
 DIAG_ROUTE_BUDGET_S=180
-SKIP_SLOT_ENVELOPE="${PHASE2_SKIP_SLOT_ENVELOPE_CHECK:-0}"
-export PHASE2_SKIP_SLOT_ENVELOPE_CHECK="$SKIP_SLOT_ENVELOPE"
 mkdir -p "$OUT"
 export ROS_DOMAIN_ID=7
 
@@ -123,14 +121,11 @@ for relative in paths:
     hashes[relative] = hashlib.sha256(source.read_bytes()).hexdigest()
     if source.read_bytes() != installed.read_bytes():
         raise SystemExit("stale installed driver: " + str(installed))
-envelope_source = ws / "src/luggage_planning/config/payload_envelope.yaml"
-envelope_installed = ws / "install/luggage_planning/share/luggage_planning/config/payload_envelope.yaml"
+envelope_source = ws / "src/luggage_planning/config/attachment_geometry.yaml"
+envelope_installed = ws / "install/luggage_planning/share/luggage_planning/config/attachment_geometry.yaml"
 if envelope_source.read_bytes() != envelope_installed.read_bytes():
     raise SystemExit("stale installed envelope config")
-(out / "payload_envelope.yaml").write_bytes(envelope_source.read_bytes())
-skip_slot = os.environ.get("PHASE2_SKIP_SLOT_ENVELOPE_CHECK", "0")
-if skip_slot not in ("0", "1"):
-    raise SystemExit("PHASE2_SKIP_SLOT_ENVELOPE_CHECK must be 0 or 1")
+(out / "attachment_geometry.yaml").write_bytes(envelope_source.read_bytes())
 import luggage_gazebo.driver_executor as lifecycle
 manifest = dict(
     start=datetime.datetime.now().astimezone().isoformat(),
@@ -140,7 +135,6 @@ manifest = dict(
     selector_budget_s=180, attachment_max_age_s=60,
     prior_adopted=False, seed=0, catalog="inch20", driver_hashes=hashes,
     lifecycle_module=lifecycle.__file__,
-    diagnostic_skip_slot_envelope_check=skip_slot == "1",
     envelope_config_sha256=hashlib.sha256(envelope_source.read_bytes()).hexdigest(),
     acceptance="all three boxes verified, committed and map-confirmed; MAX_BOXES; exit 0; no executor runtime failure",
     aggregation="AND over three boxes in one suite; no success-rate estimate from one suite",
@@ -171,8 +165,7 @@ setsid ros2 launch luggage_gazebo sim_world.launch.py \
     start_placement_prior:=false \
     robot_poses_config:="$POSES_OUT" \
     diagnostic_route_budget_s:=$DIAG_ROUTE_BUDGET_S \
-    payload_envelope_config:="$OUT/payload_envelope.yaml" \
-    diagnostic_skip_slot_envelope_check:="$SKIP_SLOT_ENVELOPE" \
+    attachment_geometry_config:="$OUT/attachment_geometry.yaml" \
     joint_capture_mode:=window joint_capture_run_dir:="$OUT/joint_capture" \
     > "$OUT/launch.log" 2>&1 &
 LPID=$!

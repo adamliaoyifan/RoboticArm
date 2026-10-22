@@ -155,6 +155,13 @@ def _admit_slot(message, request_id, scene_revision, interface_id):
 
 
 def request_dict(message):
+    from luggage_planning.attachment_geometry_transport import geometry_from_message
+    from st09_contracts._base import ContractViolation
+    try:
+        conservative_geometry = geometry_from_message(message.conservative_geometry)
+    except ContractViolation as error:
+        raise ContractError('ATTACHMENT_GEOMETRY_INVALID', 'conservative_geometry',
+                            'confirmed attachment output', str(error)) from error
     if not message.slots:
         raise ContractError("MISSING_IDENTITY", "slots", "nonempty", [])
     request_id = _require_request_id(str(message.request_id))
@@ -187,6 +194,7 @@ def request_dict(message):
         "request_id": request_id,
         "scene_revision": scene,
         "box_wdh": _xyz(message.box_wdh),
+        "conservative_geometry": conservative_geometry,
         "slots": slots,
         "slot_scores": [float(v) for v in message.slot_scores],
         "surface": surface,

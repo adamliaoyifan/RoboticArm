@@ -19,3 +19,4 @@ luggage_msgs/BoundaryDiagnosticV2 diagnostic
 bool has_measured_attachment
 luggage_msgs/PoseContractV2 measured_grasp
 float64[3] attached_box_wdh
+luggage_msgs/AttachmentGeometryV2 conservative_geometry

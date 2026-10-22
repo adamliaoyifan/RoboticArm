@@ -1711,6 +1711,8 @@ def _service_message(stamp_ns):
             "req-map-1", scene, "container_link", "",
             geometry_hash="geo-1", map_revision=1))
     message.box_wdh = [0.30, 0.20, 0.20]
+    from luggage_planning.attachment_geometry_transport import geometry_to_message
+    message.conservative_geometry = geometry_to_message(_confirmed_geometry(make_request()))
     message.inner_size = [0.6, 0.4, 0.4]
     message.geometry_hash = "geo-1"
     message.map_revision = 1
@@ -2126,29 +2128,37 @@ def test_cert_rebuild_failure_retains_secondary_cause():
     assert retry['failure_detail'] is not None
 
 
-def test_diagnostic_envelope_refuses_floor_slots_before_building_edges():
+def _confirmed_geometry(request):
+    from st09_contracts.attachment import invert_transform
+    from st09_contracts.attachment_geometry import freeze_geometry
     from st09_contracts.payload_envelope import EnvelopeLimits
-    producer, _clock = build_producer()
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
-    producer.scene_config = {'container': {'inner': {
-        'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
-    request = make_request(slots=[{'position':[0,0,.1],
-        'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
-    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
-    result = producer.plan_place_route(request)
-    assert not result['success']
-    assert result['reason_code'] == 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
-    assert result['rows'][0]['envelope_bottom_container'] == pytest.approx(-.025)
-    assert producer._builder.calls == []
+    grasp = request['grasp']
+    transform = invert_transform(grasp['position'], grasp['quaternion_xyzw'])
+    return freeze_geometry(request['box_wdh'], *transform,
+                           EnvelopeLimits(5, (.1,)*3, (0.,0.), .005))
+
+
+def test_selector_refuses_missing_attachment_geometry_before_search():
+    from luggage_msgs.srv import SelectPlacePathV2
+    from luggage_msgs.msg import AttachmentGeometryV2
+    from luggage_planning.place_service import fill_select_response_route
+    producer, clock = build_producer()
+    message = _service_message(clock.now_ns)
+    message.conservative_geometry = AttachmentGeometryV2()
+    response = SelectPlacePathV2.Response()
+    fill_select_response_route(message, response, producer)
+    assert not response.success
+    assert response.reason_code == 'ATTACHMENT_GEOMETRY_INVALID'
+    assert not producer._builder.calls
 
 
 def test_envelope_identity_reaches_certification_with_nominal_targets():
     from st09_contracts.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
     request = make_request()
+    request['conservative_geometry'] = _confirmed_geometry(request)
     register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
     attachment = producer.attachment_provider.latest_record(request['request_id'])
     scenes_seen = []
@@ -2169,15 +2179,14 @@ def test_envelope_identity_reaches_certification_with_nominal_targets():
 
 
 @pytest.mark.parametrize('collision', [False, True])
-def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
+def test_attachment_geometry_preserves_trajectory_collision_gate(collision):
     from st09_contracts.payload_envelope import EnvelopeLimits
     producer, _clock = build_producer()
-    producer.diagnostic_skip_slot_envelope_check = True
-    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.1,)*3, (0.,0.), .005)
     producer.scene_config = {'container': {'inner': {
         'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
     request = make_request(slots=[{'position':[0,0,.1],
         'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+    request['conservative_geometry'] = _confirmed_geometry(request)
     register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
     if collision:
         def factory(*, scene_states, edges):
@@ -2190,7 +2199,6 @@ def test_diagnostic_slot_bypass_preserves_trajectory_collision_gate(collision):
     result = producer.plan_place_route(request)
     assert result['success'] is (not collision), result['rows']
     assert producer._builder.calls
-    assert any(row.get('diagnostic_skip_slot_envelope_check') for row in result['rows'])
     assert result['reason_code'] != 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
     if collision:
         assert any(row.get('reason') == 'CERT_COLLISION' for row in result['rows'])

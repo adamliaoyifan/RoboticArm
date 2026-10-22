@@ -351,3 +351,30 @@ zero in this diagnostic profile. Continuous yaw+/-5deg remains, so its exact
 union may exceed1.10 times nominal width/depth. An attachment for which the
 near/far height faces cannot be distinguished from the suction origin is
 refused instead of choosing a direction implicitly.
+
+
+## Attachment-owned conservative geometry (G4, supersedes G1-G3 ownership)
+
+VacuumCommandV2 freezes an AttachmentGeometry from admitted measured dimensions,
+actual tool/box relation and the single attachment_geometry.yaml policy before
+performing the attachment effect. Its response carries measured dimensions and
+an explicit AttachmentGeometryV2: conservative dimensions, tool-relative centre
+and orientation, policy provenance and digests. Nominal fields never become
+inflated fields. Missing or mismatched geometry is a named refusal at executable
+selection admission. No online physics/reference size enters this construction.
+
+The scene attach and route consumers use that frozen output. Selector/provider
+must not load tolerance configuration or rebuild envelopes. Capacity generation
+receives conservative dimensions; its conservative-centre targets are converted
+back to nominal box targets by an Attachment adapter. Inputs and shared message
+objects must not be mutated; each converted target is a fresh output. Envelope
++Z is represented parallel to nominal box +Z (equivalent cuboid axis signs), so
+an upright packing target cannot flip the nominal box. All geometry stays frozen
+until a new measured attachment is admitted. Existing nominal map verification
+and contact targets retain their measurement semantics.
+
+The old late slot-envelope hull filter and its diagnostic bypass are removed;
+capacity is handled upstream. Collision, edge and certification checks remain.
+Bounds remain diagnostic: 10% total size growth, height only away from contact,
+5mm away-position uncertainty, +/-5deg suction-pivot yaw, zero XY translation
+uncertainty, exact roll/pitch under the vertical box/contact-normal contract.

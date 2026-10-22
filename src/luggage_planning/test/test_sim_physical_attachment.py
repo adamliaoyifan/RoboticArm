@@ -71,8 +71,16 @@ def test_real_node_v2_keeps_mesh_axes_and_measured_planning_separate(controller,
     result = node._handle_command_v2(request,VacuumCommandV2.Response())
     assert result.success, result.message
     assert list(result.attached_box_wdh) == [.516,.390,.247]
-    assert scene[0][1] == [-1.,0.,.9835]
-    assert scene[0][2] == [0.,0.,0.,1.]
+    from luggage_planning.attachment_geometry_transport import geometry_from_message
+    geometry = geometry_from_message(result.conservative_geometry)
+    expected_position, expected_quaternion = geometry.conservative_pose_at_box(
+        (-1.,0.,.9835), (0.,0.,0.,1.))
+    assert scene[0][1] == pytest.approx(expected_position)
+    assert scene[0][2] == pytest.approx(expected_quaternion)
+    assert scene[0][3] == pytest.approx(geometry.conservative.dimensions_wdh)
+    # Contact face stays fixed while the conservative bottom moves down.
+    assert scene[0][1][2] + scene[0][3][2]/2 == pytest.approx(1.107)
+    assert scene[0][1][2] - scene[0][3][2]/2 < .9835 - .247/2
     assert node._backend.follow_step([-1.,0.,1.107],[1.,0.,0.,0.])[0]
     assert follow[-1][1] == pytest.approx(original_xyz)
     assert follow[-1][2] == pytest.approx(physical_q)

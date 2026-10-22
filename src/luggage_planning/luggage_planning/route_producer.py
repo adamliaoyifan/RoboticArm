@@ -651,11 +651,9 @@ class RouteProducer(object):
                  atlas_prior=None, vacuum_state_fn=None,
                  site_poses_fn=None, scene_config=None,
                  scene_revision_binding="", corridor_planner="graph",
-                 lattice_checker_factory=None,
-                 diagnostic_skip_slot_envelope_check=False):
+                 lattice_checker_factory=None):
         from luggage_planning.trajectory_certifier import CertificationPolicy
 
-        self.diagnostic_skip_slot_envelope_check = bool(diagnostic_skip_slot_envelope_check)
         self.graph = graph
         self.edge_builder = edge_builder
         self.certifier = certifier
@@ -1316,19 +1314,6 @@ class RouteProducer(object):
                     index, len(request["slots"]),
                     (self._clock_ns() - started_ns) / 1e9, last_reason))
             base_candidate = candidate_from_slot(slot, index)
-            if (getattr(attachment, "collision_envelope", None) is not None
-                    and not self.diagnostic_skip_slot_envelope_check):
-                from luggage_description.container_geometry import descriptor_from_scene_config
-                from luggage_planning.payload_envelope_geometry import slot_envelope_check
-                if not self.scene_config:
-                    return self._fail("PAYLOAD_ENVELOPE_CONTAINER_MISSING", rows)
-                containment = slot_envelope_check(attachment, base_candidate,
-                    descriptor_from_scene_config(self.scene_config))
-                if not containment["inside"]:
-                    rows.append(dict(slot_index=index, candidate_id=base_candidate.candidate_id,
-                                     reason="PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL", **containment))
-                    last_reason = "PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL"
-                    continue
             elapsed = self._clock_ns() - started_ns
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
@@ -1358,7 +1343,6 @@ class RouteProducer(object):
             row = {
                 "slot_index": index,
                 "candidate_id": base_candidate.candidate_id,
-                "diagnostic_skip_slot_envelope_check": self.diagnostic_skip_slot_envelope_check,
                 "depth_m": float(opening_depth),
                 "reachability": str(verdict),
                 "seed_count": len(atlas_seeds),
@@ -3699,6 +3683,7 @@ def register_attach_from_request(provider, request: Mapping,
         source_kind=AttachmentSourceKind.MEASURED_ATTACH_CONFIRMED,
         source_method=str(source_method),
         dimensions_wdh=[float(v) for v in box_wdh],
+        conservative_geometry=request.get('conservative_geometry'),
         cargo_id=str(cargo_id or request["request_id"]),
         box_id=str(box_id or request["request_id"]),
         cycle_id=str(cycle_id or request["request_id"]),

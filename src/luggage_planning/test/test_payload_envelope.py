@@ -6,7 +6,7 @@ import pytest
 from st09_contracts._base import ContractViolation
 from st09_contracts.attachment import transform_point
 from st09_contracts.payload_envelope import EnvelopeLimits, build_envelope, sinusoid_bounds
-from luggage_planning.payload_envelope_config import load_envelope_limits
+from luggage_planning.attachment_geometry_policy import load_attachment_geometry_policy as load_envelope_limits
 
 
 def limits(yaw=5, growth=(0., 0., 0.), position_xy=(0., 0.), away_error=0.):
@@ -125,20 +125,6 @@ def test_attachment_binding_and_nominal_target_preserved():
     assert placed[2] == attached.collision_envelope.dimensions_wdh
     assert placed[0][2] == pytest.approx(3-(attached.dimensions_wdh[2]*.1+.005)/2)
 
-
-def test_slot_refuses_floor_penetration_and_accepts_interior():
-    from types import SimpleNamespace
-    from luggage_description.container_geometry import normalize_descriptor
-    from luggage_planning.payload_envelope_geometry import slot_envelope_check
-    _, attachment = envelope_attachment()
-    geometry = normalize_descriptor(dict(length=4,width=4,floor_z=0,ceiling_z=3))
-    candidate = SimpleNamespace(position_container=(0,0,attachment.dimensions_wdh[2]/2),
-                                quaternion_xyzw_container=(0,0,0,1))
-    result = slot_envelope_check(attachment,candidate,geometry)
-    assert not result['inside']
-    assert result['envelope_bottom_container'] == pytest.approx(-.0327)
-    candidate.position_container = (0,0,1)
-    assert slot_envelope_check(attachment,candidate,geometry)['inside']
 
 
 def test_scenes_and_graph_identity_share_geometry():

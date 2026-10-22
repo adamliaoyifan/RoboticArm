@@ -21,6 +21,7 @@ class MeasuredAttachment:
     stamp_ns: int
     box_wdh: tuple
     box_from_tcp: Transform
+    geometry: object = None
 
 
 def attachment_from_response(response, *, request_id, box_id, generation, scene_revision):
@@ -36,8 +37,17 @@ def attachment_from_response(response, *, request_id, box_id, generation, scene_
     size = finite_tuple(response.attached_box_wdh, 3, 'attached dimensions')
     if min(size) <= 0:
         raise ValueError('attached dimensions must be positive')
+    from luggage_planning.attachment_geometry_transport import geometry_from_message
+    from st09_contracts.attachment import invert_transform
+    geometry = geometry_from_message(response.conservative_geometry)
+    box_from_tcp = transform_from_pose(pose.pose)
+    tool_box = invert_transform(box_from_tcp.translation, box_from_tcp.quaternion_xyzw)
+    if (tuple(size) != geometry.measured_dimensions_wdh
+            or any(abs(a-b) > 1e-9 for a,b in zip(tool_box[0], geometry.t_tool_box_translation))
+            or abs(sum(a*b for a,b in zip(tool_box[1], geometry.t_tool_box_quaternion_xyzw))) < 1-1e-9):
+        raise ValueError('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
     return MeasuredAttachment(box_id, generation, scene_revision,
-                              identity.stamp_ns, size, transform_from_pose(pose.pose))
+                              identity.stamp_ns, size, box_from_tcp, geometry)
 
 
 def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
@@ -57,6 +67,7 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
     else:
         placement = adapter.compute_placement(request_id=request_id,
             box_wdh=attachment.box_wdh, height_measured=True,
+            conservative_geometry=attachment.geometry,
             scene_revision=attachment.scene_revision, geometry_hash=surface.geometry_hash,
             expected_map_revision=surface.map_revision, max_candidates=2000)
         if placement is None or not placement.success:
@@ -70,6 +81,7 @@ def plan_attached_box(adapter, attachment, *, request_id, surface, inner_size,
         stamp_ns=attachment.stamp_ns)
     start = dict(start_tcp, request_id=request_id)
     return adapter.select_place_path(request_id=request_id, box_wdh=attachment.box_wdh,
+        conservative_geometry=attachment.geometry,
         slots=slots, slot_scores=scores, surface_message=surface, inner_size=inner_size,
         geometry_hash=surface.geometry_hash, map_revision=surface.map_revision,
         start_tcp=start, start_joints=start_joints, grasp=grasp,

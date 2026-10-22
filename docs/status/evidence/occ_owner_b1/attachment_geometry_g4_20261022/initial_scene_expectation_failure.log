@@ -1,0 +1,29 @@
+...................F.............                                        [100%]
+=================================== FAILURES ===================================
+_______ test_real_node_v2_keeps_mesh_axes_and_measured_planning_separate _______
+
+controller = (<physical_vacuum_node_test.VacuumControllerNode object at 0x7a84bdac1c90>, [('pickup_box_0001_carryon', (-1.0, 0.0, 0...95001), (1.0, 0.0, 0.0, 0.0), (0.6028299242776202, 0.47683712506692966, 0.276700000001), 'suction_contact_frame')], [])
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x7a84b09acb20>
+
+    def test_real_node_v2_keeps_mesh_axes_and_measured_planning_separate(controller,monkeypatch):
+        node, scene, follow = controller
+        # Measured +X is long axis, physical model +Y is long axis.
+        original_xyz = [-1.007,.004,.985]
+        physical_q = [0.,0.,math.sin(math.pi/4),math.cos(math.pi/4)]
+        monkeypatch.setattr(physical,'observe_model_pose',lambda _: (original_xyz,physical_q))
+        request = _request(LIVE)
+        result = node._handle_command_v2(request,VacuumCommandV2.Response())
+        assert result.success, result.message
+        assert list(result.attached_box_wdh) == [.516,.390,.247]
+>       assert scene[0][1] == [-1.,0.,.9835]
+E       assert (-1.0, 0.0, 0...6499999995001) == [-1.0, 0.0, 0.9835]
+E         
+E         At index 2 diff: 0.9686499999995001 != 0.9835
+E         Use -v to get more diff
+
+src/luggage_planning/test/test_sim_physical_attachment.py:74: AssertionError
+---------------------------- Captured stderr setup -----------------------------
+[INFO] [1792672496.819350574] [vacuum_controller]: vacuum_controller ready (backend=sim, panel=suction_contact_frame)
+=========================== short test summary info ============================
+FAILED src/luggage_planning/test/test_sim_physical_attachment.py::test_real_node_v2_keeps_mesh_axes_and_measured_planning_separate
+1 failed, 32 passed in 0.56s

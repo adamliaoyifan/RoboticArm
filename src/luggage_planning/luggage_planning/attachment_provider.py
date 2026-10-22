@@ -84,8 +84,7 @@ class MeasuredAttachmentProvider:
     def __init__(self, scene_revision: str, calibration_id: str,
                  tcp_frame: str = "suction_contact_frame",
                  box_frame: str = "world",
-                 max_age_ns: Optional[int] = None, envelope_limits=None):
-        self.envelope_limits = envelope_limits
+                 max_age_ns: Optional[int] = None):
         self._scene_revision = str(scene_revision)
         self._calibration_id = str(calibration_id)
         self._tcp_frame = str(tcp_frame)
@@ -210,6 +209,7 @@ class MeasuredAttachmentProvider:
         symmetry: str = "pi",
         evidence_digest: str = "",
         allow_pre_attach: bool = False,
+        conservative_geometry=None,
     ) -> AttachmentRecord:
         request_id = str(request_id)
         self._active_request = request_id
@@ -320,9 +320,15 @@ class MeasuredAttachmentProvider:
                 source_method, int(box_pose.stamp_ns), int(tcp_pose.stamp_ns),
                 box_pose.position, box_pose.quaternion_xyzw,
                 tcp_pose.position, tcp_pose.quaternion_xyzw)
-        from st09_contracts.payload_envelope import build_envelope
-        envelope = (build_envelope(dims, translation, quaternion, self.envelope_limits)
-                    if self.envelope_limits is not None else None)
+        envelope = None
+        if conservative_geometry is not None:
+            if (dims != conservative_geometry.measured_dimensions_wdh
+                    or any(abs(a-b) > 1e-9 for a,b in zip(translation, conservative_geometry.t_tool_box_translation))
+                    or abs(sum(a*b for a,b in zip(quaternion, conservative_geometry.t_tool_box_quaternion_xyzw))) < 1-1e-9):
+                raise ContractViolation('ATTACHMENT_GEOMETRY_BINDING_MISMATCH')
+            envelope = conservative_geometry.conservative
+            translation = conservative_geometry.t_tool_box_translation
+            quaternion = conservative_geometry.t_tool_box_quaternion_xyzw
         record = AttachmentRecord(
             schema_version=ATTACHMENT_SCHEMA_VERSION,
             cargo_id=str(cargo_id),
