@@ -60,3 +60,7 @@ new required geometry, complete service/driver regression and geometry provenanc
 coverage, rebuild all affected/dependent packages in plain-install mode, verify
 installed identities and capture health, freeze then execute at most two blocked
 functional suites. No simulation has been launched; attempted suites remain zero.
+
+## Two-attempt stop
+
+Both functional suites blocked; see REPORT.md and METRICS.json. Final source audit found nominal-height anchor inputs still present. Goal is not complete. No third suite or post-stop product changes; pending user discussion per explicit limit. Final evaluated revision6ebaac7c; raw evidence retained and copied to primary.
