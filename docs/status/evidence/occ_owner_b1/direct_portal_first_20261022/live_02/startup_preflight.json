@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "stage": "startup",
+  "clock_publishers": 1,
+  "camera_samples": 70,
+  "urdf_saved": true,
+  "wall_s": 5.184142506681383,
+  "camera_hz": 13.74858628513854,
+  "criteria": "one clock publisher; saved URDF; >=30 camera samples over >=5s; camera >=3Hz"
+}

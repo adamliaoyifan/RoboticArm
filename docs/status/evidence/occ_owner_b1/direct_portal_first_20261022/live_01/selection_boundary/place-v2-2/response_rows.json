@@ -1,0 +1,3374 @@
+[
+  {
+    "slot_index": 13,
+    "candidate_id": "place-v2-2",
+    "depth_m": 1.2749999999192938,
+    "reachability": "unknown",
+    "seed_count": 0,
+    "placement_score": 1.0,
+    "route_build_count": 1,
+    "atlas_queries": [],
+    "scene_tf_hash": "603f9b6523e104f675cbeea77805e1ff",
+    "urdf_hash": "3899e2b396650a61e9d0f56d61c2cce1",
+    "query_offset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "start_joints": [
+      1.741368,
+      -1.736367,
+      -1.447857,
+      4.755978,
+      1.577002,
+      -1.417189
+    ],
+    "atlas_seed_q": [],
+    "reason": "EDGE_BUILD_FAILED",
+    "slot_pose": {
+      "position": [
+        0.5300000000000921,
+        0.06499999999778643,
+        0.6655245187812184
+      ],
+      "quaternion_xyzw": [
+        -3.1610336945647626e-12,
+        7.0345763980072e-12,
+        0.7071067717136865,
+        0.7071067906594084
+      ]
+    },
+    "targets": [
+      [
+        [
+          -2.0299995223883243,
+          0.5349961058649915,
+          0.8242949492218355
+        ],
+        [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      ],
+      [
+        [
+          -2.029999522551121,
+          0.5349961069449879,
+          0.8242949492218355
+        ],
+        [
+          0.7071041933070012,
+          0.7071093690566228,
+          1.4069129573664233e-11,
+          -6.322119067981978e-12
+        ]
+      ]
+    ],
+    "seed_sources": [],
+    "target_ladders": [
+      {
+        "target_index": 0,
+        "missing_regions": [],
+        "position": [
+          -2.0299995223883243,
+          0.5349961058649915,
+          0.8242949492218355
+        ],
+        "quaternion_xyzw": [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "anchor_gate": {
+      "rejected": [
+        "carrying-slot_upper-0a9ac7c7",
+        "carrying-slot_approach-fb23cd50"
+      ],
+      "not_evaluated": []
+    },
+    "corridor_height": null,
+    "topology_attempts": [
+      {
+        "topology": "direct",
+        "budget_ns": 104822400000,
+        "outcome": "failed",
+        "reason": "NO_FEASIBLE_ROUTE",
+        "detail": {
+          "prior_gaps": [],
+          "edge_failures": [
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-04b0a746",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -6
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-f5759a64",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -6
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-01efd922",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -6
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-04b0a746",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 2455,
+                "n_samples": 14904,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  }
+                ]
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-f5759a64",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 14465,
+                "n_samples": 18770,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  }
+                ]
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-01efd922",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -6
+              }
+            }
+          ],
+          "budget": {
+            "elapsed_s": 13.994549,
+            "remaining_s": 90.82785,
+            "attempts": {
+              "carrying-home-0f47377e->carrying-portal-01efd922:PORTAL_TRANSIT": 2,
+              "carrying-home-0f47377e->carrying-portal-04b0a746:PORTAL_TRANSIT": 2,
+              "carrying-home-0f47377e->carrying-portal-c2e47916:PORTAL_TRANSIT": 1,
+              "carrying-home-0f47377e->carrying-portal-f5759a64:PORTAL_TRANSIT": 2,
+              "carrying-portal-f406967a->carrying-slot_approach-98aba07e:TRAVERSE": 1,
+              "carrying-portal-f406967a->carrying-slot_approach-f9c35feb:TRAVERSE": 1
+            },
+            "durations_s": {
+              "carrying-home-0f47377e->carrying-portal-01efd922:PORTAL_TRANSIT": 4.017976,
+              "carrying-home-0f47377e->carrying-portal-04b0a746:PORTAL_TRANSIT": 3.248163,
+              "carrying-home-0f47377e->carrying-portal-c2e47916:PORTAL_TRANSIT": 3.481272,
+              "carrying-home-0f47377e->carrying-portal-f5759a64:PORTAL_TRANSIT": 3.057601,
+              "carrying-portal-f406967a->carrying-slot_approach-98aba07e:TRAVERSE": 0.073778,
+              "carrying-portal-f406967a->carrying-slot_approach-f9c35feb:TRAVERSE": 0.077665
+            },
+            "policy": {
+              "total_wall_s": 104.8224,
+              "single_edge_wall_s": 2.0,
+              "max_edge_repair_attempts": 4,
+              "retreat_min_share": 0.3
+            }
+          },
+          "scene": {
+            "load_state": "carrying",
+            "type": "SceneState"
+          },
+          "search_outcome": "SEARCH_INCOMPLETE",
+          "coverage": {
+            "edges_built": 9,
+            "goals_tried": [
+              "carrying-slot-176682c4",
+              "carrying-slot-e1475905",
+              "carrying-slot-e1490508"
+            ],
+            "goals_open": [],
+            "capped_classes": [
+              {
+                "goal": "carrying-slot-176682c4",
+                "edge_class": "PORTAL_TRANSIT",
+                "reason": "EDGE_BUILD_FAILED"
+              },
+              {
+                "goal": "carrying-slot-e1475905",
+                "edge_class": "PORTAL_TRANSIT",
+                "reason": "EDGE_BUILD_FAILED"
+              }
+            ],
+            "budget_refusals": 0,
+            "budget": {
+              "elapsed_s": 13.994609,
+              "remaining_s": 90.827791,
+              "attempts": {
+                "carrying-home-0f47377e->carrying-portal-01efd922:PORTAL_TRANSIT": 2,
+                "carrying-home-0f47377e->carrying-portal-04b0a746:PORTAL_TRANSIT": 2,
+                "carrying-home-0f47377e->carrying-portal-c2e47916:PORTAL_TRANSIT": 1,
+                "carrying-home-0f47377e->carrying-portal-f5759a64:PORTAL_TRANSIT": 2,
+                "carrying-portal-f406967a->carrying-slot_approach-98aba07e:TRAVERSE": 1,
+                "carrying-portal-f406967a->carrying-slot_approach-f9c35feb:TRAVERSE": 1
+              },
+              "durations_s": {
+                "carrying-home-0f47377e->carrying-portal-01efd922:PORTAL_TRANSIT": 4.017976,
+                "carrying-home-0f47377e->carrying-portal-04b0a746:PORTAL_TRANSIT": 3.248163,
+                "carrying-home-0f47377e->carrying-portal-c2e47916:PORTAL_TRANSIT": 3.481272,
+                "carrying-home-0f47377e->carrying-portal-f5759a64:PORTAL_TRANSIT": 3.057601,
+                "carrying-portal-f406967a->carrying-slot_approach-98aba07e:TRAVERSE": 0.073778,
+                "carrying-portal-f406967a->carrying-slot_approach-f9c35feb:TRAVERSE": 0.077665
+              },
+              "policy": {
+                "total_wall_s": 104.8224,
+                "single_edge_wall_s": 2.0,
+                "max_edge_repair_attempts": 4,
+                "retreat_min_share": 0.3
+              }
+            }
+          }
+        },
+        "elapsed_ns": 14360000000
+      },
+      {
+        "topology": "staging",
+        "budget_ns": 160344000000,
+        "outcome": "failed",
+        "reason": "EDGE_BUILD_FAILED",
+        "detail": {
+          "stage": "staging_endpoint",
+          "reason": "no_valid_staging"
+        },
+        "elapsed_ns": 202000000
+      }
+    ],
+    "staging_anchor_gate": [
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-50a6b6f4",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.261456379031909,
+          -2.3858360313027167,
+          2.4202480466286556,
+          -1.6035951869301353,
+          -1.5647230080504044,
+          -1.832269627428926
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-90f5430a",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.5266358367735211,
+          -2.1289499705481845,
+          2.358950915767831,
+          -1.7976501304585135,
+          -1.5653608327010764,
+          -2.0974527413603106
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-454ccab8",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          4.198678974453403,
+          -0.7558213186701602,
+          -2.421630554567278,
+          4.753716751749956,
+          1.5738802756047674,
+          -0.5137062290308317
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-portal-04b0a746",
+        "region": "portal",
+        "load_state": "carrying",
+        "q": [
+          1.3188370702040708,
+          -1.8704847012371084,
+          2.5691544332385137,
+          -2.275561875135173,
+          -1.5692262480939334,
+          -0.2519664716979511
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "accepted",
+        "reason": ""
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-2db28206",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.724454837175133,
+          -0.7087344020919858,
+          -2.4265200732759706,
+          4.709505540325006,
+          1.5760384209174005,
+          -0.9879297279981586
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-bc5ca0ea",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.4932415739864333,
+          -1.012922350028756,
+          -2.3599271841127787,
+          4.945806449035226,
+          1.5766913447696533,
+          -1.2191456719545257
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-b2257799",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.8543008110694078,
+          -2.3921177936575604,
+          2.1367815740268026,
+          -1.3107328549891604,
+          -1.566666216528383,
+          -2.4251189251963403
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-2dff0dc1",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.7244584274581976,
+          -0.7490764578424177,
+          -2.1384764579725677,
+          4.461803999378166,
+          1.576038408190357,
+          -0.9879261376249872
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-6962c124",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -1.1838477272670864,
+          -2.3088581732825166,
+          2.4069960621051987,
+          -1.6631265747224915,
+          -1.5684216219250964,
+          -2.7546629736951913
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-1961b866",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.854297221016723,
+          -2.4328424981853463,
+          2.424915189072136,
+          -1.558141779886807,
+          -1.5666661994120907,
+          -2.4251153350270114
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 13,
+        "node_id": "carrying-staging-aa20cbec",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.1129651015377244,
+          -0.8328651348417472,
+          -2.4080838213104787,
+          4.81156177753024,
+          1.5770732648269132,
+          -1.5994290825589919
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      }
+    ],
+    "continuation_diagnostics": [],
+    "detail": {
+      "stage": "staging_endpoint",
+      "reason": "no_valid_staging"
+    },
+    "ik_refine": [
+      {
+        "target_world": [
+          [
+            -2.0299995223883243,
+            0.5349961058649915,
+            0.8242949492218355
+          ],
+          [
+            0.7071093690566228,
+            -0.7071041933070012,
+            0.0,
+            0.0
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 0,
+            "wrapped_delta": [
+              0.563224,
+              0.546479,
+              -0.523335,
+              -0.024218,
+              -0.003343,
+              0.563417
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 1,
+            "wrapped_delta": [
+              -2.578368,
+              0.546479,
+              -0.523335,
+              -0.024218,
+              -0.003343,
+              0.563417
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.242144,
+              1.257845,
+              2.192522,
+              -0.31601,
+              3.13584,
+              1.345606
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.0299995223883243,
+            0.5349961058649915,
+            0.8242949492218355
+          ],
+          [
+            0.7071093690566228,
+            -0.7071041933070012,
+            0.0,
+            0.0
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 0,
+            "wrapped_delta": [
+              0.563224,
+              0.546479,
+              -0.523335,
+              -0.024218,
+              -0.003343,
+              0.563417
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 1,
+            "wrapped_delta": [
+              -2.578368,
+              0.546479,
+              -0.523335,
+              -0.024218,
+              -0.003343,
+              0.563417
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.499224,
+              -0.478521,
+              0.744665,
+              -1.843218,
+              -1.570343,
+              -0.071583
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.242144,
+              1.257845,
+              2.192522,
+              -0.31601,
+              3.13584,
+              1.345606
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.029999522551121,
+            0.5349961069449879,
+            0.8242949492218355
+          ],
+          [
+            0.7071041933070012,
+            0.7071093690566228,
+            1.4069129573664233e-11,
+            -6.322119067981978e-12
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.498539,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 2,
+            "wrapped_delta": [
+              0.562539,
+              0.548281,
+              -0.529633,
+              -0.007189,
+              -0.004246,
+              -2.578861
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              -4.784647,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -2.579054,
+              0.548281,
+              -0.529633,
+              -0.007189,
+              -0.004246,
+              -2.578861
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.498539,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.242829,
+              1.259647,
+              2.186224,
+              -0.298981,
+              3.134937,
+              -1.796672
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.029999522551121,
+            0.5349961069449879,
+            0.8242949492218355
+          ],
+          [
+            0.7071041933070012,
+            0.7071093690566228,
+            1.4069129573664233e-11,
+            -6.322119067981978e-12
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.498539,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 2,
+            "wrapped_delta": [
+              0.562539,
+              0.548281,
+              -0.529633,
+              -0.007189,
+              -0.004246,
+              -2.578861
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              -4.784647,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -2.579054,
+              0.548281,
+              -0.529633,
+              -0.007189,
+              -0.004246,
+              -2.578861
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.498539,
+              -0.476719,
+              0.738367,
+              -1.826189,
+              -1.571246,
+              -3.213861
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.242829,
+              1.259647,
+              2.186224,
+              -0.298981,
+              3.134937,
+              -1.796672
+            ]
+          }
+        ]
+      }
+    ],
+    "atlas": {
+      "loaded": false,
+      "reason": "atlas_scene_mismatch",
+      "hash_message": "scene_tf hash mismatch (atlas=b40c85ae, current=603f9b65)",
+      "scene_tf_ok": false,
+      "urdf_ok": true,
+      "scene_tf_hash": "603f9b6523e104f675cbeea77805e1ff",
+      "urdf_hash": "3899e2b396650a61e9d0f56d61c2cce1",
+      "live_urdf_hash": "",
+      "urdf_hash_override": "",
+      "query_offset": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "elapsed_ms": 14784.0,
+    "seed_source": [
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start"
+    ],
+    "edges": [
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-04b0a746",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.318837,
+          -1.870485,
+          2.569154,
+          -2.275562,
+          -1.569226,
+          -0.251966
+        ],
+        "error_code": -6,
+        "wall_s": 2.011408,
+        "server_planning_time_s": 0.0
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-c2e47916",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.318837,
+          -1.870485,
+          2.569154,
+          -2.275562,
+          -1.569226,
+          -0.251966
+        ],
+        "error_code": 1,
+        "wall_s": 1.805131,
+        "server_planning_time_s": 1.7563826139999998
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "TRAVERSE",
+        "from": "carrying-portal-f406967a",
+        "to": "carrying-slot_approach-f9c35feb",
+        "from_q": [
+          1.318754,
+          -1.870457,
+          2.569208,
+          -2.275511,
+          -1.56913,
+          -0.252058
+        ],
+        "to_q": [
+          1.498538,
+          -0.527126,
+          0.628044,
+          -1.665459,
+          -1.571246,
+          -3.213861
+        ],
+        "from_position": [
+          -0.904948,
+          0.534988,
+          0.974239
+        ],
+        "to_position": [
+          -2.03,
+          0.534996,
+          0.974295
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 0.966667
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "TRAVERSE",
+        "from": "carrying-portal-f406967a",
+        "to": "carrying-slot_approach-98aba07e",
+        "from_q": [
+          1.318754,
+          -1.870457,
+          2.569208,
+          -2.275511,
+          -1.56913,
+          -0.252058
+        ],
+        "to_q": [
+          -4.784647,
+          -0.527126,
+          0.628044,
+          -1.665459,
+          -1.571246,
+          -3.213861
+        ],
+        "from_position": [
+          -0.904948,
+          0.534988,
+          0.974239
+        ],
+        "to_position": [
+          -2.03,
+          0.534996,
+          0.974295
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 0.966667
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-f5759a64",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.317066,
+          -1.870308,
+          2.565983,
+          -2.2604,
+          -1.57237,
+          -3.39533
+        ],
+        "error_code": -6,
+        "wall_s": 2.003217,
+        "server_planning_time_s": 0.0
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-01efd922",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          -4.966119,
+          -1.870308,
+          2.565983,
+          -2.2604,
+          -1.57237,
+          -3.39533
+        ],
+        "error_code": -6,
+        "wall_s": 2.01058,
+        "server_planning_time_s": 0.0
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-04b0a746",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.318837,
+          -1.870485,
+          2.569154,
+          -2.275562,
+          -1.569226,
+          -0.251966
+        ],
+        "error_code": 1,
+        "wall_s": 0.923899,
+        "server_planning_time_s": 0.887129925
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-f5759a64",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.317066,
+          -1.870308,
+          2.565983,
+          -2.2604,
+          -1.57237,
+          -3.39533
+        ],
+        "error_code": 1,
+        "wall_s": 0.215442,
+        "server_planning_time_s": 0.17001432
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-01efd922",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          -4.966119,
+          -1.870308,
+          2.565983,
+          -2.2604,
+          -1.57237,
+          -3.39533
+        ],
+        "error_code": -6,
+        "wall_s": 2.004591,
+        "server_planning_time_s": 0.0
+      }
+    ],
+    "first_edge": {
+      "planner": "joint",
+      "edge_class": "PORTAL_TRANSIT",
+      "planner_id": "RRTConnect",
+      "from": "carrying-home-0f47377e",
+      "to": "carrying-portal-04b0a746",
+      "from_q": [
+        1.741368,
+        -1.736367,
+        -1.447857,
+        4.755978,
+        1.577002,
+        -1.417189
+      ],
+      "to_q": [
+        1.318837,
+        -1.870485,
+        2.569154,
+        -2.275562,
+        -1.569226,
+        -0.251966
+      ],
+      "error_code": -6,
+      "wall_s": 2.011408,
+      "server_planning_time_s": 0.0
+    },
+    "scene": [
+      {
+        "load_state": "carrying",
+        "world_boxes": 0,
+        "scene_digest": "96cfd4b2ebeedd3ac19e231403fe002f9e92751b504b7b3c66b81f202ef8ee12",
+        "payload_wdh": [
+          0.5954865026309095,
+          0.41369622163572184,
+          0.24429495109891353
+        ],
+        "payload_translation": [
+          -5.393535340569855e-10,
+          8.070666357440359e-11,
+          0.12214747367237863
+        ],
+        "wall_s": 0.003466
+      }
+    ],
+    "stage_timings_s": {
+      "scene_apply": {
+        "n": 1,
+        "total": 0.0035,
+        "mean": 0.00346
+      },
+      "move_group": {
+        "n": 7,
+        "total": 10.9743,
+        "mean": 1.567753
+      },
+      "retime_and_interpolation": {
+        "n": 1,
+        "total": 1.6755,
+        "mean": 1.675459
+      }
+    },
+    "planner_parameters": {
+      "planner_id": "RRTConnect",
+      "allowed_planning_time_s": 2.0,
+      "num_planning_attempts": 1,
+      "cartesian_max_step_m": 0.01,
+      "jump_threshold": 0.0,
+      "avoid_collisions": true,
+      "velocity_scaling": 0.3,
+      "acceleration_scaling": 0.3,
+      "ompl_rng_seed": "unfixed"
+    },
+    "anchors": [
+      {
+        "region": "home",
+        "load_state": "carrying",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "home",
+        "load_state": "unloaded",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "portal",
+        "load_state": "carrying",
+        "family": "anchor",
+        "q": [
+          1.318837,
+          -1.870485,
+          2.569154,
+          -2.275562,
+          -1.569226,
+          -0.251966
+        ]
+      },
+      {
+        "region": "exit",
+        "load_state": "unloaded",
+        "family": "anchor",
+        "q": [
+          1.499224,
+          -0.538544,
+          0.513009,
+          -1.55154,
+          -1.570343,
+          -0.071583
+        ]
+      }
+    ]
+  },
+  {
+    "slot_index": 12,
+    "candidate_id": "place-v2-2",
+    "depth_m": 1.2749999999192938,
+    "reachability": "unknown",
+    "seed_count": 0,
+    "placement_score": 1.0,
+    "route_build_count": 1,
+    "atlas_queries": [],
+    "scene_tf_hash": "603f9b6523e104f675cbeea77805e1ff",
+    "urdf_hash": "3899e2b396650a61e9d0f56d61c2cce1",
+    "query_offset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "start_joints": [
+      1.741368,
+      -1.736367,
+      -1.447857,
+      4.755978,
+      1.577002,
+      -1.417189
+    ],
+    "atlas_seed_q": [],
+    "reason": "EDGE_BUILD_FAILED",
+    "slot_pose": {
+      "position": [
+        0.5300000000000921,
+        0.01499999999778639,
+        0.6655245187812184
+      ],
+      "quaternion_xyzw": [
+        -3.1610336945647626e-12,
+        7.0345763980072e-12,
+        0.7071067717136865,
+        0.7071067906594084
+      ]
+    },
+    "targets": [
+      [
+        [
+          -2.0299998897088347,
+          0.5849961058636423,
+          0.8242949492218355
+        ],
+        [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      ],
+      [
+        [
+          -2.0299998898716316,
+          0.5849961069436387,
+          0.8242949492218355
+        ],
+        [
+          0.7071041933070012,
+          0.7071093690566228,
+          1.4069129573664233e-11,
+          -6.322119067981978e-12
+        ]
+      ]
+    ],
+    "seed_sources": [],
+    "target_ladders": [
+      {
+        "target_index": 0,
+        "missing_regions": [],
+        "position": [
+          -2.0299998897088347,
+          0.5849961058636423,
+          0.8242949492218355
+        ],
+        "quaternion_xyzw": [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "anchor_gate": {
+      "rejected": [
+        "carrying-slot_upper-c585a588",
+        "carrying-slot_approach-b6e9566f"
+      ],
+      "not_evaluated": []
+    },
+    "corridor_height": null,
+    "topology_attempts": [
+      {
+        "topology": "direct",
+        "budget_ns": 95992800000,
+        "outcome": "failed",
+        "reason": "NO_FEASIBLE_ROUTE",
+        "detail": {
+          "prior_gaps": [],
+          "edge_failures": [
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-d5558ae5",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 14695,
+                "n_samples": 17200,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "mid360_mount_frame"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "mid360_mount_frame"
+                  }
+                ]
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-32d54922",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -2
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-a7195b20",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 12314,
+                "n_samples": 14204,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  }
+                ]
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-b9e1a6dd",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "class_capped",
+              "reason": "EDGE_BUILD_FAILED",
+              "goal": "carrying-slot-9b2cc8c1"
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-32d54922",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "moveit_error",
+                "error_code": -6
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-a7195b20",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 14774,
+                "n_samples": 16546,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  }
+                ]
+              }
+            },
+            {
+              "edge": [
+                "carrying-home-0f47377e",
+                "carrying-portal-b9e1a6dd",
+                "PORTAL_TRANSIT"
+              ],
+              "kind": "edge_build_failed",
+              "reason": "EDGE_BUILD_FAILED",
+              "detail": {
+                "kind": "interpolated_collision",
+                "edge_class": "PORTAL_TRANSIT",
+                "first_invalid_sample": 7666,
+                "n_samples": 16641,
+                "contacts": [
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  },
+                  {
+                    "body_1": "airport_container_real_aprime",
+                    "body_2": "b-payload"
+                  }
+                ]
+              }
+            }
+          ],
+          "budget": {
+            "elapsed_s": 13.19827,
+            "remaining_s": 82.794528,
+            "attempts": {
+              "carrying-home-0f47377e->carrying-portal-32d54922:PORTAL_TRANSIT": 2,
+              "carrying-home-0f47377e->carrying-portal-a7195b20:PORTAL_TRANSIT": 2,
+              "carrying-home-0f47377e->carrying-portal-b9e1a6dd:PORTAL_TRANSIT": 2,
+              "carrying-home-0f47377e->carrying-portal-d5558ae5:PORTAL_TRANSIT": 2,
+              "carrying-portal-b8a5dab8->carrying-slot_approach-1a0fab00:TRAVERSE": 1,
+              "carrying-portal-b8a5dab8->carrying-slot_approach-fcd21a03:TRAVERSE": 1
+            },
+            "durations_s": {
+              "carrying-home-0f47377e->carrying-portal-32d54922:PORTAL_TRANSIT": 3.872294,
+              "carrying-home-0f47377e->carrying-portal-a7195b20:PORTAL_TRANSIT": 3.342638,
+              "carrying-home-0f47377e->carrying-portal-b9e1a6dd:PORTAL_TRANSIT": 2.75125,
+              "carrying-home-0f47377e->carrying-portal-d5558ae5:PORTAL_TRANSIT": 3.053002,
+              "carrying-portal-b8a5dab8->carrying-slot_approach-1a0fab00:TRAVERSE": 0.073521,
+              "carrying-portal-b8a5dab8->carrying-slot_approach-fcd21a03:TRAVERSE": 0.074331
+            },
+            "policy": {
+              "total_wall_s": 95.9928,
+              "single_edge_wall_s": 2.0,
+              "max_edge_repair_attempts": 4,
+              "retreat_min_share": 0.3
+            }
+          },
+          "scene": {
+            "load_state": "carrying",
+            "type": "SceneState"
+          },
+          "search_outcome": "SEARCH_INCOMPLETE",
+          "coverage": {
+            "edges_built": 9,
+            "goals_tried": [
+              "carrying-slot-9b2cc8c1",
+              "carrying-slot-bc9b5296",
+              "carrying-slot-fadfdb35"
+            ],
+            "goals_open": [],
+            "capped_classes": [
+              {
+                "goal": "carrying-slot-9b2cc8c1",
+                "edge_class": "PORTAL_TRANSIT",
+                "reason": "EDGE_BUILD_FAILED"
+              },
+              {
+                "goal": "carrying-slot-bc9b5296",
+                "edge_class": "PORTAL_TRANSIT",
+                "reason": "EDGE_BUILD_FAILED"
+              }
+            ],
+            "budget_refusals": 0,
+            "budget": {
+              "elapsed_s": 13.198339,
+              "remaining_s": 82.79446,
+              "attempts": {
+                "carrying-home-0f47377e->carrying-portal-32d54922:PORTAL_TRANSIT": 2,
+                "carrying-home-0f47377e->carrying-portal-a7195b20:PORTAL_TRANSIT": 2,
+                "carrying-home-0f47377e->carrying-portal-b9e1a6dd:PORTAL_TRANSIT": 2,
+                "carrying-home-0f47377e->carrying-portal-d5558ae5:PORTAL_TRANSIT": 2,
+                "carrying-portal-b8a5dab8->carrying-slot_approach-1a0fab00:TRAVERSE": 1,
+                "carrying-portal-b8a5dab8->carrying-slot_approach-fcd21a03:TRAVERSE": 1
+              },
+              "durations_s": {
+                "carrying-home-0f47377e->carrying-portal-32d54922:PORTAL_TRANSIT": 3.872294,
+                "carrying-home-0f47377e->carrying-portal-a7195b20:PORTAL_TRANSIT": 3.342638,
+                "carrying-home-0f47377e->carrying-portal-b9e1a6dd:PORTAL_TRANSIT": 2.75125,
+                "carrying-home-0f47377e->carrying-portal-d5558ae5:PORTAL_TRANSIT": 3.053002,
+                "carrying-portal-b8a5dab8->carrying-slot_approach-1a0fab00:TRAVERSE": 0.073521,
+                "carrying-portal-b8a5dab8->carrying-slot_approach-fcd21a03:TRAVERSE": 0.074331
+              },
+              "policy": {
+                "total_wall_s": 95.9928,
+                "single_edge_wall_s": 2.0,
+                "max_edge_repair_attempts": 4,
+                "retreat_min_share": 0.3
+              }
+            }
+          }
+        },
+        "elapsed_ns": 13588000000
+      },
+      {
+        "topology": "staging",
+        "budget_ns": 146400000000,
+        "outcome": "failed",
+        "reason": "EDGE_BUILD_FAILED",
+        "detail": {
+          "stage": "staging_endpoint",
+          "reason": "no_valid_staging"
+        },
+        "elapsed_ns": 148000000
+      }
+    ],
+    "staging_anchor_gate": [
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-50a6b6f4",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.261456379031909,
+          -2.3858360313027167,
+          2.4202480466286556,
+          -1.6035951869301353,
+          -1.5647230080504044,
+          -1.832269627428926
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-90f5430a",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.5266358367735211,
+          -2.1289499705481845,
+          2.358950915767831,
+          -1.7976501304585135,
+          -1.5653608327010764,
+          -2.0974527413603106
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-454ccab8",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          4.198678974453403,
+          -0.7558213186701602,
+          -2.421630554567278,
+          4.753716751749956,
+          1.5738802756047674,
+          -0.5137062290308317
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-2db28206",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.724454837175133,
+          -0.7087344020919858,
+          -2.4265200732759706,
+          4.709505540325006,
+          1.5760384209174005,
+          -0.9879297279981586
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-bc5ca0ea",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.4932415739864333,
+          -1.012922350028756,
+          -2.3599271841127787,
+          4.945806449035226,
+          1.5766913447696533,
+          -1.2191456719545257
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-portal-d5558ae5",
+        "region": "portal",
+        "load_state": "carrying",
+        "q": [
+          1.207919471825356,
+          -1.8784154767361358,
+          2.573340453872975,
+          -2.271606343402214,
+          -1.5685623493816605,
+          -0.36288228364001474
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "accepted",
+        "reason": ""
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-b2257799",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.8543008110694078,
+          -2.3921177936575604,
+          2.1367815740268026,
+          -1.3107328549891604,
+          -1.566666216528383,
+          -2.4251189251963403
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-2dff0dc1",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.7244584274581976,
+          -0.7490764578424177,
+          -2.1384764579725677,
+          4.461803999378166,
+          1.576038408190357,
+          -0.9879261376249872
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-6962c124",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -1.1838477272670864,
+          -2.3088581732825166,
+          2.4069960621051987,
+          -1.6631265747224915,
+          -1.5684216219250964,
+          -2.7546629736951913
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-1961b866",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          -0.854297221016723,
+          -2.4328424981853463,
+          2.424915189072136,
+          -1.558141779886807,
+          -1.5666661994120907,
+          -2.4251153350270114
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      },
+      {
+        "slot_index": 12,
+        "node_id": "carrying-staging-aa20cbec",
+        "region": "staging",
+        "load_state": "carrying",
+        "q": [
+          3.1129651015377244,
+          -0.8328651348417472,
+          -2.4080838213104787,
+          4.81156177753024,
+          1.5770732648269132,
+          -1.5994290825589919
+        ],
+        "state_key": "(('carrying', (-5.393535340569855e-10, 8.070666357440359e-11, 0.12214747367237863), (1.0, 0.0, 0.0, 0.0), (0.5954865026309095, 0.41369622163572184, 0.24429495109891353), ()), '1d500abd282a7474e63782b0ae4cf2e22a6c43c297c95b592d342090aff9d6eb')",
+        "verdict": "rejected",
+        "reason": "ANCHOR_PAYLOAD_COLLISION"
+      }
+    ],
+    "continuation_diagnostics": [],
+    "detail": {
+      "stage": "staging_endpoint",
+      "reason": "no_valid_staging"
+    },
+    "ik_refine": [
+      {
+        "target_world": [
+          [
+            -2.0299998897088347,
+            0.5849961058636423,
+            0.8242949492218355
+          ],
+          [
+            0.7071093690566228,
+            -0.7071041933070012,
+            0.0,
+            0.0
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 0,
+            "wrapped_delta": [
+              0.531674,
+              0.544331,
+              -0.518832,
+              -0.026556,
+              -0.003146,
+              0.531868
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 1,
+            "wrapped_delta": [
+              -2.609918,
+              0.544331,
+              -0.518832,
+              -0.026556,
+              -0.003146,
+              0.531868
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.273694,
+              1.255697,
+              2.197026,
+              -0.318349,
+              3.136038,
+              1.314057
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.0299998897088347,
+            0.5849961058636423,
+            0.8242949492218355
+          ],
+          [
+            0.7071093690566228,
+            -0.7071041933070012,
+            0.0,
+            0.0
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 0,
+            "wrapped_delta": [
+              0.531674,
+              0.544331,
+              -0.518832,
+              -0.026556,
+              -0.003146,
+              0.531868
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 1,
+            "wrapped_delta": [
+              -2.609918,
+              0.544331,
+              -0.518832,
+              -0.026556,
+              -0.003146,
+              0.531868
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.467674,
+              -0.480669,
+              0.749168,
+              -1.845556,
+              -1.570146,
+              -0.103132
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.273694,
+              1.255697,
+              2.197026,
+              -0.318349,
+              3.136038,
+              1.314057
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.0299998898716316,
+            0.5849961069436387,
+            0.8242949492218355
+          ],
+          [
+            0.7071041933070012,
+            0.7071093690566228,
+            1.4069129573664233e-11,
+            -6.322119067981978e-12
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467022,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 2,
+            "wrapped_delta": [
+              0.531022,
+              0.546183,
+              -0.525229,
+              -0.009512,
+              -0.004444,
+              -2.610377
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              -4.816164,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -2.610571,
+              0.546183,
+              -0.525229,
+              -0.009512,
+              -0.004444,
+              -2.610377
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.467022,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.274346,
+              1.25755,
+              2.190628,
+              -0.301305,
+              3.13474,
+              -1.828188
+            ]
+          }
+        ]
+      },
+      {
+        "target_world": [
+          [
+            -2.0299998898716316,
+            0.5849961069436387,
+            0.8242949492218355
+          ],
+          [
+            0.7071041933070012,
+            0.7071093690566228,
+            1.4069129573664233e-11,
+            -6.322119067981978e-12
+          ]
+        ],
+        "atlas_seed_count": 0,
+        "atlas_seeds": [],
+        "attempts": [
+          {
+            "seed": "tool_down",
+            "seed_q": [
+              0.936,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              1.467022,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 2,
+            "wrapped_delta": [
+              0.531022,
+              0.546183,
+              -0.525229,
+              -0.009512,
+              -0.004444,
+              -2.610377
+            ]
+          },
+          {
+            "seed": "tool_down_j1_minus_pi",
+            "seed_q": [
+              -2.205593,
+              -1.025,
+              1.268,
+              -1.819,
+              -1.567,
+              -0.635
+            ],
+            "q": [
+              -4.816164,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "requested",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -2.610571,
+              0.546183,
+              -0.525229,
+              -0.009512,
+              -0.004444,
+              -2.610377
+            ]
+          },
+          {
+            "seed": "start",
+            "seed_q": [
+              1.741368,
+              -1.736367,
+              -1.447857,
+              4.755978,
+              1.577002,
+              -1.417189
+            ],
+            "q": [
+              1.467022,
+              -0.478817,
+              0.742771,
+              -1.828512,
+              -1.571444,
+              -3.245377
+            ],
+            "ok": true,
+            "solved_by": "fallback",
+            "pos_err_m": 0.0,
+            "rot_err_rad": 0.0,
+            "branch_tier": 3,
+            "wrapped_delta": [
+              -0.274346,
+              1.25755,
+              2.190628,
+              -0.301305,
+              3.13474,
+              -1.828188
+            ]
+          }
+        ]
+      }
+    ],
+    "atlas": {
+      "loaded": false,
+      "reason": "atlas_scene_mismatch",
+      "hash_message": "scene_tf hash mismatch (atlas=b40c85ae, current=603f9b65)",
+      "scene_tf_ok": false,
+      "urdf_ok": true,
+      "scene_tf_hash": "603f9b6523e104f675cbeea77805e1ff",
+      "urdf_hash": "3899e2b396650a61e9d0f56d61c2cce1",
+      "live_urdf_hash": "",
+      "urdf_hash_override": "",
+      "query_offset": [
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    "elapsed_ms": 13890.0,
+    "seed_source": [
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start"
+    ],
+    "edges": [
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-d5558ae5",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.207919,
+          -1.878415,
+          2.57334,
+          -2.271606,
+          -1.568562,
+          -0.362882
+        ],
+        "error_code": 1,
+        "wall_s": 0.745125,
+        "server_planning_time_s": 0.712022539
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-32d54922",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.207919,
+          -1.878415,
+          2.57334,
+          -2.271606,
+          -1.568562,
+          -0.362882
+        ],
+        "error_code": -2,
+        "wall_s": 1.863742,
+        "server_planning_time_s": 1.778227289
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-a7195b20",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.206612,
+          -1.877876,
+          2.570094,
+          -2.257154,
+          -1.573031,
+          -3.505782
+        ],
+        "error_code": 1,
+        "wall_s": 1.425693,
+        "server_planning_time_s": 1.392590456
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-d5558ae5",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.207919,
+          -1.878415,
+          2.57334,
+          -2.271606,
+          -1.568562,
+          -0.362882
+        ],
+        "error_code": 1,
+        "wall_s": 0.752589,
+        "server_planning_time_s": 0.724858473
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "TRAVERSE",
+        "from": "carrying-portal-b8a5dab8",
+        "to": "carrying-slot_approach-1a0fab00",
+        "from_q": [
+          1.207981,
+          -1.878383,
+          2.573274,
+          -2.271576,
+          -1.568539,
+          -0.362945
+        ],
+        "to_q": [
+          1.467021,
+          -0.529599,
+          0.633084,
+          -1.668043,
+          -1.571444,
+          -3.245378
+        ],
+        "from_position": [
+          -0.905042,
+          0.584982,
+          0.974322
+        ],
+        "to_position": [
+          -2.03,
+          0.584996,
+          0.974295
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 0.966667
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "TRAVERSE",
+        "from": "carrying-portal-b8a5dab8",
+        "to": "carrying-slot_approach-fcd21a03",
+        "from_q": [
+          1.207981,
+          -1.878383,
+          2.573274,
+          -2.271576,
+          -1.568539,
+          -0.362945
+        ],
+        "to_q": [
+          -4.816164,
+          -0.529599,
+          0.633084,
+          -1.668043,
+          -1.571444,
+          -3.245378
+        ],
+        "from_position": [
+          -0.905042,
+          0.584982,
+          0.974322
+        ],
+        "to_position": [
+          -2.03,
+          0.584996,
+          0.974295
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 0.966667
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-32d54922",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.207919,
+          -1.878415,
+          2.57334,
+          -2.271606,
+          -1.568562,
+          -0.362882
+        ],
+        "error_code": -6,
+        "wall_s": 2.006239,
+        "server_planning_time_s": 0.0
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-a7195b20",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.206612,
+          -1.877876,
+          2.570094,
+          -2.257154,
+          -1.573031,
+          -3.505782
+        ],
+        "error_code": 1,
+        "wall_s": 0.503169,
+        "server_planning_time_s": 0.45939849600000005
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-b9e1a6dd",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          -5.076573,
+          -1.877876,
+          2.570094,
+          -2.257154,
+          -1.573031,
+          -3.505782
+        ],
+        "error_code": 1,
+        "wall_s": 2.029218,
+        "server_planning_time_s": 1.9601584890000001
+      }
+    ],
+    "first_edge": {
+      "planner": "joint",
+      "edge_class": "PORTAL_TRANSIT",
+      "planner_id": "RRTConnect",
+      "from": "carrying-home-0f47377e",
+      "to": "carrying-portal-d5558ae5",
+      "from_q": [
+        1.741368,
+        -1.736367,
+        -1.447857,
+        4.755978,
+        1.577002,
+        -1.417189
+      ],
+      "to_q": [
+        1.207919,
+        -1.878415,
+        2.57334,
+        -2.271606,
+        -1.568562,
+        -0.362882
+      ],
+      "error_code": 1,
+      "wall_s": 0.745125,
+      "server_planning_time_s": 0.712022539
+    },
+    "stage_timings_s": {
+      "scene_apply": {
+        "n": 1,
+        "total": 0.0035,
+        "mean": 0.00346
+      },
+      "move_group": {
+        "n": 14,
+        "total": 20.3,
+        "mean": 1.450003
+      },
+      "retime_and_interpolation": {
+        "n": 2,
+        "total": 2.4592,
+        "mean": 1.229613
+      }
+    },
+    "planner_parameters": {
+      "planner_id": "RRTConnect",
+      "allowed_planning_time_s": 2.0,
+      "num_planning_attempts": 1,
+      "cartesian_max_step_m": 0.01,
+      "jump_threshold": 0.0,
+      "avoid_collisions": true,
+      "velocity_scaling": 0.3,
+      "acceleration_scaling": 0.3,
+      "ompl_rng_seed": "unfixed"
+    },
+    "anchors": [
+      {
+        "region": "home",
+        "load_state": "carrying",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "home",
+        "load_state": "unloaded",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "portal",
+        "load_state": "carrying",
+        "family": "anchor",
+        "q": [
+          1.207919,
+          -1.878415,
+          2.57334,
+          -2.271606,
+          -1.568562,
+          -0.362882
+        ]
+      },
+      {
+        "region": "exit",
+        "load_state": "unloaded",
+        "family": "anchor",
+        "q": [
+          1.467674,
+          -0.541608,
+          0.519207,
+          -1.554657,
+          -1.570146,
+          -0.103133
+        ]
+      }
+    ]
+  },
+  {
+    "slot_index": 11,
+    "candidate_id": "place-v2-2",
+    "depth_m": 1.274999999919294,
+    "reachability": "unknown",
+    "seed_count": 0,
+    "placement_score": 1.0,
+    "route_build_count": 1,
+    "atlas_queries": [],
+    "scene_tf_hash": "603f9b6523e104f675cbeea77805e1ff",
+    "urdf_hash": "3899e2b396650a61e9d0f56d61c2cce1",
+    "query_offset": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "start_joints": [
+      1.741368,
+      -1.736367,
+      -1.447857,
+      4.755978,
+      1.577002,
+      -1.417189
+    ],
+    "atlas_seed_q": [],
+    "reason": "OK",
+    "slot_pose": {
+      "position": [
+        0.5300000000000921,
+        -0.035000000002213545,
+        0.6655245187812184
+      ],
+      "quaternion_xyzw": [
+        -3.1610336945647626e-12,
+        7.0345763980072e-12,
+        0.7071067717136865,
+        0.7071067906594084
+      ]
+    },
+    "targets": [
+      [
+        [
+          -2.030000257029345,
+          0.6349961058622929,
+          0.8242949492218355
+        ],
+        [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      ],
+      [
+        [
+          -2.030000257192142,
+          0.6349961069422894,
+          0.8242949492218355
+        ],
+        [
+          0.7071041933070012,
+          0.7071093690566228,
+          1.4069129573664233e-11,
+          -6.322119067981978e-12
+        ]
+      ]
+    ],
+    "seed_sources": [],
+    "target_ladders": [
+      {
+        "target_index": 0,
+        "missing_regions": [],
+        "position": [
+          -2.030000257029345,
+          0.6349961058622929,
+          0.8242949492218355
+        ],
+        "quaternion_xyzw": [
+          0.7071093690566228,
+          -0.7071041933070012,
+          0.0,
+          0.0
+        ]
+      }
+    ],
+    "anchor_gate": {
+      "rejected": [
+        "carrying-slot_upper-36b31365",
+        "carrying-slot_approach-e8d72b71"
+      ],
+      "not_evaluated": []
+    },
+    "corridor_height": null,
+    "topology_attempts": [
+      {
+        "topology": "direct",
+        "budget_ns": 87658800000,
+        "outcome": "planned",
+        "elapsed_ns": 8261000000
+      }
+    ],
+    "selected_topology": "direct",
+    "route_id": "route-b-b2b147c29579",
+    "decision": "continue",
+    "map_admission": {
+      "map_source": "static_empty",
+      "placed_count": 0,
+      "last_acquisition_stamp_ns": 0,
+      "freshness_policy": "static_empty",
+      "why_allowed": "static_empty_unplaced_unobserved",
+      "why_refused": "",
+      "age_exceeds_window": false,
+      "change_event": ""
+    },
+    "certified": true,
+    "selected": {
+      "candidate_id": "place-v2-2",
+      "atlas_status": "unknown",
+      "attempted_candidates": 3,
+      "rejected_candidates": [
+        {
+          "candidate_id": "place-v2-2",
+          "reason": "EDGE_BUILD_FAILED",
+          "tier": "unknown",
+          "route_build_count": 1
+        },
+        {
+          "candidate_id": "place-v2-2",
+          "reason": "EDGE_BUILD_FAILED",
+          "tier": "unknown",
+          "route_build_count": 1
+        }
+      ],
+      "route_id": "route-b-b2b147c29579",
+      "route_leg_count": 8
+    },
+    "elapsed_ms": 9981.0,
+    "seed_source": [
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start",
+      "tool_down",
+      "tool_down_j1_minus_pi",
+      "start"
+    ],
+    "edges": [
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-69f5b41f",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.10104,
+          -1.876625,
+          2.572322,
+          -2.272107,
+          -1.567948,
+          -0.469761
+        ],
+        "error_code": 1,
+        "wall_s": 1.527885,
+        "server_planning_time_s": 1.4890673589999999
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-0505960f",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.10104,
+          -1.876625,
+          2.572322,
+          -2.272107,
+          -1.567948,
+          -0.469761
+        ],
+        "error_code": -2,
+        "wall_s": 1.153045,
+        "server_planning_time_s": 1.088304423
+      },
+      {
+        "planner": "joint",
+        "edge_class": "PORTAL_TRANSIT",
+        "planner_id": "RRTConnect",
+        "from": "carrying-home-0f47377e",
+        "to": "carrying-portal-abab3c3c",
+        "from_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "to_q": [
+          1.100215,
+          -1.875761,
+          2.569036,
+          -2.258482,
+          -1.573641,
+          -3.612178
+        ],
+        "error_code": 1,
+        "wall_s": 2.227824,
+        "server_planning_time_s": 2.145788797
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "TRAVERSE",
+        "from": "carrying-portal-f7c96ad6",
+        "to": "carrying-slot_approach-4574f188",
+        "from_q": [
+          1.100207,
+          -1.875675,
+          2.569044,
+          -2.258487,
+          -1.573678,
+          -3.612203
+        ],
+        "to_q": [
+          1.435598,
+          -0.528934,
+          0.631734,
+          -1.667382,
+          -1.57164,
+          -3.2768
+        ],
+        "from_position": [
+          -0.904984,
+          0.635017,
+          0.974253
+        ],
+        "to_position": [
+          -2.03,
+          0.634996,
+          0.974295
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "INSERT",
+        "from": "carrying-slot_approach-4fd56802",
+        "to": "carrying-slot_upper-c3945311",
+        "from_q": [
+          1.4356,
+          -0.528858,
+          0.631561,
+          -1.667189,
+          -1.571645,
+          -3.276816
+        ],
+        "to_q": [
+          1.4356,
+          -0.508534,
+          0.694797,
+          -1.750749,
+          -1.571645,
+          -3.276816
+        ],
+        "from_position": [
+          -2.03,
+          0.634996,
+          0.974295
+        ],
+        "to_position": [
+          -2.03,
+          0.634996,
+          0.900434
+        ],
+        "waypoints": 1,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "DESCEND",
+        "from": "carrying-slot_upper-c3945311",
+        "to": "carrying-slot-47ef1e0c",
+        "from_q": [
+          1.4356,
+          -0.508534,
+          0.694797,
+          -1.750749,
+          -1.571645,
+          -3.276816
+        ],
+        "to_q": [
+          1.4356,
+          -0.47819,
+          0.741442,
+          -1.827738,
+          -1.571645,
+          -3.276816
+        ],
+        "from_position": [
+          -2.03,
+          0.634996,
+          0.900434
+        ],
+        "to_position": [
+          -2.03,
+          0.634996,
+          0.824295
+        ],
+        "waypoints": 1,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "RETREAT",
+        "from": "unloaded-slot-f0c5c46c",
+        "to": "unloaded-slot_upper-39fc79a4",
+        "from_q": [
+          1.4356,
+          -0.47819,
+          0.741442,
+          -1.827738,
+          -1.571645,
+          -3.276816
+        ],
+        "to_q": [
+          1.4356,
+          -0.508534,
+          0.694797,
+          -1.750749,
+          -1.571645,
+          -3.276816
+        ],
+        "from_position": [
+          -2.03,
+          0.634996,
+          0.824295
+        ],
+        "to_position": [
+          -2.03,
+          0.634996,
+          0.900434
+        ],
+        "waypoints": 1,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "RETREAT",
+        "from": "unloaded-slot_upper-39fc79a4",
+        "to": "unloaded-slot_approach-f5ee3e7f",
+        "from_q": [
+          1.4356,
+          -0.508534,
+          0.694797,
+          -1.750749,
+          -1.571645,
+          -3.276816
+        ],
+        "to_q": [
+          1.4356,
+          -0.528858,
+          0.631561,
+          -1.667189,
+          -1.571645,
+          -3.276816
+        ],
+        "from_position": [
+          -2.03,
+          0.634996,
+          0.900434
+        ],
+        "to_position": [
+          -2.03,
+          0.634996,
+          0.974295
+        ],
+        "waypoints": 1,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "cartesian",
+        "edge_class": "RETREAT",
+        "from": "unloaded-slot_approach-f5ee3e7f",
+        "to": "unloaded-portal-f7c96ad6",
+        "from_q": [
+          1.4356,
+          -0.528858,
+          0.631561,
+          -1.667189,
+          -1.571645,
+          -3.276816
+        ],
+        "to_q": [
+          1.100207,
+          -1.875675,
+          2.569044,
+          -2.258487,
+          -1.573678,
+          -3.612203
+        ],
+        "from_position": [
+          -2.03,
+          0.634996,
+          0.974295
+        ],
+        "to_position": [
+          -0.904984,
+          0.635017,
+          0.974253
+        ],
+        "waypoints": 12,
+        "max_step_m": 0.01,
+        "jump_threshold": 0.0,
+        "avoid_collisions": true,
+        "fraction": 1.0
+      },
+      {
+        "planner": "joint",
+        "edge_class": "RETURN",
+        "planner_id": "RRTConnect",
+        "from": "unloaded-portal-f7c96ad6",
+        "to": "unloaded-home-0f47377e",
+        "from_q": [
+          1.100207,
+          -1.875675,
+          2.569044,
+          -2.258487,
+          -1.573678,
+          -3.612203
+        ],
+        "to_q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ],
+        "error_code": 1,
+        "wall_s": 0.07523,
+        "server_planning_time_s": 0.051656829
+      }
+    ],
+    "first_edge": {
+      "planner": "joint",
+      "edge_class": "PORTAL_TRANSIT",
+      "planner_id": "RRTConnect",
+      "from": "carrying-home-0f47377e",
+      "to": "carrying-portal-69f5b41f",
+      "from_q": [
+        1.741368,
+        -1.736367,
+        -1.447857,
+        4.755978,
+        1.577002,
+        -1.417189
+      ],
+      "to_q": [
+        1.10104,
+        -1.876625,
+        2.572322,
+        -2.272107,
+        -1.567948,
+        -0.469761
+      ],
+      "error_code": 1,
+      "wall_s": 1.527885,
+      "server_planning_time_s": 1.4890673589999999
+    },
+    "scene": [
+      {
+        "load_state": "unloaded",
+        "world_boxes": 1,
+        "scene_digest": "a8f3c3afb0eb5545b38c7761266d57a724bafab7de58562424d1602b6d87e701",
+        "payload_wdh": null,
+        "payload_translation": null,
+        "wall_s": 0.004207
+      }
+    ],
+    "stage_timings_s": {
+      "scene_apply": {
+        "n": 2,
+        "total": 0.0077,
+        "mean": 0.003831
+      },
+      "move_group": {
+        "n": 18,
+        "total": 25.284,
+        "mean": 1.404668
+      },
+      "retime_and_interpolation": {
+        "n": 4,
+        "total": 4.6267,
+        "mean": 1.156686
+      }
+    },
+    "planner_parameters": {
+      "planner_id": "RRTConnect",
+      "allowed_planning_time_s": 2.0,
+      "num_planning_attempts": 1,
+      "cartesian_max_step_m": 0.01,
+      "jump_threshold": 0.0,
+      "avoid_collisions": true,
+      "velocity_scaling": 0.3,
+      "acceleration_scaling": 0.3,
+      "ompl_rng_seed": "unfixed"
+    },
+    "anchors": [
+      {
+        "region": "home",
+        "load_state": "carrying",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "home",
+        "load_state": "unloaded",
+        "family": "start",
+        "q": [
+          1.741368,
+          -1.736367,
+          -1.447857,
+          4.755978,
+          1.577002,
+          -1.417189
+        ]
+      },
+      {
+        "region": "portal",
+        "load_state": "carrying",
+        "family": "anchor",
+        "q": [
+          1.10104,
+          -1.876625,
+          2.572322,
+          -2.272107,
+          -1.567948,
+          -0.469761
+        ]
+      },
+      {
+        "region": "exit",
+        "load_state": "unloaded",
+        "family": "anchor",
+        "q": [
+          1.436217,
+          -0.5409,
+          0.517771,
+          -1.553905,
+          -1.56995,
+          -0.134589
+        ]
+      }
+    ]
+  }
+]
