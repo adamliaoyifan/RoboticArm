@@ -3,6 +3,12 @@
 分支 `agent/eng/integration-prior-g1`（worktree /tmp/elfin-master-pack-baseline-g3）。
 证据全账：`docs/status/evidence/occ_owner_b1/gate3_aprime/PHASE1_DIAG_BUDGET_20261022.md`。
 
+> 2026-10-22 executor 复核更正：本总结中“attempt A executor 同刻死亡、settle
+> 证据断供”和“带箱保持根因闭环”的结论被原始时间戳反证。144 条样本持续
+> 到门截止前 17.3ms，截止时物理误差仍 0.127389rad；首次收敛在失败清理删除
+> 箱子之后。历史异常栈已截断，类型未知。增益参数送达修复成立，但不能据此
+> 宣称带箱保持已通过。后续以 `executor_root_cause_20261022/` 证据为准。
+
 ## 一、阶段一（有界放宽定位保持故障）：完成
 
 - **配置落地**（a7a47551）：`diagnostic_route_budget_s`（selector）/`--select-budget-s`

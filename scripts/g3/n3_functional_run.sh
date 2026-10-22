@@ -13,7 +13,7 @@ export AMENT_TRACE_SETUP_FILES=0
 
 WS="/tmp/elfin-master-pack-baseline-g3"
 MAIN="/home/adamliao/work/elfin_humble_ws"
-OUT="/tmp/jcc_runs/n3_functional_$(date +%Y%m%d_%H%M%S)"
+OUT="${PHASE2_RUN_OUT:-$WS/docs/status/evidence/occ_owner_b1/executor_root_cause_20261022/live_$(date +%Y%m%d_%H%M%S)}"
 RUN_ID="n3func_$(date +%H%M%S)"
 DEADLINE=$(( $(date +%s) + 5400 ))
 DIAG_ROUTE_BUDGET_S=180
@@ -22,22 +22,27 @@ export ROS_DOMAIN_ID=7
 
 log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/runner.log"; }
 
-# ---- Boot discipline (verbatim from transit_diag_run.sh) ----
-bash "$WS/scripts/stop_sim.sh" --all >> "$OUT/bootsweep.log" 2>&1 || true
-if ! pgrep -f 'ros2 launc[h]' >/dev/null 2>&1; then
-  pkill -TERM -f 'opt/ros/humble/li[b]' 2>/dev/null || true
-  pkill -TERM -f 'install/luggage_.*/li[b]' 2>/dev/null || true
-  sleep 4
-  pkill -KILL -f 'opt/ros/humble/li[b]' 2>/dev/null || true
-  pkill -KILL -f 'install/luggage_.*/li[b]' 2>/dev/null || true
-  N_SHM=$(ls /dev/shm 2>/dev/null | grep -c '^fastrtps' || true)
-  if [[ "${N_SHM:-0}" -gt 0 ]]; then
-    rm -f /dev/shm/fastrtps_* /dev/shm/sem.fastrtps_* 2>/dev/null || true
+# Refuse an occupied slot; never stop another agent's stack or sweep ROS.
+if pgrep -f 'ros2 launch luggage_gazebo|ign gazebo|gz sim|ros_gz_bridge/[p]arameter_bridge' >/dev/null; then
+  log "sim slot or residual bridge busy"; exit 2
+fi
+LPID=""
+cleanup() {
+  local status=$?
+  if [[ -n "$LPID" ]]; then
+    if [[ -d "$OUT/joint_capture/ctl" ]]; then
+      : > "$OUT/joint_capture/ctl/stop"
+      for _ in $(seq 1 30); do
+        [[ -f "$OUT/joint_capture/manifest_recorder.json" ]] && break
+        sleep 1
+      done
+    fi
+    ELFIN_SIM_PIDFILE="$OUT/launch.pid" bash "$WS/scripts/stop_sim.sh" \
+      --owned-pgid "$LPID" >> "$OUT/teardown.log" 2>&1
   fi
-fi
-if pgrep -f 'ros2 launch luggage_gazebo sim_world.launch.py' >/dev/null 2>&1; then
-  log "sim slot busy"; exit 2
-fi
+  log "runner exit=$status"
+}
+trap cleanup EXIT
 
 # ---- Same A-prime scene rebind + driver scene arg (phase-1 fix) ----
 export G3_CONTAINER_MODEL="airport_container_real_aprime"
@@ -77,8 +82,34 @@ source "$WS/install/setup.bash"
 set -u
 # No PYTHONPATH src prefixes — driver identity must report INSTALL overlay
 # paths (src prefixes triggered WRONG_OVERLAY in the 10-22 attempts).
+python3 - "$WS" "$OUT" <<'PYMANIFEST'
+import datetime, hashlib, json, pathlib, subprocess, sys
+ws, out = map(pathlib.Path, sys.argv[1:])
+paths = ["scripts/pack_eval_driver.py", "scripts/place_smoke_driver.py"]
+hashes = {}
+for relative in paths:
+    source = ws / "src/luggage_gazebo" / relative
+    installed = ws / "install/luggage_gazebo/lib/luggage_gazebo" / source.name
+    hashes[relative] = hashlib.sha256(source.read_bytes()).hexdigest()
+    if source.read_bytes() != installed.read_bytes():
+        raise SystemExit("stale installed driver: " + str(installed))
+import luggage_gazebo.driver_executor as lifecycle
+manifest = dict(
+    start=datetime.datetime.now().astimezone().isoformat(),
+    revision=subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ws, text=True).strip(),
+    dirty=subprocess.check_output(["git", "status", "--porcelain"], cwd=ws, text=True).splitlines(),
+    mode="non-scored phase-2 n=3 functional diagnostic", domain=7,
+    selector_budget_s=180, attachment_max_age_s=60,
+    prior_adopted=False, seed=0, catalog="inch20", driver_hashes=hashes,
+    lifecycle_module=lifecycle.__file__,
+    acceptance="all three boxes verified, committed and map-confirmed; MAX_BOXES; exit 0; no executor runtime failure",
+    aggregation="AND over three boxes in one suite; no success-rate estimate from one suite",
+)
+(out / "manifest.json").write_text(json.dumps(manifest, indent=2)+"\n")
+PYMANIFEST
+if [[ $? -ne 0 ]]; then log "installed identity gate failed"; exit 6; fi
 
-(ros2 launch luggage_gazebo sim_world.launch.py \
+setsid ros2 launch luggage_gazebo sim_world.launch.py \
     gui:=false use_rviz:=false \
     use_semantic:=true use_motion:=true use_vacuum:=true \
     use_cargo_map:=true use_packing:=true \
@@ -97,9 +128,11 @@ set -u
     robot_poses_config:="$POSES_OUT" \
     diagnostic_route_budget_s:=$DIAG_ROUTE_BUDGET_S \
     joint_capture_mode:=window joint_capture_run_dir:="$OUT/joint_capture" \
-    > "$OUT/launch.log" 2>&1 &)
+    > "$OUT/launch.log" 2>&1 &
+LPID=$!
+printf "%s\n" "$LPID" > "$OUT/launch.pid"
 sleep 2
-LPID="$(pgrep -f 'ros2 launch luggage_gazebo sim_world.launch.py' | head -1 || true)"
+
 if [[ -z "$LPID" ]]; then log "launch process missing"; exit 1; fi
 log "launch pid=$LPID out=$OUT run_id=$RUN_ID"
 
@@ -116,9 +149,6 @@ for _ in $(seq 1 60); do
 done
 if [[ -z "$GAIN_OK" ]]; then
   log "aborting before any motion: param-delivery fix not active"
-  kill -INT "$LPID" 2>/dev/null || true; sleep 5
-  pkill -TERM -f "ign gazebo" 2>/dev/null || true; sleep 3
-  pkill -9 -f "ign gazebo" 2>/dev/null || true
   exit 5
 fi
 log "gain verify OK (0.8)"
@@ -145,19 +175,5 @@ timeout --signal=INT 4200 ros2 run luggage_gazebo pack_eval_driver.py \
 DRC=$?
 log "driver rc=$DRC"
 
-# ---- Teardown: recorder ctl stop, then stack ----
-if [ -d "$OUT/joint_capture/ctl" ] && [ ! -f "$OUT/joint_capture/manifest_recorder.json" ]; then
-  : > "$OUT/joint_capture/ctl/stop"
-  for _ in $(seq 1 30); do
-    [ -f "$OUT/joint_capture/manifest_recorder.json" ] && break; sleep 2
-  done
-fi
-kill -INT "$LPID" 2>/dev/null || true
-sleep 5
-kill -TERM "$LPID" 2>/dev/null || true
-sleep 3
-pkill -TERM -f "ign gazebo" >/dev/null 2>&1 || true
-sleep 5
-pkill -9 -f "ign gazebo" >/dev/null 2>&1 || true
-log "end out=$OUT"
-exit 0
+# EXIT trap stops the recorder, then only this launch's process group.
+exit "$DRC"

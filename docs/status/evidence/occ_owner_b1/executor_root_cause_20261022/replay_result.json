@@ -1,0 +1,27 @@
+{
+  "status": "timeout",
+  "code": "HANDOFF_SETTLE_TIMEOUT",
+  "accepted_samples": 144,
+  "last_sample_age_at_original_deadline_s": 0.0172769189812243,
+  "receive_span_s": 5.951310134958476,
+  "sim_span_s": 1.4380000000000166,
+  "final_start_check": {
+    "sample_stamp": 199.3,
+    "max_delta_next_first": 0.127389,
+    "max_delta_previous_last": 0.127389,
+    "tolerance_rad": 0.01,
+    "within_tolerance": false
+  },
+  "last_verdict": {
+    "status": "waiting",
+    "reasons": [
+      "hold_not_reached",
+      "outside_tolerance",
+      "velocity_above_limit"
+    ],
+    "window_rate_rad_s": null,
+    "hold_run_sec": 0.0,
+    "window_samples": 0
+  },
+  "rejected": {}
+}

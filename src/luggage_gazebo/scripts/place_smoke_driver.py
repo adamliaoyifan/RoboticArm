@@ -2281,6 +2281,9 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         def should_abort():
             if not rclpy.ok():
                 return "HANDOFF_CANCELLED"
+            lifecycle = getattr(self, "_executor_lifecycle", None)
+            if lifecycle is not None and lifecycle.failure is not None:
+                return "DRIVER_EXECUTOR_FAILED"
             if carrying:
                 holds, reason = self._carrying_vacuum_holds()
                 if not holds:
