@@ -932,20 +932,6 @@ class RouteProducer(object):
             ("slot_upper", plan.slot_upper, LoadState.CARRYING),
             ("exit", plan.exit, LoadState.UNLOADED),
         ]
-        if plan.staging is not None:
-            # Carrying staging is the joint target of home -> staging.
-            # The unloaded twin is the joint target of the free-space
-            # return; Cartesian retreat stops at the portal.
-            from luggage_planning.staging_candidates import staging_positions
-            staging_rows = [
-                ("staging", position, load)
-                for position in staging_positions(
-                    plan.staging,
-                    request["container_transform"]["quaternion_xyzw"])
-                for load in (LoadState.CARRYING, LoadState.UNLOADED)]
-            # Seed the fixed corridor first so bounded transit exploration
-            # cannot consume its entire IK preparation window.
-            anchor_rows.extend(staging_rows)
         if not has_opening:
             # The collapsed portal shares the approach pose; registering
             # it would steal the approach node's (load, q) key.
@@ -1112,6 +1098,159 @@ class RouteProducer(object):
             log=self._log,
             wrist_margin=getattr(self, "lattice_wrist_margin_rad", None),
             anchor_sets=anchor_sets)
+
+    def _candidate_topology_planner(self, *, use_staging, deadline_ns,
+                                    candidate, plan, scope_ids, start_q,
+                                    atlas_seeds, attachment, snapshot, request,
+                                    prior_targets, row, slot_index):
+        from luggage_planning.reachable_graph import GraphRoutePlanner
+        scope_ids = set(scope_ids)
+        if use_staging:
+            if self.lattice_checker_factory is None:
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "checker_unavailable"})
+            from luggage_planning.staging_candidates import staging_positions
+            for position in staging_positions(
+                    plan.staging, request["container_transform"]["quaternion_xyzw"]):
+                for seed in self._seed_candidates(start_q):
+                    if self._clock_ns() >= deadline_ns:
+                        break
+                    q, _info = self._refine_to(
+                        position, prior_targets[0].quaternion_xyzw, seed)
+                    if q is not None:
+                        for load in (LoadState.CARRYING, LoadState.UNLOADED):
+                            scope_ids.add(self.graph.register_node(
+                                q, position, prior_targets[0].quaternion_xyzw,
+                                "staging", load, "anchor").node_id)
+            scope_ids, gate_rows = self._screen_carrying_anchors(
+                scope_ids, candidate, snapshot, attachment, request, start_q,
+                slot_index)
+            row["staging_anchor_gate"] = gate_rows
+            if not any(node.node_id in scope_ids and str(node.load_state) == "carrying"
+                       for node in self.graph.nodes_by_region("staging")):
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "no_valid_staging"})
+        staging_nodes = [
+            node for node in self.graph.nodes_by_region("staging")
+            if node.node_id in scope_ids]
+        if staging_nodes and self.lattice_checker_factory is not None:
+            from luggage_planning.lattice_route import LatticeCheckError
+            from types import SimpleNamespace
+            endpoint_edges = [SimpleNamespace(
+                edge_id="staging-" + load, load_state=load)
+                for load in ("carrying", "unloaded")]
+            endpoint_states = self.edge_scene_states(
+                None, endpoint_edges, snapshot, attachment,
+                candidate, request)
+            checker = self.lattice_checker_factory(
+                scene_states={load: endpoint_states["staging-" + load]
+                              for load in ("carrying", "unloaded")},
+                start_q=start_q, service_budget_s=2.0)
+            try:
+                verdicts = checker.validate(
+                    [(tuple(n.q), str(n.load_state)) for n in staging_nodes],
+                    expired=lambda: self._clock_ns() >= deadline_ns)
+            except LatticeCheckError as exc:
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "error": str(exc)})
+            row["staging_endpoints"] = [{
+                "node_id": n.node_id, "position": list(n.tcp_position),
+                "q": list(n.q), "load": str(n.load_state),
+                "valid": verdicts.get((tuple(n.q), str(n.load_state)))}
+                for n in staging_nodes]
+            for node in staging_nodes:
+                if verdicts.get((tuple(node.q), str(node.load_state))) is not True:
+                    scope_ids.discard(node.node_id)
+            if any(not any(n.node_id in scope_ids and str(n.load_state) == load
+                           for n in staging_nodes)
+                   for load in ("carrying", "unloaded")):
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {
+                    "stage": "staging_endpoint", "reason": "no_valid_staging"})
+        # Without an opening datum the portal collapses onto the
+        # approach anchor, so the portal hop is dropped rather
+        # than seeded with a duplicated node.
+        has_opening = (self.opening_info or {}).get("point") \
+            is not None
+        entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
+            hop for hop in DEFAULT_ENTRY_HOPS
+            if hop[0] != "portal")
+        # The entry hops are carrying hops, so only a carrying
+        # staging anchor that survived the payload gate counts.
+        has_staging = any(
+            node.node_id in scope_ids
+            and str(node.load_state) == "carrying"
+            for node in self.graph.nodes_by_region("staging"))
+        if has_staging:
+            # Free space outside the portal may detour. Both
+            # home -> staging and staging -> portal are joint
+            # PORTAL_TRANSIT. The fixed corridor starts at the
+            # portal: portal -> slot_approach stays TRAVERSE.
+            # This is the region boundary, not a fallback for
+            # every failed TRAVERSE.
+            entry_table = (
+                ("staging", "PORTAL_TRANSIT"),
+                ("portal", "PORTAL_TRANSIT"),
+            ) + tuple(hop for hop in entry_table
+                      if hop[0] != "portal")
+        entry_hops = hops_from_table(entry_table, "carrying")
+        # Reverse egress stays Cartesian back to the portal.
+        # Outside the portal (staging, then home) the return is
+        # joint RETURN. The geometric exit is not a hop target.
+        retreat_regions = [
+            region for region, _edge_class in reversed(
+                entry_table[:-1])
+            if region != "slot"] + ["home"]
+        retreat_table = tuple(
+            (region, "RETURN" if region in ("staging", "home")
+             else "RETREAT")
+            for region in retreat_regions)
+        retreat_hops = hops_from_table(retreat_table, "unloaded")
+        if self.corridor_planner == "lattice":
+            planner = self._lattice_planner(
+                candidate, plan, scope_ids, start_q, atlas_seeds,
+                attachment, snapshot, request,
+                prior_targets[0].quaternion_xyzw)
+        else:
+            from luggage_planning.moveit_edge_adapter import (
+                occupancy_boxes_from_surface,
+            )
+            _occupancy = occupancy_boxes_from_surface(
+                request.get("surface") or {},
+                request.get("container_transform"))
+            planner = GraphRoutePlanner(
+                self.graph, self.edge_builder,
+                home_node_id=self.graph.node_for_q(
+                    LoadState.CARRYING, start_q).node_id,
+                entry_hops=entry_hops,
+                retreat_hops=retreat_hops,
+                t_frame_container=tuple(float(v) for v in
+                                        request["container_transform"]
+                                        ["translation"]),
+                q_frame_container=tuple(float(v) for v in
+                                        request["container_transform"]
+                                        ["quaternion_xyzw"]),
+                occupancy_boxes=_occupancy,
+                refine=self.refine, urdf=self.urdf,
+                goal_seeds=self._goal_seed_fn(
+                    start_q,
+                    anchor_qs=[
+                        node.q for node in
+                        self.graph.nodes_by_region("slot_upper")
+                        if str(node.load_state) == "carrying"
+                        and node.node_id in scope_ids],
+                    atlas_seeds=atlas_seeds),
+                tcp_path=self.tcp_path,
+                region_poses={
+                    region: position for region, position in (
+                        ("staging", plan.staging),
+                        ("portal", plan.portal),
+                        ("slot_approach", plan.slot_approach),
+                        ("slot_upper", plan.slot_upper),
+                        ("exit", plan.exit))
+                    if position is not None},
+                scope_node_ids=scope_ids,
+                payload_screen=self._payload_screen_fn)
+        return planner
 
     def _inward_normal(self):
         info = self.opening_info or {}
@@ -1436,127 +1575,17 @@ class RouteProducer(object):
             targets = prior_targets
             planner = None
             try:
-                staging_nodes = [
-                    node for node in self.graph.nodes_by_region("staging")
-                    if node.node_id in scope_ids]
-                if staging_nodes and self.lattice_checker_factory is not None:
-                    from luggage_planning.lattice_route import LatticeCheckError
-                    from types import SimpleNamespace
-                    endpoint_edges = [SimpleNamespace(
-                        edge_id="staging-" + load, load_state=load)
-                        for load in ("carrying", "unloaded")]
-                    endpoint_states = self.edge_scene_states(
-                        None, endpoint_edges, snapshot, attachment,
-                        candidate, request)
-                    checker = self.lattice_checker_factory(
-                        scene_states={load: endpoint_states["staging-" + load]
-                                      for load in ("carrying", "unloaded")},
-                        start_q=start_q, service_budget_s=2.0)
-                    try:
-                        verdicts = checker.validate(
-                            [(tuple(n.q), str(n.load_state)) for n in staging_nodes],
-                            expired=lambda: self._clock_ns() - candidate_started_ns
-                            >= candidate_budget_ns - int(CERTIFICATION_RESERVE_S * 1e9))
-                    except LatticeCheckError as exc:
-                        raise RoutePlanningError("EDGE_BUILD_FAILED", {
-                            "stage": "staging_endpoint", "error": str(exc)})
-                    row["staging_endpoints"] = [{
-                        "node_id": n.node_id, "position": list(n.tcp_position),
-                        "q": list(n.q), "load": str(n.load_state),
-                        "valid": verdicts.get((tuple(n.q), str(n.load_state)))}
-                        for n in staging_nodes]
-                    for node in staging_nodes:
-                        if verdicts.get((tuple(node.q), str(node.load_state))) is not True:
-                            scope_ids.discard(node.node_id)
-                    if any(not any(n.node_id in scope_ids and str(n.load_state) == load
-                                   for n in staging_nodes)
-                           for load in ("carrying", "unloaded")):
-                        raise RoutePlanningError("EDGE_BUILD_FAILED", {
-                            "stage": "staging_endpoint", "reason": "no_valid_staging"})
-                # Without an opening datum the portal collapses onto the
-                # approach anchor, so the portal hop is dropped rather
-                # than seeded with a duplicated node.
-                has_opening = (self.opening_info or {}).get("point") \
-                    is not None
-                entry_table = DEFAULT_ENTRY_HOPS if has_opening else tuple(
-                    hop for hop in DEFAULT_ENTRY_HOPS
-                    if hop[0] != "portal")
-                # The entry hops are carrying hops, so only a carrying
-                # staging anchor that survived the payload gate counts.
-                has_staging = any(
-                    node.node_id in scope_ids
-                    and str(node.load_state) == "carrying"
-                    for node in self.graph.nodes_by_region("staging"))
-                if has_staging:
-                    # Free space outside the portal may detour. Both
-                    # home -> staging and staging -> portal are joint
-                    # PORTAL_TRANSIT. The fixed corridor starts at the
-                    # portal: portal -> slot_approach stays TRAVERSE.
-                    # This is the region boundary, not a fallback for
-                    # every failed TRAVERSE.
-                    entry_table = (
-                        ("staging", "PORTAL_TRANSIT"),
-                        ("portal", "PORTAL_TRANSIT"),
-                    ) + tuple(hop for hop in entry_table
-                              if hop[0] != "portal")
-                entry_hops = hops_from_table(entry_table, "carrying")
-                # Reverse egress stays Cartesian back to the portal.
-                # Outside the portal (staging, then home) the return is
-                # joint RETURN. The geometric exit is not a hop target.
-                retreat_regions = [
-                    region for region, _edge_class in reversed(
-                        entry_table[:-1])
-                    if region != "slot"] + ["home"]
-                retreat_table = tuple(
-                    (region, "RETURN" if region in ("staging", "home")
-                     else "RETREAT")
-                    for region in retreat_regions)
-                retreat_hops = hops_from_table(retreat_table, "unloaded")
-                if self.corridor_planner == "lattice":
-                    planner = self._lattice_planner(
-                        candidate, plan, scope_ids, start_q, atlas_seeds,
-                        attachment, snapshot, request,
-                        prior_targets[0].quaternion_xyzw)
-                else:
-                    from luggage_planning.moveit_edge_adapter import (
-                        occupancy_boxes_from_surface,
-                    )
-                    _occupancy = occupancy_boxes_from_surface(
-                        request.get("surface") or {},
-                        request.get("container_transform"))
-                    planner = GraphRoutePlanner(
-                        self.graph, self.edge_builder,
-                        home_node_id=self.graph.node_for_q(
-                            LoadState.CARRYING, start_q).node_id,
-                        entry_hops=entry_hops,
-                        retreat_hops=retreat_hops,
-                        t_frame_container=tuple(float(v) for v in
-                                                request["container_transform"]
-                                                ["translation"]),
-                        q_frame_container=tuple(float(v) for v in
-                                                request["container_transform"]
-                                                ["quaternion_xyzw"]),
-                        occupancy_boxes=_occupancy,
-                        refine=self.refine, urdf=self.urdf,
-                        goal_seeds=self._goal_seed_fn(
-                            start_q,
-                            anchor_qs=[
-                                node.q for node in
-                                self.graph.nodes_by_region("slot_upper")
-                                if str(node.load_state) == "carrying"
-                                and node.node_id in scope_ids],
-                            atlas_seeds=atlas_seeds),
-                        tcp_path=self.tcp_path,
-                        region_poses={
-                            region: position for region, position in (
-                                ("staging", plan.staging),
-                                ("portal", plan.portal),
-                                ("slot_approach", plan.slot_approach),
-                                ("slot_upper", plan.slot_upper),
-                                ("exit", plan.exit))
-                            if position is not None},
-                        scope_node_ids=scope_ids,
-                        payload_screen=self._payload_screen_fn)
+                from luggage_planning.direct_first_route import DirectFirstRoutePlanner
+                row["topology_attempts"] = []
+                planner = DirectFirstRoutePlanner(
+                    lambda use_staging, deadline_ns: self._candidate_topology_planner(
+                        use_staging=use_staging, deadline_ns=deadline_ns,
+                        candidate=candidate, plan=plan, scope_ids=scope_ids,
+                        start_q=start_q, atlas_seeds=atlas_seeds, attachment=attachment,
+                        snapshot=snapshot, request=request, prior_targets=prior_targets,
+                        row=row, slot_index=index),
+                    self._clock_ns, has_staging=plan.staging is not None,
+                    attempts=row["topology_attempts"])
                 planner.trace = getattr(self, "search_trace", None)
                 targets = prior_targets
                 if not targets:
@@ -1682,6 +1711,7 @@ class RouteProducer(object):
                 continue
             self.last_budget_snapshot = planner.last_budget_snapshot
 
+            row["selected_topology"] = planner.attempts[-1]["topology"]
             row["route_id"] = route.route_id
             if self.corridor_planner == "lattice":
                 row["lattice"] = dict(getattr(planner, "last_stats", {}))
@@ -1752,6 +1782,7 @@ class RouteProducer(object):
                     else:
                         retry["outcome"] = "rebuilt"
                         row["route_build_count"] += 1
+                        row["selected_topology"] = planner.attempts[-1]["topology"]
                         row["route_id"] = route.route_id
                         self.last_budget_snapshot = planner.last_budget_snapshot
                         continue

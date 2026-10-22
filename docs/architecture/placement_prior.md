@@ -569,22 +569,27 @@ certification; merely narrowing the message's candidate list is insufficient.
 
 ### Bounded staging alternatives
 
-The transit staging pose is a proposal, not proof of payload clearance. Seed
-at most six positions: the original, +/-0.15 m along each container horizontal
-axis, and +0.20 m in world Z. These are search extents, not collision margins;
-reject proposals that lower the original world transit height. Preserve the
-placement target, attachment and corridor anchors. IK preparation consumes the
-existing candidate budget.
+Attempt direct home→portal and portal→home routes first, using the same frozen
+payload and full route certification. Staging is an optional alternative,
+generated lazily only after direct planning fails. With a staging baseline,
+direct search receives60% of the remaining candidate budget; preparation and
+staging fallback share the original deadline's remainder. Without a staging
+baseline, direct search receives all remaining time. Record topology order,
+allocated/elapsed budgets and outcomes in candidate diagnostics.
 
-Before graph connections, check staging joints for both carrying and unloaded
-states using the same SceneState/FrozenSceneComposer path as certification.
-Only explicitly valid endpoints enter the candidate's graph scope. Missing
-verdicts or no surviving state for either load refuse that candidate; they must
-not silently remove the required staging hop. Retain endpoint positions, joints,
-load and verdict in candidate diagnostics. The endpoint service budget is 2 s
-and checks stop between calls at the candidate deadline. Every connection and
-complete route still requires existing certification; endpoint validity alone
-is insufficient. This does not write OCC or authorize physical movement.
+The staging pose is a proposal, not proof of payload clearance. Seed at most
+six positions: original, +/-0.15m on each container horizontal axis, and
++0.20m world Z. These are search extents, not collision margins. Do not lower
+the baseline transit height or change placement/attachment geometry.
+
+Before fallback connections, check staging joints for carrying and unloaded
+states using certification's SceneState/FrozenSceneComposer. Only explicitly
+valid endpoints may enter fallback. Missing verdicts or no surviving state
+refuse the staging alternative; they do not veto an already successful direct
+route. A staging connection must actually traverse a screened staging node.
+Keep endpoint positions/joints/load/verdict, with a2s validity service budget
+and deadline checks. Every connection and full route still needs certification.
+This policy does not write OCC or authorize physical movement.
 
 ### Long retreat IK continuity
 

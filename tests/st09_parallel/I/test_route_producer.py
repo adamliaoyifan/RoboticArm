@@ -1218,14 +1218,13 @@ def _hop_pairs(producer, *, opening, transit_clearance_z):
 
 class TestReverseEgressTable:
 
-    def test_staging_portal_is_joint_and_return_starts_outside(self):
+    def test_direct_portal_is_preferred_even_when_staging_is_configured(self):
         producer, _clock = build_producer()
         entry, retreat = _hop_pairs(
             producer,
             opening={"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)},
             transit_clearance_z=5.0)
         assert entry == [
-            ("staging", "PORTAL_TRANSIT", "carrying"),
             ("portal", "PORTAL_TRANSIT", "carrying"),
             ("slot_approach", "TRAVERSE", "carrying"),
             ("slot_upper", "INSERT", "carrying"),
@@ -1235,10 +1234,11 @@ class TestReverseEgressTable:
             ("slot_upper", "RETREAT", "unloaded"),
             ("slot_approach", "RETREAT", "unloaded"),
             ("portal", "RETREAT", "unloaded"),
-            ("staging", "RETURN", "unloaded"),
             ("home", "RETURN", "unloaded"),
         ]
         assert "exit" not in [region for region, _cls, _load in retreat]
+
+        assert not producer.graph.nodes_by_region("staging")
 
     def test_opening_without_staging_returns_from_the_portal(self):
         producer, _clock = build_producer()
@@ -1872,9 +1872,13 @@ def _lattice_producer(checker):
 
 class TestLatticeCorridorPlanner:
 
-    def test_lattice_route_is_certified_and_complete(self):
+    @pytest.mark.parametrize("with_staging", [False, True])
+    def test_lattice_route_is_certified_and_complete(self, with_staging):
         checker = _ClearChecker()
         producer, builder, _clock = _lattice_producer(checker)
+        if with_staging:
+            producer.opening_info = {"point": (1.0, 0.0, 0.4), "normal": (-1.0, 0.0, 0.0)}
+            producer.transit_clearance_z = 5.0
         request = make_request()
         register_attach_from_request(
             producer.attachment_provider, request,
@@ -1894,6 +1898,8 @@ class TestLatticeCorridorPlanner:
         assert checker.states
         selected = [row for row in result["rows"] if row.get("reason") == "OK"]
         assert selected[0]["lattice"]["service_calls"] >= 1
+        assert selected[0]["selected_topology"] == "direct"
+        assert not producer.graph.nodes_by_region("staging")
 
     def test_lattice_without_a_chain_names_the_row(self):
         class _Blocked(_ClearChecker):
@@ -1927,8 +1933,9 @@ class TestLatticeCorridorPlanner:
                 corridor_planner="lattice")
 
 
+@pytest.mark.parametrize("direct_ok", [True, False])
 @pytest.mark.parametrize("available", [True, False, None])
-def test_staging_collision_can_use_alternate_transit_position(available):
+def test_staging_collision_can_use_alternate_transit_position(available, direct_ok):
     """Real graph/route pipeline must escape a rejected staging centerline."""
     producer, _clock = build_producer()
     producer.opening_info = {
@@ -1942,6 +1949,8 @@ def test_staging_collision_can_use_alternate_transit_position(available):
             return getattr(original, name)
 
         def __call__(self, source, destination, edge_class, **kwargs):
+            if not direct_ok and source.region == "home" and destination.region == "portal":
+                raise RoutePlanningError("EDGE_BUILD_FAILED", {"kind": "collision"})
             if destination.region == "staging":
                 if abs(destination.tcp_position[1]) < 0.01:
                     rejected.append(destination.tcp_position)
@@ -1969,6 +1978,11 @@ def test_staging_collision_can_use_alternate_transit_position(available):
     register_attach_from_request(
         producer.attachment_provider, request, box_wdh=request["box_wdh"])
     result = producer.plan_place_route(request)
+    if direct_ok:
+        assert result["success"]
+        assert not checked and not rejected and not accepted
+        assert not producer.graph.nodes_by_region("staging")
+        return
     if available is not True:
         assert not result["success"]
         assert not rejected and not accepted
