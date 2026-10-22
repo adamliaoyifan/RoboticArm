@@ -2124,3 +2124,45 @@ def test_cert_rebuild_failure_retains_secondary_cause():
     assert retry['outcome'] == 'failed'
     assert retry['failure_code']
     assert retry['failure_detail'] is not None
+
+
+def test_diagnostic_envelope_refuses_floor_slots_before_building_edges():
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    producer, _clock = build_producer()
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,)*3)
+    producer.scene_config = {'container': {'inner': {
+        'length': 4, 'width': 4, 'floor_z': 0, 'ceiling_z': 3}}}
+    request = make_request(slots=[{'position':[0,0,.1],
+        'quaternion_xyzw':[0,0,0,1], 'request_id':'floor-slot'}])
+    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+    result = producer.plan_place_route(request)
+    assert not result['success']
+    assert result['reason_code'] == 'PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL'
+    assert result['rows'][0]['envelope_bottom_container'] == pytest.approx(-.15)
+    assert producer._builder.calls == []
+
+
+def test_envelope_identity_reaches_certification_with_nominal_targets():
+    from st09_contracts.payload_envelope import EnvelopeLimits
+    producer, _clock = build_producer()
+    producer.attachment_provider.envelope_limits = EnvelopeLimits(5, (.05,)*3, (.1,)*3)
+    producer.scene_config = {'container': {'inner': {
+        'length': 4, 'width': 4, 'floor_z': -1, 'ceiling_z': 3}}}
+    request = make_request()
+    register_attach_from_request(producer.attachment_provider, request, box_wdh=request['box_wdh'])
+    attachment = producer.attachment_provider.latest_record(request['request_id'])
+    scenes_seen = []
+    factory = producer.validity_adapter_factory
+    def capture(**kwargs):
+        scenes_seen.extend(kwargs['scene_states'].values())
+        return factory(**kwargs)
+    producer.validity_adapter_factory = capture
+    result = producer.plan_place_route(request)
+    assert result['success'], result['rows']
+    assert result['certification'].passed
+    assert result['route'].attachment_digest == attachment.digest()
+    payloads = [s.payload for s in scenes_seen if s.payload]
+    assert payloads
+    assert all(p.dimensions_wdh == attachment.collision_envelope.dimensions_wdh for p in payloads)
+    assert all(p.t_tcp_box_translation == attachment.collision_envelope.t_tcp_box_translation for p in payloads)
+    assert tuple(request['box_wdh']) == attachment.dimensions_wdh

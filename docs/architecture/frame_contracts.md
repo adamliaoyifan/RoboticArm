@@ -302,3 +302,32 @@ metrics separately from measured map acceptance. Its event schema is provisional
 until measured production events and capture windows are frozen after rehearsal.
 The ST09 verification runner reports missing graph/rehearsal obligations as
 `not_evaluated`; that result blocks release and is not a runtime certification.
+
+
+## Diagnostic attached payload envelope (2026-10-22)
+
+Nominal measured box dimensions and T_tool_box remain the target-synthesis
+contract, including eccentric grasps. Planning may bind a separate immutable
+collision_envelope to AttachmentRecord. Its digest participates in attachment
+identity and hence route/certificate/admission identity. It is never perception
+geometry or an online ground-truth input.
+
+The diagnostic profile in luggage_planning/config/payload_envelope.yaml uses
+suction_contact_frame origin/local Z as the pivot/axis for bounded post-attach
+yaw; known orientation stays in the nominal transform. Roll/pitch are exact;
+box Z must be parallel/antiparallel to contact Z. Unsupported tilt is refused.
+Size margins are outward on each box-axis face; translation half-ranges are
+in tool axes after yaw. Enumerate corner sinusoid extrema over the continuous
+interval, including interior stationary angles; preserve the resulting offset.
+This profile states assumed bounds, not calibrated statistical coverage.
+
+Slot closed-hull containment, corridor footprints, graph payload identity,
+carrying collision scenes, released obstacles and certification must consume
+this same envelope. Nominal grasp/placement targets remain unchanged. In
+particular, no floor/contact exemption is implied by a larger envelope:
+positive vertical margins can make a nominal floor-contact slot infeasible.
+Existing suction touch links are unchanged; link2 is not exempted.
+Configuration changes require a selector restart/new frozen attachment and
+new certification. Out-of-bound observed slip retains the existing invalidation
+and stop/reconfirmation behaviour; this change adds no slip sensor or claim
+that unobserved motion is detected.

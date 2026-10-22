@@ -394,6 +394,10 @@ def test_graph_carrying_and_unloaded_scenes_share_occupied_snapshot():
     snapshot = make_snapshot(2, observed_free=[(1, 1)], occupied=[(14, 5)])
     planner = object.__new__(GraphRoutePlanner)
     planner.scene_states = None
+    # The graph receives measured metric columns from the producer; the
+    # snapshot's occupied-cell bits alone no longer synthesize box heights.
+    from luggage_planning.moveit_edge_adapter import BoxSpec
+    planner.occupancy_boxes = (BoxSpec('snapshot-cell-14-5', (.7,.25,.1), (.05,.05,.2)),)
     released = object()
     planner._released_box = lambda attachment, candidate: released
     attachment = SimpleNamespace(dimensions_wdh=(.4, .3, .2),

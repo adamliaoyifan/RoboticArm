@@ -84,7 +84,8 @@ class MeasuredAttachmentProvider:
     def __init__(self, scene_revision: str, calibration_id: str,
                  tcp_frame: str = "suction_contact_frame",
                  box_frame: str = "world",
-                 max_age_ns: Optional[int] = None):
+                 max_age_ns: Optional[int] = None, envelope_limits=None):
+        self.envelope_limits = envelope_limits
         self._scene_revision = str(scene_revision)
         self._calibration_id = str(calibration_id)
         self._tcp_frame = str(tcp_frame)
@@ -319,6 +320,9 @@ class MeasuredAttachmentProvider:
                 source_method, int(box_pose.stamp_ns), int(tcp_pose.stamp_ns),
                 box_pose.position, box_pose.quaternion_xyzw,
                 tcp_pose.position, tcp_pose.quaternion_xyzw)
+        from st09_contracts.payload_envelope import build_envelope
+        envelope = (build_envelope(dims, translation, quaternion, self.envelope_limits)
+                    if self.envelope_limits is not None else None)
         record = AttachmentRecord(
             schema_version=ATTACHMENT_SCHEMA_VERSION,
             cargo_id=str(cargo_id),
@@ -340,6 +344,7 @@ class MeasuredAttachmentProvider:
             evidence_digest=str(evidence_digest or ""),
             validity=AttachmentValidity.VALID,
             invalidation_reason=None,
+            collision_envelope=envelope,
         )
         self._records[request_id] = record
         return record
@@ -403,6 +408,7 @@ class MeasuredAttachmentProvider:
             evidence_digest=record.evidence_digest,
             validity=AttachmentValidity.INVALIDATED,
             invalidation_reason=str(reason.value),
+            collision_envelope=record.collision_envelope,
         )
         self._records[record.request_id] = replacement
         notification = AttachmentInvalidation(

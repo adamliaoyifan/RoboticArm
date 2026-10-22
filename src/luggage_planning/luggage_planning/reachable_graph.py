@@ -549,6 +549,8 @@ class GraphRoutePlanner(object):
 
     def _payload_identity(self, attachment):
         from st09_contracts.planning import PayloadIdentity, PayloadSymmetry
+        from st09_contracts.payload_envelope import collision_payload
+        geometry = collision_payload(attachment)
         symmetry = (PayloadSymmetry.PI if attachment.symmetry == "pi"
                     else PayloadSymmetry.NONE)
         return PayloadIdentity(
@@ -556,10 +558,10 @@ class GraphRoutePlanner(object):
             box_id=attachment.box_id,
             request_id=attachment.request_id,
             cycle_id=attachment.cycle_id,
-            dimensions_wdh=attachment.dimensions_wdh,
+            dimensions_wdh=geometry.dimensions_wdh,
             symmetry=symmetry,
-            t_tcp_box_translation=attachment.t_tcp_box_translation,
-            t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw,
+            t_tcp_box_translation=geometry.t_tcp_box_translation,
+            t_tcp_box_quaternion_xyzw=geometry.t_tcp_box_quaternion_xyzw,
             attachment_incarnation=attachment.attachment_incarnation,
             acquisition_stamp_ns=attachment.acquisition_stamp_ns)
 
@@ -781,10 +783,12 @@ class GraphRoutePlanner(object):
         position, quaternion = compose_transform(
             self.t_frame_container, self.q_frame_container,
             candidate.position_container, candidate.quaternion_xyzw_container)
+        from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+        position, quaternion, dimensions = geometry_at_box_pose(attachment, position, quaternion)
         return BoxSpec(
             object_id="released-%s" % attachment.box_id,
             center=position,
-            size_whd=attachment.dimensions_wdh,
+            size_whd=dimensions,
             quaternion_xyzw=quaternion)
 
     def _scenes(self, attachment, candidate, snapshot):
@@ -794,12 +798,14 @@ class GraphRoutePlanner(object):
             PayloadSpec,
             SceneState,
         )
+        from st09_contracts.payload_envelope import collision_payload
+        geometry = collision_payload(attachment)
         carrying = SceneState(
             load_state="carrying",
             payload=PayloadSpec(
-                dimensions_wdh=attachment.dimensions_wdh,
-                t_tcp_box_translation=attachment.t_tcp_box_translation,
-                t_tcp_box_quaternion_xyzw=attachment.t_tcp_box_quaternion_xyzw),
+                dimensions_wdh=geometry.dimensions_wdh,
+                t_tcp_box_translation=geometry.t_tcp_box_translation,
+                t_tcp_box_quaternion_xyzw=geometry.t_tcp_box_quaternion_xyzw),
             placed_boxes=self.occupancy_boxes)
         unloaded = SceneState(
             load_state="unloaded",

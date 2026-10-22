@@ -218,6 +218,13 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
     else:
         budget_ns = route_budget_ns(int(box_count))
         logger("route budget %.0fs for %d box(es)" % (budget_ns / 1e9, box_count))
+    from luggage_planning.payload_envelope_config import load_envelope_limits
+    envelope_path = str(node.get_parameter("payload_envelope_config").value or "")
+    if not envelope_path:
+        envelope_path = os.path.join(get_package_share_directory("luggage_planning"),
+                                     "config", "payload_envelope.yaml")
+    envelope_limits = load_envelope_limits(envelope_path)
+    logger("payload envelope diagnostic limits: %s" % envelope_limits)
     producer = RouteProducer(
         graph=RouteGraph(static_identity=static_identity or (
             "st09-i-route:%s" % scene_tf_hash)),
@@ -228,7 +235,7 @@ def build_production_route_producer(node, scene_tf_path, surface_provider,
         attachment_provider=MeasuredAttachmentProvider(
             str(scene_revision or "scene-runtime"), "route-selector",
             tcp_frame="suction_contact_frame", box_frame="box",
-            max_age_ns=budget_ns),
+            max_age_ns=budget_ns, envelope_limits=envelope_limits),
         budget_ns=budget_ns,
         revalidator=MapRevalidator(revalidation_policy),
         latest_snapshot_fn=latest_snapshot,

@@ -158,6 +158,7 @@ class TrajectorySelectorNode(Node):
         # Non-scoring diagnostics only; per-edge budgets and every safety
         # gate stay frozen.
         self.declare_parameter("diagnostic_route_budget_s", 0.0)
+        self.declare_parameter("payload_envelope_config", "")
         self.declare_parameter("frame_scene_revision", "")
         # [ST09-I S5.7-6] site-pose file for GoToRobotPoseV2 (empty =
         # the service refuses POSE_FILE_MISSING — never a default).

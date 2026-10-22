@@ -36,6 +36,8 @@ def main():
     parser.add_argument("run", type=Path)
     parser.add_argument("--urdf", type=Path, required=True)
     parser.add_argument("--probe", default="/tmp/phase2_mesh_box_collision_probe")
+    parser.add_argument("--envelope-config", type=Path)
+    parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
     urdf = Urdf(args.urdf.read_text())
     element = urdf.link_els["elfin_link2"].find("collision")
@@ -90,6 +92,29 @@ def main():
         row = actual[index]
         datasets.append(("actual", index, row["position"][:6].tolist(),
                          float(row["sim_time_ns"]*1e-9)))
+    envelope = None
+    coverage = None
+    if args.envelope_config:
+        if boundary is None:
+            raise ValueError("envelope replay requires exact measured boundary")
+        from itertools import product
+        from luggage_planning.payload_envelope_config import load_envelope_limits
+        from st09_contracts.payload_envelope import build_envelope
+        grasp = boundary["grasp"]
+        nominal = np.linalg.inv(pose(grasp["position"], grasp["quaternion_xyzw"]))
+        envelope = build_envelope(boundary["box_wdh"], nominal[:3,3],
+            Rotation.from_matrix(nominal[:3,:3]).as_quat(),
+            load_envelope_limits(args.envelope_config))
+        center = np.array(envelope.t_tcp_box_translation)
+        half = np.array(envelope.dimensions_wdh)/2
+        vertices = []
+        for name, size, origin in shapes:
+            for signs in product((-1,1), repeat=3):
+                point = (tool_from_box @ origin @ np.r_[np.array(signs)*np.array(size)/2,1])[:3]
+                slack = half-abs(point-center)
+                vertices.append(dict(shape=name, tool_point=point.tolist(), slack=slack.tolist()))
+        coverage = dict(vertices=vertices, all_covered=all(min(v["slack"]) >= -1e-9 for v in vertices),
+                        min_slack_m=min(min(v["slack"]) for v in vertices))
     cases, metadata = [], {}
     for kind, index, joints, stamp in datasets:
         transforms = urdf.link_transforms(joints)
@@ -100,6 +125,14 @@ def main():
             cases.append(" ".join(map(str, [label, *mesh_tf.flat, *size, *(box_tf @ origin).flat])))
             metadata[label] = dict(kind=kind, index=index, time=stamp, collision=name,
                                    joints=joints)
+        if kind == "nominal" and envelope is not None:
+            label = "envelope_%d" % index
+            envelope_tf = transforms["suction_contact_frame"] @ pose(
+                envelope.t_tcp_box_translation, envelope.t_tcp_box_quaternion_xyzw)
+            cases.append(" ".join(map(str, [label, *mesh_tf.flat,
+                *envelope.dimensions_wdh, *envelope_tf.flat])))
+            metadata[label] = dict(kind="envelope", index=index, time=stamp,
+                                   collision="payload_envelope", joints=joints)
         if kind == "nominal" and boundary is not None:
             grasp = boundary["grasp"]
             measured_tool_from_box = np.linalg.inv(pose(
@@ -131,10 +164,21 @@ def main():
         cases=len(cases), dataset_counts=dict(Counter(row[0] for row in datasets)),
         hit_counts=dict(Counter(row["kind"] for row in hits)), minimum_distance=minimum,
         first_hits={kind: next((row for row in hits if row["kind"] == kind), None)
-                    for kind in ("nominal", "actual", "nominal_measured")},
+                    for kind in ("nominal", "actual", "nominal_measured", "envelope")},
         measured_boundary_available=boundary is not None, hits=hits)
-    (args.run/"offline_box_arm_collision.json").write_text(json.dumps(result, indent=2)+"\n")
+    if envelope is not None:
+        physical_hits = {row["index"] for row in hits if row["kind"] == "nominal"}
+        envelope_hits = {row["index"] for row in hits if row["kind"] == "envelope"}
+        result.update(envelope=envelope.to_dict(), envelope_digest=envelope.digest(),
+                      physical_coverage=coverage,
+                      all_physical_hits_rejected=physical_hits <= envelope_hits,
+                      physical_hit_knots=len(physical_hits), envelope_hit_knots=len(envelope_hits))
+    destination = args.output_dir or args.run
+    destination.mkdir(parents=True, exist_ok=True)
+    (destination/"offline_box_arm_collision.json").write_text(json.dumps(result, indent=2)+"\n")
     result.pop("hits")
+    if coverage:
+        result["physical_coverage"] = {k:v for k,v in coverage.items() if k != "vertices"}
     print(json.dumps(result, indent=2))
 
 

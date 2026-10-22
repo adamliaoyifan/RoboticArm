@@ -1314,6 +1314,18 @@ class RouteProducer(object):
                     index, len(request["slots"]),
                     (self._clock_ns() - started_ns) / 1e9, last_reason))
             base_candidate = candidate_from_slot(slot, index)
+            if getattr(attachment, "collision_envelope", None) is not None:
+                from luggage_description.container_geometry import descriptor_from_scene_config
+                from luggage_planning.payload_envelope_geometry import slot_envelope_check
+                if not self.scene_config:
+                    return self._fail("PAYLOAD_ENVELOPE_CONTAINER_MISSING", rows)
+                containment = slot_envelope_check(attachment, base_candidate,
+                    descriptor_from_scene_config(self.scene_config))
+                if not containment["inside"]:
+                    rows.append(dict(slot_index=index, candidate_id=base_candidate.candidate_id,
+                                     reason="PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL", **containment))
+                    last_reason = "PAYLOAD_ENVELOPE_OUTSIDE_SLOT_HULL"
+                    continue
             elapsed = self._clock_ns() - started_ns
             remaining = self.budget_ns - elapsed
             if remaining <= int(CERTIFICATION_RESERVE_S * 1e9):
@@ -2903,13 +2915,15 @@ class RouteProducer(object):
         # boxes remain the obstacle set.
         payload = None
         if attachment is not None:
+            from st09_contracts.payload_envelope import collision_payload
+            geometry = collision_payload(attachment)
             payload = PayloadSpec(
                 dimensions_wdh=tuple(
-                    float(v) for v in attachment.dimensions_wdh),
+                    float(v) for v in geometry.dimensions_wdh),
                 t_tcp_box_translation=tuple(
-                    float(v) for v in attachment.t_tcp_box_translation),
+                    float(v) for v in geometry.t_tcp_box_translation),
                 t_tcp_box_quaternion_xyzw=tuple(
-                    float(v) for v in attachment.t_tcp_box_quaternion_xyzw))
+                    float(v) for v in geometry.t_tcp_box_quaternion_xyzw))
         released = None
         container_transform = (request or {}).get("container_transform")
         if container_transform and candidate is not None:
@@ -2921,11 +2935,14 @@ class RouteProducer(object):
                 tuple(float(v) for v in candidate.position_container),
                 tuple(float(v) for v in
                       candidate.quaternion_xyzw_container))
+            from luggage_planning.payload_envelope_geometry import geometry_at_box_pose
+            released_center, released_quaternion, released_dimensions = geometry_at_box_pose(
+                attachment, released_center, released_quaternion)
             released = BoxSpec(
                 object_id="route-released-box",
                 center=tuple(float(v) for v in released_center),
                 size_whd=tuple(
-                    float(v) for v in attachment.dimensions_wdh),
+                    float(v) for v in released_dimensions),
                 quaternion_xyzw=tuple(
                     float(v) for v in released_quaternion))
         occupancy = occupancy_boxes_from_surface(
