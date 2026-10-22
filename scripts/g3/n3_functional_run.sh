@@ -64,6 +64,8 @@ cleanup() {
   log "runner exit=$status"
 }
 trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
 
 # ---- Same A-prime scene rebind + driver scene arg (phase-1 fix) ----
 export G3_CONTAINER_MODEL="airport_container_real_aprime"
@@ -161,6 +163,9 @@ log "launch pid=$LPID out=$OUT run_id=$RUN_ID"
 GAIN_OK=""
 for _ in $(seq 1 60); do
   sleep 5
+  if ! kill -0 "$LPID" 2>/dev/null || grep -Eq 'startup_failed|\[ERROR\].*\[spawner-.*process has died' "$OUT/launch.log"; then
+    log "startup terminal failure before gain verification"; break
+  fi
   G=$(grep -m1 "position_proportional_gain has been set to:" "$OUT/launch.log" 2>/dev/null | sed 's/.*set to: //')
   if [[ -n "$G" ]]; then
     if [[ "$G" == "0.8" ]]; then GAIN_OK=1; else log "GAIN_VERIFY_FAIL runtime=$G (expected 0.8)"; fi
