@@ -357,8 +357,21 @@ void GazeboSimROS2ControlPlugin::Configure(
     rclcpp::init(static_cast<int>(argv.size()), argv.data());
   }
 
+  // [param-delivery fix, settle campaign 2026-10-22] Create this node WITH
+  // the SDF <parameters> argument list (params files + remaps — everything
+  // built so far; robot_description is appended below, after this node
+  // fetches the URDF). Upstream 0.7.20 creates the node bare and assigns
+  // the parsed params file to the rcl context only afterwards, so the
+  // yaml's `gz_ros2_control:` section (position_proportional_gain, ...)
+  // never reached this node and the plugin always ran its default gain —
+  // measured in every recorded boot of this campaign ("set to: 0.1"
+  // against the yaml's intended 0.8, whose comment documents 0.1 as
+  // insufficient under camera+panel load). The controller_manager (created
+  // later) keeps picking the context global arguments exactly as before.
   std::string node_name = "gz_ros2_control";
-  this->dataPtr->node_ = rclcpp::Node::make_shared(node_name, ns);
+  rclcpp::NodeOptions node_options;
+  node_options.arguments(arguments);
+  this->dataPtr->node_ = rclcpp::Node::make_shared(node_name, ns, node_options);
   this->dataPtr->executor_ = std::make_shared<rclcpp::executors::MultiThreadedExecutor>();
   this->dataPtr->executor_->add_node(this->dataPtr->node_);
   auto spin = [this]()

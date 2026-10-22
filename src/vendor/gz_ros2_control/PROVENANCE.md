@@ -66,3 +66,27 @@ The generated diff is also stored at `patches/01_instrumentation.patch`
 Standard ament_cmake, no extra flags; built in this worktree with
 `colcon build --packages-select joint_command_capture gz_ros2_control`
 (humble, Fortress branch: `ignition-gazebo6` path).
+
+## Patch 02: param-delivery fix (2026-10-22, settle campaign)
+
+`gz_ros2_control_plugin.cpp` Configure(): the plugin's own node
+("gz_ros2_control") is now created WITH the SDF `<parameters>` argument
+list (params files + remaps; robot_description appended afterwards as
+upstream). In stock 0.7.20 the node is created bare BEFORE the parsed
+params file is assigned to the rcl context, so the yaml's
+`gz_ros2_control:` section never reached this node —
+`position_proportional_gain` ran at the compiled default 0.1 in every
+recorded boot (runtime log line "The position_proportional_gain has been
+set to: 0.1") while elfin_control/config/elfin_controllers_sim.yaml has
+declared 0.8 since the workspace baseline (comment there documents 0.1
+as insufficient under camera+panel load). The controller_manager and
+everything downstream keep reading the context global arguments exactly
+as upstream; the ONLY behavior change is this node honoring its own yaml
+section. Evidence: docs/status/evidence/occ_owner_b1/gate3_aprime/
+PHASE1_DIAG_BUDGET_20261022.md (hold-window boundary verdict
+physical_response at gain 0.1: frozen cmd, faithful −0.1×rate×err
+conversion, joints delivering ~1% of commanded velocity and drifting
+0.12/0.27 rad per 10 s under load).
+
+Patched-build library hashes (supersede the 01-era values above):
+- libign_ros2_control-system.so  5336ee0e2eb05f8be7506268ac2b9ef8596127d147a7b34f3022f6bae00a7c6c

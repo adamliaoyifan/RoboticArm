@@ -152,7 +152,10 @@ def analyze_run(run_dir: str | Path,
     details["l3_l4_exact_matches"] = int(np.sum(exact))
     l3l4_dev = None
     if np.any(exact):
-        vel_err = np.abs(v_act[ok][exact] - applied[ok][exact])
+        # ok/exact are READ-stream masks; idx_c carries the matched WRITE
+        # indices — index the write array through idx_c, never through the
+        # read mask (real runs are 1 kHz write vs 100 Hz read).
+        vel_err = np.abs(v_act[ok][exact] - applied[idx_c][exact])
         bad = np.flatnonzero(vel_err > vel_tol_rad_s)
         details["l3_l4_vel_err_max"] = float(np.max(vel_err))
         details["l3_l4_vel_err_p99"] = float(np.percentile(vel_err, 99))

@@ -176,6 +176,7 @@ log "driver start"
 timeout 1200 python3 "$WS/src/luggage_gazebo/scripts/diagnostic_transit_driver.py" \
   --capture-directory "$OUT/capture_driver" --capture-run-id "$RUN_ID" \
   --out "$OUT/driver_out" --dump-dir "$OUT/dumps" \
+  --scene-tf-config "$SCENE" \
   --sequence-ids inch20 --observe-pose pickup_observe_sim \
   --plan-timeout 180 --goto-timeout 60 --auth-max-elapsed-sec 8 \
   --select-budget-s "$DIAG_ROUTE_BUDGET_S" \
