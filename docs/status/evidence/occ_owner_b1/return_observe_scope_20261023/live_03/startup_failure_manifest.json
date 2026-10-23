@@ -1,0 +1,18 @@
+{
+  "revision": "71143f9f",
+  "stage": "startup_before_driver",
+  "attempted_boxes": 0,
+  "scored_units_consumed": 0,
+  "observations": [
+    "one clock and camera11.55Hz",
+    "URDF GetParameters response not received within90s",
+    "server warned response timeout"
+  ],
+  "capture_complete": true,
+  "replay_possible": false,
+  "artifacts": [
+    "startup_preflight.json",
+    "launch.log",
+    "teardown.log"
+  ]
+}

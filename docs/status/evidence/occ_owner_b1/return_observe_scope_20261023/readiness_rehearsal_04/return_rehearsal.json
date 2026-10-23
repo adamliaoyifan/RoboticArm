@@ -1,0 +1,1755 @@
+{
+  "success": true,
+  "iterations": [
+    {
+      "iteration": 0,
+      "before": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 1
+        },
+        "transitions": [
+          {
+            "at_monotonic": 3346351.059458334,
+            "reason": "MISSING_PEER"
+          },
+          {
+            "at_monotonic": 3346351.309607531,
+            "reason": "READY"
+          }
+        ],
+        "heartbeat_sequence": 2,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346351.141618998,
+              "vacuum_controller": 3346351.170692601,
+              "cargo_volume_mapper": 3346351.194071407,
+              "motion_planner": 3346351.286697785,
+              "trajectory_selector": 3346351.301698075
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346351.194414137
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          }
+        ]
+      },
+      "start": 3346351.315353545,
+      "build_gt_end": 3346351.593474236,
+      "end": 3346351.689131149,
+      "after": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 1
+        },
+        "transitions": [],
+        "heartbeat_sequence": 3,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346351.141618998,
+              "vacuum_controller": 3346351.170692601,
+              "cargo_volume_mapper": 3346351.681489972,
+              "motion_planner": 3346351.286697785,
+              "trajectory_selector": 3346351.301698075
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346351.684697884
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.32818292,
+            "peer": "cargo_volume_mapper",
+            "sequence": 49,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.68617814,
+            "peer": "waypoint_generator",
+            "sequence": 51,
+            "status": "accepted"
+          }
+        ]
+      }
+    },
+    {
+      "iteration": 1,
+      "before": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 2
+        },
+        "transitions": [],
+        "heartbeat_sequence": 5,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346352.14199549,
+              "vacuum_controller": 3346352.170965737,
+              "cargo_volume_mapper": 3346352.069124278,
+              "motion_planner": 3346352.036913627,
+              "trajectory_selector": 3346352.051847441
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346352.069576445
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.32818292,
+            "peer": "cargo_volume_mapper",
+            "sequence": 49,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.68617814,
+            "peer": "waypoint_generator",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.689943269,
+            "peer": "scene_manager",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.691317074,
+            "peer": "vacuum_controller",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.692576231,
+            "peer": "motion_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.693834126,
+            "peer": "trajectory_selector",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.695134762,
+            "peer": "placement_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.696054405,
+            "peer": "cargo_volume_mapper",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.697881259,
+            "peer": "waypoint_generator",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.698893649,
+            "peer": "scene_manager",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.700184596,
+            "peer": "vacuum_controller",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.701535458,
+            "peer": "pack_eval_driver",
+            "sequence": 2,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.78588884,
+            "peer": "motion_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.800779853,
+            "peer": "trajectory_selector",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.807013852,
+            "peer": "placement_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.810370837,
+            "peer": "pack_eval_driver",
+            "sequence": 3,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.818050808,
+            "peer": "cargo_volume_mapper",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.839243148,
+            "peer": "waypoint_generator",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.890867978,
+            "peer": "scene_manager",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.920061959,
+            "peer": "vacuum_controller",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.035878725,
+            "peer": "motion_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.050848137,
+            "peer": "trajectory_selector",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.05667285,
+            "peer": "placement_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.06038045,
+            "peer": "pack_eval_driver",
+            "sequence": 4,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.068147836,
+            "peer": "cargo_volume_mapper",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.089103077,
+            "peer": "waypoint_generator",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.140964315,
+            "peer": "scene_manager",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.170008642,
+            "peer": "vacuum_controller",
+            "sequence": 54,
+            "status": "accepted"
+          }
+        ]
+      },
+      "start": 3346352.190064658,
+      "build_gt_end": 3346352.462642319,
+      "end": 3346352.554593656,
+      "after": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 2
+        },
+        "transitions": [],
+        "heartbeat_sequence": 6,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346352.14199549,
+              "vacuum_controller": 3346352.170965737,
+              "cargo_volume_mapper": 3346352.069124278,
+              "motion_planner": 3346352.547450353,
+              "trajectory_selector": 3346352.555222769
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346352.069576445
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.32818292,
+            "peer": "cargo_volume_mapper",
+            "sequence": 49,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.68617814,
+            "peer": "waypoint_generator",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.689943269,
+            "peer": "scene_manager",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.691317074,
+            "peer": "vacuum_controller",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.692576231,
+            "peer": "motion_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.693834126,
+            "peer": "trajectory_selector",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.695134762,
+            "peer": "placement_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.696054405,
+            "peer": "cargo_volume_mapper",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.697881259,
+            "peer": "waypoint_generator",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.698893649,
+            "peer": "scene_manager",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.700184596,
+            "peer": "vacuum_controller",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.701535458,
+            "peer": "pack_eval_driver",
+            "sequence": 2,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.78588884,
+            "peer": "motion_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.800779853,
+            "peer": "trajectory_selector",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.807013852,
+            "peer": "placement_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.810370837,
+            "peer": "pack_eval_driver",
+            "sequence": 3,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.818050808,
+            "peer": "cargo_volume_mapper",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.839243148,
+            "peer": "waypoint_generator",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.890867978,
+            "peer": "scene_manager",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.920061959,
+            "peer": "vacuum_controller",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.035878725,
+            "peer": "motion_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.050848137,
+            "peer": "trajectory_selector",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.05667285,
+            "peer": "placement_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.06038045,
+            "peer": "pack_eval_driver",
+            "sequence": 4,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.068147836,
+            "peer": "cargo_volume_mapper",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.089103077,
+            "peer": "waypoint_generator",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.140964315,
+            "peer": "scene_manager",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.170008642,
+            "peer": "vacuum_controller",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.296147489,
+            "peer": "motion_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.548652783,
+            "peer": "trajectory_selector",
+            "sequence": 55,
+            "status": "accepted"
+          }
+        ]
+      }
+    },
+    {
+      "iteration": 2,
+      "before": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 3
+        },
+        "transitions": [],
+        "heartbeat_sequence": 8,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346352.891502858,
+              "vacuum_controller": 3346352.920673064,
+              "cargo_volume_mapper": 3346352.818792461,
+              "motion_planner": 3346353.036710569,
+              "trajectory_selector": 3346353.051520057
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346352.819095686
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.32818292,
+            "peer": "cargo_volume_mapper",
+            "sequence": 49,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.68617814,
+            "peer": "waypoint_generator",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.689943269,
+            "peer": "scene_manager",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.691317074,
+            "peer": "vacuum_controller",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.692576231,
+            "peer": "motion_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.693834126,
+            "peer": "trajectory_selector",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.695134762,
+            "peer": "placement_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.696054405,
+            "peer": "cargo_volume_mapper",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.697881259,
+            "peer": "waypoint_generator",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.698893649,
+            "peer": "scene_manager",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.700184596,
+            "peer": "vacuum_controller",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.701535458,
+            "peer": "pack_eval_driver",
+            "sequence": 2,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.78588884,
+            "peer": "motion_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.800779853,
+            "peer": "trajectory_selector",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.807013852,
+            "peer": "placement_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.810370837,
+            "peer": "pack_eval_driver",
+            "sequence": 3,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.818050808,
+            "peer": "cargo_volume_mapper",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.839243148,
+            "peer": "waypoint_generator",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.890867978,
+            "peer": "scene_manager",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.920061959,
+            "peer": "vacuum_controller",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.035878725,
+            "peer": "motion_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.050848137,
+            "peer": "trajectory_selector",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.05667285,
+            "peer": "placement_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.06038045,
+            "peer": "pack_eval_driver",
+            "sequence": 4,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.068147836,
+            "peer": "cargo_volume_mapper",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.089103077,
+            "peer": "waypoint_generator",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.140964315,
+            "peer": "scene_manager",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.170008642,
+            "peer": "vacuum_controller",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.296147489,
+            "peer": "motion_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.548652783,
+            "peer": "trajectory_selector",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.555699032,
+            "peer": "placement_planner",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.556788117,
+            "peer": "cargo_volume_mapper",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.558402318,
+            "peer": "waypoint_generator",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.559198878,
+            "peer": "scene_manager",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.560619041,
+            "peer": "vacuum_controller",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.561740727,
+            "peer": "motion_planner",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.562983103,
+            "peer": "pack_eval_driver",
+            "sequence": 5,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.563495134,
+            "peer": "trajectory_selector",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.564719324,
+            "peer": "placement_planner",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.565516796,
+            "peer": "pack_eval_driver",
+            "sequence": 6,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.567975338,
+            "peer": "cargo_volume_mapper",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.58889946,
+            "peer": "waypoint_generator",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.640676588,
+            "peer": "scene_manager",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.669795406,
+            "peer": "vacuum_controller",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.785658961,
+            "peer": "motion_planner",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.80073789,
+            "peer": "trajectory_selector",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.806736784,
+            "peer": "placement_planner",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.810275603,
+            "peer": "pack_eval_driver",
+            "sequence": 7,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.817946067,
+            "peer": "cargo_volume_mapper",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.838834551,
+            "peer": "waypoint_generator",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.890630074,
+            "peer": "scene_manager",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.919788638,
+            "peer": "vacuum_controller",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.035857091,
+            "peer": "motion_planner",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.050657221,
+            "peer": "trajectory_selector",
+            "sequence": 58,
+            "status": "accepted"
+          }
+        ]
+      },
+      "start": 3346353.055923606,
+      "build_gt_end": 3346353.328827956,
+      "end": 3346353.417515346,
+      "after": {
+        "peer": "pack_eval_driver",
+        "readiness": "READY",
+        "observed_peers": [
+          "cargo_volume_mapper",
+          "motion_planner",
+          "placement_planner",
+          "scene_manager",
+          "trajectory_selector",
+          "vacuum_controller",
+          "waypoint_generator"
+        ],
+        "counters": {
+          "GRAPH_READY_CHECK": 3
+        },
+        "transitions": [],
+        "heartbeat_sequence": 9,
+        "scopes": {
+          "unloaded_motion": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper",
+              "motion_planner",
+              "scene_manager",
+              "trajectory_selector",
+              "vacuum_controller"
+            ],
+            "received_monotonic": {
+              "scene_manager": 3346352.891502858,
+              "vacuum_controller": 3346352.920673064,
+              "cargo_volume_mapper": 3346353.41788164,
+              "motion_planner": 3346353.036710569,
+              "trajectory_selector": 3346353.051520057
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.315333938,
+                "reason": "READY"
+              }
+            ]
+          },
+          "occupancy_commit": {
+            "readiness": "READY",
+            "required_peers": [
+              "cargo_volume_mapper"
+            ],
+            "received_monotonic": {
+              "cargo_volume_mapper": 3346353.418184264
+            },
+            "transitions": [
+              {
+                "at_monotonic": 3346351.31534005,
+                "reason": "READY"
+              }
+            ]
+          }
+        },
+        "lease_epochs": {
+          "placement_planner": 0,
+          "waypoint_generator": 0,
+          "trajectory_selector": 0,
+          "motion_planner": 0,
+          "vacuum_controller": 0,
+          "scene_manager": 0,
+          "cargo_volume_mapper": 0
+        },
+        "receive_trace": [
+          {
+            "received_monotonic": 3346351.089135311,
+            "peer": "waypoint_generator",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.140626296,
+            "peer": "scene_manager",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.169853751,
+            "peer": "vacuum_controller",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.19329764,
+            "peer": "cargo_volume_mapper",
+            "sequence": 48,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.285592258,
+            "peer": "motion_planner",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.300689563,
+            "peer": "trajectory_selector",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.306779709,
+            "peer": "placement_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.310189054,
+            "peer": "pack_eval_driver",
+            "sequence": 1,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.32818292,
+            "peer": "cargo_volume_mapper",
+            "sequence": 49,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.68617814,
+            "peer": "waypoint_generator",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.689943269,
+            "peer": "scene_manager",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.691317074,
+            "peer": "vacuum_controller",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.692576231,
+            "peer": "motion_planner",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.693834126,
+            "peer": "trajectory_selector",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.695134762,
+            "peer": "placement_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.696054405,
+            "peer": "cargo_volume_mapper",
+            "sequence": 50,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.697881259,
+            "peer": "waypoint_generator",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.698893649,
+            "peer": "scene_manager",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.700184596,
+            "peer": "vacuum_controller",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.701535458,
+            "peer": "pack_eval_driver",
+            "sequence": 2,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.78588884,
+            "peer": "motion_planner",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.800779853,
+            "peer": "trajectory_selector",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.807013852,
+            "peer": "placement_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.810370837,
+            "peer": "pack_eval_driver",
+            "sequence": 3,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346351.818050808,
+            "peer": "cargo_volume_mapper",
+            "sequence": 51,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.839243148,
+            "peer": "waypoint_generator",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.890867978,
+            "peer": "scene_manager",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346351.920061959,
+            "peer": "vacuum_controller",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.035878725,
+            "peer": "motion_planner",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.050848137,
+            "peer": "trajectory_selector",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.05667285,
+            "peer": "placement_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.06038045,
+            "peer": "pack_eval_driver",
+            "sequence": 4,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.068147836,
+            "peer": "cargo_volume_mapper",
+            "sequence": 52,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.089103077,
+            "peer": "waypoint_generator",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.140964315,
+            "peer": "scene_manager",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.170008642,
+            "peer": "vacuum_controller",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.296147489,
+            "peer": "motion_planner",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.548652783,
+            "peer": "trajectory_selector",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.555699032,
+            "peer": "placement_planner",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.556788117,
+            "peer": "cargo_volume_mapper",
+            "sequence": 53,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.558402318,
+            "peer": "waypoint_generator",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.559198878,
+            "peer": "scene_manager",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.560619041,
+            "peer": "vacuum_controller",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.561740727,
+            "peer": "motion_planner",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.562983103,
+            "peer": "pack_eval_driver",
+            "sequence": 5,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.563495134,
+            "peer": "trajectory_selector",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.564719324,
+            "peer": "placement_planner",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.565516796,
+            "peer": "pack_eval_driver",
+            "sequence": 6,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.567975338,
+            "peer": "cargo_volume_mapper",
+            "sequence": 54,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.58889946,
+            "peer": "waypoint_generator",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.640676588,
+            "peer": "scene_manager",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.669795406,
+            "peer": "vacuum_controller",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.785658961,
+            "peer": "motion_planner",
+            "sequence": 56,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.80073789,
+            "peer": "trajectory_selector",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.806736784,
+            "peer": "placement_planner",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.810275603,
+            "peer": "pack_eval_driver",
+            "sequence": 7,
+            "status": "decoding"
+          },
+          {
+            "received_monotonic": 3346352.817946067,
+            "peer": "cargo_volume_mapper",
+            "sequence": 55,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.838834551,
+            "peer": "waypoint_generator",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.890630074,
+            "peer": "scene_manager",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346352.919788638,
+            "peer": "vacuum_controller",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.035857091,
+            "peer": "motion_planner",
+            "sequence": 57,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.050657221,
+            "peer": "trajectory_selector",
+            "sequence": 58,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.066732881,
+            "peer": "placement_planner",
+            "sequence": 58,
+            "status": "accepted"
+          },
+          {
+            "received_monotonic": 3346353.411419328,
+            "peer": "cargo_volume_mapper",
+            "sequence": 56,
+            "status": "accepted"
+          }
+        ]
+      }
+    }
+  ],
+  "no_motion": true
+}

@@ -1,0 +1,11 @@
+{
+  "revision": "ddc35211122d175dc20e48ab24cf9425882291a2",
+  "status": "?? pydeps-frozen\n",
+  "product_base": "71143f9f",
+  "rehearsal": "readiness_rehearsal_04",
+  "startup_failures": [
+    "live_03",
+    "readiness_rehearsal_03"
+  ],
+  "scored_units_consumed_by_startup_failures": 0
+}

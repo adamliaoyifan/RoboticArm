@@ -1,0 +1,11 @@
+{
+  "revision": "71143f9f+preflight_retry",
+  "stage": "gain_verification_before_preflight",
+  "attempted_boxes": 0,
+  "observations": [
+    "gz_ros2_control GetParameters response timeout",
+    "controller_manager never appeared; spawner60s timeout"
+  ],
+  "capture_complete": true,
+  "replay_possible": false
+}
