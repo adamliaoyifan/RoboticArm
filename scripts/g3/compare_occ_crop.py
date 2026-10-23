@@ -91,13 +91,13 @@ def correctness(args):
 def workload(n,outside,crossing):
     rng=np.random.default_rng(20261023)
     inside_n=int(round(n*(1-outside)))
-    inside=rng.uniform([-.60,-.6,.3],[.60,.4,1.3],(inside_n,3))
+    inside=rng.uniform([-.60,-.6,.7],[.60,.4,1.7],(inside_n,3))
     if crossing:
-        external=rng.uniform([1.1,-.6,.3],[1.6,.4,1.3],(n-inside_n,3))
+        external=rng.uniform([1.1,-.6,.7],[1.6,.4,1.7],(n-inside_n,3))
     else:
-        external=rng.uniform([-2.5,-.6,.3],[-1.5,.4,1.3],(n-inside_n,3))
+        external=rng.uniform([-2.5,-.6,.7],[-1.5,.4,1.7],(n-inside_n,3))
     points=np.concatenate([inside,external]);rng.shuffle(points)
-    return points,(-1.2,0.,.8)
+    return points,(-1.2,0.,1.1)
 
 
 def benchmark(args):
@@ -116,6 +116,8 @@ def benchmark(args):
     for n,f,c,res in workloads:
         key='n%d_out%g_cross%d_r%g'%(n,f,c,res);folder=args.out/key;folder.mkdir(exist_ok=True)
         points,origin=workload(n,f,c)
+        hull=normalize_descriptor(case['geometry_descriptor'])
+        assert int(contains_points(hull,points).sum())==int(round(n*(1-f)))
         np.savez_compressed(folder/'input.npz',points=points,origin=origin)
         b=mapper(old,res,case);m=mapper(CargoVolumeMapper,res,case)
         stores=[old_owner.OccupancyMapStore(b,epoch='baseline'),store_module.OccupancyMapStore(m,epoch='candidate')]
