@@ -464,6 +464,24 @@ class PackEvalDriver(PlaceSmokeDriver):
     def _commit_anchor_required(self):
         return os.environ.get(self._COMMIT_ANCHOR_COMPAT_ENV, "") != "1"
 
+    def _prepare_return_observe(self, trial):
+        """Commit the verified box once, so return's frozen map includes it.
+
+        The suite ledger is finalized after HOME. A failed return keeps this
+        physical obstacle committed, without counting a completed pack cycle.
+        """
+        if getattr(self, "_typed", None) is None:
+            return True
+        pending = self._pending_placed or {}
+        committed = self._typed_commit_add(trial, pending)
+        trial.extras["cargo_map_commit_before_return"] = {
+            "committed": bool(committed),
+            "wall_s": time.time(),
+            "box_id": self._current_box_id(),
+            "expected_map_revision": int(pending.get("map_revision") or 0),
+        }
+        return committed
+
     def _typed_commit_add(self, record, pending):
         """[commit anchor + ledger convergence] Issue the typed cargo-map
         commit for one placed box and mirror the mapper's verdict into the
@@ -505,6 +523,12 @@ class PackEvalDriver(PlaceSmokeDriver):
                     extras["add_placed"] = "%s: %s" % (
                         error.code, error.field)
         committed = bool(add is not None and add.success)
+        if extras is not None:
+            extras["cargo_map_commit_result"] = {
+                "committed": committed,
+                "expected_map_revision": int(pending.get("map_revision") or 0),
+                "resulting_map_revision": getattr(add, "resulting_map_revision", None),
+            }
         if committed:
             if not hasattr(self, "_frame_placed_records"):
                 self._frame_placed_records = []
@@ -803,7 +827,12 @@ class PackEvalDriver(PlaceSmokeDriver):
             if commit_ok:
                 if getattr(self, "_typed", None) is not None:
                     pending = getattr(self, "_pending_placed", None) or {}
-                    commit_ok = self._typed_commit_add(record, pending)
+                    receipt = (getattr(record, "extras", None) or {}).get(
+                        "cargo_map_commit_before_return")
+                    # Production already committed after verify. Harnesses
+                    # without that hook retain the explicit legacy call.
+                    commit_ok = (bool(receipt["committed"]) if receipt is not None
+                                 else self._typed_commit_add(record, pending))
                 else:
                     add = self._call(
                         self._add_map,

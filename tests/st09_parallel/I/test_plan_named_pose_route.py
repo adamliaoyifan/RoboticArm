@@ -292,3 +292,13 @@ if __name__ == "__main__":
     import unittest
 
     unittest.main()
+
+
+def test_named_route_exports_the_same_frozen_snapshot_as_its_certificate():
+    producer = _pass_producer()
+    result = _call(producer)
+    assert result["success"]
+    frozen = result["request"]["frozen_map"]
+    assert frozen == {"map_revision": 5, "snapshot_digest": "snap-digest", "scene_revision": "scene-A"}
+    assert producer.last_selection["snapshot"].digest() == frozen["snapshot_digest"]
+    assert producer.last_selection["request"] is result["request"]

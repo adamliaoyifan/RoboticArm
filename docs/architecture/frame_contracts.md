@@ -401,3 +401,15 @@ placement computation or integration. Physical occupancy events and revision
 changes remain visible to execution revalidation and can revoke the route.
 The next placement request reads the latest map rather than reusing return's
 snapshot. A frozen planning input never licenses ignoring a new obstacle.
+
+The pack evaluator commits a verify-anchored placed-box record before requesting
+return planning. The return snapshot must therefore include the just-released
+obstacle, not only boxes from prior completed cycles. Suite success is counted
+after HOME; return failure never rolls back a physically released obstacle.
+The suite reuses this commit receipt instead of submitting/appending it twice.
+
+Kinematic release confirmation is read-after-write: require both a pose stamp
+and receive timestamp later than the set-pose response, then confirm XY within
+the existing2s budget. A recent pre-command cache value is not confirmation.
+Persistent XY error still refuses at5mm, Z remains observational; rejected
+candidates and exact command/read boundaries are evidence, not planning input.

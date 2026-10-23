@@ -2712,6 +2712,11 @@ class RouteProducer(object):
                 return self._fail("MAP_STALE",
                                   [{"snapshot": int(snapshot.map_revision),
                                     "caller_latest": latest_map_revision}])
+        # This return is a new planning phase over the post-commit map.
+        # Stable admitted content retains its age basis through execution;
+        # a different epoch/revision/content is still revalidated live.
+        self._admitted_snapshot = snapshot
+        self._admission_now_ns = self._clock_ns()
         request["frozen_map"] = {
             "map_revision": int(snapshot.map_revision),
             "snapshot_digest": str(snapshot.digest()),
@@ -2816,6 +2821,7 @@ class RouteProducer(object):
                 "certification": certification,
                 "revalidation": revalidation,
                 "stage_timings": self._stage_timings(started_ns),
+                "request": request,
             }
         finally:
             if callable(reset_scene):

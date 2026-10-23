@@ -46,6 +46,24 @@ def main():
             rows.append(row)
             runtime.require_graph_ready(scope="unloaded_motion")
             time.sleep(0.5)
+        # Verify the exact raw capture path before spending another box.
+        from luggage_gazebo.release_capture import record
+        from luggage_gazebo.pose_text import PoseTextDecoder
+        raw_dir = output / "release_capture_preflight"
+        capture = record(str(raw_dir), {
+            "poses": ["ign", "topic", "-e", "-t", "/world/airport_loading/pose/info"],
+            "contacts": ["ign", "topic", "-e", "-t", "/obs/box_contact"],
+        }, duration=3.)
+        decoder = PoseTextDecoder()
+        for line in (raw_dir / "poses.raw").read_text().splitlines():
+            decoder.feed_line(line)
+        decoder.finish()
+        health = {"pose_bytes": capture["streams"]["poses"]["bytes"],
+                  "decoder": decoder.diagnostics()}
+        (output / "release_capture_preflight.json").write_text(json.dumps(health, indent=2)+"\n")
+        if not health["pose_bytes"] or not decoder.counts["accepted"]:
+            raise RuntimeError("raw pose capture health failed")
+        runtime.require_graph_ready(scope="unloaded_motion")
         (output / "return_rehearsal.json").write_text(json.dumps(dict(
             success=True, iterations=rows, no_motion=True), indent=2)+"\n")
     finally:

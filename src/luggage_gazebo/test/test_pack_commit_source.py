@@ -329,3 +329,32 @@ def test_compute_contract_error_preserves_exact_cause():
     assert driver._last_rejected['reason_code'] == 'GRAPH_NOT_READY'
     assert trial.extras['placement_error']['received'] == ['stale']
     assert trial.extras['placement_request']['expected_map_revision'] == 7
+
+
+@unittest.skipIf(_load_pack_module() is None, "ROS driver deps unavailable")
+class TestCommitBeforeReturn(unittest.TestCase):
+    def test_return_boundary_commits_verified_box_before_home(self):
+        module = _load_pack_module()
+        calls = []
+        trial = SimpleNamespace(extras={"verify": {"verdict": "ok"}})
+        host = SimpleNamespace(_typed=object(), _pending_placed={"map_revision": 7},
+                               _current_box_id=lambda: "box-1")
+        def commit(record, pending):
+            self.assertEqual(record.extras["verify"]["verdict"], "ok")
+            calls.append((record, pending))
+            return True
+        host._typed_commit_add = commit
+        self.assertTrue(module.PackEvalDriver._prepare_return_observe(host, trial))
+        self.assertEqual(len(calls), 1)
+        receipt = trial.extras["cargo_map_commit_before_return"]
+        self.assertTrue(receipt["committed"])
+        self.assertEqual(receipt["box_id"], "box-1")
+        self.assertEqual(receipt["expected_map_revision"], 7)
+
+    def test_rejected_commit_refuses_return_preparation(self):
+        module = _load_pack_module()
+        trial = SimpleNamespace(extras={"verify": {"verdict": "ok"}})
+        host = SimpleNamespace(_typed=object(), _pending_placed={},
+                               _current_box_id=lambda: "box-1", _typed_commit_add=lambda *args: False)
+        self.assertFalse(module.PackEvalDriver._prepare_return_observe(host, trial))
+        self.assertFalse(trial.extras["cargo_map_commit_before_return"]["committed"])

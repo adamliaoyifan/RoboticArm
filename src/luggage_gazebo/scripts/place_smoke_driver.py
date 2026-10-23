@@ -637,12 +637,17 @@ class ReleasePoseStream:
             return self._latest.get(str(model))
 
     def read_release_pose(self, model, now_sim_s,
-                          timeout_s=2.0, wall_now=None):
+                          timeout_s=2.0, wall_now=None, *,
+                          after_sim_stamp_ns=None, after_receive_monotonic_s=None,
+                          accept_pose=None):
         """(pose7|None, record). Refuses stale/missing/future/old-epoch
         samples by name; never falls back."""
         wall = wall_now or time.monotonic
         deadline = time.monotonic() + float(timeout_s)
         reason = None
+        rejected = []
+        rejection_count = 0
+        last_candidate = None
         while True:
             with self._lock:
                 entry = self._latest.get(str(model))
@@ -650,20 +655,28 @@ class ReleasePoseStream:
                 decoder_evidence = self._decoder.diagnostics()
                 parse_reason = self._decoder.last_rejections.get(str(model))
             record = {"model": str(model), "epoch_floor_ns": floor,
-                      "decoder": decoder_evidence}
+                      "decoder": decoder_evidence,
+                      "after_sim_stamp_ns": after_sim_stamp_ns,
+                      "after_receive_monotonic_s": after_receive_monotonic_s}
             if entry is None:
                 reason = parse_reason or "no_message"
             else:
                 stamp_ns, pose6, recv_wall = entry
-                now_ns = int(float(now_sim_s) * 1e9)
+                sim_now = now_sim_s() if callable(now_sim_s) else now_sim_s
+                now_ns = int(float(sim_now) * 1e9)
                 sim_age_s = (now_ns - stamp_ns) / 1e9
                 wall_age_s = wall() - recv_wall
                 record.update({
                     "stamp_ns": stamp_ns,
+                    "received_monotonic_s": recv_wall,
                     "sim_age_ms": round(sim_age_s * 1e3, 1),
                     "wall_age_ms": round(wall_age_s * 1e3, 1),
                 })
-                if sim_age_s < -self.EPOCH_TOL_S:
+                if after_sim_stamp_ns is not None and stamp_ns <= after_sim_stamp_ns:
+                    reason = "pre_command_stamp"
+                elif after_receive_monotonic_s is not None and recv_wall <= after_receive_monotonic_s:
+                    reason = "pre_command_receive"
+                elif sim_age_s < -self.EPOCH_TOL_S:
                     reason = "future_stamp"
                 elif floor is not None and stamp_ns < floor:
                     reason = "old_epoch_stamp"
@@ -671,10 +684,26 @@ class ReleasePoseStream:
                     reason = "stale_sim_age"
                 elif wall_age_s > self.WALL_AGE_MAX_S:
                     reason = "stale_wall_age"
+                elif accept_pose is not None and not accept_pose(pose6):
+                    reason = "pose_not_confirmed"
+                    last_candidate = list(pose6)
                 else:
-                    record["verdict"] = "fresh"
+                    record.update(verdict="fresh", rejection_count=rejection_count,
+                                  rejected_samples=rejected)
                     return list(pose6), record
+                # Keep a bounded upstream window; repeated polling of the same
+                # cached sample is one observation, not multiple measurements.
+                sample_key = (stamp_ns, recv_wall, reason)
+                if not rejected or sample_key != tuple(rejected[-1][key] for key in
+                                                       ("stamp_ns", "received_monotonic_s", "reason")):
+                    rejection_count += 1
+                    rejected.append(dict(stamp_ns=stamp_ns, received_monotonic_s=recv_wall,
+                                         pose_xyzw7=list(pose6), reason=reason))
+                    if len(rejected) > 8:
+                        rejected.pop(0)
             if time.monotonic() >= deadline:
+                record.update(rejection_count=rejection_count, rejected_samples=rejected,
+                              last_candidate_pose_xyzw7=last_candidate)
                 record["verdict"] = "refused"
                 record["reason"] = reason or "no_message"
                 return None, record
@@ -3155,12 +3184,24 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         record["set_pose"] = msg
         if not ok:
             return False, "kinematic set_pose refused: %s" % msg, record
+        # Confirm the commanded state, not merely a recently cached state.
+        # Keep the existing bounded2s read budget and5mm XY gate; an actual
+        # persistent offset still refuses, while a pre-command sample cannot.
+        response = record["set_pose_response"]
         pose7, evidence = self._release_pose_stream().read_release_pose(
-            model, self.ros_now_sec())
+            model, self.ros_now_sec,
+            after_sim_stamp_ns=int(response["sim_s"] * 1e9),
+            after_receive_monotonic_s=response["monotonic_s"],
+            accept_pose=lambda value: math.hypot(
+                value[0] - declared[0], value[1] - declared[1]) <= 0.005)
         record["presence_evidence"] = evidence
         if pose7 is None:
-            return False, "kinematic presence refused (%s)" % (
-                evidence.get("reason")), record
+            if (evidence.get("reason") == "pose_not_confirmed"
+                    and evidence.get("last_candidate_pose_xyzw7") is not None):
+                pose7 = evidence["last_candidate_pose_xyzw7"]
+            else:
+                return False, "kinematic presence refused (%s)" % (
+                    evidence.get("reason")), record
         delta = [float(pose7[i]) - declared[i] for i in range(3)]
         xy_error = math.hypot(delta[0], delta[1])
         record["observed_pose_xyzw7"] = list(pose7)
@@ -3446,6 +3487,10 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         if ready:
             return None
         return self._abort(trial, "CONTACT_CAPTURE_NOT_READY", True, extra=extras)
+
+    def _prepare_return_observe(self, trial):
+        """Overridden by pack to commit VERIFIED occupancy before return planning."""
+        return True
 
     def _return_observe_with_evidence(self, trial, extras, debug):
         """Durable release/verify checkpoint before the fallible HOME boundary."""
@@ -3796,6 +3841,8 @@ class PlaceSmokeDriver(PickRetreatEvalDriver):
         trial.extras["follow_skipped_delta"] = (
             self._follow_skipped() - self._follow_skipped0)
 
+        if not self._args.plan_only and not self._prepare_return_observe(trial):
+            return self._abort(trial, "COMMIT_FAILED", False, extra=extras)
         trial.extras["return_boundary_timings"] = {"debug_start_monotonic": time.monotonic()}
         debug = self._capture_success_debug(
             trial, slot, slot_meta, pose_drift or pose_release)

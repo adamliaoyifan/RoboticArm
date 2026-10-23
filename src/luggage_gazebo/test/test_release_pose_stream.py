@@ -369,3 +369,45 @@ class FiveBodyContactIdentityTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipIf(place_smoke_driver is None, "driver peers unavailable")
+class PostCommandPoseTest(unittest.TestCase):
+    def test_fresh_but_precommand_cache_is_not_confirmation(self):
+        stream = _stream_with([_msg(99.99, x=1.01, recv_wall=49.99)])
+        pose, record = stream.read_release_pose(
+            "pickup_box_0001_inch20", 100., timeout_s=0., wall_now=lambda:50.,
+            after_sim_stamp_ns=100_000_000_000, after_receive_monotonic_s=50.)
+        self.assertIsNone(pose)
+        self.assertEqual(record["reason"], "pre_command_stamp")
+
+    def test_postcommand_receive_barrier_rejects_queued_old_sample(self):
+        stream = _stream_with([_msg(100.01, recv_wall=49.99)])
+        pose, record = stream.read_release_pose(
+            "pickup_box_0001_inch20", 100.02, timeout_s=0., wall_now=lambda:50.02,
+            after_sim_stamp_ns=100_000_000_000, after_receive_monotonic_s=50.)
+        self.assertIsNone(pose)
+        self.assertEqual(record["reason"], "pre_command_receive")
+
+    def test_waits_for_commanded_xy_without_accepting_persistent_error(self):
+        from unittest.mock import patch
+        model="pickup_box_0001_inch20"
+        stream = _stream_with([_msg(100.01, x=1.02, recv_wall=50.01)])
+        def next_tick(_delay):
+            stream._latest[model]=(100_020_000_000,[1.,.2,.3,0.,0.,0.,1.],50.02)
+        with patch.object(time, "sleep", side_effect=next_tick):
+            pose, record = stream.read_release_pose(
+                model, lambda:100.03, timeout_s=.05, wall_now=lambda:50.03,
+                after_sim_stamp_ns=100_000_000_000, after_receive_monotonic_s=50.,
+                accept_pose=lambda p:abs(p[0]-1.)<=.005)
+        self.assertEqual(pose[0], 1.)
+        self.assertEqual(record["rejection_count"], 1)
+        self.assertEqual(record["rejected_samples"][0]["reason"], "pose_not_confirmed")
+        stream=_stream_with([_msg(100.01,x=1.02,recv_wall=50.01)])
+        pose, record=stream.read_release_pose(
+            model,100.02,timeout_s=0.,wall_now=lambda:50.02,
+            after_sim_stamp_ns=100_000_000_000, after_receive_monotonic_s=50.,
+            accept_pose=lambda p:abs(p[0]-1.)<=.005)
+        self.assertIsNone(pose)
+        self.assertEqual(record["reason"], "pose_not_confirmed")
+        self.assertEqual(record["last_candidate_pose_xyzw7"][0],1.02)

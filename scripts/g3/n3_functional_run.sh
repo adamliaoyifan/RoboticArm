@@ -110,6 +110,7 @@ WEIGHTS="$MAIN/yolov8s-world.pt"
 VENDOR="$MAIN/src/luggage_perception/vendor"
 PYDEPS="$MAIN/pydeps-frozen"
 export ELFIN_BOX_CONTACT_TOPIC=/obs/box_contact
+export ELFIN_RELEASE_CAPTURE_DIR="$OUT/release_capture"
 export ELFIN_BOX_SDF_DUMP="$OUT/spawn.sdf"
 export ELFIN_HANDOFF_FAILURE_CAPTURE_DIR="$OUT/handoff_failure"
 export ELFIN_SELECTION_CAPTURE_DIR="$OUT/selection_boundary"
