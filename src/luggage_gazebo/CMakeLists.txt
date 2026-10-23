@@ -30,6 +30,7 @@ install(PROGRAMS
 
 if(BUILD_TESTING)
   find_package(ament_cmake_pytest REQUIRED)
+  ament_add_pytest_test(pose_text_pytest test/test_pose_text.py)
   ament_add_pytest_test(driver_executor_pytest test/test_driver_executor.py)
   ament_add_pytest_test(handoff_failure_capture_pytest test/test_handoff_failure_capture.py)
   ament_add_pytest_test(selection_capture_pytest test/test_selection_capture.py)

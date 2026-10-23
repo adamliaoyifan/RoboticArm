@@ -71,6 +71,7 @@ from luggage_planning.motion_boundary import (
 from luggage_planning.planning_scene_client import summarize_planning_scene
 from luggage_planning.waypoint_generator import nearest_box_yaw, tool_down_yaw
 
+from luggage_gazebo.pose_text import PoseTextDecoder, parse_pose_samples
 from luggage_gazebo.capture_budget import CONTROLLER_STATE_TOPIC
 from luggage_gazebo.handoff_settle import (
     HandoffPolicy,
@@ -574,15 +575,13 @@ class ReleasePoseStream:
         self._world = str(world)
         self._ign = ign_bin or _ign_model_bin()
         self._lock = threading.Lock()
-        self._latest = {}        # name -> (stamp_ns, pose6, recv_wall)
+        self._latest = {}        # name -> (stamp_ns, pose7, recv_wall)
         self._epoch_floor_ns = None
         self._proc = None
         self._thread = None
         self._stop = threading.Event()
-        self._pending = None
-        self._pending_sec = 0
-        self._pending_nsec = 0
-        self.errors = []
+        self._decoder = PoseTextDecoder()
+        self.errors = self._decoder.errors
 
     # -- lifecycle ------------------------------------------------------
     def start(self):
@@ -616,52 +615,21 @@ class ReleasePoseStream:
                     break
                 self._ingest_line(line)
         except (OSError, ValueError) as exc:  # keep the cache; record why
-            self.errors.append(repr(exc))
+            self.errors.append({"reason": "reader_error", "detail": repr(exc)})
+        finally:
+            with self._lock:
+                self._decoder.finish()
 
     # -- parsing --------------------------------------------------------
     def _ingest_line(self, line):
-        s = line.strip()
-        if s.startswith("sec:") or s.startswith("nsec:"):
-            try:
-                if s.startswith("sec:"):
-                    self._pending_sec = int(s.split(":", 1)[1])
-                else:
-                    self._pending_nsec = int(s.split(":", 1)[1])
-            except ValueError:
-                pass
-            return
-        if s == "pose {":
-            self._pending = {"name": None, "vals": [], "depth": 1}
-            return
-        if (s.startswith("name:")
-                and self._pending is not None):
-            self._pending["name"] = (
-                s.split('"')[1] if '"' in s else None)
-            return
-        m = re.match(r"^[xyzw]:\s*(-?\d+\.?\d*(?:e-?\d+)?)$", s)
-        if m and self._pending is not None:
-            self._pending["vals"].append(float(m.group(1)))
-            return
-        if s.endswith("{") and self._pending is not None:
-            self._pending["depth"] += 1
-            return
-        if s == "}" and self._pending is not None:
-            self._pending["depth"] -= 1
-            if self._pending["depth"] > 0:
-                return          # closes position/orientation, not the pose
-            pending, self._pending = self._pending, None
-            name = pending["name"]
-            vals = pending["vals"]
-            if name and len(vals) == 7:
-                stamp = (self._pending_sec * 1_000_000_000
-                         + self._pending_nsec)
-                with self._lock:
-                    if (self._epoch_floor_ns is None
-                            or stamp < self._epoch_floor_ns):
-                        self._epoch_floor_ns = (
-                            stamp - int(self.EPOCH_TOL_S * 1e9))
-                    self._latest[name] = (
-                        stamp, list(vals), time.monotonic())
+        with self._lock:
+            for sample in self._decoder.feed_line(line):
+                if (self._epoch_floor_ns is None
+                        or sample.stamp_ns < self._epoch_floor_ns):
+                    self._epoch_floor_ns = (
+                        sample.stamp_ns - int(self.EPOCH_TOL_S * 1e9))
+                self._latest[sample.model] = (
+                    sample.stamp_ns, list(sample.pose7), time.monotonic())
 
     # -- reads ----------------------------------------------------------
     def latest(self, model):
@@ -670,7 +638,7 @@ class ReleasePoseStream:
 
     def read_release_pose(self, model, now_sim_s,
                           timeout_s=2.0, wall_now=None):
-        """(pose6|None, record). Refuses stale/missing/future/old-epoch
+        """(pose7|None, record). Refuses stale/missing/future/old-epoch
         samples by name; never falls back."""
         wall = wall_now or time.monotonic
         deadline = time.monotonic() + float(timeout_s)
@@ -679,9 +647,12 @@ class ReleasePoseStream:
             with self._lock:
                 entry = self._latest.get(str(model))
                 floor = self._epoch_floor_ns
-            record = {"model": str(model), "epoch_floor_ns": floor}
+                decoder_evidence = self._decoder.diagnostics()
+                parse_reason = self._decoder.last_rejections.get(str(model))
+            record = {"model": str(model), "epoch_floor_ns": floor,
+                      "decoder": decoder_evidence}
             if entry is None:
-                reason = "no_message"
+                reason = parse_reason or "no_message"
             else:
                 stamp_ns, pose6, recv_wall = entry
                 now_ns = int(float(now_sim_s) * 1e9)
@@ -711,43 +682,8 @@ class ReleasePoseStream:
 
 
 def parse_pose_stream_sample(text, model):
-    """One-shot parse of a `--num N` pose stream capture: [(stamp_ns,
-    pose6)] for `model`, in capture order. Offline testable."""
-    out = []
-    stamp = 0
-    name = None
-    vals = []
-    for raw in str(text).splitlines():
-        s = raw.strip()
-        m = re.match(r"^sec:\s*(\d+)$", s)
-        if m:
-            stamp = int(m.group(1)) * 1_000_000_000
-            continue
-        m = re.match(r"^nsec:\s*(\d+)$", s)
-        if m:
-            stamp += int(m.group(1))
-            continue
-        if s == "pose {":
-            name, vals, depth = None, [], 1
-            continue
-        if s.startswith("name:") and name is None:
-            name = s.split('"')[1] if '"' in s else None
-            continue
-        m = re.match(r"^[xyzw]:\s*(-?\d+\.?\d*(?:e-?\d+)?)$", s)
-        if m and name is not None:
-            vals.append(float(m.group(1)))
-            continue
-        if s.endswith("{") and name is not None:
-            depth += 1
-            continue
-        if s == "}" and name is not None:
-            depth -= 1
-            if depth > 0:
-                continue
-            if name == str(model) and len(vals) == 7:
-                out.append((stamp, list(vals)))
-            name, vals = None, []
-    return out
+    """Replay the same Pose_V text decoder used by the live release cache."""
+    return parse_pose_samples(text, model)
 
 
 def _quat7_to_rpy6(pose7):

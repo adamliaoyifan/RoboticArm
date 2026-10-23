@@ -178,6 +178,33 @@ pose {
         self.assertEqual(stamp, 12_500_000_000)
         self.assertAlmostEqual(pose7[0], -2.03, places=6)
 
+    def test_live_cache_matches_offline_with_omitted_zeros(self):
+        text = ('header { stamp { sec: 7 } }\n'
+                'pose { name: "pickup_box_0001_inch20" '
+                'orientation { w: 1 } position { z: 0.6 } }\n')
+        stream = place_smoke_driver.ReleasePoseStream(ign_bin="/bin/true")
+        for line in text.splitlines():
+            stream._ingest_line(line)
+        stamp, pose7, _wall = stream.latest("pickup_box_0001_inch20")
+        self.assertEqual([(stamp, pose7)],
+                         place_smoke_driver.parse_pose_stream_sample(
+                             text, "pickup_box_0001_inch20"))
+        pose, evidence = stream.read_release_pose(
+            "pickup_box_0001_inch20", 7.0, timeout_s=0)
+        self.assertEqual(pose, [0, 0, 0.6, 0, 0, 0, 1])
+        self.assertEqual(evidence["decoder"]["counts"]["accepted"], 1)
+
+    def test_invalid_pose_has_named_refusal(self):
+        stream = place_smoke_driver.ReleasePoseStream(ign_bin="/bin/true")
+        for line in ('header { stamp { sec: 7 } }',
+                     'pose { name: "pickup_box_0001_inch20" '
+                     'position {} orientation {} }'):
+            stream._ingest_line(line)
+        pose, evidence = stream.read_release_pose(
+            "pickup_box_0001_inch20", 7.0, timeout_s=0)
+        self.assertIsNone(pose)
+        self.assertEqual(evidence["reason"], "invalid_quaternion")
+
     def test_ingest_line_populates_cache_and_epoch(self):
         stream = place_smoke_driver.ReleasePoseStream(ign_bin="/bin/true")
         for line in ("header {", "  stamp {", "    sec: 7",
