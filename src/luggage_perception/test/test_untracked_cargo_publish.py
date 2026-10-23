@@ -7,6 +7,7 @@ import threading
 import unittest
 
 import numpy as np
+from luggage_perception.cargo_view_integration import untracked_xyz
 from builtin_interfaces.msg import Time
 
 
@@ -54,15 +55,16 @@ class TestUntrackedPublish(unittest.TestCase):
     def test_disabled_is_noop(self):
         node = self._node()
         node._untracked_pub = None
-        node._publish_untracked(
-            np.array([[1.0, 0.0, 0.0]]), None,
+        node._publish_untracked_cloud(
+            np.array([[1.0, 0.0, 0.0]]),
             Time(sec=1, nanosec=0), "cam")
 
     def test_publishes_label_filtered_stamp_and_frame(self):
         node = self._node()
         stamp = Time(sec=4, nanosec=200)
         cargo = np.array([[0.1, 0.0, 1.0], [0.2, 0.0, 1.0]], dtype=np.float64)
-        node._publish_untracked(cargo, np.array([[9.0, 0.0, 0.0]]), stamp, "cam")
+        node._publish_untracked_cloud(
+            untracked_xyz(cargo, np.array([[9.0, 0.0, 0.0]]), False), stamp, "cam")
         self.assertEqual(len(node._untracked_pub.messages), 1)
         msg = node._untracked_pub.messages[0]
         self.assertEqual(msg.header.stamp.sec, 4)
@@ -74,9 +76,9 @@ class TestUntrackedPublish(unittest.TestCase):
 
     def test_include_obstacle(self):
         node = self._node(include_obstacle=True)
-        node._publish_untracked(
-            np.array([[1.0, 0.0, 0.0]]),
-            np.array([[2.0, 0.0, 0.0]]),
+        node._publish_untracked_cloud(
+            untracked_xyz(np.array([[1.0, 0.0, 0.0]]),
+                          np.array([[2.0, 0.0, 0.0]]), True),
             Time(sec=1, nanosec=0), "cam")
         self.assertEqual(node._untracked_pub.messages[0].width, 2)
 

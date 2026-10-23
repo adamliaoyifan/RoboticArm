@@ -418,7 +418,7 @@ class CargoVolumeMapperNode(Node):
         _gate = getattr(self, "_gate_mutation", None)
         if _gate is not None and not _gate(response):
             return response
-        stats = self._mapper.stats()
+        stats = self._mapper.occupancy_summary()
         current_rev = int(stats["map_revision"])
         # Early-out on doomed requests (the store re-validates
         # authoritatively inside the transaction).
@@ -448,8 +448,6 @@ class CargoVolumeMapperNode(Node):
         rot, trans = rt
         points_base = transform_points(record["points"], rot, trans)
         zmin = self._floor_z + max(0.0, self._min_z_above_floor)
-        if points_base is not None and getattr(points_base, "shape", (0,))[0]:
-            points_base = points_base[points_base[:, 2] >= zmin]
         sensor_ns = (
             int(record["stamp"].sec) * 1_000_000_000
             + int(record["stamp"].nanosec))
@@ -464,7 +462,7 @@ class CargoVolumeMapperNode(Node):
                 int(request.expected_map_revision),
                 str(request.expected_content_digest or "")),
             geometry_hash=str(request.geometry_hash or ""),
-            points=points_base, origin=trans,
+            points=points_base, origin=trans, minimum_z=zmin,
             stamp_key=tuple(record["stamp_key"]),
             acquisition_stamp_ns=int(acquisition_ns),
             settled=bool(request.settled),
@@ -482,11 +480,11 @@ class CargoVolumeMapperNode(Node):
             return self._fail_integrate(
                 response, reason,
                 str(result.details.get("message") or reason),
-                self._mapper.stats())
+                self._mapper.occupancy_summary())
         details = result.details
         snapshot = result.snapshot
         self._publish_all(snapshot)
-        stats = self._mapper.stats()
+        stats = self._mapper.occupancy_summary()
         response.schema_version = SCHEMA_VERSION
         response.success = True
         response.reason_code = ""
@@ -495,6 +493,11 @@ class CargoVolumeMapperNode(Node):
             % (details.get("n_finite"), details.get("n_kept"),
                1000.0 * float(details.get("latency_sec") or 0.0),
                request.view_request_id))
+        self.get_logger().info("OCC_PREPROCESS " + json.dumps({
+            "view": request.view_request_id,
+            "counts": details.get("preprocess_counts", {}),
+            "timings": details.get("preprocess_timings", {}),
+        }, sort_keys=True))
         response.unknown_ratio = float(stats["unknown_ratio"])
         response.occupancy_ratio = float(stats["occupancy_ratio"])
         response.resulting_map_revision = int(snapshot.identity.revision)

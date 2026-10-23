@@ -193,6 +193,7 @@ class MapUpdate:
     # Integrate payload (container-frame points, TF applied by the adapter):
     points: object = None
     origin: Optional[tuple] = None
+    minimum_z: Optional[float] = None  # OCC-only acquisition policy, fingerprinted
     stamp_key: Optional[tuple] = None
     acquisition_stamp_ns: int = 0
     settled: bool = False
@@ -238,6 +239,7 @@ class MapUpdate:
             self.stamp_key,
             None if self.origin is None else
             tuple(float(v) for v in self.origin),
+            self.minimum_z,
             int(self.acquisition_stamp_ns),
             bool(self.settled),
             int(self.schema_version),
@@ -680,7 +682,7 @@ class OccupancyMapStore(object):
             self._adopt_after_removal(update.box)
         elif update.kind is UpdateKind.INTEGRATE_VIEW:
             outcome = apply_integrate(self._mapper, update.points,
-                                      update.origin)
+                                      update.origin, minimum_z=update.minimum_z)
             if not outcome["ok"]:
                 # Nothing mutated: the operation id is NOT consumed, so an
                 # I/O-level retry with a fresh cloud stays meaningful.
@@ -701,6 +703,8 @@ class OccupancyMapStore(object):
             freed = self._pending.settle_observed_free(
                 self._mapper.surface_map_2d())
             details.update({
+                "preprocess_counts": outcome.get("preprocess_counts", {}),
+                "preprocess_timings": outcome.get("preprocess_timings", {}),
                 "n_finite": outcome.get("n_finite"),
                 "n_kept": outcome.get("n_kept"),
                 "latency_sec": outcome.get("latency_sec"),

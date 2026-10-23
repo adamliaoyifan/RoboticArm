@@ -53,3 +53,19 @@ The geometry API can instantiate small coarse grids for offline legacy tests;
 its finite-positive and allocation-budget validation is independent of deployment
 range validation. No box clearance or Attachment uncertainty changes follow from
 a grid-resolution change.
+
+OCC sensor input preparation is private to the Store integration path, after
+acquisition-stamped TF into container_link. `cargo_occ_input` owns finite/height
+filtering and exact hull hit cropping before downsampling. The public cargo
+cloud and pick top estimator are never cropped. The existing floor+5cm policy
+is passed as `MapUpdate.minimum_z` and participates in operation identity; the
+node does not apply a second filter. Batched geometry uses the normalized hull,
+not an independent ROI configuration.
+
+Hit and ray streams are separate: ray downsampling and budget retain the old
+uncropped order, whereas only interior hit points become occupied/confirm cargo.
+Ray loops skip exterior AABB intervals while retaining original t=k/steps and
+active-mask checks. Closed-face/terminal-band depth rules remain unchanged.
+`preprocess_counts` and `preprocess_timings` are returned in Store details.
+Reading a revision must use `map_revision`; calling full `stats()` also scans
+frontiers and is not appropriate in the hot integration path.

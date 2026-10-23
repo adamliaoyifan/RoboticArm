@@ -260,41 +260,29 @@ def prepare_points(points, voxel_size):
     return kept, n_finite
 
 
-def apply_integrate(mapper, points, origin, voxel_size=None):
-    """Downsample ``points`` and call ``mapper.integrate_points``.
-
-    Returns a dict with counts, latency, and revisions. Does not publish.
-    """
-    resolution = float(
-        voxel_size if voxel_size is not None else mapper.resolution)
+def apply_integrate(mapper, points, origin, voxel_size=None, minimum_z=None):
+    """Prepare OCC-local hit/ray streams, then update through the owner."""
+    from luggage_perception.cargo_occ_input import OccInputPolicy, prepare_occ_observation
+    resolution = float(voxel_size if voxel_size is not None else mapper.resolution)
     t0 = time.monotonic()
-    kept, n_finite = prepare_points(points, resolution)
-    if n_finite == 0 or kept.shape[0] == 0:
-        return {
-            "ok": False,
-            "reason_code": REASON_VIEW_EMPTY,
-            "n_finite": n_finite,
-            "n_kept": int(kept.shape[0]),
-            "latency_sec": time.monotonic() - t0,
-            "revision_before": int(mapper.stats()["map_revision"]),
-            "revision_after": int(mapper.stats()["map_revision"]),
-        }
-    before = int(mapper.stats()["map_revision"])
+    prepared = prepare_occ_observation(points, origin, mapper._hull, resolution,
+        OccInputPolicy(minimum_z, tuple(mapper.center), mapper.yaw))
+    before = int(mapper.map_revision)
     origin_tuple = None if origin is None else tuple(float(v) for v in origin)
-    mapper.integrate_points(
-        kept.tolist(), origin=origin_tuple)
-    after = int(mapper.stats()["map_revision"])
+    t_integrate = time.monotonic()
+    ray_counts = mapper.integrate_points(prepared.hit_points.tolist(), origin=origin_tuple,
+                            ray_points=prepared.ray_points.tolist())
+    after = int(mapper.map_revision)
     return {
         "ok": after > before,
         "reason_code": "" if after > before else REASON_VIEW_EMPTY,
-        "n_finite": n_finite,
-        "n_kept": int(kept.shape[0]),
+        "n_finite": prepared.counts["finite"],
+        "n_kept": len(prepared.ray_points),
         "latency_sec": time.monotonic() - t0,
-        "revision_before": before,
-        "revision_after": after,
-        # What this view itself observed; confirmation reads this, never
-        # the accumulated map.
-        "observed_points": kept,
+        "revision_before": before, "revision_after": after,
+        "observed_points": prepared.hit_points,
+        "preprocess_counts": dict(prepared.counts, **ray_counts),
+        "preprocess_timings": dict(prepared.timings, integrate_s=time.monotonic()-t_integrate),
     }
 
 

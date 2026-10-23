@@ -421,7 +421,7 @@ class CargoVolumeMapper:
             self._labels[idx] = 0
             self._instance_ids[idx] = 0
 
-    def _raycast_indices(self, origin, hit):
+    def _raycast_indices(self, origin, hit, diagnostics=None):
         ox, oy, oz = origin
         hx, hy, hz = hit
         dist = math.sqrt((hx - ox) ** 2 + (hy - oy) ** 2 + (hz - oz) ** 2)
@@ -430,8 +430,31 @@ class CargoVolumeMapper:
         steps = int(dist / (self.resolution * 0.5))
         if steps < 1:
             return set()
+        # Clip only the loop bounds, preserving the original t=step/steps.
+        # AABB is conservative for the legacy active-voxel hull semantics.
+        local_origin = self._world_to_local(ox, oy, oz)
+        local_end = self._world_to_local(hx, hy, hz)
+        near, far = 0.0, 1.0
+        for start, end, half in zip(local_origin, local_end,
+                                    (self.inner_l*.5, self.inner_w*.5, self.inner_h*.5)):
+            delta = end-start
+            if delta == 0:
+                if abs(start) > half:
+                    return set()
+                continue
+            enter, leave = sorted(((-half-start)/delta, (half-start)/delta))
+            near, far = max(near, enter), min(far, leave)
+            if near > far:
+                return set()
+        # One sample of padding absorbs roundoff near the slab intersection;
+        # the unchanged voxel predicate rejects padding outside the map.
+        first = max(0, int(math.floor(near*steps))-1)
+        last = min(steps, int(math.ceil(far*steps))+2)
+        if diagnostics is not None:
+            diagnostics["ray_intersecting"] += 1
+            diagnostics["samples_visited"] += max(0, last-first)
         indices = set()
-        for step in range(steps):
+        for step in range(first, last):
             t = float(step) / float(steps)
             px = ox + (hx - ox) * t
             py = oy + (hy - oy) * t
@@ -442,7 +465,8 @@ class CargoVolumeMapper:
                 indices.add(self._index(*vox))
         return indices
 
-    def integrate_points(self, points, origin=None, labels=None, instance_ids=None):
+    def integrate_points(self, points, origin=None, labels=None, instance_ids=None,
+                         ray_points=None):
         """Integrate observed points into the voxel grid.
 
         Args:
@@ -452,6 +476,7 @@ class CargoVolumeMapper:
             instance_ids: optional parallel list of per-point instance IDs.
         """
         hit_records = {}
+        diagnostics = dict(rays_selected=0, ray_intersecting=0, samples_visited=0)
         miss_indices = set()
         for i, pt in enumerate(points):
             x, y, z = pt[0], pt[1], pt[2]
@@ -470,16 +495,17 @@ class CargoVolumeMapper:
             # subsample the rays (not the hit marks) when the cloud is large so
             # integrate stays interactive. The coarse voxel grid tolerates
             # fewer rays without losing free-space coverage.
-            ray_points = points
-            if self.max_raycast_points and len(points) > self.max_raycast_points:
-                stride = max(1, len(points) // self.max_raycast_points)
-                ray_points = points[::stride]
+            ray_points = points if ray_points is None else ray_points
+            if self.max_raycast_points and len(ray_points) > self.max_raycast_points:
+                stride = max(1, len(ray_points) // self.max_raycast_points)
+                ray_points = ray_points[::stride]
             for pt in ray_points:
                 x, y, z = pt[0], pt[1], pt[2]
                 if not (math.isfinite(x) and math.isfinite(y) and math.isfinite(z)):
                     continue
+                diagnostics["rays_selected"] += 1
                 miss_indices.update(
-                    self._raycast_indices((ox, oy, oz), (x, y, z))
+                    self._raycast_indices((ox, oy, oz), (x, y, z), diagnostics)
                 )
         miss_indices.difference_update(hit_records)
         for idx in miss_indices:
@@ -495,6 +521,7 @@ class CargoVolumeMapper:
             )
         if hit_records or miss_indices:
             self._revision += 1
+        return diagnostics
 
     def integrate_depth_view(self, points, origin):
         """Integrate full-depth returns, keeping model walls out of cargo hits.
@@ -837,7 +864,8 @@ class CargoVolumeMapper:
         if changed:
             self._revision += 1
 
-    def stats(self):
+    def occupancy_summary(self):
+        """Counts for integration responses; does not enumerate frontiers."""
         total, inactive, unknown, free, occupied, label_dist = occupancy_counts(self)
         voxel_vol = self.resolution ** 3
         return {
@@ -850,12 +878,14 @@ class CargoVolumeMapper:
             "occupancy_ratio": float(occupied) / total if total else 0.0,
             "occupied_volume": float(occupied) * voxel_vol,
             "free_volume": float(free) * voxel_vol,
-            "frontier_count": len(self._frontier_indices()),
             "label_distribution": {str(k): v for k, v in label_dist.items()},
             "map_revision": self._revision,
             "committed_box_count": len(self._placed_boxes),
             "geometry_hash": self.geometry_hash,
         }
+
+    def stats(self):
+        return dict(self.occupancy_summary(), frontier_count=len(self._frontier_indices()))
 
     def _frontier_indices(self):
         frontier = []
